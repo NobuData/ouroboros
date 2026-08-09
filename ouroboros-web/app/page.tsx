@@ -1,4 +1,5 @@
 import Image from "next/image";
+import ThemeToggle from "./theme-toggle";
 
 const STAGES = [
   { label: "PULL", x: 50, y: 9.8, cls: "hot" },
@@ -184,6 +185,26 @@ const DIVES = [
 
 const MARQUEE = "PULL → SIZE → PLAN → CODE → BUILD → TEST → VERIFY → MERGE → ";
 
+const LIGHT_LOGO = {
+  mark: { src: "/logo-mark-light.png", width: 496, height: 278 },
+  lockup: { src: "/logo-lockup-light.png", width: 565, height: 417 },
+};
+
+function ThemedLogo({
+  name, alt = "", className, width, height, priority, style,
+}: {
+  name: "mark" | "lockup"; alt?: string; className?: string;
+  width: number; height: number; priority?: boolean; style?: React.CSSProperties;
+}) {
+  const light = LIGHT_LOGO[name];
+  return (
+    <>
+      <Image src={`/logo-${name}.png`} alt={alt} width={width} height={height} priority={priority} style={style} className={[className, "logo-dark"].filter(Boolean).join(" ")} />
+      <Image src={light.src} alt={alt} width={light.width} height={light.height} priority={priority} style={style} className={[className, "logo-light"].filter(Boolean).join(" ")} />
+    </>
+  );
+}
+
 export default function Home() {
   const seq = MARQUEE.repeat(4);
   return (
@@ -191,7 +212,7 @@ export default function Home() {
       <header className="topbar">
         <div className="topbar-in">
           <a className="brand" href="#top">
-            <Image src="/logo-mark.png" alt="" width={55} height={34} />
+            <ThemedLogo name="mark" width={55} height={34} />
             <span>OURO<b>BOROS</b></span>
           </a>
           <nav className="topnav" aria-label="Site">
@@ -205,15 +226,16 @@ export default function Home() {
           <a className="btn primary sm" href="#cta" style={{ marginLeft: 12 }}>
             Start free
           </a>
+          <ThemeToggle />
         </div>
       </header>
 
       <main id="top">
         {/* hero */}
         <section className="hero wrap">
-          <Image
+          <ThemedLogo
+            name="mark"
             className="hero-mark rise"
-            src="/logo-mark.png"
             alt="The Ouroboros circuit snake, looped into an infinity symbol"
             width={505}
             height={311}
@@ -224,10 +246,9 @@ export default function Home() {
             Infinity in <em>Autonomy.</em>
           </h1>
           <p className="lede rise d3">
-            Stop hitting up arrow, enter. Let Ouroboros babysit your build so you don&rsquo;t
-            have to. It sizes every issue, writes the fix, builds on your own hardware, proves
-            the pull request does what the ticket says — and merges it. You can watch the loop
-            turn. Or go do something better. That&rsquo;s the point.
+            Sizes the work, writes the code, builds on your hardware, proves the work
+            and merges it. Watch the progress, or do something better.{" "}
+            <strong>That&rsquo;s the point.</strong>
           </p>
           <div className="hero-cta rise d4">
             <a className="btn primary" href="#cta">Run your first loop</a>
@@ -261,6 +282,11 @@ export default function Home() {
                 re-runs anything. Nobody stares at a spinner. You find out when it merges,
                 not when it breaks.
               </p>
+              <p>
+                But that&rsquo;s not all. Create bug fixes, fix regressions, create product
+                roadmaps and improvements, perform project and competitive gap analysis with
+                full research tools, in addition to handling your build.
+              </p>
             </div>
             <div className="loop-grid">
               <div className="ring reveal" role="img" aria-label="The Ouroboros loop: pull, size, plan, code, build, test, verify, merge — with failed gates returning to code">
@@ -287,7 +313,7 @@ export default function Home() {
                 ))}
                 <span className="fail-note" style={{ left: "50%", top: "72.5%" }}>fail ↺ back to code</span>
                 <div className="ring-center">
-                  <Image src="/logo-mark.png" alt="" width={505} height={311} style={{ width: "62%", height: "auto" }} />
+                  <ThemedLogo name="mark" width={505} height={311} style={{ width: "62%", height: "auto" }} />
                   <div className="cap">the loop bites its tail</div>
                 </div>
               </div>
@@ -435,8 +461,8 @@ export default function Home() {
 
         {/* final cta */}
         <section className="cta wrap" id="cta">
-          <Image src="/logo-lockup.png" alt="Ouroboros — Infinity in Autonomy" width={571} height={443} />
-          <h2>The backlog feeds the loop. The loop feeds the repo.</h2>
+          <ThemedLogo name="lockup" alt="Ouroboros — Infinity in Autonomy" width={571} height={443} />
+          <h2>Your Build Automation Tool, designed for the future, available now.</h2>
           <p>
             You? You&rsquo;re at lunch. First loop in about four minutes — draft PRs only,
             until you say otherwise.
@@ -444,6 +470,7 @@ export default function Home() {
           <div className="hero-cta">
             <a className="btn primary" href="#top">Start free — no card</a>
             <a className="btn ghost" href="#features">Explore the features</a>
+            <a className="btn ghost" href="https://www.youtube.com/@OuroborosBuild" target="_blank" rel="noopener">Explore our YouTube</a>
           </div>
         </section>
       </main>
@@ -452,7 +479,7 @@ export default function Home() {
         <div className="foot">
           <div>
             <a className="brand" href="#top">
-              <Image src="/logo-mark.png" alt="" width={55} height={34} />
+              <ThemedLogo name="mark" width={55} height={34} />
               <span>OURO<b>BOROS</b></span>
             </a>
             <div className="tagline">Infinity in Autonomy</div>

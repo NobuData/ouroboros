@@ -26,15 +26,40 @@
   --warn: #f5b83d;
   --err: #ff6b6b;
   --model: #a78bfa;
+  --topbar-bg: rgba(10, 14, 17, 0.82);
   --r-sm: 6px;
   --r-md: 10px;
   --r-lg: 16px;
   --pagew: 1200px;
 }
 
+html[data-theme="light"] {
+  --bg0: #f4f7f9;
+  --bg1: #edf1f4;
+  --surface: #ffffff;
+  --raised: #e4ebf0;
+  --inset: #e9eef2;
+  --border: #d5dfe6;
+  --border-strong: #b9c8d2;
+  --ink: #14212a;
+  --ink-dim: #354855;
+  --mut: #5b707e;
+  --faint: #8da0ab;
+  --accent: #0d90ba;
+  --accent-deep: #0b7196;
+  --glow: rgba(13, 144, 186, 0.35);
+  --glow-soft: rgba(13, 144, 186, 0.1);
+  --ok: #14966a;
+  --warn: #a97a12;
+  --err: #d64949;
+  --model: #7c5cf0;
+  --topbar-bg: rgba(244, 247, 249, 0.85);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html { color-scheme: dark; scroll-behavior: smooth; }
+html[data-theme="light"] { color-scheme: light; }
 
 body {
   font-family: var(--f-ui), system-ui, sans-serif;
@@ -60,6 +85,10 @@ img { max-width: 100%; height: auto; }
 
 .wrap { max-width: var(--pagew); margin: 0 auto; padding: 0 24px; }
 
+/* theme-paired logo assets: dark variant by default, light variant in light mode */
+html[data-theme="light"] img.logo-dark { display: none; }
+html:not([data-theme="light"]) img.logo-light { display: none; }
+
 .mono { font-family: var(--f-mono), monospace; }
 
 .eyebrow {
@@ -74,7 +103,7 @@ img { max-width: 100%; height: auto; }
 
 .topbar {
   position: sticky; top: 0; z-index: 60;
-  background: rgba(10, 14, 17, 0.82);
+  background: var(--topbar-bg);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border);
 }
@@ -97,6 +126,16 @@ img { max-width: 100%; height: auto; }
 }
 .topnav a:hover { color: var(--ink); background: var(--glow-soft); }
 @media (max-width: 900px) { .topnav { display: none; } }
+
+.theme-toggle {
+  flex: none; margin-left: 12px;
+  width: 38px; height: 38px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  color: var(--mut); font-size: 17px; line-height: 1; cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.theme-toggle:hover { color: var(--ink); background: var(--glow-soft); }
 
 /* ---------- buttons ---------- */
 
@@ -238,7 +277,7 @@ img { max-width: 100%; height: auto; }
   margin-top: 6px;
 }
 .ring .stage {
-  position: absolute; transform: translate(-50%, -50%);
+  position: absolute; transform: translate(-50%, -50%); z-index: 1;
   font-family: var(--f-mono), monospace; font-size: 12.5px; font-weight: 500;
   letter-spacing: 0.1em; color: var(--ink-dim);
   background: var(--surface); border: 1px solid var(--border-strong);
@@ -246,7 +285,8 @@ img { max-width: 100%; height: auto; }
 }
 .ring .stage.hot {
   color: var(--accent); border-color: rgba(61, 214, 245, 0.45);
-  background: var(--glow-soft); box-shadow: 0 0 18px -4px var(--glow);
+  background: linear-gradient(var(--glow-soft), var(--glow-soft)), var(--surface);
+  box-shadow: 0 0 18px -4px var(--glow);
 }
 .ring .stage.good { color: var(--ok); border-color: rgba(62, 220, 151, 0.4); }
 .ring .fail-note {
@@ -403,19 +443,19 @@ img { max-width: 100%; height: auto; }
 
 /* ---------- final cta ---------- */
 
-.cta { text-align: center; padding: 120px 0 110px; position: relative; overflow: hidden; }
+.cta { text-align: center; padding: 120px 0 170px; position: relative; overflow: hidden; }
 .cta::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(640px 340px at 50% 42%, var(--glow-soft), transparent 70%);
 }
 .cta img {
-  width: min(300px, 60vw); margin: 0 auto 10px; display: block;
+  width: min(300px, 60vw); margin: 0 auto 36px; display: block;
   filter: drop-shadow(0 0 44px rgba(61, 214, 245, 0.3));
 }
 .cta h2 {
   font-family: var(--f-disp), sans-serif; font-weight: 700;
   font-size: clamp(30px, 4.6vw, 52px); line-height: 1.12; text-wrap: balance;
-  max-width: 20ch; margin: 0 auto;
+  max-width: 46ch; margin: 0 auto;
 }
 .cta p { color: var(--mut); margin-top: 16px; font-size: 17px; }
 .cta .hero-cta { margin-top: 34px; }
