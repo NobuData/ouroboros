@@ -18,6 +18,9 @@ When user invokes **create-issues**, refer to `docs/<roadmap-file>.md` as the de
 
 - Create GitHub issues in order of requirements listed in `docs/<roadmap-file>.md`
 - Issues must contain:
+  - Quick summary including:
+    - Level of effort (shirt sizes: S, M, L, XL)
+    - Affected systems (UI/UX, REST, Database, Engine, etc)
   - Problem Statement
   - Solution/Scope
   - Acceptance Criteria
@@ -27,6 +30,10 @@ When user invokes **create-issues**, refer to `docs/<roadmap-file>.md` as the de
   - Relationship Reference where applicable
   - MVP indicator (v1) release candidate where applicable
   - Labels indicating all of the appropriate pairings for the issue
-- Mark issue number in ROADMAP for each issue created for reference
-- Use ASCII drawings or Mermaid diagrams to illustrate changes or work
+  - Type (Bug/Feature/Task)
+  - Project if applicable
+  - Milestone if applicable
+- Mark issue number in ROADMAP for each issue created for reference, along with its status
+- Use Mermaid diagrams to illustrate changes, work, or database tables/references
+- Note "Created by **Ouroboros**" at the footer of the issue
 
