@@ -20,7 +20,7 @@ const FEATURES: Feature[] = [
   {
     idx: "01",
     title: "Workflow Studio",
-    copy: "Design what happens when a ticket is pulled — on a node canvas, in a typed DSL, or by describing it in a sentence. All three edit the same graph, losslessly.",
+    copy: "Stop re-explaining your process in every PR comment. Draw it once — node canvas, typed DSL, or a plain sentence. All three edit the same graph, losslessly.",
     tags: ["visual canvas", "loop DSL", "copilot"],
     href: "#studio",
     span: "wide",
@@ -28,7 +28,7 @@ const FEATURES: Feature[] = [
   {
     idx: "02",
     title: "Model Registry · BYOK",
-    copy: "Every allowed model is a named alias binding your provider key to a model id. Routes only ever see the alias — swap the key behind it, change nothing else.",
+    copy: "Stop grep-replacing model ids at 2 a.m. Every allowed model is a named alias binding your key to a model id. Swap the key behind it — change nothing else.",
     tags: ["anthropic", "copilot", "cursor", "ollama", "vllm"],
     href: "#models",
     span: "",
@@ -36,7 +36,7 @@ const FEATURES: Feature[] = [
   {
     idx: "03",
     title: "PR Verification",
-    copy: "Every claim in the ticket mapped to a test, a measurement, or a diff hunk. The PR doesn't merge because it looks right — it merges because it's proven right.",
+    copy: "Stop merging on vibes. Every claim in the ticket maps to a test, a measurement, or a diff hunk — the PR merges because it's proven right, not because it looks right.",
     tags: ["evidence matrix", "7 gates"],
     href: "#verify",
     span: "",
@@ -44,7 +44,7 @@ const FEATURES: Feature[] = [
   {
     idx: "04",
     title: "Build Farm & HIL Rigs",
-    copy: "Your machines, enrolled with one outbound-only command. Firmware builds, QEMU, and physical hardware-in-the-loop benches — power cyclers, dynos, bus floods.",
+    copy: "Your machines, enrolled with one outbound-only command. The loop proves its work on firmware builds, QEMU, and real benches — power cyclers, dynos, bus floods — while you do literally anything else.",
     tags: ["byo compute", "physical tests"],
     href: "#farm",
     span: "",
@@ -52,7 +52,7 @@ const FEATURES: Feature[] = [
   {
     idx: "05",
     title: "Build Analyzer",
-    copy: "An AI that reads every build you've ever run, attributes every shift in the curve, and drafts new processes, workflow changes, and tickets — with evidence.",
+    copy: "You stopped reading build logs years ago. It never will. An AI reads every build you've ever run, attributes every shift in the curve, and drafts the fix — with evidence.",
     tags: ["change-points", "predicted vs measured"],
     href: "#analyzer",
     span: "",
@@ -60,7 +60,7 @@ const FEATURES: Feature[] = [
   {
     idx: "06",
     title: "Chat Ops",
-    copy: "Loops report to Slack or Teams. Blocked builds ask their question in-channel and resume when you answer. Every control is a /ouro command — or a sentence.",
+    copy: "Stop alt-tabbing to check the spinner. Loops report to Slack or Teams; blocked builds ask their question in-channel and resume when you answer. Every control is a /ouro command — or a sentence.",
     tags: ["slack", "teams", "/ouro"],
     href: "#chatops",
     span: "",
@@ -68,7 +68,7 @@ const FEATURES: Feature[] = [
   {
     idx: "07",
     title: "Insights",
-    copy: "Autonomous merge rate, cost per merged PR, cycle time by stage, model win-rates, flaky-test intelligence, DORA — computed from events, not self-reported.",
+    copy: "Merge rate, cost per merged PR, cycle time by stage, model win-rates, flakes, DORA — computed from events, not self-reported. Numbers you can quote in the standup you no longer need.",
     tags: ["dora", "spend", "flakes"],
     href: "#more",
     span: "",
@@ -76,7 +76,7 @@ const FEATURES: Feature[] = [
   {
     idx: "08",
     title: "Planning & Tickets",
-    copy: "Describe the outcome; Ouroboros drafts sized, dependency-wired tickets for GitHub, Jira, or Linear — and keeps the roadmap honest as reality drifts.",
+    copy: "Stop spending Friday writing tickets. Describe the outcome; Ouroboros drafts them sized and dependency-wired for GitHub, Jira, or Linear — and keeps the roadmap honest as reality drifts.",
     tags: ["github", "jira", "linear"],
     href: "#more",
     span: "",
@@ -155,7 +155,7 @@ const DIVES = [
     id: "analyzer",
     eyebrow: "BUILD ANALYZER",
     title: "Your last 1,284 builds have opinions.",
-    copy: "No other product does this: an AI that mines your entire build history, explains every change in the curve, and drafts what to do about it.",
+    copy: "You were never going to read 1,284 build logs. It already has. It mines your entire build history, explains every change in the curve, and drafts what to do about it.",
     points: [
       { b: "Change-point attribution", t: "— every duration or reliability shift pinned to the merge, config, or infra event that caused it." },
       { b: "Process suggestions", t: "— split the test gate, re-warm the cache, rebalance the pools — each with evidence and projected savings." },
@@ -169,7 +169,7 @@ const DIVES = [
     id: "chatops",
     eyebrow: "CHAT OPS · AI PRESENCE",
     title: "The loop reports where your team already lives.",
-    copy: "Finished loops announce themselves in Slack or Teams. Blocked builds ask their question in-channel and resume the moment someone answers.",
+    copy: "Stop refreshing the run page. Finished loops announce themselves in Slack or Teams; blocked builds ask their question in-channel and resume the moment someone answers.",
     points: [
       { b: "Blocking questions", t: "— “this fix wants to touch a protected path. Allow?” Answer in-channel; the build continues." },
       { b: "The /ouro command set", t: "— status, queue, pause, dry-run, route, explain — identical in Slack, Teams, and the app." },
@@ -224,9 +224,10 @@ export default function Home() {
             Infinity in <em>Autonomy.</em>
           </h1>
           <p className="lede rise d3">
-            Ouroboros points autonomous coding loops at your backlog. It sizes every issue,
-            writes the fix, builds on your own hardware, proves the pull request does what the
-            ticket says — and merges it. You watch the loop turn.
+            Stop hitting up arrow, enter. Let Ouroboros babysit your build so you don&rsquo;t
+            have to. It sizes every issue, writes the fix, builds on your own hardware, proves
+            the pull request does what the ticket says — and merges it. You can watch the loop
+            turn. Or go do something better. That&rsquo;s the point.
           </p>
           <div className="hero-cta rise d4">
             <a className="btn primary" href="#cta">Run your first loop</a>
@@ -256,7 +257,9 @@ export default function Home() {
               <h2>Issue in. Verified pull request out. Forever.</h2>
               <p>
                 Eight stages, and the honest part: when a gate fails, the loop bites its own
-                tail — back to code, another attempt, until the evidence is green.
+                tail — back to code, another attempt, until the evidence is green. Nobody
+                re-runs anything. Nobody stares at a spinner. You find out when it merges,
+                not when it breaks.
               </p>
             </div>
             <div className="loop-grid">
@@ -434,7 +437,10 @@ export default function Home() {
         <section className="cta wrap" id="cta">
           <Image src="/logo-lockup.png" alt="Ouroboros — Infinity in Autonomy" width={571} height={443} />
           <h2>The backlog feeds the loop. The loop feeds the repo.</h2>
-          <p>First loop in about four minutes. Draft PRs only, until you say otherwise.</p>
+          <p>
+            You? You&rsquo;re at lunch. First loop in about four minutes — draft PRs only,
+            until you say otherwise.
+          </p>
           <div className="hero-cta">
             <a className="btn primary" href="#top">Start free — no card</a>
             <a className="btn ghost" href="#features">Explore the features</a>
@@ -452,7 +458,7 @@ export default function Home() {
             <div className="tagline">Infinity in Autonomy</div>
             <p className="blurb">
               Autonomous development loops: issue in, verified pull request out.
-              On your models, your build farm, your rules.
+              On your models, your build farm, your rules — babysitting not required.
             </p>
           </div>
           <div>
