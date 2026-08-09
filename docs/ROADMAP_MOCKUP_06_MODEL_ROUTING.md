@@ -179,12 +179,15 @@ overrides (AB.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| Y | Routing Domain & Foundations | Providers/aliases/task-kinds/routes/rules schema, seeds, CI | ouroboros-db, ouroboros-rest | Model Routing MVP |
-| Z | Resolution & Routing Services | Resolution engine, simulate, health, stats/spend, save APIs, tests | ouroboros-rest, ouroboros-engine | Model Routing MVP |
-| AA | Routing UI | Subnav, health strip, matrix, inspector, rules, spend, states, e2e | ouroboros-ui | Model Routing MVP |
-| AB | Extended Routing (v2) | Gateway ADR handoff, live health, learned routing, spend report, overrides | all | Model Routing v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| Y | #185 | 🟡 Open | Routing Domain & Foundations | Providers/aliases/task-kinds/routes/rules schema, seeds, CI | ouroboros-db, ouroboros-rest | Model Routing MVP |
+| Z | #186 | 🟡 Open | Resolution & Routing Services | Resolution engine, simulate, health, stats/spend, save APIs, tests | ouroboros-rest, ouroboros-engine | Model Routing MVP |
+| AA | #187 | 🟡 Open | Routing UI | Subnav, health strip, matrix, inspector, rules, spend, states, e2e | ouroboros-ui | Model Routing MVP |
+| AB | #188 | 🟡 Open | Extended Routing (v2) | Gateway ADR handoff, live health, learned routing, spend report, overrides | all | Model Routing v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) **plus new `routing`**
@@ -193,17 +196,20 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ---
 
-## Epic Y — Routing Domain & Foundations (`ouroboros-db` + `ouroboros-rest`)
+## Epic Y (#185) — Routing Domain & Foundations (`ouroboros-db` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| Y.1 | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| Y.2 | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
-| Y.3 | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
-| Y.4 | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 6 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
-| Y.5 | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| Y.1 | #189 | 🟡 Open | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| Y.2 | #190 | 🟡 Open | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
+| Y.3 | #191 | 🟡 Open | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
+| Y.4 | #192 | 🟡 Open | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 6 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
+| Y.5 | #193 | 🟡 Open | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue Y.1 — ouroboros-db: [Y.1] Provider connections & model alias foundations
+
+> **GitHub issue:** #189 · **Status:** 🟡 Open · **Parent epic:** #185
+
 
 - **Problem Statement:** Routes point at aliases; aliases resolve to models on
   provider connections. Neither exists — and mockups 07/21 own their UIs, so the
@@ -253,6 +259,9 @@ erDiagram
 
 ### Issue Y.2 — ouroboros-db: [Y.2] Task kinds, routes & fallback chains
 
+> **GitHub issue:** #190 · **Status:** 🟡 Open · **Parent epic:** #185
+
+
 - **Problem Statement:** The matrix's rows — task kind → primary + ordered
   fallbacks + policy — need relational truth with ordering integrity
   (decision M4).
@@ -281,6 +290,9 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
 
 ### Issue Y.3 — ouroboros-db: [Y.3] Escalation rules schema
 
+> **GitHub issue:** #191 · **Status:** 🟡 Open · **Parent epic:** #185
+
+
 - **Problem Statement:** The three mockup rules must be structured, evaluable
   data (decision M5), not display strings.
 - **Solution/Scope:** `escalation_rules` — id, `organization_id` FK, `enabled`
@@ -302,6 +314,9 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
 ```
 
 ### Issue Y.4 — ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity
+
+> **GitHub issue:** #192 · **Status:** 🟡 Open · **Parent epic:** #185
+
 
 - **Problem Statement:** Design review and e2e need the mockup's exact routing
   state — and the stats columns need seeded usage to compute from (M7).
@@ -334,6 +349,9 @@ seeds: 5 providers · 6 aliases · 8 kinds · chains+policies · 3 rules
 
 ### Issue Y.5 — ouroboros-db: [Y.5] Routing constraints in ci/db
 
+> **GitHub issue:** #193 · **Status:** 🟡 Open · **Parent epic:** #185
+
+
 - **Problem Statement:** Alias-only routing, hop ordering, and predicate shapes
   are the invariants resolution trusts.
 - **Solution/Scope:** Extend #24 `tests/constraints.sql`: hop position
@@ -352,18 +370,21 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 
 ---
 
-## Epic Z — Resolution & Routing Services (`ouroboros-rest` + `ouroboros-engine`)
+## Epic Z (#186) — Resolution & Routing Services (`ouroboros-rest` + `ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| Z.1 | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
-| Z.2 | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
-| Z.3 | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
-| Z.4 | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate`; engine estimator + WF catalog amendments | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest, ouroboros-engine |
-| Z.5 | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
-| Z.6 | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| Z.1 | #194 | 🟡 Open | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
+| Z.2 | #195 | 🟡 Open | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
+| Z.3 | #196 | 🟡 Open | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
+| Z.4 | #197 | 🟡 Open | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate`; engine estimator + WF catalog amendments | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest, ouroboros-engine |
+| Z.5 | #198 | 🟡 Open | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
+| Z.6 | #199 | 🟡 Open | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
 
 ### Issue Z.1 — ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations)
+
+> **GitHub issue:** #194 · **Status:** 🟡 Open · **Parent epic:** #186
+
 
 - **Problem Statement:** The product promise — degrade gracefully, never below
   the floor, apply escalation, respect cost caps — must be one pure, testable
@@ -399,6 +420,9 @@ resolve("implement", {effort:"l"}) ─▶
 
 ### Issue Z.2 — ouroboros-rest: [Z.2] Routing management API
 
+> **GitHub issue:** #195 · **Status:** 🟡 Open · **Parent epic:** #186
+
+
 - **Problem Statement:** The matrix, inspector, and rules card need read/write
   APIs with the mockup's editing semantics (drag-reorder, toggles, cost field,
   Save routes).
@@ -425,6 +449,9 @@ PUT /routes/implement {hops:[…], floor:2, maxCost:250} ─▶ revision recorde
 
 ### Issue Z.3 — ouroboros-rest: [Z.3] Provider health service (passive-first)
 
+> **GitHub issue:** #196 · **Status:** 🟡 Open · **Parent epic:** #186
+
+
 - **Problem Statement:** The health strip and resolution need provider states —
   honest ones (decision M8): real checks where cheap, `unknown` where not.
 - **Solution/Scope:** Scheduled checks per provider kind: Ollama (`/api/tags` →
@@ -450,6 +477,9 @@ copilot ─▶ ◌ unknown (until traffic — AB.2)     stopped vllm ─▶ ⚠ 
 
 ### Issue Z.4 — ouroboros-rest: [Z.4] Simulate endpoint & consumer contract
 
+> **GitHub issue:** #197 · **Status:** 🟡 Open · **Parent epic:** #186
+
+
 - **Problem Statement:** "Simulate routing" must expose the resolution function,
   and the existing consumers of opaque model strings must start asking it.
 - **Solution/Scope:** `POST /api/v1/routing/simulate {taskKind, ctx}` → the
@@ -474,6 +504,9 @@ consumers: estimator (INTAKE-L.2) · WF catalog kinds · DSL route.task validati
 
 ### Issue Z.5 — ouroboros-rest: [Z.5] Route stats & spend aggregation
 
+> **GitHub issue:** #198 · **Status:** 🟡 Open · **Parent epic:** #186
+
+
 - **Problem Statement:** $/run avg, p50 latency, the spend card, and the
   local-token share must be computed from usage truth (decision M7).
 - **Solution/Scope:** Stats service over `token_usage` + `runs` (DASH-F.3/F.1):
@@ -497,6 +530,9 @@ by-provider ─▶ $412.80 · $96.40 · $54.10 · $0.00(zero-priced) · local sh
 
 ### Issue Z.6 — ouroboros-rest: [Z.6] Routing integration tests
 
+> **GitHub issue:** #199 · **Status:** 🟡 Open · **Parent epic:** #186
+
+
 - **Problem Statement:** Resolution matrices, revisioned saves, and stats math
   are regression-prone cross-table logic.
 - **Solution/Scope:** Testcontainers suites: Z.1 matrices (rules × health ×
@@ -516,24 +552,27 @@ suites: resolve matrix ✓ · saves+revisions ✓ · rules ✓ · stats honesty 
 
 ---
 
-## Epic AA — Routing UI (`ouroboros-ui`)
+## Epic AA (#187) — Routing UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/06-model-routing.html`](mockups/06-model-routing.html) as the
 design source — subnav treatment, `.phealth` strip, matrix/inspector/rules/spend
 cards — via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AA.1 | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
-| AA.2 | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
-| AA.3 | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
-| AA.4 | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
-| AA.5 | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
-| AA.6 | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
-| AA.7 | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AA.1 | #200 | 🟡 Open | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
+| AA.2 | #201 | 🟡 Open | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
+| AA.3 | #202 | 🟡 Open | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
+| AA.4 | #203 | 🟡 Open | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
+| AA.5 | #204 | 🟡 Open | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
+| AA.6 | #205 | 🟡 Open | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
+| AA.7 | #206 | 🟡 Open | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue AA.1 — ouroboros-ui: [AA.1] Models route, subnav & provider health strip
+
+> **GitHub issue:** #200 · **Status:** 🟡 Open · **Parent epic:** #187
+
 
 - **Problem Statement:** The page frame: head with the routing promise copy,
   the violet-treatment subnav (three sibling tabs honestly stubbed), and the
@@ -560,6 +599,9 @@ Routing | Model registry·soon | Providers & keys·soon | Spend·soon
 
 ### Issue AA.2 — ouroboros-ui: [AA.2] Routing matrix table
 
+> **GitHub issue:** #201 · **Status:** 🟡 Open · **Parent epic:** #187
+
+
 - **Problem Statement:** The matrix is the page's core: dense rows pairing task
   identity, alias cells with resolution lines, escalation summaries, and
   honest stats — with the violet selection treatment driving the inspector.
@@ -584,6 +626,9 @@ Routing | Model registry·soon | Providers & keys·soon | Spend·soon
 
 ### Issue AA.3 — ouroboros-ui: [AA.3] Chain editing & drag-reorder
 
+> **GitHub issue:** #202 · **Status:** 🟡 Open · **Parent epic:** #187
+
+
 - **Problem Statement:** "drag ⠿ to reorder fallback chains" plus alias swaps
   and policy edits — with an explicit Save routes commit, not silent
   mutation.
@@ -607,6 +652,9 @@ alias swap ▾ ─▶ registry list + "→ resolves: claude-sonnet-5 · Anthropi
 ```
 
 ### Issue AA.4 — ouroboros-ui: [AA.4] Route inspector & simulate panel
+
+> **GitHub issue:** #203 · **Status:** 🟡 Open · **Parent epic:** #187
+
 
 - **Problem Statement:** The inspector tells one route's full story — chain
   hops with health and meta, the three policy controls — and Simulate must
@@ -636,6 +684,9 @@ ROUTE — implement-primary
 
 ### Issue AA.5 — ouroboros-ui: [AA.5] Escalation rules & spend cards
 
+> **GitHub issue:** #204 · **Status:** 🟡 Open · **Parent epic:** #187
+
+
 - **Problem Statement:** The rules card (three switchable rules + Add rule)
   and the spend card (metered providers + local share) complete the right
   column.
@@ -659,6 +710,9 @@ SPEND · 30D  Anthropic ▓▓▓▓▓ $412.80 … Local ▓ $0.00 · "Local se
 
 ### Issue AA.6 — ouroboros-ui: [AA.6] Routing states & guards
 
+> **GitHub issue:** #205 · **Status:** 🟡 Open · **Parent epic:** #187
+
+
 - **Problem Statement:** A fresh org has no providers, no aliases, no routes —
   the page must guide, not blank; members must get read-only.
 - **Solution/Scope:** Guidance states: no providers ("Connect a provider —
@@ -673,6 +727,9 @@ SPEND · 30D  Anthropic ▓▓▓▓▓ $412.80 … Local ▓ $0.00 · "Local se
 - **Epic:** AA
 
 ### Issue AA.7 — ouroboros-ui: [AA.7] Routing e2e leg
+
+> **GitHub issue:** #206 · **Status:** 🟡 Open · **Parent epic:** #187
+
 
 - **Problem Statement:** Chain editing, rule effects, and simulation honesty
   span all services — e2e certifies them.
@@ -692,17 +749,20 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
 
 ---
 
-## Epic AB — Extended Routing (v2 · milestone `Model Routing v2`)
+## Epic AB (#188) — Extended Routing (v2 · milestone `Model Routing v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AB.1 | ouroboros-rest: [AB.1] Invocation-gateway requirements handoff | Requirements doc for the 07 roadmap's ADR (LiteLLM-under-custom vs pure custom) | v2, routing, rest, engine | Y | N | S | docs |
-| AB.2 | ouroboros-rest: [AB.2] Traffic-derived health & latency | Degraded/latency states from real invocation telemetry | v2, routing, rest | N (after 07-roadmap invocation) | N | M | ouroboros-rest |
-| AB.3 | ouroboros-rest: [AB.3] Learned routing suggestions | Cost/quality-informed route suggestions from run outcomes | v2, routing, rest, engine | N (after AB.2) | N | L | ouroboros-rest, ouroboros-engine |
-| AB.4 | ouroboros-ui: [AB.4] Full spend report surface | The subnav's Spend tab: drill-down by provider/model/task/repo | v2, routing, ui | N (after Z.5, DASH-J.4) | N | M | ouroboros-ui, ouroboros-rest |
-| AB.5 | ouroboros-rest: [AB.5] Per-repo route overrides | Repo-scoped route/policy overrides layered over org routes | v2, routing, rest, ui | N (after Z.1) | N | M | ouroboros-rest, ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AB.1 | #207 | 🟡 Open | ouroboros-rest: [AB.1] Invocation-gateway requirements handoff | Requirements doc for the 07 roadmap's ADR (LiteLLM-under-custom vs pure custom) | v2, routing, rest, engine | Y | N | S | docs |
+| AB.2 | #208 | 🟡 Open | ouroboros-rest: [AB.2] Traffic-derived health & latency | Degraded/latency states from real invocation telemetry | v2, routing, rest | N (after 07-roadmap invocation) | N | M | ouroboros-rest |
+| AB.3 | #209 | 🟡 Open | ouroboros-rest: [AB.3] Learned routing suggestions | Cost/quality-informed route suggestions from run outcomes | v2, routing, rest, engine | N (after AB.2) | N | L | ouroboros-rest, ouroboros-engine |
+| AB.4 | #210 | 🟡 Open | ouroboros-ui: [AB.4] Full spend report surface | The subnav's Spend tab: drill-down by provider/model/task/repo | v2, routing, ui | N (after Z.5, DASH-J.4) | N | M | ouroboros-ui, ouroboros-rest |
+| AB.5 | #211 | 🟡 Open | ouroboros-rest: [AB.5] Per-repo route overrides | Repo-scoped route/policy overrides layered over org routes | v2, routing, rest, ui | N (after Z.1) | N | M | ouroboros-rest, ouroboros-ui |
 
 ### Issue AB.1 — ouroboros-rest: [AB.1] Invocation-gateway requirements handoff
+
+> **GitHub issue:** #207 · **Status:** 🟡 Open · **Parent epic:** #188
+
 
 - **Problem Statement:** Resolution emits chains; something must *execute* them
   against providers (mockup 07 territory). That roadmap's ADR needs crisp
@@ -724,6 +784,9 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
 
 ### Issue AB.2 — ouroboros-rest: [AB.2] Traffic-derived health & latency
 
+> **GitHub issue:** #208 · **Status:** 🟡 Open · **Parent epic:** #188
+
+
 - **Problem Statement:** Passive health (M8) can't see what the mockup's
   `degraded · elevated latency` implies — real per-provider error/latency
   windows from live traffic.
@@ -740,6 +803,9 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
 
 ### Issue AB.3 — ouroboros-rest: [AB.3] Learned routing suggestions
 
+> **GitHub issue:** #209 · **Status:** 🟡 Open · **Parent epic:** #188
+
+
 - **Problem Statement:** With outcomes flowing (merge rates, retries, cost per
   task kind × alias), the system can *suggest* cheaper/better routes — the
   optimization the page's headline implies.
@@ -755,6 +821,9 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
 
 ### Issue AB.4 — ouroboros-ui: [AB.4] Full spend report surface
 
+> **GitHub issue:** #210 · **Status:** 🟡 Open · **Parent epic:** #188
+
+
 - **Problem Statement:** The subnav's Spend tab and the card's "Full report →"
   promise drill-down the MVP card doesn't attempt.
 - **Solution/Scope:** Spend tab: time-windowed breakdowns by provider / model /
@@ -768,6 +837,9 @@ e2e: parity ✓ · reorder→save ✓ · rule→simulate ✓ · floor fail ✓ �
 - **Epic:** AB
 
 ### Issue AB.5 — ouroboros-rest: [AB.5] Per-repo route overrides
+
+> **GitHub issue:** #211 · **Status:** 🟡 Open · **Parent epic:** #188
+
 
 - **Problem Statement:** Org-wide routes are the MVP simplification; real
   tenants will want `helios-firmware` routed differently from a docs repo.
@@ -842,9 +914,17 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AB — Extended Routing | 5 | 0 | 5 |
 | **Total** | **23** | **18** | **5** |
 
-Plus amendments executed at filing: #49 (`/models` stub retired), #56 (routing
-e2e leg), INTAKE-L.2 (estimator resolves via routing), WF-R.3 (task kinds from
-registry), DASH-F.8-style consumers noted.
+Filed as **#185–#188** (epic parents) and **#189–#211** (23 work issues).
+
+Plus **4 amendments** — comments posted and the `routing` label applied on
+2026-08-09; no new work created:
+
+| Issue | Amendment |
+|---|---|
+| #49 | The `/models` placeholder is superseded and retired by AA.1 (#200) |
+| #56 | The e2e suite gains the routing leg AA.7 (#206), including the rule-toggle → simulate assertion and shell checks |
+| #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked* |
+| #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it |
 
 ## References
 
@@ -888,20 +968,45 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AA.1 | Mounts in the shell content pane; navigation via the sidebar **Models** entry (CP.2 registry), not a topbar link; the in-page subnav (if any) renders via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
-| AA.2, AA.3, AA.4, AA.5, AA.6 | rem-based type (CQ.1 tokens); sticky elements (table headers, dirty-state bars) stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| AA.7 | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state (**Models** stays active on sub-routes), and a font-scale (125%) render check |
+| AA.1 (#200) | Mounts in the shell content pane; navigation via the sidebar **Models** entry (CP.2 registry), not a topbar link; the in-page subnav (if any) renders via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| AA.2–AA.6 (#201–#205) | rem-based type (CQ.1 tokens); sticky elements (table headers, dirty-state bars) stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
+| AA.7 (#206) | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state (**Models** stays active on sub-routes), and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the foundation boundary
-(M2 — provider/alias schema lands here, their UIs stay with mockups 07/21), the
-alias-only rule (M1), the resolution-as-pure-function design (M6) and its
-consumer amendments (INTAKE-L.2, WF-R.3), the honesty stances (M7 stats, M8
-passive health), and the gateway decision deferral (M9 — AB.1 hands requirements
-to the 07 roadmap rather than deciding here). Once validated, the follow-up pass
-(`/create-issues ROADMAP_MOCKUP_06_MODEL_ROUTING.md`) creates the `routing`
-label **and the `Model Routing MVP` / `Model Routing v2` milestones**, files the
-23 issues with epic parents, relationships, and milestone assignments, and posts
-the amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `routing` label, the **`Model Routing MVP`** and **`Model Routing v2`**
+milestones, the four epic parents (#185–#188) and twenty-three work issues
+(#189–#211) with epic relationships, issue types and milestone assignments, plus
+the four amendment comments on #49, #56, #106 and #145.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **M1 — aliases are the only thing routes may name** (#189/#190). Raw provider
+  model ids live in exactly one column, and hops reference aliases by FK, so the
+  rule holds by construction rather than by review.
+- **M2 — the foundation boundary** (#189). Provider and alias *schema* land here;
+  their management UIs stay with mockups 07 and 21. The migration header says so,
+  so the next roadmap to touch these tables knows what it inherited.
+- **M6 — resolution as one pure, versioned function** (#194), exposed unchanged as
+  **Simulate routing** (#197). The simulator cannot drift from execution because
+  it is the same code path.
+- **M9 — the gateway decision stays with the 07 roadmap** (#207 drafts the
+  requirements). Routing hands over an executor contract; it does not pick the
+  executor.
+
+Three honesty stances are carried into the issues and should survive review: stats
+are **computed** from `token_usage` and `runs` with an em-dash where data is absent
+(#198), health is **passive-first** with `unknown` as a rendered state rather than a
+green dot the system has not earned (#196), and the local `$0.00` comes from real
+zero-price rows, never from unpriced usage rounded down (#192/#198).
+
+**Prerequisites:** scaffolding #19/#28/#41/#46 and DASH-F.1 (#64) / DASH-F.3 (#66)
+are filed; the BetterAuth roadmap (BA-B.3, BA-C.3, BA-D.5) is **not yet filed** and
+gates Y.1, Z.2 and AA.1. INTAKE-L.2 (#106) and WF-R.3 (#145) must exist for the Z.4
+amendments.
+
+Once those are in place, begin with **#189** ([Y.1] provider connections and model
+alias foundations) — the table pair everything else in this roadmap resolves
+through.

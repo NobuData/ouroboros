@@ -202,12 +202,15 @@ suggestions (AN.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| AK | Planning Domain | Draft batches/tickets, dependencies, epics, schema + seeds + CI | ouroboros-db | Planning MVP |
-| AL | Generation, Sizing & Push | `/v0/plan` v0, estimator wiring, SPI write extension, GitHub push, health | ouroboros-rest, ouroboros-engine | Planning MVP |
-| AM | Planning UI | Generator card, sync/health cards, gantt, states, e2e | ouroboros-ui | Planning MVP |
-| AN | Intelligent Planning (v2) | LLM planner, multi-tracker push, import, sharing, drift re-planning | all | Planning v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| AK | #268 | 🟡 Open | Planning Domain | Draft batches/tickets, dependencies, epics, schema + seeds + CI | ouroboros-db | Planning MVP |
+| AL | #269 | 🟡 Open | Generation, Sizing & Push | `/v0/plan` v0, estimator wiring, SPI write extension, GitHub push, health | ouroboros-rest, ouroboros-engine | Planning MVP |
+| AM | #270 | 🟡 Open | Planning UI | Generator card, sync/health cards, gantt, states, e2e | ouroboros-ui | Planning MVP |
+| AN | #271 | 🟡 Open | Intelligent Planning (v2) | LLM planner, multi-tracker push, import, sharing, drift re-planning | all | Planning v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`, `sources`, `intake`) **plus
@@ -216,17 +219,20 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ---
 
-## Epic AK — Planning Domain (`ouroboros-db`)
+## Epic AK (#268) — Planning Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AK.1 | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
-| AK.2 | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
-| AK.3 | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
-| AK.4 | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
-| AK.5 | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AK.1 | #272 | 🟡 Open | ouroboros-db: [AK.1] Draft batches & ticket drafts schema | Pre-push draft entities with generation provenance & push state | mvp, planning, db | N (after WF-Q.1) | Y | M | ouroboros-db |
+| AK.2 | #273 | 🟡 Open | ouroboros-db: [AK.2] Ticket dependencies schema | Canonical + draft `blocks` relations (N4), health-metric feeds | mvp, planning, db | N (after AK.1) | Y | S | ouroboros-db |
+| AK.3 | #274 | 🟡 Open | ouroboros-db: [AK.3] Planning epics & tracker mirrors | Lanes: tint, month range, status, mirror refs, ticket links | mvp, planning, db | N (after AK.1) | Y | M | ouroboros-db |
+| AK.4 | #275 | 🟡 Open | ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity | Batch OTA-1…6, five epics, health-shaping tickets | mvp, planning, db | N (after AK.2, AK.3) | Y | S | ouroboros-db |
+| AK.5 | #276 | 🟡 Open | ouroboros-db: [AK.5] Planning constraints in ci/db | Dependency acyclicity probe, push-state vocab, range checks | mvp, planning, db, ci | N (after AK.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue AK.1 — ouroboros-db: [AK.1] Draft batches & ticket drafts schema
+
+> **GitHub issue:** #272 · **Status:** 🟡 Open · **Parent epic:** #268
+
 
 - **Problem Statement:** Drafts exist before any tracker knows them (decision
   N1) — with generation provenance, sizing, selection, and push lifecycle per
@@ -271,6 +277,9 @@ erDiagram
 
 ### Issue AK.2 — ouroboros-db: [AK.2] Ticket dependencies schema
 
+> **GitHub issue:** #273 · **Status:** 🟡 Open · **Parent epic:** #268
+
+
 - **Problem Statement:** `blocks OTA-3` on drafts and the Blocked health
   metric on the live backlog need one dependency model spanning both worlds
   (decision N4).
@@ -292,6 +301,9 @@ push: OTA-1(draft)→OTA-3(draft) ⇒ #612(ticket)→#614(ticket) · origin: pla
 ```
 
 ### Issue AK.3 — ouroboros-db: [AK.3] Planning epics & tracker mirrors
+
+> **GitHub issue:** #274 · **Status:** 🟡 Open · **Parent epic:** #268
+
 
 - **Problem Statement:** The gantt's lanes — tinted, month-ranged,
   proposed-or-active, progress-computed, tracker-mirrored — need their entity
@@ -319,6 +331,9 @@ planning_epics{tint, Jul→Sep, active, "Helios 2.1"} ──< epic_tickets >─�
 
 ### Issue AK.4 — ouroboros-db: [AK.4] Planning dev seeds — mockup-09 parity
 
+> **GitHub issue:** #275 · **Status:** 🟡 Open · **Parent epic:** #268
+
+
 - **Problem Statement:** Design review and e2e need the mockup's exact
   planning state without live generation or push.
 - **Solution/Scope:** Extend the dev seed: the OTA draft batch (six drafts
@@ -344,6 +359,9 @@ seeds: OTA batch (6 sized drafts + deps) · 5 epics (tints, ranges, chip math)
 
 ### Issue AK.5 — ouroboros-db: [AK.5] Planning constraints in ci/db
 
+> **GitHub issue:** #276 · **Status:** 🟡 Open · **Parent epic:** #268
+
+
 - **Problem Statement:** Dependency acyclicity, push-state transitions, and
   month-range sanity are contracts the UI and push service trust.
 - **Solution/Scope:** Extend #24 probes: stored-cycle detection (recursive
@@ -362,18 +380,21 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 
 ---
 
-## Epic AL — Generation, Sizing & Push (`ouroboros-rest` + `ouroboros-engine`)
+## Epic AL (#269) — Generation, Sizing & Push (`ouroboros-rest` + `ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AL.1 | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
-| AL.2 | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
-| AL.3 | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
-| AL.4 | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
-| AL.5 | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
-| AL.6 | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AL.1 | #277 | 🟡 Open | ouroboros-engine: [AL.1] Plan contract & outline parser v0 | `/v0/plan`: narrative+outline → drafts+deps, versioned, provenance | mvp, planning, engine | N (after #52) | Y | M | ouroboros-engine |
+| AL.2 | #278 | 🟡 Open | ouroboros-rest: [AL.2] Write-capability SPI extension | `createTicket`/`linkDependency`/`ensureEpic` + conformance kit cases | mvp, planning, sources, rest | N (after WF-Q.2) | Y | M | ouroboros-rest |
+| AL.3 | #279 | 🟡 Open | ouroboros-rest: [AL.3] GitHub push service (batch, idempotent) | Drafts → issues + native deps + sub-issue epics + milestone | mvp, planning, sources, rest | N (after AL.2, AK.2, AK.3) | Y | L | ouroboros-rest |
+| AL.4 | #280 | 🟡 Open | ouroboros-rest: [AL.4] Planning API — batches, drafts, epics | Generate/regenerate/select/push endpoints; epic CRUD; queue-small | mvp, planning, rest | N (after AL.1, AK.1) | Y | L | ouroboros-rest |
+| AL.5 | #281 | 🟡 Open | ouroboros-rest: [AL.5] Backlog health & nightly re-estimation | Sized/blocked/stale metrics; scheduled unsized re-runs | mvp, planning, rest, intake | N (after AK.2, INTAKE-L.3) | Y | S | ouroboros-rest |
+| AL.6 | #282 | 🟡 Open | ouroboros-rest: [AL.6] Planning integration tests | Contract, push idempotency/resume, dep mapping, health, isolation | mvp, planning, rest, ci | N (after AL.3–AL.5) | Y | M | ouroboros-rest |
 
 ### Issue AL.1 — ouroboros-engine: [AL.1] Plan contract & outline parser v0
+
+> **GitHub issue:** #277 · **Status:** 🟡 Open · **Parent epic:** #269
+
 
 - **Problem Statement:** Generation needs a versioned engine contract today
   and a seamless LLM upgrade later (decision N2) — the planner v0 must be
@@ -403,6 +424,9 @@ ci/db: migrate ─▶ constraints (+AK probes: acyclic ✓ · refs ✓ · ranges
 
 ### Issue AL.2 — ouroboros-rest: [AL.2] Write-capability SPI extension
 
+> **GitHub issue:** #278 · **Status:** 🟡 Open · **Parent epic:** #269
+
+
 - **Problem Statement:** The pluggable-source SPI reads; planning writes. The
   extension must keep the pluggability discipline: capability-flagged,
   conformance-tested, core-code provider-blind (the description's
@@ -431,6 +455,9 @@ core PushService ──SPI only──▶ provider.createTicket / linkDependency 
 ```
 
 ### Issue AL.3 — ouroboros-rest: [AL.3] GitHub push service (batch, idempotent)
+
+> **GitHub issue:** #279 · **Status:** 🟡 Open · **Parent epic:** #269
+
 
 - **Problem Statement:** "Push 6 tickets to GitHub →" must create real
   issues, real native dependencies, real epic/milestone wiring — and survive
@@ -477,6 +504,9 @@ sequenceDiagram
 
 ### Issue AL.4 — ouroboros-rest: [AL.4] Planning API — batches, drafts, epics
 
+> **GitHub issue:** #280 · **Status:** 🟡 Open · **Parent epic:** #269
+
+
 - **Problem Statement:** The UI needs the full surface: generate, regenerate,
   select, push, epic CRUD, milestone listing, and the queue-small
   composition.
@@ -508,6 +538,9 @@ PATCH drafts/OTA-4 {selected: false} · POST push ─▶ 5 issues · queue_small
 
 ### Issue AL.5 — ouroboros-rest: [AL.5] Backlog health & nightly re-estimation
 
+> **GitHub issue:** #281 · **Status:** 🟡 Open · **Parent epic:** #269
+
+
 - **Problem Statement:** The health card's three meters and its footnote
   promise (nightly re-runs on unsized issues) must be computed truth
   (decision N9).
@@ -533,6 +566,9 @@ nightly 02:00±jitter ─▶ unsized open tickets ─▶ L.3 orchestrator (bound
 
 ### Issue AL.6 — ouroboros-rest: [AL.6] Planning integration tests
 
+> **GitHub issue:** #282 · **Status:** 🟡 Open · **Parent epic:** #269
+
+
 - **Problem Statement:** Push idempotency, dependency ordering, and the
   generate→size→queue composition are exactly where silent corruption
   would live.
@@ -553,7 +589,7 @@ suites: plan ✓ · lifecycle ✓ · push resume ✓ · dep order+fallback ✓ �
 
 ---
 
-## Epic AM — Planning UI (`ouroboros-ui`)
+## Epic AM (#270) — Planning UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/09-planning.html`](mockups/09-planning.html) as the design
@@ -561,16 +597,19 @@ source — generator/draft-row/sync-row treatments, the CSS-grid gantt spec, and
 the shared design system via the #16 tokens (both themes; the mockup is
 dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AM.1 | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
-| AM.2 | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
-| AM.3 | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
-| AM.4 | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
-| AM.5 | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
-| AM.6 | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AM.1 | #283 | 🟡 Open | ouroboros-ui: [AM.1] Planning route, head & page frame | `/planning` frame, honest head actions, layout | mvp, planning, ui, design | N (after #41, AL.4, BA-D.5) | Y | S | ouroboros-ui |
+| AM.2 | #284 | 🟡 Open | ouroboros-ui: [AM.2] Generator card & draft flow | Prompt/outline, tracker segment, toggles, draft rows, push flow | mvp, planning, ui, design | N (after AM.1, AL.4, AL.3) | Y | L | ouroboros-ui |
+| AM.3 | #285 | 🟡 Open | ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards | Source status rows + connect CTA; three health meters | mvp, planning, ui, design | N (after AM.1, AL.5) | Y | M | ouroboros-ui |
+| AM.4 | #286 | 🟡 Open | ouroboros-ui: [AM.4] Roadmap gantt component | Custom CSS-grid gantt: lanes, tints, today, drag/resize, editor | mvp, planning, ui, design | N (after AM.1, AL.4) | Y | L | ouroboros-ui |
+| AM.5 | #287 | 🟡 Open | ouroboros-ui: [AM.5] Planning states & guards | Empty org, no-writable-source, member limits, load/error | mvp, planning, ui, design | N (after AM.2–AM.4) | Y | S | ouroboros-ui |
+| AM.6 | #288 | 🟡 Open | ouroboros-ui: [AM.6] Planning e2e leg | Generate→size→select→push→queue chain; gantt edits; themes | mvp, planning, ui, ci | N (after AM.1–AM.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue AM.1 — ouroboros-ui: [AM.1] Planning route, head & page frame
+
+> **GitHub issue:** #283 · **Status:** 🟡 Open · **Parent epic:** #270
+
 
 - **Problem Statement:** The frame: headline copy, honest head actions
   (Import from Jira is v2; New roadmap targets the gantt editor), and the
@@ -590,6 +629,9 @@ dark-only).
 ```
 
 ### Issue AM.2 — ouroboros-ui: [AM.2] Generator card & draft flow
+
+> **GitHub issue:** #284 · **Status:** 🟡 Open · **Parent epic:** #270
+
 
 - **Problem Statement:** The page's centerpiece: prompt + outline entry,
   tracker/milestone/toggle controls, the sized draft list with dependency
@@ -627,6 +669,9 @@ est. ~3 days · $14   [Regenerate] [Push 6 tickets to GitHub →] ─▶ ✓#612
 
 ### Issue AM.3 — ouroboros-ui: [AM.3] Tracker-sync & backlog-health cards
 
+> **GitHub issue:** #285 · **Status:** 🟡 Open · **Parent epic:** #270
+
+
 - **Problem Statement:** The side column's two cards: source connection
   truth (read+write view of WF-Q sources per N8) and the computed health
   meters.
@@ -652,6 +697,9 @@ Sized ▓▓▓▓▓▓▓▓▓░ 38/42 · Blocked ▓ 4 · Stale >30d ▓ 6 
 ```
 
 ### Issue AM.4 — ouroboros-ui: [AM.4] Roadmap gantt component
+
+> **GitHub issue:** #286 · **Status:** 🟡 Open · **Parent epic:** #270
+
 
 - **Problem Statement:** The roadmap card is a bespoke CSS-grid gantt
   (option 3-A): month columns, tinted lanes with progress and chips, a
@@ -687,6 +735,9 @@ Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
 
 ### Issue AM.5 — ouroboros-ui: [AM.5] Planning states & guards
 
+> **GitHub issue:** #287 · **Status:** 🟡 Open · **Parent epic:** #270
+
+
 - **Problem Statement:** No writable source, no epics, member-role limits,
   and load/error conditions need designed handling.
 - **Solution/Scope:** States: no writable source (generator renders with
@@ -702,6 +753,9 @@ Zephyr 4.2 (proposed)                    [╌ unscoped ╌]
 - **Epic:** AM
 
 ### Issue AM.6 — ouroboros-ui: [AM.6] Planning e2e leg
+
+> **GitHub issue:** #288 · **Status:** 🟡 Open · **Parent epic:** #270
+
 
 - **Problem Statement:** The generate→size→push→queue chain crosses UI,
   REST, engine, GitHub, and the intake pipeline — the fullest end-to-end
@@ -726,17 +780,20 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
 
 ---
 
-## Epic AN — Intelligent Planning (v2 · milestone `Planning v2`)
+## Epic AN (#271) — Intelligent Planning (v2 · milestone `Planning v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AN.1 | ouroboros-engine: [AN.1] LLM planner (outcome → tickets) | Real decomposition behind the AL.1 contract; provenance honest | v2, planning, engine | N (after AL.1, AF.2) | N | L | ouroboros-engine |
-| AN.2 | ouroboros-rest: [AN.2] Jira, Linear & GitLab push | Write capabilities on the v2 providers; epic mirroring per tracker | v2, planning, sources, rest | N (after AL.2, WF-T.2–T.4) | N | L | ouroboros-rest |
-| AN.3 | ouroboros-rest: [AN.3] Import from Jira | Bulk import → canonical tickets + epic reconstruction | v2, planning, sources, rest | N (after AN.2) | N | M | ouroboros-rest, ouroboros-ui |
-| AN.4 | ouroboros-ui: [AN.4] Shareable roadmap links | Read-only public/tenant-scoped gantt shares | v2, planning, ui | N (after AM.4) | N | M | ouroboros-ui, ouroboros-rest |
-| AN.5 | ouroboros-rest: [AN.5] Drift detection & re-planning suggestions | Reality-vs-plan analysis; suggested range shifts, never silent | v2, planning, rest, engine | N (after AM.4, AN.1) | N | L | ouroboros-rest, ouroboros-engine |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AN.1 | #289 | 🟡 Open | ouroboros-engine: [AN.1] LLM planner (outcome → tickets) | Real decomposition behind the AL.1 contract; provenance honest | v2, planning, engine | N (after AL.1, AF.2) | N | L | ouroboros-engine |
+| AN.2 | #290 | 🟡 Open | ouroboros-rest: [AN.2] Jira, Linear & GitLab push | Write capabilities on the v2 providers; epic mirroring per tracker | v2, planning, sources, rest | N (after AL.2, WF-T.2–T.4) | N | L | ouroboros-rest |
+| AN.3 | #291 | 🟡 Open | ouroboros-rest: [AN.3] Import from Jira | Bulk import → canonical tickets + epic reconstruction | v2, planning, sources, rest | N (after AN.2) | N | M | ouroboros-rest, ouroboros-ui |
+| AN.4 | #292 | 🟡 Open | ouroboros-ui: [AN.4] Shareable roadmap links | Read-only public/tenant-scoped gantt shares | v2, planning, ui | N (after AM.4) | N | M | ouroboros-ui, ouroboros-rest |
+| AN.5 | #293 | 🟡 Open | ouroboros-rest: [AN.5] Drift detection & re-planning suggestions | Reality-vs-plan analysis; suggested range shifts, never silent | v2, planning, rest, engine | N (after AM.4, AN.1) | N | L | ouroboros-rest, ouroboros-engine |
 
 ### Issue AN.1 — ouroboros-engine: [AN.1] LLM planner (outcome → tickets)
+
+> **GitHub issue:** #289 · **Status:** 🟡 Open · **Parent epic:** #271
+
 
 - **Problem Statement:** The page's headline magic — narrative → decomposed,
   dependency-wired tickets — needs the invocation stack (AF.2) and lands
@@ -757,6 +814,9 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
 
 ### Issue AN.2 — ouroboros-rest: [AN.2] Jira, Linear & GitLab push
 
+> **GitHub issue:** #290 · **Status:** 🟡 Open · **Parent epic:** #271
+
+
 - **Problem Statement:** The tracker segment promises Jira and Linear as
   push targets; their write capabilities ride the v2 read providers
   (WF-T.2–T.4) plus the AL.2 surface.
@@ -775,6 +835,9 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
 
 ### Issue AN.3 — ouroboros-rest: [AN.3] Import from Jira
 
+> **GitHub issue:** #291 · **Status:** 🟡 Open · **Parent epic:** #271
+
+
 - **Problem Statement:** The head's ghost button: adopt an existing Jira
   backlog — tickets, epics, links — into the canonical model.
 - **Solution/Scope:** Bulk import flow over the Jira provider: scoped JQL
@@ -790,6 +853,9 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
 
 ### Issue AN.4 — ouroboros-ui: [AN.4] Shareable roadmap links
 
+> **GitHub issue:** #292 · **Status:** 🟡 Open · **Parent epic:** #271
+
+
 - **Problem Statement:** `Share ↗` implies stakeholders without logins can
   see the roadmap.
 - **Solution/Scope:** Share tokens per roadmap (revocable, expiring,
@@ -804,6 +870,9 @@ e2e: parity ✓ · generate→size ✓ · push+deps+epic ✓ · sync-back ✓ ·
 - **Epic:** AN
 
 ### Issue AN.5 — ouroboros-rest: [AN.5] Drift detection & re-planning suggestions
+
+> **GitHub issue:** #293 · **Status:** 🟡 Open · **Parent epic:** #271
+
 
 - **Problem Statement:** "Re-plans when reality drifts" — the footnote's
   boldest claim: compare plan (lane ranges) against reality (velocity,
@@ -888,10 +957,19 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AN — Intelligent Planning | 5 | 0 | 5 |
 | **Total** | **22** | **17** | **5** |
 
-Plus amendments executed at filing: INTAKE-K.2 (`draft_id` on estimates),
-INTAKE-L.3 (nightly job formalized), INTAKE-O.5 (adopts the AL.2 write
-surface), WF-Q.5 (kit write-suites), #49 (`/planning` stub retired), #56
-(planning e2e leg).
+Filed as **#268–#271** (epic parents) and **#272–#293** (22 work issues).
+
+Plus **6 amendments** — comments posted and the `planning` label applied on
+2026-08-09; no new work created:
+
+| Issue | Amendment |
+|---|---|
+| #100 | INTAKE-K.2's `issue_estimates` gains a nullable `draft_id` (AK.1, #272) — drafts sized by the same table and pipeline (N3) |
+| #107 | INTAKE-L.3's stale-sweep note becomes a real scheduled job (AL.5, #281); draft auto-sizing dispatches through the same orchestrator (#280) |
+| #126 | INTAKE-O.5's ad-hoc write path superseded by the AL.2 (#278) write SPI — scopes stay distinct, the write mechanism is shared |
+| #142 | WF-Q.5's conformance kit gains write suites (#278); every new writer is gated as every reader is |
+| #49 | `/planning` placeholder superseded and retired by AM.1 (#283) |
+| #56 | The e2e suite gains the planning leg AM.6 (#288) — the longest chain in the suite, needing a sandbox tracker fixture |
 
 ## References
 
@@ -939,22 +1017,50 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AM.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
-| AM.2, AM.3, AM.4, AM.5 | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
-| AM.6 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| AM.1 (#283) | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
+| AM.2–AM.5 (#284–#287) | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
+| AM.6 (#288) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the staged-generation
-strategy (N2 — outline-parser v0 now, LLM planner behind the same contract
-when invocation exists, no fake magic in between), the write-side SPI
-extension (AL.2 — the pluggable-sources requirement made bidirectional, with
-GitHub-native dependencies as the first mapping), the push idempotency
-contract (N6), the ownership split for two-way sync (option 4-A — tracker
-owns content, Ouroboros owns planning metadata, progress always computed),
-and the custom CSS-grid gantt choice (option 3-A). Once validated, the
-follow-up pass (`/create-issues ROADMAP_MOCKUP_09_PLANNING.md`) creates the
-`planning` label **and the `Planning MVP` / `Planning v2` milestones**, files
-the 22 issues with epic parents, relationships, and milestone assignments,
-and posts the amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `planning` label, the **`Planning MVP`** and **`Planning v2`** milestones, the
+four epic parents (#268–#271) and twenty-two work issues (#272–#293) with epic
+relationships, issue types and milestone assignments, plus the six amendment
+comments on #100, #107, #126, #142, #49 and #56.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **N2 — generation is staged, not faked** (#277). A versioned `/v0/plan` contract
+  with a deterministic outline parser today; the LLM planner (#289) implements the
+  *same contract* once invocation (#235) exists, leaving the API, UI, sizing and push
+  paths untouched. Narrative-only input returns one draft **and a guidance note** —
+  never five invented tickets.
+- **AL.2 — the pluggability requirement, made bidirectional** (#278). Everything
+  before this roadmap reads from trackers; this writes. The capability-flagged write
+  SPI keeps the push service provider-blind, and #290 proves it by adding three
+  writers without touching core push code.
+- **N6 — push is idempotent and resumable** (#279). This is the correctness centre of
+  the roadmap: six drafts that half-fail must never become nine issues, and the damage
+  from getting it wrong lands in someone's real backlog.
+- **N5 / option 4-A — the ownership split** (#274). Ouroboros owns lane dates, tints
+  and status; the tracker owns ticket content; progress chips are **computed**, never
+  stored. There is no field both sides can edit, so there is nothing to merge.
+
+Three honesty stances are carried into the issues and should survive review:
+`✓ all sized` appears only when every draft has a real estimate (#284); the cost
+footer **omits `$` entirely** when no priced rates exist, rather than showing `$0`
+(#280, #284); and the gantt footnote is **softened** — the mockup's *"re-plans when
+reality drifts"* is restored only when #293 makes it true.
+
+**Prerequisites:** WF-Q.1/Q.2/Q.3/Q.5 (#138–#142), INTAKE-K.2/L.3/M.3 (#100, #107,
+#112), #19/#41/#46/#52 and DASH-I.7/I.8 (#86, #87) are filed; the **BetterAuth
+roadmap is still unfiled** and gates BA-C.3 and BA-D.5 (#283). AN.1 (#289)
+additionally needs **AF.2** (#235), itself behind the AF.1 ADR (#234).
+
+Once those are in place, begin with **#272** ([AK.1] draft batches) and **#277**
+([AL.1] the plan contract) — the schema and the contract everything else builds on.
+Note that **#278** ([AL.2] the write SPI) is the piece with reach beyond this
+roadmap: it is the second half of the pluggable-sources contract, and #126 and #290
+both depend on it.

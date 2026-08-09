@@ -200,12 +200,15 @@ management (AF.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| AC | Provider Adapter Framework | SPI, five adapters, discovery catalog, schema extensions, seeds, CI | ouroboros-rest, ouroboros-db | Providers & Keys MVP |
-| AD | Vault, Secrets & Audit | Envelope encryption, key lifecycle, worker credential model, audit, security doc | ouroboros-rest, ouroboros-db, docs | Providers & Keys MVP |
-| AE | Providers UI | Cards, key flows, test/discovery UX, caps, add-provider catalog, states, e2e | ouroboros-ui | Providers & Keys MVP |
-| AF | Invocation & Extended Providers (v2) | Gateway ADR + executor, cloud adapters, KMS/Vault wrappers, cap enforcement | all | Providers & Keys v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| AC | #212 | 🟡 Open | Provider Adapter Framework | SPI, five adapters, discovery catalog, schema extensions, seeds, CI | ouroboros-rest, ouroboros-db | Providers & Keys MVP |
+| AD | #213 | 🟡 Open | Vault, Secrets & Audit | Envelope encryption, key lifecycle, worker credential model, audit, security doc | ouroboros-rest, ouroboros-db, docs | Providers & Keys MVP |
+| AE | #214 | 🟡 Open | Providers UI | Cards, key flows, test/discovery UX, caps, add-provider catalog, states, e2e | ouroboros-ui | Providers & Keys MVP |
+| AF | #215 | 🟡 Open | Invocation & Extended Providers (v2) | Gateway ADR + executor, cloud adapters, KMS/Vault wrappers, cap enforcement | all | Providers & Keys v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `routing`) **plus new `providers`**
@@ -214,18 +217,21 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ---
 
-## Epic AC — Provider Adapter Framework (`ouroboros-rest` + `ouroboros-db`)
+## Epic AC (#212) — Provider Adapter Framework (`ouroboros-rest` + `ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AC.1 | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
-| AC.2 | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
-| AC.3 | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
-| AC.4 | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
-| AC.5 | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
-| AC.6 | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AC.1 | #216 | 🟡 Open | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
+| AC.2 | #217 | 🟡 Open | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
+| AC.3 | #218 | 🟡 Open | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
+| AC.4 | #219 | 🟡 Open | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
+| AC.5 | #220 | 🟡 Open | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
+| AC.6 | #221 | 🟡 Open | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
 
 ### Issue AC.1 — ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry
+
+> **GitHub issue:** #216 · **Status:** 🟡 Open · **Parent epic:** #212
+
 
 - **Problem Statement:** Five provider kinds ship in MVP and the add-card
   promises more (OpenAI, Google, Bedrock, any OpenAI-compatible endpoint); a
@@ -262,6 +268,9 @@ core ──imports──▶ SPI only   adapters/{anthropic,openai_compat,ollama,
 
 ### Issue AC.2 — ouroboros-rest: [AC.2] Anthropic adapter
 
+> **GitHub issue:** #217 · **Status:** 🟡 Open · **Parent epic:** #212
+
+
 - **Problem Statement:** The primary coding lane: key-authed, discoverable,
   testable — the first real conforming adapter.
 - **Solution/Scope:** `validate`: models-list call with the sealed key (via
@@ -282,6 +291,9 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 ```
 
 ### Issue AC.3 — ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.)
+
+> **GitHub issue:** #218 · **Status:** 🟡 Open · **Parent epic:** #212
+
 
 - **Problem Statement:** The self-hosted lane (vLLM, and by extension LM
   Studio, llama.cpp servers, TGI): base-URL-configured, key-optional — the
@@ -305,6 +317,9 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 ```
 
 ### Issue AC.4 — ouroboros-rest: [AC.4] Ollama adapter with model pulls
+
+> **GitHub issue:** #219 · **Status:** 🟡 Open · **Parent epic:** #212
+
 
 - **Problem Statement:** The zero-cost lane is also the most interactive card:
   detected models with sizes and a real **Pull latest** action.
@@ -331,6 +346,9 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 
 ### Issue AC.5 — ouroboros-rest: [AC.5] Copilot & Cursor adapters
 
+> **GitHub issue:** #220 · **Status:** 🟡 Open · **Parent epic:** #212
+
+
 - **Problem Statement:** The org-billed (Copilot) and key-authed (Cursor)
   lanes: fixed model catalogs, entitlement-aware, degraded-state honest.
 - **Solution/Scope:** Copilot: GitHub token auth (`ghu_…`), entitlement check
@@ -353,6 +371,9 @@ cursor:  key → ok · catalog [cursor/composer-2]
 ```
 
 ### Issue AC.6 — ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds
+
+> **GitHub issue:** #221 · **Status:** 🟡 Open · **Parent epic:** #212
+
 
 - **Problem Statement:** Y.1's foundation lacks what the cards show: caps, meta
   (added-by, last-used), capability lines — and discovery needs a catalog
@@ -400,17 +421,20 @@ erDiagram
 
 ---
 
-## Epic AD — Vault, Secrets & Audit (`ouroboros-rest` + `ouroboros-db` + docs)
+## Epic AD (#213) — Vault, Secrets & Audit (`ouroboros-rest` + `ouroboros-db` + docs)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AD.1 | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
-| AD.2 | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
-| AD.3 | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
-| AD.4 | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
-| AD.5 | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AD.1 | #222 | 🟡 Open | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
+| AD.2 | #223 | 🟡 Open | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
+| AD.3 | #224 | 🟡 Open | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
+| AD.4 | #225 | 🟡 Open | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
+| AD.5 | #226 | 🟡 Open | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
 
 ### Issue AD.1 — ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper)
+
+> **GitHub issue:** #222 · **Status:** 🟡 Open · **Parent epic:** #213
+
 
 - **Problem Statement:** Three roadmaps now store encrypted credentials
   (BA helper, Q.1 sources, Y.1 providers) with a shared ad-hoc AES-GCM helper;
@@ -448,6 +472,9 @@ flowchart LR
 
 ### Issue AD.2 — ouroboros-rest: [AD.2] Credential lifecycle API
 
+> **GitHub issue:** #223 · **Status:** 🟡 Open · **Parent epic:** #213
+
+
 - **Problem Statement:** The key row's affordances — masked display, Reveal,
   Rotate — plus add/enable/delete must be safe by construction (decision P4).
 - **Solution/Scope:** Under tenant context, owner/admin gated: `POST
@@ -478,6 +505,9 @@ rotate ─▶ validate new ─▶ atomic swap ─▶ retire old     delete ─�
 
 ### Issue AD.3 — ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec)
 
+> **GitHub issue:** #224 · **Status:** 🟡 Open · **Parent epic:** #213
+
+
 - **Problem Statement:** The engine will need provider access (estimator O.2,
   execution WF-T.6); decision P3 says workers get a proxy, not keys — the
   contract must exist before AF.2 builds the executor on it.
@@ -505,6 +535,9 @@ engine ──lease {ollama, run}──▶ {host, ttl 15m} ✓ audited      lease
 
 ### Issue AD.4 — ouroboros-rest: [AD.4] Credential audit trail & Audit log surface
 
+> **GitHub issue:** #225 · **Status:** 🟡 Open · **Parent epic:** #213
+
+
 - **Problem Statement:** Reveal/rotate/cap changes without an audit trail
   would fail the page's own security posture (decision P5); the head button
   needs a real destination.
@@ -530,6 +563,9 @@ rotate by Ken ─▶ audit_events {provider.rotated, actor, conn, ip, at}  (no s
 
 ### Issue AD.5 — ouroboros: [AD.5] Security model documentation
 
+> **GitHub issue:** #226 · **Status:** 🟡 Open · **Parent epic:** #213
+
+
 - **Problem Statement:** The strip links "Read the security model ↗" and makes
   compliance-flavored claims (SOC 2, ISO 27001); the document must exist and
   the claims must be honest.
@@ -554,24 +590,27 @@ strip claim ──traces to──▶ SECURITY_MODEL.md section   badges: only wh
 
 ---
 
-## Epic AE — Providers UI (`ouroboros-ui`)
+## Epic AE (#214) — Providers UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/07-providers.html`](mockups/07-providers.html) as the design
 source — provider-card anatomy, monogram tints, key-row/pull-list/security-strip
 treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AE.1 | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
-| AE.2 | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui |
-| AE.3 | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
-| AE.4 | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
-| AE.5 | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui |
-| AE.6 | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
-| AE.7 | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AE.1 | #227 | 🟡 Open | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
+| AE.2 | #228 | 🟡 Open | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui |
+| AE.3 | #229 | 🟡 Open | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
+| AE.4 | #230 | 🟡 Open | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
+| AE.5 | #231 | 🟡 Open | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui |
+| AE.6 | #232 | 🟡 Open | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
+| AE.7 | #233 | 🟡 Open | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue AE.1 — ouroboros-ui: [AE.1] Providers route, subnav & page frame
+
+> **GitHub issue:** #227 · **Status:** 🟡 Open · **Parent epic:** #214
+
 
 - **Problem Statement:** The page frame: head with the vault subline (AD.5
   truth), Audit log and + Add provider actions, and the shared Models subnav
@@ -592,6 +631,9 @@ Routing | Model registry·soon | ●Providers & keys | Spend·soon
 ```
 
 ### Issue AE.2 — ouroboros-ui: [AE.2] Provider cards
+
+> **GitHub issue:** #228 · **Status:** 🟡 Open · **Parent epic:** #214
+
 
 - **Problem Statement:** The five cards are the page: dense, per-adapter
   composition (key-auth vs base-URL vs host layouts) with live status, spend,
@@ -624,6 +666,9 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.3 — ouroboros-ui: [AE.3] Key management flows
 
+> **GitHub issue:** #229 · **Status:** 🟡 Open · **Parent epic:** #214
+
+
 - **Problem Statement:** Reveal and Rotate are security-critical UX: step-up
   re-auth, time-boxed display, verify-then-retire — with the safety rails of
   AD.2 made visible.
@@ -650,6 +695,9 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.4 — ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX
 
+> **GitHub issue:** #230 · **Status:** 🟡 Open · **Parent epic:** #214
+
+
 - **Problem Statement:** Test connection, model-chip refresh, and the Ollama
   pull-list with real streamed progress are the page's live surfaces.
 - **Solution/Scope:** **Test connection**: button → adapter validate → note
@@ -675,6 +723,9 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.5 — ouroboros-ui: [AE.5] Add-provider flow & catalog
 
+> **GitHub issue:** #231 · **Status:** 🟡 Open · **Parent epic:** #214
+
+
 - **Problem Statement:** The dashed card promises a catalog ("OpenAI, Google,
   Bedrock, or any OpenAI-compatible endpoint"); adding must be schema-driven
   so new adapters appear without UI work (decision P1).
@@ -698,6 +749,9 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 ```
 
 ### Issue AE.6 — ouroboros-ui: [AE.6] Caps, security strip & states
+
+> **GitHub issue:** #232 · **Status:** 🟡 Open · **Parent epic:** #214
+
 
 - **Problem Statement:** Cap editing with warning semantics (P7), the
   truth-corrected security strip (AD.5), and the page's empty/read-only/error
@@ -723,6 +777,9 @@ cap [$95] ─▶ meter warn ▓▓▓▓▓▓▓▓░ 80% · ⓘ "warning only
 
 ### Issue AE.7 — ouroboros-ui: [AE.7] Providers e2e leg
 
+> **GitHub issue:** #233 · **Status:** 🟡 Open · **Parent epic:** #214
+
+
 - **Problem Statement:** The credential lifecycle spans UI, REST, crypto, and
   adapters — only e2e certifies the whole chain.
 - **Solution/Scope:** Extend #56: seeded parity (five cards, strip), add-vLLM
@@ -743,17 +800,20 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 
 ---
 
-## Epic AF — Invocation & Extended Providers (v2 · milestone `Providers & Keys v2`)
+## Epic AF (#215) — Invocation & Extended Providers (v2 · milestone `Providers & Keys v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AF.1 | ouroboros-rest: [AF.1] Invocation gateway ADR | Decide custom-executor vs LiteLLM-under-custom (AB.1 input) | v2, providers, routing, rest | Y | N | M | docs |
-| AF.2 | ouroboros-rest: [AF.2] Chain executor implementation | Execute Z.1 resolutions: per-hop errors, streaming, usage, caps | v2, providers, routing, rest, engine | N (after AF.1, AD.3) | N | L | ouroboros-rest, ouroboros-engine |
-| AF.3 | ouroboros-rest: [AF.3] Cloud adapters & KEK wrappers | OpenAI/Google/Bedrock adapters; KMS + Vault/OpenBao wrappers | v2, providers, rest | N (after AC.1, AD.1) | N | L | ouroboros-rest |
-| AF.4 | ouroboros-rest: [AF.4] Cap enforcement & spend alerts | Hard caps at invocation, threshold alerts, needs-you surfacing | v2, providers, rest, ui | N (after AF.2) | N | M | ouroboros-rest, ouroboros-ui |
-| AF.5 | ouroboros-ui: [AF.5] Ollama pull queue & model management | Pull queue, disk awareness, remove models, schedule refresh | v2, providers, ui | N (after AC.4) | N | M | ouroboros-ui, ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AF.1 | #234 | 🟡 Open | ouroboros-rest: [AF.1] Invocation gateway ADR | Decide custom-executor vs LiteLLM-under-custom (AB.1 input) | v2, providers, routing, rest | Y | N | M | docs |
+| AF.2 | #235 | 🟡 Open | ouroboros-rest: [AF.2] Chain executor implementation | Execute Z.1 resolutions: per-hop errors, streaming, usage, caps | v2, providers, routing, rest, engine | N (after AF.1, AD.3) | N | L | ouroboros-rest, ouroboros-engine |
+| AF.3 | #236 | 🟡 Open | ouroboros-rest: [AF.3] Cloud adapters & KEK wrappers | OpenAI/Google/Bedrock adapters; KMS + Vault/OpenBao wrappers | v2, providers, rest | N (after AC.1, AD.1) | N | L | ouroboros-rest |
+| AF.4 | #237 | 🟡 Open | ouroboros-rest: [AF.4] Cap enforcement & spend alerts | Hard caps at invocation, threshold alerts, needs-you surfacing | v2, providers, rest, ui | N (after AF.2) | N | M | ouroboros-rest, ouroboros-ui |
+| AF.5 | #238 | 🟡 Open | ouroboros-ui: [AF.5] Ollama pull queue & model management | Pull queue, disk awareness, remove models, schedule refresh | v2, providers, ui | N (after AC.4) | N | M | ouroboros-ui, ouroboros-rest |
 
 ### Issue AF.1 — ouroboros-rest: [AF.1] Invocation gateway ADR
+
+> **GitHub issue:** #234 · **Status:** 🟡 Open · **Parent epic:** #215
+
 
 - **Problem Statement:** Everything AI-real (LLM estimator INTAKE-O.2,
   execution WF-T.6, traffic health AB.2) waits on invocation; the AB.1
@@ -773,6 +833,9 @@ e2e: parity ✓ · add ✓ · test truth ✓ · reveal/rotate ✓ · pull ✓ ·
 - **Epic:** AF
 
 ### Issue AF.2 — ouroboros-rest: [AF.2] Chain executor implementation
+
+> **GitHub issue:** #235 · **Status:** 🟡 Open · **Parent epic:** #215
+
 
 - **Problem Statement:** The AD.3 proxy contract must become a working
   executor of Z.1 resolutions — the single choke point where keys stay
@@ -801,6 +864,9 @@ engine ─▶ /internal/llm/invoke {resolution r1, payload}
 
 ### Issue AF.3 — ouroboros-rest: [AF.3] Cloud adapters & KEK wrappers
 
+> **GitHub issue:** #236 · **Status:** 🟡 Open · **Parent epic:** #215
+
+
 - **Problem Statement:** The add-card's catalog promise (OpenAI, Google,
   Bedrock) and the security strip's "KMS-backed" option need their v2
   implementations on the frames built for them.
@@ -820,6 +886,9 @@ engine ─▶ /internal/llm/invoke {resolution r1, payload}
 
 ### Issue AF.4 — ouroboros-rest: [AF.4] Cap enforcement & spend alerts
 
+> **GitHub issue:** #237 · **Status:** 🟡 Open · **Parent epic:** #215
+
+
 - **Problem Statement:** P7 shipped caps as warnings; with invocation live,
   caps must actually stop spend — and people must hear about it before it
   happens.
@@ -836,6 +905,9 @@ engine ─▶ /internal/llm/invoke {resolution r1, payload}
 - **Epic:** AF
 
 ### Issue AF.5 — ouroboros-ui: [AF.5] Ollama pull queue & model management
+
+> **GitHub issue:** #238 · **Status:** 🟡 Open · **Parent epic:** #215
+
 
 - **Problem Statement:** One-at-a-time pulls (AC.4) suffice for MVP; real
   local-model management wants queues, disk awareness, and removal.
@@ -914,9 +986,20 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AF — Invocation & Extended | 5 | 0 | 5 |
 | **Total** | **23** | **18** | **5** |
 
-Plus amendments executed at filing: AA.1 (Providers subnav tab live), #56
-(providers e2e leg), #26 (audit-shape early adoption), BA/Q.1/K.3 encryption
-helper superseded by AD.1, Y.1 schema extension note.
+Filed as **#212–#215** (epic parents) and **#216–#238** (23 work issues).
+
+Plus **7 amendments** — comments posted and the `providers` label applied on
+2026-08-09; no new work created:
+
+| Issue | Amendment |
+|---|---|
+| #200 | AA.1's **Providers & keys** tab goes live via AE.1 (#227); registry and Spend stay honest stubs |
+| #56 | The e2e suite gains the providers leg AE.7 (#233), composing with the routing leg (#206) |
+| #26 | AD.4 (#225) early-adopts the `audit_events` shape — and lands the table if #26 is still unbuilt |
+| #138 | WF-Q.1's ad-hoc AES-GCM helper superseded by the AD.1 (#222) vault service, with a migration |
+| #101 | INTAKE-K.3's GitHub credential encryption likewise moves to AD.1 (#222) |
+| #189 | Routing Y.1's schema is **extended** by AC.6 (#221) — caps, meta, `enabled`, and `provider_models`; aliases gain soft validation against discovered models (P6) |
+| #207 | Routing AB.1's deferred gateway decision now has its ADR issue: AF.1 (#234), implemented by AF.2 (#235) |
 
 ## References
 
@@ -962,21 +1045,50 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AE.1 | Mounts in the shell content pane; navigation via the sidebar **Models** entry (CP.2 registry), not a topbar link; the in-page subnav (if any) renders via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
-| AE.2, AE.3, AE.4, AE.5, AE.6 | rem-based type (CQ.1 tokens); sticky elements (table headers, dirty-state bars) stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| AE.7 | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state (**Models** stays active on sub-routes), and a font-scale (125%) render check |
+| AE.1 (#227) | Mounts in the shell content pane; navigation via the sidebar **Models** entry (CP.2 registry), not a topbar link; the in-page subnav (if any) renders via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| AE.2–AE.6 (#228–#232) | rem-based type (CQ.1 tokens); sticky elements (table headers, dirty-state bars) stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
+| AE.7 (#233) | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state (**Models** stays active on sub-routes), and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the secrets architecture
-(P2 — env-master default with pluggable KEK, versus requiring KMS/Vault from
-day one), the worker-credential stance (P3 — proxied invocation over the
-mockup's 15-minute-token wording, with the local-provider lease exception), the
-audit-from-day-one coordination with #26 (P5), the discovery-feeds-registry
-contract with mockup 21 (P6), and the cap honesty (P7 — warning-only until
-AF.2/AF.4). Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`) creates the `providers` label **and the
-`Providers & Keys MVP` / `Providers & Keys v2` milestones**, files the 23 issues
-with epic parents, relationships, and milestone assignments, and posts the
-amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `providers` label, the **`Providers & Keys MVP`** and **`Providers & Keys v2`**
+milestones, the four epic parents (#212–#215) and twenty-three work issues
+(#216–#238) with epic relationships, issue types and milestone assignments, plus
+the seven amendment comments on #200, #56, #26, #138, #101, #189 and #207.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **P1 — pluggability is structural** (#216). Core code imports the SPI only, a
+  lint boundary enforces it, and the claim is testable: the fake adapter must
+  render its card (#228) and its add-form (#231) with zero UI changes. That test
+  is what makes AF.3's (#236) three cloud adapters cheap rather than a UI project.
+- **P2 — envelope encryption with a pluggable KEK** (#222). The env-master default
+  keeps the product self-hostable with no extra infrastructure; the design's value
+  is that moving to KMS or Vault (#236) re-wraps sealed DEKs and leaves every data
+  ciphertext byte-identical — verified there, not assumed here.
+- **P3 — workers never hold keys** (#224). Proxied invocation rather than the
+  mockup's 15-minute tokens, with a scoped lease for local providers only and a
+  cloud lease refused by server-side policy.
+- **P4/P5 — the key row is not an exfiltration UI** (#223, #225, #229). Masked
+  server-side, Reveal behind step-up and always audited, Rotate verifying before
+  it retires, and every operation on the trail from the first commit.
+
+Three honesty stances are carried into the issues and should survive review: caps
+are **warning-only** until #237, and the tooltip says so (#232); local providers
+show `no metered spend` rather than a fabricated `$0.00` (#228); and the security
+strip loses its **unearned SOC 2 / ISO 27001 badges** and its inaccurate
+15-minute-token line, replaced by AD.5's (#226) approved copy — which #232 renders
+verbatim rather than paraphrasing.
+
+**Prerequisites:** routing **Y.1** (#189) and **Z.3** (#196) are filed, as are
+#26/#28/#41/#46/#51 and DASH-F.3 (#66). The **BetterAuth roadmap is still unfiled**
+and gates AD.2's step-up (#223) and AE.1's session context (#227). AF.2 (#235)
+additionally needs **Z.1** (#194) and **AB.1** (#207), both filed.
+
+Once those are in place, begin with **#222** ([AD.1] envelope encryption) and
+**#216** ([AC.1] the adapter SPI) — the two independent foundations everything
+else in this roadmap sits on. Then **#235** ([AF.2] chain executor) is the single
+highest-leverage issue in the v2 backlog: it unlocks the LLM estimator (#123),
+workflow execution (#160) and traffic-derived health (#208).

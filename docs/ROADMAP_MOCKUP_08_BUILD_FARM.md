@@ -217,12 +217,15 @@ microVM isolation evaluation (AJ.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| AG | Runner Agent (`ouroboros-runner`) | Go agent: protocol, executors, telemetry, logs, packaging, CI | ouroboros-runner (new) | Build Farm MVP |
-| AH | Farm Control Plane | Schema, enrollment/CA, WS gateway, dispatch, telemetry, logs, stats | ouroboros-rest, ouroboros-db | Build Farm MVP |
-| AI | Build Farm UI | Stats, runners table, enroll/pools cards, live log, states, e2e | ouroboros-ui | Build Farm MVP |
-| AJ | Scale & Loop Integration (v2) | Cloud auto-scale, shared cache, workflow builds, health history | all | Build Farm v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| AG | #239 | 🟡 Open | Runner Agent (`ouroboros-runner`) | Go agent: protocol, executors, telemetry, logs, packaging, CI | ouroboros-runner (new) | Build Farm MVP |
+| AH | #240 | 🟡 Open | Farm Control Plane | Schema, enrollment/CA, WS gateway, dispatch, telemetry, logs, stats | ouroboros-rest, ouroboros-db | Build Farm MVP |
+| AI | #241 | 🟡 Open | Build Farm UI | Stats, runners table, enroll/pools cards, live log, states, e2e | ouroboros-ui | Build Farm MVP |
+| AJ | #242 | 🟡 Open | Scale & Loop Integration (v2) | Cloud auto-scale, shared cache, workflow builds, health history | all | Build Farm v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `infra`) **plus new `build-farm`**
@@ -231,18 +234,21 @@ filing; every issue assigned. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic AG — Runner Agent (`ouroboros-runner`, new Go module)
+## Epic AG (#239) — Runner Agent (`ouroboros-runner`, new Go module)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AG.1 | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
-| AG.2 | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
-| AG.3 | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
-| AG.4 | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
-| AG.5 | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
-| AG.6 | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AG.1 | #243 | 🟡 Open | ouroboros-runner: [AG.1] Module scaffold & agent protocol spec | Go module, conventions, `docs/RUNNER_PROTOCOL.md`, ci/runner | mvp, build-farm, infra, ci | N (after #8) | Y | M | ouroboros-runner, .github, docs |
+| AG.2 | #244 | 🟡 Open | ouroboros-runner: [AG.2] Enrollment, identity & connection loop | Token bootstrap, mTLS cert, outbound WSS, reconnect/backoff | mvp, build-farm | N (after AG.1, AH.2) | Y | L | ouroboros-runner |
+| AG.3 | #245 | 🟡 Open | ouroboros-runner: [AG.3] Telemetry & presence reporting | Heartbeats: CPU/RAM/queue/uptime/job progress | mvp, build-farm | N (after AG.2) | Y | S | ouroboros-runner |
+| AG.4 | #246 | 🟡 Open | ouroboros-runner: [AG.4] Job executors (container & shell) | Per-pool executor kinds, workspace lifecycle, cancellation | mvp, build-farm | N (after AG.2) | Y | L | ouroboros-runner |
+| AG.5 | #247 | 🟡 Open | ouroboros-runner: [AG.5] Log shipping & ccache stats | Bounded chunk streaming, ccache stat parsing, truncation honesty | mvp, build-farm | N (after AG.4) | Y | M | ouroboros-runner |
+| AG.6 | #248 | 🟡 Open | ouroboros-runner: [AG.6] Packaging, install script & daemonization | Cross-compiled releases, `install.sh`, systemd/launchd units | mvp, build-farm, infra | N (after AG.2) | Y | M | ouroboros-runner, .github |
 
 ### Issue AG.1 — ouroboros-runner: [AG.1] Module scaffold & agent protocol spec
+
+> **GitHub issue:** #243 · **Status:** 🟡 Open · **Parent epic:** #239
+
 
 - **Problem Statement:** The agent is a new module in a new language (decision
   B1); before any code, the module needs conventions and the wire protocol
@@ -276,6 +282,9 @@ docs/RUNNER_PROTOCOL.md (v1)
 
 ### Issue AG.2 — ouroboros-runner: [AG.2] Enrollment, identity & connection loop
 
+> **GitHub issue:** #244 · **Status:** 🟡 Open · **Parent epic:** #239
+
+
 - **Problem Statement:** The one-liner's promise — token in, registered
   mTLS-identified runner out, outbound-only forever after (decision B3).
 - **Solution/Scope:** Enrollment: `--tenant --pool --token` → HTTPS
@@ -305,6 +314,9 @@ enroll(token) ─▶ {runner_id, cert, ca_pin} ─▶ wss:// (mTLS, outbound) �
 
 ### Issue AG.3 — ouroboros-runner: [AG.3] Telemetry & presence reporting
 
+> **GitHub issue:** #245 · **Status:** 🟡 Open · **Parent epic:** #239
+
+
 - **Problem Statement:** The runners table's live columns — CPU, RAM, queue,
   uptime, status — come from agent truth (decision B7).
 - **Solution/Scope:** Heartbeat every 10s (configurable): CPU percent
@@ -324,6 +336,9 @@ heartbeat{cpu: 82, ram: [14.2, 32], q: 2, up: 41d, job: {id, phase}} @10s ± jit
 ```
 
 ### Issue AG.4 — ouroboros-runner: [AG.4] Job executors (container & shell)
+
+> **GitHub issue:** #246 · **Status:** 🟡 Open · **Parent epic:** #239
+
 
 - **Problem Statement:** pool-a builds run in a pinned SDK image; pool-b runs
   bare on HIL/macOS rigs — one agent, two executor kinds (decision B4).
@@ -354,6 +369,9 @@ job.offer{executor: shell} on runner without docker ─▶ accept (capability ma
 
 ### Issue AG.5 — ouroboros-runner: [AG.5] Log shipping & ccache stats
 
+> **GitHub issue:** #247 · **Status:** 🟡 Open · **Parent epic:** #239
+
+
 - **Problem Statement:** The live log card and the cache stat need agent-side
   truth: bounded streaming and parsed ccache numbers (decisions B5/B8).
 - **Solution/Scope:** Stdout/stderr multiplexed into ordered chunks (≤32KB,
@@ -376,6 +394,9 @@ job.finish += {ccache: {hit_rate: 78.4, hits: 412, misses: 113} | null}
 ```
 
 ### Issue AG.6 — ouroboros-runner: [AG.6] Packaging, install script & daemonization
+
+> **GitHub issue:** #248 · **Status:** 🟡 Open · **Parent epic:** #239
+
 
 - **Problem Statement:** `curl -fsSL https://get.ouroboros.dev | sh` with
   tenant/pool/token flags must produce a running, persistent agent on all
@@ -403,19 +424,22 @@ install.sh: detect platform ─▶ fetch+verify binary ─▶ enroll(flags) ─�
 
 ---
 
-## Epic AH — Farm Control Plane (`ouroboros-rest` + `ouroboros-db`)
+## Epic AH (#240) — Farm Control Plane (`ouroboros-rest` + `ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AH.1 | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
-| AH.2 | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
-| AH.3 | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
-| AH.4 | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
-| AH.5 | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
-| AH.6 | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
-| AH.7 | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AH.1 | #249 | 🟡 Open | ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs | Full relational model + seeds + ci/db probes | mvp, build-farm, db, ci | N (after #19, BA-B.3) | Y | L | ouroboros-db, .github |
+| AH.2 | #250 | 🟡 Open | ouroboros-rest: [AH.2] Enrollment API & runner CA | Scoped tokens (AD.1-sealed), cert issuance/renewal/revocation, audit | mvp, build-farm, rest | N (after AH.1, AD.1) | Y | L | ouroboros-rest |
+| AH.3 | #251 | 🟡 Open | ouroboros-rest: [AH.3] Agent WebSocket gateway | Protocol server: sessions, presence, heartbeat ingest, resume | mvp, build-farm, rest | N (after AG.1, AH.2) | Y | L | ouroboros-rest |
+| AH.4 | #252 | 🟡 Open | ouroboros-rest: [AH.4] Build job dispatch & queueing | Submission API, eligibility (pool/executor/capacity), offers, retries | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
+| AH.5 | #253 | 🟡 Open | ouroboros-rest: [AH.5] Log ingest & retrieval | Chunk persistence with caps/retention, offset fetch for the UI | mvp, build-farm, rest | N (after AH.3) | Y | M | ouroboros-rest |
+| AH.6 | #254 | 🟡 Open | ouroboros-rest: [AH.6] Farm read APIs & stats | Runners/pools/jobs payloads, stat-row math, lifecycle actions | mvp, build-farm, rest | N (after AH.4) | Y | M | ouroboros-rest |
+| AH.7 | #255 | 🟡 Open | ouroboros-rest: [AH.7] Farm integration tests (fake agent) | Protocol contract, dispatch matrix, presence, caps, isolation | mvp, build-farm, rest, ci | N (after AH.4–AH.6) | Y | M | ouroboros-rest |
 
 ### Issue AH.1 — ouroboros-db: [AH.1] Farm schema — runners, pools, jobs, tokens, logs
+
+> **GitHub issue:** #249 · **Status:** 🟡 Open · **Parent epic:** #240
+
 
 - **Problem Statement:** Every farm surface needs relational truth: fleets,
   pools with executor config, job lifecycle, enrollment tokens, log chunks.
@@ -474,6 +498,9 @@ erDiagram
 
 ### Issue AH.2 — ouroboros-rest: [AH.2] Enrollment API & runner CA
 
+> **GitHub issue:** #250 · **Status:** 🟡 Open · **Parent epic:** #240
+
+
 - **Problem Statement:** Decision B3's chain — scoped token → registration →
   per-runner client cert — plus lifecycle (renewal, revocation) and audit.
 - **Solution/Scope:** Token minting API (owner/admin: pool scope, TTL,
@@ -500,6 +527,9 @@ register(token) ─▶ runner row + cert{CN: runner_id, O: tenant} ─▶ mTLS t
 
 ### Issue AH.3 — ouroboros-rest: [AH.3] Agent WebSocket gateway
 
+> **GitHub issue:** #251 · **Status:** 🟡 Open · **Parent epic:** #240
+
+
 - **Problem Statement:** The server half of the AG.1 protocol: sessions,
   presence, heartbeat ingest, resumable delivery — the farm's nervous system.
 - **Solution/Scope:** NestJS WS gateway on the agent path (mTLS client-cert
@@ -524,6 +554,9 @@ heartbeat ─▶ telemetry + presence   missed×3 ─▶ offline (last_seen hone
 ```
 
 ### Issue AH.4 — ouroboros-rest: [AH.4] Build job dispatch & queueing
+
+> **GitHub issue:** #252 · **Status:** 🟡 Open · **Parent epic:** #240
+
 
 - **Problem Statement:** Jobs must find eligible runners (pool, executor
   capability, capacity), be offered, tracked through the lifecycle, and
@@ -552,6 +585,9 @@ runner lost ─▶ requeue(once) ─▶ retried │ failed    drain: finish curr
 
 ### Issue AH.5 — ouroboros-rest: [AH.5] Log ingest & retrieval
 
+> **GitHub issue:** #253 · **Status:** 🟡 Open · **Parent epic:** #240
+
+
 - **Problem Statement:** Chunked agent logs must persist within caps and
   reach the UI incrementally (decision B8).
 - **Solution/Scope:** Chunk ingest on the gateway path (seq-ordered append,
@@ -573,6 +609,9 @@ log.chunk(seq, bytes) ─▶ append(cap-aware) ─▶ GET ?after=18122 ─▶ {b
 ```
 
 ### Issue AH.6 — ouroboros-rest: [AH.6] Farm read APIs & stats
+
+> **GitHub issue:** #254 · **Status:** 🟡 Open · **Parent epic:** #240
+
 
 - **Problem Statement:** The page's read surfaces — runners table, pools,
   stat row, enroll-command rendering — plus lifecycle actions (drain,
@@ -601,6 +640,9 @@ POST /runners/:id/drain ─▶ push drain ─▶ status: draining
 
 ### Issue AH.7 — ouroboros-rest: [AH.7] Farm integration tests (fake agent)
 
+> **GitHub issue:** #255 · **Status:** 🟡 Open · **Parent epic:** #240
+
+
 - **Problem Statement:** Protocol, dispatch, presence, and caps are
   distributed-systems behavior — the harness needs a scriptable fake agent.
 - **Solution/Scope:** `FakeAgent` (TS, protocol-conformant, scriptable
@@ -622,24 +664,27 @@ golden fixtures ⇄ Go agent tests (one protocol, two implementations)
 
 ---
 
-## Epic AI — Build Farm UI (`ouroboros-ui`)
+## Epic AI (#241) — Build Farm UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/08-build-farm.html`](mockups/08-build-farm.html) as the design
 source — stat row, runners table, enroll/pools cards, live log treatments — via
 the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AI.1 | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
-| AI.2 | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
-| AI.3 | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
-| AI.4 | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
-| AI.5 | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
-| AI.6 | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
-| AI.7 | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AI.1 | #256 | 🟡 Open | ouroboros-ui: [AI.1] Build Farm route, head & stat row | `/build-farm` frame, live stats, honest head actions | mvp, build-farm, ui, design | N (after #41, AH.6, BA-D.5) | Y | S | ouroboros-ui |
+| AI.2 | #257 | 🟡 Open | ouroboros-ui: [AI.2] Runners table (live) | Five status archetypes, telemetry cells, live refresh | mvp, build-farm, ui, design | N (after AI.1) | Y | L | ouroboros-ui |
+| AI.3 | #258 | 🟡 Open | ouroboros-ui: [AI.3] Enroll-runner card & token flow | Command rendering with minted token, copy, token management | mvp, build-farm, ui | N (after AI.1, AH.2) | Y | M | ouroboros-ui |
+| AI.4 | #259 | 🟡 Open | ouroboros-ui: [AI.4] Pools card & configuration | Pool rows, executor config sheet, honest auto-scale toggle | mvp, build-farm, ui, design | N (after AI.1, AH.6) | Y | M | ouroboros-ui |
+| AI.5 | #260 | 🟡 Open | ouroboros-ui: [AI.5] Runner actions & job submission | Drain/undrain/remove menu; submit-build flow | mvp, build-farm, ui | N (after AI.2, AH.4) | Y | M | ouroboros-ui |
+| AI.6 | #261 | 🟡 Open | ouroboros-ui: [AI.6] Live log card | Offset-streamed log, ANSI-safe rendering, cursor, full-log path | mvp, build-farm, ui, design | N (after AI.1, AH.5) | Y | M | ouroboros-ui |
+| AI.7 | #262 | 🟡 Open | ouroboros-ui: [AI.7] Farm states & e2e leg | Empty/no-runners guidance, read-only, themes, e2e | mvp, build-farm, ui, ci | N (after AI.1–AI.6) | Y | M | ouroboros-ui, .github |
 
 ### Issue AI.1 — ouroboros-ui: [AI.1] Build Farm route, head & stat row
+
+> **GitHub issue:** #256 · **Status:** 🟡 Open · **Parent epic:** #241
+
 
 - **Problem Statement:** The frame: headline composed from live counts
   (`5 runners. 2 pools. 78% cache hits.`), the outbound-only subline, and
@@ -663,6 +708,9 @@ the #16 tokens (both themes; the mockup is dark-only).
 ```
 
 ### Issue AI.2 — ouroboros-ui: [AI.2] Runners table (live)
+
+> **GitHub issue:** #257 · **Status:** 🟡 Open · **Parent epic:** #241
+
 
 - **Problem Statement:** The fleet view: five status archetypes with live
   telemetry cells, updating on the poll cadence without jank.
@@ -690,6 +738,9 @@ forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  
 
 ### Issue AI.3 — ouroboros-ui: [AI.3] Enroll-runner card & token flow
 
+> **GitHub issue:** #258 · **Status:** 🟡 Open · **Parent epic:** #241
+
+
 - **Problem Statement:** The enroll card must render a *working* command —
   which means minting a real scoped token behind an admin action, not
   printing a placeholder.
@@ -713,6 +764,9 @@ forge-03 linux/arm64 [pool-a] (●offline · last seen 2h)  —  —  —  q:0  
 ```
 
 ### Issue AI.4 — ouroboros-ui: [AI.4] Pools card & configuration
+
+> **GitHub issue:** #259 · **Status:** 🟡 Open · **Parent epic:** #241
+
 
 - **Problem Statement:** Pools carry the executor policy (B4) and the
   honestly-inert auto-scale preference (B9); the card + a config sheet make
@@ -738,6 +792,9 @@ pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabl
 
 ### Issue AI.5 — ouroboros-ui: [AI.5] Runner actions & job submission
 
+> **GitHub issue:** #260 · **Status:** 🟡 Open · **Parent epic:** #241
+
+
 - **Problem Statement:** The `⋯` menu (drain/undrain/remove) and a
   submit-build flow make the farm operable — and give MVP its honest
   workload source (B6).
@@ -762,6 +819,9 @@ pool-a  firmware builds · container: zephyr-sdk 0.17 · 3 runners        [enabl
 ```
 
 ### Issue AI.6 — ouroboros-ui: [AI.6] Live log card
+
+> **GitHub issue:** #261 · **Status:** 🟡 Open · **Parent epic:** #241
+
 
 - **Problem Statement:** The `c-12` live card: streamed output with the
   mockup's treatments (code block, accent last line, blinking cursor),
@@ -789,6 +849,9 @@ $ west build -b helios_mainboard app …
 
 ### Issue AI.7 — ouroboros-ui: [AI.7] Farm states & e2e leg
 
+> **GitHub issue:** #262 · **Status:** 🟡 Open · **Parent epic:** #241
+
+
 - **Problem Statement:** Fresh orgs have no runners; members are read-only;
   and the whole agent↔UI chain needs end-to-end certification.
 - **Solution/Scope:** States: no-runners guidance (enroll-first framing with
@@ -811,17 +874,20 @@ e2e: enroll ✓ · presence ✓ · build+log stream ✓ · drain ✓ · stats �
 
 ---
 
-## Epic AJ — Scale & Loop Integration (v2 · milestone `Build Farm v2`)
+## Epic AJ (#242) — Scale & Loop Integration (v2 · milestone `Build Farm v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AJ.1 | ouroboros-rest: [AJ.1] Cloud auto-scale runners | Activate B9: ephemeral cloud runners when queue exceeds threshold | v2, build-farm, rest, infra | N (after AH.4) | N | L | ouroboros-rest, ouroboros-runner |
-| AJ.2 | ouroboros-runner: [AJ.2] Remote shared build cache | sccache/ccache remote storage — make `shared per pool` true | v2, build-farm | N (after AG.5) | N | M | ouroboros-runner, ouroboros-rest |
-| AJ.3 | ouroboros-rest: [AJ.3] Workflow build-stage integration | WF `build({farm})` dispatches farm jobs; run linkage + gates | v2, build-farm, workflow, rest, engine | N (after WF-T.6, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
-| AJ.4 | ouroboros-rest: [AJ.4] Health history & analyzer telemetry foundation | Telemetry retention + history API (mockup 18 / `Health history →`) | v2, build-farm, rest | N (after AH.3) | N | M | ouroboros-rest, ouroboros-db |
-| AJ.5 | ouroboros-runner: [AJ.5] Pool image registry & isolation evaluation | Managed pool images; microVM/untrusted-code ADR | v2, build-farm, infra | N (after AG.4) | N | M | ouroboros-runner, docs |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AJ.1 | #263 | 🟡 Open | ouroboros-rest: [AJ.1] Cloud auto-scale runners | Activate B9: ephemeral cloud runners when queue exceeds threshold | v2, build-farm, rest, infra | N (after AH.4) | N | L | ouroboros-rest, ouroboros-runner |
+| AJ.2 | #264 | 🟡 Open | ouroboros-runner: [AJ.2] Remote shared build cache | sccache/ccache remote storage — make `shared per pool` true | v2, build-farm | N (after AG.5) | N | M | ouroboros-runner, ouroboros-rest |
+| AJ.3 | #265 | 🟡 Open | ouroboros-rest: [AJ.3] Workflow build-stage integration | WF `build({farm})` dispatches farm jobs; run linkage + gates | v2, build-farm, workflow, rest, engine | N (after WF-T.6, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
+| AJ.4 | #266 | 🟡 Open | ouroboros-rest: [AJ.4] Health history & analyzer telemetry foundation | Telemetry retention + history API (mockup 18 / `Health history →`) | v2, build-farm, rest | N (after AH.3) | N | M | ouroboros-rest, ouroboros-db |
+| AJ.5 | #267 | 🟡 Open | ouroboros-runner: [AJ.5] Pool image registry & isolation evaluation | Managed pool images; microVM/untrusted-code ADR | v2, build-farm, infra | N (after AG.4) | N | M | ouroboros-runner, docs |
 
 ### Issue AJ.1 — ouroboros-rest: [AJ.1] Cloud auto-scale runners
+
+> **GitHub issue:** #263 · **Status:** 🟡 Open · **Parent epic:** #242
+
 
 - **Problem Statement:** The stored-inert toggle (B9) promises burst capacity
   when the on-prem queue exceeds its threshold — ephemeral cloud runners
@@ -842,6 +908,9 @@ e2e: enroll ✓ · presence ✓ · build+log stream ✓ · drain ✓ · stats �
 
 ### Issue AJ.2 — ouroboros-runner: [AJ.2] Remote shared build cache
 
+> **GitHub issue:** #264 · **Status:** 🟡 Open · **Parent epic:** #242
+
+
 - **Problem Statement:** B5 shipped per-runner caches with an honest label;
   pool-wide sharing (the mockup's literal claim) needs remote storage.
 - **Solution/Scope:** Options implemented behind pool config: ccache remote
@@ -857,6 +926,9 @@ e2e: enroll ✓ · presence ✓ · build+log stream ✓ · drain ✓ · stats �
 - **Epic:** AJ
 
 ### Issue AJ.3 — ouroboros-rest: [AJ.3] Workflow build-stage integration
+
+> **GitHub issue:** #265 · **Status:** 🟡 Open · **Parent epic:** #242
+
 
 - **Problem Statement:** The point of the farm: the loop's
   `build({farm: "pool-a"})` stage (WF DSL) dispatching real builds and
@@ -881,6 +953,9 @@ run #479 · stage build ─▶ farm job(pool-a, run_id) ─▶ finish{exit 0, cc
 
 ### Issue AJ.4 — ouroboros-rest: [AJ.4] Health history & analyzer telemetry foundation
 
+> **GitHub issue:** #266 · **Status:** 🟡 Open · **Parent epic:** #242
+
+
 - **Problem Statement:** `Health history →` and mockup 18's Build Analyzer
   need retained time-series telemetry MVP deliberately didn't keep.
 - **Solution/Scope:** Telemetry retention (downsampled runner metrics:
@@ -896,6 +971,9 @@ run #479 · stage build ─▶ farm job(pool-a, run_id) ─▶ finish{exit 0, cc
 - **Epic:** AJ
 
 ### Issue AJ.5 — ouroboros-runner: [AJ.5] Pool image registry & isolation evaluation
+
+> **GitHub issue:** #267 · **Status:** 🟡 Open · **Parent epic:** #242
+
 
 - **Problem Statement:** Container pools pin images informally (a string);
   managed images (versioning, provenance) and an isolation posture for
@@ -979,10 +1057,21 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AJ — Scale & Loop Integration | 5 | 0 | 5 |
 | **Total** | **25** | **20** | **5** |
 
-Plus amendments executed at filing: #8/#11/#12 (new `ouroboros-runner` module,
-`ci/runner`, architecture doc), 7.1 compose (runner dev profile), #49
-(`/build-farm` stub retired), #56 (farm e2e leg), W.2 (code-view checks may
-consume real pool status), AD.5 SECURITY_MODEL (farm CA section).
+Filed as **#239–#242** (epic parents) and **#243–#267** (25 work issues).
+
+Plus **8 amendments** — comments posted and the `build-farm` label applied on
+2026-08-09; no new work created:
+
+| Issue | Amendment |
+|---|---|
+| #8 | New `ouroboros-runner/` Go module joins the monorepo layout and language conventions (AG.1, #243) |
+| #11 | Fifth path-filtered workflow `ci/runner` — lint, test, cross-compile matrix (#243), plus the release job (#248) |
+| #12 | Architecture doc gains a component that runs on customer hardware, an outbound-only transport, a second protocol surface, and a farm CA |
+| #55 | Dev compose gains a runner profile; #262's e2e needs a containerized real runner |
+| #49 | `/build-farm` placeholder superseded and retired by AI.1 (#256) |
+| #56 | The e2e suite gains the farm leg AI.7 (#262) — the first leg crossing a language and network boundary |
+| #178 | Code-view C7's blocker clears: real pool status becomes available (#254/#251); no scope change, recorded for revisit |
+| #226 | `SECURITY_MODEL.md` gains a farm-CA section — key custody, enrollment chain, revocation, the TLS pass-through requirement, and the visible bearer fallback |
 
 ## References
 
@@ -1029,21 +1118,52 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AI.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
-| AI.2, AI.3, AI.4, AI.5, AI.6 | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
-| AI.7 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| AI.1 (#256) | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
+| AI.2–AI.6 (#257–#261) | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
+| AI.7 (#262) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the new-module decision
-(B1 — Go agent joins the monorepo, amending #8/#11/#12), the transport and
-security stack (B2/B3 — outbound WSS with a real control-plane CA and mTLS,
-bearer fallback visible), the executor split (B4 — container pools vs
-shell/HIL pools and its trust framing), the honesty stances (B5 cache label,
-B6 API-submitted MVP workloads with loop integration deferred to AJ.3, B9
-inert-but-labeled auto-scale toggle), and the log pipeline caps (B8). Once
-validated, the follow-up pass (`/create-issues ROADMAP_MOCKUP_08_BUILD_FARM.md`)
-creates the `build-farm` label **and the `Build Farm MVP` / `Build Farm v2`
-milestones**, files the 25 issues with epic parents, relationships, and
-milestone assignments, and posts the amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `build-farm` label, the **`Build Farm MVP`** and **`Build Farm v2`** milestones,
+the four epic parents (#239–#242) and twenty-five work issues (#243–#267) with epic
+relationships, issue types and milestone assignments, plus the eight amendment
+comments on #8, #11, #12, #55, #49, #56, #178 and #226.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **B1 — a fourth language, deliberately** (#243). Go earns its place through one
+  requirement: `curl | sh` is only honest if the artifact has no runtime dependency.
+  Python or Node would turn the one-liner into a prerequisites checklist on customer
+  hardware.
+- **B2/B3 — outbound-only, with cryptographic identity** (#244, #250, #251). The
+  agent dials and never listens; a scoped token bootstraps a per-runner certificate
+  from a real farm CA whose key is sealed by the vault (#222). The bearer fallback
+  exists for certificate-stripping proxies and is **visible** in the fleet table
+  (#257) rather than silently weaker.
+- **B4 — two executor worlds** (#246). Containers for build pools, bare shell for HIL
+  rigs and macOS, with the trust model — *the tenant's machine runs the tenant's
+  command* — written down rather than implied, and revisited by #267 for the day it
+  stops holding.
+- **B6 — the MVP builds for real, from API and UI submissions** (#260). Loop
+  integration waits for #265, which waits for WF-T.6 (#160), which waits for the
+  providers roadmap's chain executor (#235). `build_jobs.run_id` has been nullable
+  since #249 precisely so that lands as a fill-in, not a migration.
+
+Three honesty stances are carried into the issues and should survive review: the
+cache stat reads **`ccache · per-runner`** until #264 makes sharing real (#247,
+#256); the auto-scale toggle **persists a preference nothing acts on**, with a
+visible *"arrives with cloud runners (v2)"* affix until #263 (#259); and an offline
+runner's stale telemetry renders as **em-dashes**, never as last-known values
+(#245, #257).
+
+**Prerequisites:** scaffolding #8/#11/#12/#19/#41/#46/#55 are filed and amended
+above; #222 (vault) and #225 (audit shape) come from the providers roadmap; the
+**BetterAuth roadmap is still unfiled** and gates BA-B.3 (#249) and BA-D.5 (#256).
+
+Once those are in place, begin with **#243** ([AG.1] module scaffold and protocol
+spec) and **#249** ([AH.1] farm schema) — the two independent Phase 1 foundations.
+Note that **#265** ([AJ.3] workflow build-stage integration) is the point of the
+whole roadmap: it is what turns `build({farm: "pool-a"})` from a DSL string into a
+real build, and it sits behind the longest dependency chain in the product.

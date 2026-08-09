@@ -21,6 +21,9 @@ When user invokes **create-issues**, refer to `docs/<roadmap-file>.md` as the de
   - Quick summary including:
     - Level of effort (shirt sizes: S, M, L, XL)
     - Affected systems (UI/UX, REST, Database, Engine, etc)
+  - Adjust the Fields:
+    - Set Priority (Urgent, High, Medium, Low) as appropriate
+    - Set Effort (High, Medium, Low) based on the Level of effort in the summary
   - Problem Statement
   - Solution/Scope
   - Acceptance Criteria
