@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Needs You</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* topbar: this page is reached via the needs-pill — light it up */
+  .topbar .needs-pill {
+    border-color: var(--warn);
+    box-shadow: 0 0 14px -2px rgba(245, 184, 61, 0.45);
+  }
+
+  /* decision cards */
+  .decision { border-left: 3px solid var(--border-strong); padding-left: 17px; }
+  .decision.err { border-left-color: var(--err); }
+  .decision.warn { border-left-color: var(--warn); }
+  .decision .q-row { display: flex; align-items: baseline; gap: 10px; }
+  .decision .q-row .dot { align-self: center; }
+  .decision .question {
+    font-family: var(--f-disp); font-size: 16px; font-weight: 600;
+    letter-spacing: 0.01em; flex: 1; min-width: 200px;
+  }
+  .decision .age {
+    font-family: var(--f-mono); font-size: 12px; color: var(--faint);
+    white-space: nowrap;
+  }
+  .decision .refs { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 10px; }
+  .decision .refs a.tag:hover { color: var(--accent); border-color: var(--border-strong); }
+  .decision .why { color: var(--mut); max-width: 70ch; }
+  .decision .actions {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px;
+  }
+  .decision .actions .edit-link { font-size: 12px; color: var(--faint); }
+  .decision .actions .edit-link:hover { color: var(--accent); }
+
+  /* resolved-today compact rows */
+  .resolved-head {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--faint); margin: 22px 0 8px;
+  }
+  .resolved-head .caret { font-size: 10px; }
+  .resolved-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 4px; color: var(--mut); font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .resolved-row:last-child { border-bottom: none; }
+  .resolved-row .tick { color: var(--ok); font-family: var(--f-mono); flex: none; }
+  .resolved-row .when { margin-left: auto; font-family: var(--f-mono); font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+
+  /* empty-state preview */
+  .zero-card {
+    border: 1px dashed var(--border-strong); background: transparent;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 30px 18px; gap: 6px;
+  }
+  .zero-card img { width: 80px; mix-blend-mode: screen; opacity: 0.35; margin-bottom: 6px; }
+  .zero-card .zero-line { font-family: var(--f-disp); font-size: 14px; font-weight: 600; letter-spacing: 0.03em; color: var(--ink-dim); }
+
+  /* side column */
+  .chan-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .chan-row:last-child { border-bottom: none; }
+  .chan-row .chan-name { font-weight: 600; font-size: 13px; color: var(--ink-dim); white-space: nowrap; }
+  .chan-row .chan-sub { font-size: 12px; color: var(--faint); }
+  .chan-row .ok-mark { color: var(--ok); font-family: var(--f-mono); font-size: 12px; margin-left: auto; white-space: nowrap; }
+
+  .rule-row {
+    display: flex; align-items: baseline; gap: 9px; padding: 7px 0;
+    font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .rule-row:last-of-type { border-bottom: none; }
+  .rule-row .tick { color: var(--ok); flex: none; }
+  .rule-row .arrow { color: var(--faint); }
+  .rule-row .outcome { color: var(--warn); margin-left: auto; text-align: right; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Needs You</div>
+      <h1>3 decisions. About 90 seconds of your time.</h1>
+      <p class="sub">Everything the loops are blocked on, newest first. Answer here, from Slack, or from your phone — the loop resumes instantly.</p>
+    </div>
+    <button class="btn ghost">Snooze all 1h</button>
+    <a class="btn ghost" href="17-settings.html">Notification settings</a>
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ MAIN: decision cards ============ -->
+    <div class="c-8">
+
+      <div class="col" style="gap:16px">
+
+        <!-- 1 · merge approval -->
+        <div class="card decision err">
+          <div class="q-row">
+            <span class="dot err"></span>
+            <span class="question">Approve merge for a refactor PR?</span>
+            <span class="age">8m</span>
+          </div>
+          <div class="refs">
+            <a class="tag" href="10-run-detail.html">loop #1843</a>
+            <a class="tag" href="12-pr-verification.html">PR #509</a>
+            <a class="tag" href="03-issues.html">issue #465</a>
+            <span class="tag">refactor</span>
+          </div>
+          <p class="why">Policy: anything labeled <span class="mono" style="font-size:12px">refactor</span> needs a human. 14/14 checks green, verification matrix all ✓, +214 −180 across 6 files.</p>
+          <div class="actions">
+            <button class="btn primary">Approve &amp; merge</button>
+            <a class="btn ghost" href="12-pr-verification.html">Open PR verification →</a>
+            <button class="btn ghost">Return to loop with note</button>
+          </div>
+        </div>
+
+        <!-- 2 · protected path -->
+        <div class="card decision warn">
+          <div class="q-row">
+            <span class="dot warn"></span>
+            <span class="question">Allow a one-time edit to a protected path?</span>
+            <span class="age">21m</span>
+          </div>
+          <div class="refs">
+            <a class="tag" href="10-run-detail.html">loop #1851</a>
+            <a class="tag" href="03-issues.html">issue #479</a>
+            <span class="tag">boot/rollback_flag.c</span>
+          </div>
+          <p class="why">The OTA rollback fix wants to add one line to <span class="mono" style="font-size:12px">boot/rollback_flag.c</span> — a protected path. Diff is 3 lines, shown in the run console.</p>
+          <div class="actions">
+            <button class="btn primary">Allow once</button>
+            <a class="btn ghost" href="10-run-detail.html">View diff →</a>
+            <button class="btn ghost">Deny</button>
+            <a class="edit-link" href="17-settings.html">Edit protected paths →</a>
+          </div>
+        </div>
+
+        <!-- 3 · unverifiable claim -->
+        <div class="card decision warn">
+          <div class="q-row">
+            <span class="dot warn"></span>
+            <span class="question">Waive a claim the bench can't verify?</span>
+            <span class="age">34m</span>
+          </div>
+          <div class="refs">
+            <a class="tag" href="12-pr-verification.html">PR #514</a>
+            <span class="tag">verification</span>
+          </div>
+          <p class="why">“Flake must not reappear across temperature range” — the rig has no thermal chamber. Waiving annotates the PR publicly.</p>
+          <div class="actions">
+            <button class="btn primary">Waive &amp; annotate</button>
+            <button class="btn ghost">Require bench upgrade</button>
+            <a class="btn ghost" href="12-pr-verification.html">See evidence →</a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- resolved today -->
+      <hr class="divider" style="margin-top:24px">
+      <div class="resolved-head"><span class="caret">▾</span> Resolved today · 5</div>
+      <div class="resolved-row">
+        <span class="tick">✓</span>
+        <span>Split <span class="mono" style="font-size:12px">#490</span> into 6 tickets — approved</span>
+        <span class="when">09:12</span>
+      </div>
+      <div class="resolved-row">
+        <span class="tick">✓</span>
+        <span>Estimator re-size <span class="mono" style="font-size:12px">#486</span> L→M — auto-accepted by policy</span>
+        <span class="when">08:47</span>
+      </div>
+
+      <!-- empty-state preview -->
+      <div class="card zero-card" style="margin-top:22px">
+        <img src="assets/logo-mark.png" alt="">
+        <div class="zero-line">Inbox zero. The loop is turning on its own.</div>
+        <div class="small muted">You'll be pinged only when policy says so.</div>
+      </div>
+
+    </div>
+
+    <!-- ============ SIDE column ============ -->
+    <div class="c-4">
+      <div class="col" style="gap:16px">
+
+        <!-- answer from anywhere -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">ANSWER FROM ANYWHERE</span>
+            <span class="spacer"></span>
+            <a class="card-link" href="19-chatops.html">Chat Ops →</a>
+          </div>
+          <div class="chan-row">
+            <div>
+              <div class="chan-name">Slack · <span class="mono" style="font-size:12px">#ouroboros-loops</span></div>
+              <div class="chan-sub">approve with a button, right in the thread</div>
+            </div>
+            <span class="ok-mark">✓ connected</span>
+          </div>
+          <div class="chan-row">
+            <div>
+              <div class="chan-name">Email digest</div>
+              <div class="chan-sub">daily · 09:00</div>
+            </div>
+            <button class="switch on" style="margin-left:auto" aria-label="Email digest on"></button>
+          </div>
+          <div class="chan-row">
+            <div>
+              <div class="chan-name">Mobile push</div>
+              <div class="chan-sub">critical only when on</div>
+            </div>
+            <button class="switch" style="margin-left:auto" aria-label="Mobile push off"></button>
+          </div>
+          <div class="chan-row">
+            <div>
+              <div class="chan-name">GitHub</div>
+              <div class="chan-sub">every decision is mirrored as a PR comment</div>
+            </div>
+            <span class="ok-mark">✓</span>
+          </div>
+        </div>
+
+        <!-- policy -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">WHAT NEEDS A HUMAN</span>
+            <span class="spacer"></span>
+            <a class="btn ghost sm" href="17-settings.html">Edit policies →</a>
+          </div>
+          <div class="rule-row"><span class="tick">✓</span><span>refactor label</span><span class="outcome"><span class="arrow">→</span> human review</span></div>
+          <div class="rule-row"><span class="tick">✓</span><span>protected paths</span><span class="outcome"><span class="arrow">→</span> allow-once</span></div>
+          <div class="rule-row"><span class="tick">✓</span><span>unverifiable claims</span><span class="outcome"><span class="arrow">→</span> explicit waiver</span></div>
+          <div class="rule-row"><span class="tick">✓</span><span>spend &gt; $2.50/run</span><span class="outcome"><span class="arrow">→</span> approval</span></div>
+          <div class="rule-row"><span class="tick">✓</span><span>effort XL+</span><span class="outcome"><span class="arrow">→</span> plan sign-off</span></div>
+          <p class="small faint" style="margin-top:10px">Everything else merges itself when gates are green.</p>
+        </div>
+
+        <!-- stat -->
+        <div class="card">
+          <div class="stat">
+            <span class="label">This week</span>
+            <span class="value">11 <span style="font-size:15px;color:var(--mut);font-family:var(--f-ui);font-weight:500">decisions</span></span>
+            <span class="delta">median answer time <span class="mono" style="color:var(--ink-dim)">41s</span> · loops never waited longer than <span class="mono" style="color:var(--ink-dim)">6m</span></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 16 — NEEDS-YOU INBOX · static concept, no functionality</span>
+  <span class="links">
+    <a href="15-insights.html">← Prev: Insights</a>
+    <a href="17-settings.html">Next: Settings →</a>
+  </span>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Insights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- page-specific: insights ---- */
+  .seg {
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 3px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface);
+  }
+  .seg button {
+    font-family: var(--f-mono); font-size: 12px; color: var(--mut);
+    background: transparent; border: none; border-radius: var(--r-sm);
+    padding: 5px 12px; cursor: pointer; white-space: nowrap;
+  }
+  .seg button:hover { color: var(--ink); }
+  .seg button.active {
+    color: var(--accent-ink); background: linear-gradient(180deg, #46dcf8, #1fa9d8);
+    font-weight: 500;
+  }
+
+  .chart-wrap { overflow-x: auto; }
+  .chart-inner { position: relative; min-width: 640px; }
+  .chart-inner svg { display: block; width: 100%; height: auto; }
+
+  .tip {
+    position: absolute; top: 6px; left: calc(85.2% - 226px);
+    width: 212px; padding: 8px 11px;
+    background: var(--raised); border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    font-family: var(--f-mono); font-size: 11.5px; line-height: 1.5;
+    color: var(--ink-dim); font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .tip .d { color: var(--faint); }
+
+  /* horizontal labeled bars */
+  .hbars { display: flex; flex-direction: column; gap: 11px; }
+  .hbar { display: grid; grid-template-columns: 132px 1fr 34px; align-items: center; gap: 10px; }
+  .hbar .lbl { font-size: 12.5px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hbar .bar { height: 8px; border-radius: 0 4px 4px 0; background: var(--accent); opacity: .58; min-width: 3px; }
+  .hbar.top .bar { opacity: .95; }
+  .hbar .n {
+    font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim);
+    font-variant-numeric: tabular-nums; text-align: right;
+  }
+  .hbar.dim .lbl, .hbar.dim .n { color: var(--mut); }
+
+  /* tiny CSS-bar sparklines */
+  .spark { display: flex; align-items: flex-end; gap: 2px; height: 18px; flex: none; }
+  .spark i { width: 3px; background: var(--accent); border-radius: 2px 2px 0 0; opacity: .8; }
+  .spark.dim i { opacity: .4; }
+
+  /* flaky test rows */
+  .flake { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .flake:last-of-type { border-bottom: none; }
+  .flake .name {
+    font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
+  }
+  .flake .rate { font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* DORA strip */
+  .dora { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .dora { grid-template-columns: repeat(2, 1fr); } }
+  .dora .cell { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-right: 16px; border-right: 1px solid var(--border); }
+  .dora .cell:last-child { border-right: none; padding-right: 0; }
+  @media (max-width: 900px) { .dora .cell:nth-child(2) { border-right: none; } }
+
+  /* build & test performance */
+  .bt-stats { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; min-width: 0; }
+  .bt-stats .ms { display: flex; align-items: baseline; gap: 7px; padding: 0 14px; border-left: 1px solid var(--border); white-space: nowrap; }
+  .bt-stats .ms:first-child { border-left: none; padding-left: 0; }
+  .bt-stats .ms .k { font-size: 11.5px; color: var(--mut); }
+  .bt-stats .ms .v { font-family: var(--f-mono); font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+  /* stacked daily build bars (success + failure segment) */
+  .vbars {
+    position: relative; display: flex; align-items: flex-end; gap: 3px;
+    height: 92px; padding-top: 14px; border-bottom: 1px solid var(--border);
+  }
+  .vb { flex: 1; min-width: 3px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; }
+  .vb i { display: block; background: var(--accent); opacity: .62; border-radius: 2px 2px 0 0; }
+  .vb i.f { background: var(--err); opacity: .85; }
+  .vb i.f + i { border-radius: 0; }
+  .vb.hot i { opacity: .95; }
+  .vb-note {
+    position: absolute; top: -6px; left: 9%;
+    font-family: var(--f-mono); font-size: 11px; color: var(--ink);
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .legend { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 11.5px; color: var(--mut); }
+  .legend .sw { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); opacity: .75; flex: none; }
+  .legend .sw.err { background: var(--err); opacity: .85; }
+
+  /* token bars wear the model hue */
+  .hbar.tok .bar { background: var(--model); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html" class="active">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Insights</div>
+      <h1>27 PRs merged this week. 2 needed a human.</h1>
+      <p class="sub">Every loop measured: what merged untouched, what it cost, where humans still step in.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Time range">
+      <button>7d</button>
+      <button class="active">30d</button>
+      <button>90d</button>
+      <button>custom</button>
+    </div>
+    <a class="btn ghost" href="18-build-analyzer.html">✦ Build Analyzer</a>
+    <button class="btn ghost">Email weekly digest</button>
+    <button class="btn ghost">Send to Slack</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- KPI row -->
+    <div class="card c-2"><div class="stat">
+      <span class="label">Autonomous merge rate</span>
+      <span class="value" style="color:var(--accent)">92%</span>
+      <span class="delta up">▲ 3pts vs prior 30d</span>
+    </div></div>
+    <div class="card c-2"><div class="stat">
+      <span class="label">Merged w/o human edits</span>
+      <span class="value">78%</span>
+      <span class="delta">of all merged PRs</span>
+    </div></div>
+    <div class="card c-2"><div class="stat">
+      <span class="label">Median cycle</span>
+      <span class="value">14m&hairsp;20s</span>
+      <span class="delta up">▼ 2m faster</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Cost per merged PR</span>
+      <span class="value">$1.87</span>
+      <span class="delta up">▼ $0.41 vs prior 30d</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Human interventions</span>
+      <span class="value" style="color:var(--warn)">2<span style="font-size:18px;color:var(--mut)">/wk</span></span>
+      <span class="delta up">▼ 5 vs prior 30d</span>
+    </div></div>
+
+    <!-- 1 · throughput -->
+    <div class="card c-8">
+      <div class="card-head">
+        <span class="card-title">MERGED PRS PER DAY · 30D</span>
+        <span class="spacer"></span>
+        <span class="tag">Jul 10 – Aug 8</span>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-inner">
+          <svg viewBox="0 0 640 196" role="img" aria-label="Merged PRs per day, last 30 days, trending up to 6 per day">
+            <!-- gridlines (horizontal only) -->
+            <g stroke="var(--border)" stroke-width="1" opacity=".5">
+              <line x1="10" y1="40" x2="630" y2="40"/>
+              <line x1="10" y1="82" x2="630" y2="82"/>
+              <line x1="10" y1="124" x2="630" y2="124"/>
+            </g>
+            <line x1="10" y1="166" x2="630" y2="166" stroke="var(--border)" stroke-width="1"/>
+            <!-- area fill -->
+            <path fill="var(--accent)" opacity=".12" d="M10,166 L10,103 L31,145 L53,166 L74,103 L96,82 L117,103 L138,82 L160,82 L181,145 L203,145 L224,82 L245,61 L267,82 L288,61 L310,82 L331,145 L352,124 L374,61 L395,82 L417,40 L438,61 L459,61 L481,124 L502,145 L524,61 L545,40 L566,61 L588,40 L609,61 L630,40 L630,166 Z"/>
+            <!-- line -->
+            <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+              points="10,103 31,145 53,166 74,103 96,82 117,103 138,82 160,82 181,145 203,145 224,82 245,61 267,82 288,61 310,82 331,145 352,124 374,61 395,82 417,40 438,61 459,61 481,124 502,145 524,61 545,40 566,61 588,40 609,61 630,40"/>
+            <!-- static hover layer: crosshair @ Aug 4 -->
+            <line x1="545" y1="16" x2="545" y2="166" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="3 3"/>
+            <circle cx="545" cy="40" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+            <!-- endpoint dot + direct label -->
+            <circle cx="630" cy="40" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+            <text x="622" y="30" text-anchor="end" font-family="var(--f-mono)" font-size="11" fill="var(--ink)" style="font-variant-numeric:tabular-nums">6</text>
+            <!-- sparse x ticks -->
+            <g font-family="var(--f-mono)" font-size="10" fill="var(--faint)" style="font-variant-numeric:tabular-nums">
+              <text x="53" y="184" text-anchor="middle">Jul 12</text>
+              <text x="352" y="184" text-anchor="middle">Jul 26</text>
+              <text x="630" y="184" text-anchor="end">Aug 8</text>
+            </g>
+          </svg>
+          <div class="tip"><span class="d">Aug 4</span> — 6 merged · $9.12 · 1 intervention</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 · intervention causes -->
+    <div class="card c-4">
+      <div class="card-head">
+        <span class="card-title">WHERE LOOPS STILL NEED HUMANS</span>
+        <span class="spacer"></span>
+        <span class="tag">30d · 20 total</span>
+      </div>
+      <div class="hbars">
+        <div class="hbar top">
+          <span class="lbl">Flaky env / rig</span>
+          <div class="bar" style="width:100%"></div>
+          <span class="n">8</span>
+        </div>
+        <div class="hbar">
+          <span class="lbl">Ambiguous ticket</span>
+          <div class="bar" style="width:62.5%"></div>
+          <span class="n">5</span>
+        </div>
+        <div class="hbar">
+          <span class="lbl">Policy gate (refactor)</span>
+          <div class="bar" style="width:50%"></div>
+          <span class="n">4</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">Model disagreement</span>
+          <div class="bar" style="width:25%"></div>
+          <span class="n">2</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">Other</span>
+          <div class="bar" style="width:12.5%"></div>
+          <span class="n">1</span>
+        </div>
+      </div>
+      <hr class="divider">
+      <p class="small muted">Fix the top row and interventions drop ~40%.</p>
+    </div>
+
+    <!-- 3 · cycle time by stage -->
+    <div class="card c-4">
+      <div class="card-head">
+        <span class="card-title">CYCLE TIME BY STAGE · MEDIAN</span>
+        <span class="spacer"></span>
+        <span class="tag">30d</span>
+      </div>
+      <div class="hbars">
+        <div class="hbar dim">
+          <span class="lbl">Analyze</span>
+          <div class="bar" style="width:16.5%"></div>
+          <span class="n">1m</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">Plan</span>
+          <div class="bar" style="width:33%"></div>
+          <span class="n">2m</span>
+        </div>
+        <div class="hbar top">
+          <span class="lbl" style="color:var(--ink)">Implement</span>
+          <div class="bar" style="width:100%"></div>
+          <span class="n" style="color:var(--ink);white-space:nowrap">6m&hairsp;04s</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">Build</span>
+          <div class="bar" style="width:33%"></div>
+          <span class="n">2m</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">Test</span>
+          <div class="bar" style="width:44%"></div>
+          <span class="n">2m&hairsp;40s</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">Verify</span>
+          <div class="bar" style="width:11%"></div>
+          <span class="n">40s</span>
+        </div>
+      </div>
+      <hr class="divider">
+      <p class="small muted">Implement dominates the loop — the other five stages sum to 8m 20s.</p>
+    </div>
+
+    <!-- 4 · model scoreboard -->
+    <div class="card c-8">
+      <div class="card-head">
+        <span class="card-title">MODEL SCOREBOARD</span>
+        <span class="spacer"></span>
+        <a class="card-link" href="06-model-routing.html">Routing rules →</a>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>Task</th><th>Model</th><th style="width:200px">Merge-untouched %</th><th class="num">$ / success</th><th class="num">Trend</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>implement</td>
+              <td><span class="pill model">claude-fable-5</span></td>
+              <td>
+                <div class="row" style="gap:10px">
+                  <div class="meter" style="flex:1"><span style="width:84%"></span></div>
+                  <span class="mono" style="font-variant-numeric:tabular-nums">84%</span>
+                </div>
+              </td>
+              <td class="num mono">$0.87</td>
+              <td class="num mono" style="color:var(--ok)">▲</td>
+            </tr>
+            <tr>
+              <td>implement <span class="faint">(fallback)</span></td>
+              <td><span class="pill model">copilot/gpt-5-codex</span></td>
+              <td>
+                <div class="row" style="gap:10px">
+                  <div class="meter" style="flex:1"><span style="width:61%"></span></div>
+                  <span class="mono" style="font-variant-numeric:tabular-nums">61%</span>
+                </div>
+              </td>
+              <td class="num mono">$0.94</td>
+              <td class="num mono" style="color:var(--err)">▼</td>
+            </tr>
+            <tr>
+              <td colspan="5" style="background:var(--inset)">
+                <div class="row between" style="gap:12px;flex-wrap:wrap">
+                  <span class="small muted">Suggestion: fable stays primary; consider dropping fallback to ollama/qwen3-coder for XS issues (would save ~$14/mo).</span>
+                  <a class="btn ghost sm" href="06-model-routing.html">Apply in Models →</a>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td>docs</td>
+              <td><span class="pill model">ollama/qwen3-coder</span></td>
+              <td>
+                <div class="row" style="gap:10px">
+                  <div class="meter" style="flex:1"><span style="width:96%"></span></div>
+                  <span class="mono" style="font-variant-numeric:tabular-nums">96%</span>
+                </div>
+              </td>
+              <td class="num mono">$0.00</td>
+              <td class="num mono muted">—</td>
+            </tr>
+            <tr>
+              <td>review</td>
+              <td><span class="pill model">claude-fable-5</span></td>
+              <td>
+                <div class="row" style="gap:10px">
+                  <div class="meter" style="flex:1"><span style="width:91%"></span></div>
+                  <span class="mono" style="font-variant-numeric:tabular-nums">91%</span>
+                </div>
+              </td>
+              <td class="num mono">$0.22</td>
+              <td class="num mono" style="color:var(--ok)">▲</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5 · flaky tests -->
+    <div class="card c-4" style="display:flex;flex-direction:column">
+      <div class="card-head">
+        <span class="card-title">FLAKY TESTS</span>
+        <span class="spacer"></span>
+        <span class="tag">14d window</span>
+      </div>
+      <div style="flex:1">
+        <div class="flake">
+          <div class="row" style="gap:8px">
+            <span class="name">tests/telemetry/test_frame_order.c</span>
+            <span class="pill ok">fixed</span>
+          </div>
+          <div class="row" style="gap:12px;margin-top:7px">
+            <div class="spark dim" aria-hidden="true">
+              <i style="height:14px"></i><i style="height:16px"></i><i style="height:12px"></i><i style="height:15px"></i><i style="height:10px"></i><i style="height:13px"></i><i style="height:8px"></i><i style="height:6px"></i><i style="height:4px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:2px"></i>
+            </div>
+            <span class="rate muted">0.0%</span>
+            <span class="small faint">fixed by loop #1847</span>
+          </div>
+        </div>
+        <div class="flake">
+          <div class="row" style="gap:8px">
+            <span class="name">tests/hil/test_estop_release.py</span>
+            <span class="pill warn">quarantined</span>
+          </div>
+          <div class="row" style="gap:12px;margin-top:7px">
+            <div class="spark" aria-hidden="true">
+              <i style="height:3px"></i><i style="height:4px"></i><i style="height:3px"></i><i style="height:6px"></i><i style="height:5px"></i><i style="height:8px"></i><i style="height:7px"></i><i style="height:10px"></i><i style="height:9px"></i><i style="height:13px"></i><i style="height:15px"></i><i style="height:17px"></i>
+            </div>
+            <span class="rate" style="color:var(--warn)">4.1%</span>
+            <span class="small faint">rising on hil-rig-02</span>
+          </div>
+        </div>
+        <div class="flake">
+          <div class="row" style="gap:8px">
+            <span class="name">tests/ota/test_swap.c</span>
+            <span class="pill">watching</span>
+          </div>
+          <div class="row" style="gap:12px;margin-top:7px">
+            <div class="spark" aria-hidden="true">
+              <i style="height:2px"></i><i style="height:3px"></i><i style="height:2px"></i><i style="height:2px"></i><i style="height:4px"></i><i style="height:3px"></i><i style="height:2px"></i><i style="height:5px"></i><i style="height:4px"></i><i style="height:5px"></i><i style="height:6px"></i><i style="height:7px"></i>
+            </div>
+            <span class="rate muted">1.2%</span>
+            <span class="small faint">under threshold</span>
+          </div>
+        </div>
+      </div>
+      <hr class="divider">
+      <a class="btn ghost sm" href="14-knowledge.html" style="align-self:flex-start">Open playbook: Flaky test hunt →</a>
+    </div>
+
+    <!-- build & test performance · header strip -->
+    <div class="card c-12" style="padding:12px 18px">
+      <div class="row" style="gap:18px;flex-wrap:wrap">
+        <span class="card-title">BUILD &amp; TEST PERFORMANCE · 30D</span>
+        <div class="bt-stats">
+          <span class="ms"><span class="k">Builds</span><span class="v">412</span></span>
+          <span class="ms"><span class="k">Build success</span><span class="v">91.5%</span><span class="k">377 ✓ / <span style="color:var(--err)">35 ✗</span></span></span>
+          <span class="ms"><span class="k">Test cases run</span><span class="v">26.4k</span></span>
+          <span class="ms"><span class="k">Test pass rate</span><span class="v">98.9%</span></span>
+          <span class="ms"><span class="k">Tokens</span><span class="v">126M</span></span>
+          <span class="ms"><span class="k">Total cost</span><span class="v">$563.20</span></span>
+        </div>
+        <span class="tag" style="margin-left:auto">helios-firmware · all workflows</span>
+      </div>
+    </div>
+
+    <!-- builds per day -->
+    <div class="card c-4">
+      <div class="card-head">
+        <span class="card-title">BUILDS PER DAY — SUCCEEDED VS FAILED</span>
+        <span class="spacer"></span>
+        <span class="tag">Jul 10 – Aug 8</span>
+      </div>
+      <div class="vbars" role="img" aria-label="Builds per day for 30 days, succeeded versus failed, weekday rhythm with failures clustered on eight days">
+        <span class="vb-note">18 · 2 failed</span>
+        <div class="vb"><i style="height:56px"></i></div>
+        <div class="vb"><i style="height:20px"></i></div>
+        <div class="vb"><i style="height:16px"></i></div>
+        <div class="vb"><i class="f" style="height:16px"></i><i style="height:48px"></i></div>
+        <div class="vb"><i style="height:60px"></i></div>
+        <div class="vb"><i style="height:56px"></i></div>
+        <div class="vb"><i style="height:68px"></i></div>
+        <div class="vb hot"><i class="f" style="height:8px"></i><i style="height:64px"></i></div>
+        <div class="vb"><i style="height:24px"></i></div>
+        <div class="vb"><i style="height:16px"></i></div>
+        <div class="vb"><i class="f" style="height:20px"></i><i style="height:48px"></i></div>
+        <div class="vb"><i style="height:60px"></i></div>
+        <div class="vb"><i style="height:64px"></i></div>
+        <div class="vb"><i class="f" style="height:12px"></i><i style="height:44px"></i></div>
+        <div class="vb"><i style="height:64px"></i></div>
+        <div class="vb"><i style="height:20px"></i></div>
+        <div class="vb"><i style="height:12px"></i></div>
+        <div class="vb"><i class="f" style="height:24px"></i><i style="height:48px"></i></div>
+        <div class="vb"><i style="height:60px"></i></div>
+        <div class="vb"><i style="height:68px"></i></div>
+        <div class="vb"><i style="height:64px"></i></div>
+        <div class="vb"><i style="height:56px"></i></div>
+        <div class="vb"><i style="height:24px"></i></div>
+        <div class="vb"><i style="height:16px"></i></div>
+        <div class="vb"><i class="f" style="height:28px"></i><i style="height:48px"></i></div>
+        <div class="vb"><i style="height:64px"></i></div>
+        <div class="vb"><i class="f" style="height:16px"></i><i style="height:44px"></i></div>
+        <div class="vb"><i style="height:68px"></i></div>
+        <div class="vb"><i class="f" style="height:16px"></i><i style="height:56px"></i></div>
+        <div class="vb"><i style="height:24px"></i></div>
+      </div>
+      <div class="legend"><span class="sw"></span>succeeded<span class="faint">·</span><span class="sw err"></span>failed</div>
+      <hr class="divider">
+      <p class="small muted">Failures cluster on deps-refresh days — the analyzer noticed too (screen 18).</p>
+    </div>
+
+    <!-- test failures by suite -->
+    <div class="card c-4">
+      <div class="card-head">
+        <span class="card-title">TEST FAILURES BY SUITE · 30D</span>
+        <span class="spacer"></span>
+        <span class="tag">33 cases</span>
+      </div>
+      <div class="hbars">
+        <div class="hbar top">
+          <span class="lbl" style="color:var(--ink)">telemetry integration</span>
+          <div class="bar" style="width:100%"></div>
+          <span class="n" style="color:var(--ink)">14</span>
+        </div>
+        <div class="hbar">
+          <span class="lbl">OTA update</span>
+          <div class="bar" style="width:64%"></div>
+          <span class="n">9</span>
+        </div>
+        <div class="hbar">
+          <span class="lbl">physical · HIL</span>
+          <div class="bar" style="width:43%"></div>
+          <span class="n">6</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">motor control</span>
+          <div class="bar" style="width:21%"></div>
+          <span class="n">3</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl">unit · drivers</span>
+          <div class="bar" style="width:7%"></div>
+          <span class="n">1</span>
+        </div>
+      </div>
+      <hr class="divider">
+      <p class="small muted">33 failing cases total — 0.12% of everything that ran.</p>
+    </div>
+
+    <!-- time to completion by effort -->
+    <div class="card c-4">
+      <div class="card-head">
+        <span class="card-title">TIME TO COMPLETION BY EFFORT</span>
+        <span class="spacer"></span>
+        <span class="tag">median · issue→merge</span>
+      </div>
+      <div class="hbars">
+        <div class="hbar dim">
+          <span class="lbl"><span class="effort xs">XS</span></span>
+          <div class="bar" style="width:4.6%"></div>
+          <span class="n">6m</span>
+        </div>
+        <div class="hbar dim">
+          <span class="lbl"><span class="effort s">S</span></span>
+          <div class="bar" style="width:8.5%"></div>
+          <span class="n">11m</span>
+        </div>
+        <div class="hbar">
+          <span class="lbl"><span class="effort m">M</span></span>
+          <div class="bar" style="width:14.6%"></div>
+          <span class="n">19m</span>
+        </div>
+        <div class="hbar">
+          <span class="lbl"><span class="effort l">L</span></span>
+          <div class="bar" style="width:37%"></div>
+          <span class="n">48m</span>
+        </div>
+        <div class="hbar top">
+          <span class="lbl"><span class="effort xl">XL</span></span>
+          <div class="bar" style="width:100%"></div>
+          <span class="n" style="color:var(--ink);white-space:nowrap">2h&hairsp;10m</span>
+        </div>
+      </div>
+      <hr class="divider">
+      <p class="small muted">Estimator calibration: 89% of issues land within their predicted band.</p>
+    </div>
+
+    <!-- tokens by stage -->
+    <div class="card c-6">
+      <div class="card-head">
+        <span class="card-title">TOKENS BY STAGE · 30D</span>
+        <span class="spacer"></span>
+        <span class="tag">126M total</span>
+      </div>
+      <div class="hbars">
+        <div class="hbar tok top">
+          <span class="lbl" style="color:var(--ink)">implement</span>
+          <div class="bar" style="width:100%"></div>
+          <span class="n" style="color:var(--ink)">71M</span>
+        </div>
+        <div class="hbar tok">
+          <span class="lbl">review</span>
+          <div class="bar" style="width:25.4%"></div>
+          <span class="n">18M</span>
+        </div>
+        <div class="hbar tok">
+          <span class="lbl">plan</span>
+          <div class="bar" style="width:19.7%"></div>
+          <span class="n">14M</span>
+        </div>
+        <div class="hbar tok">
+          <span class="lbl">analyze</span>
+          <div class="bar" style="width:16.9%"></div>
+          <span class="n">12M</span>
+        </div>
+        <div class="hbar tok dim">
+          <span class="lbl">test-gen</span>
+          <div class="bar" style="width:11.3%"></div>
+          <span class="n">8M</span>
+        </div>
+        <div class="hbar tok dim">
+          <span class="lbl">docs</span>
+          <div class="bar" style="width:4.2%"></div>
+          <span class="n">3M</span>
+        </div>
+      </div>
+      <hr class="divider">
+      <p class="small muted">≈ 4.6M tokens per merged PR · 31% served by local models at $0.</p>
+    </div>
+
+    <!-- daily cost -->
+    <div class="card c-6">
+      <div class="card-head">
+        <span class="card-title">DAILY COST · ALL PROVIDERS</span>
+        <span class="spacer"></span>
+        <span class="tag">Jul 10 – Aug 8</span>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-inner" style="min-width:480px">
+          <svg viewBox="0 0 560 140" role="img" aria-label="Daily cost across all providers, last 30 days, gentle rise to $18.60 with one $31.40 spike during the Zephyr migration">
+            <!-- gridlines (horizontal only) -->
+            <g stroke="var(--border)" stroke-width="1" opacity=".5">
+              <line x1="8" y1="24" x2="552" y2="24"/>
+              <line x1="8" y1="87" x2="552" y2="87"/>
+            </g>
+            <line x1="8" y1="118" x2="552" y2="118" stroke="var(--border)" stroke-width="1"/>
+            <!-- budget guide -->
+            <line x1="8" y1="55" x2="552" y2="55" stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="4 4"/>
+            <text x="8" y="49" font-family="var(--f-mono)" font-size="10" fill="var(--faint)" style="font-variant-numeric:tabular-nums">$20 budget</text>
+            <!-- area fill -->
+            <path fill="var(--accent)" opacity=".12" d="M8,118 L8,77 L27,74 L46,78 L64,71 L83,73 L102,69 L121,71 L139,67 L158,71 L177,69 L196,66 L214,68 L233,64 L252,66 L271,65 L289,68 L308,66 L327,62 L346,65 L364,61 L383,57 L402,20 L421,41 L439,56 L458,61 L477,58 L496,61 L514,59 L533,62 L552,60 L552,118 Z"/>
+            <!-- line -->
+            <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+              points="8,77 27,74 46,78 64,71 83,73 102,69 121,71 139,67 158,71 177,69 196,66 214,68 233,64 252,66 271,65 289,68 308,66 327,62 346,65 364,61 383,57 402,20 421,41 439,56 458,61 477,58 496,61 514,59 533,62 552,60"/>
+            <!-- spike dot + direct label -->
+            <circle cx="402" cy="20" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+            <text x="402" y="11" text-anchor="middle" font-family="var(--f-mono)" font-size="10.5" fill="var(--ink)" style="font-variant-numeric:tabular-nums">$31.40 — Zephyr migration spike</text>
+            <!-- endpoint dot + direct label -->
+            <circle cx="552" cy="60" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+            <text x="552" y="80" text-anchor="end" font-family="var(--f-mono)" font-size="11" fill="var(--ink)" style="font-variant-numeric:tabular-nums">$18.60</text>
+            <!-- sparse x ticks -->
+            <g font-family="var(--f-mono)" font-size="10" fill="var(--faint)" style="font-variant-numeric:tabular-nums">
+              <text x="46" y="134" text-anchor="middle">Jul 12</text>
+              <text x="327" y="134" text-anchor="middle">Jul 26</text>
+              <text x="552" y="134" text-anchor="end">Aug 8</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+      <hr class="divider">
+      <p class="small muted">Projected month: $571 of $600 cap · alerts fire at 90%.</p>
+    </div>
+
+    <!-- 6 · DORA-ish -->
+    <div class="card c-12">
+      <div class="card-head" style="margin-bottom:16px">
+        <span class="card-title">DELIVERY HEALTH · DORA-ISH</span>
+        <span class="spacer"></span>
+        <span class="small faint">Computed from your GitHub + build farm events, not self-reported.</span>
+      </div>
+      <div class="dora">
+        <div class="cell">
+          <div class="stat">
+            <span class="label">Deploy frequency</span>
+            <span class="value" style="font-size:24px">4.2<span style="font-size:14px;color:var(--mut)">/day</span></span>
+            <span class="delta up">▲ vs prior 30d</span>
+          </div>
+          <div class="spark" aria-hidden="true">
+            <i style="height:6px"></i><i style="height:8px"></i><i style="height:7px"></i><i style="height:10px"></i><i style="height:9px"></i><i style="height:12px"></i><i style="height:14px"></i><i style="height:16px"></i>
+          </div>
+        </div>
+        <div class="cell">
+          <div class="stat">
+            <span class="label">Lead time · issue→merge</span>
+            <span class="value" style="font-size:24px">3h&hairsp;10m</span>
+            <span class="delta up">▼ median, shrinking</span>
+          </div>
+          <div class="spark" aria-hidden="true">
+            <i style="height:16px"></i><i style="height:15px"></i><i style="height:13px"></i><i style="height:14px"></i><i style="height:11px"></i><i style="height:10px"></i><i style="height:8px"></i><i style="height:7px"></i>
+          </div>
+        </div>
+        <div class="cell">
+          <div class="stat">
+            <span class="label">Change failure rate</span>
+            <span class="value" style="font-size:24px">3.1%</span>
+            <span class="delta">— flat</span>
+          </div>
+          <div class="spark dim" aria-hidden="true">
+            <i style="height:6px"></i><i style="height:7px"></i><i style="height:6px"></i><i style="height:8px"></i><i style="height:6px"></i><i style="height:7px"></i><i style="height:6px"></i><i style="height:7px"></i>
+          </div>
+        </div>
+        <div class="cell">
+          <div class="stat">
+            <span class="label">MTTR</span>
+            <span class="value" style="font-size:24px">22m</span>
+            <span class="delta up">▼ loops self-heal faster</span>
+          </div>
+          <div class="spark" aria-hidden="true">
+            <i style="height:15px"></i><i style="height:16px"></i><i style="height:12px"></i><i style="height:13px"></i><i style="height:10px"></i><i style="height:8px"></i><i style="height:9px"></i><i style="height:6px"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 15 — INSIGHTS · static concept, no functionality</span>
+  <span class="links">
+    <a href="14-knowledge.html">← Prev: Knowledge</a>
+    <a href="16-inbox.html">Next: Needs-you inbox →</a>
+  </span>
+</footer>
+
+</body>
+</html>

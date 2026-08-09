@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+.yarn/cache
+.yarn/install-state.gz
+npm-debug.log*
+yarn-error.log*
+README.md
+Dockerfile
+.dockerignore
+.env*

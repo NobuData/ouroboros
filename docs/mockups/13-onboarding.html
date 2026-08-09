@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Get started</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---------- onboarding wizard (screen 13) ---------- */
+
+  .import-link {
+    font-family: var(--f-mono); font-size: 12px; color: var(--mut);
+    border-bottom: 1px dotted var(--faint); padding-bottom: 1px; white-space: nowrap;
+  }
+  .import-link:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* step rail */
+  .steprail {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    padding: 20px 22px;
+  }
+  .step { display: flex; gap: 12px; align-items: flex-start; position: relative; padding-right: 24px; }
+  .step + .step { padding-left: 24px; border-left: 1px solid var(--border); }
+  .step-mark {
+    flex: none; width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-mono); font-size: 12px; margin-top: 1px;
+  }
+  .step.done .step-mark { color: var(--ok); border: 1px solid rgba(62,220,151,.4); background: rgba(62,220,151,.08); }
+  .step.active .step-mark {
+    color: var(--accent-ink); background: linear-gradient(180deg, #46dcf8, #1fa9d8);
+    box-shadow: 0 0 14px -2px var(--glow); font-weight: 700;
+  }
+  .step.todo .step-mark { color: var(--faint); border: 1px dashed var(--border-strong); background: transparent; }
+  .step-name { font-family: var(--f-disp); font-size: 13px; font-weight: 600; letter-spacing: .03em; }
+  .step.done .step-name { color: var(--ink-dim); }
+  .step.active .step-name { color: var(--accent); }
+  .step.todo .step-name { color: var(--faint); }
+  .step-num { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .16em; color: var(--faint); text-transform: uppercase; margin-bottom: 2px; }
+  .step-result { font-family: var(--f-mono); font-size: 11px; color: var(--mut); margin-top: 5px; line-height: 1.5; }
+  @media (max-width: 900px) {
+    .steprail { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .step + .step { padding-left: 0; border-left: none; }
+  }
+
+  /* detection rows */
+  .detect-row {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .detect-row:last-child { border-bottom: none; }
+  .detect-check { flex: none; width: 16px; text-align: center; color: var(--ok); font-size: 13px; }
+  .detect-row.warn .detect-check { color: var(--warn); }
+  .detect-label { flex: none; width: 130px; font-size: 12.5px; color: var(--mut); }
+  .detect-value { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-dim); }
+  .detect-value .dim { color: var(--faint); }
+  .detect-value a { color: var(--accent); }
+  .detect-value a:hover { text-decoration: underline; }
+
+  /* template tiles */
+  .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) { .tile-grid { grid-template-columns: 1fr; } }
+  .tile {
+    display: flex; flex-direction: column; gap: 10px;
+    background: var(--inset); border: 1px solid var(--border);
+    border-radius: var(--r-md); padding: 16px; cursor: pointer; position: relative;
+  }
+  .tile:hover { border-color: var(--border-strong); }
+  .tile.selected {
+    border-color: var(--accent); background: var(--glow-soft);
+    box-shadow: 0 0 22px -4px var(--glow), inset 0 0 30px -18px var(--glow);
+  }
+  .tile.locked { opacity: .45; cursor: default; }
+  .tile.locked:hover { border-color: var(--border); }
+  .tile-name { font-family: var(--f-disp); font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+  .tile.selected .tile-name { color: var(--accent); }
+  .tile-pick {
+    position: absolute; top: 14px; right: 14px;
+    font-family: var(--f-mono); font-size: 11px; color: var(--accent);
+  }
+  .tile-desc { font-size: 13px; color: var(--ink-dim); line-height: 1.55; }
+  .tile-dots {
+    font-family: var(--f-mono); font-size: 11px; color: var(--faint);
+    letter-spacing: .02em; white-space: nowrap; overflow-x: auto;
+  }
+  .tile-dots b { color: var(--accent); font-weight: 400; }
+  .tile-foot { display: flex; align-items: center; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+  .tile-caption { font-size: 11.5px; color: var(--faint); }
+  .tile.selected .tile-caption { color: var(--mut); }
+
+  /* first issue */
+  .issue-pick {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: var(--inset); border: 1px solid var(--border-strong);
+    border-radius: var(--r-md); padding: 14px 16px;
+  }
+  .safety-row { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; font-size: 13px; color: var(--ink-dim); }
+  .safety-row .tick { flex: none; width: 16px; text-align: center; color: var(--ok); }
+  .safety-row a { color: var(--accent); }
+  .safety-row a:hover { text-decoration: underline; }
+
+  /* right column rows */
+  .default-row { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--ink-dim); line-height: 1.55; }
+  .default-row:last-child { border-bottom: none; }
+  .default-row .tick { flex: none; width: 16px; text-align: center; color: var(--ok); }
+  .default-row .tick.dim { color: var(--faint); }
+  .default-row a { color: var(--accent); }
+  .default-row a:hover { text-decoration: underline; }
+
+  /* timeline */
+  .timeline { font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim); }
+  .tl-row { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; }
+  .tl-time { flex: none; width: 58px; color: var(--faint); text-align: right; }
+  .tl-node { flex: none; color: var(--accent); }
+  .tl-row.you .tl-node, .tl-row.you .tl-what { color: var(--warn); }
+  .tl-row.end .tl-node, .tl-row.end .tl-what { color: var(--ok); }
+
+  .reassure {
+    display: flex; gap: 12px; align-items: flex-start;
+    font-size: 12.5px; color: var(--mut); line-height: 1.6;
+  }
+  .reassure .glyph { flex: none; color: var(--accent); font-size: 15px; margin-top: 1px; }
+
+  /* action bar */
+  .action-bar {
+    border-color: rgba(61,214,245,.35);
+    box-shadow: 0 0 30px -10px var(--glow), 0 -8px 30px -18px rgba(0,0,0,.6);
+    display: flex; align-items: center; gap: 14px; padding: 16px 20px;
+  }
+
+  /* airier wizard rhythm */
+  .wizard.grid { gap: 20px; }
+  .wizard .card { padding: 22px; }
+  .wizard .card-head { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Get Started</div>
+      <h1>Your first loop in about 4 minutes.</h1>
+      <p class="sub">Ouroboros starts in dry-run: it opens draft PRs and never merges until you say so. Nothing here is irreversible.</p>
+    </div>
+    <a class="import-link" href="17-settings.html">I've done this before — import config ↗</a>
+  </div>
+
+  <!-- step rail -->
+  <div class="card" style="padding:0;margin-bottom:20px">
+    <div class="steprail">
+      <div class="step done">
+        <span class="step-mark">✓</span>
+        <div>
+          <div class="step-num">Step 1</div>
+          <div class="step-name">Connect GitHub</div>
+          <div class="step-result">acme-robotics · GitHub App installed · least-privilege</div>
+        </div>
+      </div>
+      <div class="step done">
+        <span class="step-mark">✓</span>
+        <div>
+          <div class="step-num">Step 2</div>
+          <div class="step-name">Pick a repo</div>
+          <div class="step-result">helios-firmware · auto-detected below</div>
+        </div>
+      </div>
+      <div class="step active">
+        <span class="step-mark">●</span>
+        <div>
+          <div class="step-num">Step 3</div>
+          <div class="step-name">Choose a starting workflow</div>
+        </div>
+      </div>
+      <div class="step todo">
+        <span class="step-mark">○</span>
+        <div>
+          <div class="step-num">Step 4</div>
+          <div class="step-name">Run your first loop</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid wizard">
+
+    <!-- LEFT column -->
+    <div class="c-8 col" style="gap:20px">
+
+      <!-- auto-detection -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">WE ALREADY FIGURED THIS OUT</span>
+          <span class="pill ok">✓ step 2 done</span>
+          <span class="spacer"></span>
+          <span class="tag">scanned in 38s</span>
+        </div>
+        <div class="detect-row">
+          <span class="detect-check">✓</span>
+          <span class="detect-label">Language</span>
+          <span class="detect-value">C <span class="dim">92%</span> · Zephyr RTOS 4.1</span>
+        </div>
+        <div class="detect-row">
+          <span class="detect-check">✓</span>
+          <span class="detect-label">Build</span>
+          <span class="detect-value">west + twister <span class="dim">(found west.yml)</span></span>
+        </div>
+        <div class="detect-row">
+          <span class="detect-check">✓</span>
+          <span class="detect-label">Devcontainer</span>
+          <span class="detect-value">found .devcontainer.json → env ready in 38s <span class="dim">(snapshotted)</span></span>
+        </div>
+        <div class="detect-row">
+          <span class="detect-check">✓</span>
+          <span class="detect-label">Tests</span>
+          <span class="detect-value">5 suites, 63 tests</span>
+        </div>
+        <div class="detect-row">
+          <span class="detect-check">✓</span>
+          <span class="detect-label">Protected paths</span>
+          <span class="detect-value">boot/, keys/ <span class="dim">suggested ·</span> <a href="17-settings.html">edit</a></span>
+        </div>
+        <div class="detect-row warn">
+          <span class="detect-check">!</span>
+          <span class="detect-label">Conventions</span>
+          <span class="detect-value">No CONTRIBUTING.md — we'll learn your conventions from merged PRs instead.</span>
+        </div>
+      </div>
+
+      <!-- workflow templates -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">CHOOSE A STARTING WORKFLOW</span>
+          <span class="pill run"><span class="dot"></span>step 3 · you are here</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="04-workflow-builder.html">Open Workflow Studio →</a>
+        </div>
+        <div class="tile-grid">
+
+          <div class="tile selected">
+            <span class="tile-pick">✓ selected</span>
+            <span class="tile-name">Quick fixes</span>
+            <span class="tile-desc">Small bugs and cleanups, fully hands-off.</span>
+            <span class="tile-dots"><b>●</b> analyze → <b>●</b> plan → <b>●</b> code → <b>●</b> build → <b>●</b> test → <b>●</b> PR</span>
+            <div class="tile-foot">
+              <span class="effort xs">XS</span><span class="effort s">S</span><span class="effort m">M</span>
+            </div>
+            <span class="tile-caption">recommended first workflow — 92% of teams start here</span>
+          </div>
+
+          <div class="tile">
+            <span class="tile-name">Feature builder</span>
+            <span class="tile-desc">Plans bigger changes, asks before merging.</span>
+            <span class="tile-dots">● analyze → ● plan → ● ask you → ● code → ● build → ● test → ● PR</span>
+            <div class="tile-foot">
+              <span class="effort m">M</span><span class="effort l">L</span>
+            </div>
+            <span class="tile-caption">best for new capabilities that touch several files</span>
+          </div>
+
+          <div class="tile">
+            <span class="tile-name">Docs &amp; chores</span>
+            <span class="tile-desc">Docs, typos, dep bumps on your cheapest model.</span>
+            <span class="tile-dots">● analyze → ● code → ● check → ● PR</span>
+            <div class="tile-foot">
+              <span class="effort xs">XS</span><span class="effort s">S</span>
+            </div>
+            <span class="tile-caption">best for keeping the backlog tidy at near-zero cost</span>
+          </div>
+
+          <div class="tile locked">
+            <span class="tile-name">Deep refactor</span>
+            <span class="tile-desc">Multi-PR restructures with staged rollout and extra review.</span>
+            <span class="tile-dots">● map → ● plan → ● split → ● code ×n → ● verify → ● PR ×n</span>
+            <div class="tile-foot">
+              <span class="effort l">L</span><span class="effort xl">XL</span>
+              <span class="tag">unlock after 10 merged loops</span>
+            </div>
+            <span class="tile-caption">best once the loop has learned your codebase</span>
+          </div>
+
+        </div>
+        <p class="small muted" style="margin-top:14px">All templates are editable later in the Workflow Studio — visually or as code.</p>
+      </div>
+
+      <!-- first issue -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">YOUR FIRST ISSUE</span>
+          <span class="tag">step 4 preview</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="03-issues.html">Browse all issues →</a>
+        </div>
+        <p class="small muted" style="margin-bottom:10px">We picked a safe one:</p>
+        <div class="issue-pick">
+          <span class="mono" style="color:var(--accent)">#488</span>
+          <span style="flex:1;min-width:200px">Typo sweep in operator manual + pairing guide</span>
+          <span class="effort xs">XS</span>
+          <span class="tag">docs-loop</span>
+          <span class="small muted" style="font-family:var(--f-mono);font-size:11.5px">no code paths touched · est. 4 min · est. $0.03</span>
+        </div>
+        <div class="row" style="margin:10px 0 4px">
+          <a class="small" style="color:var(--mut)" href="03-issues.html">or pick your own ▾</a>
+        </div>
+        <hr class="divider">
+        <div class="safety-row">
+          <span class="tick">✓</span>
+          <span>Dry-run: opens a <strong>draft</strong> PR, never merges</span>
+        </div>
+        <div class="safety-row">
+          <span class="tick">✓</span>
+          <span>You approve everything from the <a href="16-inbox.html">Needs-you inbox</a></span>
+        </div>
+        <div class="safety-row">
+          <span class="tick">✓</span>
+          <span>Flip to auto-merge whenever you're ready — <a href="17-settings.html">Settings → Policies</a></span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT column -->
+    <div class="c-4 col" style="gap:20px">
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SMART DEFAULTS</span>
+          <span class="spacer"></span>
+          <span class="tag">zero config</span>
+        </div>
+        <div class="default-row">
+          <span class="tick">✓</span>
+          <span>Models: managed keys with $5 trial credit — <a href="07-providers.html">bring your own keys anytime</a></span>
+        </div>
+        <div class="default-row">
+          <span class="tick">✓</span>
+          <span>Build: hosted runner for your first loops — <a href="08-build-farm.html">enroll your own farm later</a></span>
+        </div>
+        <div class="default-row">
+          <span class="tick">✓</span>
+          <span>Estimator pre-sizes your backlog overnight</span>
+        </div>
+        <div class="default-row">
+          <span class="tick dim">○</span>
+          <span>Slack: connect after your first PR <span class="faint">(optional)</span></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">WHAT HAPPENS NEXT</span>
+        </div>
+        <div class="timeline">
+          <div class="tl-row"><span class="tl-time">0:00</span><span class="tl-node">●</span><span class="tl-what">loop starts on #488</span></div>
+          <div class="tl-row"><span class="tl-time">~1 min</span><span class="tl-node">●</span><span class="tl-what">draft plan posted to the issue</span></div>
+          <div class="tl-row"><span class="tl-time">~3 min</span><span class="tl-node">●</span><span class="tl-what">draft PR opens with passing checks</span></div>
+          <div class="tl-row you"><span class="tl-time"></span><span class="tl-node">○</span><span class="tl-what">you review</span></div>
+          <div class="tl-row end"><span class="tl-time"></span><span class="tl-node">○</span><span class="tl-what">merge</span></div>
+        </div>
+        <hr class="divider">
+        <p class="small muted">Average first-loop time across teams: <span class="mono" style="color:var(--ink-dim)">4m 10s</span>.</p>
+      </div>
+
+      <div class="card inset">
+        <div class="reassure">
+          <span class="glyph">◈</span>
+          <span>Nothing is written to main. The app can be uninstalled in one click. Your keys never leave the tenant vault.</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- action bar -->
+    <div class="card c-12 action-bar">
+      <span class="small muted mono">Step 3 of 4</span>
+      <span class="spacer" style="flex:1"></span>
+      <a class="btn ghost" href="02-dashboard.html">Back</a>
+      <a class="btn primary" href="10-run-detail.html">Run my first loop →</a>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 13 — GET STARTED · static concept, no functionality</span>
+  <span class="links">
+    <a href="12-pr-verification.html">← Prev: PR verification</a>
+    <a href="14-knowledge.html">Next: Knowledge →</a>
+  </span>
+</footer>
+
+</body>
+</html>

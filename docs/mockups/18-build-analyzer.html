@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Build Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- page-specific: build analyzer ---- */
+  .meta-strip { padding: 12px 18px; }
+  .meta-strip .row { flex-wrap: wrap; row-gap: 8px; }
+  .meta-strip .lbl {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .meta-strip .val { font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim); }
+  .meta-strip .sep { color: var(--faint); }
+
+  .chart-wrap { overflow-x: auto; }
+  .chart-wrap svg { display: block; min-width: 640px; width: 100%; height: auto; }
+  .caption { font-size: 12px; color: var(--faint); margin-top: 10px; }
+
+  .sugg { padding: 13px 0; }
+  .sugg + .sugg { border-top: 1px solid var(--border); }
+  .sugg .s-title { font-weight: 600; font-size: 13.5px; }
+  .sugg .evidence {
+    font-family: var(--f-mono); font-size: 12px; color: var(--mut);
+    margin: 5px 0 9px; line-height: 1.55;
+  }
+  .sugg .evidence .e-lbl {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); margin-right: 6px;
+  }
+  .sugg .s-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .sugg .s-foot .btns { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .conf { font-family: var(--f-mono); font-size: 11.5px; color: var(--faint); }
+
+  .ticket { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .ticket input[type="checkbox"] { accent-color: var(--accent); margin-top: 3px; flex: none; }
+  .ticket .t-id { font-family: var(--f-mono); font-size: 12px; color: var(--accent); flex: none; margin-top: 1px; }
+  .ticket .t-title { font-weight: 600; font-size: 13px; }
+  .ticket .t-evidence { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); margin-top: 4px; line-height: 1.5; }
+  .ticket .effort { flex: none; margin-top: 1px; }
+
+  .pv { padding: 11px 0; }
+  .pv + .pv { border-top: 1px solid var(--border); }
+  .pv .pv-name { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+  .pv .pv-line {
+    display: flex; justify-content: space-between; gap: 12px;
+    font-family: var(--f-mono); font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .pv .pv-line .k { color: var(--faint); }
+  .pv .pv-note { font-size: 11.5px; color: var(--mut); margin-top: 5px; }
+
+  .hiw-step + .hiw-step { margin-top: 12px; }
+  .hiw-step .h-lbl {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .hiw-step .h-lbl .n { color: var(--faint); margin-right: 6px; }
+  .hiw-step .h-desc { font-size: 12.5px; color: var(--mut); margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Build Analyzer · Helios-Firmware</div>
+      <h1>Your last 1,284 builds have opinions.</h1>
+      <p class="sub">The analyzer reads every build, test run, and loop transcript in your history, finds the patterns humans miss, and drafts the fixes — processes, workflows, even tickets.</p>
+    </div>
+    <button class="btn ghost">Schedule: weekly + every 50 builds ▾</button>
+    <button class="btn primary">Run analysis now ⟳</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- analysis meta strip -->
+    <div class="card c-12 meta-strip">
+      <div class="row">
+        <span class="lbl">Corpus</span>
+        <span class="val">1,284 builds · 312 loops · 90 days · 4.1M log lines · 62 HIL sessions</span>
+        <span class="sep">·</span>
+        <span class="lbl">Analyzed by</span>
+        <span class="pill model">claude-fable-5</span>
+        <span class="sep">·</span>
+        <span class="lbl">Last run</span>
+        <span class="val">2h ago · 41 min · $2.86</span>
+        <span class="sep">·</span>
+        <span class="lbl">Confidence</span>
+        <span class="tag">high — 90d of stable telemetry</span>
+      </div>
+    </div>
+
+    <!-- LEFT column -->
+    <div class="c-8 col" style="gap:16px">
+
+      <!-- 1 · duration chart -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">BUILD DURATION · 90 DAYS, WITH DETECTED CHANGE-POINTS</span>
+          <span class="spacer"></span>
+          <span class="tag">median · per build</span>
+        </div>
+        <div class="chart-wrap">
+          <svg viewBox="0 0 640 220" role="img" aria-label="Median build duration over 90 days with three annotated change-points">
+            <!-- horizontal gridlines -->
+            <g stroke="var(--border)" stroke-opacity="0.6" stroke-width="1">
+              <line x1="40" y1="71"  x2="632" y2="71"/>
+              <line x1="40" y1="112" x2="632" y2="112"/>
+              <line x1="40" y1="154" x2="632" y2="154"/>
+              <line x1="40" y1="195" x2="632" y2="195"/>
+            </g>
+            <!-- y labels -->
+            <g font-family="var(--f-mono)" font-size="10" fill="var(--faint)" text-anchor="end">
+              <text x="34" y="74">6m</text>
+              <text x="34" y="115">5m</text>
+              <text x="34" y="157">4m</text>
+              <text x="34" y="198">3m</text>
+            </g>
+            <!-- change-point verticals -->
+            <g stroke="var(--border-strong)" stroke-width="1" stroke-dasharray="3 4">
+              <line x1="100" y1="44" x2="100" y2="195"/>
+              <line x1="325" y1="44" x2="325" y2="195"/>
+              <line x1="570" y1="44" x2="570" y2="195"/>
+            </g>
+            <!-- area fill -->
+            <polygon fill="var(--accent)" fill-opacity="0.12" points="
+              48,147 62,144 76,146 90,144 100,145
+              102,83 130,80 160,86 190,82 220,85 250,80 280,84 305,81 325,83
+              327,174 350,171 375,175 400,172 425,176 450,172 475,175 500,171 525,174 550,172 570,173
+              572,146 590,143 610,146 628,145
+              628,195 48,195"/>
+            <!-- duration line -->
+            <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" points="
+              48,147 62,144 76,146 90,144 100,145
+              102,83 130,80 160,86 190,82 220,85 250,80 280,84 305,81 325,83
+              327,174 350,171 375,175 400,172 425,176 450,172 475,175 500,171 525,174 550,172 570,173
+              572,146 590,143 610,146 628,145"/>
+            <!-- endpoint marker + direct label -->
+            <circle cx="628" cy="145" r="3.5" fill="var(--accent)"/>
+            <text x="626" y="135" font-family="var(--f-mono)" font-size="11" fill="var(--ink)" text-anchor="end">4m 12s</text>
+            <!-- change-point chips -->
+            <g font-family="var(--f-mono)" font-size="9.5">
+              <rect x="104" y="6" width="225" height="16" rx="4" fill="rgba(245,184,61,0.08)" stroke="rgba(245,184,61,0.35)"/>
+              <text x="112" y="17.5" fill="var(--warn)">May 18 · Zephyr 4.1 migration +1m 30s</text>
+              <rect x="426" y="6" width="208" height="16" rx="4" fill="rgba(245,184,61,0.08)" stroke="rgba(245,184,61,0.35)"/>
+              <text x="434" y="17.5" fill="var(--warn)">Jul 30 · twister suite growth +40s</text>
+              <rect x="329" y="25" width="192" height="16" rx="4" fill="rgba(62,220,151,0.08)" stroke="rgba(62,220,151,0.35)"/>
+              <text x="337" y="36.5" fill="var(--ok)">Jun 22 · ccache enabled −2m 10s</text>
+            </g>
+            <!-- x labels -->
+            <g font-family="var(--f-mono)" font-size="10" fill="var(--faint)">
+              <text x="48" y="214">May 10</text>
+              <text x="241" y="214" text-anchor="middle">Jun 9</text>
+              <text x="435" y="214" text-anchor="middle">Jul 9</text>
+              <text x="628" y="214" text-anchor="end">Aug 8</text>
+            </g>
+          </svg>
+        </div>
+        <div class="caption">The analyzer attributes every shift in the curve to a merge, a config change, or infrastructure drift.</div>
+      </div>
+
+      <!-- 2 · build-process changes -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SUGGESTED BUILD-PROCESS CHANGES</span>
+          <span class="spacer"></span>
+          <span class="tag">4 open</span>
+        </div>
+
+        <div class="sugg">
+          <div class="s-title">Split the test gate: native_sim every build, QEMU + HIL only before merge</div>
+          <div class="evidence"><span class="e-lbl">Evidence</span>qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates</div>
+          <div class="s-foot">
+            <span class="pill ok">−3m 40s per loop</span>
+            <span class="conf">conf 91%</span>
+            <span class="btns">
+              <button class="btn primary sm">Apply</button>
+              <button class="btn ghost sm">Details</button>
+              <button class="btn ghost sm">Dismiss</button>
+            </span>
+          </div>
+        </div>
+
+        <div class="sugg">
+          <div class="s-title">Re-warm ccache right after deps-refresh merges</div>
+          <div class="evidence"><span class="e-lbl">Evidence</span>cache hit rate drops 78%→31% for ~6h after every deps-refresh merge (14 occurrences)</div>
+          <div class="s-foot">
+            <span class="pill ok">−1m 50s on ~20% of builds</span>
+            <span class="conf">conf 88%</span>
+            <span class="btns">
+              <button class="btn primary sm">Apply</button>
+              <button class="btn ghost sm">Details</button>
+              <button class="btn ghost sm">Dismiss</button>
+            </span>
+          </div>
+        </div>
+
+        <div class="sugg">
+          <div class="s-title">Move forge-02 to pool-a during 14:00–16:00 UTC</div>
+          <div class="evidence"><span class="e-lbl">Evidence</span>pool-a queue exceeds 5 min in that window on 11 of last 14 weekdays; pool-b sits idle 82% of it</div>
+          <div class="s-foot">
+            <span class="pill ok">−4m queue p95</span>
+            <span class="conf">conf 84%</span>
+            <span class="btns">
+              <button class="btn primary sm">Apply</button>
+              <button class="btn ghost sm">Details</button>
+              <button class="btn ghost sm">Dismiss</button>
+            </span>
+          </div>
+        </div>
+
+        <div class="sugg">
+          <div class="s-title">Link zephyr.elf incrementally (partial link cache)</div>
+          <div class="evidence"><span class="e-lbl">Evidence</span>link step grew from 18% to 42% of build time since v2.3 (LTO enabled)</div>
+          <div class="s-foot">
+            <span class="pill ok">−55s per build</span>
+            <span class="conf">conf 72%</span>
+            <span class="pill warn">needs a spike</span>
+            <span class="btns">
+              <button class="btn primary sm">Draft spike ticket</button>
+              <button class="btn ghost sm">Details</button>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 · workflow changes -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SUGGESTED WORKFLOW CHANGES</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="04-workflow-builder.html">Open workflow studio →</a>
+        </div>
+
+        <div class="sugg">
+          <div class="s-title">standard-fix: run self-review BEFORE the build stage</div>
+          <div class="evidence"><span class="e-lbl">Evidence</span>34% of failed builds in standard-fix loops contained defects the later self-review flagged anyway — reordering catches them pre-build</div>
+          <div class="s-foot">
+            <span class="pill ok">−2m 05s per failed attempt</span>
+            <span class="conf">conf 89%</span>
+            <span class="btns">
+              <a class="btn primary sm" href="04-workflow-builder.html">Draft as v16 →</a>
+              <button class="btn ghost sm">Simulate on last 50 loops</button>
+            </span>
+          </div>
+        </div>
+
+        <div class="sugg">
+          <div class="s-title">Loops touching drivers/can/: add a 'flake-retry under load profile' test stage</div>
+          <div class="evidence"><span class="e-lbl">Evidence</span>merges touching drivers/can are 3.1× more likely to flake the telemetry suite within 7 days (21 cases)</div>
+          <div class="s-foot">
+            <span class="pill ok">−1 intervention/wk projected</span>
+            <span class="conf">conf 77%</span>
+            <span class="btns">
+              <a class="btn primary sm" href="04-workflow-builder.html">Draft as v16 →</a>
+              <button class="btn ghost sm">Dismiss</button>
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT column -->
+    <div class="c-4 col" style="gap:16px">
+
+      <!-- drafted tickets -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">DRAFTED TICKETS — FROM PATTERNS, NOT PEOPLE</span>
+        </div>
+
+        <div class="ticket">
+          <input type="checkbox" checked aria-label="Include BA-1">
+          <div style="flex:1">
+            <div class="row" style="gap:8px;align-items:flex-start">
+              <span class="t-id">BA-1</span>
+              <span class="t-title" style="flex:1">Refactor tests/ota fixtures — shared setup times out under load</span>
+              <span class="effort m">M</span>
+            </div>
+            <div class="t-evidence">7.2% of OTA suite failures share one fixture timeout signature (31 builds)</div>
+          </div>
+        </div>
+
+        <div class="ticket">
+          <input type="checkbox" checked aria-label="Include BA-2">
+          <div style="flex:1">
+            <div class="row" style="gap:8px;align-items:flex-start">
+              <span class="t-id">BA-2</span>
+              <span class="t-title" style="flex:1">Bump ccache 4.9 → 4.11 — upstream fixes the hash misses in our logs</span>
+              <span class="effort xs">XS</span>
+            </div>
+            <div class="t-evidence">cache-miss signature matches ccache issue #1412 in 118 builds</div>
+          </div>
+        </div>
+
+        <div class="ticket">
+          <input type="checkbox" checked aria-label="Include BA-3">
+          <div style="flex:1">
+            <div class="row" style="gap:8px;align-items:flex-start">
+              <span class="t-id">BA-3</span>
+              <span class="t-title" style="flex:1">Add thermal chamber to rig helios-rig-02</span>
+              <span class="effort l">L</span>
+            </div>
+            <div class="t-evidence">3 verification waivers in 60 days cite missing thermal coverage</div>
+          </div>
+        </div>
+
+        <div class="ticket" style="border-bottom:none">
+          <input type="checkbox" checked aria-label="Include BA-4">
+          <div style="flex:1">
+            <div class="row" style="gap:8px;align-items:flex-start">
+              <span class="t-id">BA-4</span>
+              <span class="t-title" style="flex:1">Delete 12 dead Kconfig options — never set in any build since May</span>
+              <span class="effort s">S</span>
+            </div>
+            <div class="t-evidence">0 of 1,284 builds toggled them; 4 caused config-drift warnings</div>
+          </div>
+        </div>
+
+        <hr class="divider">
+        <div class="col" style="gap:10px">
+          <span class="small muted">est. total ~1.5 days of loop time</span>
+          <div class="row" style="flex-wrap:wrap">
+            <a class="btn primary sm" href="03-issues.html">Push 4 tickets to backlog →</a>
+            <button class="btn ghost sm">Edit drafts</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- predicted vs measured -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">PREDICTED VS MEASURED</span>
+          <span class="spacer"></span>
+          <span class="tag">applied earlier</span>
+        </div>
+
+        <div class="pv">
+          <div class="pv-name">Test-suite split <span class="muted" style="font-weight:400">(applied Jul 2)</span></div>
+          <div class="pv-line"><span class="k">predicted</span><span>−3m 40s</span></div>
+          <div class="pv-line"><span class="k">measured</span><span style="color:var(--ok)">−3m 55s ✓</span></div>
+        </div>
+
+        <div class="pv">
+          <div class="pv-name">ccache warm-up <span class="muted" style="font-weight:400">(applied Jul 9)</span></div>
+          <div class="pv-line"><span class="k">predicted</span><span>−1m 50s</span></div>
+          <div class="pv-line"><span class="k">measured</span><span style="color:var(--warn)">−1m 12s</span></div>
+          <div class="pv-note">under-delivered — analyzer revised its cache model</div>
+        </div>
+
+        <div class="caption">Every applied suggestion is re-measured for 14 days. The analyzer's model retrains on its own misses.</div>
+      </div>
+
+      <!-- how it works -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">HOW IT WORKS</span>
+        </div>
+        <div class="hiw-step">
+          <div class="h-lbl"><span class="n">01</span>INGEST</div>
+          <div class="h-desc">build logs, test results, loop transcripts, rig telemetry</div>
+        </div>
+        <div class="hiw-step">
+          <div class="h-lbl"><span class="n">02</span>CORRELATE</div>
+          <div class="h-desc">change-points ↔ merges, configs, infra events</div>
+        </div>
+        <div class="hiw-step">
+          <div class="h-lbl"><span class="n">03</span>SYNTHESIZE</div>
+          <div class="h-desc">process changes, workflow drafts, tickets — with evidence attached</div>
+        </div>
+        <hr class="divider">
+        <div class="small muted">Runs on your build farm's data. Nothing leaves the tenant.</div>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 18 — BUILD ANALYZER · static concept, no functionality</span>
+  <span class="links">
+    <a href="17-settings.html">← Prev: Settings</a>
+    <a href="19-chatops.html">Next: Chat Ops →</a>
+  </span>
+</footer>
+
+</body>
+</html>

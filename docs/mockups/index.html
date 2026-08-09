@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — UI Mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  .cover { max-width: 1480px; margin: 0 auto; padding: 64px 24px 24px; display: flex; align-items: center; gap: 48px; flex-wrap: wrap; }
+  .cover img { width: 300px; mix-blend-mode: screen; filter: drop-shadow(0 0 40px rgba(61,214,245,.3)); }
+  .cover h1 { font-size: 40px; line-height: 1.15; max-width: 22ch; }
+  .cover .lede { color: var(--mut); max-width: 58ch; margin-top: 12px; font-size: 15px; }
+  .screen-card { display: flex; flex-direction: column; gap: 8px; transition: border-color .15s ease; }
+  .screen-card:hover { border-color: rgba(61,214,245,.5); }
+  .screen-card .idx { font-family: var(--f-mono); font-size: 11px; color: var(--accent); letter-spacing: .16em; }
+  .screen-card h3 { font-family: var(--f-disp); font-size: 16px; font-weight: 600; }
+  .screen-card p { color: var(--mut); font-size: 13px; }
+  .screen-card .go { margin-top: auto; padding-top: 8px; font-size: 12.5px; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <img src="assets/logo-lockup.png" alt="Ouroboros — Infinity in Autonomy">
+  <div>
+    <div class="eyebrow">UI Mockup Set · v0.1 · August 2026</div>
+    <h1>The backlog feeds the loop. The loop feeds the repo.</h1>
+    <p class="lede">Ouroboros points autonomous coding loops at your GitHub backlog: it sizes each issue,
+    routes it through a user-designed workflow, picks the right LLM for every stage, builds on your own
+    build farm, and merges the result — with as little or as much human ceremony as you want.
+    These twenty-one static screens sketch how that feels to operate.</p>
+  </div>
+</div>
+
+<main class="page" style="padding-top:20px">
+  <div class="grid">
+    <a class="card c-4 screen-card" href="01-login.html">
+      <span class="idx">01 / AUTH</span><h3>Sign in &amp; tenancy</h3>
+      <p>GitHub OAuth, enterprise SSO domains, and choosing the orgs and repos the loop may touch.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="02-dashboard.html">
+      <span class="idx">02 / DASHBOARD</span><h3>Mission control</h3>
+      <p>Live loops, queue depth, merge rate, spend — the whole system's pulse on one screen.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="03-issues.html">
+      <span class="idx">03 / ISSUES</span><h3>Issue intake &amp; sizing</h3>
+      <p>The GitHub backlog with AI effort estimates, suggested workflows, and one-click queueing.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="04-workflow-builder.html">
+      <span class="idx">04 / WORKFLOWS</span><h3>Visual workflow builder</h3>
+      <p>Node canvas for designing what happens when a ticket is pulled — stages, branches, skills, gates.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="05-workflow-code.html">
+      <span class="idx">05 / WORKFLOWS</span><h3>Workflow as code</h3>
+      <p>The same loop in a Monaco-style editor — a typed DSL for people who'd rather write it.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="06-model-routing.html">
+      <span class="idx">06 / MODELS</span><h3>Model routing</h3>
+      <p>Which LLM handles which kind of work: per-task routing, fallbacks, escalation rules, spend.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="07-providers.html">
+      <span class="idx">07 / MODELS</span><h3>Providers &amp; keys</h3>
+      <p>Control panel for Anthropic, Cursor, GitHub Copilot, OpenAI-compatible and Ollama endpoints.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="08-build-farm.html">
+      <span class="idx">08 / BUILD FARM</span><h3>Build farm</h3>
+      <p>Remote runners the server can command: pools, live jobs, logs, and one-line runner enrollment.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="09-planning.html">
+      <span class="idx">09 / PLANNING</span><h3>Roadmaps &amp; ticket generation</h3>
+      <p>Describe the work; Ouroboros drafts the tickets for GitHub, Jira, or Linear and plots the roadmap.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="10-run-detail.html">
+      <span class="idx">10 / RUN</span><h3>Run console</h3>
+      <p>One loop up close: stage timeline, agent transcript, diffs, spend — and the take-over controls.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="11-test-results.html">
+      <span class="idx">11 / RUN</span><h3>Test results</h3>
+      <p>Every build's results — including physical HIL bench tests — with failure triage, correction rounds, and re-runs.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="12-pr-verification.html">
+      <span class="idx">12 / RUN</span><h3>PR verification</h3>
+      <p>Gates plus an evidence matrix proving the PR does what the ticket says, through the revise-and-republish cycle to merge.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="13-onboarding.html">
+      <span class="idx">13 / START</span><h3>Get started</h3>
+      <p>First loop in ~4 minutes: auto-detected repo, template workflows, safe dry-run defaults, managed trial keys.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="14-knowledge.html">
+      <span class="idx">14 / KNOWLEDGE</span><h3>Knowledge</h3>
+      <p>Skills, playbooks, and facts the loop learns from runs — proposed by the agent, confirmed by you, expiring with the code.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="15-insights.html">
+      <span class="idx">15 / INSIGHTS</span><h3>Insights</h3>
+      <p>Is autonomy paying off? Merge rate, cost per PR, cycle by stage, model scoreboard, flaky-test intel, DORA.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="16-inbox.html">
+      <span class="idx">16 / INBOX</span><h3>Needs-you inbox</h3>
+      <p>Every decision the loops are waiting on, phrased as a 30-second question — answer here, from Slack, or your phone.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="17-settings.html">
+      <span class="idx">17 / ADMIN</span><h3>Workspace settings</h3>
+      <p>Members and roles, versioned autonomy policies, audit log with SIEM streaming, integrations, danger zone.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="18-build-analyzer.html">
+      <span class="idx">18 / ANALYZER</span><h3>Build Analyzer</h3>
+      <p>AI that mines your entire build history and drafts new build processes, workflow changes, and tickets — with evidence and measured outcomes.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="19-chatops.html">
+      <span class="idx">19 / CHAT OPS</span><h3>Chat Ops</h3>
+      <p>Loops report to Slack or Teams, blocked builds ask their question in-channel, and a command set + AI presence controls everything conversationally.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="20-workflow-copilot.html">
+      <span class="idx">20 / WORKFLOWS</span><h3>Workflow Copilot &amp; dry run</h3>
+      <p>Build workflows by conversation, then dry-run them against a real issue — zero side effects, with AI improvement suggestions from what the run reveals.</p>
+      <span class="go">Open screen →</span>
+    </a>
+    <a class="card c-4 screen-card" href="21-model-registry.html">
+      <span class="idx">21 / MODELS</span><h3>Model registry</h3>
+      <p>The BYOK core: uniquely named aliases bind a provider key to a model; routes and workflows only ever reference the alias.</p>
+      <span class="go">Open screen →</span>
+    </a>
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP SET · static concepts, no functionality · fictional demo data throughout</span>
+  <span class="links"><a href="01-login.html">Start the tour →</a></span>
+</footer>
+
+</body>
+</html>

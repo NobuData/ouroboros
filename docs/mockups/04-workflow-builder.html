@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Workflow Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+/* ---------- 04 workflow builder ---------- */
+
+.studio {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+/* left rail — workflow list */
+.wf-list { display: flex; flex-direction: column; gap: 8px; }
+.wf-item {
+  display: block; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--border); border-radius: var(--r-md);
+}
+.wf-item:hover { border-color: var(--border-strong); }
+.wf-item.active {
+  border-color: rgba(61, 214, 245, 0.4); border-left-color: var(--accent);
+  background: linear-gradient(90deg, var(--glow-soft), var(--surface) 55%);
+}
+.wf-name {
+  font-family: var(--f-disp); font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+}
+.wf-item.active .wf-name { color: var(--accent); }
+.wf-cap { font-family: var(--f-mono); font-size: 10.5px; color: var(--faint); margin-top: 2px; white-space: nowrap; }
+.wf-item.new {
+  border-style: dashed; border-left-width: 1px; background: transparent;
+  color: var(--mut); text-align: center; padding: 12px;
+  font-size: 12.5px; font-weight: 600;
+}
+.wf-item.new:hover { color: var(--accent); border-color: var(--accent-deep); }
+
+/* center — canvas */
+.canvas-card { padding: 0; overflow: hidden; }
+.canvas-scroll { overflow: auto; min-height: 640px; max-height: 76vh; }
+.stage {
+  position: relative; width: 830px; height: 800px;
+  background:
+    radial-gradient(var(--border) 1px, transparent 1px) 0 0 / 18px 18px,
+    var(--inset);
+}
+
+.stage svg { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.edge { fill: none; stroke: var(--border-strong); stroke-width: 2; }
+.edge.active {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 5px var(--glow));
+}
+.edge.loop {
+  stroke: var(--accent-deep); stroke-dasharray: 7 6; opacity: 0.9;
+  filter: drop-shadow(0 0 4px var(--glow-soft));
+}
+.mkd { fill: var(--border-strong); }
+.mka { fill: var(--accent); }
+.mkl { fill: var(--accent-deep); }
+
+/* nodes */
+.node {
+  position: absolute; z-index: 2; width: 204px; height: 104px;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--border-strong); border-radius: var(--r-md);
+  padding: 10px 12px; box-shadow: 0 6px 18px -6px var(--bg0);
+}
+.node:hover { border-color: var(--faint); }
+.ntype {
+  font-family: var(--f-mono); font-size: 9.5px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--mut);
+}
+.ntype .glyph { margin-right: 5px; }
+.ntitle { font-size: 13px; font-weight: 600; margin-top: 1px; color: var(--ink); }
+.nchips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.nchip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--f-mono); font-size: 10.5px; color: var(--mut);
+  padding: 1px 7px; background: var(--inset);
+  border: 1px solid var(--border); border-radius: 4px; white-space: nowrap;
+}
+.nchip .dot { width: 6px; height: 6px; }
+
+.node.trigger { border-left-color: var(--accent); border-top: 2px solid var(--accent); }
+.node.trigger .ntype { color: var(--accent); }
+.node.llm  { border-left-color: var(--model); }
+.node.llm .ntype { color: var(--model); }
+.node.infra { border-left-color: var(--warn); }
+.node.infra .ntype { color: var(--warn); }
+.node.flow { border-left-color: var(--ink-dim); }
+.node.flow .ntype { color: var(--ink-dim); }
+.node.term { border-left-color: var(--ok); }
+.node.term .ntype { color: var(--ok); }
+
+.node.flow {
+  clip-path: polygon(14px 0, calc(100% - 14px) 0, 100% 14px, 100% calc(100% - 14px),
+                     calc(100% - 14px) 100%, 14px 100%, 0 calc(100% - 14px), 0 14px);
+}
+
+.node.sel {
+  border-color: var(--accent); border-left-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--glow-soft), 0 0 26px -4px var(--glow);
+}
+
+.node.mini {
+  width: 176px; height: 44px; border-radius: 999px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 0 14px;
+}
+.node.mini .ntitle { margin: 0; font-size: 12.5px; }
+
+/* edge labels */
+.elabel {
+  position: absolute; z-index: 3;
+  font-family: var(--f-mono); font-size: 10.5px; font-weight: 500;
+  padding: 1px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--bg0); border: 1px solid var(--border); color: var(--mut);
+}
+.elabel.acc  { color: var(--accent); border-color: rgba(61, 214, 245, 0.35); }
+.elabel.warn { color: var(--warn); border-color: rgba(245, 184, 61, 0.35); }
+.elabel.ok   { color: var(--ok); border-color: rgba(62, 220, 151, 0.35); }
+.elabel.err  { color: var(--err); border-color: rgba(255, 107, 107, 0.35); }
+
+/* canvas toolbar */
+.canvas-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface);
+}
+.zoom {
+  display: inline-flex; align-items: center;
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--raised); overflow: hidden;
+}
+.zoom button, .zoom span {
+  font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim);
+  background: none; border: none; padding: 4px 10px; cursor: pointer;
+}
+.zoom span { border-left: 1px solid var(--border); border-right: 1px solid var(--border); cursor: default; }
+.canvas-toolbar .hint { margin-left: auto; font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
+
+/* segmented control */
+.seg {
+  display: inline-flex; border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); background: var(--inset); overflow: hidden;
+}
+.seg a, .seg button {
+  font-family: var(--f-ui); font-size: 13px; font-weight: 600;
+  padding: 7px 14px; color: var(--mut); background: none; border: none; cursor: pointer;
+  white-space: nowrap;
+}
+.seg .on { background: var(--raised); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.seg.sm a, .seg.sm button { font-size: 12px; padding: 5px 11px; }
+
+/* inspector */
+.inspector { position: sticky; top: 72px; }
+.insp-type {
+  font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--model);
+}
+.insp-sec {
+  font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--faint); margin: 16px 0 8px;
+}
+.radio-row {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--r-md);
+  cursor: pointer;
+}
+.radio-row + .radio-row { margin-top: 8px; }
+.radio-row.checked { border-color: rgba(61, 214, 245, 0.4); background: var(--glow-soft); }
+.radio { width: 15px; height: 15px; border-radius: 50%; flex: none; margin-top: 2px;
+  border: 1.5px solid var(--border-strong); background: var(--inset); }
+.radio.on { border: 4.5px solid var(--accent); background: var(--bg0); }
+.num-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; }
+.insp-foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; }
+
+/* responsive: rail + inspector stack */
+@media (max-width: 1100px) {
+  .studio { grid-template-columns: 1fr; }
+  .wf-list { flex-direction: row; flex-wrap: wrap; }
+  .wf-item { flex: 1 1 160px; }
+  .inspector { position: static; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html" class="active">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Workflow Studio</div>
+      <h1>standard-fix</h1>
+      <p class="sub">Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 · used by 61% of runs.</p>
+    </div>
+    <span class="seg">
+      <button class="on">Visual</button>
+      <a href="05-workflow-code.html">Code</a>
+      <a href="20-workflow-copilot.html">Copilot</a>
+    </span>
+    <a class="btn ghost" href="13-onboarding.html">Browse templates</a>
+    <a class="btn ghost" href="20-workflow-copilot.html">Dry run with issue #485</a>
+    <button class="btn primary">Publish v15</button>
+  </div>
+
+  <div class="studio">
+
+    <!-- LEFT: workflow rail -->
+    <aside class="wf-list">
+      <a class="wf-item active" href="04-workflow-builder.html">
+        <div class="wf-name">standard-fix</div>
+        <div class="wf-cap">6 stages · auto-merge</div>
+      </a>
+      <a class="wf-item" href="04-workflow-builder.html">
+        <div class="wf-name">feature-loop</div>
+        <div class="wf-cap">7 stages · auto-merge</div>
+      </a>
+      <a class="wf-item" href="04-workflow-builder.html">
+        <div class="wf-name">deps-refresh</div>
+        <div class="wf-cap">5 stages · needs review</div>
+      </a>
+      <a class="wf-item" href="04-workflow-builder.html">
+        <div class="wf-name">docs-loop</div>
+        <div class="wf-cap">4 stages · auto-merge</div>
+      </a>
+      <a class="wf-item" href="04-workflow-builder.html">
+        <div class="row between"><span class="wf-name">hotfix-p0</span><span class="dot err"></span></div>
+        <div class="wf-cap">5 stages · paused</div>
+      </a>
+      <a class="wf-item new" href="04-workflow-builder.html">+ New workflow</a>
+    </aside>
+
+    <!-- CENTER: canvas -->
+    <section class="card inset canvas-card">
+      <div class="canvas-scroll">
+        <div class="stage">
+
+          <svg width="830" height="800" viewBox="0 0 830 800" aria-hidden="true">
+            <defs>
+              <marker id="m-d" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0.5 L7.5,4 L0,7.5 Z" class="mkd"/>
+              </marker>
+              <marker id="m-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0.5 L7.5,4 L0,7.5 Z" class="mka"/>
+              </marker>
+              <marker id="m-l" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0.5 L7.5,4 L0,7.5 Z" class="mkl"/>
+              </marker>
+            </defs>
+
+            <!-- executed / active path: trigger → analyze → decision → plan → implement -->
+            <path class="edge active" d="M228,92 C258,92 274,92 300,92" marker-end="url(#m-a)"/>
+            <path class="edge active" d="M510,92 C540,92 556,92 582,92" marker-end="url(#m-a)"/>
+            <path class="edge active" d="M690,144 C690,174 690,196 690,224" marker-end="url(#m-a)"/>
+            <path class="edge active" d="M690,334 C690,362 690,388 690,414" marker-end="url(#m-a)"/>
+
+            <!-- decision branch: > M ↘ split → back to queue -->
+            <path class="edge" d="M612,144 C612,190 408,178 408,224" marker-end="url(#m-d)"/>
+            <path class="edge" d="M306,282 C276,282 258,282 220,282" marker-end="url(#m-d)"/>
+
+            <!-- downstream path -->
+            <path class="edge" d="M588,472 C558,472 542,472 516,472" marker-end="url(#m-d)"/>
+            <path class="edge" d="M306,472 C276,472 260,472 234,472" marker-end="url(#m-d)"/>
+            <path class="edge" d="M126,524 C126,558 126,592 126,624" marker-end="url(#m-d)"/>
+            <path class="edge" d="M228,682 C258,682 274,682 300,682" marker-end="url(#m-d)"/>
+            <path class="edge" d="M510,682 C540,682 556,682 582,682" marker-end="url(#m-d)"/>
+
+            <!-- the ouroboros: gate fail loops back to implement -->
+            <path class="edge loop" d="M408,624 C440,556 640,600 686,532" marker-end="url(#m-l)"/>
+          </svg>
+
+          <!-- row 1: trigger → analyze → decision → plan -->
+          <div class="node trigger" style="left:24px;top:40px">
+            <div class="ntype"><span class="glyph">▸</span>Trigger</div>
+            <div class="ntitle">Issue queued</div>
+            <div class="nchips"><span class="nchip">effort ≤ M</span></div>
+          </div>
+
+          <div class="node llm" style="left:306px;top:40px">
+            <div class="ntype"><span class="glyph">◆</span>Analyze</div>
+            <div class="ntitle">Understand &amp; scope</div>
+            <div class="nchips"><span class="nchip">skill:repo-map</span><span class="nchip">claude-sonnet-5</span></div>
+          </div>
+
+          <div class="node flow" style="left:588px;top:40px">
+            <div class="ntype"><span class="glyph">◇</span>Decision</div>
+            <div class="ntitle">Effort re-check</div>
+            <div class="nchips"><span class="nchip">re-estimate after scope</span></div>
+          </div>
+
+          <div class="node llm" style="left:588px;top:230px">
+            <div class="ntype"><span class="glyph">◆</span>Plan</div>
+            <div class="ntitle">Write attack plan</div>
+            <div class="nchips"><span class="nchip">prompt template</span><span class="nchip">claude-fable-5</span></div>
+          </div>
+
+          <!-- branch: split & back to queue -->
+          <div class="node llm" style="left:306px;top:230px">
+            <div class="ntype"><span class="glyph">◆</span>Split</div>
+            <div class="ntitle">Split into subtasks</div>
+            <div class="nchips"><span class="nchip">creates linked issues</span></div>
+          </div>
+
+          <div class="node term mini" style="left:32px;top:260px">
+            <span class="dot ok"></span>
+            <div class="ntitle">Back to queue</div>
+          </div>
+
+          <!-- row 2: implement ← build ← test ← review (right to left) -->
+          <div class="node llm sel" style="left:588px;top:420px">
+            <div class="ntype"><span class="glyph">◆</span>Implement</div>
+            <div class="ntitle">Code the change</div>
+            <div class="nchips"><span class="nchip">skill:zephyr-conventions</span><span class="nchip">routed by task</span></div>
+          </div>
+
+          <div class="node infra" style="left:306px;top:420px">
+            <div class="ntype"><span class="glyph">▣</span>Build</div>
+            <div class="ntitle">Build farm · pool A</div>
+            <div class="nchips"><span class="nchip"><span class="dot warn"></span>runner pool-a</span></div>
+          </div>
+
+          <div class="node infra" style="left:24px;top:420px">
+            <div class="ntype"><span class="glyph">▣</span>Test</div>
+            <div class="ntitle">Run test suite</div>
+            <div class="nchips"><span class="nchip">twister –p native_sim</span></div>
+          </div>
+
+          <div class="node llm" style="left:24px;top:630px">
+            <div class="ntype"><span class="glyph">◆</span>Review</div>
+            <div class="ntitle">Self-review diff</div>
+            <div class="nchips"><span class="nchip">prompt template</span><span class="nchip">claude-fable-5</span></div>
+          </div>
+
+          <!-- row 3: gate → terminal -->
+          <div class="node flow" style="left:306px;top:630px">
+            <div class="ntype"><span class="glyph">◇</span>Gate</div>
+            <div class="ntitle">Checks green?</div>
+            <div class="nchips"><span class="nchip">required checks: 14</span></div>
+          </div>
+
+          <div class="node term" style="left:588px;top:630px">
+            <div class="ntype"><span class="glyph">●</span>Terminal</div>
+            <div class="ntitle">Open PR &amp; auto-merge</div>
+            <div class="nchips"><span class="nchip">squash · delete branch</span></div>
+          </div>
+
+          <!-- edge labels -->
+          <span class="elabel acc"  style="left:702px;top:170px">≤ M ↓</span>
+          <span class="elabel warn" style="left:448px;top:158px">&gt; M ↘</span>
+          <span class="elabel ok"   style="left:518px;top:654px">pass →</span>
+          <span class="elabel err"  style="left:500px;top:564px">fail ↺</span>
+
+        </div>
+      </div>
+
+      <div class="canvas-toolbar">
+        <span class="zoom">
+          <button aria-label="Zoom out">−</button>
+          <span>100%</span>
+          <button aria-label="Zoom in">+</button>
+        </span>
+        <button class="btn ghost sm">Auto-layout</button>
+        <button class="btn sm">Add stage ▾</button>
+        <span class="hint">⌥ drag to pan · double-click edge to add stage</span>
+      </div>
+    </section>
+
+    <!-- RIGHT: inspector -->
+    <aside class="card inspector">
+      <div class="insp-type">◆ Implement</div>
+      <div class="card-title" style="margin:2px 0 4px;font-size:15px">Code the change</div>
+      <p class="small muted">Writes the change described by the attack plan onto a fresh branch.</p>
+
+      <div class="insp-sec">Mode</div>
+      <span class="seg sm">
+        <button>Direct prompt</button>
+        <button class="on">Skill</button>
+      </span>
+
+      <div class="field" style="margin-top:12px">
+        <label>Skill</label>
+        <select class="input mono"><option>zephyr-conventions ▾</option></select>
+        <span class="hint">Loaded into context before the stage prompt.</span>
+      </div>
+
+      <div class="insp-sec">Prompt template</div>
+      <div class="code" style="font-size:11.5px;padding:11px 13px">Implement the approved plan.
+
+Issue: <span class="c-fn">{{issue.title}}</span>
+Plan:  <span class="c-fn">{{plan}}</span>
+Rules: touch only files named
+in the plan; follow the skill.</div>
+
+      <div class="insp-sec">Model routing</div>
+      <div class="radio-row checked">
+        <span class="radio on"></span>
+        <span style="min-width:0">
+          <span class="small" style="font-weight:600">Inherit route for task "implement"</span>
+          <span class="small faint"> (recommended)</span>
+          <div style="margin-top:5px"><span class="pill model">claude-fable-5</span></div>
+        </span>
+      </div>
+      <div class="radio-row">
+        <span class="radio"></span>
+        <span class="small" style="font-weight:600;color:var(--ink-dim)">Pin model ▾</span>
+      </div>
+
+      <div class="insp-sec">Limits</div>
+      <div class="num-row">
+        <div class="field">
+          <label>Max retries</label>
+          <input class="input mono" value="2">
+        </div>
+        <div class="field">
+          <label>Token budget</label>
+          <input class="input mono" value="400k">
+        </div>
+      </div>
+
+      <div class="insp-sec">Permissions</div>
+      <div class="toggle-row">
+        <span class="small">May push fixup commits</span>
+        <button class="switch on" aria-label="May push fixup commits: on"></button>
+      </div>
+      <div class="toggle-row">
+        <span class="small">May touch CI config</span>
+        <button class="switch" aria-label="May touch CI config: off"></button>
+      </div>
+
+      <div class="insp-foot">
+        <button class="btn ghost">Delete stage</button>
+        <button class="btn primary">Apply</button>
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 04 — VISUAL WORKFLOW BUILDER · static concept, no functionality</span>
+  <span class="links">
+    <a href="03-issues.html">← Prev: Issues</a>
+    <a href="05-workflow-code.html">Next: Workflow as code →</a>
+  </span>
+</footer>
+
+</body>
+</html>

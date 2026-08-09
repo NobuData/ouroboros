@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Issue intake &amp; sizing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* page-specific: issue intake & sizing */
+  .ckbox {
+    width: 16px; height: 16px; border-radius: 4px; flex: none;
+    border: 1px solid var(--border-strong); background: var(--inset);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; line-height: 1; color: transparent; cursor: pointer;
+  }
+  .ckbox.on {
+    background: linear-gradient(180deg, var(--accent), var(--accent-deep));
+    border-color: var(--accent-deep); color: var(--accent-ink); font-weight: 700;
+  }
+  tr.sel td { background: var(--glow-soft); }
+  tr.sel td:first-child { border-left: 2px solid var(--accent); }
+  .tbl tbody tr.sel:hover td { background: rgba(61, 214, 245, 0.16); }
+  .issue-cell .title { font-weight: 500; color: var(--ink); }
+  .issue-cell .tags { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+  .conf { font-family: var(--f-mono); font-size: 11px; color: var(--faint); margin-left: 7px; }
+  .filter-bar { padding: 12px 16px; margin-bottom: 16px; }
+  .filter-bar .row { flex-wrap: wrap; row-gap: 10px; }
+  .filter-bar select.input { width: auto; padding: 7px 10px; font-size: 12.5px; }
+  .filter-bar .input.search { flex: 1; min-width: 180px; padding: 7px 12px; }
+  .chip-set { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag.chip-on { color: var(--accent); border-color: rgba(61, 214, 245, 0.35); background: var(--glow-soft); }
+  .sel-bar {
+    border-color: rgba(61, 214, 245, 0.4); padding: 12px 16px;
+    box-shadow: 0 0 22px -6px var(--glow), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+  .panel-body-excerpt {
+    border-left: 2px solid var(--border-strong); padding: 2px 0 2px 12px;
+    color: var(--mut); font-size: 12.5px; font-style: italic; line-height: 1.6;
+  }
+  .breakdown-row {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12.5px;
+  }
+  .breakdown-row:last-child { border-bottom: none; }
+  .breakdown-row .k { color: var(--mut); flex: none; }
+  .breakdown-row .v { font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim); text-align: right; }
+  .file-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .file-list span {
+    font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim);
+    background: var(--inset); border: 1px solid var(--border);
+    border-radius: var(--r-sm); padding: 4px 8px;
+  }
+  .trace {
+    background: var(--inset); border: 1px solid var(--border); border-radius: var(--r-md);
+    padding: 10px 12px; margin-top: 12px;
+  }
+  .trace .head-line {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .trace .line { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); margin-top: 6px; }
+  .trace .line:first-of-type { margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html" class="active">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Issue Intake</div>
+      <h1>42 open issues. 38 already sized.</h1>
+      <p class="sub">Ouroboros watches the GitHub backlog and continuously estimates effort, risk, and routing for every open issue — before you ever ask it to work.</p>
+    </div>
+    <button class="btn ghost">Re-estimate all</button>
+    <button class="btn primary">Queue 3 selected&nbsp; ⟳</button>
+  </div>
+
+  <!-- filter bar -->
+  <div class="card filter-bar">
+    <div class="row">
+      <select class="input" aria-label="Repository">
+        <option>helios-firmware ▾</option>
+      </select>
+      <span class="chip-set">
+        <span class="tag chip-on">bug ✓</span>
+        <span class="tag">enhancement</span>
+        <span class="tag">tech-debt</span>
+        <span class="tag">good-first-issue</span>
+      </span>
+      <select class="input" aria-label="State">
+        <option>Open ▾</option>
+      </select>
+      <select class="input" aria-label="Sort">
+        <option>Sort: estimated effort ▾</option>
+      </select>
+      <input class="input search" type="text" placeholder="Filter by title, #number, or label…">
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- main table + selection bar -->
+    <div class="c-8 col" style="gap:16px">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">BACKLOG · AS OUROBOROS SEES IT</span>
+          <span class="spacer"></span>
+          <span class="tag">synced 40s ago</span>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th style="width:34px"></th>
+              <th>Issue</th>
+              <th>Effort</th>
+              <th>Suggested workflow</th>
+              <th>Routed model</th>
+              <th>Status</th>
+            </tr></thead>
+            <tbody>
+              <tr class="sel">
+                <td><span class="ckbox on">✓</span></td>
+                <td class="issue-cell">
+                  <span class="mono">#485</span>&nbsp; <span class="title">Watchdog reset on I²C bus lockup</span>
+                  <div class="tags"><span class="tag">bug</span><span class="tag">i2c</span><span class="tag">watchdog</span></div>
+                </td>
+                <td><span class="effort m">M</span><span class="conf">92%</span></td>
+                <td><span class="tag">standard-fix</span></td>
+                <td><span class="pill model">claude-fable-5</span></td>
+                <td><span class="pill">sized</span></td>
+              </tr>
+              <tr class="sel">
+                <td><span class="ckbox on">✓</span></td>
+                <td class="issue-cell">
+                  <span class="mono">#484</span>&nbsp; <span class="title">Motor PID integral windup on wheel stall</span>
+                  <div class="tags"><span class="tag">bug</span><span class="tag">motor-control</span></div>
+                </td>
+                <td><span class="effort m">M</span><span class="conf">88%</span></td>
+                <td><span class="tag">standard-fix</span></td>
+                <td><span class="pill model">cursor/composer-2</span></td>
+                <td><span class="pill">sized</span></td>
+              </tr>
+              <tr class="sel">
+                <td><span class="ckbox on">✓</span></td>
+                <td class="issue-cell">
+                  <span class="mono">#491</span>&nbsp; <span class="title">Add CRC32 to config persistence layer</span>
+                  <div class="tags"><span class="tag">bug</span><span class="tag">tech-debt</span></div>
+                </td>
+                <td><span class="effort s">S</span><span class="conf">95%</span></td>
+                <td><span class="tag">standard-fix</span></td>
+                <td><span class="pill model">copilot/gpt-5-codex</span></td>
+                <td><span class="pill">sized</span></td>
+              </tr>
+              <tr>
+                <td><span class="ckbox"></span></td>
+                <td class="issue-cell">
+                  <span class="mono">#486</span>&nbsp; <span class="title">Expose battery health over BLE GATT service</span>
+                  <div class="tags"><span class="tag">enhancement</span><span class="tag">ble</span></div>
+                </td>
+                <td><span class="effort l">L</span><span class="conf">84%</span></td>
+                <td><span class="tag">feature-loop</span></td>
+                <td><span class="pill model">claude-sonnet-5</span></td>
+                <td><span class="pill run">queued</span></td>
+              </tr>
+              <tr>
+                <td><span class="ckbox"></span></td>
+                <td class="issue-cell">
+                  <span class="mono">#489</span>&nbsp; <span class="title">CAN arbitration-lost storm under full telemetry load</span>
+                  <div class="tags"><span class="tag">bug</span><span class="tag">can-bus</span></div>
+                </td>
+                <td><span class="effort m">M</span><span class="conf">78%</span></td>
+                <td><span class="tag">standard-fix</span></td>
+                <td><span class="pill model">claude-sonnet-5</span></td>
+                <td><span class="pill run">queued</span></td>
+              </tr>
+              <tr>
+                <td><span class="ckbox"></span></td>
+                <td class="issue-cell">
+                  <span class="mono">#487</span>&nbsp; <span class="title">Delta OTA updates for images larger than 1 MB</span>
+                  <div class="tags"><span class="tag">enhancement</span><span class="tag">ota</span></div>
+                </td>
+                <td><span class="effort l">L</span><span class="conf">71%</span></td>
+                <td><span class="tag">feature-loop</span></td>
+                <td><span class="pill model">claude-fable-5</span></td>
+                <td><span class="pill">sized</span></td>
+              </tr>
+              <tr>
+                <td><span class="ckbox"></span></td>
+                <td class="issue-cell">
+                  <span class="mono">#488</span>&nbsp; <span class="title">Typo sweep in operator manual + pairing guide</span>
+                  <div class="tags"><span class="tag">docs</span><span class="tag">good-first-issue</span></div>
+                </td>
+                <td><span class="effort xs">XS</span><span class="conf">98%</span></td>
+                <td><span class="tag">docs-loop</span></td>
+                <td><span class="pill model">ollama/qwen3-coder</span></td>
+                <td><span class="pill run">queued</span></td>
+              </tr>
+              <tr>
+                <td><span class="ckbox"></span></td>
+                <td class="issue-cell">
+                  <span class="mono">#483</span>&nbsp; <span class="title">Telemetry frame drops when BLE and CAN both saturated</span>
+                  <div class="tags"><span class="tag">bug</span><span class="tag">telemetry</span></div>
+                </td>
+                <td><span class="conf" style="margin-left:0">sizing…</span></td>
+                <td><span class="tag">standard-fix</span></td>
+                <td><span class="pill model">claude-sonnet-5</span></td>
+                <td><span class="pill warn">estimating…</span></td>
+              </tr>
+              <tr>
+                <td><span class="ckbox"></span></td>
+                <td class="issue-cell">
+                  <span class="mono">#490</span>&nbsp; <span class="title">Migrate build system to Zephyr RTOS 4.2</span>
+                  <div class="tags"><span class="tag">tech-debt</span><span class="tag">zephyr</span></div>
+                </td>
+                <td><span class="effort xl">XL</span><span class="conf">61%</span></td>
+                <td><span class="tag">deps-refresh</span></td>
+                <td><span class="pill model">claude-fable-5</span></td>
+                <td><span class="pill err">needs human</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- selection action bar -->
+      <div class="card sel-bar">
+        <div class="row between" style="flex-wrap:wrap;row-gap:10px">
+          <span><strong>3 issues selected</strong> <span class="muted">· est. 1h 10m combined autonomous work</span></span>
+          <span class="row">
+            <button class="btn ghost sm">Assign workflow ▾</button>
+            <button class="btn primary sm">Queue → standard-fix</button>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- side panel: issue detail -->
+    <div class="c-4">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">ISSUE DETAIL</span>
+          <span class="spacer"></span>
+          <span class="pill">sized</span>
+        </div>
+
+        <div class="mono muted small">#485 · opened 2d ago by field-support</div>
+        <div style="font-family:var(--f-disp);font-size:16px;font-weight:600;margin:4px 0 8px">Watchdog reset on I²C bus lockup</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <span class="tag">bug</span><span class="tag">i2c</span><span class="tag">watchdog</span><span class="tag">priority-high</span>
+        </div>
+
+        <p class="panel-body-excerpt">
+          “Unit 07 in the Fremont pilot rebooted 14 times overnight. Logs show the IMU
+          holding SDA low after a burst read; the bus never recovers and the hardware
+          watchdog fires ~2 s later. We need a bus-recovery sequence (9 clock pulses +
+          re-init) before the watchdog trips.”
+        </p>
+
+        <hr class="divider">
+
+        <div class="eyebrow" style="margin-bottom:8px">AI Work Breakdown</div>
+
+        <div class="small muted">Estimated files touched</div>
+        <div class="file-list">
+          <span>drivers/i2c_recovery.c</span>
+          <span>drivers/imu_bmi270.c</span>
+          <span>tests/unit/test_i2c_lockup.c</span>
+        </div>
+
+        <div style="margin-top:10px">
+          <div class="breakdown-row"><span class="k">Est. tokens</span><span class="v">~180k</span></div>
+          <div class="breakdown-row"><span class="k">Est. cycle time</span><span class="v">12–18 min</span></div>
+          <div class="breakdown-row"><span class="k">Effort</span><span class="v"><span class="effort m">M</span>&nbsp; conf 92%</span></div>
+        </div>
+
+        <div style="margin-top:10px">
+          <div class="row between small"><span class="muted">Regression risk</span><span class="mono" style="color:var(--ok)">low</span></div>
+          <div class="meter ok" style="margin-top:5px"><span style="width:22%"></span></div>
+          <div class="small faint" style="margin-top:5px">Isolated to the I²C driver path; full HIL coverage exists for bus recovery.</div>
+        </div>
+
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px">
+          <span class="tag">standard-fix</span>
+          <span class="pill model">claude-fable-5</span>
+        </div>
+
+        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:14px">
+          <button class="btn primary sm">Queue for loop</button>
+          <button class="btn ghost sm">Re-estimate</button>
+          <button class="btn ghost sm">Open on GitHub ↗</button>
+        </div>
+
+        <div class="trace">
+          <div class="head-line"><span>▾</span> Estimation trace</div>
+          <div class="line">sized by claude-sonnet-5 · 2m ago · 41k tokens</div>
+          <div class="line">signals: 3 similar closed issues · driver map · HIL test index</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 03 — ISSUE INTAKE &amp; SIZING · static concept, no functionality</span>
+  <span class="links">
+    <a href="02-dashboard.html">← Prev: Dashboard</a>
+    <a href="04-workflow-builder.html">Next: Workflow builder →</a>
+  </span>
+</footer>
+
+</body>
+</html>

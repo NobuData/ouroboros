@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Chat Ops</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- chat channel ---- */
+  .chat-card { padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .chan-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    background: var(--raised);
+  }
+  .chan-name { font-family: var(--f-disp); font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+  .seg {
+    display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+    overflow: hidden; font-family: var(--f-mono); font-size: 11px;
+  }
+  .seg button {
+    border: none; background: transparent; color: var(--faint);
+    padding: 3px 10px; cursor: pointer; font: inherit;
+  }
+  .seg button.on { background: var(--glow-soft); color: var(--accent); }
+  .chan-meta { margin-left: auto; font-size: 12px; color: var(--faint); white-space: nowrap; }
+
+  .stream { display: flex; flex-direction: column; gap: 16px; padding: 18px 16px; }
+  .msg { display: flex; gap: 11px; align-items: flex-start; }
+  .msg-av {
+    width: 26px; height: 26px; border-radius: var(--r-sm); flex: none; margin-top: 1px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+    border: 1px solid var(--border-strong); background: var(--inset);
+  }
+  .msg-av img { width: 22px; height: 22px; mix-blend-mode: screen; }
+  .msg-av.human {
+    font-family: var(--f-disp); font-size: 10.5px; font-weight: 600; color: #d7f4fd;
+    background: linear-gradient(135deg, var(--accent-deep), #0f4a63);
+  }
+  .msg-av.human.mc { background: linear-gradient(135deg, #6d5bb8, #3d3170); color: #e6defc; }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-meta { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; }
+  .msg-name { font-size: 13px; font-weight: 600; }
+  .msg-name.bot { color: var(--accent); }
+  .msg-name .app-tag {
+    font-family: var(--f-mono); font-size: 9.5px; font-weight: 400; color: var(--faint);
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-left: 5px;
+    vertical-align: 1px;
+  }
+  .msg-ts { font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
+
+  /* rich cards inside messages */
+  .msg-rich {
+    margin-top: 5px; border: 1px solid var(--border); border-left-width: 3px;
+    border-radius: var(--r-md); background: var(--inset); padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .msg-rich.ok { border-left-color: var(--ok); }
+  .msg-rich.warn {
+    border-left-color: var(--warn);
+    box-shadow: 0 0 16px -4px rgba(245, 184, 61, 0.25);
+  }
+  .msg-rich.accent { border-left-color: var(--accent); }
+  .msg-rich .headline { font-weight: 600; font-size: 13.5px; }
+  .msg-rich .headline.ok { color: var(--ok); }
+  .msg-rich .headline.warn { color: var(--warn); }
+  .msg-rich .headline.accent { color: var(--accent); }
+
+  .sys-line {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--f-mono); font-size: 11.5px; color: var(--ok);
+    padding: 0 4px;
+  }
+  .sys-line::before, .sys-line::after { content: ""; height: 1px; flex: 1; background: var(--border); }
+
+  .chat-mono {
+    font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-dim); line-height: 1.6;
+  }
+  .msg .cmd { color: var(--accent); }
+
+  .composer {
+    display: flex; gap: 10px; align-items: center;
+    padding: 12px 16px; border-top: 1px solid var(--border); background: var(--raised);
+  }
+
+  /* ---- right column ---- */
+  .cmd-list { display: flex; flex-direction: column; }
+  .cmd-row {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 6px 0; border-bottom: 1px solid var(--border);
+  }
+  .cmd-row:last-child { border-bottom: none; }
+  .cmd-row code {
+    font-family: var(--f-mono); font-size: 12px; color: var(--accent);
+    white-space: nowrap; flex: none;
+  }
+  .cmd-row code .arg { color: var(--mut); }
+  .cmd-row span { font-size: 12px; color: var(--mut); text-align: right; flex: 1; }
+
+  .route-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--border);
+  }
+  .route-row:last-of-type { border-bottom: none; }
+  .route-row .evt { font-size: 13px; flex: 1; min-width: 0; }
+  .route-row .chan { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim); white-space: nowrap; }
+
+  .caption { font-size: 12px; color: var(--faint); margin-top: 12px; }
+
+  /* AI presence mini-thread reuses .msg styles at smaller scale */
+  .mini-thread { display: flex; flex-direction: column; gap: 12px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Chat Ops</div>
+      <h1>The loop reports where your team already lives.</h1>
+      <p class="sub">Finished loops announce themselves. Blocked builds ask their question in-channel and wait. Every control in this app is also a command — or a sentence.</p>
+    </div>
+    <button class="btn ghost">+ Add channel ▾</button>
+    <button class="btn primary">Open #ouroboros-loops ↗</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ LEFT: channel simulation ============ -->
+    <div class="card chat-card c-7">
+      <div class="chan-head">
+        <span class="chan-name">#ouroboros-loops</span>
+        <span class="tag">Slack</span>
+        <span class="seg">
+          <button class="on">Slack</button>
+          <button>Teams</button>
+        </span>
+        <span class="chan-meta">· 24 members · Ouroboros app v2.4</span>
+      </div>
+
+      <div class="stream">
+
+        <!-- 1 · completion card -->
+        <div class="msg">
+          <span class="msg-av"><img src="assets/logo-mark.png" alt=""></span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name bot">Ouroboros<span class="app-tag">APP</span></span>
+              <span class="msg-ts">13:58</span>
+            </div>
+            <div class="msg-rich ok">
+              <span class="headline ok">✓ Loop #1846 finished — PR #512 merged</span>
+              <span>#474 Debounce e-stop interrupt handler</span>
+              <span class="chat-mono">14/14 checks · 11m cycle · $0.94 · claude-fable-5</span>
+              <div class="row" style="gap:8px">
+                <button class="btn ghost sm">View PR ↗</button>
+                <a class="btn ghost sm" href="10-run-detail.html">Run console</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 · blocking question -->
+        <div class="msg">
+          <span class="msg-av"><img src="assets/logo-mark.png" alt=""></span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name bot">Ouroboros<span class="app-tag">APP</span></span>
+              <span class="msg-ts">14:07</span>
+            </div>
+            <div class="msg-rich warn">
+              <span class="headline warn">⏸ Build paused — a question for you</span>
+              <span>Loop #1851 (#479 OTA rollback): wants to add one line to <span class="mono" style="font-size:12.5px">boot/rollback_flag.c</span> — a protected path. Allow?</span>
+              <div class="row" style="gap:8px;flex-wrap:wrap">
+                <button class="btn primary sm">Allow once</button>
+                <button class="btn ghost sm">Deny</button>
+                <a class="btn ghost sm" href="10-run-detail.html">View diff →</a>
+              </div>
+              <span class="chat-mono" style="color:var(--faint);font-size:11.5px">paused 4m · escalates to the Needs-you inbox in 26m</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 · system line -->
+        <div class="sys-line">✓ Maya Chen answered: allow once — loop #1851 resumed (14:11)</div>
+
+        <!-- 4 · Ken command -->
+        <div class="msg">
+          <span class="msg-av human">KS</span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name">Ken</span>
+              <span class="msg-ts">14:12</span>
+            </div>
+            <div class="chat-mono"><span class="cmd">/ouro status</span></div>
+          </div>
+        </div>
+
+        <!-- 5 · status reply -->
+        <div class="msg">
+          <span class="msg-av"><img src="assets/logo-mark.png" alt=""></span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name bot">Ouroboros<span class="app-tag">APP</span></span>
+              <span class="msg-ts">14:12</span>
+            </div>
+            <div class="chat-mono" style="background:var(--inset);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 11px;display:inline-block">3 loops live · 12 queued · farm 4/5 online · spend today $18.60 · needs-you: 3</div>
+          </div>
+        </div>
+
+        <!-- 6 · Ken dry-run -->
+        <div class="msg">
+          <span class="msg-av human">KS</span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name">Ken</span>
+              <span class="msg-ts">14:13</span>
+            </div>
+            <div class="chat-mono"><span class="cmd">/ouro dry-run #486 feature-loop</span></div>
+          </div>
+        </div>
+
+        <!-- 7 · dry-run reply -->
+        <div class="msg">
+          <span class="msg-av"><img src="assets/logo-mark.png" alt=""></span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name bot">Ouroboros<span class="app-tag">APP</span></span>
+              <span class="msg-ts">14:13</span>
+            </div>
+            <div class="col" style="gap:7px;align-items:flex-start">
+              <span>Dry run started — no writes, no PRs. Results in ~3 min → follow in Workflow Copilot</span>
+              <a class="btn ghost sm" href="20-workflow-copilot.html">Open Copilot →</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8 · build green -->
+        <div class="msg">
+          <span class="msg-av"><img src="assets/logo-mark.png" alt=""></span>
+          <div class="msg-body">
+            <div class="msg-meta">
+              <span class="msg-name bot">Ouroboros<span class="app-tag">APP</span></span>
+              <span class="msg-ts">14:31</span>
+            </div>
+            <div class="msg-rich accent">
+              <span class="headline accent">⟳ Loop #1847 build 3 green — 63/63 · publishing PR #514 rev 2</span>
+              <div class="row">
+                <a class="btn ghost sm" href="12-pr-verification.html">PR verification →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="composer">
+        <input class="input" placeholder="Message #ouroboros-loops — or /ouro …">
+        <button class="btn primary sm">Send</button>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT column ============ -->
+    <div class="c-5 col" style="gap:16px">
+
+      <!-- commands -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">COMMANDS</span>
+        </div>
+        <div class="cmd-list">
+          <div class="cmd-row"><code>/ouro status</code><span>everything live, in one line</span></div>
+          <div class="cmd-row"><code>/ouro queue #485 <span class="arg">[workflow]</span></code><span>send an issue into the loop</span></div>
+          <div class="cmd-row"><code>/ouro pause loop 1847 <span class="arg">/ resume</span></code><span>hold a loop mid-flight</span></div>
+          <div class="cmd-row"><code>/ouro abort loop 1847</code><span>stop and clean up</span></div>
+          <div class="cmd-row"><code>/ouro answer q-231 allow</code><span>answer a blocking question</span></div>
+          <div class="cmd-row"><code>/ouro dry-run #486 <span class="arg">[workflow]</span></code><span>rehearse with no writes</span></div>
+          <div class="cmd-row"><code>/ouro route implement claude-fable-5</code><span>repin a stage's model</span></div>
+          <div class="cmd-row"><code>/ouro explain pr 514</code><span>plain-language summary of a PR</span></div>
+          <div class="cmd-row"><code>/ouro estimate #490</code><span>effort, cost, and cycle guess</span></div>
+          <div class="cmd-row"><code>/ouro pause all</code><span>the big red button</span></div>
+        </div>
+        <p class="caption">Identical in Slack, Teams, and the in-app console. Tab-completion everywhere.</p>
+      </div>
+
+      <!-- routing -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">WHAT GETS PUBLISHED WHERE</span>
+        </div>
+        <div class="route-row">
+          <span class="evt">Loop finished (merged)</span>
+          <span class="chan">→ #ouroboros-loops</span>
+          <button class="switch on" aria-label="Loop finished notifications enabled"></button>
+        </div>
+        <div class="route-row">
+          <span class="evt">Blocking questions</span>
+          <span class="chan">→ #ouroboros-loops + DM on-call</span>
+          <button class="switch on" aria-label="Blocking question notifications enabled"></button>
+        </div>
+        <div class="route-row">
+          <span class="evt">Build failures</span>
+          <span class="chan">→ #helios-alerts</span>
+          <button class="switch on" aria-label="Build failure notifications enabled"></button>
+        </div>
+        <div class="route-row">
+          <span class="evt">Weekly insights report</span>
+          <span class="chan">→ #eng-leads</span>
+          <button class="switch on" aria-label="Weekly insights report enabled"></button>
+        </div>
+        <div class="route-row">
+          <span class="evt">Every stage transition <span class="small muted">— noisy, off by default</span></span>
+          <span class="chan">→ anywhere</span>
+          <button class="switch" aria-label="Stage transition notifications disabled"></button>
+        </div>
+        <div style="margin-top:12px">
+          <a class="btn ghost sm" href="17-settings.html">Manage in Settings →</a>
+        </div>
+      </div>
+
+      <!-- AI presence -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">AI PRESENCE</span>
+        </div>
+        <div class="mini-thread">
+          <div class="msg">
+            <span class="msg-av human">KS</span>
+            <div class="msg-body">
+              <div class="msg-meta">
+                <span class="msg-name">Ken</span>
+                <span class="msg-ts">14:36</span>
+              </div>
+              <div>why did #479 take 38 minutes?</div>
+            </div>
+          </div>
+          <div class="msg">
+            <span class="msg-av"><img src="assets/logo-mark.png" alt=""></span>
+            <div class="msg-body">
+              <div class="msg-meta">
+                <span class="msg-name bot">Ouroboros<span class="app-tag">APP</span></span>
+                <span class="msg-ts">14:36</span>
+              </div>
+              <div class="col" style="gap:8px;align-items:flex-start">
+                <span>11 of those minutes were queue time on pool-a (14:00–16:00 peak). The Build Analyzer already has a runner-rebalance suggestion that removes it — apply?</span>
+                <div class="row" style="gap:8px">
+                  <button class="btn primary sm">Apply</button>
+                  <a class="btn ghost sm" href="18-build-analyzer.html">Open Analyzer →</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="sys-line">✓ applied · policy-checked · audit-logged</div>
+        </div>
+        <p class="caption">Anything the UI can do, a sentence can do. Same permissions, same audit trail.</p>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 19 — CHAT OPS · static concept, no functionality</span>
+  <span class="links">
+    <a href="18-build-analyzer.html">← Prev: Build Analyzer</a>
+    <a href="20-workflow-copilot.html">Next: Workflow Copilot →</a>
+  </span>
+</footer>
+
+</body>
+</html>

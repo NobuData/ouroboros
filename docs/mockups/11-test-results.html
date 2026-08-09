@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Test Results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- build attempts timeline ---- */
+  .attempts { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; padding: 2px; }
+  .attempt {
+    flex: none; min-width: 210px; padding: 11px 14px;
+    background: var(--inset); border: 1px solid var(--border); border-radius: var(--r-md);
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .attempt .a-label {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .attempt .a-result { font-family: var(--f-disp); font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em; }
+  .attempt .a-meta { font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
+  .attempt.err  { border-color: rgba(255, 107, 107, 0.35); }
+  .attempt.err .a-result  { color: var(--err); }
+  .attempt.warn { border-color: rgba(245, 184, 61, 0.35); }
+  .attempt.warn .a-result { color: var(--warn); }
+  .attempt.live {
+    border-color: rgba(61, 214, 245, 0.45); background: var(--glow-soft);
+    box-shadow: 0 0 18px -6px var(--glow);
+  }
+  .attempt.live .a-result { color: var(--accent); }
+  .attempt.future { border-style: dashed; background: transparent; }
+  .attempt.future .a-result { color: var(--mut); font-weight: 500; }
+  .a-arrow { flex: none; align-self: center; color: var(--faint); font-size: 15px; padding: 0 2px; }
+
+  /* ---- suites ---- */
+  .suite {
+    display: grid; grid-template-columns: minmax(150px, 1fr) auto 120px 76px;
+    align-items: center; gap: 14px; padding: 11px 12px;
+    border-bottom: 1px solid var(--border); cursor: pointer; border-radius: var(--r-sm);
+  }
+  .suite:last-child { border-bottom: none; }
+  .suite:hover { background: rgba(61, 214, 245, 0.03); }
+  .suite.sel { background: var(--glow-soft); box-shadow: inset 2px 0 0 var(--accent); }
+  .suite .s-name { font-weight: 600; font-size: 13px; }
+  .suite .s-count { font-family: var(--f-mono); font-size: 12px; text-align: right; white-space: nowrap; }
+
+  /* ---- physical test rows ---- */
+  .ptest {
+    padding: 12px 14px; background: var(--inset);
+    border: 1px solid var(--border); border-radius: var(--r-md);
+    display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+  }
+  .ptest:hover { border-color: var(--border-strong); }
+  .ptest.sel {
+    border-color: rgba(255, 107, 107, 0.45); background: rgba(255, 107, 107, 0.05);
+    box-shadow: inset 2px 0 0 var(--err);
+  }
+  .ptest .p-name { font-weight: 600; font-size: 13px; }
+  .ptest .p-did { font-size: 12px; color: var(--mut); }
+  .ptest .p-meas { font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim); margin-top: 2px; }
+  .ptest .p-meas .lim { color: var(--faint); }
+
+  /* ---- classify radio rows ---- */
+  .radio-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 11px;
+    border: 1px solid var(--border); border-radius: var(--r-sm);
+    font-size: 13px; color: var(--ink-dim); cursor: pointer;
+  }
+  .radio-row:hover { border-color: var(--border-strong); }
+  .radio-row.sel {
+    border-color: rgba(61, 214, 245, 0.45); background: var(--glow-soft); color: var(--ink);
+  }
+  .radio-dot {
+    width: 14px; height: 14px; border-radius: 50%; flex: none;
+    border: 1.5px solid var(--border-strong); background: var(--inset);
+  }
+  .radio-row.sel .radio-dot { border: 4.5px solid var(--accent); background: var(--accent-ink); }
+
+  /* ---- artifacts ---- */
+  .art {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 2px; border-bottom: 1px solid var(--border);
+    font-family: var(--f-mono); font-size: 12.5px; color: var(--ink-dim); cursor: pointer;
+  }
+  .art:last-child { border-bottom: none; }
+  .art:hover { color: var(--ink); }
+  .art .a-size { color: var(--faint); font-size: 11.5px; }
+  .art .a-open { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html" class="active">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Test Results · Run #1847 · Build 3</div>
+      <h1>#482 — Fix flaky CAN-bus telemetry test</h1>
+      <div class="row" style="margin-top:9px;flex-wrap:wrap">
+        <span class="tag">standard-fix v14</span>
+        <span class="pill warn">61/63 passed</span>
+        <span class="tag">build 3 of loop #1847</span>
+        <span class="mono muted small">forge-01 + rig helios-rig-02 · 6m 12s</span>
+      </div>
+    </div>
+    <button class="btn ghost">Re-run failed (2)</button>
+    <button class="btn ghost">Re-run full suite</button>
+    <button class="btn primary">Send failures back to loop ⟳</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- summary strip -->
+    <div class="card c-2"><div class="stat">
+      <span class="label">Total tests</span>
+      <span class="value">63</span>
+      <span class="delta">across 5 suites</span>
+    </div></div>
+    <div class="card c-2"><div class="stat">
+      <span class="label">Passed</span>
+      <span class="value" style="color:var(--ok)">61</span>
+      <span class="delta up">▲ 12 vs build 2</span>
+    </div></div>
+    <div class="card c-2"><div class="stat">
+      <span class="label">Failed</span>
+      <span class="value" style="color:var(--err)">1</span>
+      <span class="delta">motor overshoot · HIL</span>
+    </div></div>
+    <div class="card c-2"><div class="stat">
+      <span class="label">Flaky</span>
+      <span class="value" style="color:var(--warn)">1</span>
+      <span class="delta">passed on retry 2/3 · <a href="15-insights.html" style="color:var(--warn)">quarantine watching</a></span>
+    </div></div>
+    <div class="card c-4"><div class="stat">
+      <span class="label">Wall time</span>
+      <span class="value">6m 12s</span>
+      <span class="delta">4m sim · 2m 12s physical</span>
+    </div></div>
+
+    <!-- build attempts timeline -->
+    <div class="card c-12" style="padding:14px 18px">
+      <div class="card-head" style="margin-bottom:12px">
+        <span class="card-title">BUILD ATTEMPTS</span>
+        <span class="tag">branch loop/482-canbus-flake</span>
+        <span class="spacer"></span>
+        <span class="mono small faint">loop #1847 · started 13:48 UTC</span>
+      </div>
+      <div class="attempts">
+        <div class="attempt err">
+          <span class="a-label">Build 1</span>
+          <span class="a-result">49/63 · 14 failed ✗</span>
+          <span class="a-meta">13:52:41 · a3f19c2</span>
+        </div>
+        <span class="a-arrow">→</span>
+        <div class="attempt warn">
+          <span class="a-label">Build 2</span>
+          <span class="a-result">61/63 · 2 failed</span>
+          <span class="a-meta">14:21:07 · c81d4e7</span>
+        </div>
+        <span class="a-arrow">→</span>
+        <div class="attempt live">
+          <span class="a-label">Build 3</span>
+          <span class="a-result"><span class="dot pulse" style="display:inline-block;vertical-align:1px;margin-right:6px"></span>running re-run of failed set</span>
+          <span class="a-meta">14:38:19 · f42b9a0</span>
+        </div>
+        <span class="a-arrow">→</span>
+        <div class="attempt future">
+          <span class="a-label">Next</span>
+          <span class="a-result">Publish to PR #514 when green</span>
+          <span class="a-meta">auto · gated on 63/63</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN column -->
+    <div class="c-7 col" style="gap:16px">
+
+      <!-- suites -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SUITES</span>
+          <span class="spacer"></span>
+          <span class="tag">twister · zephyr 4.1</span>
+        </div>
+        <div class="tbl-wrap">
+          <div style="min-width:520px">
+            <div class="suite">
+              <span class="s-name">unit · drivers</span>
+              <span class="tag">native_sim</span>
+              <div class="meter ok"><span style="width:100%"></span></div>
+              <span class="s-count" style="color:var(--ok)">24/24</span>
+            </div>
+            <div class="suite sel">
+              <span class="s-name">telemetry integration</span>
+              <span class="tag">qemu_cortex_m3</span>
+              <div class="meter err"><span style="width:95%"></span></div>
+              <span class="s-count" style="color:var(--err)">18/19</span>
+            </div>
+            <div class="suite">
+              <span class="s-name">motor control</span>
+              <span class="tag">qemu_cortex_m3</span>
+              <div class="meter ok"><span style="width:100%"></span></div>
+              <span class="s-count" style="color:var(--ok)">12/12</span>
+            </div>
+            <div class="suite">
+              <span class="s-name">OTA update</span>
+              <span class="tag">native_sim</span>
+              <div class="meter ok"><span style="width:100%"></span></div>
+              <span class="s-count" style="color:var(--ok)">6/6</span>
+            </div>
+            <div class="suite">
+              <span class="s-name">PHYSICAL · HIL rig</span>
+              <span class="tag">rig:helios-rig-02</span>
+              <div class="meter warn"><span style="width:50%"></span></div>
+              <span class="s-count" style="color:var(--warn)">1/2</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- physical tests -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">PHYSICAL TESTS — RIG HELIOS-RIG-02</span>
+          <span class="pill ok"><span class="dot ok"></span>rig online</span>
+          <span class="spacer"></span>
+          <span class="tag">bench: CAN bus + motor + power-cycler</span>
+        </div>
+        <div class="col" style="gap:10px">
+          <div class="ptest">
+            <div class="row between">
+              <span class="p-name">Power-loss mid-flash recovery</span>
+              <span class="pill ok">pass</span>
+            </div>
+            <span class="p-did">power-cycler kills 24V rail at 40 / 60 / 80% of OTA write</span>
+            <span class="p-meas">measured: recovered 3/3 boots · slot-B fallback 412ms <span class="lim">(limit 500ms)</span></span>
+          </div>
+          <div class="ptest">
+            <div class="row between">
+              <span class="p-name">CAN bus frame order under 90% load</span>
+              <span class="pill ok">pass</span>
+            </div>
+            <span class="p-did">traffic generator floods bus at 900 kbit/s for 60s</span>
+            <span class="p-meas">measured: 0 reordered frames in 10⁶ <span class="lim">(was 37 in build 1)</span></span>
+          </div>
+          <div class="ptest sel">
+            <div class="row between">
+              <span class="p-name">Motor overshoot on e-stop release</span>
+              <span class="pill err">FAIL</span>
+            </div>
+            <span class="p-did">dyno bench releases e-stop under 2 Nm load, 3 trials</span>
+            <span class="p-meas">measured: overshoot <span style="color:var(--err)">2.4%</span> <span class="lim">vs limit 2.0%</span></span>
+          </div>
+          <div class="ptest">
+            <div class="row between">
+              <span class="p-name">BLE beacon in dual-slot-corrupt state</span>
+              <span class="pill ok">pass</span>
+            </div>
+            <span class="p-did">both firmware slots checksum-corrupted deliberately, cold boot</span>
+            <span class="p-meas">measured: recovery beacon seen in 1.8s <span class="lim">(limit 3s)</span></span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SIDE column -->
+    <div class="c-5 col" style="gap:16px">
+
+      <!-- failure detail -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">FAILURE DETAIL</span>
+          <span class="pill err">1 of 1</span>
+          <span class="spacer"></span>
+          <span class="tag">build 3</span>
+        </div>
+        <div class="mono small" style="color:var(--ink-dim);overflow-x:auto;white-space:nowrap;margin-bottom:10px">tests/hil/test_estop_release.py::overshoot_under_load</div>
+        <div class="code">[rig] e-stop released @ 2.00 Nm · setpoint 1200 rpm
+[rig] trial 1: peak 1225.2 rpm  → overshoot <span class="c-num">2.1%</span>
+[rig] trial 2: peak 1228.8 rpm  → overshoot <span class="c-num">2.4%</span>
+[rig] trial 3: peak 1227.6 rpm  → overshoot <span class="c-num">2.3%</span>
+[rig] settle time 84ms · velocity sample lag +0.4ms
+<span style="color:var(--err)">E   AssertionError: max overshoot 2.4% &gt; limit 2.0%</span></div>
+        <div class="eyebrow" style="margin:14px 0 6px">AI Triage</div>
+        <p class="small muted" style="line-height:1.6">The k_msgq change in build 2 added ~0.4ms latency on the telemetry path, which delays the PID loop&rsquo;s velocity sample by one tick. Overshoot regression, not a test artifact — classify as product bug. Confidence 84%.</p>
+        <div class="row" style="margin-top:10px">
+          <span class="pill model">claude-fable-5</span>
+          <span class="mono small faint">triaged 14:44:52</span>
+        </div>
+      </div>
+
+      <!-- mark & route -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">MARK &amp; ROUTE</span>
+          <span class="spacer"></span>
+          <span class="tag">overshoot_under_load</span>
+        </div>
+        <div class="field" style="margin-bottom:14px">
+          <label>Classify this failure</label>
+          <div class="col" style="gap:6px">
+            <div class="radio-row sel"><span class="radio-dot"></span>Product bug <span class="mono small faint" style="margin-left:auto">AI pick · 84%</span></div>
+            <div class="radio-row"><span class="radio-dot"></span>Test needs update</div>
+            <div class="radio-row"><span class="radio-dot"></span>Flake — retry</div>
+            <div class="radio-row"><span class="radio-dot"></span>Infra — rig issue</div>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:14px">
+          <label>Correction note to the loop</label>
+          <textarea class="input" rows="3">Keep k_msgq, but move PID velocity sampling off the telemetry path — see trace.</textarea>
+          <span class="hint">Injected into attempt 4&rsquo;s planning context.</span>
+        </div>
+        <div class="col" style="gap:10px;margin-bottom:16px">
+          <div class="row between">
+            <span class="small muted">Block PR #514 until green</span>
+            <button class="switch on" aria-label="Block PR until green, enabled"></button>
+          </div>
+          <div class="row between">
+            <span class="small muted">Auto re-run physical suite after fix</span>
+            <button class="switch on" aria-label="Auto re-run physical suite, enabled"></button>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn primary">Queue correction round → attempt 4</button>
+          <button class="btn ghost">Waive &amp; annotate PR</button>
+        </div>
+      </div>
+
+      <!-- artifacts -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">ARTIFACTS</span>
+          <span class="spacer"></span>
+          <span class="tag">retained 30d</span>
+        </div>
+        <div class="col" style="gap:0">
+          <div class="art"><span>junit-build3.xml</span><span class="a-open">↗</span></div>
+          <div class="art"><span>rig-capture-estop.csv <span class="a-size">2.1 MB</span></span><span class="a-open">↗</span></div>
+          <div class="art"><span>serial-console.log</span><span class="a-open">↗</span></div>
+          <div class="art"><span>coverage 87.4% <span style="color:var(--ok)">(+0.6%)</span></span><span class="a-open">↗</span></div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 11 — TEST RESULTS · static concept, no functionality</span>
+  <span class="links">
+    <a href="10-run-detail.html">← Prev: Run console</a>
+    <a href="12-pr-verification.html">Next: PR verification →</a>
+  </span>
+</footer>
+
+</body>
+</html>

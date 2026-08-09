@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Model registry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- sub-nav tabs (matches 07-providers) ---- */
+  .subnav {
+    display: flex; align-items: center; gap: 2px;
+    border-bottom: 1px solid var(--border); margin-bottom: 20px;
+  }
+  .subnav a {
+    position: relative; padding: 9px 14px 11px;
+    font-size: 13px; font-weight: 500; color: var(--mut); white-space: nowrap;
+  }
+  .subnav a:hover { color: var(--ink); }
+  .subnav a.active { color: var(--ink); }
+  .subnav a.active::after {
+    content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+    background: var(--accent); box-shadow: 0 0 12px 1px var(--glow); border-radius: 2px;
+  }
+
+  /* ---- alias pill: registry's own identity — accent-tinted model pill ---- */
+  .pill.alias {
+    color: var(--accent); border-color: rgba(61, 214, 245, 0.35);
+    background: var(--glow-soft); font-family: var(--f-mono); font-size: 11.5px;
+  }
+
+  /* ---- small provider monogram (color classes match 07-providers) ---- */
+  .mg {
+    width: 24px; height: 24px; border-radius: 6px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: var(--f-disp); font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    border: 1px solid var(--border-strong);
+  }
+  .mg.an { color: var(--model);  background: color-mix(in srgb, var(--model) 12%, transparent);  border-color: color-mix(in srgb, var(--model) 30%, transparent); }
+  .mg.cu { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+  .mg.gh { color: var(--warn);   background: color-mix(in srgb, var(--warn) 10%, transparent);   border-color: color-mix(in srgb, var(--warn) 28%, transparent); }
+  .mg.vl { color: var(--ok);     background: color-mix(in srgb, var(--ok) 10%, transparent);     border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
+  .mg.ol { color: var(--ink-dim);background: color-mix(in srgb, var(--mut) 12%, transparent);    border-color: var(--border-strong); }
+  .prov-cell { display: flex; align-items: center; gap: 9px; white-space: nowrap; }
+
+  /* ---- registry table states ---- */
+  .tbl tr.selected td { background: rgba(61, 214, 245, 0.06); }
+  .tbl tr.selected td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+  .tbl tr.selected:hover td { background: rgba(61, 214, 245, 0.08); }
+  .tbl tr.dim td { opacity: 0.55; }
+  .tbl tr.dim td.no-dim { opacity: 1; }
+  .health-cell { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .health-cell .note { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); }
+  .health-cell .note.warn { color: var(--warn); }
+  .health-cell .note.err { color: var(--err); }
+  .param-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tbl-caption { margin-top: 12px; font-size: 12px; color: var(--faint); }
+
+  /* ---- inspector ---- */
+  .inspector .field + .field, .inspector .field-row + .field, .inspector .field + .field-row { margin-top: 13px; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; min-width: 0; margin-top: 13px; }
+  .usedby-label {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--faint); margin: 15px 0 7px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .inspector-foot {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border);
+  }
+  .btn.danger.blocked { opacity: 0.45; cursor: not-allowed; }
+  .inspector-foot .why { flex-basis: 100%; font-size: 11.5px; color: var(--faint); font-family: var(--f-mono); }
+
+  /* ---- why aliases ---- */
+  .why-row { display: flex; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .why-row:last-child { border-bottom: none; padding-bottom: 2px; }
+  .why-row .tick { color: var(--ok); font-size: 13px; flex: none; line-height: 1.5; }
+  .why-row strong { display: block; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .why-row p { font-size: 12.5px; color: var(--mut); margin-top: 2px; }
+
+  /* ---- resolution chain ---- */
+  .chain { display: flex; flex-direction: column; }
+  .chain .hop {
+    position: relative; padding: 6px 0 6px 22px;
+    font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim);
+  }
+  .chain .hop::before {
+    content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 1px;
+    background: var(--border-strong);
+  }
+  .chain .hop:first-child::before { top: 13px; }
+  .chain .hop:last-child::before { bottom: auto; height: 13px; }
+  .chain .hop::after {
+    content: ""; position: absolute; left: 3.5px; top: 11px; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--faint);
+  }
+  .chain .hop.final::after { background: var(--ok); box-shadow: 0 0 8px rgba(62, 220, 151, 0.5); }
+  .chain .hop .k { color: var(--faint); }
+  .chain .hop .arrow { color: var(--faint); margin-right: 6px; }
+  .chain .hop .alias-ref { color: var(--accent); }
+  .chain .hop .model-ref { color: var(--model); }
+  .chain .resolved { display: inline-flex; align-items: center; gap: 7px; color: var(--ok); }
+  .chain-caption { margin-top: 10px; font-size: 12px; color: var(--faint); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html" class="active">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Models</div>
+      <h1>Every model gets a name. Every route points at the name.</h1>
+      <p class="sub">Registry aliases bind a provider key to a model id. Workflows and routing only ever see the alias — swap the provider behind it and nothing else changes. That's the point of bring-your-own-key.</p>
+    </div>
+    <a class="btn ghost" href="#">Import from provider ▾</a>
+    <a class="btn primary" href="#">+ New alias</a>
+  </div>
+
+  <nav class="subnav">
+    <a href="06-model-routing.html">Routing</a>
+    <a href="21-model-registry.html" class="active">Model registry</a>
+    <a href="07-providers.html">Providers &amp; keys</a>
+    <a href="#">Spend</a>
+  </nav>
+
+  <div class="grid">
+
+    <!-- allowed models table -->
+    <div class="card c-12">
+      <div class="card-head">
+        <span class="card-title">ALLOWED MODELS · 8 ALIASES</span>
+        <span class="spacer"></span>
+        <a class="card-link" href="07-providers.html">Manage providers →</a>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>Alias</th><th>Provider</th><th>Model</th><th>Params</th><th>Health</th><th class="num">$ per 1M in·out</th><th class="num">Used by</th><th>On</th>
+          </tr></thead>
+          <tbody>
+            <tr class="selected">
+              <td><span class="pill alias">coder-max</span></td>
+              <td><span class="prov-cell"><span class="mg an">AN</span>Anthropic</span></td>
+              <td class="mono">claude-fable-5</td>
+              <td><span class="param-chips"><span class="tag">max thinking</span><span class="tag">400k budget</span></span></td>
+              <td><span class="health-cell"><span class="dot ok"></span><span class="note">ok</span></span></td>
+              <td class="num mono">$15 · $75</td>
+              <td class="num mono">4 routes</td>
+              <td><button class="switch on" aria-label="coder-max enabled"></button></td>
+            </tr>
+            <tr>
+              <td><span class="pill alias">coder-std</span></td>
+              <td><span class="prov-cell"><span class="mg an">AN</span>Anthropic</span></td>
+              <td class="mono">claude-sonnet-5</td>
+              <td><span class="param-chips"><span class="tag">std thinking</span></span></td>
+              <td><span class="health-cell"><span class="dot ok"></span><span class="note">ok</span></span></td>
+              <td class="num mono">$3 · $15</td>
+              <td class="num mono">3 routes</td>
+              <td><button class="switch on" aria-label="coder-std enabled"></button></td>
+            </tr>
+            <tr>
+              <td><span class="pill alias">sizer</span></td>
+              <td><span class="prov-cell"><span class="mg an">AN</span>Anthropic</span></td>
+              <td class="mono">claude-haiku-4-5</td>
+              <td><span class="param-chips"><span class="tag">temp 0</span><span class="tag">8k out</span></span></td>
+              <td><span class="health-cell"><span class="dot ok"></span><span class="note">ok</span></span></td>
+              <td class="num mono">$1 · $5</td>
+              <td class="num mono">1 route</td>
+              <td><button class="switch on" aria-label="sizer enabled"></button></td>
+            </tr>
+            <tr>
+              <td><span class="pill alias">coder-fallback</span></td>
+              <td><span class="prov-cell"><span class="mg gh">GH</span>GitHub Copilot</span></td>
+              <td class="mono">gpt-5-codex</td>
+              <td><span class="faint">—</span></td>
+              <td><span class="health-cell"><span class="dot warn"></span><span class="note warn">degraded</span></span></td>
+              <td class="num mono">seat-based</td>
+              <td class="num mono">2 routes</td>
+              <td><button class="switch on" aria-label="coder-fallback enabled"></button></td>
+            </tr>
+            <tr>
+              <td><span class="pill alias">second-opinion</span></td>
+              <td><span class="prov-cell"><span class="mg cu">CU</span>Cursor</span></td>
+              <td class="mono">composer-2</td>
+              <td><span class="param-chips"><span class="tag">review vote only</span></span></td>
+              <td><span class="health-cell"><span class="dot ok"></span><span class="note">ok</span></span></td>
+              <td class="num mono">usage-based</td>
+              <td class="num mono">1 route</td>
+              <td><button class="switch on" aria-label="second-opinion enabled"></button></td>
+            </tr>
+            <tr>
+              <td><span class="pill alias">local-docs</span></td>
+              <td><span class="prov-cell"><span class="mg ol">OL</span>Ollama</span></td>
+              <td class="mono">qwen3-coder:32b</td>
+              <td><span class="param-chips"><span class="tag">ctx 32k</span></span></td>
+              <td><span class="health-cell"><span class="dot ok"></span><span class="note">ok</span></span></td>
+              <td class="num mono">$0</td>
+              <td class="num mono">2 routes</td>
+              <td><button class="switch on" aria-label="local-docs enabled"></button></td>
+            </tr>
+            <tr>
+              <td><span class="pill alias">local-free</span></td>
+              <td><span class="prov-cell"><span class="mg vl">VL</span>OpenAI-compatible · vLLM</span></td>
+              <td class="mono">llama-4-maverick</td>
+              <td><span class="param-chips"><span class="tag">batch ok</span></span></td>
+              <td><span class="health-cell"><span class="dot ok"></span><span class="note">ok</span></span></td>
+              <td class="num mono">$0</td>
+              <td class="num mono">1 route</td>
+              <td><button class="switch on" aria-label="local-free enabled"></button></td>
+            </tr>
+            <tr class="dim">
+              <td><span class="pill alias">gpt5-experiments</span></td>
+              <td><span class="faint">no provider</span></td>
+              <td class="mono">gpt-5.2-preview</td>
+              <td><span class="faint">—</span></td>
+              <td class="no-dim">
+                <span class="health-cell" style="margin-bottom:6px"><span class="dot err"></span><span class="note err">no key — connect a provider</span></span>
+                <a class="btn ghost sm" href="07-providers.html">Fix in Providers →</a>
+              </td>
+              <td class="num mono">—</td>
+              <td class="num mono">0 routes</td>
+              <td><button class="switch" aria-label="gpt5-experiments disabled"></button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tbl-caption">Aliases are unique per workspace. Deleting one is blocked while any route or workflow references it.</p>
+    </div>
+
+    <!-- side column -->
+    <div class="c-12" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start">
+
+      <!-- inspector -->
+      <div class="card inspector">
+        <div class="card-head">
+          <span class="card-title">EDIT — CODER-MAX</span>
+          <span class="spacer"></span>
+          <span class="pill alias">coder-max</span>
+        </div>
+        <div class="field">
+          <label for="al-name">Alias</label>
+          <input id="al-name" class="input mono" value="coder-max">
+          <span class="hint">unique · referenced by routes, workflows, and /ouro commands</span>
+        </div>
+        <div class="field">
+          <label for="al-provider">Provider</label>
+          <select id="al-provider" class="input mono"><option>Anthropic — key sk-ant-…Xq4A ▾</option></select>
+          <span class="hint">from <a class="card-link" href="07-providers.html">Providers &amp; keys</a></span>
+        </div>
+        <div class="field">
+          <label for="al-model">Model</label>
+          <select id="al-model" class="input mono"><option>claude-fable-5 ▾</option></select>
+          <span class="hint">listed live from the provider</span>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="al-thinking">Thinking</label>
+            <select id="al-thinking" class="input mono"><option>max ▾</option></select>
+          </div>
+          <div class="field">
+            <label for="al-budget">Token budget</label>
+            <input id="al-budget" class="input mono" value="400k">
+          </div>
+        </div>
+        <div class="field">
+          <label for="al-temp">Temperature</label>
+          <input id="al-temp" class="input mono" value="0.2">
+        </div>
+        <div class="usedby-label">Used by</div>
+        <div class="chips">
+          <span class="tag">implement-primary</span>
+          <span class="tag">plan-primary</span>
+          <span class="tag">review-primary</span>
+          <span class="tag">escalation:effort≥L</span>
+        </div>
+        <div class="inspector-foot">
+          <button class="btn primary">Save alias</button>
+          <button class="btn ghost">Duplicate</button>
+          <button class="btn danger blocked" aria-disabled="true">Remove</button>
+          <span class="why">blocked — 4 routes reference this alias</span>
+        </div>
+      </div>
+
+      <!-- why aliases -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">WHY ALIASES — THE BYOK POINT</span>
+        </div>
+        <div class="why-row">
+          <span class="tick">✓</span>
+          <div>
+            <strong>Swap providers, keep everything</strong>
+            <p>Point coder-max at Bedrock tomorrow; zero workflow or route edits.</p>
+          </div>
+        </div>
+        <div class="why-row">
+          <span class="tick">✓</span>
+          <div>
+            <strong>Same model, different keys</strong>
+            <p>coder-max (prod key, $600 cap) vs coder-max-dev (dev key, $50 cap).</p>
+          </div>
+        </div>
+        <div class="why-row">
+          <span class="tick">✓</span>
+          <div>
+            <strong>Governance</strong>
+            <p>Routes and workflows may ONLY reference registry aliases — raw model strings are rejected at publish time.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- resolution chain -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">RESOLUTION CHAIN</span>
+          <span class="spacer"></span>
+          <span class="tag">run #482</span>
+        </div>
+        <div class="chain">
+          <div class="hop"><span class="k">route.task(</span>"implement"<span class="k">)</span></div>
+          <div class="hop"><span class="arrow">→</span><span class="k">route</span> implement-primary</div>
+          <div class="hop"><span class="arrow">→</span><span class="k">alias</span> <span class="alias-ref">coder-max</span></div>
+          <div class="hop"><span class="arrow">→</span><span class="k">provider</span> Anthropic <span class="k">(key …Xq4A)</span></div>
+          <div class="hop final"><span class="arrow">→</span><span class="k">model</span> <span class="model-ref">claude-fable-5</span> &nbsp;<span class="resolved"><span class="dot ok"></span>resolved · 42ms</span></div>
+        </div>
+        <p class="chain-caption">Every hop is inspectable in the run console transcript.</p>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 21 — MODEL REGISTRY · static concept, no functionality</span>
+  <span class="links">
+    <a href="20-workflow-copilot.html">← Prev: Workflow Copilot</a>
+    <a href="02-dashboard.html">Back to start: Dashboard →</a>
+  </span>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Model Routing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- page 06 : model routing ---- */
+  .subnav {
+    display: flex; gap: 2px; margin: -6px 0 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .subnav a {
+    position: relative; padding: 9px 16px 11px;
+    font-size: 13.5px; font-weight: 500; color: var(--mut); white-space: nowrap;
+  }
+  .subnav a:hover { color: var(--ink); }
+  .subnav a.active { color: var(--ink); }
+  .subnav a.active::after {
+    content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+    background: var(--model); box-shadow: 0 0 12px 1px rgba(167, 139, 250, 0.45); border-radius: 2px;
+  }
+
+  .phealth { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .phealth .prov {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 8px 14px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--surface); font-size: 12.5px; color: var(--ink-dim); white-space: nowrap;
+  }
+  .phealth .prov:hover { border-color: var(--border-strong); }
+  .phealth .prov .name { font-weight: 600; color: var(--ink); }
+  .phealth .prov .meta { font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
+  .phealth .prov.degraded { border-color: rgba(245, 184, 61, 0.35); background: rgba(245, 184, 61, 0.05); }
+  .phealth .prov.degraded .meta { color: var(--warn); }
+
+  .drag { color: var(--faint); cursor: grab; font-size: 13px; user-select: none; }
+  tr:hover .drag { color: var(--mut); }
+
+  .tbl tr.selected td { background: rgba(167, 139, 250, 0.07); }
+  .tbl tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--model); }
+  .tbl tbody tr.selected:hover { background: transparent; }
+
+  .task-name { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink); font-weight: 500; }
+  .task-desc { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+
+  .pill.model.dim {
+    color: var(--mut); border-color: var(--border-strong);
+    background: var(--raised);
+  }
+
+  .alias-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+  .alias-res { font-family: var(--f-mono); font-size: 10.5px; color: var(--faint); white-space: nowrap; }
+
+  .chain { display: flex; flex-direction: column; }
+  .chain .hop { display: flex; gap: 12px; }
+  .chain .rail { display: flex; flex-direction: column; align-items: center; flex: none; width: 22px; }
+  .chain .idx {
+    width: 22px; height: 22px; border-radius: 50%; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-mono); font-size: 11px; color: var(--model);
+    border: 1px solid rgba(167, 139, 250, 0.4); background: rgba(167, 139, 250, 0.08);
+  }
+  .chain .line { width: 1px; flex: 1; min-height: 14px; background: var(--border-strong); }
+  .chain .hop-body { padding-bottom: 14px; min-width: 0; }
+  .chain .hop:last-child .hop-body { padding-bottom: 0; }
+  .chain .hop-meta { font-size: 11.5px; color: var(--faint); margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html" class="active">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Models</div>
+      <h1>Route every kind of work to the model that earns it.</h1>
+      <p class="sub">Each task kind resolves to a primary model with ordered fallbacks and escalation rules. Routes point at named registry aliases, never raw model ids — see the Model registry tab. The loop degrades gracefully when a provider stumbles — and never silently below the floor you set.</p>
+    </div>
+    <button class="btn ghost">Simulate routing</button>
+    <button class="btn primary">Save routes</button>
+  </div>
+
+  <nav class="subnav">
+    <a href="06-model-routing.html" class="active">Routing</a>
+    <a href="21-model-registry.html">Model registry</a>
+    <a href="07-providers.html">Providers &amp; keys</a>
+    <a href="#">Spend</a>
+  </nav>
+
+  <!-- provider health strip -->
+  <div class="phealth">
+    <span class="prov"><span class="dot ok"></span><span class="name">Anthropic</span><span class="meta">42ms</span></span>
+    <span class="prov"><span class="dot ok"></span><span class="name">Cursor</span></span>
+    <span class="prov degraded"><span class="dot warn"></span><span class="name">GitHub Copilot</span><span class="meta">degraded · elevated latency</span></span>
+    <span class="prov"><span class="dot ok"></span><span class="name">OpenAI-compatible</span><span class="meta">vLLM local</span></span>
+    <span class="prov"><span class="dot ok"></span><span class="name">Ollama</span><span class="meta">workstation · 3 models</span></span>
+  </div>
+
+  <div class="grid">
+
+    <!-- routing matrix -->
+    <div class="card c-8">
+      <div class="card-head">
+        <span class="card-title">ROUTING MATRIX</span>
+        <span class="tag">8 task kinds</span>
+        <span class="spacer"></span>
+        <span class="small faint">drag ⠿ to reorder fallback chains</span>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th style="width:26px"></th>
+            <th>Task</th>
+            <th>Primary model</th>
+            <th>Fallback</th>
+            <th>Escalation</th>
+            <th class="num">$/run avg</th>
+            <th class="num">p50 latency</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">analyze</div>
+                <div class="task-desc">Read the issue, map the affected code paths</div>
+                <span class="tag" style="margin-top:5px">analyze-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">coder-std</span>
+                  <span class="alias-res">claude-sonnet-5 · Anthropic</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">local-docs</span>
+                  <span class="alias-res">qwen3-coder:32b · Ollama</span>
+                </div>
+              </td>
+              <td><span class="small faint">—</span></td>
+              <td class="num mono">$0.04</td>
+              <td class="num mono">3.1s</td>
+            </tr>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">estimate</div>
+                <div class="task-desc">Size effort XS–XL before queueing</div>
+                <span class="tag" style="margin-top:5px">estimate-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">sizer</span>
+                  <span class="alias-res">claude-haiku-4-5 · Anthropic</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">local-free</span>
+                  <span class="alias-res">llama-4-maverick · vLLM</span>
+                </div>
+              </td>
+              <td><span class="small faint">—</span></td>
+              <td class="num mono">$0.01</td>
+              <td class="num mono">1.2s</td>
+            </tr>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">plan</div>
+                <div class="task-desc">Decompose into steps, pick a workflow</div>
+                <span class="tag" style="margin-top:5px">plan-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">coder-max</span>
+                  <span class="alias-res">claude-fable-5 · Anthropic</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">coder-std</span>
+                  <span class="alias-res">claude-sonnet-5 · Anthropic</span>
+                </div>
+              </td>
+              <td><span class="small mono muted">effort ≥ L → coder-max (max thinking)</span></td>
+              <td class="num mono">$0.31</td>
+              <td class="num mono">9.8s</td>
+            </tr>
+            <tr class="selected">
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">implement</div>
+                <div class="task-desc">Write the change, run tests, iterate to green</div>
+                <span class="tag" style="margin-top:5px">implement-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">coder-max</span>
+                  <span class="alias-res">claude-fable-5 · Anthropic</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">coder-fallback</span>
+                  <span class="alias-res">gpt-5-codex · GitHub Copilot</span>
+                </div>
+              </td>
+              <td><span class="small faint">—</span></td>
+              <td class="num mono">$0.87</td>
+              <td class="num mono">41.0s</td>
+            </tr>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">test-gen</div>
+                <div class="task-desc">Generate unit and regression tests for the diff</div>
+                <span class="tag" style="margin-top:5px">testgen-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">coder-fallback</span>
+                  <span class="alias-res">gpt-5-codex · GitHub Copilot</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">coder-std</span>
+                  <span class="alias-res">claude-sonnet-5 · Anthropic</span>
+                </div>
+              </td>
+              <td><span class="small faint">—</span></td>
+              <td class="num mono">$0.12</td>
+              <td class="num mono">17.4s</td>
+            </tr>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">review</div>
+                <div class="task-desc">Self-review the PR against the acceptance criteria</div>
+                <span class="tag" style="margin-top:5px">review-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">coder-max</span>
+                  <span class="alias-res">claude-fable-5 · Anthropic</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">coder-std</span>
+                  <span class="alias-res">claude-sonnet-5 · Anthropic</span>
+                </div>
+              </td>
+              <td><span class="small mono muted">always second vote: second-opinion</span></td>
+              <td class="num mono">$0.22</td>
+              <td class="num mono">12.6s</td>
+            </tr>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">docs</div>
+                <div class="task-desc">Update READMEs, changelogs, operator manual</div>
+                <span class="tag" style="margin-top:5px">docs-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">local-docs</span>
+                  <span class="alias-res">qwen3-coder:32b · Ollama</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">sizer</span>
+                  <span class="alias-res">claude-haiku-4-5 · Anthropic</span>
+                </div>
+              </td>
+              <td><span class="small faint">—</span></td>
+              <td class="num mono">$0.00</td>
+              <td class="num mono">6.3s</td>
+            </tr>
+            <tr>
+              <td><span class="drag">⠿</span></td>
+              <td>
+                <div class="task-name">commit-msg</div>
+                <div class="task-desc">Conventional-commit message from the staged diff</div>
+                <span class="tag" style="margin-top:5px">commitmsg-primary</span>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model">local-free</span>
+                  <span class="alias-res">llama-4-maverick · vLLM</span>
+                </div>
+              </td>
+              <td>
+                <div class="alias-cell">
+                  <span class="pill model dim">sizer</span>
+                  <span class="alias-res">claude-haiku-4-5 · Anthropic</span>
+                </div>
+              </td>
+              <td><span class="small faint">—</span></td>
+              <td class="num mono">$0.00</td>
+              <td class="num mono">0.8s</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- right column -->
+    <div class="c-4 col" style="gap:16px">
+
+      <!-- route inspector -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">ROUTE — implement-primary</span>
+          <span class="spacer"></span>
+          <span class="pill model">selected</span>
+        </div>
+        <div class="chain">
+          <div class="hop">
+            <div class="rail"><span class="idx">1</span><span class="line"></span></div>
+            <div class="hop-body">
+              <div class="row" style="gap:8px; flex-wrap:wrap">
+                <span class="pill model">coder-max</span>
+                <span class="alias-res">→ claude-fable-5 · Anthropic</span>
+                <span class="dot ok" title="key ok"></span>
+              </div>
+              <div class="hop-meta">Primary · API key valid, 42ms to us-east</div>
+            </div>
+          </div>
+          <div class="hop">
+            <div class="rail"><span class="idx">2</span><span class="line"></span></div>
+            <div class="hop-body">
+              <div class="row" style="gap:8px; flex-wrap:wrap">
+                <span class="pill model dim">coder-fallback</span>
+                <span class="alias-res">→ gpt-5-codex · GitHub Copilot</span>
+                <span class="dot warn" title="degraded"></span>
+              </div>
+              <div class="hop-meta">Fallback on 5xx / timeouts</div>
+            </div>
+          </div>
+          <div class="hop">
+            <div class="rail"><span class="idx">3</span></div>
+            <div class="hop-body">
+              <div class="row" style="gap:8px; flex-wrap:wrap">
+                <span class="pill model dim">local-docs</span>
+                <span class="alias-res">→ qwen3-coder:32b · Ollama</span>
+                <span class="dot ok" title="reachable"></span>
+              </div>
+              <div class="hop-meta">Offline mode — keeps the loop turning without a network</div>
+            </div>
+          </div>
+        </div>
+        <hr class="divider">
+        <div class="col" style="gap:12px">
+          <div class="row between">
+            <span class="small muted">Allow fallback to local models</span>
+            <button class="switch on" aria-label="Allow fallback to local models: on"></button>
+          </div>
+          <div class="row between">
+            <span class="small muted">Fail run instead of degrading below fallback 2</span>
+            <button class="switch" aria-label="Fail run instead of degrading below fallback 2: off"></button>
+          </div>
+          <div class="field">
+            <label for="max-cost">Max cost per run</label>
+            <input id="max-cost" class="input mono" value="$2.50" style="max-width:120px">
+          </div>
+          <div class="small faint">Aliases resolve in the Model registry — routes never name raw models. <a class="card-link" href="21-model-registry.html">Open registry →</a></div>
+        </div>
+      </div>
+
+      <!-- escalation rules -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">ESCALATION RULES</span>
+          <span class="spacer"></span>
+          <span class="tag">3 active</span>
+        </div>
+        <div class="col" style="gap:0">
+          <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--border)">
+            <span class="small mono" style="color:var(--ink-dim)">effort ≥ L → implement uses <span style="color:var(--model)">coder-max</span> (max thinking)</span>
+            <button class="switch on" aria-label="Rule enabled"></button>
+          </div>
+          <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--border)">
+            <span class="small mono" style="color:var(--ink-dim)">security label → review adds <span style="color:var(--model)">second-opinion</span> vote</span>
+            <button class="switch on" aria-label="Rule enabled"></button>
+          </div>
+          <div class="row between" style="padding:9px 0">
+            <span class="small mono" style="color:var(--ink-dim)">docs-only diff → everything routes local</span>
+            <button class="switch on" aria-label="Rule enabled"></button>
+          </div>
+        </div>
+        <button class="btn ghost sm" style="margin-top:12px">+ Add rule</button>
+      </div>
+
+      <!-- spend by provider -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SPEND BY PROVIDER · 30D</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="#">Full report →</a>
+        </div>
+        <div class="col" style="gap:12px">
+          <div>
+            <div class="row between small"><span class="muted">Anthropic</span><span class="mono">$412.80</span></div>
+            <div class="meter" style="margin-top:5px"><span style="width:100%"></span></div>
+          </div>
+          <div>
+            <div class="row between small"><span class="muted">GitHub Copilot</span><span class="mono">$96.40</span></div>
+            <div class="meter" style="margin-top:5px"><span style="width:23%"></span></div>
+          </div>
+          <div>
+            <div class="row between small"><span class="muted">Cursor</span><span class="mono">$54.10</span></div>
+            <div class="meter" style="margin-top:5px"><span style="width:13%"></span></div>
+          </div>
+          <div>
+            <div class="row between small"><span class="muted">Local (vLLM + Ollama)</span><span class="mono">$0.00</span></div>
+            <div class="meter ok" style="margin-top:5px"><span style="width:2%"></span></div>
+          </div>
+          <div class="small faint">Local models served 31% of all tokens.</div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 06 — MODEL ROUTING · static concept, no functionality</span>
+  <span class="links">
+    <a href="05-workflow-code.html">← Prev: Workflow as code</a>
+    <a href="07-providers.html">Next: Providers &amp; keys →</a>
+  </span>
+</footer>
+
+</body>
+</html>

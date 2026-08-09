@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Knowledge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* skills table */
+  .skill-name { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink); }
+  .skill-desc { font-size: 12px; color: var(--faint); margin-top: 2px; }
+  tr.draft-row td { background: rgba(245, 184, 61, 0.04); }
+  .switch.locked { opacity: 0.55; cursor: not-allowed; }
+  .tbl-caption { font-size: 12px; color: var(--faint); margin-top: 10px; }
+  .tbl-caption a { color: var(--mut); border-bottom: 1px dotted var(--border-strong); }
+  .tbl-caption a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* learned facts */
+  .fact { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .fact:last-of-type { border-bottom: none; }
+  .fact-body { flex: 1; min-width: 0; }
+  .fact-text { font-size: 13.5px; color: var(--ink); }
+  .fact-text code {
+    font-family: var(--f-mono); font-size: 12px; color: var(--accent);
+    background: var(--inset); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  .fact-src { font-family: var(--f-mono); font-size: 11px; color: var(--faint); margin-top: 4px; }
+  .fact-status { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 1px; flex-wrap: wrap; justify-content: flex-end; }
+  .fact-status .used { font-family: var(--f-mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+  .fact.expired .fact-text { color: var(--faint); text-decoration: line-through; text-decoration-color: var(--border-strong); text-decoration-thickness: 1px; }
+  .fact.expired .fact-text code { color: var(--faint); }
+  .card-foot { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 12px; font-size: 12px; color: var(--faint); }
+
+  /* playbooks */
+  .playbook { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .playbook:last-of-type { border-bottom: none; }
+  .playbook .pb-body { flex: 1; min-width: 0; }
+  .pb-name { font-weight: 600; font-size: 13.5px; }
+  .pb-name .runs { font-family: var(--f-mono); font-size: 11px; font-weight: 400; color: var(--faint); margin-left: 8px; }
+  .pb-desc { font-size: 12px; color: var(--mut); margin-top: 1px; }
+  .playbook.new-pb {
+    border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+    padding: 11px 14px; margin-top: 12px; color: var(--mut); cursor: pointer;
+  }
+  .playbook.new-pb:hover { border-color: var(--faint); color: var(--ink-dim); }
+
+  /* repo profile */
+  .profile-row { display: flex; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .profile-row:last-of-type { border-bottom: none; }
+  .profile-row .k {
+    flex: none; width: 106px; font-family: var(--f-mono); font-size: 10.5px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint);
+  }
+  .profile-row .v { flex: 1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+  .profile-row .edit-link { font-size: 11.5px; color: var(--mut); border-bottom: 1px dotted var(--border-strong); }
+  .profile-row .edit-link:hover { color: var(--accent); border-color: var(--accent); }
+  .env-eyebrow {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--faint); margin: 16px 0 8px;
+  }
+
+  /* scope ladder */
+  .scope-step { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--inset); }
+  .scope-step.current { border-color: rgba(61, 214, 245, 0.35); background: var(--glow-soft); }
+  .scope-step .lvl {
+    flex: none; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--faint); width: 74px;
+  }
+  .scope-step.current .lvl { color: var(--accent); }
+  .scope-step .name { font-family: var(--f-mono); font-size: 12.5px; color: var(--ink); flex: 1; }
+  .scope-step .count { font-size: 11.5px; color: var(--mut); white-space: nowrap; }
+  .scope-arrow { text-align: center; color: var(--faint); font-size: 12px; line-height: 1; margin: -2px 0; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html" class="active">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Knowledge</div>
+      <h1>Teach the loop once. Every run remembers.</h1>
+      <p class="sub">Skills you write, facts the loop learns (and you approve), and playbooks you can aim at any issue. Scoped per repo or org-wide.</p>
+    </div>
+    <a class="btn ghost" href="17-settings.html">Import CLAUDE.md / .cursorrules</a>
+    <a class="btn primary" href="05-workflow-code.html">+ New skill</a>
+  </div>
+
+  <div class="grid">
+
+    <!-- LEFT column -->
+    <div class="c-7 col" style="gap:16px">
+
+      <!-- skills -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SKILLS</span>
+          <span class="pill">6 active</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="05-workflow-code.html">Open in editor →</a>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>
+              <th>Skill</th><th>Scope</th><th>Used by</th><th>Updated</th><th style="width:52px">On</th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="skill-name">zephyr-conventions</div>
+                  <div class="skill-desc">Kconfig, devicetree &amp; ISR-safety house rules</div>
+                </td>
+                <td><span class="tag">repo</span></td>
+                <td class="mono">61% of runs</td>
+                <td class="mono">v12 · 2d ago</td>
+                <td><button class="switch on" aria-label="zephyr-conventions enabled"></button></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="skill-name">repo-map</div>
+                  <div class="skill-desc">Module &amp; ownership map of the source tree</div>
+                </td>
+                <td><span class="tag">repo</span></td>
+                <td class="mono">every run</td>
+                <td><span class="tag">auto-generated nightly</span></td>
+                <td><button class="switch on" aria-label="repo-map enabled"></button></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="skill-name">pr-etiquette</div>
+                  <div class="skill-desc">PR title format, changelog entry, reviewer ping rules</div>
+                </td>
+                <td><span class="tag">org-wide</span></td>
+                <td class="mono">every PR</td>
+                <td class="mono">v4 · 3w ago</td>
+                <td><button class="switch on" aria-label="pr-etiquette enabled"></button></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="skill-name">hil-safety</div>
+                  <div class="skill-desc">Hardware-in-loop interlocks before any motor spins</div>
+                </td>
+                <td><span class="tag">repo</span></td>
+                <td class="mono">physical tests</td>
+                <td><span class="tag" style="color:var(--warn);border-color:rgba(245,184,61,.35)">required — cannot disable</span></td>
+                <td><button class="switch on locked" aria-label="hil-safety enabled and locked" disabled></button></td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="skill-name">commit-style</div>
+                  <div class="skill-desc">Conventional commits, 72-char body wrap, sign-off</div>
+                </td>
+                <td><span class="tag">org-wide</span></td>
+                <td class="mono">every run</td>
+                <td class="mono">v2 · 2mo ago</td>
+                <td><button class="switch on" aria-label="commit-style enabled"></button></td>
+              </tr>
+              <tr class="draft-row">
+                <td>
+                  <div class="row" style="gap:8px">
+                    <span class="skill-name">power-budget-checks</span>
+                    <span class="pill warn">draft</span>
+                  </div>
+                  <div class="skill-desc">Flag changes that raise idle current above 120 µA</div>
+                </td>
+                <td><span class="tag">repo</span></td>
+                <td class="mono">—</td>
+                <td class="mono">v1 · 20m ago</td>
+                <td><button class="switch" aria-label="power-budget-checks disabled"></button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tbl-caption">Skills are markdown with frontmatter — edit in the <a href="05-workflow-code.html">Workflow Studio editor</a>.</p>
+      </div>
+
+      <!-- learned facts -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">LEARNED BY THE LOOP</span>
+          <span class="pill warn">2 awaiting review</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="16-inbox.html">Review all →</a>
+        </div>
+
+        <div class="fact">
+          <div class="fact-body">
+            <div class="fact-text">CI needs <code>west update</code> before first build of the day</div>
+            <div class="fact-src">from build-farm failure pattern · confirmed by Ken, 6w ago</div>
+          </div>
+          <div class="fact-status">
+            <span class="pill ok">✓ confirmed</span>
+            <span class="used">used 48×</span>
+          </div>
+        </div>
+
+        <div class="fact">
+          <div class="fact-body">
+            <div class="fact-text">Tests under <code>tests/hil/</code> require rig reservation via <code>rig claim</code></div>
+            <div class="fact-src">from PR #498 review cycle · confirmed by Priya, 3w ago</div>
+          </div>
+          <div class="fact-status">
+            <span class="pill ok">✓ confirmed</span>
+            <span class="used">used 12×</span>
+          </div>
+        </div>
+
+        <div class="fact">
+          <div class="fact-body">
+            <div class="fact-text">Team prefers <code>k_msgq</code> over <code>k_fifo</code> in ISR paths</div>
+            <div class="fact-src">from PR #514 review cycle</div>
+          </div>
+          <div class="fact-status">
+            <span class="pill warn">awaiting review</span>
+            <button class="btn primary sm">Confirm</button>
+            <button class="btn ghost sm">Reject</button>
+          </div>
+        </div>
+
+        <div class="fact">
+          <div class="fact-body">
+            <div class="fact-text">PID gains live in <code>config/control.yaml</code>, not in headers</div>
+            <div class="fact-src">observed in loop #1847</div>
+          </div>
+          <div class="fact-status">
+            <span class="pill warn">awaiting review</span>
+            <button class="btn primary sm">Confirm</button>
+            <button class="btn ghost sm">Reject</button>
+          </div>
+        </div>
+
+        <div class="fact expired">
+          <div class="fact-body">
+            <div class="fact-text">Zephyr 4.0 needs <code>CONFIG_LEGACY_TIMER</code></div>
+            <div class="fact-src">expired on Zephyr 4.1 migration · was used 31×</div>
+          </div>
+          <div class="fact-status">
+            <span class="pill">expired</span>
+            <button class="btn ghost sm">Re-learn</button>
+          </div>
+        </div>
+
+        <div class="card-foot">Confirmed facts are injected into every run's context. Facts expire when the code that taught them changes.</div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT column -->
+    <div class="c-5 col" style="gap:16px">
+
+      <!-- playbooks -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">PLAYBOOKS</span>
+          <span class="spacer"></span>
+          <span class="tag">3 recipes</span>
+        </div>
+
+        <div class="playbook">
+          <div class="pb-body">
+            <div class="pb-name">Flaky test hunt<span class="runs">run 9×</span></div>
+            <div class="pb-desc">Finds &amp; fixes the flakiest test in the suite</div>
+          </div>
+          <button class="btn ghost sm">Run on issue… ▾</button>
+        </div>
+
+        <div class="playbook">
+          <div class="pb-body">
+            <div class="pb-name">CVE bump<span class="runs">run 14×</span></div>
+            <div class="pb-desc">Patch a vulnerable dep + prove no API break</div>
+          </div>
+          <button class="btn ghost sm">Run on issue… ▾</button>
+        </div>
+
+        <div class="playbook">
+          <div class="pb-body">
+            <div class="pb-name">New driver bring-up<span class="runs">run 3×</span></div>
+            <div class="pb-desc">Scaffold + HIL smoke test on the bench rig</div>
+          </div>
+          <button class="btn ghost sm">Run on issue… ▾</button>
+        </div>
+
+        <div class="playbook new-pb">
+          <span style="font-size:13px">+ New playbook from a past run…</span>
+        </div>
+      </div>
+
+      <!-- repo profile -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">REPO PROFILE — HELIOS-FIRMWARE</span>
+          <span class="spacer"></span>
+          <span class="pill ok"><span class="dot ok"></span>detected</span>
+        </div>
+
+        <div class="profile-row">
+          <span class="k">Language</span>
+          <span class="v">C 92% · CMake</span>
+        </div>
+        <div class="profile-row">
+          <span class="k">Platform</span>
+          <span class="v">Zephyr RTOS 4.1</span>
+        </div>
+        <div class="profile-row">
+          <span class="k">Build</span>
+          <span class="v"><span class="mono" style="font-size:12.5px">west</span> + <span class="mono" style="font-size:12.5px">twister</span></span>
+        </div>
+        <div class="profile-row">
+          <span class="k">Devcontainer</span>
+          <span class="v"><span style="color:var(--ok)">✓</span> <span class="mono" style="font-size:12.5px">.devcontainer.json</span></span>
+        </div>
+        <div class="profile-row">
+          <span class="k">Protected paths</span>
+          <span class="v"><span class="tag">boot/</span> <span class="tag">keys/</span> <a class="edit-link" href="17-settings.html">edit</a></span>
+        </div>
+
+        <div class="env-eyebrow">Environment</div>
+        <div class="code">west init -m git@github.com:acme-robotics/helios-firmware
+west update --narrow -o=--depth=1
+zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi
+ccache --set-config=max_size=8G</div>
+
+        <div class="col" style="gap:0;margin-top:10px">
+          <div class="row" style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <span class="dot ok"></span>
+            <span class="small">Warm snapshot ✓ · boots in <span class="mono" style="color:var(--ok)">38s</span> <span class="faint">(vs 6m cold)</span></span>
+          </div>
+          <div class="row between" style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <span class="small muted">Re-snapshot nightly</span>
+            <button class="switch on" aria-label="Re-snapshot nightly enabled"></button>
+          </div>
+          <div class="row" style="padding:10px 0 0">
+            <button class="btn ghost sm">Rebuild snapshot now</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- scope -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">SCOPE</span>
+        </div>
+        <div class="col" style="gap:8px">
+          <div class="scope-step">
+            <span class="lvl">Org</span>
+            <span class="name">acme-robotics</span>
+            <span class="count">3 skills</span>
+          </div>
+          <div class="scope-arrow">↓</div>
+          <div class="scope-step current">
+            <span class="lvl">Repo</span>
+            <span class="name">helios-firmware</span>
+            <span class="count">4 skills + 5 facts</span>
+          </div>
+          <div class="scope-arrow">↓</div>
+          <div class="scope-step">
+            <span class="lvl">Workflow</span>
+            <span class="name">overrides</span>
+            <span class="count">1</span>
+          </div>
+        </div>
+        <p class="tbl-caption" style="margin-top:12px">Closest scope wins on conflict.</p>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 14 — KNOWLEDGE · static concept, no functionality</span>
+  <span class="links">
+    <a href="13-onboarding.html">← Prev: Get started</a>
+    <a href="15-insights.html">Next: Insights →</a>
+  </span>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Workspace settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* ---- settings page only ---- */
+  .section-nav {
+    display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+    margin: -6px 0 20px; border-bottom: 1px solid var(--border);
+  }
+  .section-nav a {
+    position: relative; padding: 8px 13px 10px; font-size: 13px; font-weight: 500;
+    color: var(--mut); white-space: nowrap;
+  }
+  .section-nav a:hover { color: var(--ink); }
+  .section-nav a.active { color: var(--ink); }
+  .section-nav a.active::after {
+    content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px;
+    background: var(--accent); box-shadow: 0 0 12px 1px var(--glow); border-radius: 2px;
+  }
+
+  .switch-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 11px 0; border-bottom: 1px solid var(--border);
+  }
+  .switch-row:last-child { border-bottom: none; }
+  .switch-row .switch { margin-top: 2px; }
+  .switch-row .what { font-size: 13px; font-weight: 600; color: var(--ink-dim); }
+  .switch-row .why { font-size: 12px; color: var(--faint); margin-top: 1px; }
+  .switch-row.locked { opacity: 0.55; }
+  .switch-row.locked .switch { cursor: not-allowed; }
+
+  .policy-row {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+  }
+  .policy-row:last-of-type { border-bottom: none; }
+  .policy-row .switch { margin-top: 2px; }
+  .policy-row .what { font-size: 13px; font-weight: 600; }
+  .policy-row .why { font-size: 12.5px; color: var(--mut); margin: 2px 0 6px; }
+  .policy-row .terms { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .member { display: flex; align-items: center; gap: 10px; }
+  .member .mini-avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-disp); font-size: 10.5px; font-weight: 600;
+    background: linear-gradient(135deg, var(--accent-deep), #0f4a63); color: #d7f4fd;
+    border: 1px solid var(--border-strong);
+  }
+  .member .mini-avatar.svc { background: var(--raised); color: var(--mut); }
+  tr.pending td { opacity: 0.55; }
+  .approve-yes { color: var(--ok); font-family: var(--f-mono); }
+  .approve-no { color: var(--faint); }
+
+  .audit-row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    font-family: var(--f-mono); font-size: 12px;
+  }
+  .audit-row:last-of-type { border-bottom: none; }
+  .audit-row .t { color: var(--faint); flex: none; }
+  .audit-row .actor { color: var(--accent); flex: none; }
+  .audit-row .ev { color: var(--ink-dim); }
+
+  .integ-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  @media (max-width: 900px) { .integ-grid { grid-template-columns: repeat(2, 1fr); } }
+  .integ {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 12px; border: 1px solid var(--border); border-radius: var(--r-md);
+    background: var(--inset); min-width: 0;
+  }
+  .integ .mark {
+    width: 30px; height: 30px; border-radius: var(--r-sm); flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--f-disp); font-size: 12px; font-weight: 700;
+    background: var(--raised); border: 1px solid var(--border-strong); color: var(--ink-dim);
+  }
+  .integ .name { font-size: 12.5px; font-weight: 600; }
+  .integ .status { display: flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 11px; color: var(--mut); min-width: 0; }
+  .integ .status span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .integ.off { opacity: 0.55; }
+  .integ.off .btn { align-self: flex-start; }
+
+  .danger-card { border-color: rgba(255, 107, 107, 0.35); }
+  .danger-card .card-title { color: var(--err); }
+  .danger-row {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 13px 0; border-bottom: 1px solid rgba(255, 107, 107, 0.15);
+  }
+  .danger-row:last-of-type { border-bottom: none; }
+  .danger-row .what { font-size: 13px; font-weight: 600; min-width: 170px; }
+  .danger-row .why { font-size: 12.5px; color: var(--mut); flex: 1; min-width: 240px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Settings · acme-robotics</div>
+      <h1>Workspace settings</h1>
+      <p class="sub">Who can do what, what merges on its own, and where the record lives.</p>
+    </div>
+    <a class="btn ghost" href="#audit">Export audit CSV</a>
+    <button class="btn primary">Save changes</button>
+  </div>
+
+  <nav class="section-nav">
+    <a href="#workspace" class="active">Workspace</a>
+    <a href="#members">Members</a>
+    <a href="#policies">Policies</a>
+    <a href="#integrations">Integrations</a>
+    <a href="#audit">Audit</a>
+    <a href="#danger">Danger zone</a>
+  </nav>
+
+  <div class="grid">
+
+    <!-- workspace -->
+    <div class="card c-5" id="workspace">
+      <div class="card-head">
+        <span class="card-title">WORKSPACE</span>
+      </div>
+      <div class="col" style="gap:14px">
+        <div class="field">
+          <label for="ws-name">Workspace name</label>
+          <input class="input mono" id="ws-name" value="acme-robotics">
+        </div>
+        <div class="field">
+          <label for="ws-domain">Tenant domain</label>
+          <div class="row" style="gap:8px">
+            <input class="input mono" id="ws-domain" value="acme.ouroboros.dev" style="flex:1">
+            <span class="tag">SSO enforced</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="ws-region">Data region</label>
+          <select class="input" id="ws-region"><option>EU-West (Frankfurt) ▾</option></select>
+        </div>
+        <div class="field">
+          <label for="ws-retention">Data retention</label>
+          <select class="input" id="ws-retention"><option>30 days ▾</option></select>
+          <span class="hint">transcripts, logs, artifacts</span>
+        </div>
+        <div class="switch-row locked" style="border-top:1px solid var(--border);padding-top:13px">
+          <button class="switch" aria-label="Training on tenant data — off, locked" aria-disabled="true"></button>
+          <div>
+            <div class="what">Allow Ouroboros to train on this tenant's data</div>
+            <div class="why">off — locked by enterprise plan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- members -->
+    <div class="card c-7" id="members">
+      <div class="card-head">
+        <span class="card-title">MEMBERS &amp; ROLES</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm">+ Invite member</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>Member</th><th>Role</th><th>Can approve loops</th><th>Last active</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="member"><span class="mini-avatar">KS</span>Ken S <span class="tag">you</span></span></td>
+              <td>Owner</td>
+              <td><span class="approve-yes">✓</span></td>
+              <td class="mono">now</td>
+            </tr>
+            <tr>
+              <td><span class="member"><span class="mini-avatar">MC</span>Maya Chen</span></td>
+              <td>Maintainer</td>
+              <td><span class="approve-yes">✓</span></td>
+              <td class="mono">12m</td>
+            </tr>
+            <tr>
+              <td><span class="member"><span class="mini-avatar">JR</span>Jorge Reyes</span></td>
+              <td>Viewer</td>
+              <td><span class="approve-no">—</span></td>
+              <td class="mono">3d</td>
+            </tr>
+            <tr>
+              <td><span class="member"><span class="mini-avatar svc">⚙︎</span><span class="mono">devops-bot</span></span></td>
+              <td>Service</td>
+              <td><span class="approve-no">—</span></td>
+              <td class="mono">41s</td>
+            </tr>
+            <tr class="pending">
+              <td><span class="member"><span class="mini-avatar svc">P</span><span class="mono">priya@acme.dev</span></span></td>
+              <td>Maintainer</td>
+              <td><span class="muted small">invited 2h ago</span></td>
+              <td><button class="btn ghost sm">Resend</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <span class="muted small">Roles sync from Okta group <span class="mono">ouroboros-*</span> nightly <span style="color:var(--ok)">✓</span> · Owner &gt; Maintainer (approve/merge) &gt; Viewer (read-only)</span>
+      </div>
+    </div>
+
+    <!-- policies -->
+    <div class="card c-7" id="policies">
+      <div class="card-head">
+        <span class="card-title">AUTONOMY POLICIES</span>
+        <span class="spacer"></span>
+        <span class="tag">policy v7</span>
+      </div>
+      <div class="col" style="gap:0">
+        <div class="policy-row">
+          <button class="switch on" aria-label="Auto-merge when all gates green — on"></button>
+          <div>
+            <div class="what">Auto-merge when all gates green</div>
+            <div class="why">If every check, review gate, and spend guard passes, the PR merges itself.</div>
+            <div class="terms"><span class="tag">effort ≤ M</span><span class="tag">non-refactor</span></div>
+          </div>
+        </div>
+        <div class="policy-row">
+          <button class="switch on" aria-label="Human review required — on"></button>
+          <div>
+            <div class="what">Human review required</div>
+            <div class="why">Bigger or riskier work always waits for a person before merging.</div>
+            <div class="terms"><span class="tag">label:refactor</span><span class="tag">OR effort ≥ L</span></div>
+          </div>
+        </div>
+        <div class="policy-row">
+          <button class="switch on" aria-label="Protected paths need allow-once — on"></button>
+          <div>
+            <div class="what">Protected paths need allow-once</div>
+            <div class="why">Touching these directories pauses the loop until someone grants a one-time pass.</div>
+            <div class="terms"><span class="tag">boot/</span><span class="tag">keys/</span><span class="tag">.github/</span></div>
+          </div>
+        </div>
+        <div class="policy-row">
+          <button class="switch on" aria-label="Spend guard — on"></button>
+          <div>
+            <div class="what">Spend guard</div>
+            <div class="why">Runaway loops stop before they get expensive.</div>
+            <div class="terms"><span class="tag">pause loop at $2.50/run</span><span class="tag">monthly cap $600/provider</span></div>
+          </div>
+        </div>
+        <div class="policy-row">
+          <button class="switch on" aria-label="Dry-run mode for new repos — on"></button>
+          <div>
+            <div class="what">Dry-run mode for new repos</div>
+            <div class="why">New repos prove themselves before anything merges on its own.</div>
+            <div class="terms"><span class="tag">first 10 loops open draft PRs</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="row between" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <span class="muted small">Policies are versioned — changes appear in the audit log.</span>
+        <a class="btn ghost sm" href="05-workflow-code.html">Edit as code →</a>
+      </div>
+    </div>
+
+    <!-- audit log -->
+    <div class="card c-5" id="audit">
+      <div class="card-head">
+        <span class="card-title">AUDIT LOG</span>
+        <span class="spacer"></span>
+        <span class="tag">today</span>
+      </div>
+      <div class="col" style="gap:0">
+        <div class="audit-row"><span class="t">14:31</span><span class="actor">ouroboros-app[bot]</span><span class="ev">pushed PR #514 rev 2</span></div>
+        <div class="audit-row"><span class="t">14:12</span><span class="actor">Ken</span><span class="ev">rotated Anthropic API key</span></div>
+        <div class="audit-row"><span class="t">13:48</span><span class="actor">Ken</span><span class="ev">enabled auto-merge (policy v7)</span></div>
+        <div class="audit-row"><span class="t">13:22</span><span class="actor">Maya</span><span class="ev">approved waiver on PR #509</span></div>
+        <div class="audit-row"><span class="t">12:04</span><span class="actor">system</span><span class="ev">runner forge-03 marked offline</span></div>
+      </div>
+      <div class="row" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">
+        <span class="tag">retained 400d</span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn ghost sm">Stream to SIEM <span style="color:var(--ok)">✓</span> (webhook)</button>
+        <button class="btn ghost sm">Export CSV</button>
+      </div>
+    </div>
+
+    <!-- integrations -->
+    <div class="card c-7" id="integrations">
+      <div class="card-head">
+        <span class="card-title">INTEGRATIONS</span>
+        <span class="spacer"></span>
+        <span class="tag">4 connected</span>
+      </div>
+      <div class="integ-grid">
+        <div class="integ">
+          <span class="mark">GH</span>
+          <span class="name">GitHub</span>
+          <span class="status"><span class="dot ok"></span><span>connected · app v2.4</span></span>
+        </div>
+        <div class="integ">
+          <span class="mark">SL</span>
+          <span class="name">Slack</span>
+          <span class="status"><span class="dot ok"></span><span>#ouroboros-loops</span></span>
+        </div>
+        <div class="integ">
+          <span class="mark">JR</span>
+          <span class="name">Jira</span>
+          <span class="status"><span class="dot ok"></span><span>ACME workspace</span></span>
+        </div>
+        <div class="integ off">
+          <span class="mark">LN</span>
+          <span class="name">Linear</span>
+          <button class="btn ghost sm">Connect</button>
+        </div>
+        <div class="integ off">
+          <span class="mark">MS</span>
+          <span class="name">MS Teams</span>
+          <button class="btn ghost sm">Connect</button>
+        </div>
+        <div class="integ">
+          <span class="mark">WH</span>
+          <span class="name">Webhooks</span>
+          <span class="status"><span class="dot ok"></span><span>2 active</span></span>
+        </div>
+        <div class="integ off">
+          <span class="mark">DD</span>
+          <span class="name">Datadog</span>
+          <button class="btn ghost sm">Connect</button>
+        </div>
+        <div class="integ off">
+          <span class="mark">PD</span>
+          <span class="name">PagerDuty</span>
+          <button class="btn ghost sm">Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- notifications -->
+    <div class="card c-5" id="notifications">
+      <div class="card-head">
+        <span class="card-title">NOTIFICATIONS</span>
+      </div>
+      <div class="col" style="gap:0">
+        <div class="switch-row">
+          <button class="switch on" aria-label="Needs-you decisions to Slack DM — on"></button>
+          <div>
+            <div class="what">Needs-you decisions → Slack DM</div>
+            <div class="why">approvals, waivers, allow-once requests</div>
+          </div>
+        </div>
+        <div class="switch-row">
+          <button class="switch on" aria-label="Daily digest to email — on"></button>
+          <div>
+            <div class="what">Daily digest 09:00 → email</div>
+            <div class="why">merges, spend, interventions since yesterday</div>
+          </div>
+        </div>
+        <div class="switch-row locked">
+          <button class="switch" aria-label="Loop failures to PagerDuty — off" aria-disabled="true"></button>
+          <div>
+            <div class="what">Loop failures → PagerDuty</div>
+            <div class="why">connect PagerDuty first</div>
+          </div>
+        </div>
+        <div class="switch-row">
+          <button class="switch on" aria-label="Weekly insights report — on"></button>
+          <div>
+            <div class="what">Weekly insights report → #eng-leads</div>
+            <div class="why">Mondays, from the Insights screen</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- danger zone -->
+    <div class="card c-12 danger-card" id="danger">
+      <div class="card-head">
+        <span class="card-title">DANGER ZONE</span>
+      </div>
+      <div class="col" style="gap:0">
+        <div class="danger-row">
+          <span class="what">Pause all loops</span>
+          <span class="why">queued issues stay queued; running loops finish their stage</span>
+          <button class="switch" aria-label="Pause all loops — off" style="transform:scale(1.15);transform-origin:right center"></button>
+        </div>
+        <div class="danger-row">
+          <span class="what">Disconnect GitHub App</span>
+          <span class="why">open PRs remain, loops stop</span>
+          <button class="btn ghost" style="color:var(--err);border-color:rgba(255,107,107,.35)">Disconnect…</button>
+        </div>
+        <div class="danger-row">
+          <span class="what">Delete workspace</span>
+          <span class="why mono" style="font-family:var(--f-mono);font-size:12px">type the workspace name to confirm · 30-day recovery window</span>
+          <button class="btn danger">Delete acme-robotics…</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 17 — SETTINGS · static concept, no functionality</span>
+  <span class="links">
+    <a href="16-inbox.html">← Prev: Needs-you inbox</a>
+    <a href="18-build-analyzer.html">Next: Build Analyzer →</a>
+  </span>
+</footer>
+
+</body>
+</html>

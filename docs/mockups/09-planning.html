@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Planning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+/* ---------- 09 · planning ---------- */
+
+/* segmented tracker control */
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-md); overflow: hidden; background: var(--inset); }
+.seg button {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--f-ui); font-size: 12.5px; font-weight: 600;
+  color: var(--mut); background: transparent; border: none; cursor: pointer;
+  padding: 7px 13px; border-right: 1px solid var(--border); white-space: nowrap;
+}
+.seg button:last-child { border-right: none; }
+.seg button:hover { color: var(--ink-dim); }
+.seg button.sel {
+  color: var(--accent); background: var(--glow-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* two-letter tracker monograms — token tints only */
+.mgram {
+  width: 24px; height: 24px; border-radius: var(--r-sm); flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--f-disp); font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--ink-dim); background: var(--raised); border: 1px solid var(--border-strong);
+}
+.mgram.gh { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 32%, transparent); }
+.mgram.ji { color: var(--model);  background: color-mix(in srgb, var(--model) 10%, transparent);  border-color: color-mix(in srgb, var(--model) 32%, transparent); }
+.mgram.ln { color: var(--ok);     background: color-mix(in srgb, var(--ok) 10%, transparent);     border-color: color-mix(in srgb, var(--ok) 32%, transparent); }
+.mgram.sm { width: 20px; height: 20px; font-size: 9px; border-radius: 5px; }
+
+/* draft ticket preview rows */
+.draft-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 2px; border-bottom: 1px solid var(--border); min-width: 0;
+}
+.draft-row:last-of-type { border-bottom: none; }
+.draft-row input[type="checkbox"] { accent-color: var(--accent-deep); width: 15px; height: 15px; flex: none; cursor: pointer; }
+.draft-row .tid { font-family: var(--f-mono); font-size: 12px; color: var(--faint); flex: none; width: 52px; }
+.draft-row .ttl { flex: 1; min-width: 160px; font-size: 13px; color: var(--ink); }
+.draft-row .dep { font-family: var(--f-mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+
+/* tracker sync rows */
+.sync-row { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.sync-row:last-child { border-bottom: none; }
+.sync-row .name { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.sync-row .sub { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); }
+
+/* ---------- gantt (pure CSS grid) ---------- */
+.gantt-scroll { overflow-x: auto; padding-bottom: 4px; }
+.gantt {
+  position: relative; min-width: 860px;
+  display: grid;
+  grid-template-columns: 200px repeat(6, minmax(104px, 1fr));
+  grid-template-rows: 30px repeat(5, 52px);
+  align-items: center;
+}
+.gantt .month {
+  grid-row: 1; align-self: end; padding: 0 0 8px 10px;
+  font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--faint);
+}
+.gantt .rule { grid-row: 1 / -1; border-left: 1px solid var(--border); opacity: 0.55; height: 100%; pointer-events: none; }
+.gantt .lane-label { grid-column: 1; padding-right: 16px; font-size: 13px; font-weight: 600; color: var(--ink-dim); }
+.gantt .lane-label .small { font-weight: 400; }
+
+.gbar {
+  position: relative; overflow: hidden; height: 36px; margin: 0 8px 0 4px;
+  display: flex; align-items: center; gap: 8px; padding: 0 10px;
+  border-radius: 9px; border: 1px solid; white-space: nowrap; z-index: 1;
+}
+.gbar .bl { font-size: 12px; font-weight: 600; color: var(--ink); position: relative; z-index: 1; }
+.gbar .bchip {
+  position: relative; z-index: 1; margin-left: auto;
+  font-family: var(--f-mono); font-size: 10px; color: var(--ink-dim);
+  background: color-mix(in srgb, var(--bg0) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+  border-radius: 5px; padding: 1px 6px;
+}
+.gbar .prog { position: absolute; inset: 0; width: 60%; z-index: 0; }
+
+.gbar.t-accent { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 38%, transparent); }
+.gbar.t-accent .prog { background: color-mix(in srgb, var(--accent) 16%, transparent); border-right: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.gbar.t-model { background: color-mix(in srgb, var(--model) 9%, var(--surface)); border-color: color-mix(in srgb, var(--model) 34%, transparent); }
+.gbar.t-warn { background: color-mix(in srgb, var(--warn) 9%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.gbar.t-ok { background: color-mix(in srgb, var(--ok) 9%, var(--surface)); border-color: color-mix(in srgb, var(--ok) 34%, transparent); }
+.gbar.t-neutral { background: color-mix(in srgb, var(--raised) 70%, transparent); border: 1px dashed var(--border-strong); }
+.gbar.t-neutral .bl { color: var(--mut); }
+
+/* today marker — Aug 8 ≈ 26% through the Aug column */
+.gantt .today { grid-column: 3; grid-row: 1 / -1; position: relative; height: 100%; pointer-events: none; z-index: 2; }
+.gantt .today::before {
+  content: ""; position: absolute; top: 4px; bottom: 0; left: 26%; width: 2px;
+  background: var(--accent); box-shadow: 0 0 10px 1px var(--glow); border-radius: 2px;
+}
+.gantt .today::after {
+  content: "TODAY"; position: absolute; top: -2px; left: 26%; transform: translateX(-50%);
+  font-family: var(--f-mono); font-size: 9px; letter-spacing: 0.14em; color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html" class="active">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Planning</div>
+      <h1>Describe the work. Ouroboros writes the tickets.</h1>
+      <p class="sub">Draft epics and tickets straight into GitHub Issues, Jira, or Linear — sized by the estimator, wired with dependencies, and queued for the loop the moment you approve them.</p>
+    </div>
+    <a class="btn ghost" href="#">Import from Jira</a>
+    <a class="btn primary" href="#">New roadmap</a>
+  </div>
+
+  <div class="grid">
+
+    <!-- ticket generator -->
+    <div class="card c-7">
+      <div class="card-head">
+        <span class="card-title">GENERATE TICKETS</span>
+        <span class="spacer"></span>
+        <span class="tag">estimator v3</span>
+      </div>
+
+      <div class="field">
+        <label for="gen-prompt">Describe the outcome, not the tasks</label>
+        <textarea class="input" id="gen-prompt" rows="4">We need OTA updates to survive power loss mid-flash: staged A/B partitions, checksum verification before swap, automatic rollback, and a recovery beacon over BLE if both slots are bad.</textarea>
+      </div>
+
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:12px">
+        <div class="seg" role="group" aria-label="Target tracker">
+          <button class="sel"><span class="mgram sm gh">GH</span>GitHub Issues</button>
+          <button><span class="mgram sm ji">JI</span>Jira</button>
+          <button><span class="mgram sm ln">LN</span>Linear</button>
+        </div>
+        <button class="btn ghost sm">Milestone: Helios 2.1 <span class="faint">▾</span></button>
+        <span class="row" style="gap:8px">
+          <button class="switch on" aria-label="Auto-size with estimator enabled"></button>
+          <span class="small muted">Auto-size with estimator</span>
+        </span>
+        <span class="row" style="gap:8px">
+          <button class="switch" aria-label="Queue XS/S tickets immediately disabled"></button>
+          <span class="small muted">Queue XS/S tickets immediately</span>
+        </span>
+        <span style="margin-left:auto"></span>
+        <button class="btn primary">Draft tickets ⟳</button>
+      </div>
+
+      <hr class="divider">
+
+      <div class="row" style="margin-bottom:4px">
+        <span class="card-title">DRAFT — 6 TICKETS</span>
+        <span class="spacer"></span>
+        <span class="pill ok">✓ all sized</span>
+      </div>
+
+      <div class="draft-row">
+        <input type="checkbox" checked aria-label="Include OTA-1">
+        <span class="tid">OTA-1</span>
+        <span class="ttl">Partition table &amp; bootloader slot flag for A/B scheme</span>
+        <span class="dep">blocks OTA-3</span>
+        <span class="effort l">L</span>
+        <span class="tag">feature-loop</span>
+      </div>
+      <div class="draft-row">
+        <input type="checkbox" checked aria-label="Include OTA-2">
+        <span class="tid">OTA-2</span>
+        <span class="ttl">SHA-256 checksum verification before slot swap</span>
+        <span class="dep">blocks OTA-3</span>
+        <span class="effort m">M</span>
+        <span class="tag">feature-loop</span>
+      </div>
+      <div class="draft-row">
+        <input type="checkbox" checked aria-label="Include OTA-3">
+        <span class="tid">OTA-3</span>
+        <span class="ttl">Rollback state machine on failed boot confirmation</span>
+        <span class="dep">blocks OTA-5</span>
+        <span class="effort l">L</span>
+        <span class="tag">feature-loop</span>
+      </div>
+      <div class="draft-row">
+        <input type="checkbox" checked aria-label="Include OTA-4">
+        <span class="tid">OTA-4</span>
+        <span class="ttl">BLE recovery beacon when both slots fail checksum</span>
+        <span class="dep">blocks OTA-5</span>
+        <span class="effort m">M</span>
+        <span class="tag">feature-loop</span>
+      </div>
+      <div class="draft-row">
+        <input type="checkbox" checked aria-label="Include OTA-5">
+        <span class="tid">OTA-5</span>
+        <span class="ttl">Power-loss integration tests on HIL rig (kill power mid-flash)</span>
+        <span class="dep">&nbsp;</span>
+        <span class="effort m">M</span>
+        <span class="tag">hil-verify</span>
+      </div>
+      <div class="draft-row">
+        <input type="checkbox" checked aria-label="Include OTA-6">
+        <span class="tid">OTA-6</span>
+        <span class="ttl">Operator docs: recovery procedure &amp; beacon pairing</span>
+        <span class="dep">&nbsp;</span>
+        <span class="effort xs">XS</span>
+        <span class="tag">docs-loop</span>
+      </div>
+
+      <div class="row" style="margin-top:14px">
+        <span class="small muted mono">est. total ~3 days of loop time · $14 est. spend</span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn ghost sm">Regenerate</button>
+        <button class="btn primary sm">Push 6 tickets to GitHub →</button>
+      </div>
+    </div>
+
+    <!-- side column -->
+    <div class="c-5 col" style="gap:16px">
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">TRACKER SYNC</span>
+          <span class="spacer"></span>
+          <span class="tag">every 60s</span>
+        </div>
+        <div class="sync-row">
+          <span class="mgram gh">GH</span>
+          <span style="flex:1">
+            <span class="name">GitHub Issues</span><br>
+            <span class="sub">two-way sync · 42 issues</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="sync-row">
+          <span class="mgram ji">JI</span>
+          <span style="flex:1">
+            <span class="name">Jira · ACME workspace</span><br>
+            <span class="sub">epics mirror milestones</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="sync-row">
+          <span class="mgram ln">LN</span>
+          <span style="flex:1">
+            <span class="name">Linear · acme-labs</span><br>
+            <span class="sub">not connected</span>
+          </span>
+          <span class="dot idle"></span>
+          <button class="btn ghost sm">connect ↗</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">BACKLOG HEALTH</span>
+          <span class="spacer"></span>
+          <span class="tag">42 open</span>
+        </div>
+        <div class="col" style="gap:13px">
+          <div>
+            <div class="row between small"><span class="muted">Sized</span><span class="mono" style="color:var(--ok)">38/42</span></div>
+            <div class="meter ok" style="margin-top:5px"><span style="width:90%"></span></div>
+          </div>
+          <div>
+            <div class="row between small"><span class="muted">Blocked</span><span class="mono" style="color:var(--warn)">4</span></div>
+            <div class="meter warn" style="margin-top:5px"><span style="width:10%"></span></div>
+          </div>
+          <div>
+            <div class="row between small"><span class="muted">Stale &gt; 30d</span><span class="mono" style="color:var(--err)">6</span></div>
+            <div class="meter err" style="margin-top:5px"><span style="width:14%"></span></div>
+          </div>
+          <span class="small faint">Estimator re-runs nightly on unsized issues.</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- roadmap -->
+    <div class="card c-12">
+      <div class="card-head">
+        <span class="card-title">ROADMAP — HELIOS 2.1</span>
+        <span class="tag">Q3–Q4 2026</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm">Share ↗</button>
+      </div>
+
+      <div class="gantt-scroll">
+        <div class="gantt">
+          <!-- month column rules -->
+          <span class="rule" style="grid-column:2"></span>
+          <span class="rule" style="grid-column:3"></span>
+          <span class="rule" style="grid-column:4"></span>
+          <span class="rule" style="grid-column:5"></span>
+          <span class="rule" style="grid-column:6"></span>
+          <span class="rule" style="grid-column:7"></span>
+
+          <!-- month labels -->
+          <span class="month" style="grid-column:2">Jul 2026</span>
+          <span class="month" style="grid-column:3">Aug</span>
+          <span class="month" style="grid-column:4">Sep</span>
+          <span class="month" style="grid-column:5">Oct</span>
+          <span class="month" style="grid-column:6">Nov</span>
+          <span class="month" style="grid-column:7">Dec</span>
+
+          <!-- lanes -->
+          <span class="lane-label" style="grid-row:2">OTA hardening</span>
+          <div class="gbar t-accent" style="grid-row:2;grid-column:2 / 5">
+            <span class="prog"></span>
+            <span class="bl">OTA hardening</span>
+            <span class="bchip">12 issues · 8 done</span>
+          </div>
+
+          <span class="lane-label" style="grid-row:3">BLE provisioning v2</span>
+          <div class="gbar t-model" style="grid-row:3;grid-column:3 / 6">
+            <span class="bl">BLE provisioning v2</span>
+            <span class="bchip">9 issues · 2 done</span>
+          </div>
+
+          <span class="lane-label" style="grid-row:4">Motor control refactor</span>
+          <div class="gbar t-warn" style="grid-row:4;grid-column:4 / 7">
+            <span class="bl">Motor control refactor</span>
+            <span class="bchip">14 issues · 0 done</span>
+          </div>
+
+          <span class="lane-label" style="grid-row:5">Fleet telemetry dashboard</span>
+          <div class="gbar t-ok" style="grid-row:5;grid-column:5 / 8">
+            <span class="bl">Fleet telemetry dashboard</span>
+            <span class="bchip">7 issues · 0 done</span>
+          </div>
+
+          <span class="lane-label" style="grid-row:6">Zephyr 4.2 migration <span class="small faint">proposed</span></span>
+          <div class="gbar t-neutral" style="grid-row:6;grid-column:6 / 8">
+            <span class="bl">Zephyr 4.2 migration</span>
+            <span class="bchip">unscoped</span>
+          </div>
+
+          <!-- today line: Aug 8 -->
+          <span class="today"></span>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <span class="small muted">Bars are epics; Ouroboros keeps them in sync with the trackers and re-plans when reality drifts.</span>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 09 — ROADMAPS & TICKET GENERATION · static concept, no functionality</span>
+  <span class="links">
+    <a href="index.html">← All mockups</a>
+    <a href="08-build-farm.html">← Prev: Build farm</a>
+    <a href="10-run-detail.html">Next: Run console →</a>
+  </span>
+</footer>
+
+</body>
+</html>

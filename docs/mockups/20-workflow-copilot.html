@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Workflow Copilot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* segmented control */
+  .seg {
+    display: inline-flex; align-items: center; gap: 2px;
+    padding: 3px; border: 1px solid var(--border-strong); border-radius: var(--r-md);
+    background: var(--inset);
+  }
+  .seg a {
+    padding: 5px 14px; border-radius: var(--r-sm);
+    font-size: 12.5px; font-weight: 600; color: var(--mut); white-space: nowrap;
+  }
+  .seg a:hover { color: var(--ink); }
+  .seg a.on {
+    color: var(--accent-ink);
+    background: linear-gradient(180deg, #46dcf8, #1fa9d8);
+    box-shadow: 0 0 14px -3px var(--glow);
+  }
+
+  /* chat */
+  .chat-card { padding: 0; display: flex; flex-direction: column; }
+  .chat-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .chat-scroll { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { display: flex; flex-direction: column; gap: 5px; max-width: 92%; }
+  .msg .meta {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .msg .bubble {
+    padding: 10px 13px; border-radius: var(--r-md);
+    font-size: 13.5px; line-height: 1.55;
+    border: 1px solid var(--border);
+  }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.user .bubble {
+    background: var(--raised); border-color: var(--border-strong);
+    border-bottom-right-radius: 4px; color: var(--ink);
+  }
+  .msg.bot { align-self: flex-start; }
+  .msg.bot .meta { color: var(--accent); }
+  .msg.bot .bubble {
+    background: var(--inset); border-bottom-left-radius: 4px; color: var(--ink-dim);
+  }
+  .msg .bubble strong { color: var(--ink); font-weight: 600; }
+
+  .choice-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+  .choice-row .q { font-size: 12.5px; color: var(--mut); white-space: nowrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 11px; border-radius: 999px; cursor: pointer;
+    font-family: var(--f-mono); font-size: 11.5px; white-space: nowrap;
+    border: 1px solid var(--border-strong); background: var(--raised); color: var(--mut);
+  }
+  .chip:hover { border-color: var(--faint); }
+  .chip.sel {
+    color: var(--accent); border-color: rgba(61, 214, 245, 0.4);
+    background: var(--glow-soft);
+  }
+
+  .composer {
+    display: flex; gap: 10px; align-items: center;
+    padding: 12px 18px 14px; border-top: 1px solid var(--border);
+    margin-top: auto;
+  }
+
+  /* draft stage list */
+  .stage-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px; flex-wrap: wrap;
+  }
+  .stage-row:last-of-type { border-bottom: none; }
+  .stage-row .idx {
+    font-family: var(--f-mono); font-size: 11px; color: var(--faint);
+    width: 20px; flex: none;
+  }
+  .stage-row .glyph { color: var(--accent); font-size: 12px; flex: none; width: 14px; text-align: center; }
+  .stage-row .name { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .stage-row .edit-link { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+  .stage-row .edit-link:hover { color: var(--accent); }
+
+  /* dry-run results */
+  .res-row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 7px 0; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .res-row:last-of-type { border-bottom: none; }
+  .res-row .st { font-family: var(--f-mono); flex: none; width: 16px; text-align: center; }
+  .res-row .st.ok { color: var(--ok); }
+  .res-row .st.warn { color: var(--warn); }
+  .res-row .st.idle { color: var(--faint); }
+  .res-row .stage { font-weight: 600; color: var(--ink); white-space: nowrap; }
+  .res-row .how { font-family: var(--f-mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+  .res-row .note { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); margin-left: auto; text-align: right; }
+
+  .code .d-del { color: var(--err); }
+  .code .d-add { color: var(--ok); }
+  .code .d-hunk { color: var(--accent); }
+
+  /* AI suggestion callouts — the only place accent glow lives besides primary buttons */
+  .suggest {
+    border: 1px solid rgba(61, 214, 245, 0.4); border-radius: var(--r-md);
+    background: linear-gradient(180deg, var(--glow-soft), rgba(61, 214, 245, 0.04));
+    box-shadow: 0 0 22px -6px var(--glow), inset 0 1px 0 rgba(61, 214, 245, 0.12);
+    padding: 13px 15px; display: flex; gap: 11px; align-items: flex-start;
+  }
+  .suggest .spark { color: var(--accent); font-size: 15px; line-height: 1.4; flex: none; text-shadow: 0 0 10px var(--glow); }
+  .suggest .body { font-size: 13px; color: var(--ink-dim); line-height: 1.55; }
+  .suggest .body strong { color: var(--ink); }
+  .suggest .body code {
+    font-family: var(--f-mono); font-size: 11.5px; color: var(--accent);
+    background: var(--inset); border: 1px solid var(--border);
+    border-radius: 4px; padding: 1px 5px;
+  }
+  .suggest .conf { font-family: var(--f-mono); font-size: 11px; color: var(--accent); white-space: nowrap; }
+  .suggest .actions { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+
+  /* safety strip */
+  .safe-col .k {
+    font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: 4px;
+  }
+  .safe-col p { font-size: 12.5px; color: var(--mut); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html" class="active">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Workflow Studio · Copilot</div>
+      <h1>Describe the workflow. Watch it build. Test it before it touches anything.</h1>
+      <p class="sub">The third way to edit workflows — same graph as the canvas and the code, driven by conversation. Every draft can dry-run against a real issue first.</p>
+    </div>
+    <span class="seg">
+      <a href="04-workflow-builder.html">Visual</a>
+      <a href="05-workflow-code.html">Code</a>
+      <a class="on" href="20-workflow-copilot.html">Copilot</a>
+    </span>
+    <button class="btn ghost">Discard draft</button>
+    <button class="btn primary">Promote draft → security-patch v1</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ LEFT: conversation ============ -->
+    <div class="c-5 col" style="gap:8px">
+      <div class="card chat-card" style="flex:1">
+        <div class="chat-head">
+          <span class="card-title">CONVERSATION</span>
+          <span class="spacer" style="flex:1"></span>
+          <span class="pill model">claude-fable-5</span>
+          <span class="tag">draft: security-patch</span>
+        </div>
+
+        <div class="chat-scroll">
+
+          <div class="msg user">
+            <span class="meta">Ken · 15:02</span>
+            <div class="bubble">Create a workflow for security patches: always get a second model's review, never auto-merge, and prove the CVE is actually fixed.</div>
+          </div>
+
+          <div class="msg bot">
+            <span class="meta">Copilot · 15:02</span>
+            <div class="bubble">
+              Drafted <strong>security-patch</strong> — 8 stages, shown on the right. For "prove it's actually fixed" I added an <strong>exploit-verify</strong> stage: it re-runs the CVE's proof-of-concept against the patched build and attaches the result to PR verification. Two questions:
+              <div class="choice-row">
+                <span class="q">① What triggers it?</span>
+                <button class="chip sel">label:security ✓</button>
+                <button class="chip">CVE pattern in title</button>
+              </div>
+              <div class="choice-row">
+                <span class="q">② May it read the GitHub Advisory DB?</span>
+                <button class="chip sel">Yes ✓</button>
+                <button class="chip">No</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="msg user">
+            <span class="meta">Ken · 15:04</span>
+            <div class="bubble">label security. yes. also cap spend at $5 a run.</div>
+          </div>
+
+          <div class="msg bot">
+            <span class="meta">Copilot · 15:04</span>
+            <div class="bubble">Added a $5/run spend guard. The draft is ready — want a dry run? <strong>#489</strong> is the closest open issue (CAN arbitration storm, no CVE — a useful edge case).</div>
+          </div>
+
+          <div class="msg user">
+            <span class="meta">Ken · 15:05</span>
+            <div class="bubble">dry run #489</div>
+          </div>
+
+          <div class="msg bot">
+            <span class="meta">Copilot · 15:08</span>
+            <div class="bubble">Dry run finished — <strong>2m 41s, $0.31, zero side effects</strong>. Two improvement suggestions below the results →</div>
+          </div>
+
+        </div>
+
+        <div class="composer">
+          <input class="input" placeholder="Refine the workflow — e.g. 'require a human when the CVE is critical'">
+          <button class="btn primary sm">Send</button>
+        </div>
+      </div>
+      <p class="small faint" style="padding:0 4px">Copilot edits compile to the same graph as the canvas and the code editor — nothing is a special case.</p>
+    </div>
+
+    <!-- ============ RIGHT: draft + dry run ============ -->
+    <div class="c-7 col" style="gap:16px">
+
+      <!-- draft stage list -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">DRAFT — SECURITY-PATCH · UNPUBLISHED</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="05-workflow-code.html">View as code →</a>
+        </div>
+        <div class="col" style="gap:0">
+          <div class="stage-row">
+            <span class="idx">01</span><span class="glyph">◈</span><span class="name">trigger</span>
+            <span class="tag">label:security</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">02</span><span class="glyph">◍</span><span class="name">analyze</span>
+            <span class="tag">skill:advisory-db</span><span class="tag">claude-sonnet-5</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">03</span><span class="glyph">◇</span><span class="name">plan</span>
+            <span class="tag">claude-fable-5</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">04</span><span class="glyph">◆</span><span class="name">implement</span>
+            <span class="tag">routed by task</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">05</span><span class="glyph">▣</span><span class="name">build</span>
+            <span class="tag">pool-a</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">06</span><span class="glyph">▤</span><span class="name">test</span>
+            <span class="tag">twister full</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">07</span><span class="glyph">⌖</span><span class="name">exploit-verify</span>
+            <span class="tag">reruns CVE PoC</span><span class="tag">sandboxed</span>
+            <span class="pill warn">added by copilot</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">08</span><span class="glyph">◎</span><span class="name">review ×2</span>
+            <span class="tag">claude-fable-5</span><span class="tag">cursor/composer-2</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+          <div class="stage-row">
+            <span class="idx">09</span><span class="glyph">⇱</span><span class="name">open PR</span>
+            <span class="tag">never auto-merge</span>
+            <a class="edit-link" href="04-workflow-builder.html">edit</a>
+          </div>
+        </div>
+        <hr class="divider" style="margin-bottom:10px">
+        <div class="mono small faint">9 stages · spend cap $5/run · draft not yet runnable on real issues</div>
+      </div>
+
+      <!-- dry run -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">DRY RUN — #489 CAN ARBITRATION-LOST STORM UNDER FULL TELEMETRY LOAD</span>
+          <span class="spacer"></span>
+          <span class="pill run">simulated — no writes · no PRs · no merges</span>
+          <span class="mono small muted">2m 41s · $0.31</span>
+        </div>
+
+        <div class="col" style="gap:0">
+          <div class="res-row">
+            <span class="st ok">✓</span><span class="stage">analyze</span>
+            <span class="note">mapped 4 files · advisory DB skipped (no CVE on this issue)</span>
+          </div>
+          <div class="res-row">
+            <span class="st ok">✓</span><span class="stage">plan</span>
+            <span class="note">3 steps · would touch drivers/can/arbitration.c</span>
+          </div>
+          <div class="res-row">
+            <span class="st ok">✓</span><span class="stage">implement</span><span class="how">simulated</span>
+            <span class="note">diff drafted +41 −9 (below) · 84k tokens</span>
+          </div>
+          <div class="res-row">
+            <span class="st ok">✓</span><span class="stage">build</span><span class="how">replayed from history</span>
+            <span class="note">est. 4m 02s (214 similar builds, ±20s)</span>
+          </div>
+          <div class="res-row">
+            <span class="st warn">⏸</span><span class="stage">exploit-verify</span><span class="how" style="color:var(--warn)">skipped</span>
+            <span class="note" style="color:var(--warn)">no PoC exists: stage had nothing to do</span>
+          </div>
+          <div class="res-row">
+            <span class="st ok">✓</span><span class="stage">review ×2</span>
+            <span class="note">both approve · 1 style nit</span>
+          </div>
+          <div class="res-row">
+            <span class="st idle">○</span><span class="stage">open PR</span>
+            <span class="note">would open DRAFT PR · not merged (policy)</span>
+          </div>
+        </div>
+
+        <div class="code" style="margin-top:14px"><span class="d-hunk">@@ drivers/can/arbitration.c · simulated diff (never written to repo) @@</span>
+<span class="d-del">-    if (err &amp; CAN_ERR_LOSTARB) {</span>
+<span class="d-del">-        can_retry_tx(dev, frame);          /* immediate retry floods the bus */</span>
+<span class="d-add">+    if (err &amp; CAN_ERR_LOSTARB) {</span>
+<span class="d-add">+        k_sleep(K_USEC(backoff_us));       /* exponential backoff, 50–800 µs */</span>
+<span class="d-add">+        backoff_us = MIN(backoff_us &lt;&lt; 1, CAN_ARB_BACKOFF_MAX_US);</span>
+<span class="d-add">+        can_retry_tx(dev, frame);</span></div>
+
+        <div class="col" style="gap:12px;margin-top:16px">
+          <div class="suggest">
+            <span class="spark">✦</span>
+            <div>
+              <div class="body">
+                <strong>Make exploit-verify conditional</strong> — it stalled with nothing to do because #489 has no CVE. Add <code>when: issue.cve != null</code> so security-labeled issues without a PoC skip it cleanly. <span class="conf">Confidence 93%</span>
+              </div>
+              <div class="actions">
+                <button class="btn primary sm">Apply to draft</button>
+                <button class="btn ghost sm">Explain</button>
+                <button class="btn ghost sm">Ignore</button>
+              </div>
+            </div>
+          </div>
+          <div class="suggest">
+            <span class="spark">✦</span>
+            <div>
+              <div class="body">
+                <strong>Pin the pr-etiquette skill to both reviewers</strong> — in 10 replayed review pairs, the two models disagreed on style nits 6 times; the shared skill removes the noise. <span class="conf">Confidence 81%</span>
+              </div>
+              <div class="actions">
+                <button class="btn primary sm">Apply to draft</button>
+                <button class="btn ghost sm">Ignore</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="divider" style="margin-bottom:12px">
+        <div class="row between" style="flex-wrap:wrap">
+          <span class="row" style="gap:8px">
+            <button class="btn ghost sm">Re-run dry run</button>
+            <button class="btn ghost sm">Dry-run another issue ▾</button>
+          </span>
+          <span class="mono small faint">history: 1 dry run · draft v0.3 (2 copilot edits applied)</span>
+        </div>
+      </div>
+
+      <!-- safety strip -->
+      <div class="card">
+        <div class="card-head" style="margin-bottom:12px">
+          <span class="card-title">WHY DRY RUNS ARE SAFE</span>
+        </div>
+        <div class="row" style="gap:20px;align-items:flex-start;flex-wrap:wrap">
+          <div class="safe-col" style="flex:1;min-width:180px">
+            <div class="k">Simulated writes</div>
+            <p>diffs drafted in memory — repo untouched</p>
+          </div>
+          <div class="safe-col" style="flex:1;min-width:180px">
+            <div class="k">Replayed infra</div>
+            <p>build/test estimated from your history, farm idle</p>
+          </div>
+          <div class="safe-col" style="flex:1;min-width:180px">
+            <div class="k">Real models</div>
+            <p>prompts &amp; routing exercised for real — that's what you're testing</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 20 — WORKFLOW COPILOT &amp; DRY RUN · static concept, no functionality</span>
+  <span class="links">
+    <a href="19-chatops.html">← Prev: Chat Ops</a>
+    <a href="21-model-registry.html">Next: Model registry →</a>
+  </span>
+</footer>
+
+</body>
+</html>

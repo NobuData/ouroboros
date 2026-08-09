@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — PR Verification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  /* revision cycle strip */
+  .rev-strip { display: flex; align-items: stretch; gap: 10px; overflow-x: auto; padding-bottom: 2px; }
+  .rev-step {
+    flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 4px;
+    padding: 10px 14px; border-radius: var(--r-md);
+    background: var(--inset); border: 1px solid var(--border);
+  }
+  .rev-step .rev-label { font-size: 12.5px; font-weight: 600; color: var(--ink-dim); display: flex; align-items: center; gap: 7px; }
+  .rev-step .rev-meta { font-family: var(--f-mono); font-size: 11px; color: var(--faint); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rev-step.err { border-color: rgba(255,107,107,.35); }
+  .rev-step.err .rev-label { color: var(--err); }
+  .rev-step.live { border-color: rgba(61,214,245,.4); background: var(--glow-soft); box-shadow: 0 0 16px -6px var(--glow); }
+  .rev-step.live .rev-label { color: var(--accent); }
+  .rev-step.ghosted { border-style: dashed; background: transparent; }
+  .rev-step.ghosted .rev-label { color: var(--faint); }
+  .rev-arrow { align-self: center; flex: none; color: var(--faint); font-family: var(--f-mono); font-size: 14px; }
+
+  /* verification gates */
+  .gate { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .gate:last-child { border-bottom: none; }
+  .gate .g-mark { flex: none; width: 20px; text-align: center; font-family: var(--f-mono); font-size: 13px; }
+  .gate .g-mark.ok { color: var(--ok); }
+  .gate .g-mark.idle { color: var(--faint); }
+  .gate .g-name { font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .gate .g-ev { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gate .g-link { flex: none; font-size: 12px; color: var(--accent); }
+  .gate .g-link:hover { text-decoration: underline; }
+  .gate.pending { background: linear-gradient(90deg, var(--glow-soft), transparent 70%); margin: 0 -18px; padding-left: 18px; padding-right: 18px; }
+
+  /* acceptance criteria matrix */
+  .crit { display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(200px, 1.3fr) auto; gap: 4px 14px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .crit:last-child { border-bottom: none; }
+  .crit .claim { font-size: 13px; color: var(--ink); }
+  .crit .claim::before { content: "“"; color: var(--faint); }
+  .crit .claim::after { content: "”"; color: var(--faint); }
+  .crit .ev { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); line-height: 1.55; }
+  .crit .ev .hunk { color: var(--accent); }
+  @media (max-width: 900px) {
+    .crit { grid-template-columns: 1fr auto; }
+    .crit .ev { grid-column: 1 / -1; }
+  }
+
+  /* changed files */
+  .file-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .file-row:last-of-type { border-bottom: none; }
+  .file-row .f-path { font-family: var(--f-mono); font-size: 12px; color: var(--ink-dim); flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-row .f-counts { font-family: var(--f-mono); font-size: 11.5px; white-space: nowrap; }
+  .file-row .f-counts .add { color: var(--ok); }
+  .file-row .f-counts .del { color: var(--err); }
+  .file-row .meter { width: 72px; flex: none; height: 5px; display: flex; gap: 2px; background: transparent; }
+  .file-row .meter i { display: block; height: 100%; border-radius: 3px; }
+  .file-row .meter .m-add { background: var(--ok); }
+  .file-row .meter .m-del { background: var(--err); }
+  .file-row .meter .m-rest { background: var(--raised); flex: 1; }
+
+  .code .dl-del { display: block; color: var(--err); background: rgba(255,107,107,.07); }
+  .code .dl-add { display: block; color: var(--ok); background: rgba(62,220,151,.07); }
+  .code .dl-ctx { display: block; }
+  .code .dl-hd { display: block; color: var(--faint); }
+
+  /* review thread */
+  .rev-entry { padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .rev-entry:last-child { border-bottom: none; padding-bottom: 2px; }
+  .rev-entry .r-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 5px; }
+  .rev-entry .r-author { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim); font-weight: 500; }
+  .rev-entry .r-ts { font-family: var(--f-mono); font-size: 10.5px; color: var(--faint); margin-left: auto; }
+  .rev-entry .r-body { font-size: 12.5px; color: var(--ink-dim); line-height: 1.5; }
+  .rev-entry.blocking .r-body { border-left: 2px solid var(--warn); padding-left: 10px; }
+  .rev-entry .r-reply { font-size: 12px; color: var(--mut); margin-top: 5px; padding-left: 10px; border-left: 2px solid var(--border); }
+  .rev-entry .r-resolve { font-family: var(--f-mono); font-size: 11px; color: var(--ok); margin-top: 5px; }
+
+  /* merge plan / spend rows */
+  .kv { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { font-size: 12.5px; color: var(--mut); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html" class="active">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">PR Verification · PR #514 · Revision 2</div>
+      <h1>can: fix flaky telemetry frame order under ISR load</h1>
+      <div class="row" style="margin-top:8px;flex-wrap:wrap">
+        <span class="tag">loop #1847 · issue #482</span>
+        <span class="pill warn">verifying — 5 of 7 gates green</span>
+        <span class="tag">loop/482-canbus-flake → main</span>
+        <span class="mono muted small">+68 −15 · 3 files</span>
+      </div>
+    </div>
+    <button class="btn ghost">Request human review</button>
+    <button class="btn danger">Return to loop</button>
+    <button class="btn primary">Merge when all gates green</button>
+  </div>
+
+  <div class="grid">
+
+    <!-- revision cycle -->
+    <div class="card c-12" style="padding:14px 18px">
+      <div class="card-head" style="margin-bottom:10px">
+        <span class="card-title">REVISION CYCLE</span>
+        <span class="spacer"></span>
+        <span class="tag">publish → verify → correct → re-publish</span>
+      </div>
+      <div class="rev-strip">
+        <div class="rev-step err">
+          <span class="rev-label">Revision 1 · 14:10 — blocked: HIL overshoot fail ✗</span>
+          <span class="rev-meta">3f9c2ae · overshoot 2.4% &gt; 2.0% limit · 2 gates red</span>
+        </div>
+        <span class="rev-arrow">→</span>
+        <div class="rev-step">
+          <span class="rev-label" style="color:var(--mut)">Correction round · attempt 4</span>
+          <span class="rev-meta">PID sampling moved off telemetry path <span class="pill model">claude-fable-5</span></span>
+        </div>
+        <span class="rev-arrow">→</span>
+        <div class="rev-step live">
+          <span class="rev-label"><span class="dot pulse"></span>Revision 2 · 14:31 — pushed, re-verification running</span>
+          <span class="rev-meta">b7e41d0 · 5/7 gates green · second-model review voting</span>
+        </div>
+        <span class="rev-arrow">→</span>
+        <div class="rev-step ghosted">
+          <span class="rev-label">Auto-merge (squash)</span>
+          <span class="rev-meta">on all gates green · policy: standard-fix</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN column -->
+    <div class="c-7 col" style="gap:16px">
+
+      <!-- gates -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">VERIFICATION GATES</span>
+          <span class="pill warn">5 / 7 green</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="10-run-detail.html">Run console →</a>
+        </div>
+        <div>
+          <div class="gate">
+            <span class="g-mark ok">✓</span>
+            <span class="g-name">Build</span>
+            <span class="g-ev">forge-01 · zephyr.elf · FLASH 43.5%</span>
+            <a class="g-link" href="#">view →</a>
+          </div>
+          <div class="gate">
+            <span class="g-mark ok">✓</span>
+            <span class="g-name">Test suite</span>
+            <span class="g-ev">63/63 after attempt 4</span>
+            <a class="g-link" href="11-test-results.html">test results →</a>
+          </div>
+          <div class="gate">
+            <span class="g-mark ok">✓</span>
+            <span class="g-name">Physical HIL</span>
+            <span class="g-ev">overshoot 1.7% ≤ 2.0% · rig helios-rig-02</span>
+            <a class="g-link" href="#">view →</a>
+          </div>
+          <div class="gate">
+            <span class="g-mark ok">✓</span>
+            <span class="g-name">Diff-vs-plan conformance</span>
+            <span class="g-ev">all hunks map to planned files · 0 out-of-scope edits</span>
+            <a class="g-link" href="#">view →</a>
+          </div>
+          <div class="gate">
+            <span class="g-mark ok">✓</span>
+            <span class="g-name">Secrets &amp; license scan</span>
+            <span class="g-ev">clean</span>
+            <a class="g-link" href="#">view →</a>
+          </div>
+          <div class="gate pending">
+            <span class="g-mark"><span class="dot pulse"></span></span>
+            <span class="g-name" style="color:var(--accent)">Second-model review</span>
+            <span class="g-ev">cursor/composer-2 voting…</span>
+            <span class="pill run">in progress</span>
+          </div>
+          <div class="gate">
+            <span class="g-mark idle">○</span>
+            <span class="g-name" style="color:var(--mut)">Human approval</span>
+            <span class="g-ev">not required by policy</span>
+            <span class="tag">auto-merge eligible</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- acceptance criteria -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">DOES THE PR DO WHAT THE TICKET SAYS?</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="03-issues.html">Issue #482 →</a>
+        </div>
+        <p class="small muted" style="margin-bottom:6px">Each claim from issue #482 is mapped to concrete evidence in this PR.</p>
+        <div>
+          <div class="crit">
+            <span class="claim">Telemetry frames must arrive in ISR order under load</span>
+            <span class="ev">test_frame_order_under_load (10⁶ frames, 0 reordered) · hunk <span class="hunk">telemetry_buf.c:41–66</span></span>
+            <span class="pill ok">✓ verified</span>
+          </div>
+          <div class="crit">
+            <span class="claim">No regression in e-stop response envelope</span>
+            <span class="ev">HIL overshoot 1.7% vs 2.0% limit (was 2.4% in rev 1)</span>
+            <span class="pill ok">✓ verified</span>
+          </div>
+          <div class="crit">
+            <span class="claim">Fix must not mask real ordering bugs in tests</span>
+            <span class="ev">test asserts on seq gaps, not sleep-based</span>
+            <span class="pill ok">✓ verified</span>
+          </div>
+          <div class="crit">
+            <span class="claim">Zero heap allocation in ISR fast path</span>
+            <span class="ev">static K_MSGQ_DEFINE · stack analysis clean</span>
+            <span class="pill ok">✓ verified</span>
+          </div>
+          <div class="crit">
+            <span class="claim">Flake must not reappear across temperature range</span>
+            <span class="ev">rig runs at 22°C only — thermal chamber not in bench</span>
+            <span class="pill warn">waived · annotated on PR</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- changed files -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">CHANGED FILES</span>
+          <span class="tag">+68 −15</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="#">Full diff on GitHub ↗</a>
+        </div>
+        <div>
+          <div class="file-row">
+            <span class="f-path">drivers/can/telemetry_buf.c</span>
+            <span class="f-counts"><span class="add">+38</span> <span class="del">−12</span></span>
+            <span class="meter"><i class="m-add" style="width:54%"></i><i class="m-del" style="width:17%"></i><i class="m-rest"></i></span>
+          </div>
+          <div class="file-row">
+            <span class="f-path">drivers/can/isr_fastpath.c</span>
+            <span class="f-counts"><span class="add">+9</span> <span class="del">−3</span></span>
+            <span class="meter"><i class="m-add" style="width:13%"></i><i class="m-del" style="width:5%"></i><i class="m-rest"></i></span>
+          </div>
+          <div class="file-row">
+            <span class="f-path">tests/telemetry/test_frame_order.c</span>
+            <span class="f-counts"><span class="add">+21</span> <span class="del">−0</span></span>
+            <span class="meter"><i class="m-add" style="width:30%"></i><i class="m-rest"></i></span>
+          </div>
+        </div>
+        <div class="code" style="margin-top:12px"><span class="dl-hd">@@ drivers/can/telemetry_buf.c:41 @@ static void can_isr_rx(const struct device *dev)</span><span class="dl-ctx">     <span class="c-kw">struct</span> tlm_frame *slot = tlm_slot_claim();</span><span class="dl-del">-    slot-&gt;ts = k_cycle_get_32();</span><span class="dl-del">-    <span class="c-fn">k_fifo_put</span>(&amp;telemetry_fifo, slot);</span><span class="dl-add">+    slot-&gt;ts  = k_cycle_get_32();</span><span class="dl-add">+    slot-&gt;seq = (<span class="c-kw">uint16_t</span>)atomic_inc(&amp;tlm_seq);   <span class="c-cm">/* ISR-ordered */</span></span><span class="dl-add">+    <span class="c-fn">k_msgq_put</span>(&amp;telemetry_msgq, slot, K_NO_WAIT);</span></div>
+      </div>
+
+    </div>
+
+    <!-- SIDE column -->
+    <div class="c-5 col" style="gap:16px">
+
+      <!-- review thread -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">REVIEW THREAD</span>
+          <span class="spacer"></span>
+          <span class="tag">3 entries · 0 open</span>
+        </div>
+        <div>
+          <div class="rev-entry">
+            <div class="r-head">
+              <span class="r-author">claude-fable-5</span>
+              <span class="tag">self-review</span>
+              <span class="r-ts">14:29:07</span>
+            </div>
+            <div class="r-body">ISR path is allocation-free; verified priority ceiling unchanged. Sequence counter wraps at 65535 with gap-tolerant comparison in the drain loop.</div>
+            <div class="r-resolve">✓ resolved</div>
+          </div>
+          <div class="rev-entry blocking">
+            <div class="r-head">
+              <span class="r-author">cursor/composer-2</span>
+              <span class="tag">second opinion · rev 1</span>
+              <span class="pill err">was blocking</span>
+              <span class="r-ts">14:12:44</span>
+            </div>
+            <div class="r-body">PID velocity sample now lags by one telemetry period — measurable overshoot risk on hard e-stop.</div>
+            <div class="r-reply">Addressed in attempt 4 — sampling decoupled from telemetry drain.</div>
+            <div class="r-resolve">✓ resolved</div>
+          </div>
+          <div class="rev-entry">
+            <div class="r-head">
+              <span class="r-author">ouroboros policy bot</span>
+              <span class="tag">policy</span>
+              <span class="r-ts">14:31:52</span>
+            </div>
+            <div class="r-body">Auto-merge eligible: standard-fix policy — no human review required for effort ≤ M with all gates green.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- merge plan -->
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">MERGE PLAN</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="#">Edit policy →</a>
+        </div>
+        <div class="kv">
+          <span class="k">Strategy</span>
+          <span class="tag">squash · delete branch</span>
+        </div>
+        <div style="padding:10px 0;border-bottom:1px solid var(--border)">
+          <div class="small muted" style="margin-bottom:6px">Commit message preview</div>
+          <div class="code" style="font-size:11.5px;padding:10px 12px">fix(can): preserve ISR frame order in telemetry path
+Replace k_fifo drain with static K_MSGQ + seq numbers;
+decouple PID velocity sampling from drain. Closes #482.</div>
+        </div>
+        <div class="kv">
+          <span class="k">Close issue #482 on merge</span>
+          <button class="switch on" aria-label="Close issue on merge enabled"></button>
+        </div>
+        <div class="kv">
+          <span class="k">Comment evidence summary on GitHub PR</span>
+          <button class="switch on" aria-label="Comment evidence summary enabled"></button>
+        </div>
+        <div class="kv">
+          <span class="k">Back-annotate roadmap (OTA hardening)</span>
+          <button class="switch" aria-label="Back-annotate roadmap disabled"></button>
+        </div>
+        <p class="small muted" style="margin-top:10px">Merges as <span class="mono">ouroboros-app[bot]</span> · co-authored-by Ken</p>
+      </div>
+
+      <!-- spend -->
+      <div class="card">
+        <div class="card-head" style="margin-bottom:8px">
+          <span class="card-title">SPEND</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="06-model-routing.html">Routing →</a>
+        </div>
+        <div class="kv">
+          <span class="k">Loop total</span>
+          <span class="mono small">284k tokens · $1.52</span>
+        </div>
+        <div class="kv">
+          <span class="k">Verification</span>
+          <span class="mono small">41k · $0.19</span>
+        </div>
+        <p class="small muted" style="margin-top:8px">within $2.50 cap</p>
+      </div>
+
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 12 — PR VERIFICATION · static concept, no functionality</span>
+  <span class="links">
+    <a href="11-test-results.html">← Prev: Test results</a>
+    <a href="13-onboarding.html">Next: Get started →</a>
+  </span>
+</footer>
+
+</body>
+</html>

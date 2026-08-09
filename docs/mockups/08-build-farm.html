@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Build Farm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+  .runner-name { display: flex; flex-direction: column; gap: 2px; }
+  .runner-name .mono { color: var(--ink); font-size: 12.5px; }
+  .runner-name .arch { font-family: var(--f-mono); font-size: 11px; color: var(--faint); }
+  .cpu-cell { min-width: 96px; }
+  .cpu-cell .row { gap: 8px; }
+  .cpu-cell .meter { flex: 1; min-width: 52px; }
+  .cpu-cell .pct { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-dim); width: 32px; text-align: right; }
+  .q-depth { font-family: var(--f-mono); font-size: 11px; color: var(--mut); }
+  tr.offline td { color: var(--faint); }
+  tr.offline .runner-name .mono { color: var(--mut); }
+  .pool-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 0; }
+  .pool-row + .pool-row { border-top: 1px solid var(--border); }
+  .pool-row .pool-info { flex: 1; min-width: 0; }
+  .pool-row .pool-name { font-family: var(--f-mono); font-size: 13px; color: var(--ink); }
+  .pool-row .pool-meta { font-size: 12px; color: var(--mut); margin-top: 2px; }
+  .subtoggle { display: flex; align-items: flex-start; gap: 10px; margin-top: 10px; padding: 10px 12px; background: var(--inset); border: 1px solid var(--border); border-radius: var(--r-sm); }
+  .subtoggle .small { line-height: 1.4; }
+  .stat .meter { margin-top: 6px; }
+  .log .c-last { color: var(--accent); }
+  .cursor { display: inline-block; width: 7px; height: 13px; margin-left: 2px; vertical-align: -2px; background: var(--accent); box-shadow: 0 0 8px var(--glow); animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html" class="active">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Build Farm</div>
+      <h1>5 runners. 2 pools. 78% cache hits.</h1>
+      <p class="sub">The Ouroboros server dispatches builds to your own machines over an outbound-only agent connection — your hardware, your network, no inbound ports.</p>
+    </div>
+    <a class="btn ghost" href="18-build-analyzer.html">✦ Build Analyzer</a>
+    <a class="btn ghost" href="#">Pool settings</a>
+    <a class="btn primary" href="#">+ Enroll runner</a>
+  </div>
+
+  <div class="grid">
+
+    <!-- stat row -->
+    <div class="card c-3"><div class="stat">
+      <span class="label">Runners online</span>
+      <span class="value" style="color:var(--accent)">4<span style="color:var(--faint);font-size:20px">/5</span></span>
+      <span class="delta">forge-03 offline · 2h</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Builds today</span>
+      <span class="value">23</span>
+      <span class="delta">19 clean · 3 retried · 1 failed</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Avg build time</span>
+      <span class="value">4m 12s</span>
+      <span class="delta up">▼ 38s vs last week</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Cache hit rate</span>
+      <span class="value">78%</span>
+      <div class="meter"><span style="width:78%"></span></div>
+      <span class="delta">ccache · shared per pool</span>
+    </div></div>
+
+    <!-- runners table -->
+    <div class="card c-8">
+      <div class="card-head">
+        <span class="card-title">RUNNERS</span>
+        <span class="pill run"><span class="dot pulse"></span>1 building</span>
+        <span class="spacer"></span>
+        <a class="card-link" href="#">Health history →</a>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>Runner</th><th>Pool</th><th>Status</th><th>Current job</th><th style="width:110px">CPU</th><th class="num">RAM</th><th class="num">Queue</th><th class="num">Uptime</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><div class="runner-name"><span class="mono">forge-01</span><span class="arch">linux/arm64</span></div></td>
+              <td><span class="tag">pool-a</span></td>
+              <td><span class="pill run"><span class="dot pulse"></span>building</span></td>
+              <td><a href="10-run-detail.html"><span class="mono">#479</span>&nbsp;<span class="muted small">zephyr build · helios-firmware</span></a></td>
+              <td class="cpu-cell"><div class="row"><div class="meter warn"><span style="width:82%"></span></div><span class="pct">82%</span></div></td>
+              <td class="num mono">14.2/32 GB</td>
+              <td class="num"><span class="q-depth">q:2</span></td>
+              <td class="num mono">41d</td>
+              <td><button class="btn ghost sm" aria-label="Runner actions">⋯</button></td>
+            </tr>
+            <tr>
+              <td><div class="runner-name"><span class="mono">forge-02</span><span class="arch">linux/arm64</span></div></td>
+              <td><span class="tag">pool-a</span></td>
+              <td><span class="pill"><span class="dot idle"></span>idle</span></td>
+              <td><span class="faint">—</span></td>
+              <td class="cpu-cell"><div class="row"><div class="meter ok"><span style="width:3%"></span></div><span class="pct">3%</span></div></td>
+              <td class="num mono">2.1/32 GB</td>
+              <td class="num"><span class="q-depth">q:0</span></td>
+              <td class="num mono">41d</td>
+              <td><button class="btn ghost sm" aria-label="Runner actions">⋯</button></td>
+            </tr>
+            <tr>
+              <td><div class="runner-name"><span class="mono">anvil-mac</span><span class="arch">darwin/arm64</span></div></td>
+              <td><span class="tag">pool-b</span></td>
+              <td><span class="pill"><span class="dot idle"></span>idle</span></td>
+              <td><span class="faint">—</span></td>
+              <td class="cpu-cell"><div class="row"><div class="meter ok"><span style="width:6%"></span></div><span class="pct">6%</span></div></td>
+              <td class="num mono">5.0/64 GB</td>
+              <td class="num"><span class="q-depth">q:0</span></td>
+              <td class="num mono">12d</td>
+              <td><button class="btn ghost sm" aria-label="Runner actions">⋯</button></td>
+            </tr>
+            <tr>
+              <td><div class="runner-name"><span class="mono">bigiron</span><span class="arch">linux/x86_64</span></div></td>
+              <td><span class="tag">pool-b</span></td>
+              <td><span class="pill warn"><span class="dot warn"></span>draining</span></td>
+              <td><a href="10-run-detail.html"><span class="mono">#472</span>&nbsp;<span class="muted small">HIL test rig · finishing</span></a></td>
+              <td class="cpu-cell"><div class="row"><div class="meter"><span style="width:54%"></span></div><span class="pct">54%</span></div></td>
+              <td class="num mono">88/256 GB</td>
+              <td class="num"><span class="q-depth">q:1</span></td>
+              <td class="num mono">3d</td>
+              <td><button class="btn ghost sm" aria-label="Runner actions">⋯</button></td>
+            </tr>
+            <tr class="offline">
+              <td><div class="runner-name"><span class="mono">forge-03</span><span class="arch">linux/arm64</span></div></td>
+              <td><span class="tag">pool-a</span></td>
+              <td><span class="pill err"><span class="dot err"></span>offline</span>&nbsp;<span class="small muted">last seen 2h ago</span></td>
+              <td><span class="faint">—</span></td>
+              <td class="cpu-cell"><span class="faint">—</span></td>
+              <td class="num mono">—</td>
+              <td class="num"><span class="q-depth">q:0</span></td>
+              <td class="num mono">—</td>
+              <td><button class="btn ghost sm" aria-label="Runner actions">⋯</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- right column -->
+    <div class="c-4 col" style="gap:16px">
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">ENROLL A RUNNER</span>
+        </div>
+        <p class="small muted" style="margin-bottom:12px">Run this on any machine that can reach <span class="mono">ouroboros.acme.dev:443</span> — no inbound ports needed.</p>
+        <div class="code">curl -fsSL https://get.ouroboros.dev | sh -s -- \
+  --tenant <span class="c-str">acme-robotics</span> \
+  --pool <span class="c-str">pool-a</span> \
+  --token <span class="c-num">orb_enroll_••••</span></div>
+        <p class="small faint" style="margin-top:10px">The agent connects outbound over mTLS and registers itself.</p>
+        <button class="btn ghost sm" style="margin-top:12px">Copy command</button>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">POOLS</span>
+          <span class="spacer"></span>
+          <a class="card-link" href="#">Configure →</a>
+        </div>
+        <div class="pool-row">
+          <div class="pool-info">
+            <div class="pool-name">pool-a</div>
+            <div class="pool-meta">firmware builds · zephyr-sdk 0.17 image · 3 runners</div>
+            <div class="subtoggle">
+              <button class="switch" aria-label="Auto-scale to cloud disabled"></button>
+              <div>
+                <div class="small" style="color:var(--ink-dim)">Auto-scale to cloud when queue &gt; 5</div>
+                <div class="small faint">keep builds on-prem</div>
+              </div>
+            </div>
+          </div>
+          <button class="switch on" aria-label="pool-a enabled"></button>
+        </div>
+        <div class="pool-row">
+          <div class="pool-info">
+            <div class="pool-name">pool-b</div>
+            <div class="pool-meta">HIL &amp; macOS jobs · 2 runners</div>
+          </div>
+          <button class="switch on" aria-label="pool-b enabled"></button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- live log -->
+    <div class="card c-12">
+      <div class="card-head">
+        <span class="card-title">LIVE — forge-01 · #479 Add OTA rollback on failed checksum</span>
+        <span class="pill run"><span class="dot pulse"></span>building</span>
+        <span class="mono small muted">3m 41s</span>
+        <span class="spacer"></span>
+        <a class="btn ghost sm" href="10-run-detail.html">Full log ↗</a>
+      </div>
+      <div class="code log">$ west build -b helios_mainboard app -- <span class="c-kw">-DCONFIG_OTA_ROLLBACK=y</span>
+-- west build: making build dir /work/479/build pristine
+-- Board: helios_mainboard, qualifiers: stm32h743
+-- Cache: ccache 4.9 · <span class="c-str">hit 78.4%</span> (412/525 objects) · miss 21.6%
+[598/638] Compiling subsys/ota/slot_manager.c
+[612/638] Compiling subsys/ota/rollback.c
+[631/638] Compiling subsys/ota/checksum_verify.c
+<span class="c-cm">Memory region         Used Size  Region Size  %age Used</span>
+<span class="c-cm">     FLASH:            912344 B         2 MB     43.50%</span>
+<span class="c-cm">       RAM:            181208 B       512 KB     34.56%</span>
+<span class="c-last">[6/7] Linking zephyr.elf …<span class="cursor"></span></span></div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 08 — BUILD FARM · static concept, no functionality</span>
+  <span class="links">
+    <a href="07-providers.html">← Prev: Providers &amp; keys</a>
+    <a href="09-planning.html">Next: Planning →</a>
+  </span>
+</footer>
+
+</body>
+</html>

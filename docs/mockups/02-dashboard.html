@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html" class="active">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Mission Control</div>
+      <h1>Good afternoon, Ken — the loop is turning.</h1>
+      <p class="sub">3 issues in flight, 12 queued behind them. Ouroboros merged 6 pull requests since this morning without a single hand on the keyboard.</p>
+    </div>
+    <a class="btn ghost" href="04-workflow-builder.html">Edit workflows</a>
+    <a class="btn primary" href="03-issues.html">⟳&nbsp; Pull next issue</a>
+  </div>
+
+  <div class="grid">
+
+    <!-- stat row -->
+    <div class="card c-3"><div class="stat">
+      <span class="label">Loops live</span>
+      <span class="value" style="color:var(--accent)">3</span>
+      <span class="delta">2 coding · 1 in review</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Queued issues</span>
+      <span class="value">12</span>
+      <span class="delta">est. 9h 40m of autonomous work</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">PRs merged · 7d</span>
+      <span class="value">27</span>
+      <span class="delta up">▲ 8 vs last week</span>
+    </div></div>
+    <div class="card c-3"><div class="stat">
+      <span class="label">Token spend · today</span>
+      <span class="value">4.2M</span>
+      <span class="delta">≈ $18.60 across 4 providers</span>
+    </div></div>
+
+    <!-- active loops -->
+    <div class="card c-8">
+      <div class="card-head">
+        <span class="card-title">ACTIVE LOOPS</span>
+        <span class="pill run"><span class="dot pulse"></span>live</span>
+        <span class="spacer"></span>
+        <a class="card-link" href="10-run-detail.html">Open run console →</a>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr>
+            <th>Issue</th><th>Workflow</th><th style="width:180px">Stage</th><th>Model</th><th class="num">Elapsed</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="10-run-detail.html"><span class="mono">#482</span>&nbsp; Fix flaky CAN-bus telemetry test</a></td>
+              <td><span class="tag">standard-fix</span></td>
+              <td>
+                <div class="small muted" style="margin-bottom:4px">Implementing · 4/6</div>
+                <div class="meter"><span style="width:66%"></span></div>
+              </td>
+              <td><span class="pill model">claude-fable-5</span></td>
+              <td class="num mono">12m 40s</td>
+              <td><span class="pill run">coding</span></td>
+            </tr>
+            <tr>
+              <td><a href="10-run-detail.html"><span class="mono">#479</span>&nbsp; Add OTA rollback on failed checksum</a></td>
+              <td><span class="tag">feature-loop</span></td>
+              <td>
+                <div class="small muted" style="margin-bottom:4px">Build farm · 5/7</div>
+                <div class="meter"><span style="width:71%"></span></div>
+              </td>
+              <td><span class="pill model">claude-sonnet-5</span></td>
+              <td class="num mono">38m 05s</td>
+              <td><span class="pill warn">building</span></td>
+            </tr>
+            <tr>
+              <td><a href="10-run-detail.html"><span class="mono">#476</span>&nbsp; Bump MQTT client, migrate deprecated API</a></td>
+              <td><span class="tag">deps-refresh</span></td>
+              <td>
+                <div class="small muted" style="margin-bottom:4px">Self-review · 6/6</div>
+                <div class="meter ok"><span style="width:94%"></span></div>
+              </td>
+              <td><span class="pill model">ollama/qwen3-coder</span></td>
+              <td class="num mono">7m 12s</td>
+              <td><span class="pill ok">review</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- loop pulse -->
+    <div class="card c-4" style="display:flex;flex-direction:column">
+      <div class="card-head">
+        <span class="card-title">LOOP PULSE</span>
+        <span class="spacer"></span>
+        <span class="tag">7 days</span>
+      </div>
+      <div style="display:flex;justify-content:center;padding:4px 0 10px">
+        <img src="assets/logo-mark.png" alt="" style="width:150px;mix-blend-mode:screen;filter:drop-shadow(0 0 24px rgba(61,214,245,.35))">
+      </div>
+      <div class="col" style="gap:12px">
+        <div>
+          <div class="row between small"><span class="muted">Autonomous merge rate</span><span class="mono" style="color:var(--ok)">92%</span></div>
+          <div class="meter ok" style="margin-top:5px"><span style="width:92%"></span></div>
+        </div>
+        <div>
+          <div class="row between small"><span class="muted">Avg. cycle time</span><span class="mono">14m 20s</span></div>
+          <div class="meter" style="margin-top:5px"><span style="width:48%"></span></div>
+        </div>
+        <div>
+          <div class="row between small"><span class="muted">Human interventions</span><span class="mono" style="color:var(--warn)">2 this week</span></div>
+          <div class="meter warn" style="margin-top:5px"><span style="width:8%"></span></div>
+        </div>
+        <hr class="divider">
+        <div class="row between">
+          <span class="small muted">Auto-merge when checks pass</span>
+          <button class="switch on" aria-label="Auto-merge enabled"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- recent completions -->
+    <div class="card c-7">
+      <div class="card-head">
+        <span class="card-title">RECENTLY CLOSED BY THE LOOP</span>
+        <span class="spacer"></span>
+        <a class="card-link" href="03-issues.html">All issues →</a>
+      </div>
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead><tr><th>Issue → PR</th><th>Model</th><th class="num">Cycle</th><th class="num">Checks</th><th>Outcome</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="mono">#474 → PR&nbsp;#512</span>&nbsp; Debounce e-stop interrupt handler</td>
+              <td><span class="pill model">claude-fable-5</span></td>
+              <td class="num mono">11m</td><td class="num mono">14/14</td>
+              <td><span class="pill ok">merged</span></td>
+            </tr>
+            <tr>
+              <td><span class="mono">#471 → PR&nbsp;#509</span>&nbsp; Unit tests for motor PID edge cases</td>
+              <td><span class="pill model">copilot/gpt-5-codex</span></td>
+              <td class="num mono">19m</td><td class="num mono">14/14</td>
+              <td><span class="pill ok">merged</span></td>
+            </tr>
+            <tr>
+              <td><span class="mono">#468 → PR&nbsp;#507</span>&nbsp; i18n strings for pairing screen</td>
+              <td><span class="pill model">ollama/qwen3-coder</span></td>
+              <td class="num mono">6m</td><td class="num mono">12/12</td>
+              <td><span class="pill ok">merged</span></td>
+            </tr>
+            <tr>
+              <td><span class="mono">#465 → PR&nbsp;#504</span>&nbsp; Refactor telemetry buffer allocation</td>
+              <td><span class="pill model">claude-sonnet-5</span></td>
+              <td class="num mono">42m</td><td class="num mono">13/14</td>
+              <td><span class="pill warn">needs human</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- queue -->
+    <div class="card c-5">
+      <div class="card-head">
+        <span class="card-title">UP NEXT IN QUEUE</span>
+        <span class="spacer"></span>
+        <a class="card-link" href="03-issues.html">Manage queue →</a>
+      </div>
+      <div class="col" style="gap:0">
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--border)">
+          <span><span class="mono muted">#485</span>&nbsp; Watchdog reset on I²C bus lockup</span>
+          <span class="row" style="gap:8px"><span class="effort m">M</span><span class="tag">standard-fix</span></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--border)">
+          <span><span class="mono muted">#486</span>&nbsp; Expose battery health over BLE GATT</span>
+          <span class="row" style="gap:8px"><span class="effort l">L</span><span class="tag">feature-loop</span></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--border)">
+          <span><span class="mono muted">#488</span>&nbsp; Typo sweep in operator manual</span>
+          <span class="row" style="gap:8px"><span class="effort xs">XS</span><span class="tag">docs-loop</span></span>
+        </div>
+        <div class="row between" style="padding:9px 0;border-bottom:1px solid var(--border)">
+          <span><span class="mono muted">#490</span>&nbsp; Migrate build to Zephyr 4.2</span>
+          <span class="row" style="gap:8px"><span class="effort xl">XL</span><span class="tag">deps-refresh</span></span>
+        </div>
+        <div class="row between" style="padding:9px 0">
+          <span><span class="mono muted">#491</span>&nbsp; Add CRC to config persistence layer</span>
+          <span class="row" style="gap:8px"><span class="effort s">S</span><span class="tag">standard-fix</span></span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 02 — DASHBOARD · static concept, no functionality</span>
+  <span class="links">
+    <a href="index.html">← All mockups</a>
+    <a href="03-issues.html">Next: Issues →</a>
+  </span>
+</footer>
+
+</body>
+</html>
