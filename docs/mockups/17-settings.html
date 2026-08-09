@@ -98,6 +98,27 @@
   .danger-row:last-of-type { border-bottom: none; }
   .danger-row .what { font-size: 13px; font-weight: 600; min-width: 170px; }
   .danger-row .why { font-size: 12.5px; color: var(--mut); flex: 1; min-width: 240px; }
+
+  /* ---- appearance: font-size stepper (app shell CQ.2) ---- */
+  .fs-seg {
+    display: inline-flex; border: 1px solid var(--border-strong);
+    border-radius: var(--r-md); overflow: hidden; background: var(--inset);
+  }
+  .fs-seg button {
+    font-family: var(--f-mono); font-size: 12px; font-weight: 500;
+    color: var(--mut); background: transparent; border: none; cursor: pointer;
+    padding: 7px 12px; border-right: 1px solid var(--border); white-space: nowrap;
+  }
+  .fs-seg button:last-child { border-right: none; }
+  .fs-seg button:hover { color: var(--ink-dim); }
+  .fs-seg button.sel {
+    color: var(--accent); background: var(--glow-soft);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .fs-preview {
+    border: 1px dashed var(--border-strong); border-radius: var(--r-md);
+    padding: 10px 14px; color: var(--ink-dim); font-size: 13px;
+  }
 </style>
 </head>
 <body>
@@ -108,25 +129,32 @@
     <span class="wordmark">OURO<span>BOROS</span></span>
   </a>
   <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
-  <nav class="nav">
-    <a href="02-dashboard.html">Dashboard</a>
-    <a href="03-issues.html">Issues</a>
-    <a href="04-workflow-builder.html">Workflows</a>
-    <a href="06-model-routing.html">Models</a>
-    <a href="08-build-farm.html">Build Farm</a>
-    <a href="14-knowledge.html">Knowledge</a>
-    <a href="09-planning.html">Planning</a>
-    <a href="22-research.html">Research</a>
-    <a href="15-insights.html">Insights</a>
-  </nav>
   <div class="topbar-right">
     <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
     <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
-    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
-    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
     <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
   </div>
 </header>
+
+<div class="appshell">
+  <aside class="sidebar" aria-label="Primary navigation">
+    <a href="02-dashboard.html"><span class="glyph">◫</span><span class="lbl">Dashboard</span></a>
+    <a href="03-issues.html"><span class="glyph">◉</span><span class="lbl">Issues</span></a>
+    <a href="04-workflow-builder.html"><span class="glyph">⑂</span><span class="lbl">Workflows</span></a>
+    <a href="06-model-routing.html"><span class="glyph">⬡</span><span class="lbl">Models</span></a>
+    <a href="08-build-farm.html"><span class="glyph">⛭</span><span class="lbl">Build Farm</span></a>
+    <a href="14-knowledge.html"><span class="glyph">▤</span><span class="lbl">Knowledge</span></a>
+    <a href="09-planning.html"><span class="glyph">▦</span><span class="lbl">Planning</span></a>
+    <a href="22-research.html"><span class="glyph">◎</span><span class="lbl">Research</span></a>
+    <a href="15-insights.html"><span class="glyph">∿</span><span class="lbl">Insights</span></a>
+    <div class="sidebar-foot">
+      <a href="16-inbox.html"><span class="glyph">▣</span><span class="lbl">Needs You</span><span class="nav-badge">3</span></a>
+      <a href="17-settings.html" class="active" aria-current="page"><span class="glyph">⚙︎</span><span class="lbl">Settings</span></a>
+    </div>
+  </aside>
+
+  <div class="content">
+
 
 <main class="page">
 
@@ -183,6 +211,39 @@
             <div class="what">Allow Ouroboros to train on this tenant's data</div>
             <div class="why">off — locked by enterprise plan</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- appearance — per-user display preferences (app shell addendum: CQ.2) -->
+    <div class="card c-12" id="appearance">
+      <div class="card-head">
+        <span class="card-title">APPEARANCE</span>
+        <span class="spacer"></span>
+        <span class="tag">per user · applies instantly</span>
+      </div>
+      <div class="row" style="gap:22px;flex-wrap:wrap;align-items:flex-start">
+        <div class="field" style="min-width:180px">
+          <label for="ap-theme">Theme</label>
+          <select class="input" id="ap-theme"><option>System ▾</option></select>
+          <span class="hint">light · dark · follow system</span>
+        </div>
+        <div class="field">
+          <label>Font size</label>
+          <div class="fs-seg" role="group" aria-label="Font size">
+            <button>87.5%</button>
+            <button class="sel">100%</button>
+            <button>112.5%</button>
+            <button>125%</button>
+            <button>150%</button>
+          </div>
+          <span class="hint">scales the whole interface — for high-resolution
+          displays where text runs small; saved to your account</span>
+        </div>
+        <div class="field" style="flex:1;min-width:240px">
+          <label>Preview</label>
+          <div class="fs-preview">The quick brown fox jumps over the lazy dog —
+          0123456789 · <span class="mono" style="font-size:12px">dock_ctrl.c:214</span></div>
         </div>
       </div>
     </div>
@@ -437,6 +498,10 @@
     <a href="18-build-analyzer.html">Next: Build Analyzer →</a>
   </span>
 </footer>
+
+
+  </div><!-- /content -->
+</div><!-- /appshell -->
 
 </body>
 </html>

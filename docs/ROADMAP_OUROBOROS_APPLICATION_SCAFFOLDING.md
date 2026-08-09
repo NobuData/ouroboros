@@ -21,9 +21,13 @@
 
 Surveyed 2026-08-08:
 
-- **GitHub issues:** none exist yet (open or closed). No duplication risk.
-- **GitHub labels:** only the nine GitHub defaults (`bug`, `enhancement`,
-  `documentation`, …). `mvp`, `v2`, and module labels must be created (issue 1.2).
+- **GitHub issues:** none existed at survey time; **all 58 issues (7 epic parents +
+  51 work issues) were filed from this roadmap on 2026-08-08** — see the `GitHub`
+  column in every table below. No duplication risk.
+- **GitHub labels:** at survey time only the nine GitHub defaults (`bug`, `enhancement`,
+  `documentation`, …). The roadmap set — `mvp`, `v2`, `ui`, `rest`, `db`, `engine`,
+  `infra`, `design`, `ci`, `epic` — has since been created and applied; what remains in
+  issue 1.2 (#9) is the committed label definitions and the issue/PR templates.
 - **`ouroboros-web/`** — the *marketing* site (Next.js, deployed at ouroboros.build).
   Out of scope for this roadmap; nothing here modifies it. Its existing
   `docker-publish.yml` workflow is the pattern issue 7.3 extends.
@@ -103,21 +107,28 @@ Storybook, rate limiting, engine job queue, workspace tooling, deployment runboo
 
 ## Epics
 
-| Epic | Name | Goal | Modules |
-|------|------|------|---------|
-| 1 | Foundation & Repo Infrastructure | Monorepo layout, labels, dev environment, CI, architecture docs | repo root |
-| 2 | Brand Assets & Theming | Logo split (icon / glyph / tagline lockup), design tokens, light+dark palettes | assets, ouroboros-ui |
-| 3 | Tenancy Database (`ouroboros-db`) | Flyway project + PostgreSQL tenancy schema | ouroboros-db |
-| 4 | Communications Layer (`ouroboros-rest`) | NestJS service: config, health, data access, tenancy API, auth, engine gateway | ouroboros-rest |
-| 5 | Application UI (`ouroboros-ui`) | Next.js app shell, theme switching, login/tenancy, dashboard placeholder | ouroboros-ui |
-| 6 | Python Backend (`ouroboros-engine`) | FastAPI scaffold with internal contract | ouroboros-engine |
-| 7 | Integration & Delivery | Full-stack compose, e2e smoke, publishing, runbook | all |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules |
+|------|:------:|:------:|------|------|---------|
+| 1 | #1 | 🟡 Open | Foundation & Repo Infrastructure | Monorepo layout, labels, dev environment, CI, architecture docs | repo root |
+| 2 | #2 | 🟡 Open | Brand Assets & Theming | Logo split (icon / glyph / tagline lockup), design tokens, light+dark palettes | assets, ouroboros-ui |
+| 3 | #3 | 🟡 Open | Tenancy Database (`ouroboros-db`) | Flyway project + PostgreSQL tenancy schema | ouroboros-db |
+| 4 | #4 | 🟡 Open | Communications Layer (`ouroboros-rest`) | NestJS service: config, health, data access, tenancy API, auth, engine gateway | ouroboros-rest |
+| 5 | #5 | 🟡 Open | Application UI (`ouroboros-ui`) | Next.js app shell, theme switching, login/tenancy, dashboard placeholder | ouroboros-ui |
+| 6 | #6 | 🟡 Open | Python Backend (`ouroboros-engine`) | FastAPI scaffold with internal contract | ouroboros-engine |
+| 7 | #7 | 🟡 Open | Integration & Delivery | Full-stack compose, e2e smoke, publishing, runbook | all |
 
 Issue naming convention: `<project>: [<epic>.<issue>] <title>`, e.g.
 `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains`.
 
-Label set (created in issue 1.2): `mvp`, `v2`, `ui`, `rest`, `db`, `engine`, `infra`,
-`design`, `ci`, plus GitHub's existing `documentation` and `enhancement` where apt.
+Label set (issue 1.2 / #9 — **already created in the repo**): `mvp`, `v2`, `ui`, `rest`,
+`db`, `engine`, `infra`, `design`, `ci`, plus `epic` for the parent issues and GitHub's
+existing `documentation` where apt.
+
+Issue types: **Feature** for capability-delivering work and every epic parent, **Task**
+for scaffolding, infrastructure, CI and documentation work.
 
 Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 
@@ -125,16 +136,18 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 
 ## Epic 1 — Foundation & Repo Infrastructure
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 1.1 | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
-| 1.2 | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
-| 1.3 | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
-| 1.4 | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
-| 1.5 | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
-| 1.6 | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 1.1 | #8 | 🟡 Open | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
+| 1.2 | #9 | 🟡 Open | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
+| 1.3 | #10 | 🟡 Open | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
+| 1.4 | #11 | 🟡 Open | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
+| 1.5 | #12 | 🟡 Open | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
+| 1.6 | #13 | 🟡 Open | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
 
 ### Issue 1.1 — ouroboros: [1.1] Monorepo layout & module scaffolding conventions
+
+> **GitHub issue:** #8 · **Status:** 🟡 Open · **Parent epic:** #1
 
 - **Problem Statement:** The repo holds only mockups and the marketing site. The four
   application modules need homes with consistent conventions before any scaffolding
@@ -167,6 +180,8 @@ ouroboros/
 
 ### Issue 1.2 — ouroboros: [1.2] GitHub labels & issue/PR templates
 
+> **GitHub issue:** #9 · **Status:** 🟡 Open · **Parent epic:** #1
+
 - **Problem Statement:** Only GitHub's default labels exist; the roadmap's `mvp`/`v2`
   scoping and module routing have no labels to attach to.
 - **Solution/Scope:** Create labels: `mvp` (release scoping), `v2` (extended scope),
@@ -188,6 +203,8 @@ labels:  [mvp] [v2]   [ui] [rest] [db] [engine]   [infra] [design] [ci]
 ```
 
 ### Issue 1.3 — ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway)
+
+> **GitHub issue:** #10 · **Status:** 🟡 Open · **Parent epic:** #1
 
 - **Problem Statement:** REST and engine development need a real PostgreSQL with the
   current schema, reproducibly, without manual setup.
@@ -212,6 +229,8 @@ docker compose up
 ```
 
 ### Issue 1.4 — ouroboros: [1.4] CI pipelines per module (path-filtered)
+
+> **GitHub issue:** #11 · **Status:** 🟡 Open · **Parent epic:** #1
 
 - **Problem Statement:** Four modules with three toolchains in one repo; unfiltered CI
   would run everything on every PR — slow and noisy.
@@ -239,6 +258,8 @@ PR paths ──┬─ ouroboros-ui/**     ─▶ ci/ui     (lint·type·test·bu
 
 ### Issue 1.5 — ouroboros: [1.5] Architecture documentation
 
+> **GitHub issue:** #12 · **Status:** 🟡 Open · **Parent epic:** #1
+
 - **Problem Statement:** The architecture (who talks to whom, ports, env conventions,
   tenancy boundary) lives only in this roadmap; it needs a durable home that outlives
   the roadmap document.
@@ -255,6 +276,8 @@ PR paths ──┬─ ouroboros-ui/**     ─▶ ci/ui     (lint·type·test·bu
 - **Epic:** 1
 
 ### Issue 1.6 — ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx)
+
+> **GitHub issue:** #13 · **Status:** 🟡 Open · **Parent epic:** #1
 
 - **Problem Statement:** Independent modules mean duplicated scripts and no task-graph
   caching; at some scale a workspace runner pays for itself — adopting one now would
@@ -277,15 +300,17 @@ v2?:  workspace runner · task graph · shared cache (faster, one more tool)
 
 ## Epic 2 — Brand Assets & Theming
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 2.1 | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
-| 2.2 | ouroboros-ui: [2.2] Favicon & web-app manifest set | Full favicon/PWA icon set generated from the web-icon asset | mvp, design, ui | N (needs 2.1, 5.1) | Y | XS | ouroboros-ui |
-| 2.3 | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
-| 2.4 | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
-| 2.5 | ouroboros: [2.5] Server-side brand surfaces | Glyph on REST OpenAPI page + engine/REST startup banners | v2, design, rest, engine | N (needs 2.1, 4.8, 6.2) | N | XS | ouroboros-rest, ouroboros-engine |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 2.1 | #14 | 🟡 Open | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
+| 2.2 | #15 | 🟡 Open | ouroboros-ui: [2.2] Favicon & web-app manifest set | Full favicon/PWA icon set generated from the web-icon asset | mvp, design, ui | N (needs 2.1, 5.1) | Y | XS | ouroboros-ui |
+| 2.3 | #16 | 🟡 Open | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
+| 2.4 | #17 | 🟡 Open | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
+| 2.5 | #18 | 🟡 Open | ouroboros: [2.5] Server-side brand surfaces | Glyph on REST OpenAPI page + engine/REST startup banners | v2, design, rest, engine | N (needs 2.1, 4.8, 6.2) | N | XS | ouroboros-rest, ouroboros-engine |
 
 ### Issue 2.1 — ouroboros: [2.1] Split brand sheet into logo asset set
+
+> **GitHub issue:** #14 · **Status:** 🟡 Open · **Parent epic:** #2
 
 - **Problem Statement:** The brand exists only as `logo-unsplit.png` (1376×768 sheet
   with light and dark halves) plus two ad-hoc crops used by the mockups. The
@@ -321,6 +346,8 @@ logo-unsplit.png (1376×768: light half ┃ dark half)
 
 ### Issue 2.2 — ouroboros-ui: [2.2] Favicon & web-app manifest set
 
+> **GitHub issue:** #15 · **Status:** 🟡 Open · **Parent epic:** #2
+
 - **Problem Statement:** The UI needs correct browser-tab and home-screen icons across
   platforms, in both themes.
 - **Solution/Scope:** From `icon-*.png` (2.1) generate: `favicon.ico` (16/32/48),
@@ -342,6 +369,8 @@ icon-light.png ┘   (Next metadata)     └─ icon-192/512 + manifest
 ```
 
 ### Issue 2.3 — ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties
+
+> **GitHub issue:** #16 · **Status:** 🟡 Open · **Parent epic:** #2
 
 - **Problem Statement:** `docs/mockups/assets/ouroboros.css` defines a dark-only
   palette as literal colors. On-the-fly theme switching requires every color to be a
@@ -370,6 +399,8 @@ icon-light.png ┘   (Next metadata)     └─ icon-192/512 + manifest
 ```
 
 ### Issue 2.4 — ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark)
+
+> **GitHub issue:** #17 · **Status:** 🟡 Open · **Parent epic:** #2
 
 - **Problem Statement:** The brief requires switching themes on the fly — no reload, no
   flash of wrong theme on first paint, respecting the OS preference until the user
@@ -400,6 +431,8 @@ flowchart LR
 
 ### Issue 2.5 — ouroboros: [2.5] Server-side brand surfaces
 
+> **GitHub issue:** #18 · **Status:** 🟡 Open · **Parent epic:** #2
+
 - **Problem Statement:** The glyph should also brand the server-facing surfaces —
   OpenAPI docs, service startup banners — so internal tooling is recognizably Ouroboros.
 - **Solution/Scope:** Serve `glyph-dark.png` as the REST OpenAPI page logo/favicon
@@ -426,18 +459,20 @@ Schema scope comes from mockup 01 (sign-in & tenancy) and mockup 17 (workspace
 settings): domain-isolated tenants, GitHub-identity users, role-based membership, and
 per-tenant GitHub org/repo enablement.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 3.1 | ouroboros-db: [3.1] Flyway project scaffold & migration conventions | Directory layout, config, naming rules, local runner scripts | mvp, db, infra | N (after 1.1) | Y | S | ouroboros-db |
-| 3.2 | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
-| 3.3 | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
-| 3.4 | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
-| 3.5 | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
-| 3.6 | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
-| 3.7 | ouroboros-db: [3.7] Row-level security & least-privilege roles | RLS policies keyed on tenant; separate migration/app DB roles | v2, db | N (after 3.4) | N | L | ouroboros-db, ouroboros-rest |
-| 3.8 | ouroboros-db: [3.8] Audit log table & write path | Append-only `audit_events` per tenant (settings mockup: audit log) | v2, db | N (after 3.3) | N | M | ouroboros-db |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 3.1 | #19 | 🟡 Open | ouroboros-db: [3.1] Flyway project scaffold & migration conventions | Directory layout, config, naming rules, local runner scripts | mvp, db, infra | N (after 1.1) | Y | S | ouroboros-db |
+| 3.2 | #20 | 🟡 Open | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
+| 3.3 | #21 | 🟡 Open | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
+| 3.4 | #22 | 🟡 Open | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
+| 3.5 | #23 | 🟡 Open | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
+| 3.6 | #24 | 🟡 Open | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
+| 3.7 | #25 | 🟡 Open | ouroboros-db: [3.7] Row-level security & least-privilege roles | RLS policies keyed on tenant; separate migration/app DB roles | v2, db | N (after 3.4) | N | L | ouroboros-db, ouroboros-rest |
+| 3.8 | #26 | 🟡 Open | ouroboros-db: [3.8] Audit log table & write path | Append-only `audit_events` per tenant (settings mockup: audit log) | v2, db | N (after 3.3) | N | M | ouroboros-db |
 
 ### Issue 3.1 — ouroboros-db: [3.1] Flyway project scaffold & migration conventions
+
+> **GitHub issue:** #19 · **Status:** 🟡 Open · **Parent epic:** #3
 
 - **Problem Statement:** Flyway needs a project home, configuration, and non-negotiable
   conventions (naming, immutability, review rules) before the first migration lands.
@@ -468,6 +503,8 @@ ouroboros-db/
 ```
 
 ### Issue 3.2 — ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains
+
+> **GitHub issue:** #20 · **Status:** 🟡 Open · **Parent epic:** #3
 
 - **Problem Statement:** Everything in Ouroboros is tenant-scoped ("each domain is an
   isolated tenant" — mockup 01); the tenant table is the root every other table hangs
@@ -505,6 +542,8 @@ erDiagram
 
 ### Issue 3.3 — ouroboros-db: [3.3] Users, identities & tenant membership
 
+> **GitHub issue:** #21 · **Status:** 🟡 Open · **Parent epic:** #3
+
 - **Problem Statement:** Sign-in is GitHub OAuth (mockup 01) and workspace settings
   (mockup 17) show members with roles — the schema must separate the human, their
   external identity, and their per-tenant role.
@@ -540,6 +579,8 @@ erDiagram
 
 ### Issue 3.4 — ouroboros-db: [3.4] GitHub org & repo enablement
 
+> **GitHub issue:** #22 · **Status:** 🟡 Open · **Parent epic:** #3
+
 - **Problem Statement:** Mockup 01 step 2 enables specific GitHub orgs (and their
   repos) per tenant — the boundary of where Ouroboros may work.
 - **Solution/Scope:** `V003`: `github_orgs` (tenant fk, org login unique per tenant,
@@ -558,6 +599,8 @@ tenants 1─* github_orgs 1─* github_repos
 ```
 
 ### Issue 3.5 — ouroboros-db: [3.5] Dev seed data (repeatable migration)
+
+> **GitHub issue:** #23 · **Status:** 🟡 Open · **Parent epic:** #3
 
 - **Problem Statement:** Local dev and e2e smoke tests need known data — the mockups'
   demo tenant makes screens and tests deterministic.
@@ -580,6 +623,8 @@ R__dev_seed.sql ─▶ acme-robotics ─┬─ domains: acme-robotics.dev
 
 ### Issue 3.6 — ouroboros-db: [3.6] Migration CI check
 
+> **GitHub issue:** #24 · **Status:** 🟡 Open · **Parent epic:** #3
+
 - **Problem Statement:** A migration that fails or drifts must be caught on the PR, not
   on a developer's machine.
 - **Solution/Scope:** `ci/db` job (slots into 1.4): service container
@@ -597,6 +642,8 @@ PR ─▶ [postgres up] ─▶ flyway migrate (clean db) ─▶ validate ─▶ 
 ```
 
 ### Issue 3.7 — ouroboros-db: [3.7] Row-level security & least-privilege roles
+
+> **GitHub issue:** #25 · **Status:** 🟡 Open · **Parent epic:** #3
 
 - **Problem Statement:** MVP enforces tenancy in the REST layer only; defense in depth
   wants the database itself refusing cross-tenant reads.
@@ -618,6 +665,8 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 
 ### Issue 3.8 — ouroboros-db: [3.8] Audit log table & write path
 
+> **GitHub issue:** #26 · **Status:** 🟡 Open · **Parent epic:** #3
+
 - **Problem Statement:** Workspace settings (mockup 17) promise an audit log; the
   append-only store should exist before features start emitting events.
 - **Solution/Scope:** `audit_events` (tenant fk, actor user fk nullable, action,
@@ -638,22 +687,24 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 
 ## Epic 4 — Communications Layer (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 4.1 | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
-| 4.2 | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
-| 4.3 | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
-| 4.4 | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
-| 4.5 | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
-| 4.6 | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
-| 4.7 | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
-| 4.8 | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Branded Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
-| 4.9 | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
-| 4.10 | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
-| 4.11 | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
-| 4.12 | ouroboros-rest: [4.12] Security baseline hardening | Helmet, CORS policy, rate limiting, cookie hardening review | v2, rest | N (after 4.7) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 4.1 | #27 | 🟡 Open | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
+| 4.2 | #28 | 🟡 Open | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
+| 4.3 | #29 | 🟡 Open | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
+| 4.4 | #30 | 🟡 Open | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
+| 4.5 | #31 | 🟡 Open | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
+| 4.6 | #32 | 🟡 Open | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
+| 4.7 | #33 | 🟡 Open | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
+| 4.8 | #34 | 🟡 Open | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Branded Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
+| 4.9 | #35 | 🟡 Open | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
+| 4.10 | #36 | 🟡 Open | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
+| 4.11 | #37 | 🟡 Open | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
+| 4.12 | #38 | 🟡 Open | ouroboros-rest: [4.12] Security baseline hardening | Helmet, CORS policy, rate limiting, cookie hardening review | v2, rest | N (after 4.7) | N | M | ouroboros-rest |
 
 ### Issue 4.1 — ouroboros-rest: [4.1] NestJS service scaffold
+
+> **GitHub issue:** #27 · **Status:** 🟡 Open · **Parent epic:** #4
 
 - **Problem Statement:** The communications layer needs its skeleton: a NestJS app with
   the project's toolchain conventions, ready for feature modules.
@@ -679,6 +730,8 @@ src/
 
 ### Issue 4.2 — ouroboros-rest: [4.2] Typed configuration & env validation
 
+> **GitHub issue:** #28 · **Status:** 🟡 Open · **Parent epic:** #4
+
 - **Problem Statement:** Misconfigured services must fail at boot with a precise error,
   not at first request with a stack trace.
 - **Solution/Scope:** `ConfigModule` with a zod schema validating all `OURO_*` env vars
@@ -700,6 +753,8 @@ boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─�
 
 ### Issue 4.3 — ouroboros-rest: [4.3] Health & readiness endpoints
 
+> **GitHub issue:** #29 · **Status:** 🟡 Open · **Parent epic:** #4
+
 - **Problem Statement:** Compose, CI, and (later) orchestrators need to distinguish
   "process up" from "dependencies reachable."
 - **Solution/Scope:** Terminus-based `/health/live` (process only) and `/health/ready`
@@ -719,6 +774,8 @@ boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─�
 ```
 
 ### Issue 4.4 — ouroboros-rest: [4.4] Database access layer (Kysely)
+
+> **GitHub issue:** #30 · **Status:** 🟡 Open · **Parent epic:** #4
 
 - **Problem Statement:** REST needs typed, pooled access to the Flyway-owned schema
   without an ORM trying to own migrations (decision D3).
@@ -740,6 +797,8 @@ Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀�
 ```
 
 ### Issue 4.5 — ouroboros-rest: [4.5] Tenancy module & API
+
+> **GitHub issue:** #31 · **Status:** 🟡 Open · **Parent epic:** #4
 
 - **Problem Statement:** Tenancy data (Epic 3) needs its service and HTTP surface — the
   first real API of the system and the backbone the UI's login/settings screens
@@ -772,6 +831,8 @@ Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀�
 
 ### Issue 4.6 — ouroboros-rest: [4.6] Tenant-context resolution middleware
 
+> **GitHub issue:** #32 · **Status:** 🟡 Open · **Parent epic:** #4
+
 - **Problem Statement:** Every request past sign-in operates *as a member of one
   tenant*; resolution and authorization of that context must be centralized, not
   re-implemented per controller.
@@ -794,6 +855,8 @@ request ─▶ session → user ─▶ X-Ouro-Tenant → membership? ──yes�
 ```
 
 ### Issue 4.7 — ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions
+
+> **GitHub issue:** #33 · **Status:** 🟡 Open · **Parent epic:** #4
 
 - **Problem Statement:** The product signs in with GitHub (mockup 01); the scaffold
   needs the real OAuth code flow, identity persistence, and a session mechanism the UI
@@ -838,6 +901,8 @@ sequenceDiagram
 
 ### Issue 4.8 — ouroboros-rest: [4.8] OpenAPI documentation & spec export
 
+> **GitHub issue:** #34 · **Status:** 🟡 Open · **Parent epic:** #4
+
 - **Problem Statement:** The UI's typed client (D4) and human exploration both need an
   accurate, exported API contract.
 - **Solution/Scope:** @nestjs/swagger with DTO decorators across 4.5/4.7/4.9; Swagger
@@ -856,6 +921,8 @@ DTO decorators ─▶ swagger doc ─┬─▶ /api/docs (humans)
 ```
 
 ### Issue 4.9 — ouroboros-rest: [4.9] Engine gateway module
+
+> **GitHub issue:** #35 · **Status:** 🟡 Open · **Parent epic:** #4
 
 - **Problem Statement:** The UI must never talk to the Python backend directly; REST
   needs a typed internal client and a controlled pass-through, establishing the
@@ -879,6 +946,8 @@ UI ─▶ /api/v1/engine/status ─▶ [auth guard] ─▶ EngineClient ──X-
 
 ### Issue 4.10 — ouroboros-rest: [4.10] Dockerfile & container build
 
+> **GitHub issue:** #36 · **Status:** 🟡 Open · **Parent epic:** #4
+
 - **Problem Statement:** Compose integration (7.1) and future publishing need a small,
   reproducible production image.
 - **Solution/Scope:** Multi-stage Dockerfile (deps → build → runtime on
@@ -895,6 +964,8 @@ UI ─▶ /api/v1/engine/status ─▶ [auth guard] ─▶ EngineClient ──X-
 ```
 
 ### Issue 4.11 — ouroboros-rest: [4.11] Integration test harness
+
+> **GitHub issue:** #37 · **Status:** 🟡 Open · **Parent epic:** #4
 
 - **Problem Statement:** Tenancy rules and constraint mapping (4.5/4.6/4.7) are
   exactly the logic unit mocks can't validate — they need tests against real
@@ -916,6 +987,8 @@ jest ─▶ [testcontainers: postgres] ─▶ [flyway migrate] ─▶ [nest app]
 
 ### Issue 4.12 — ouroboros-rest: [4.12] Security baseline hardening
 
+> **GitHub issue:** #38 · **Status:** 🟡 Open · **Parent epic:** #4
+
 - **Problem Statement:** MVP ships sane defaults; a dedicated pass should tighten the
   perimeter before external exposure.
 - **Solution/Scope:** helmet-equivalent headers, strict CORS allow-list from config,
@@ -936,21 +1009,23 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 
 ## Epic 5 — Application UI (`ouroboros-ui`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 5.1 | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
-| 5.2 | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
-| 5.3 | ouroboros-ui: [5.3] App shell — top bar, navigation, footer | The chrome every screen shares, per the mockups | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
-| 5.4 | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
-| 5.5 | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
-| 5.6 | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
-| 5.7 | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
-| 5.8 | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
-| 5.9 | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
-| 5.10 | ouroboros-ui: [5.10] Component workshop (Storybook/Ladle) | Isolated component playground with theme switching | v2, ui | N (after 5.8) | N | M | ouroboros-ui |
-| 5.11 | ouroboros-ui: [5.11] Placeholder routes for remaining mockup screens | Nav-complete stub pages for screens 03–21 | v2, ui | N (after 5.3) | N | S | ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 5.1 | #39 | 🟡 Open | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
+| 5.2 | #40 | 🟡 Open | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
+| 5.3 | #41 | 🟡 Open | ouroboros-ui: [5.3] App shell — top bar, navigation, footer | The chrome every screen shares, per the mockups | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
+| 5.4 | #42 | 🟡 Open | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
+| 5.5 | #43 | 🟡 Open | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
+| 5.6 | #44 | 🟡 Open | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
+| 5.7 | #45 | 🟡 Open | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
+| 5.8 | #46 | 🟡 Open | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
+| 5.9 | #47 | 🟡 Open | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
+| 5.10 | #48 | 🟡 Open | ouroboros-ui: [5.10] Component workshop (Storybook/Ladle) | Isolated component playground with theme switching | v2, ui | N (after 5.8) | N | M | ouroboros-ui |
+| 5.11 | #49 | 🟡 Open | ouroboros-ui: [5.11] Placeholder routes for remaining mockup screens | Nav-complete stub pages for screens 03–21 | v2, ui | N (after 5.3) | N | S | ouroboros-ui |
 
 ### Issue 5.1 — ouroboros-ui: [5.1] Next.js application scaffold
+
+> **GitHub issue:** #39 · **Status:** 🟡 Open · **Parent epic:** #5
 
 - **Problem Statement:** The product UI needs its application skeleton, distinct from
   the marketing site, with the same toolchain discipline.
@@ -976,6 +1051,8 @@ app/
 
 ### Issue 5.2 — ouroboros-ui: [5.2] Global styles — tokens & typography
 
+> **GitHub issue:** #40 · **Status:** 🟡 Open · **Parent epic:** #5
+
 - **Problem Statement:** The UI must render from the shared token sheet, not its own
   colors, or the theme engine has nothing to switch.
 - **Solution/Scope:** Adopt 2.3's `tokens.css` into `app/globals.css`; map `next/font`
@@ -993,6 +1070,8 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 ```
 
 ### Issue 5.3 — ouroboros-ui: [5.3] App shell — top bar, navigation, footer
+
+> **GitHub issue:** #41 · **Status:** 🟡 Open · **Parent epic:** #5
 
 - **Problem Statement:** All 21 mockup screens share one chrome (top bar with glyph +
   nav + status pills, footer with prev/next); the shell is the highest-leverage single
@@ -1022,6 +1101,8 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 
 ### Issue 5.4 — ouroboros-ui: [5.4] Theme toggle control
 
+> **GitHub issue:** #42 · **Status:** 🟡 Open · **Parent epic:** #5
+
 - **Problem Statement:** The theme engine (2.4) needs its visible, discoverable
   control.
 - **Solution/Scope:** Top-bar control cycling light → dark → system (three-state, with
@@ -1038,6 +1119,8 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 ```
 
 ### Issue 5.5 — ouroboros-ui: [5.5] Typed API client from OpenAPI
+
+> **GitHub issue:** #43 · **Status:** 🟡 Open · **Parent epic:** #5
 
 - **Problem Statement:** Hand-written fetch calls drift from the API; the committed
   spec (4.8) should generate the client (decision D4).
@@ -1059,6 +1142,8 @@ openapi.json (4.8) ─ yarn api:sync ─▶ generated types ─▶ client wrappe
 ```
 
 ### Issue 5.6 — ouroboros-ui: [5.6] Login & tenancy screen
+
+> **GitHub issue:** #44 · **Status:** 🟡 Open · **Parent epic:** #5
 
 - **Problem Statement:** Mockup 01 (sign-in, tenant-by-domain, org enablement) is the
   front door — the first real screen proving design system + auth + API together.
@@ -1084,6 +1169,8 @@ openapi.json (4.8) ─ yarn api:sync ─▶ generated types ─▶ client wrappe
 
 ### Issue 5.7 — ouroboros-ui: [5.7] Dashboard placeholder
 
+> **GitHub issue:** #45 · **Status:** 🟡 Open · **Parent epic:** #5
+
 - **Problem Statement:** Post-login needs a destination that proves the shell, data
   fetching, and empty-state design — without building product features.
 - **Solution/Scope:** `(app)/dashboard` on mockup 02's grid: real cards for what
@@ -1108,6 +1195,8 @@ openapi.json (4.8) ─ yarn api:sync ─▶ generated types ─▶ client wrappe
 
 ### Issue 5.8 — ouroboros-ui: [5.8] UI component primitives
 
+> **GitHub issue:** #46 · **Status:** 🟡 Open · **Parent epic:** #5
+
 - **Problem Statement:** Mockup styling lives in per-page CSS; the app needs a small
   reusable primitive set before screens multiply, or drift sets in immediately.
 - **Solution/Scope:** Extract from `ouroboros.css` into components: Button
@@ -1127,6 +1216,8 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
 
 ### Issue 5.9 — ouroboros-ui: [5.9] Dockerfile & standalone build
 
+> **GitHub issue:** #47 · **Status:** 🟡 Open · **Parent epic:** #5
+
 - **Problem Statement:** Compose integration needs a production UI image.
 - **Solution/Scope:** `output: "standalone"` in `next.config.ts`; multi-stage
   Dockerfile on node:22-alpine (pattern: `ouroboros-web/Dockerfile`), non-root,
@@ -1142,6 +1233,8 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
 
 ### Issue 5.10 — ouroboros-ui: [5.10] Component workshop (Storybook/Ladle)
 
+> **GitHub issue:** #48 · **Status:** 🟡 Open · **Parent epic:** #5
+
 - **Problem Statement:** As primitives (5.8) grow, developing them inside app pages
   slows iteration and hides theme regressions.
 - **Solution/Scope:** Ladle (lighter) or Storybook with stories per primitive ×
@@ -1153,6 +1246,8 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
 - **Epic:** 5
 
 ### Issue 5.11 — ouroboros-ui: [5.11] Placeholder routes for remaining mockup screens
+
+> **GitHub issue:** #49 · **Status:** 🟡 Open · **Parent epic:** #5
 
 - **Problem Statement:** The nav promises 21 screens; dead links undermine the tour.
   Placeholders make the information architecture real without faking features.
@@ -1175,15 +1270,17 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 
 ## Epic 6 — Python Backend (`ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 6.1 | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
-| 6.2 | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
-| 6.3 | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
-| 6.4 | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
-| 6.5 | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | v2, engine | N (after 6.3) | N | L | ouroboros-engine |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 6.1 | #50 | 🟡 Open | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
+| 6.2 | #51 | 🟡 Open | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
+| 6.3 | #52 | 🟡 Open | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
+| 6.4 | #53 | 🟡 Open | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
+| 6.5 | #54 | 🟡 Open | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | v2, engine | N (after 6.3) | N | L | ouroboros-engine |
 
 ### Issue 6.1 — ouroboros-engine: [6.1] FastAPI service scaffold
+
+> **GitHub issue:** #50 · **Status:** 🟡 Open · **Parent epic:** #6
 
 - **Problem Statement:** The Python backend — where the actual work-execution engine
   will grow — needs its skeleton with the same rigor as the TS modules.
@@ -1207,6 +1304,8 @@ src/ouroboros_engine/
 
 ### Issue 6.2 — ouroboros-engine: [6.2] Health, version & internal auth
 
+> **GitHub issue:** #51 · **Status:** 🟡 Open · **Parent epic:** #6
+
 - **Problem Statement:** The engine is internal-only; every route except liveness must
   require the shared secret so a misrouted engine port exposes nothing.
 - **Solution/Scope:** `/healthz` (public, for compose healthcheck), `/v0/status`
@@ -1225,6 +1324,8 @@ src/ouroboros_engine/
 ```
 
 ### Issue 6.3 — ouroboros-engine: [6.3] Internal API contract v0
+
+> **GitHub issue:** #52 · **Status:** 🟡 Open · **Parent epic:** #6
 
 - **Problem Statement:** REST↔engine needs a versioned contract with one working
   round-trip, establishing the pattern (schemas, versioning, error shape) before real
@@ -1248,6 +1349,8 @@ REST 4.9 ──POST /v0/tasks/echo {task_kind, payload}──▶ engine
 
 ### Issue 6.4 — ouroboros-engine: [6.4] Dockerfile & container build
 
+> **GitHub issue:** #53 · **Status:** 🟡 Open · **Parent epic:** #6
+
 - **Problem Statement:** Compose (7.1) needs the engine as a container.
 - **Solution/Scope:** Multi-stage uv-based Dockerfile (`python:3.12-slim`): locked
   dependency install, non-root, `HEALTHCHECK` on `/healthz`, uvicorn entrypoint.
@@ -1261,6 +1364,8 @@ REST 4.9 ──POST /v0/tasks/echo {task_kind, payload}──▶ engine
 ```
 
 ### Issue 6.5 — ouroboros-engine: [6.5] Task execution skeleton (queue & worker model)
+
+> **GitHub issue:** #54 · **Status:** 🟡 Open · **Parent epic:** #6
 
 - **Problem Statement:** The product vision (workflow loops picking up issues) implies
   long-running tasks; the engine will need an execution model beyond request/response —
@@ -1282,14 +1387,16 @@ POST /v0/tasks ─▶ [registry] ─▶ [asyncio queue] ─▶ worker ─▶ GET
 
 ## Epic 7 — Integration & Delivery
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 7.1 | ouroboros: [7.1] Full-stack docker-compose | db + flyway + engine + rest + ui, one command | mvp, infra | N (after 4.10, 5.9, 6.4, 1.3) | Y | M | repo root |
-| 7.2 | ouroboros: [7.2] End-to-end smoke test | Scripted proof of the full chain against compose | mvp, ci | N (after 7.1, 5.6) | Y | M | repo root, .github |
-| 7.3 | ouroboros: [7.3] Image publishing to GHCR | Extend docker-publish to the three new services | v2, infra, ci | N (after 7.1) | N | S | .github |
-| 7.4 | ouroboros: [7.4] Deployment runbook | How to run the stack outside dev (single host) | v2, documentation | N (after 7.3) | N | S | docs |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| 7.1 | #55 | 🟡 Open | ouroboros: [7.1] Full-stack docker-compose | db + flyway + engine + rest + ui, one command | mvp, infra | N (after 4.10, 5.9, 6.4, 1.3) | Y | M | repo root |
+| 7.2 | #56 | 🟡 Open | ouroboros: [7.2] End-to-end smoke test | Scripted proof of the full chain against compose | mvp, ci | N (after 7.1, 5.6) | Y | M | repo root, .github |
+| 7.3 | #57 | 🟡 Open | ouroboros: [7.3] Image publishing to GHCR | Extend docker-publish to the three new services | v2, infra, ci | N (after 7.1) | N | S | .github |
+| 7.4 | #58 | 🟡 Open | ouroboros: [7.4] Deployment runbook | How to run the stack outside dev (single host) | v2, documentation | N (after 7.3) | N | S | docs |
 
 ### Issue 7.1 — ouroboros: [7.1] Full-stack docker-compose
+
+> **GitHub issue:** #55 · **Status:** 🟡 Open · **Parent epic:** #7
 
 - **Problem Statement:** The MVP's definition of done is the whole stack from one
   command; the data-tier compose (1.3) must grow to all five services with correct
@@ -1314,6 +1421,8 @@ flowchart LR
 
 ### Issue 7.2 — ouroboros: [7.2] End-to-end smoke test
 
+> **GitHub issue:** #56 · **Status:** 🟡 Open · **Parent epic:** #7
+
 - **Problem Statement:** "Everything is green" needs an executable definition — the
   MVP's exit test.
 - **Solution/Scope:** Playwright (or scripted curl for API legs) suite against the 7.1
@@ -1334,6 +1443,8 @@ compose up ─▶ [ui loads] ─▶ [login+tenant] ─▶ [dashboard data]
 
 ### Issue 7.3 — ouroboros: [7.3] Image publishing to GHCR
 
+> **GitHub issue:** #57 · **Status:** 🟡 Open · **Parent epic:** #7
+
 - **Problem Statement:** Only `ouroboros-web` publishes an image today; deploying the
   stack anywhere needs published images for ui/rest/engine.
 - **Solution/Scope:** Extend/parallel the existing `docker-publish.yml` pattern:
@@ -1349,6 +1460,8 @@ main merge (rest/**) ─▶ build ─▶ ghcr.io/…/ouroboros-rest:{latest, sha
 ```
 
 ### Issue 7.4 — ouroboros: [7.4] Deployment runbook
+
+> **GitHub issue:** #58 · **Status:** 🟡 Open · **Parent epic:** #7
 
 - **Problem Statement:** Running the stack beyond a dev laptop (single host, real
   domain, TLS, real GitHub OAuth app, backups) is undocumented.
@@ -1451,10 +1564,68 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic 7 — Integration | 4 | 2 | 2 |
 | **Total** | **51** | **41** | **10** |
 
+## Issue Index
+
+All issues live in [NobuData/ouroboros](https://github.com/NobuData/ouroboros/issues).
+
+| Epic parent | Sub-issues | MVP | v2 |
+|---|---|:---:|:---:|
+| #1 Foundation & Repo Infrastructure | #8 – #13 | 5 | 1 |
+| #2 Brand Assets & Theming | #14 – #18 | 4 | 1 |
+| #3 Tenancy Database (`ouroboros-db`) | #19 – #26 | 6 | 2 |
+| #4 Communications Layer (`ouroboros-rest`) | #27 – #38 | 11 | 1 |
+| #5 Application UI (`ouroboros-ui`) | #39 – #49 | 9 | 2 |
+| #6 Python Backend (`ouroboros-engine`) | #50 – #54 | 4 | 1 |
+| #7 Integration & Delivery | #55 – #58 | 2 | 2 |
+| **Total** | **51 work issues + 7 epics** | **41** | **10** |
+
+Ref → issue mapping (roadmap numbering to GitHub numbering):
+
+| 1.1–1.6 | 2.1–2.5 | 3.1–3.8 | 4.1–4.12 | 5.1–5.11 | 6.1–6.5 | 7.1–7.4 |
+|---|---|---|---|---|---|---|
+| #8–#13 | #14–#18 | #19–#26 | #27–#38 | #39–#49 | #50–#54 | #55–#58 |
+
+## UI/UX Shell Compliance (addendum 2026-08-09)
+
+The application shell defined in
+[`docs/DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md) (implementing
+roadmap: [`ROADMAP_UIUX_APP_SHELL.md`](ROADMAP_UIUX_APP_SHELL.md)) supersedes
+the top-bar-navigation shell this roadmap originally scoped. The rules, for
+every UI issue here and in the mockup roadmaps:
+
+1. **Header** — application name/brand upper-left (with the tenant chip),
+   profile & session controls upper-right; **no navigation links** in the
+   header.
+2. **Sidebar navigation** — a fixed left rail of **icon + name** entries
+   (registry-driven, one per application module), collapsible to an icon
+   rail; page-level tab sets remain at the top of the content pane.
+3. **Content-only scrolling** — the content pane right of the sidebar is the
+   **sole scroll container**; header and sidebar never scroll; sticky
+   in-page chrome sticks within the pane.
+4. **Type scale** — all type/spacing rem-based against the #16 tokens so the
+   five-step font-size preference (CQ.2 — for high-resolution monitors)
+   scales every surface; px font sizes lint-banned.
+5. **Mockup interpretation** — mockups remain the source of truth for page
+   content and card anatomy; their `.topbar`/`.nav` chrome is superseded.
+
+Since this roadmap's issues are **already filed**, these are amendment
+comments to post (executed by the App Shell roadmap's filing pass):
+
+| Filed issue | Amendment |
+|---|---|
+| #41 (5.3 App shell) | **Re-scoped**: top bar keeps brand/tenant/profile-menu only; primary nav moves to the CP.2 sidebar (icon + name per module); the mock-note footer is dropped from the app shell; scroll containment per CP.1. The ASCII sketch in 5.3 is superseded by the spec §1 diagram. |
+| #16 (2.3 design tokens) / #40 (5.2 global styles) | Type + key spacing tokens converted to rem (CQ.1); px font sizes banned by lint. |
+| #17 (2.4 theme engine) | Boot pattern shared with the font-scale no-flash application (CQ.2). |
+| #46 (5.8 primitives) / #48 (5.10 workshop) | Gain ShellHeader, SidebarNav, ContentPane, StickyBar/PageSubnav primitives + workshop stories (CP.1/CP.2/CP.4). |
+| #45 (5.7 dashboard placeholder) / #49 (5.11 placeholder routes) | Placeholders mount inside the shell content pane; nav entries come from the module registry, not per-page links. |
+| #33 (4.7 sessions) / #31 (4.5 tenancy API) | Profile menu (CP.3) and the `font_scale` user preference (CQ.2) build on these surfaces. |
+| #56 (7.2 e2e smoke) | Gains the shell leg (fixed chrome under scroll, nav active states, rail/drawer) and the font-scale smoke (CP.5/CQ.3). |
+
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this document is
-the validation gate. Once reviewed (in particular decisions D1–D6 and the MVP/v2
-split), the follow-up pass creates the labels (issue 1.2's set) and files all 51
-issues with the `<project>: [<epic>.<issue>] <title>` naming and the labels listed in
-each epic table.
+Issues are filed, labeled, typed, and linked to their epic parents. Execution starts at
+**#8** (monorepo layout) — everything else in Phase 0 (#9, #11, #12) opens the moment it
+lands, after which the four parallel tracks in Phase 1 can run concurrently. The MVP is
+complete when **#56** (end-to-end smoke test) is green.
+
+Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

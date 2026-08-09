@@ -358,3 +358,49 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mock-note .links { margin-left: auto; display: flex; gap: 14px; }
 .mock-note a { color: var(--mut); }
 .mock-note a:hover { color: var(--accent); }
+
+/* ---------- app shell (2026-08-09) ----------
+   Layout per docs/DESIGN_SYSTEM_APP_SHELL.md: fixed header (brand upper-left,
+   profile upper-right, no nav links), fixed left sidebar (icon + name from the
+   module registry), and the content pane as the ONLY scroll container. */
+
+html, body { height: 100%; }
+body:has(.appshell) { overflow: hidden; display: flex; flex-direction: column; }
+
+.appshell { flex: 1; display: flex; min-height: 0; }
+
+.sidebar {
+  width: 224px; flex: none; display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 10px; border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  overflow-y: auto;
+}
+.sidebar a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 11px; border-radius: var(--r-md);
+  color: var(--mut); font-size: 13px; font-weight: 500; white-space: nowrap;
+}
+.sidebar a:hover { color: var(--ink); background: color-mix(in srgb, var(--border) 40%, transparent); }
+.sidebar a.active {
+  color: var(--accent); background: var(--glow-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.sidebar .glyph { width: 20px; flex: none; text-align: center; font-size: 14px; }
+.sidebar-foot {
+  margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.nav-badge {
+  margin-left: auto; min-width: 18px; padding: 0 5px; border-radius: 999px; text-align: center;
+  font-family: var(--f-mono); font-size: 10.5px; line-height: 17px;
+  color: var(--warn); background: rgba(245, 184, 61, 0.12); border: 1px solid rgba(245, 184, 61, 0.35);
+}
+
+.content { flex: 1; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; }
+
+/* icon rail below 1024px — names collapse to tooltips (title attrs in real app) */
+@media (max-width: 1024px) {
+  .sidebar { width: 56px; padding: 12px 8px; }
+  .sidebar a { justify-content: center; padding: 9px 0; gap: 0; }
+  .sidebar .lbl, .sidebar .nav-badge { display: none; }
+}
