@@ -1,5 +1,6 @@
 import Image from "next/image";
 import ThemeToggle from "./theme-toggle";
+import RotatingTagline, { RotatingHeadline } from "./rotating-tagline";
 
 const STAGES = [
   { label: "PULL", x: 50, y: 9.8, cls: "hot" },
@@ -243,7 +244,7 @@ export default function Home() {
           />
           <span className="eyebrow rise d1">ouroboros.build — autonomous development loops</span>
           <h1 className="rise d2">
-            Infinity in <em>Autonomy.</em>
+            <RotatingHeadline />
           </h1>
           <p className="lede rise d3">
             Sizes the work, writes the code, builds on your hardware, proves the work
@@ -482,7 +483,7 @@ export default function Home() {
               <ThemedLogo name="mark" width={55} height={34} />
               <span>OURO<b>BOROS</b></span>
             </a>
-            <div className="tagline">Infinity in Autonomy</div>
+            <RotatingTagline />
             <p className="blurb">
               Autonomous development loops: issue in, verified pull request out.
               On your models, your build farm, your rules — babysitting not required.
