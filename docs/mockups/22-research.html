@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — Research</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ouroboros.css">
+<style>
+/* ---------- 22 · research ---------- */
+
+/* investigation-kind segmented control */
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--r-md); overflow: hidden; background: var(--inset); flex-wrap: wrap; }
+.seg button {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--f-ui); font-size: 12.5px; font-weight: 600;
+  color: var(--mut); background: transparent; border: none; cursor: pointer;
+  padding: 7px 13px; border-right: 1px solid var(--border); white-space: nowrap;
+}
+.seg button:last-child { border-right: none; }
+.seg button:hover { color: var(--ink-dim); }
+.seg button.sel {
+  color: var(--accent); background: var(--glow-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* research-tool source chips (toggleable in the composer) */
+.src-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--border-strong); background: var(--raised);
+  font-size: 12px; font-weight: 500; color: var(--mut);
+}
+.src-chip.on {
+  color: var(--accent); background: var(--glow-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.src-chip .tick { font-size: 11px; }
+
+/* research tool rows (side panel) */
+.tool-row { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.tool-row:last-child { border-bottom: none; }
+.tool-row .glyph {
+  width: 26px; height: 26px; border-radius: var(--r-sm); flex: none;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 13px;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.tool-row .name { font-size: 13px; font-weight: 600; color: var(--ink); line-height: 1.3; }
+.tool-row .sub { font-family: var(--f-mono); font-size: 11.5px; color: var(--mut); }
+
+/* investigation rows */
+.inv-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--border); min-width: 0; flex-wrap: wrap; }
+.inv-row:last-of-type { border-bottom: none; }
+.inv-row .rid { font-family: var(--f-mono); font-size: 12px; color: var(--faint); flex: none; width: 56px; }
+.inv-row .q { flex: 1; min-width: 240px; font-size: 13px; color: var(--ink); }
+.inv-row .q .small { display: block; }
+
+/* kind chips — one hue per promise in the statement */
+.kind {
+  display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 5px;
+  font-family: var(--f-mono); font-size: 11px; white-space: nowrap; flex: none;
+}
+.kind.bug  { color: var(--err);    background: rgba(255,107,107,.08); border: 1px solid rgba(255,107,107,.3); }
+.kind.reg  { color: var(--warn);   background: rgba(245,184,61,.08);  border: 1px solid rgba(245,184,61,.3); }
+.kind.road { color: var(--ok);     background: rgba(62,220,151,.08);  border: 1px solid rgba(62,220,151,.3); }
+.kind.gap  { color: var(--model);  background: rgba(167,139,250,.08); border: 1px solid rgba(167,139,250,.3); }
+
+/* capability matrix */
+.matrix td.us { color: var(--accent); font-weight: 600; }
+.cap {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--f-mono); font-size: 11.5px; white-space: nowrap;
+}
+.cap.have  { color: var(--ok); }
+.cap.part  { color: var(--warn); }
+.cap.none  { color: var(--err); }
+.cap.unk   { color: var(--faint); }
+.gap-sev {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 30px; padding: 3px 8px; border-radius: 6px;
+  font-family: var(--f-disp); font-size: 11.5px; font-weight: 700; letter-spacing: 0.05em;
+}
+.gap-sev.hi  { color: var(--err);  background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.3); }
+.gap-sev.med { color: var(--warn); background: rgba(245,184,61,.1);  border: 1px solid rgba(245,184,61,.3); }
+.gap-sev.low { color: var(--ok);   background: rgba(62,220,151,.1);  border: 1px solid rgba(62,220,151,.3); }
+.gap-sev.par { color: var(--accent); background: var(--glow-soft);   border: 1px solid rgba(61,214,245,.3); }
+
+/* citation list */
+.cite { display: flex; align-items: baseline; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+.cite:last-child { border-bottom: none; }
+.cite .n { font-family: var(--f-mono); font-size: 11px; color: var(--accent); flex: none; width: 26px; }
+.cite .t { font-size: 12.5px; color: var(--ink-dim); }
+.cite .u { font-family: var(--f-mono); font-size: 11px; color: var(--faint); word-break: break-all; }
+
+/* skill chips — the product's packaged procedures (see 14-knowledge) */
+.skill-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+  font-family: var(--f-mono); font-size: 11.5px;
+  color: var(--model); background: rgba(167,139,250,.08); border: 1px solid rgba(167,139,250,.35);
+}
+
+/* rendered ROADMAP.md preview */
+.md-render {
+  background: var(--inset); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 16px 18px; font-size: 13px; color: var(--ink-dim); line-height: 1.6;
+}
+.md-render .h1 { font-family: var(--f-disp); font-size: 15px; font-weight: 600; color: var(--ink); }
+.md-render .meta { font-family: var(--f-mono); font-size: 11px; color: var(--faint); margin-bottom: 6px; }
+.md-render .h2 {
+  font-family: var(--f-disp); font-size: 12.5px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--accent); margin: 13px 0 4px;
+}
+.md-render .mi { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.md-render .cb { font-family: var(--f-mono); font-size: 12px; color: var(--faint); flex: none; }
+.md-render .cb.done { color: var(--ok); }
+.md-render .it { flex: 1; min-width: 140px; }
+.md-render .inum { font-family: var(--f-mono); font-size: 11.5px; color: var(--accent); }
+.mvp {
+  font-family: var(--f-mono); font-size: 10px; color: var(--warn); flex: none;
+  border: 1px solid rgba(245,184,61,.35); border-radius: 4px; padding: 0 5px;
+}
+
+/* suggested-change rows (post-publish review) */
+.sugg { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.sugg:last-child { border-bottom: none; }
+.sugg .who {
+  width: 24px; height: 24px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--f-disp); font-size: 10px; font-weight: 600;
+  background: linear-gradient(135deg, var(--accent-deep), #0f4a63); color: #d7f4fd;
+  border: 1px solid var(--border-strong);
+}
+.sugg .who.ai { background: rgba(167,139,250,.15); color: var(--model); border-color: rgba(167,139,250,.35); }
+.sugg .txt { flex: 1; font-size: 12.5px; color: var(--ink-dim); min-width: 180px; }
+
+/* issues grouped by milestone */
+.ms-head { display: flex; align-items: center; gap: 10px; margin: 14px 0 2px; flex-wrap: wrap; }
+.ms-head:first-child { margin-top: 0; }
+.ms-head .msname { font-family: var(--f-disp); font-size: 13px; font-weight: 600; color: var(--ink); }
+.iss-row { display: flex; align-items: center; gap: 9px; padding: 8px 2px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.iss-row:last-of-type { border-bottom: none; }
+.iss-row .inum { font-family: var(--f-mono); font-size: 12px; color: var(--accent); flex: none; width: 42px; }
+.iss-row .ttl { flex: 1; min-width: 170px; font-size: 13px; color: var(--ink); }
+.iss-row .due, .iss-row .est { font-family: var(--f-mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+.cx {
+  display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 5px; flex: none;
+  font-family: var(--f-mono); font-size: 10.5px; white-space: nowrap; background: transparent;
+}
+.cx.lo { color: var(--ok);   border: 1px solid rgba(62,220,151,.3); }
+.cx.md { color: var(--warn); border: 1px solid rgba(245,184,61,.3); }
+.cx.hi { color: var(--err);  border: 1px solid rgba(255,107,107,.3); }
+
+/* brief excerpt */
+.brief {
+  background: var(--inset); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 14px 16px; font-size: 13px; color: var(--ink-dim); line-height: 1.65;
+}
+.brief .ref { font-family: var(--f-mono); font-size: 10.5px; color: var(--accent); vertical-align: super; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo-mark.png" alt="Ouroboros">
+    <span class="wordmark">OURO<span>BOROS</span></span>
+  </a>
+  <button class="tenant-chip"><span class="org">acme-robotics /</span>&nbsp;helios-firmware <span class="caret">▾</span></button>
+  <nav class="nav">
+    <a href="02-dashboard.html">Dashboard</a>
+    <a href="03-issues.html">Issues</a>
+    <a href="04-workflow-builder.html">Workflows</a>
+    <a href="06-model-routing.html">Models</a>
+    <a href="08-build-farm.html">Build Farm</a>
+    <a href="14-knowledge.html">Knowledge</a>
+    <a href="09-planning.html">Planning</a>
+    <a href="22-research.html" class="active">Research</a>
+    <a href="15-insights.html">Insights</a>
+  </nav>
+  <div class="topbar-right">
+    <button class="search-pill">Search… <span class="kbd">⌘K</span></button>
+    <span class="live-pill"><span class="dot pulse"></span>3 loops live</span>
+    <a class="needs-pill" href="16-inbox.html"><span class="dot warn"></span>Needs you · 3</a>
+    <a class="gear-link" href="17-settings.html" title="Workspace settings">&#9881;&#xFE0E;</a>
+    <a class="avatar" href="01-login.html" title="Signed in as Ken">KS</a>
+  </div>
+</header>
+
+<main class="page">
+
+  <div class="page-head">
+    <div class="grow">
+      <div class="eyebrow">Research</div>
+      <h1>Ask a hard question. Get an evidenced answer — and the tickets to act on it.</h1>
+      <p class="sub">The same loop that handles your build runs investigations: root-cause briefs for bug fixes, forensics on regressions, product roadmaps and improvement proposals, and project &amp; competitive gap analysis — with full research tools, every claim cited, every finding one click from a drafted ticket.</p>
+    </div>
+    <a class="btn ghost" href="#">Research library</a>
+    <a class="btn primary" href="#">New investigation</a>
+  </div>
+
+  <div class="grid">
+
+    <!-- investigation composer -->
+    <div class="card c-7">
+      <div class="card-head">
+        <span class="card-title">START AN INVESTIGATION</span>
+        <span class="spacer"></span>
+        <span class="pill model">researcher: sonnet-long-ctx</span>
+      </div>
+
+      <div class="field">
+        <label for="rq">Ask like you'd ask a principal engineer</label>
+        <textarea class="input" id="rq" rows="4">Field reports say our drones abort autonomous docking in wind that Skylink's units handle. Where exactly are we behind — sensors, control loop, or recovery logic — and what would it take to close the gap?</textarea>
+      </div>
+
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:12px">
+        <div class="seg" role="group" aria-label="Investigation kind">
+          <button>Bug root cause</button>
+          <button>Regression forensics</button>
+          <button>Roadmap &amp; improvements</button>
+          <button class="sel">Gap analysis</button>
+        </div>
+        <button class="btn ghost sm">Depth: Deep dive <span class="faint">▾</span></button>
+      </div>
+
+      <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px" role="group" aria-label="Research tools to use">
+        <span class="small muted" style="flex:none">Tools:</span>
+        <button class="src-chip on"><span class="tick">✓</span>Web search</button>
+        <button class="src-chip on"><span class="tick">✓</span>Competitor tracker</button>
+        <button class="src-chip on"><span class="tick">✓</span>Codebase mining</button>
+        <button class="src-chip on"><span class="tick">✓</span>Issue &amp; PR history</button>
+        <button class="src-chip on"><span class="tick">✓</span>Build &amp; test telemetry</button>
+        <button class="src-chip"><span class="tick">·</span>Docs, standards &amp; papers</button>
+      </div>
+
+      <hr class="divider">
+
+      <div class="row" style="flex-wrap:wrap;gap:12px">
+        <span class="small muted">Deliverable: cited research brief → capability matrix → drafted epics &amp; tickets in <a class="card-link" href="09-planning.html">Planning</a></span>
+        <span style="margin-left:auto"></span>
+        <span class="small muted mono">est. 40–60 sources · ~$6</span>
+        <button class="btn primary">Start investigation ⟳</button>
+      </div>
+    </div>
+
+    <!-- side column -->
+    <div class="c-5 col" style="gap:16px">
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">RESEARCH TOOLS</span>
+          <span class="spacer"></span>
+          <span class="tag">6 connected</span>
+        </div>
+        <div class="tool-row">
+          <span class="glyph">◍</span>
+          <span style="flex:1">
+            <span class="name">Web search &amp; page reader</span><br>
+            <span class="sub">search API + full-page extraction, robots-aware</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="tool-row">
+          <span class="glyph">⌖</span>
+          <span style="flex:1">
+            <span class="name">Competitor tracker</span><br>
+            <span class="sub">4 rivals watched · release notes, changelogs, filings</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="tool-row">
+          <span class="glyph">⌥</span>
+          <span style="flex:1">
+            <span class="name">Codebase &amp; git mining</span><br>
+            <span class="sub">blame, bisect, dependency graph over helios-firmware</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="tool-row">
+          <span class="glyph">◱</span>
+          <span style="flex:1">
+            <span class="name">Issue &amp; PR history index</span><br>
+            <span class="sub">3,412 issues · support tickets · churn interviews</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="tool-row">
+          <span class="glyph">∿</span>
+          <span style="flex:1">
+            <span class="name">Build &amp; test telemetry</span><br>
+            <span class="sub">HIL bench measurements, fleet metrics warehouse</span>
+          </span>
+          <span class="dot ok"></span>
+        </div>
+        <div class="tool-row">
+          <span class="glyph">§</span>
+          <span style="flex:1">
+            <span class="name">Docs, standards &amp; papers</span><br>
+            <span class="sub">datasheets, RFCs, arXiv — PDF reader with citations</span>
+          </span>
+          <span class="dot idle"></span>
+          <button class="btn ghost sm">enable</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">REGRESSION WATCH</span>
+          <span class="spacer"></span>
+          <span class="tag">nightly vs. v2.0.4 baseline</span>
+        </div>
+        <div class="tool-row">
+          <span class="dot err"></span>
+          <span style="flex:1">
+            <span class="name">Hover drift +14% in gusts</span><br>
+            <span class="sub">bisected → a41f2c9 · fix loop running · <a class="card-link" href="10-run-detail.html">#512</a></span>
+          </span>
+          <span class="pill run"><span class="dot pulse"></span>fixing</span>
+        </div>
+        <div class="tool-row">
+          <span class="dot warn"></span>
+          <span style="flex:1">
+            <span class="name">Boot time +230 ms since v2.1.0-rc1</span><br>
+            <span class="sub">bisected → 7c03d1e · fix ticket drafted · #517</span>
+          </span>
+          <span class="pill warn">queued</span>
+        </div>
+        <div class="tool-row">
+          <span class="dot ok"></span>
+          <span style="flex:1">
+            <span class="name">Battery est. error regression</span><br>
+            <span class="sub">root-caused, fixed &amp; merged · <a class="card-link" href="12-pr-verification.html">PR #641</a></span>
+          </span>
+          <span class="pill ok">✓ merged</span>
+        </div>
+        <span class="small faint" style="display:block;margin-top:8px">Watch compares every nightly HIL run to the last release baseline; any drift opens a forensics investigation automatically.</span>
+      </div>
+
+    </div>
+
+    <!-- featured investigation: competitive gap analysis -->
+    <div class="card c-12">
+      <div class="card-head">
+        <span class="kind gap">gap analysis</span>
+        <span class="card-title">RS-127 — AUTONOMOUS DOCKING VS. THE FIELD</span>
+        <span class="tag">44 sources · deep dive</span>
+        <span class="spacer"></span>
+        <span class="pill ok">✓ brief ready</span>
+        <button class="btn ghost sm">Export brief ↗</button>
+        <a class="btn primary sm" href="09-planning.html">Draft epic from gaps →</a>
+      </div>
+
+      <div class="grid" style="gap:16px">
+        <div class="c-7">
+          <div class="tbl-wrap">
+            <table class="tbl matrix">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Helios (us)</th>
+                  <th>Skylink</th>
+                  <th>AeroMesh</th>
+                  <th>Novum</th>
+                  <th>Gap</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Docking in &gt;8 m/s gusts</td>
+                  <td class="us"><span class="cap part">◐ partial</span></td>
+                  <td><span class="cap have">● shipping</span></td>
+                  <td><span class="cap part">◐ partial</span></td>
+                  <td><span class="cap none">○ none</span></td>
+                  <td><span class="gap-sev hi">HIGH</span></td>
+                </tr>
+                <tr>
+                  <td>Visual-inertial approach (no beacon)</td>
+                  <td class="us"><span class="cap none">○ none</span></td>
+                  <td><span class="cap have">● shipping</span></td>
+                  <td><span class="cap have">● shipping</span></td>
+                  <td><span class="cap part">◐ beta</span></td>
+                  <td><span class="gap-sev hi">HIGH</span></td>
+                </tr>
+                <tr>
+                  <td>Abort &amp; retry recovery logic</td>
+                  <td class="us"><span class="cap part">◐ partial</span></td>
+                  <td><span class="cap have">● shipping</span></td>
+                  <td><span class="cap part">◐ partial</span></td>
+                  <td><span class="cap none">○ none</span></td>
+                  <td><span class="gap-sev med">MED</span></td>
+                </tr>
+                <tr>
+                  <td>OTA resilience (A/B + rollback)</td>
+                  <td class="us"><span class="cap part">◐ in flight</span></td>
+                  <td><span class="cap have">● shipping</span></td>
+                  <td><span class="cap none">○ none</span></td>
+                  <td><span class="cap none">○ none</span></td>
+                  <td><span class="gap-sev par">WIP</span></td>
+                </tr>
+                <tr>
+                  <td>Recovery beacon over BLE</td>
+                  <td class="us"><span class="cap have">● shipping</span></td>
+                  <td><span class="cap none">○ none</span></td>
+                  <td><span class="cap unk">? unknown</span></td>
+                  <td><span class="cap none">○ none</span></td>
+                  <td><span class="gap-sev low">LEAD</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="brief" style="margin-top:14px">
+            <strong style="color:var(--ink)">Finding.</strong> The docking gap is not sensors: our IMU and rangefinder match Skylink's published spec.<span class="ref">[07]</span>
+            It is control — Skylink runs a wind-feedforward MPC in the final 2 m<span class="ref">[12][31]</span> while ours is PID with fixed gains
+            (<span class="mono" style="font-size:11.5px">dock_ctrl.c:214</span>, unchanged in 14 months).<span class="ref">[git]</span> Their abort logic retries from a re-planned
+            approach vector; ours returns to loiter and waits for the operator — the behavior customers describe as "giving up."<span class="ref">[19]</span>
+            Estimated closure: one epic, 5 tickets, ~3 weeks of loop time on the HIL rig.
+          </div>
+        </div>
+
+        <div class="c-5">
+          <div class="card inset" style="padding:14px 16px">
+            <div class="card-head" style="margin-bottom:8px">
+              <span class="card-title">SOURCES — 44 CITED</span>
+              <span class="spacer"></span>
+              <a class="card-link" href="#">all ↗</a>
+            </div>
+            <div class="cite">
+              <span class="n">[07]</span>
+              <span style="flex:1"><span class="t">Skylink S4 docking module — teardown &amp; sensor BOM</span><br>
+              <span class="u">droneanalysts.example.com/s4-teardown</span></span>
+            </div>
+            <div class="cite">
+              <span class="n">[12]</span>
+              <span style="flex:1"><span class="t">Skylink firmware 6.2 release notes — "gust-adaptive final approach"</span><br>
+              <span class="u">skylink.example.com/releases/6.2</span></span>
+            </div>
+            <div class="cite">
+              <span class="n">[19]</span>
+              <span style="flex:1"><span class="t">Churn interviews Q2 — 9 of 14 cite docking reliability</span><br>
+              <span class="u">issue-index://support/churn-2026-q2</span></span>
+            </div>
+            <div class="cite">
+              <span class="n">[31]</span>
+              <span style="flex:1"><span class="t">"MPC for precision landing in turbulent flow" — conf. paper</span><br>
+              <span class="u">arxiv.example.org/abs/2605.11423</span></span>
+            </div>
+            <div class="cite">
+              <span class="n">[git]</span>
+              <span style="flex:1"><span class="t">dock_ctrl.c blame — gains last tuned 14 months ago</span><br>
+              <span class="u">helios-firmware @ 8c1b2e4 · src/dock/dock_ctrl.c</span></span>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+            <span class="small muted" style="flex:none">Proposed from gaps:</span>
+            <span class="tag">EPIC · Docking parity</span>
+            <span class="tag">DOCK-1 wind-feedforward MPC</span>
+            <span class="tag">DOCK-2 re-planned retry</span>
+            <span class="tag">+3 more</span>
+            <span class="effort l">L</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- roadmap → issues skill pipeline -->
+    <div class="card c-12">
+      <div class="card-head" style="flex-wrap:wrap">
+        <span class="kind road">roadmap</span>
+        <span class="card-title">RS-124 — FROM BRIEF TO ROADMAP TO ISSUES</span>
+        <span class="spacer"></span>
+        <span class="skill-chip">skill · create-roadmap</span>
+        <span class="mono faint" style="font-size:12px">→</span>
+        <span class="skill-chip">skill · create-issues</span>
+        <button class="btn ghost sm">Open ROADMAP.md ↗</button>
+      </div>
+
+      <div class="grid" style="gap:16px">
+
+        <!-- step 1: create-roadmap → rendered markdown + suggested changes -->
+        <div class="c-6">
+          <div class="row" style="margin-bottom:8px">
+            <span class="card-title" style="font-size:12px">1 · CREATE-ROADMAP → ROADMAP.MD</span>
+            <span class="spacer"></span>
+            <div class="seg" role="group" aria-label="Roadmap view">
+              <button class="sel">Rendered</button>
+              <button>Raw .md</button>
+            </div>
+          </div>
+
+          <div class="md-render">
+            <div class="meta">docs/ROADMAP.md · committed 8c1b2e4 · generated from the RS-124 brief</div>
+            <div class="h1">Helios — Q4 Improvement Roadmap</div>
+            <div class="h2">M1 · DOCKING PARITY — TARGET OCT 15</div>
+            <div class="mi"><span class="cb done">[x]</span><span class="it"><span class="inum">#742</span> Wind-feedforward MPC in final approach</span><span class="mvp">MVP</span><span class="effort l">L</span></div>
+            <div class="mi"><span class="cb">[ ]</span><span class="it"><span class="inum">#743</span> Re-planned abort &amp; retry vectors</span><span class="mvp">MVP</span><span class="effort m">M</span></div>
+            <div class="mi"><span class="cb">[ ]</span><span class="it"><span class="inum">#744</span> Gust estimator from IMU residuals</span><span class="effort m">M</span></div>
+            <div class="h2">M2 · FLEET RELIABILITY — TARGET NOV 20</div>
+            <div class="mi"><span class="cb">[ ]</span><span class="it"><span class="inum">#745</span> Battery health model v2</span><span class="effort m">M</span></div>
+            <div class="mi"><span class="cb">[ ]</span><span class="it"><span class="inum">#746</span> Telemetry gap alerts</span><span class="effort s">S</span></div>
+            <div class="mi"><span class="cb">[ ]</span><span class="it"><span class="inum">#747</span> Operator recovery playbook docs</span><span class="effort xs">XS</span></div>
+          </div>
+
+          <div class="row" style="margin:12px 0 4px">
+            <span class="card-title" style="font-size:12px">SUGGESTED CHANGES — 2 OPEN</span>
+            <span class="spacer"></span>
+            <span class="small faint">applying re-runs create-roadmap</span>
+          </div>
+          <div class="sugg">
+            <span class="who" title="Ken">KS</span>
+            <span class="txt">Pull <span class="inum mono" style="color:var(--accent)">#744</span> into the M1 MVP set — churn interviews rank gust handling above battery accuracy.</span>
+            <button class="btn ghost sm">Apply ⟳</button>
+            <button class="btn ghost sm">Dismiss</button>
+          </div>
+          <div class="sugg">
+            <span class="who ai" title="Estimator">AI</span>
+            <span class="txt">Split <span class="inum mono" style="color:var(--accent)">#745</span> — complexity is high for a single loop; model + calibration land better as two issues.</span>
+            <button class="btn ghost sm">Apply ⟳</button>
+            <button class="btn ghost sm">Dismiss</button>
+          </div>
+        </div>
+
+        <!-- step 2: create-issues → milestones, dates, estimates, effort, complexity -->
+        <div class="c-6">
+          <div class="row" style="margin-bottom:8px">
+            <span class="card-title" style="font-size:12px">2 · CREATE-ISSUES → GITHUB</span>
+            <span class="spacer"></span>
+            <span class="tag">6 issues · 2 milestones · synced</span>
+          </div>
+
+          <div class="ms-head">
+            <span class="msname">◆ M1 · Docking parity</span>
+            <span class="tag">due Oct 15</span>
+            <span class="spacer"></span>
+            <span class="small mono muted">1/3 done</span>
+          </div>
+          <div class="iss-row">
+            <span class="inum">#742</span>
+            <span class="ttl">Wind-feedforward MPC in final approach</span>
+            <span class="due">due Sep 26</span>
+            <span class="est">est 3.0 loop-days · $11</span>
+            <span class="effort l">L</span>
+            <span class="cx hi">cx:high</span>
+            <span class="pill ok">✓ merged</span>
+          </div>
+          <div class="iss-row">
+            <span class="inum">#743</span>
+            <span class="ttl">Re-planned abort &amp; retry vectors</span>
+            <span class="due">due Oct 3</span>
+            <span class="est">est 1.5 loop-days · $6</span>
+            <span class="effort m">M</span>
+            <span class="cx md">cx:med</span>
+            <span class="pill run"><span class="dot pulse"></span>loop live</span>
+          </div>
+          <div class="iss-row">
+            <span class="inum">#744</span>
+            <span class="ttl">Gust estimator from IMU residuals</span>
+            <span class="due">due Oct 10</span>
+            <span class="est">est 1.0 loop-day · $4</span>
+            <span class="effort m">M</span>
+            <span class="cx md">cx:med</span>
+            <span class="pill">queued</span>
+          </div>
+
+          <div class="ms-head">
+            <span class="msname">◆ M2 · Fleet reliability</span>
+            <span class="tag">due Nov 20</span>
+            <span class="spacer"></span>
+            <span class="small mono muted">0/3 done</span>
+          </div>
+          <div class="iss-row">
+            <span class="inum">#745</span>
+            <span class="ttl">Battery health model v2</span>
+            <span class="due">due Nov 6</span>
+            <span class="est">est 2.0 loop-days · $8</span>
+            <span class="effort m">M</span>
+            <span class="cx hi">cx:high</span>
+            <span class="pill">queued</span>
+          </div>
+          <div class="iss-row">
+            <span class="inum">#746</span>
+            <span class="ttl">Telemetry gap alerts</span>
+            <span class="due">due Nov 12</span>
+            <span class="est">est 0.5 loop-day · $2</span>
+            <span class="effort s">S</span>
+            <span class="cx lo">cx:low</span>
+            <span class="pill">queued</span>
+          </div>
+          <div class="iss-row">
+            <span class="inum">#747</span>
+            <span class="ttl">Operator recovery playbook docs</span>
+            <span class="due">due Nov 18</span>
+            <span class="est">est 0.25 loop-day · $1</span>
+            <span class="effort xs">XS</span>
+            <span class="cx lo">cx:low</span>
+            <span class="pill">queued</span>
+          </div>
+
+          <span class="small faint" style="display:block;margin-top:10px">create-issues writes the issue numbers, MVP flags, and descriptions back into ROADMAP.md — the file and the tracker never drift. Dates, estimates, effort, and complexity come from the estimator during issue creation.</span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- active investigations -->
+    <div class="card c-12">
+      <div class="card-head">
+        <span class="card-title">INVESTIGATIONS</span>
+        <span class="tag">4 active · 23 this quarter</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm">History</button>
+      </div>
+
+      <div class="inv-row">
+        <span class="rid">RS-118</span>
+        <span class="kind bug">bug fix</span>
+        <span class="q">Root cause: altimeter spikes below −10 °C <span class="small muted">issue #498 · traced to sensor self-heat compensation · fix ticket drafted with repro test</span></span>
+        <span class="small mono muted">18 sources</span>
+        <span class="pill run"><span class="dot pulse"></span>fix loop live</span>
+        <a class="card-link small" href="10-run-detail.html">open run →</a>
+      </div>
+      <div class="inv-row">
+        <span class="rid">RS-121</span>
+        <span class="kind reg">regression</span>
+        <span class="q">Motor PID overshoot appeared between v2.0.4 → v2.1.0-rc1 <span class="small muted">bisect + HIL replay isolated gain-scheduling change · correction round queued</span></span>
+        <span class="small mono muted">9 sources</span>
+        <span class="pill warn">queued</span>
+        <a class="card-link small" href="11-test-results.html">evidence →</a>
+      </div>
+      <div class="inv-row">
+        <span class="rid">RS-124</span>
+        <span class="kind road">roadmap</span>
+        <span class="q">Q4 product improvements from support tickets + churn interviews <span class="small muted">312 tickets clustered into 7 themes · ROADMAP.md via create-roadmap · 6 issues filed via create-issues — pipeline above</span></span>
+        <span class="small mono muted">312 sources</span>
+        <span class="pill ok">✓ issues filed</span>
+        <a class="card-link small" href="09-planning.html">to roadmap →</a>
+      </div>
+      <div class="inv-row">
+        <span class="rid">RS-127</span>
+        <span class="kind gap">gap analysis</span>
+        <span class="q">Autonomous docking vs. Skylink / AeroMesh / Novum <span class="small muted">featured above · capability matrix + closure plan · epic ready to draft</span></span>
+        <span class="small mono muted">44 sources</span>
+        <span class="pill ok">✓ brief ready</span>
+        <a class="card-link small" href="#">brief ↑</a>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <span class="small muted">Every investigation ends the same way the build loop does: with evidence — and, when you approve, with tickets the loop picks up next.</span>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="mock-note">
+  <span>OUROBOROS · UI MOCKUP 22 — RESEARCH · static concept, no functionality · all companies &amp; sources fictional</span>
+  <span class="links">
+    <a href="index.html">← All mockups</a>
+    <a href="21-model-registry.html">← Prev: Model registry</a>
+    <a href="02-dashboard.html">Back to start: Dashboard →</a>
+  </span>
+</footer>
+
+</body>
+</html>
