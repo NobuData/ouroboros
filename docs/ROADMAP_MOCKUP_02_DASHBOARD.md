@@ -8,7 +8,10 @@
 
 ## Context & Existing Work (duplicate-avoidance survey)
 
-Surveyed 2026-08-08.
+Surveyed 2026-08-08. **All 35 issues (5 epic parents + 30 work issues) were filed from
+this roadmap on 2026-08-09** — see the `GitHub` column in every table below. The
+`dashboard` label (decision F9) was created during filing, and the amendment comments
+on #41, #45, #49 and #56 were posted.
 
 **Design source of truth for every UI ticket in this roadmap:**
 [`docs/mockups/02-dashboard.html`](mockups/02-dashboard.html) (with
@@ -52,14 +55,14 @@ truthful zero/empty states in a fresh workspace. No fabricated numbers outside s
 
 | Existing issue | Disposition under this roadmap |
 |---|---|
-| #45 `ouroboros-ui: [5.7] Dashboard placeholder` (mockup 02 grid + health data + empty states, single M issue) | **Superseded** — split into Epic I (I.1–I.8). The health-status card idea survives inside I.2/I.7. Retitle/close when I.1 lands. |
-| #41 `ouroboros-ui: [5.3] App shell` (top bar with nav, needs-you *placeholder*, gear, avatar) | **Amended/extended** by Epic H — tenant chip, search pill, live pill, and a real needs-you count are mockup-02 topbar elements beyond #41's placeholder scope. |
-| #56 `ouroboros: [7.2] End-to-end smoke test` | **Amended** — the dashboard leg upgrades from "shows seeded tenant" to the I.9 assertions (stats, tables, pulse from seeded read-model). |
-| #49 `ouroboros-ui: [5.11] Placeholder routes` (v2) | **Unchanged, load-bearing** — mockup-02 links (`run console →`, `All issues →`, `Manage queue →`, Edit workflows, inbox) land on #49 placeholders until those screens get their own roadmaps. |
-| #54 `ouroboros-engine: [6.5] Task execution skeleton` (v2) | **Unchanged** — J.3 defines the engine→read-model write path that #54's runs will use. |
-| #23 `ouroboros-db: [3.5] Dev seed data` | **Extended** by F.5 (dashboard read-model seeds join the tenancy/auth seeds). |
-| #26 `ouroboros-db: [3.8] Audit log` (v2) | **Unchanged** — J.2 emits `settings.auto_merge_changed` through it. |
-| Login/BetterAuth roadmap (`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`, **at validation gate — issues not yet filed**) | **Prerequisite** — this roadmap consumes its session/user (greeting, avatar), active organization (tenant context, C.3), enabled-repo list (C.4, feeds the tenant chip), and shell session menu (D.6). Referenced below as *BA-C.3*, *BA-C.4*, *BA-D.1*, *BA-D.6*. |
+| #45 `ouroboros-ui: [5.7] Dashboard placeholder` (mockup 02 grid + health data + empty states, single M issue) | **Superseded** — split into Epic I / #62 (I.1–I.8). The health-status card idea survives inside I.2 (#81) / I.7 (#86). Retitle/close when I.1 (#80) lands. *Amendment comment posted 2026-08-09.* |
+| #41 `ouroboros-ui: [5.3] App shell` (top bar with nav, needs-you *placeholder*, gear, avatar) | **Amended/extended** by Epic H / #61 — tenant chip (#77), live & needs-you pills (#78), ⌘K palette (#79) are mockup-02 chrome beyond #41's placeholder scope. *Amendment comment posted 2026-08-09.* |
+| #56 `ouroboros: [7.2] End-to-end smoke test` | **Amended** — the dashboard leg upgrades from "shows seeded tenant" to the I.9 (#88) assertions (stats, tables, pulse from seeded read-model). *Amendment comment posted 2026-08-09.* |
+| #49 `ouroboros-ui: [5.11] Placeholder routes` (v2) | **Unchanged, load-bearing** — mockup-02 links (`run console →`, `All issues →`, `Manage queue →`, Edit workflows, inbox) land on #49 placeholders until those screens get their own roadmaps. *Note comment posted 2026-08-09.* |
+| #54 `ouroboros-engine: [6.5] Task execution skeleton` (v2) | **Unchanged** — J.3 (#91) defines the engine→read-model write path that #54's runs will use. |
+| #23 `ouroboros-db: [3.5] Dev seed data` | **Extended** by F.5 (#68) — dashboard read-model seeds join the tenancy/auth seeds. |
+| #26 `ouroboros-db: [3.8] Audit log` (v2) | **Unchanged** — J.2 (#90) emits `settings.auto_merge_changed` through it. |
+| Login/BetterAuth roadmap (`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`, **still at validation gate — issues not yet filed as of 2026-08-09**) | **Prerequisite** — this roadmap consumes its session/user (greeting, avatar), active organization (tenant context, C.3), enabled-repo list (C.4, feeds the tenant chip), and shell session menu (D.6). Referenced below as *BA-C.3*, *BA-C.4*, *BA-D.1*, *BA-D.6*. |
 
 Epic letters continue the sequence started by the BetterAuth roadmap (A–E): this
 roadmap uses **F–J**.
@@ -137,13 +140,16 @@ full-content command palette.
 
 ## Epics
 
-| Epic | Name | Goal | Modules |
-|------|------|------|---------|
-| F | Dashboard Read-Model (`ouroboros-db`) | `runs`, `queue_items`, `token_usage`, `workspace_settings` + seeds & CI | ouroboros-db |
-| G | Dashboard REST Services (`ouroboros-rest`) | Aggregate + card endpoints, ETag polling, auto-merge setting, tests | ouroboros-rest |
-| H | Mission-Control Shell Chrome (`ouroboros-ui`) | Tenant chip, live/needs-you pills, ⌘K palette — mockup-02 topbar | ouroboros-ui |
-| I | Dashboard Page UI (`ouroboros-ui`) | Every card of mockup 02, empty states, polling wiring, e2e | ouroboros-ui |
-| J | Live Loop & Extended Scope (v2) | SSE, engine ingestion bridge, priced tokens, audit, full palette | rest, engine, ui |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules |
+|------|:------:|:------:|------|------|---------|
+| F | #59 | 🟡 Open | Dashboard Read-Model (`ouroboros-db`) | `runs`, `queue_items`, `token_usage`, `workspace_settings` + seeds & CI | ouroboros-db |
+| G | #60 | 🟡 Open | Dashboard REST Services (`ouroboros-rest`) | Aggregate + card endpoints, ETag polling, auto-merge setting, tests | ouroboros-rest |
+| H | #61 | 🟡 Open | Mission-Control Shell Chrome (`ouroboros-ui`) | Tenant chip, live/needs-you pills, ⌘K palette — mockup-02 topbar | ouroboros-ui |
+| I | #62 | 🟡 Open | Dashboard Page UI (`ouroboros-ui`) | Every card of mockup 02, empty states, polling wiring, e2e | ouroboros-ui |
+| J | #63 | 🟡 Open | Live Loop & Extended Scope (v2) | SSE, engine ingestion bridge, priced tokens, audit, full palette | rest, engine, ui |
 
 Issue naming: `<project>: [<epic letter>.<issue>] <title>`. Labels reuse the existing
 set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dashboard`**
@@ -153,16 +159,18 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 
 ## Epic F — Dashboard Read-Model (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| F.1 | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| F.2 | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
-| F.3 | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
-| F.4 | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
-| F.5 | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
-| F.6 | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| F.1 | #64 | 🟡 Open | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| F.2 | #65 | 🟡 Open | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
+| F.3 | #66 | 🟡 Open | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
+| F.4 | #67 | 🟡 Open | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
+| F.5 | #68 | 🟡 Open | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
+| F.6 | #69 | 🟡 Open | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue F.1 — ouroboros-db: [F.1] Runs table — loop lifecycle read-model
+
+> **GitHub issue:** #64 · **Status:** 🟡 Open · **Parent epic:** #59
 
 - **Problem Statement:** Three of the six dashboard surfaces (stat row, active loops,
   recently closed — see [`docs/mockups/02-dashboard.html`](mockups/02-dashboard.html))
@@ -212,6 +220,8 @@ erDiagram
 
 ### Issue F.2 — ouroboros-db: [F.2] Queue items table
 
+> **GitHub issue:** #65 · **Status:** 🟡 Open · **Parent epic:** #59
+
 - **Problem Statement:** "Up next in queue" and the *Queued issues* stat (`est. 9h
   40m of autonomous work`) need an ordered, estimable queue per organization.
 - **Solution/Scope:** `queue_items`: id, `organization_id` FK, `github_repo_id` FK,
@@ -233,6 +243,8 @@ queue_items(org, position ↑) ─▶ #485 M standard-fix · #486 L feature-loop
 ```
 
 ### Issue F.3 — ouroboros-db: [F.3] Token usage events table
+
+> **GitHub issue:** #66 · **Status:** 🟡 Open · **Parent epic:** #59
 
 - **Problem Statement:** *Token spend · today* (`4.2M`, `≈ $18.60 across 4
   providers`) needs an append-only usage ledger; per-run cost attribution will matter
@@ -256,6 +268,8 @@ token_usage(append-only) ── group by day/provider ──▶ token_usage_dail
 
 ### Issue F.4 — ouroboros-db: [F.4] Workspace settings table
 
+> **GitHub issue:** #67 · **Status:** 🟡 Open · **Parent epic:** #59
+
 - **Problem Statement:** The loop-pulse card's **Auto-merge when checks pass** switch
   is the page's only write (decision F6); it needs a durable, org-scoped home that
   future settings (mockup 17) can join.
@@ -276,6 +290,8 @@ workspace_settings: organization_id PK · auto_merge_on_checks bool · updated_b
 ```
 
 ### Issue F.5 — ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity
+
+> **GitHub issue:** #68 · **Status:** 🟡 Open · **Parent epic:** #59
 
 - **Problem Statement:** Design review and e2e need the dashboard to render exactly
   the mockup's demo content; a fresh workspace must instead show empty states — both
@@ -306,6 +322,8 @@ kensuenobu (personal) ─▶ zero rows ─▶ empty-state fixture (I.7)
 
 ### Issue F.6 — ouroboros-db: [F.6] Read-model constraints in ci/db
 
+> **GitHub issue:** #69 · **Status:** 🟡 Open · **Parent epic:** #59
+
 - **Problem Statement:** Status vocabularies, queue ordering, and append-only usage
   are contracts the UI trusts; PR-time assertions keep them true.
 - **Solution/Scope:** Extend #24's `tests/constraints.sql`: status/effort CHECK
@@ -325,17 +343,19 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 
 ## Epic G — Dashboard REST Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| G.1 | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
-| G.2 | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
-| G.3 | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
-| G.4 | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
-| G.5 | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
-| G.6 | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
-| G.7 | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| G.1 | #70 | 🟡 Open | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
+| G.2 | #71 | 🟡 Open | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
+| G.3 | #72 | 🟡 Open | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
+| G.4 | #73 | 🟡 Open | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
+| G.5 | #74 | 🟡 Open | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
+| G.6 | #75 | 🟡 Open | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
+| G.7 | #76 | 🟡 Open | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
 
 ### Issue G.1 — ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag
+
+> **GitHub issue:** #70 · **Status:** 🟡 Open · **Parent epic:** #60
 
 - **Problem Statement:** The dashboard is a single glance-view
   ([`docs/mockups/02-dashboard.html`](mockups/02-dashboard.html)); painting it from
@@ -364,6 +384,8 @@ GET /api/v1/dashboard (org from session) ─▶ { stats · pulse · activeRuns �
 
 ### Issue G.2 — ouroboros-rest: [G.2] Runs endpoints (active & recent)
 
+> **GitHub issue:** #71 · **Status:** 🟡 Open · **Parent epic:** #60
+
 - **Problem Statement:** The aggregate carries card-sized slices; the `Open run
   console →` and `All issues →` destinations (and future screens 03/10) need full
   lists with paging.
@@ -381,6 +403,8 @@ aggregate.activeRuns (top10) ⊂ GET /runs?status=active (paged)  — same RunRo
 ```
 
 ### Issue G.3 — ouroboros-rest: [G.3] Pulse metrics computation
+
+> **GitHub issue:** #72 · **Status:** 🟡 Open · **Parent epic:** #60
 
 - **Problem Statement:** The pulse card's three meters (92% merge rate, 14m 20s avg
   cycle, 2 interventions) and the stat row's ▲ delta are windowed aggregates that
@@ -404,6 +428,8 @@ runs(prior 7d)  ─▶ merged count    ─▶ Δ "▲ 8 vs last week"
 
 ### Issue G.4 — ouroboros-rest: [G.4] Queue endpoint
 
+> **GitHub issue:** #73 · **Status:** 🟡 Open · **Parent epic:** #60
+
 - **Problem Statement:** "Up next in queue" and its `Manage queue →` destination need
   the ordered queue with the estimate the stat row displays.
 - **Solution/Scope:** `GET /api/v1/queue` (ordered by position, paged) returning
@@ -422,6 +448,8 @@ GET /queue ─▶ [{#485, effort:m, tag:standard-fix}…] + totalEstMinutes (→
 
 ### Issue G.5 — ouroboros-rest: [G.5] Auto-merge setting endpoint
 
+> **GitHub issue:** #74 · **Status:** 🟡 Open · **Parent epic:** #60
+
 - **Problem Statement:** The pulse card's switch (decision F6) needs read/write with
   role enforcement — the page's only mutation.
 - **Solution/Scope:** `GET /api/v1/settings/auto-merge` (any member) and `PATCH`
@@ -439,6 +467,8 @@ PATCH /settings/auto-merge {enabled:true}  ─[owner/admin]─▶ workspace_sett
 ```
 
 ### Issue G.6 — ouroboros-rest: [G.6] Polling contract & cache headers
+
+> **GitHub issue:** #75 · **Status:** 🟡 Open · **Parent epic:** #60
 
 - **Problem Statement:** The page, the live pill, and the needs-you pill all want
   freshness; without a stated contract each consumer invents its own polling and the
@@ -460,6 +490,8 @@ client ── poll every 15s (visible) ──▶ /dashboard  ── 304 (cheap) 
 ```
 
 ### Issue G.7 — ouroboros-rest: [G.7] Dashboard integration tests
+
+> **GitHub issue:** #76 · **Status:** 🟡 Open · **Parent epic:** #60
 
 - **Problem Statement:** Window math, org scoping, role gates, and cache behavior
   are exactly the bugs that reach production silently; the #37 harness must cover
@@ -486,13 +518,15 @@ Extends #41's app shell with the topbar elements mockup 02 adds. Design referenc
 all three issues: the `.topbar` of
 [`docs/mockups/02-dashboard.html`](mockups/02-dashboard.html).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| H.1 | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
-| H.2 | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
-| H.3 | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| H.1 | #77 | 🟡 Open | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
+| H.2 | #78 | 🟡 Open | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
+| H.3 | #79 | 🟡 Open | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
 
 ### Issue H.1 — ouroboros-ui: [H.1] Tenant chip — org/repo context switcher
+
+> **GitHub issue:** #77 · **Status:** 🟡 Open · **Parent epic:** #61
 
 - **Problem Statement:** Mockup 02's topbar pins the working context —
   `acme-robotics / helios-firmware ▾` — between brand and nav. The shell (#41) has
@@ -522,6 +556,8 @@ all three issues: the `.topbar` of
 
 ### Issue H.2 — ouroboros-ui: [H.2] Live & needs-you pills with real counts
 
+> **GitHub issue:** #78 · **Status:** 🟡 Open · **Parent epic:** #61
+
 - **Problem Statement:** The mockup's `● 3 loops live` (pulsing accent dot) and
   `● Needs you · 3` (warn dot, links to inbox) are ambient truth about the loop —
   #41 ships only a placeholder.
@@ -542,6 +578,8 @@ summary.loopsLive=3 ─▶ [● 3 loops live]      summary.needsHuman=0 ─▶ (
 ```
 
 ### Issue H.3 — ouroboros-ui: [H.3] Search pill & ⌘K navigation palette
+
+> **GitHub issue:** #79 · **Status:** 🟡 Open · **Parent epic:** #61
 
 - **Problem Statement:** The mockup's `Search… ⌘K` pill promises a command surface;
   a dead control undermines the chrome, but full content search needs data that
@@ -576,19 +614,21 @@ anatomy (`.card-head`, `.card-title`, `.card-link`), and component treatments
 (`.stat`, `.meter`, `.pill`, `.tag`, `.effort`) — colors via the #16 tokens so both
 themes hold.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| I.1 | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
-| I.2 | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.3 | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
-| I.4 | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
-| I.5 | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.6 | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.7 | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
-| I.8 | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
-| I.9 | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| I.1 | #80 | 🟡 Open | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
+| I.2 | #81 | 🟡 Open | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.3 | #82 | 🟡 Open | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
+| I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
+| I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
+| I.8 | #87 | 🟡 Open | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
+| I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
 
 ### Issue I.1 — ouroboros-ui: [I.1] Dashboard route, grid & page head
+
+> **GitHub issue:** #80 · **Status:** 🟡 Open · **Parent epic:** #62
 
 - **Problem Statement:** The dashboard needs its frame before cards exist: the
   12-column grid and the page head (eyebrow, greeting, activity subline, two
@@ -620,6 +660,8 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.2 — ouroboros-ui: [I.2] Stat row — four metric cards
 
+> **GitHub issue:** #81 · **Status:** 🟡 Open · **Parent epic:** #62
+
 - **Problem Statement:** The four `c-3` stat cards are the loop's vital signs; the
   mockup gives each an exact anatomy (label / large value / delta line, accent value
   on the first, `▲` up-delta treatment on the third).
@@ -643,6 +685,8 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 ```
 
 ### Issue I.3 — ouroboros-ui: [I.3] Active loops card
+
+> **GitHub issue:** #82 · **Status:** 🟡 Open · **Parent epic:** #62
 
 - **Problem Statement:** The `c-8` active-loops table is the page's centerpiece —
   issue link, workflow tag, stage label + progress meter, model pill, mono elapsed,
@@ -668,6 +712,8 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 ```
 
 ### Issue I.4 — ouroboros-ui: [I.4] Loop pulse card
+
+> **GitHub issue:** #83 · **Status:** 🟡 Open · **Parent epic:** #62
 
 - **Problem Statement:** The `c-4` pulse card is the qualitative read on the loop —
   glyph centerpiece, three labeled meters with mono values (ok/neutral/warn), and
@@ -696,6 +742,8 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.5 — ouroboros-ui: [I.5] Recently-closed card
 
+> **GitHub issue:** #84 · **Status:** 🟡 Open · **Parent epic:** #62
+
 - **Problem Statement:** The `c-7` completions table proves the loop ships: Issue→PR
   mono pair, model pill, mono cycle, checks fraction, outcome pill (`merged` ok /
   `needs human` warn).
@@ -718,6 +766,8 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.6 — ouroboros-ui: [I.6] Up-next queue card
 
+> **GitHub issue:** #85 · **Status:** 🟡 Open · **Parent epic:** #62
+
 - **Problem Statement:** The `c-5` queue card shows what the loop will do next —
   bordered rows of mono number + title with effort chip and workflow tag.
 - **Solution/Scope:** Card with `Manage queue →` link (#49 placeholder) rendering
@@ -737,6 +787,8 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 ```
 
 ### Issue I.7 — ouroboros-ui: [I.7] Empty, loading & error states
+
+> **GitHub issue:** #86 · **Status:** 🟡 Open · **Parent epic:** #62
 
 - **Problem Statement:** A fresh workspace has no runs, no queue, no usage — the
   dashboard must be truthful and designed at zero (the mockup shows only the busy
@@ -762,6 +814,8 @@ poll ✗  ─▶ [stale since 14:02 · retry] + last good data stays
 
 ### Issue I.8 — ouroboros-ui: [I.8] Polling hook & freshness wiring
 
+> **GitHub issue:** #87 · **Status:** 🟡 Open · **Parent epic:** #62
+
 - **Problem Statement:** One polling loop must feed the page and the topbar pills
   (H.2) per the G.6 contract — multiple independent pollers would multiply load and
   disagree with each other.
@@ -785,6 +839,8 @@ poll ✗  ─▶ [stale since 14:02 · retry] + last good data stays
 
 ### Issue I.9 — ouroboros-ui: [I.9] Dashboard e2e leg
 
+> **GitHub issue:** #88 · **Status:** 🟡 Open · **Parent epic:** #62
+
 - **Problem Statement:** #56's dashboard assertion ("shows seeded tenant") predates
   the real dashboard; the MVP gate must prove mockup parity and truthful emptiness.
 - **Solution/Scope:** Amend the #56 Playwright suite: seeded org — greeting/subline
@@ -805,15 +861,17 @@ e2e: seeded org ─▶ stats ✓ tables ✓ pulse ✓ toggle ✓ · switch org �
 
 ## Epic J — Live Loop & Extended Scope (v2)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| J.1 | ouroboros-rest: [J.1] SSE live-update channel | `@Sse()` stream replacing polling when loops are truly live | v2, dashboard, rest, ui | N (after G.6, I.8) | N | M | ouroboros-rest, ouroboros-ui |
-| J.2 | ouroboros-rest: [J.2] Settings audit & needs-you routing | Audit events for setting changes; needs-you pill → real inbox feed | v2, dashboard, rest | N (after G.5, #26) | N | S | ouroboros-rest |
-| J.3 | ouroboros-engine: [J.3] Engine→read-model ingestion bridge | Internal API for the engine to create/advance runs & usage events | v2, dashboard, engine, rest | N (after #54, G.2) | N | L | ouroboros-engine, ouroboros-rest |
-| J.4 | ouroboros-rest: [J.4] Priced token accounting | Provider price tables → real `cost_cents`; currency/rounding rules | v2, dashboard, rest, db | N (after F.3, J.3) | N | M | ouroboros-rest, ouroboros-db |
-| J.5 | ouroboros-ui: [J.5] Command palette content search | ⌘K searches issues, runs, queue via G.2/G.4 | v2, dashboard, ui | N (after H.3, G.2) | N | M | ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| J.1 | #89 | 🟡 Open | ouroboros-rest: [J.1] SSE live-update channel | `@Sse()` stream replacing polling when loops are truly live | v2, dashboard, rest, ui | N (after G.6, I.8) | N | M | ouroboros-rest, ouroboros-ui |
+| J.2 | #90 | 🟡 Open | ouroboros-rest: [J.2] Settings audit & needs-you routing | Audit events for setting changes; needs-you pill → real inbox feed | v2, dashboard, rest | N (after G.5, #26) | N | S | ouroboros-rest |
+| J.3 | #91 | 🟡 Open | ouroboros-engine: [J.3] Engine→read-model ingestion bridge | Internal API for the engine to create/advance runs & usage events | v2, dashboard, engine, rest | N (after #54, G.2) | N | L | ouroboros-engine, ouroboros-rest |
+| J.4 | #92 | 🟡 Open | ouroboros-rest: [J.4] Priced token accounting | Provider price tables → real `cost_cents`; currency/rounding rules | v2, dashboard, rest, db | N (after F.3, J.3) | N | M | ouroboros-rest, ouroboros-db |
+| J.5 | #93 | 🟡 Open | ouroboros-ui: [J.5] Command palette content search | ⌘K searches issues, runs, queue via G.2/G.4 | v2, dashboard, ui | N (after H.3, G.2) | N | M | ouroboros-ui |
 
 ### Issue J.1 — ouroboros-rest: [J.1] SSE live-update channel
+
+> **GitHub issue:** #89 · **Status:** 🟡 Open · **Parent epic:** #63
 
 - **Problem Statement:** Once the engine drives real runs (J.3), 15-second polling
   makes the "live" pill a lie of omission; stage meters should move when stages move.
@@ -836,6 +894,8 @@ engine event ─▶ run row update ─▶ SSE delta ─▶ hook store ─▶ met
 
 ### Issue J.2 — ouroboros-rest: [J.2] Settings audit & needs-you routing
 
+> **GitHub issue:** #90 · **Status:** 🟡 Open · **Parent epic:** #63
+
 - **Problem Statement:** Auto-merge changes are exactly what a workspace audit log
   exists for (#26), and the needs-you pill should eventually open a real inbox
   (mockup 16), not a placeholder.
@@ -850,6 +910,8 @@ engine event ─▶ run row update ─▶ SSE delta ─▶ hook store ─▶ met
 - **Epic:** J
 
 ### Issue J.3 — ouroboros-engine: [J.3] Engine→read-model ingestion bridge
+
+> **GitHub issue:** #91 · **Status:** 🟡 Open · **Parent epic:** #63
 
 - **Problem Statement:** The read-model (decision F1) is seeded fiction until the
   engine writes real runs; this is the bridge that makes the dashboard a live
@@ -884,6 +946,8 @@ sequenceDiagram
 
 ### Issue J.4 — ouroboros-rest: [J.4] Priced token accounting
 
+> **GitHub issue:** #92 · **Status:** 🟡 Open · **Parent epic:** #63
+
 - **Problem Statement:** MVP shows token counts and seeded costs; real dollars
   (`≈ $18.60 across 4 providers`) need provider price tables and honest rounding.
 - **Solution/Scope:** Price table (provider, model pattern, in/out price per Mtok,
@@ -902,6 +966,8 @@ token_usage × price(provider, model, effective_at) ─▶ cost_cents ─▶ "�
 ```
 
 ### Issue J.5 — ouroboros-ui: [J.5] Command palette content search
+
+> **GitHub issue:** #93 · **Status:** 🟡 Open · **Parent epic:** #63
 
 - **Problem Statement:** H.3 ships navigation; the pill's full promise is finding
   *things* — issues, runs, queue items — from anywhere.
@@ -981,8 +1047,11 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic J — Live Loop & Extended | 5 | 0 | 5 |
 | **Total** | **30** | **25** | **5** |
 
-Plus **4 amendments** to existing issues (#41, #45, #49-note, #56) executed during
-issue filing — comments/label/body edits, not new work.
+GitHub parents: Epic F #59 · Epic G #60 · Epic H #61 · Epic I #62 · Epic J #63.
+Work issues #64–#93, each filed as a sub-issue of its epic (GitHub Relationships).
+
+Plus **4 amendments** to existing issues — comments posted and the `dashboard` label
+applied on #41, #45, #49 and #56 on 2026-08-09; no new work created.
 
 ## References
 
@@ -1024,17 +1093,21 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| I.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
-| I.2, I.3, I.4, I.5, I.6, I.7, I.8 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| I.9 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| I.1 (#80) | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
+| I.2–I.8 (#81–#87) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| I.9 (#88) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this document
-is the validation gate. Review in particular: decisions F1–F9 (especially F1/F2, the
-REST-owned read-model with a single `runs` lifecycle table, and F4, polling-first
-liveness), the honesty rule (seeded parity vs. truthful empty states), and the
-dependency on the BetterAuth roadmap being filed first. Once validated, the follow-up
-pass (`/create-issues ROADMAP_MOCKUP_02_DASHBOARD.md`) creates the `dashboard` label,
-files the 30 issues with epic parents and relationships, and posts the amendment
-comments on #41, #45, and #56.
+**Issues filed 2026-08-09.** The validation gate is closed: the `dashboard` label was
+created, the five epic parents (#59–#63) and thirty work issues (#64–#93) exist with
+epic relationships and issue types set, and the amendment comments are posted on #41,
+#45, #49 and #56.
+
+Execution follows the work order above, but note the standing prerequisite: this
+roadmap's Phase 0 still depends on the **BetterAuth roadmap**
+([`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`](ROADMAP_LOGIN_PAGE_BETTERAUTH.md)) whose issues
+are **not yet filed**. Its BA-B.3 (organization + repo tables), BA-C.3 (tenant
+context), BA-C.4 (enabled repos), BA-D.1 (org switching) and BA-D.5 (auth guard) are
+referenced by name in the filed issues and must be filed and landed before Epic F can
+start in earnest. File that roadmap next, then begin with #64 ([F.1] Runs table).
