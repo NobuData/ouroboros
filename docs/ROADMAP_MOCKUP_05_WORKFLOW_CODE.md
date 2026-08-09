@@ -174,31 +174,37 @@ into the customer repo (X.3), real LSP/Monaco ADR (X.4), minimap (X.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| U | Code Projection & Round-Trip | TS-DSL grammar, printer, parser, code endpoints, property tests | ouroboros-rest | Workflow Code MVP |
-| V | Code Editor UI | IDE frame: tree, tabs, CodeMirror editor, right panel, status bar, flows | ouroboros-ui | Workflow Code MVP |
-| W | Editor Intelligence | Completions, hovers, diagnostics mapping, checks & outline payloads | ouroboros-rest, ouroboros-ui | Workflow Code MVP |
-| X | Extended Code Experience (v2) | SDK evaluation ADR, skills/lib files, git sync, LSP ADR, minimap | all | Workflow Code v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| U | #161 | 🟡 Open | Code Projection & Round-Trip | TS-DSL grammar, printer, parser, code endpoints, property tests | ouroboros-rest | Workflow Code MVP |
+| V | #162 | 🟡 Open | Code Editor UI | IDE frame: tree, tabs, CodeMirror editor, right panel, status bar, flows | ouroboros-ui | Workflow Code MVP |
+| W | #163 | 🟡 Open | Editor Intelligence | Completions, hovers, diagnostics mapping, checks & outline payloads | ouroboros-rest, ouroboros-ui | Workflow Code MVP |
+| X | #164 | 🟡 Open | Extended Code Experience (v2) | SDK evaluation ADR, skills/lib files, git sync, LSP ADR, minimap | all | Workflow Code v2 |
 
 Issue naming: `<project>: [<epic letter>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `rest`, `ui`, `ci`, `design`, `workflow`) **plus new `code-view`**
-(decision C8). Milestones **`Workflow Code MVP`** and **`Workflow Code v2`**
-created at filing; every issue assigned to its epic's milestone. Complexity
+(decision C8, created during filing). Milestones **`Workflow Code MVP`** and
+**`Workflow Code v2`** created during filing; every issue is assigned to its epic's
+milestone. Complexity
 chips: **XS · S · M · L**.
 
 ---
 
-## Epic U — Code Projection & Round-Trip (`ouroboros-rest`)
+## Epic U (#161) — Code Projection & Round-Trip (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| U.1 | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
-| U.2 | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
-| U.3 | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
-| U.4 | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| U.1 | #165 | 🟡 Open | ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer | Closed grammar doc + canonical JSON → TypeScript projection | mvp, workflow, code-view, rest | N (after WF-P.2) | Y | L | ouroboros-rest, docs |
+| U.2 | #166 | 🟡 Open | ouroboros-rest: [U.2] TS-DSL parser (closed grammar) | TypeScript compiler API parse back to canonical JSON; anchored errors | mvp, workflow, code-view, rest | N (after U.1) | Y | L | ouroboros-rest |
+| U.3 | #167 | 🟡 Open | ouroboros-rest: [U.3] Code view & save endpoints | `GET /code`, `PUT /code` (parse→draft, etag), tree/tabs payloads | mvp, workflow, code-view, rest | N (after U.2, WF-P.3) | Y | M | ouroboros-rest |
+| U.4 | #168 | 🟡 Open | ouroboros-rest: [U.4] Round-trip property & parity tests | `parse∘print = id`, mockup-parity fixture, cross-editor concurrency | mvp, workflow, code-view, rest, ci | N (after U.3) | Y | M | ouroboros-rest |
 
 ### Issue U.1 — ouroboros-rest: [U.1] TS-DSL grammar spec & deterministic printer
+
+> **GitHub issue:** #165 · **Status:** 🟡 Open · **Parent epic:** #161
 
 - **Problem Statement:** The code view's language must be specified before
   anything renders it: which TypeScript forms are legal, how every canonical-
@@ -235,6 +241,8 @@ canonical JSON (WF-P.2) ──print──▶ defineLoop("standard-fix", { trigge
 
 ### Issue U.2 — ouroboros-rest: [U.2] TS-DSL parser (closed grammar)
 
+> **GitHub issue:** #166 · **Status:** 🟡 Open · **Parent epic:** #161
+
 - **Problem Statement:** Edits must travel back: parse the constrained TS into
   canonical JSON with precise, line-anchored errors — and reject everything
   outside the grammar honestly (decision C2: no arbitrary TS execution).
@@ -261,6 +269,8 @@ TS text ─ ts.createSourceFile ─▶ AST walk (closed grammar) ─▶ canonica
 ```
 
 ### Issue U.3 — ouroboros-rest: [U.3] Code view & save endpoints
+
+> **GitHub issue:** #167 · **Status:** 🟡 Open · **Parent epic:** #161
 
 - **Problem Statement:** The editor needs endpoints: fetch the projection (and
   the virtual file tree), save parsed edits into the shared draft, and keep the
@@ -289,6 +299,8 @@ PUT (If-Match) ─ parse ✓ ─▶ draft updated (shared with visual) │ parse
 
 ### Issue U.4 — ouroboros-rest: [U.4] Round-trip property & parity tests
 
+> **GitHub issue:** #168 · **Status:** 🟡 Open · **Parent epic:** #161
+
 - **Problem Statement:** "Losslessly" is the page's headline claim; only
   property tests and cross-editor concurrency tests make it durable.
 - **Solution/Scope:** Test suites: property-based round-trip
@@ -311,7 +323,7 @@ fuzz(parser) ─▶ never crashes · always anchored
 
 ---
 
-## Epic V — Code Editor UI (`ouroboros-ui`)
+## Epic V (#162) — Code Editor UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/05-workflow-code.html`](mockups/05-workflow-code.html) as the
@@ -319,18 +331,20 @@ design source — the `.ide` frame (tree/editor/right-panel, tree+panel hidden
 below 1000px), tab/line/status treatments, and the shared design system via the
 #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| V.1 | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
-| V.2 | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
-| V.3 | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
-| V.4 | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
-| V.5 | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
-| V.6 | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui |
-| V.7 | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
-| V.8 | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| V.1 | #169 | 🟡 Open | ouroboros-ui: [V.1] Code route, head & mode switching | `/workflows/:slug/code`, seg control live, shared-draft state | mvp, workflow, code-view, ui | N (after WF-S.1, U.3) | Y | M | ouroboros-ui |
+| V.2 | #170 | 🟡 Open | ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting | Themed CM6, custom language package, line/current-line/caret parity | mvp, workflow, code-view, ui, design | N (after V.1) | Y | L | ouroboros-ui |
+| V.3 | #171 | 🟡 Open | ouroboros-ui: [V.3] File tree & tab strip | Registry-backed explorer, open tabs with modified-dots, read-only files | mvp, workflow, code-view, ui, design | N (after V.1, U.3) | Y | M | ouroboros-ui |
+| V.4 | #172 | 🟡 Open | ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces | Debounced parse/save, anchored 422 rendering, etag conflicts | mvp, workflow, code-view, ui | N (after V.2, U.3) | Y | M | ouroboros-ui |
+| V.5 | #173 | 🟡 Open | ouroboros-ui: [V.5] Right panel — checks, types, outline | Loop Checks, hover-doc card, outline with back-edge + jump | mvp, workflow, code-view, ui, design | N (after V.2, W.1, W.2) | Y | M | ouroboros-ui |
+| V.6 | #174 | 🟡 Open | ouroboros-ui: [V.6] Status bar & validate/publish flows | Sync/draft/cursor status, Validate action, shared publish dialog | mvp, workflow, code-view, ui | N (after V.4, WF-S.6) | Y | S | ouroboros-ui |
+| V.7 | #175 | 🟡 Open | ouroboros-ui: [V.7] Code-view states & guards | Read-only member mode, empty org, load/error, narrow-viewport | mvp, workflow, code-view, ui, design | N (after V.1–V.6) | Y | S | ouroboros-ui |
+| V.8 | #176 | 🟡 Open | ouroboros-ui: [V.8] Code-view e2e leg | Parity, edit→visual round-trip, publish, diagnostics, themes | mvp, workflow, code-view, ui, ci | N (after V.1–V.7) | Y | S | ouroboros-ui, .github |
 
 ### Issue V.1 — ouroboros-ui: [V.1] Code route, head & mode switching
+
+> **GitHub issue:** #169 · **Status:** 🟡 Open · **Parent epic:** #162
 
 - **Problem Statement:** The Code segment (a "soon" stub after WF-S.1) must go
   live: route, head (filename h1, round-trip subline, Validate/Publish), and
@@ -355,6 +369,8 @@ below 1000px), tab/line/status treatments, and the shared design system via the
 
 ### Issue V.2 — ouroboros-ui: [V.2] CodeMirror foundation & DSL highlighting
 
+> **GitHub issue:** #170 · **Status:** 🟡 Open · **Parent epic:** #162
+
 - **Problem Statement:** The editor itself — CodeMirror 6 themed to the design
   system with a custom language package for the U.1 grammar — is the page's
   centerpiece (decision C1).
@@ -378,6 +394,8 @@ line gutter · cur-line accent inset · glow caret · light+dark themes
 ```
 
 ### Issue V.3 — ouroboros-ui: [V.3] File tree & tab strip
+
+> **GitHub issue:** #171 · **Status:** 🟡 Open · **Parent epic:** #162
 
 - **Problem Statement:** The explorer and tabs organize the virtual project —
   registry-backed and honest (C6), with the mockup's active-row and
@@ -405,6 +423,8 @@ Explorer · helios-firmware          [●standard-fix.loop.ts ×][routing… ] t
 
 ### Issue V.4 — ouroboros-ui: [V.4] Edit, autosave & parse-error surfaces
 
+> **GitHub issue:** #172 · **Status:** 🟡 Open · **Parent epic:** #162
+
 - **Problem Statement:** The editing loop must be safe: debounced parse+save on
   the U.3 contract, 422s rendered as anchored diagnostics, etag conflicts
   resolved without data loss (C4).
@@ -427,6 +447,8 @@ type ─ debounce ─ PUT ─▶ 200 ✓ (dot clears) │ 422 ▶ squiggles + st
 ```
 
 ### Issue V.5 — ouroboros-ui: [V.5] Right panel — checks, types, outline
+
+> **GitHub issue:** #173 · **Status:** 🟡 Open · **Parent epic:** #162
 
 - **Problem Statement:** The right panel is the page's understanding surface:
   Loop Checks, the Types hover-doc card, and the Outline with its accent
@@ -454,6 +476,8 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 
 ### Issue V.6 — ouroboros-ui: [V.6] Status bar & validate/publish flows
 
+> **GitHub issue:** #174 · **Status:** 🟡 Open · **Parent epic:** #162
+
 - **Problem Statement:** The status bar states the editor's truth (sync, draft
   version, cursor), and Validate/Publish must run the shared pipelines.
 - **Solution/Scope:** Status bar per the mockup: `⟲ synced with visual editor`
@@ -476,6 +500,8 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 
 ### Issue V.7 — ouroboros-ui: [V.7] Code-view states & guards
 
+> **GitHub issue:** #175 · **Status:** 🟡 Open · **Parent epic:** #162
+
 - **Problem Statement:** Members without edit rights, empty orgs, load
   failures, and narrow viewports all need designed handling the mockup doesn't
   show.
@@ -491,6 +517,8 @@ OUTLINE      01▸analyze … 08⟲gate back-edge→04 · 09▸openPr   (click =
 - **Epic:** V
 
 ### Issue V.8 — ouroboros-ui: [V.8] Code-view e2e leg
+
+> **GitHub issue:** #176 · **Status:** 🟡 Open · **Parent epic:** #162
 
 - **Problem Statement:** The cross-editor round-trip is the page's core claim —
   only e2e across UI/REST/engine/DB certifies it.
@@ -511,15 +539,17 @@ e2e: parity ✓ · code→visual→code round-trip ✓ · publish ✓ · diagnos
 
 ---
 
-## Epic W — Editor Intelligence (`ouroboros-rest` + `ouroboros-ui`)
+## Epic W (#163) — Editor Intelligence (`ouroboros-rest` + `ouroboros-ui`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| W.1 | ouroboros-ui: [W.1] Schema-driven completions & hover docs | CM6 sources from WF-P.2 schema + WF-R.3 catalog; the Types card data | mvp, workflow, code-view, ui | N (after U.1, WF-R.3) | Y | M | ouroboros-ui, ouroboros-rest |
-| W.2 | ouroboros-rest: [W.2] Diagnostics & Loop Checks payload | Map validation findings to code ranges; checks panel contract | mvp, workflow, code-view, rest | N (after U.2, WF-R.2) | Y | M | ouroboros-rest |
-| W.3 | ouroboros-rest: [W.3] Intelligence integration tests | Completion/hover/diagnostic fixtures, range-mapping accuracy | mvp, workflow, code-view, rest, ci | N (after W.1, W.2) | Y | S | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| W.1 | #177 | 🟡 Open | ouroboros-ui: [W.1] Schema-driven completions & hover docs | CM6 sources from WF-P.2 schema + WF-R.3 catalog; the Types card data | mvp, workflow, code-view, ui | N (after U.1, WF-R.3) | Y | M | ouroboros-ui, ouroboros-rest |
+| W.2 | #178 | 🟡 Open | ouroboros-rest: [W.2] Diagnostics & Loop Checks payload | Map validation findings to code ranges; checks panel contract | mvp, workflow, code-view, rest | N (after U.2, WF-R.2) | Y | M | ouroboros-rest |
+| W.3 | #179 | 🟡 Open | ouroboros-rest: [W.3] Intelligence integration tests | Completion/hover/diagnostic fixtures, range-mapping accuracy | mvp, workflow, code-view, rest, ci | N (after W.1, W.2) | Y | S | ouroboros-rest |
 
 ### Issue W.1 — ouroboros-ui: [W.1] Schema-driven completions & hover docs
+
+> **GitHub issue:** #177 · **Status:** 🟡 Open · **Parent epic:** #163
 
 - **Problem Statement:** The mockup promises editor intelligence (completions
   implied, the `route.task` hover-doc explicit); MVP delivers it from what we
@@ -544,6 +574,8 @@ cursor@route.task ─▶ hover-doc {sig, doc}  — nothing invented beyond the s
 ```
 
 ### Issue W.2 — ouroboros-rest: [W.2] Diagnostics & Loop Checks payload
+
+> **GitHub issue:** #178 · **Status:** 🟡 Open · **Parent epic:** #163
 
 - **Problem Statement:** Validation findings (WF-R.2/zod, node-anchored) and
   parse errors (U.2, line-anchored) must unify into one diagnostics contract
@@ -572,6 +604,8 @@ node→span map: printer emits {nodeId: [lineStart, lineEnd]} with every GET
 
 ### Issue W.3 — ouroboros-rest: [W.3] Intelligence integration tests
 
+> **GitHub issue:** #179 · **Status:** 🟡 Open · **Parent epic:** #163
+
 - **Problem Statement:** Range mapping and completion contexts drift silently
   as the grammar evolves; fixtures keep them honest.
 - **Solution/Scope:** Harness suites: node→span accuracy across all seeds
@@ -590,17 +624,19 @@ suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol tabl
 
 ---
 
-## Epic X — Extended Code Experience (v2 · milestone `Workflow Code v2`)
+## Epic X (#164) — Extended Code Experience (v2 · milestone `Workflow Code v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| X.1 | ouroboros-rest: [X.1] Full SDK evaluation ADR & prototype | Arbitrary TS (`lib/`, helpers) via sandboxed evaluation — decide | v2, workflow, code-view, rest, engine | Y | N | L | ouroboros-rest, docs |
-| X.2 | ouroboros-ui: [X.2] Skills & lib tree sections | `.skill.md` and `lib/*.ts` files once knowledge/routing subsystems exist | v2, workflow, code-view, ui | N (after mockup-14/06 roadmaps) | N | M | ouroboros-ui, ouroboros-rest |
-| X.3 | ouroboros-rest: [X.3] Git-backed workflow-as-code sync | Mirror `.loop.ts` files into the customer repo via PRs; bidirectional | v2, workflow, code-view, rest | N (after U.4, WF-Q/GitHub provider) | N | L | ouroboros-rest |
-| X.4 | ouroboros-ui: [X.4] Real language-server ADR (LSP/Monaco) | Evaluate true TS intelligence vs schema-driven; decide with triggers | v2, workflow, code-view, ui | Y | N | M | ouroboros-ui, docs |
-| X.5 | ouroboros-ui: [X.5] Minimap & editor comfort features | Minimap extension, multi-cursor, search/replace, folding | v2, workflow, code-view, ui | N (after V.2) | N | S | ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| X.1 | #180 | 🟡 Open | ouroboros-rest: [X.1] Full SDK evaluation ADR & prototype | Arbitrary TS (`lib/`, helpers) via sandboxed evaluation — decide | v2, workflow, code-view, rest, engine | Y | N | L | ouroboros-rest, docs |
+| X.2 | #181 | 🟡 Open | ouroboros-ui: [X.2] Skills & lib tree sections | `.skill.md` and `lib/*.ts` files once knowledge/routing subsystems exist | v2, workflow, code-view, ui | N (after mockup-14/06 roadmaps) | N | M | ouroboros-ui, ouroboros-rest |
+| X.3 | #182 | 🟡 Open | ouroboros-rest: [X.3] Git-backed workflow-as-code sync | Mirror `.loop.ts` files into the customer repo via PRs; bidirectional | v2, workflow, code-view, rest | N (after U.4, WF-Q/GitHub provider) | N | L | ouroboros-rest |
+| X.4 | #183 | 🟡 Open | ouroboros-ui: [X.4] Real language-server ADR (LSP/Monaco) | Evaluate true TS intelligence vs schema-driven; decide with triggers | v2, workflow, code-view, ui | Y | N | M | ouroboros-ui, docs |
+| X.5 | #184 | 🟡 Open | ouroboros-ui: [X.5] Minimap & editor comfort features | Minimap extension, multi-cursor, search/replace, folding | v2, workflow, code-view, ui | N (after V.2) | N | S | ouroboros-ui |
 
 ### Issue X.1 — ouroboros-rest: [X.1] Full SDK evaluation ADR & prototype
+
+> **GitHub issue:** #180 · **Status:** 🟡 Open · **Parent epic:** #164
 
 - **Problem Statement:** The closed grammar (C2) rejects real code — the
   mockup's `lib/estimate.ts` and computed helpers imply a future where
@@ -622,6 +658,8 @@ suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol tabl
 
 ### Issue X.2 — ouroboros-ui: [X.2] Skills & lib tree sections
 
+> **GitHub issue:** #181 · **Status:** 🟡 Open · **Parent epic:** #164
+
 - **Problem Statement:** The mockup tree shows `skills/*.skill.md` and
   `lib/*.ts`; those become real when the knowledge (mockup 14) and routing
   (mockup 06) subsystems exist (decision C6 kept them out of MVP).
@@ -636,6 +674,8 @@ suites: span map ✓ · merged diagnostics ✓ · checks rows ✓ · symbol tabl
 - **Epic:** X
 
 ### Issue X.3 — ouroboros-rest: [X.3] Git-backed workflow-as-code sync
+
+> **GitHub issue:** #182 · **Status:** 🟡 Open · **Parent epic:** #164
 
 - **Problem Statement:** The explorer header says `helios-firmware` — the
   natural endgame is workflow files living *in the customer repo* (review via
@@ -659,6 +699,8 @@ publish v16 ─▶ PR: .ouroboros/workflows/standard-fix.loop.ts │ merge edite
 
 ### Issue X.4 — ouroboros-ui: [X.4] Real language-server ADR (LSP/Monaco)
 
+> **GitHub issue:** #183 · **Status:** 🟡 Open · **Parent epic:** #164
+
 - **Problem Statement:** If X.1 admits real TS, schema-driven intelligence
   (C5) stops being enough; the "LSP ready" status line needs a real decision.
 - **Solution/Scope:** ADR: Monaco+TS-worker (with generated `.d.ts`) vs
@@ -672,6 +714,8 @@ publish v16 ─▶ PR: .ouroboros/workflows/standard-fix.loop.ts │ merge edite
 - **Epic:** X
 
 ### Issue X.5 — ouroboros-ui: [X.5] Minimap & editor comfort features
+
+> **GitHub issue:** #184 · **Status:** 🟡 Open · **Parent epic:** #164
 
 - **Problem Statement:** The mockup shows a minimap (decision C9 deferred it);
   growing files also want search/replace, folding, multi-cursor.
@@ -739,8 +783,17 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic X — Extended Code Experience | 5 | 0 | 5 |
 | **Total** | **20** | **15** | **5** |
 
-Plus amendments executed at filing: WF-S.1 (Code segment goes live), #56
-(code-view e2e leg).
+GitHub parents: Epic U #161 · Epic V #162 · Epic W #163 · Epic X #164.
+Work issues #165–#184, each filed as a sub-issue of its epic (GitHub Relationships)
+and assigned to its epic's milestone.
+
+Plus **2 amendments** — comments posted and the `code-view` label applied on
+2026-08-09; no new work created:
+
+| Issue | Amendment |
+|---|---|
+| #147 | WF-S.1's segmented control: the **Code** segment goes live via V.1 (#169), sharing one draft (C3) |
+| #56 | e2e suite gains the code-view leg V.8 (#176), including the both-directions cross-editor round-trip |
 
 ## References
 
@@ -786,21 +839,41 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| V.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link; subnav renders as PageSubnav, sticky in-pane |
-| V.2, V.3, V.4, V.5, V.6, V.7 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| V.8 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| V.1 (#169) | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link; subnav renders as PageSubnav, sticky in-pane |
+| V.2–V.7 (#170–#175) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| V.8 (#176) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the editor choice (C1 —
-CodeMirror 6 over Monaco, trading built-in TS IntelliSense for weight), the
-round-trip strategy (C2 — constrained TS-DSL projection with property-tested
-losslessness; arbitrary TS deferred to the X.1 ADR), the shared-draft rule (C3),
-and the honesty adjustments (C5 status-bar wording, C7 checks scope, C9 minimap
-deferral). Note the hard prerequisite: the mockup-04 roadmap's MVP core must be
-filed and landed first. Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_05_WORKFLOW_CODE.md`) creates the `code-view` label **and the
-`Workflow Code MVP` / `Workflow Code v2` milestones**, files the 20 issues with
-epic parents, relationships, and milestone assignments, and posts the amendment
-comments on WF-S.1 and #56.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing: the
+`code-view` label, the **`Workflow Code MVP`** and **`Workflow Code v2`** milestones,
+the four epic parents (#161–#164) and twenty work issues (#165–#184) with epic
+relationships, issue types and milestone assignments, plus the two amendment comments
+on #147 and #56.
+
+The three decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **C1 — CodeMirror 6 over Monaco** (#170). The trade is explicit: Monaco would give
+  the mockup's "TypeScript 5.9 · LSP ready" feel almost for free at 2–5MB, but our
+  surface is a closed grammar needing custom tooling either way. Bundle delta is
+  measured and recorded, as the React Flow adoption (#148) was.
+- **C2 — constrained TS-DSL projection** (#165/#166), with losslessness proven by
+  property tests (#168) rather than asserted. Arbitrary TypeScript is deferred to the
+  #180 ADR, and #166's out-of-grammar error points there rather than dead-ending.
+- **C3 — one draft, two editors** (#167/#169), with C4's corollary: an unparseable
+  edit never touches the stored draft.
+
+Three honesty adjustments are carried into the issues and should survive review: the
+status bar reads **`DSL analyzer`**, not `LSP ready` (#174, revisited by #183); the
+Loop Checks panel **omits** the mockup's build-farm warning rather than faking it
+(#173/#178); and the minimap ships in #184 as a real one rather than as the mockup's
+painted gradient.
+
+**Hard prerequisite:** the mockup-04 roadmap's MVP core must land first — WF-P.2
+(#133 DSL schema), WF-P.3 (#134 draft/publish), WF-P.5 (#136 seeds), WF-R.2 (#144
+validation), WF-R.3 (#145 catalog), WF-S.1 (#147 studio shell) and WF-S.6 (#152
+publish dialog). That roadmap in turn still waits on the unfiled BetterAuth roadmap.
+
+Once those are in place, begin with **#165** ([U.1] grammar spec and printer) — the
+load-bearing document the parser, completions and span map all inherit from.

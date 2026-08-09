@@ -26,7 +26,7 @@ When user invokes **create-issues**, refer to `docs/<roadmap-file>.md` as the de
   - Acceptance Criteria
   - Parallelism/Dependencies
   - Technical Stack
-  - Epic grouping
+  - Epic grouping (Epic name is 3 letters of the major feature)
   - Relationship Reference where applicable
   - MVP indicator (v1) release candidate where applicable
   - Labels indicating all of the appropriate pairings for the issue

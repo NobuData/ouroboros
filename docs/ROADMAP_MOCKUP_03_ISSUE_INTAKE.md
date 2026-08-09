@@ -151,33 +151,38 @@ and issue-content mutations on GitHub (labels/comments — O.5).
 
 ## Epics
 
-| Epic | Name | Goal | Modules |
-|------|------|------|---------|
-| K | GitHub Backlog Sync (`ouroboros-db` + `ouroboros-rest`) | Token config, issue cache schema, incremental sync, seeds & CI | ouroboros-db, ouroboros-rest |
-| L | Estimation Pipeline (`ouroboros-engine` + `ouroboros-rest`) | Estimate contract, heuristic v0, orchestration, versioned persistence | ouroboros-engine, ouroboros-rest |
-| M | Backlog REST API (`ouroboros-rest`) | List/detail/filters, queue writes, sync status, tests | ouroboros-rest |
-| N | Issue Intake UI (`ouroboros-ui`) | Mockup 03: filter bar, table+selection, action bar, detail panel, e2e | ouroboros-ui |
-| O | Live Intake & Extended Scope (v2) | GitHub App + webhooks, LLM estimator, workflow entities, signals | all |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules |
+|------|:------:|:------:|------|------|---------|
+| K | #94 | 🟡 Open | GitHub Backlog Sync (`ouroboros-db` + `ouroboros-rest`) | Token config, issue cache schema, incremental sync, seeds & CI | ouroboros-db, ouroboros-rest |
+| L | #95 | 🟡 Open | Estimation Pipeline (`ouroboros-engine` + `ouroboros-rest`) | Estimate contract, heuristic v0, orchestration, versioned persistence | ouroboros-engine, ouroboros-rest |
+| M | #96 | 🟡 Open | Backlog REST API (`ouroboros-rest`) | List/detail/filters, queue writes, sync status, tests | ouroboros-rest |
+| N | #97 | 🟡 Open | Issue Intake UI (`ouroboros-ui`) | Mockup 03: filter bar, table+selection, action bar, detail panel, e2e | ouroboros-ui |
+| O | #98 | 🟡 Open | Live Intake & Extended Scope (v2) | GitHub App + webhooks, LLM estimator, workflow entities, signals | all |
 
 Issue naming: `<project>: [<epic letter>.<issue>] <title>`. Labels reuse the
 existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus new
-**`intake`** (decision K10; create during issue filing). Complexity chips:
+**`intake`** (decision K10; created during issue filing). Complexity chips:
 **XS · S · M · L**.
 
 ---
 
-## Epic K — GitHub Backlog Sync (`ouroboros-db` + `ouroboros-rest`)
+## Epic K (#94) — GitHub Backlog Sync (`ouroboros-db` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| K.1 | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| K.2 | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
-| K.3 | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
-| K.4 | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
-| K.5 | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
-| K.6 | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| K.1 | #99 | 🟡 Open | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| K.2 | #100 | 🟡 Open | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
+| K.3 | #101 | 🟡 Open | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
+| K.4 | #102 | 🟡 Open | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
+| K.5 | #103 | 🟡 Open | ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity | Seeded issues/estimates reproducing the mockup's nine rows | mvp, intake, db | N (after K.2) | Y | S | ouroboros-db |
+| K.6 | #104 | 🟡 Open | ouroboros-db: [K.6] Intake constraints in ci/db | Status vocabularies, cursor invariants, estimate versioning checks | mvp, intake, db, ci | N (after K.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue K.1 — ouroboros-db: [K.1] GitHub issue cache schema
+
+> **GitHub issue:** #99 · **Status:** 🟡 Open · **Parent epic:** #94
 
 - **Problem Statement:** The backlog table renders GitHub issues with labels, author,
   and open-date ([`docs/mockups/03-issues.html`](mockups/03-issues.html), issue cell +
@@ -223,6 +228,8 @@ erDiagram
 
 ### Issue K.2 — ouroboros-db: [K.2] Issue estimates schema
 
+> **GitHub issue:** #100 · **Status:** 🟡 Open · **Parent epic:** #94
+
 - **Problem Statement:** Everything the mockup calls "AI Work Breakdown" — effort,
   confidence, workflow, model, files, tokens, cycle range, risk, trace — needs a
   home that survives re-estimation (three re-estimate affordances in the mockup).
@@ -252,6 +259,8 @@ issue_estimates(issue, version↑) ─ latest ─▶ effort M · conf 92 · stan
 
 ### Issue K.3 — ouroboros-rest: [K.3] GitHub credentials & API client
 
+> **GitHub issue:** #101 · **Status:** 🟡 Open · **Parent epic:** #94
+
 - **Problem Statement:** Sync needs authenticated GitHub access per organization —
   no credential store or client exists (scaffolding #22 was deliberately data-only).
 - **Solution/Scope:** Per decision K1: `github_credentials` columns on the org
@@ -279,6 +288,8 @@ settings ─▶ store token (encrypted, masked) ─▶ GitHubClient
 ```
 
 ### Issue K.4 — ouroboros-rest: [K.4] Backlog sync service
+
+> **GitHub issue:** #102 · **Status:** 🟡 Open · **Parent epic:** #94
 
 - **Problem Statement:** The page's headline claim — "Ouroboros watches the GitHub
   backlog" — is this service. It must import enabled repos' open issues, keep them
@@ -319,6 +330,8 @@ sequenceDiagram
 
 ### Issue K.5 — ouroboros-db: [K.5] Intake dev seeds — mockup-03 parity
 
+> **GitHub issue:** #103 · **Status:** 🟡 Open · **Parent epic:** #94
+
 - **Problem Statement:** Design review and e2e need the exact mockup rows without a
   live GitHub token; the seeds are the fixture (same rule as dashboard F.5).
 - **Solution/Scope:** Extend the dev seed (dev-only guard): for `acme-robotics /
@@ -349,6 +362,8 @@ seeds: 9 issues (#483–#491) ─▶ 6 sized · 1 estimating · 1 needs_human ·
 
 ### Issue K.6 — ouroboros-db: [K.6] Intake constraints in ci/db
 
+> **GitHub issue:** #104 · **Status:** 🟡 Open · **Parent epic:** #94
+
 - **Problem Statement:** Status vocabularies, estimate versioning, and cursor
   invariants are UI-trusted contracts needing PR-time enforcement.
 - **Solution/Scope:** Extend #24's `tests/constraints.sql`: sizing-status CHECK
@@ -366,17 +381,19 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+K probes) ─▶ ✓/✗
 
 ---
 
-## Epic L — Estimation Pipeline (`ouroboros-engine` + `ouroboros-rest`)
+## Epic L (#95) — Estimation Pipeline (`ouroboros-engine` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| L.1 | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
-| L.2 | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
-| L.3 | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
-| L.4 | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
-| L.5 | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| L.1 | #105 | 🟡 Open | ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`) | Request/response schema for sizing an issue; extends the #52 contract | mvp, intake, engine, rest | N (after #52) | Y | M | ouroboros-engine, ouroboros-rest |
+| L.2 | #106 | 🟡 Open | ouroboros-engine: [L.2] Heuristic estimator v0 | Deterministic sizing from labels/title/body signals, honest provenance | mvp, intake, engine | N (after L.1) | Y | M | ouroboros-engine |
+| L.3 | #107 | 🟡 Open | ouroboros-rest: [L.3] Estimation orchestration & persistence | Dispatch, status transitions, versioned persistence, failure → needs_human | mvp, intake, rest | N (after L.1, K.2, K.4) | Y | L | ouroboros-rest |
+| L.4 | #108 | 🟡 Open | ouroboros-rest: [L.4] Re-estimation endpoints (single & all) | `POST /backlog/:id/estimate`, `POST /backlog/estimate-all` with guards | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
+| L.5 | #109 | 🟡 Open | ouroboros-rest: [L.5] Pipeline integration tests | Lifecycle, failure paths, concurrency, provenance assertions | mvp, intake, rest, ci | N (after L.4) | Y | M | ouroboros-rest |
 
 ### Issue L.1 — ouroboros-engine: [L.1] Estimation contract (`/v0/estimate`)
+
+> **GitHub issue:** #105 · **Status:** 🟡 Open · **Parent epic:** #95
 
 - **Problem Statement:** REST↔engine has only `echo` (#52). Sizing needs a real
   versioned contract carrying enough issue context in and a full estimate out —
@@ -404,6 +421,8 @@ REST ── POST /v0/estimate {issue, context} ──▶ engine
 ```
 
 ### Issue L.2 — ouroboros-engine: [L.2] Heuristic estimator v0
+
+> **GitHub issue:** #106 · **Status:** 🟡 Open · **Parent epic:** #95
 
 - **Problem Statement:** MVP needs real estimates without the AI stack (hard truth
   #2). A deterministic heuristic keeps the pipeline honest and the page alive —
@@ -434,6 +453,8 @@ conf < floor ─▶ needs_human          trace: {estimator: heuristic-v0, signal
 ```
 
 ### Issue L.3 — ouroboros-rest: [L.3] Estimation orchestration & persistence
+
+> **GitHub issue:** #107 · **Status:** 🟡 Open · **Parent epic:** #95
 
 - **Problem Statement:** Someone must move issues through
   `unsized → estimating → sized|needs_human` — dispatching to the engine,
@@ -469,6 +490,8 @@ stateDiagram-v2
 
 ### Issue L.4 — ouroboros-rest: [L.4] Re-estimation endpoints (single & all)
 
+> **GitHub issue:** #108 · **Status:** 🟡 Open · **Parent epic:** #95
+
 - **Problem Statement:** The mockup offers re-estimation in three places (panel
   button, head "Re-estimate all", implicit on stale data); the pipeline needs
   guarded triggers.
@@ -491,6 +514,8 @@ head [Re-estimate all] ─▶ POST /backlog/estimate-all (admin) ─▶ fan-out 
 
 ### Issue L.5 — ouroboros-rest: [L.5] Pipeline integration tests
 
+> **GitHub issue:** #109 · **Status:** 🟡 Open · **Parent epic:** #95
+
 - **Problem Statement:** Lifecycle transitions, failure fallbacks, and version
   monotonicity are concurrency-sensitive — exactly what the Testcontainers
   harness exists for.
@@ -509,17 +534,19 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 
 ---
 
-## Epic M — Backlog REST API (`ouroboros-rest`)
+## Epic M (#96) — Backlog REST API (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| M.1 | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
-| M.2 | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
-| M.3 | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
-| M.4 | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
-| M.5 | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| M.1 | #110 | 🟡 Open | ouroboros-rest: [M.1] Backlog list endpoint with filters | Org-scoped list: repo/labels/state/sort/search, paging, head counts | mvp, intake, rest | N (after K.4, L.3) | Y | M | ouroboros-rest |
+| M.2 | #111 | 🟡 Open | ouroboros-rest: [M.2] Issue detail endpoint | Full issue + latest estimate + trace for the side panel | mvp, intake, rest | N (after L.3) | Y | S | ouroboros-rest |
+| M.3 | #112 | 🟡 Open | ouroboros-rest: [M.3] Bulk queue action | Selection → `queue_items` with workflow tag + combined estimate | mvp, intake, rest | N (after L.3, DASH-F.2) | Y | M | ouroboros-rest |
+| M.4 | #113 | 🟡 Open | ouroboros-rest: [M.4] Sync status & manual re-sync | Freshness data + `POST /backlog/sync` trigger with guards | mvp, intake, rest | N (after K.4) | Y | S | ouroboros-rest |
+| M.5 | #114 | 🟡 Open | ouroboros-rest: [M.5] Backlog API integration tests | Filter matrix, queue writes, isolation, sync trigger | mvp, intake, rest, ci | N (after M.1–M.4) | Y | M | ouroboros-rest |
 
 ### Issue M.1 — ouroboros-rest: [M.1] Backlog list endpoint with filters
+
+> **GitHub issue:** #110 · **Status:** 🟡 Open · **Parent epic:** #96
 
 - **Problem Statement:** The filter bar and table are a server query
   (decision K8); the page head's counts ("42 open issues. 38 already sized.")
@@ -547,6 +574,8 @@ harness + fake engine ─▶ lifecycle ✓ · failure→needs_human ✓ · sweep
 
 ### Issue M.2 — ouroboros-rest: [M.2] Issue detail endpoint
 
+> **GitHub issue:** #111 · **Status:** 🟡 Open · **Parent epic:** #96
+
 - **Problem Statement:** The side panel needs everything about one issue: GitHub
   content for the excerpt, the full latest estimate, and the trace.
 - **Solution/Scope:** `GET /api/v1/backlog/:id`: issue fields (body for the
@@ -566,6 +595,8 @@ GET /backlog/:id ─▶ {issue{body, author, gh_url}, estimate{breakdown, risk, 
 ```
 
 ### Issue M.3 — ouroboros-rest: [M.3] Bulk queue action
+
+> **GitHub issue:** #112 · **Status:** 🟡 Open · **Parent epic:** #96
 
 - **Problem Statement:** "Queue 3 selected ⟳" / "Queue → standard-fix" / "Queue
   for loop" all write the run queue — the write side the dashboard roadmap
@@ -596,6 +627,8 @@ POST /backlog/queue {ids:[485,484,491], workflow:"standard-fix"}
 
 ### Issue M.4 — ouroboros-rest: [M.4] Sync status & manual re-sync
 
+> **GitHub issue:** #113 · **Status:** 🟡 Open · **Parent epic:** #96
+
 - **Problem Statement:** The freshness tag needs data, and users need a manual
   nudge when they just filed an issue on GitHub.
 - **Solution/Scope:** Sync status folded into M.1's `meta` plus
@@ -616,6 +649,8 @@ POST /sync ─▶ 202 (running) │ 409 (already running / too soon)
 
 ### Issue M.5 — ouroboros-rest: [M.5] Backlog API integration tests
 
+> **GitHub issue:** #114 · **Status:** 🟡 Open · **Parent epic:** #96
+
 - **Problem Statement:** The filter matrix, transactional queue writes, and
   org isolation are the regressions users would hit first.
 - **Solution/Scope:** Harness suites: filter/sort/search matrix against seeded
@@ -633,7 +668,7 @@ suites: filters ✓ · queue tx ✓ · detail ✓ · sync debounce ✓ · isolat
 
 ---
 
-## Epic N — Issue Intake UI (`ouroboros-ui`)
+## Epic N (#97) — Issue Intake UI (`ouroboros-ui`)
 
 Every issue references [`docs/mockups/03-issues.html`](mockups/03-issues.html) as
 the design source — layout (`c-8` main column + `c-4` panel), page-specific
@@ -641,17 +676,19 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 `.breakdown-row`, `.file-list`, `.trace`), and the shared design system via the
 #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| N.1 | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
-| N.2 | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
-| N.3 | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
-| N.4 | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
-| N.5 | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
-| N.6 | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
-| N.7 | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| N.1 | #115 | 🟡 Open | ouroboros-ui: [N.1] Issues route, page head & counts | `(app)/issues`: head with live counts, Re-estimate all, Queue button | mvp, intake, ui, design | N (after #41, M.1, BA-D.5) | Y | S | ouroboros-ui |
+| N.2 | #116 | 🟡 Open | ouroboros-ui: [N.2] Filter bar (URL-reflected) | Repo select, label chips, state, sort, search — server-driven | mvp, intake, ui, design | N (after N.1) | Y | M | ouroboros-ui |
+| N.3 | #117 | 🟡 Open | ouroboros-ui: [N.3] Backlog table with selection model | Rows, effort+conf, status pills, checkbox selection, freshness tag | mvp, intake, ui, design | N (after N.1) | Y | L | ouroboros-ui |
+| N.4 | #118 | 🟡 Open | ouroboros-ui: [N.4] Selection action bar | Combined estimate, Assign workflow ▾, Queue → workflow | mvp, intake, ui, design | N (after N.3, M.3) | Y | S | ouroboros-ui |
+| N.5 | #119 | 🟡 Open | ouroboros-ui: [N.5] Issue detail side panel | Excerpt, breakdown, risk meter, trace, panel actions | mvp, intake, ui, design | N (after N.3, M.2, L.4) | Y | L | ouroboros-ui |
+| N.6 | #120 | 🟡 Open | ouroboros-ui: [N.6] Intake empty, loading & guidance states | No-token, no-repos, syncing, unsized, empty-filter states | mvp, intake, ui, design | N (after N.2–N.5) | Y | M | ouroboros-ui |
+| N.7 | #121 | 🟡 Open | ouroboros-ui: [N.7] Issues e2e leg | Seeded parity, filter/select/queue/re-estimate flows, both themes | mvp, intake, ui, ci | N (after N.1–N.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue N.1 — ouroboros-ui: [N.1] Issues route, page head & counts
+
+> **GitHub issue:** #115 · **Status:** 🟡 Open · **Parent epic:** #97
 
 - **Problem Statement:** `/issues` currently points at a #49 placeholder; the
   page needs its frame: eyebrow, live-count headline, subline, and the two head
@@ -674,6 +711,8 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 ```
 
 ### Issue N.2 — ouroboros-ui: [N.2] Filter bar (URL-reflected)
+
+> **GitHub issue:** #116 · **Status:** 🟡 Open · **Parent epic:** #97
 
 - **Problem Statement:** The mockup's filter bar (repo, label chips with
   `chip-on` state, state, sort, search) must drive M.1 queries and survive
@@ -698,6 +737,8 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 ```
 
 ### Issue N.3 — ouroboros-ui: [N.3] Backlog table with selection model
+
+> **GitHub issue:** #117 · **Status:** 🟡 Open · **Parent epic:** #97
 
 - **Problem Statement:** The table is the page's core: dense rows with the
   mockup's exact treatments (selected-row glow, effort+confidence pairing,
@@ -736,6 +777,8 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 
 ### Issue N.4 — ouroboros-ui: [N.4] Selection action bar
 
+> **GitHub issue:** #118 · **Status:** 🟡 Open · **Parent epic:** #97
+
 - **Problem Statement:** The glow-bordered `.sel-bar` summarizes the selection
   ("3 issues selected · est. 1h 10m combined autonomous work") and carries the
   queue actions — it appears only when selection > 0.
@@ -763,6 +806,8 @@ treatments (`.ckbox`, `tr.sel`, `.sel-bar` glow, `.panel-body-excerpt`,
 ```
 
 ### Issue N.5 — ouroboros-ui: [N.5] Issue detail side panel
+
+> **GitHub issue:** #119 · **Status:** 🟡 Open · **Parent epic:** #97
 
 - **Problem Statement:** The `c-4` panel is the sizing story for one issue —
   excerpt, breakdown, risk, trace, actions — and must render honestly across
@@ -805,6 +850,8 @@ Regression risk  low ▓▓░░░░░░░ "Isolated to the I²C driver pa
 
 ### Issue N.6 — ouroboros-ui: [N.6] Intake empty, loading & guidance states
 
+> **GitHub issue:** #120 · **Status:** 🟡 Open · **Parent epic:** #97
+
 - **Problem Statement:** The mockup shows a full backlog; reality starts with no
   token, no enabled repos, an empty repo, a first sync in progress, or a filter
   that matches nothing — each needs designed guidance, not a blank table.
@@ -830,6 +877,8 @@ sync #1  ─▶ "First sync running — 120 issues so far…"
 
 ### Issue N.7 — ouroboros-ui: [N.7] Issues e2e leg
 
+> **GitHub issue:** #121 · **Status:** 🟡 Open · **Parent epic:** #97
+
 - **Problem Statement:** The intake flow (filter → select → queue → dashboard)
   and the estimation lifecycle are cross-service paths only e2e can certify.
 - **Solution/Scope:** Extend the #56 suite: seeded parity (head counts, table
@@ -848,17 +897,19 @@ e2e: parity ✓ · filters ✓ · select→queue→dashboard ✓ · re-estimate 
 
 ---
 
-## Epic O — Live Intake & Extended Scope (v2)
+## Epic O (#98) — Live Intake & Extended Scope (v2)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| O.1 | ouroboros-rest: [O.1] GitHub App & webhook ingestion | App install flow, webhook receiver, near-instant sync | v2, intake, rest, ui | N (after K.4) | N | L | ouroboros-rest, ouroboros-ui |
-| O.2 | ouroboros-engine: [O.2] LLM-backed estimator | Real model sizing behind the L.1 contract; heuristic as fallback | v2, intake, engine | N (after L.2, providers roadmap) | N | L | ouroboros-engine |
-| O.3 | ouroboros-rest: [O.3] Workflow entities in assign & suggestions | Replace the fixed tag set with mockup-04 workflow objects | v2, intake, rest, ui | N (after mockup-04 roadmap) | N | M | ouroboros-rest, ouroboros-ui |
-| O.4 | ouroboros-engine: [O.4] Estimation signals from knowledge | Similar-closed-issues, code map, test index feeding the trace | v2, intake, engine | N (after O.2, mockup-14 roadmap) | N | L | ouroboros-engine |
-| O.5 | ouroboros-rest: [O.5] GitHub write-backs | Size labels / intake comments posted back to GitHub, opt-in | v2, intake, rest | N (after O.1) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| O.1 | #122 | 🟡 Open | ouroboros-rest: [O.1] GitHub App & webhook ingestion | App install flow, webhook receiver, near-instant sync | v2, intake, rest, ui | N (after K.4) | N | L | ouroboros-rest, ouroboros-ui |
+| O.2 | #123 | 🟡 Open | ouroboros-engine: [O.2] LLM-backed estimator | Real model sizing behind the L.1 contract; heuristic as fallback | v2, intake, engine | N (after L.2, providers roadmap) | N | L | ouroboros-engine |
+| O.3 | #124 | 🟡 Open | ouroboros-rest: [O.3] Workflow entities in assign & suggestions | Replace the fixed tag set with mockup-04 workflow objects | v2, intake, rest, ui | N (after mockup-04 roadmap) | N | M | ouroboros-rest, ouroboros-ui |
+| O.4 | #125 | 🟡 Open | ouroboros-engine: [O.4] Estimation signals from knowledge | Similar-closed-issues, code map, test index feeding the trace | v2, intake, engine | N (after O.2, mockup-14 roadmap) | N | L | ouroboros-engine |
+| O.5 | #126 | 🟡 Open | ouroboros-rest: [O.5] GitHub write-backs | Size labels / intake comments posted back to GitHub, opt-in | v2, intake, rest | N (after O.1) | N | M | ouroboros-rest |
 
 ### Issue O.1 — ouroboros-rest: [O.1] GitHub App & webhook ingestion
+
+> **GitHub issue:** #122 · **Status:** 🟡 Open · **Parent epic:** #98
 
 - **Problem Statement:** Token + polling caps freshness at the poll interval and
   rate limits at 5k/h; the mockup's "watches the backlog" ideal is webhook-fast,
@@ -884,6 +935,8 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 
 ### Issue O.2 — ouroboros-engine: [O.2] LLM-backed estimator
 
+> **GitHub issue:** #123 · **Status:** 🟡 Open · **Parent epic:** #98
+
 - **Problem Statement:** Heuristic v0 sizes crudely and cannot estimate files;
   the product promise (file-touch prediction, calibrated confidence, real
   routing) needs models — which need the provider stack (mockup 07) first.
@@ -903,6 +956,8 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 
 ### Issue O.3 — ouroboros-rest: [O.3] Workflow entities in assign & suggestions
 
+> **GitHub issue:** #124 · **Status:** 🟡 Open · **Parent epic:** #98
+
 - **Problem Statement:** The fixed tag set (K5) becomes real workflow objects
   once mockup 04's roadmap lands; assign menus and suggestions must upgrade
   without breaking stored tags.
@@ -917,6 +972,8 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 - **Epic:** O
 
 ### Issue O.4 — ouroboros-engine: [O.4] Estimation signals from knowledge
+
+> **GitHub issue:** #125 · **Status:** 🟡 Open · **Parent epic:** #98
 
 - **Problem Statement:** The mockup trace cites `3 similar closed issues ·
   driver map · HIL test index` — retrieval signals that need the knowledge
@@ -933,6 +990,8 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 - **Epic:** O
 
 ### Issue O.5 — ouroboros-rest: [O.5] GitHub write-backs
+
+> **GitHub issue:** #126 · **Status:** 🟡 Open · **Parent epic:** #98
 
 - **Problem Statement:** Sizing value multiplies if it reaches GitHub — size
   labels or an intake comment on the issue — but writing to customer repos is
@@ -1019,8 +1078,12 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic O — Live Intake & Extended | 5 | 0 | 5 |
 | **Total** | **28** | **23** | **5** |
 
-Plus **3 amendments** to existing issues (#41 nav state, #49 `/issues` stub
-retirement, #56 e2e leg) executed during issue filing.
+GitHub parents: Epic K #94 · Epic L #95 · Epic M #96 · Epic N #97 · Epic O #98.
+Work issues #99–#126, each filed as a sub-issue of its epic (GitHub Relationships).
+
+Plus **3 amendments** to existing issues — comments posted and the `intake` label
+applied on #41 (nav state), #49 (`/issues` stub retirement) and #56 (e2e leg) on
+2026-08-09; no new work created.
 
 ## References
 
@@ -1064,19 +1127,29 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| N.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
-| N.2, N.3, N.4, N.5, N.6 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| N.7 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| N.1 (#115) | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
+| N.2–N.6 (#116–#120) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| N.7 (#121) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: decisions K1–K10
-(especially K1 token-first GitHub access with the App deferred to O.1, K7
-estimation-through-the-engine even while heuristic, and K10's provenance-honesty
-rule), the queue-write ownership (K9 — this roadmap owns what the dashboard
-roadmap deliberately left out), and the prerequisite chain (BetterAuth and
-dashboard roadmaps should be filed first). Once validated, the follow-up pass
-(`/create-issues ROADMAP_MOCKUP_03_ISSUE_INTAKE.md`) creates the `intake` label,
-files the 28 issues with epic parents and relationships, and posts the amendment
-comments on #41, #49, and #56.
+**Issues filed 2026-08-09.** The validation gate is closed: the `intake` label was
+created, the five epic parents (#94–#98) and twenty-eight work issues (#99–#126) exist
+with epic relationships and issue types set, and the amendment comments are posted on
+#41, #49 and #56.
+
+Execution follows the work order above, with two standing prerequisites that are still
+unfiled:
+
+- **BetterAuth roadmap** ([`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`](ROADMAP_LOGIN_PAGE_BETTERAUTH.md)) —
+  BA-B.3 (organization + repo tables), BA-C.3 (tenant context), BA-C.4 (enabled repos)
+  and BA-D.5 (auth guard) are referenced by name in the filed issues and must land
+  before Epic K can start in earnest.
+- **Dashboard roadmap** ([`ROADMAP_MOCKUP_02_DASHBOARD.md`](ROADMAP_MOCKUP_02_DASHBOARD.md),
+  filed as #59–#93) — DASH-F.2 (#65 `queue_items`) is what M.3 writes into, DASH-F.5
+  (#68) shares its queue seeds with K.5, and DASH-I.8 (#87) provides the polling hook
+  family N.3 reuses.
+
+Once those are in place, begin with #99 ([K.1] GitHub issue cache schema) and #101
+([K.3] GitHub credentials & API client) — the two parallelizable entry points of
+Phase 1.

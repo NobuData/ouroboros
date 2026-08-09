@@ -58,8 +58,8 @@ Surveyed 2026-08-08.
 
 | Existing work | Disposition under this roadmap |
 |---|---|
-| Intake roadmap (`ROADMAP_MOCKUP_03_ISSUE_INTAKE.md`, validation gate) — decision K5 fixed workflow-tag set; O.3 "workflow entities" (v2) | **Superseded/landed here** — Epic P creates real workflow entities; O.3's scope (assign menus + estimator context reading the registry) is folded into P.4/T.6 amendments. Stored opaque tags remain valid slugs. |
-| Intake roadmap Epic K — GitHub-specific sync (K.3 credentials/client, K.4 sync service) | **Refactored behind the provider SPI** by Q.3 — same behavior, now the first `TicketSourceProvider`. If Epic K has not been built when this roadmap starts, Q.3 *is* its implementation (coordinate at filing time). |
+| Intake roadmap (`ROADMAP_MOCKUP_03_ISSUE_INTAKE.md`, filed #99–#126) — decision K5 fixed workflow-tag set; O.3 "workflow entities" (v2, #124) | **Superseded/landed here** — Epic P creates real workflow entities; #124's scope (assign menus + estimator context reading the registry) is folded into P.4/T.6, and amendment comments are posted on #112, #118 and #124. Stored opaque tags remain valid slugs. |
+| Intake roadmap Epic K — GitHub-specific cache & sync (K.1 #99, K.3 #101, K.4 #102) | **Resolved at filing 2026-08-09: Epic K is filed but unbuilt** (no migration or service code in the repository). Q.1 (#138) therefore **replaces** #99, and Q.3 (#140) **implements** #101/#102 SPI-first as the first `TicketSourceProvider`. No acceptance criterion is dropped — each is re-asserted through the SPI and enforced by the conformance kit (#142). Coordination comments posted on all three. |
 | Dashboard roadmap — `runs.workflow_tag` (DASH-F.1), queue actions (INTAKE-M.3) | **Consumed** — P.4's usage stats join `runs`; trigger predicates (R.1) evaluate queue events. |
 | Scaffolding #49 placeholder routes (v2) | **Superseded for `/workflows`** — this roadmap builds the real screen. |
 | Scaffolding #54 engine task skeleton (v2), DASH-J.3 ingestion bridge (v2) | **Consumed by T.6** — actual workflow *execution* bridges through them; MVP here is authoring + validation + dry-run, not running loops. |
@@ -200,34 +200,39 @@ engine-choice ADR T.1), Jira/Linear/GitLab providers (T.2–T.4), template libra
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| P | Workflow Domain & Versioning | Entities, JSON-Schema DSL, CRUD/publish API, stats, seeds | ouroboros-db, ouroboros-rest | Workflow Studio MVP |
-| Q | Pluggable Ticket Sources | Canonical ticket model, provider SPI/registry, GitHub provider, config surface, conformance kit | ouroboros-db, ouroboros-rest, ouroboros-ui | Workflow Studio MVP |
-| R | Validation, Triggers & Dry-Run | Stage catalog, engine validate/simulate, trigger matching | ouroboros-engine, ouroboros-rest | Workflow Studio MVP |
-| S | Studio UI | Rail, canvas, inspector, editing, publish, states, e2e | ouroboros-ui | Workflow Studio MVP |
-| T | Execution & Extended Sources (v2) | Engine ADR + execution bridge, Jira/Linear/GitLab, templates | all | Workflow Studio v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| P | #127 | 🟡 Open | Workflow Domain & Versioning | Entities, JSON-Schema DSL, CRUD/publish API, stats, seeds | ouroboros-db, ouroboros-rest | Workflow Studio MVP |
+| Q | #128 | 🟡 Open | Pluggable Ticket Sources | Canonical ticket model, provider SPI/registry, GitHub provider, config surface, conformance kit | ouroboros-db, ouroboros-rest, ouroboros-ui | Workflow Studio MVP |
+| R | #129 | 🟡 Open | Validation, Triggers & Dry-Run | Stage catalog, engine validate/simulate, trigger matching | ouroboros-engine, ouroboros-rest | Workflow Studio MVP |
+| S | #130 | 🟡 Open | Studio UI | Rail, canvas, inspector, editing, publish, states, e2e | ouroboros-ui | Workflow Studio MVP |
+| T | #131 | 🟡 Open | Execution & Extended Sources (v2) | Engine ADR + execution bridge, Jira/Linear/GitLab, templates | all | Workflow Studio v2 |
 
 Issue naming: `<project>: [<epic letter>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`, `intake`) **plus new
-`workflow` and `sources`** (decision P10). Milestones **`Workflow Studio MVP`** and
-**`Workflow Studio v2`** created at filing; every issue below is assigned to its
-epic's milestone. Complexity chips: **XS · S · M · L**.
+`workflow` and `sources`** (decision P10, created during filing). Milestones
+**`Workflow Studio MVP`** and **`Workflow Studio v2`** created during filing; every
+issue below is assigned to its epic's milestone. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic P — Workflow Domain & Versioning (`ouroboros-db` + `ouroboros-rest`)
+## Epic P (#127) — Workflow Domain & Versioning (`ouroboros-db` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| P.1 | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| P.2 | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
-| P.3 | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
-| P.4 | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
-| P.5 | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
-| P.6 | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| P.1 | #132 | 🟡 Open | ouroboros-db: [P.1] Workflow & version schema | `workflows` + immutable `workflow_versions` (jsonb definition) | mvp, workflow, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| P.2 | #133 | 🟡 Open | ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation | Published schema for nodes/edges/predicates; zod + pydantic parity | mvp, workflow, rest, engine | N (after P.1) | Y | L | ouroboros-rest, ouroboros-engine |
+| P.3 | #134 | 🟡 Open | ouroboros-rest: [P.3] Workflow CRUD, draft & publish API | List/create/rename/pause, draft save, publish with validation gate | mvp, workflow, rest | N (after P.2) | Y | L | ouroboros-rest |
+| P.4 | #135 | 🟡 Open | ouroboros-rest: [P.4] Workflow usage & rail stats | `used by N% of runs`, stage counts, terminal-behavior captions | mvp, workflow, rest | N (after P.1, DASH-F.1) | Y | S | ouroboros-rest |
+| P.5 | #136 | 🟡 Open | ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity | Five workflows incl. standard-fix's full graph at v14 | mvp, workflow, db | N (after P.2) | Y | M | ouroboros-db |
+| P.6 | #137 | 🟡 Open | ouroboros-db: [P.6] Workflow constraints in ci/db | Version immutability, status vocab, definition-schema drift check | mvp, workflow, db, ci | N (after P.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue P.1 — ouroboros-db: [P.1] Workflow & version schema
+
+> **GitHub issue:** #132 · **Status:** 🟡 Open · **Parent epic:** #127
 
 - **Problem Statement:** Workflows exist only as opaque tags (intake decision K5);
   the studio needs real org-scoped entities with immutable version history
@@ -274,6 +279,8 @@ erDiagram
 
 ### Issue P.2 — ouroboros-rest: [P.2] Workflow DSL JSON Schema & shared validation
 
+> **GitHub issue:** #133 · **Status:** 🟡 Open · **Parent epic:** #127
+
 - **Problem Statement:** The canvas, the code view (mockup 05, future), the
   validator, and the future interpreter must agree on one definition language —
   the DSL is the product's most durable contract (decision P3).
@@ -310,6 +317,8 @@ definition.json ─▶ JSON Schema (committed, $id: dsl/v1)
 
 ### Issue P.3 — ouroboros-rest: [P.3] Workflow CRUD, draft & publish API
 
+> **GitHub issue:** #134 · **Status:** 🟡 Open · **Parent epic:** #127
+
 - **Problem Statement:** The rail, canvas, and publish button need the full
   lifecycle: list, create, rename, pause, draft-save, validate, publish, version
   history.
@@ -339,6 +348,8 @@ draft PUT (etag) ─▶ autosave · publish POST ─▶ [zod ✓][engine ✓] �
 
 ### Issue P.4 — ouroboros-rest: [P.4] Workflow usage & rail stats
 
+> **GitHub issue:** #135 · **Status:** 🟡 Open · **Parent epic:** #127
+
 - **Problem Statement:** The head's `used by 61% of runs` and the rail captions
   (`6 stages · auto-merge`, `needs review`, `paused`) must be computed truth,
   not stored strings.
@@ -362,6 +373,8 @@ status=paused ─▶ rail err-dot caption
 ```
 
 ### Issue P.5 — ouroboros-db: [P.5] Studio dev seeds — mockup-04 parity
+
+> **GitHub issue:** #136 · **Status:** 🟡 Open · **Parent epic:** #127
 
 - **Problem Statement:** Design review and e2e need the mockup's exact studio
   state: five workflows, and standard-fix's complete 12-node graph at v14 with
@@ -388,6 +401,8 @@ seeds: standard-fix v14 (12 nodes · 12 edges · loop-back) + 4 more workflows
 
 ### Issue P.6 — ouroboros-db: [P.6] Workflow constraints in ci/db
 
+> **GitHub issue:** #137 · **Status:** 🟡 Open · **Parent epic:** #127
+
 - **Problem Statement:** Version immutability and definition validity are the
   contracts everything downstream trusts.
 - **Solution/Scope:** Extend #24 `tests/constraints.sql`: immutability trigger
@@ -406,21 +421,23 @@ ci/db: migrate ─▶ constraints (+P probes) ─▶ seeds ⊨ JSON Schema ─�
 
 ---
 
-## Epic Q — Pluggable Ticket Sources (`ouroboros-db` + `ouroboros-rest` + `ouroboros-ui`)
+## Epic Q (#128) — Pluggable Ticket Sources (`ouroboros-db` + `ouroboros-rest` + `ouroboros-ui`)
 
 The description's explicit requirement: intake sources must be pluggable — GitHub,
 GitLab, Jira, Linear, and other trackers behind one interface. MVP ships the
 abstraction + GitHub; T.2–T.4 add providers without core changes.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| Q.1 | ouroboros-db: [Q.1] Canonical ticket model | Source-agnostic `tickets` + `ticket_sources` schema (P6) | mvp, sources, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| Q.2 | ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry | Provider interface, lifecycle, capability flags, secret handling | mvp, sources, rest | N (after Q.1) | Y | L | ouroboros-rest |
-| Q.3 | ouroboros-rest: [Q.3] GitHub provider (first conforming plugin) | INTAKE-K.3/K.4 behavior behind the SPI; cursor sync; PR filtering | mvp, sources, intake, rest | N (after Q.2) | Y | M | ouroboros-rest |
-| Q.4 | ouroboros-rest: [Q.4] Source management API & settings UI | Add/configure/pause sources per org; masked credentials; status | mvp, sources, rest, ui | N (after Q.2, BA-C.3) | Y | M | ouroboros-rest, ouroboros-ui |
-| Q.5 | ouroboros-rest: [Q.5] Provider conformance kit | Contract test suite + in-memory fake provider proving pluggability | mvp, sources, rest, ci | N (after Q.3) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| Q.1 | #138 | 🟡 Open | ouroboros-db: [Q.1] Canonical ticket model | Source-agnostic `tickets` + `ticket_sources` schema (P6) | mvp, sources, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| Q.2 | #139 | 🟡 Open | ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry | Provider interface, lifecycle, capability flags, secret handling | mvp, sources, rest | N (after Q.1) | Y | L | ouroboros-rest |
+| Q.3 | #140 | 🟡 Open | ouroboros-rest: [Q.3] GitHub provider (first conforming plugin) | INTAKE-K.3/K.4 behavior behind the SPI; cursor sync; PR filtering | mvp, sources, intake, rest | N (after Q.2) | Y | M | ouroboros-rest |
+| Q.4 | #141 | 🟡 Open | ouroboros-rest: [Q.4] Source management API & settings UI | Add/configure/pause sources per org; masked credentials; status | mvp, sources, rest, ui | N (after Q.2, BA-C.3) | Y | M | ouroboros-rest, ouroboros-ui |
+| Q.5 | #142 | 🟡 Open | ouroboros-rest: [Q.5] Provider conformance kit | Contract test suite + in-memory fake provider proving pluggability | mvp, sources, rest, ci | N (after Q.3) | Y | M | ouroboros-rest |
 
 ### Issue Q.1 — ouroboros-db: [Q.1] Canonical ticket model
+
+> **GitHub issue:** #138 · **Status:** 🟡 Open · **Parent epic:** #128
 
 - **Problem Statement:** The intake schema (INTAKE-K.1) is GitHub-shaped
   (`github_issues`, repo FK, `gh_*` columns); a Jira ticket has no repo and no
@@ -475,6 +492,8 @@ erDiagram
 
 ### Issue Q.2 — ouroboros-rest: [Q.2] TicketSourceProvider SPI & registry
 
+> **GitHub issue:** #139 · **Status:** 🟡 Open · **Parent epic:** #128
+
 - **Problem Statement:** Pluggability is an interface discipline: core intake
   must depend only on a contract every tracker can implement.
 - **Solution/Scope:** Define the SPI (TypeScript interface + docs):
@@ -508,6 +527,8 @@ scheduler ─▶ for source in active: provider(kind).incrementalSync ─▶ ups
 
 ### Issue Q.3 — ouroboros-rest: [Q.3] GitHub provider (first conforming plugin)
 
+> **GitHub issue:** #140 · **Status:** 🟡 Open · **Parent epic:** #128
+
 - **Problem Statement:** GitHub intake (INTAKE-K.3/K.4 behavior) must become the
   proof that the SPI works — same features, provider-shaped.
 - **Solution/Scope:** Implement `GithubTicketSourceProvider`: Octokit client,
@@ -532,6 +553,8 @@ GithubProvider: PAT → enabled repos → issues?since=cursor (PRs filtered) →
 ```
 
 ### Issue Q.4 — ouroboros-rest: [Q.4] Source management API & settings UI
+
+> **GitHub issue:** #141 · **Status:** 🟡 Open · **Parent epic:** #128
 
 - **Problem Statement:** Orgs need to add and manage sources — the pluggable
   layer's user-facing face (and the home the intake "no token" guidance state
@@ -560,6 +583,8 @@ Settings ▸ Ticket sources
 
 ### Issue Q.5 — ouroboros-rest: [Q.5] Provider conformance kit
 
+> **GitHub issue:** #142 · **Status:** 🟡 Open · **Parent epic:** #128
+
 - **Problem Statement:** "Pluggable" is a claim until a second implementation
   passes the same tests; the kit is the contract's teeth — and the on-ramp for
   T.2–T.4 and community providers.
@@ -583,16 +608,18 @@ conformance(provider) ─▶ config ✓ · sync/cursor ✓ · mapping ✓ · err
 
 ---
 
-## Epic R — Validation, Triggers & Dry-Run (`ouroboros-engine` + `ouroboros-rest`)
+## Epic R (#129) — Validation, Triggers & Dry-Run (`ouroboros-engine` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| R.1 | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
-| R.2 | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
-| R.3 | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
-| R.4 | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| R.1 | #143 | 🟡 Open | ouroboros-rest: [R.1] Trigger evaluation service | `ticket_queued` events matched to workflows via P8 predicates | mvp, workflow, rest | N (after P.3, Q.1) | Y | M | ouroboros-rest |
+| R.2 | #144 | 🟡 Open | ouroboros-engine: [R.2] Definition validation & dry-run simulator | `/v0/workflows/validate` + `/dry-run`: walk the graph, no LLM calls | mvp, workflow, engine | N (after P.2, #52) | Y | L | ouroboros-engine |
+| R.3 | #145 | 🟡 Open | ouroboros-rest: [R.3] Stage catalog endpoint | Node-type registry (config schemas, defaults) driving Add-stage & inspector | mvp, workflow, rest | N (after P.2) | Y | S | ouroboros-rest |
+| R.4 | #146 | 🟡 Open | ouroboros-rest: [R.4] Studio integration tests | Publish gate, trigger matrix, dry-run contract, catalog | mvp, workflow, rest, ci | N (after R.1–R.3) | Y | M | ouroboros-rest |
 
 ### Issue R.1 — ouroboros-rest: [R.1] Trigger evaluation service
+
+> **GitHub issue:** #143 · **Status:** 🟡 Open · **Parent epic:** #129
 
 - **Problem Statement:** "Runs when a sized issue with effort ≤ M is queued" must
   be a real evaluation: when a ticket is queued (INTAKE-M.3), which workflow
@@ -619,6 +646,8 @@ ticket_queued(#485, effort M) ─▶ predicates: standard-fix(≤M ✓) feature-
 ```
 
 ### Issue R.2 — ouroboros-engine: [R.2] Definition validation & dry-run simulator
+
+> **GitHub issue:** #144 · **Status:** 🟡 Open · **Parent epic:** #129
 
 - **Problem Statement:** Publish needs a second, execution-side opinion, and the
   head's "Dry run with issue #485" needs a real simulator — the engine must
@@ -647,6 +676,8 @@ POST /v0/workflows/dry-run {definition, ticket:#485}
 
 ### Issue R.3 — ouroboros-rest: [R.3] Stage catalog endpoint
 
+> **GitHub issue:** #145 · **Status:** 🟡 Open · **Parent epic:** #129
+
 - **Problem Statement:** "Add stage ▾" and the inspector need to know what node
   types exist, their config schemas, and their defaults — hardcoding that in the
   UI forks the DSL.
@@ -668,6 +699,8 @@ GET /catalog ─▶ [{type: llm, glyph: ◆, class: model, config_schema, defaul
 
 ### Issue R.4 — ouroboros-rest: [R.4] Studio integration tests
 
+> **GitHub issue:** #146 · **Status:** 🟡 Open · **Parent epic:** #129
+
 - **Problem Statement:** Publish gating, trigger precedence, and dry-run
   contracts are cross-service behavior needing harness coverage.
 - **Solution/Scope:** Testcontainers suites (engine stubbed per its contract):
@@ -686,7 +719,7 @@ suites: publish gate ✓ · trigger matrix ✓ · dry-run contract ✓ · catalo
 
 ---
 
-## Epic S — Studio UI (`ouroboros-ui`)
+## Epic S (#130) — Studio UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/04-workflow-builder.html`](mockups/04-workflow-builder.html) as the
@@ -694,18 +727,20 @@ design source — the `.studio` grid (220px rail / canvas / 300px inspector,
 stacking below 1100px), node/edge/inspector treatments, and the shared design
 system via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| S.1 | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
-| S.2 | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
-| S.3 | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
-| S.4 | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
-| S.5 | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
-| S.6 | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui |
-| S.7 | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
-| S.8 | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| S.1 | #147 | 🟡 Open | ouroboros-ui: [S.1] Studio route, page head & workflow rail | `(app)/workflows`: head, seg control, actions, rail with states | mvp, workflow, ui, design | N (after #41, P.3, BA-D.5) | Y | M | ouroboros-ui |
+| S.2 | #148 | 🟡 Open | ouroboros-ui: [S.2] Canvas foundation on React Flow | Themed React Flow: dot-grid, pan/zoom, controlled graph state | mvp, workflow, ui, design | N (after P.2, S.1) | Y | L | ouroboros-ui |
+| S.3 | #149 | 🟡 Open | ouroboros-ui: [S.3] Node & edge components | Five node treatments, mini/term variants, edge classes + labels | mvp, workflow, ui, design | N (after S.2) | Y | L | ouroboros-ui |
+| S.4 | #150 | 🟡 Open | ouroboros-ui: [S.4] Inspector panel | Catalog-schema-driven forms: mode, skill, prompt, routing, limits, permissions | mvp, workflow, ui, design | N (after S.3, R.3) | Y | L | ouroboros-ui |
+| S.5 | #151 | 🟡 Open | ouroboros-ui: [S.5] Canvas editing operations | Add/connect/delete stages, edge editing, auto-layout, toolbar | mvp, workflow, ui | N (after S.3, R.3) | Y | M | ouroboros-ui |
+| S.6 | #152 | 🟡 Open | ouroboros-ui: [S.6] Draft, publish & dry-run flows | Autosave, publish dialog with validation findings, dry-run overlay | mvp, workflow, ui | N (after S.4, S.5, R.2) | Y | M | ouroboros-ui |
+| S.7 | #153 | 🟡 Open | ouroboros-ui: [S.7] Studio states & guards | Empty org, paused/err rail states, read-only member view, load/error | mvp, workflow, ui, design | N (after S.1–S.6) | Y | S | ouroboros-ui |
+| S.8 | #154 | 🟡 Open | ouroboros-ui: [S.8] Studio e2e leg | Seeded parity, edit→publish→version, dry-run highlight, themes | mvp, workflow, ui, ci | N (after S.1–S.7) | Y | S | ouroboros-ui, .github |
 
 ### Issue S.1 — ouroboros-ui: [S.1] Studio route, page head & workflow rail
+
+> **GitHub issue:** #147 · **Status:** 🟡 Open · **Parent epic:** #130
 
 - **Problem Statement:** The studio frame — head (name, subline with trigger
   summary/last-edited/version/usage), segmented Visual/Code/Copilot control,
@@ -732,6 +767,8 @@ rail: ▌standard-fix 6·auto-merge │ feature-loop │ deps-refresh │ docs-l
 
 ### Issue S.2 — ouroboros-ui: [S.2] Canvas foundation on React Flow
 
+> **GitHub issue:** #148 · **Status:** 🟡 Open · **Parent epic:** #130
+
 - **Problem Statement:** The canvas needs pan/zoom/drag/selection over a
   controlled graph bound to the draft definition — the React Flow adoption
   (decision P2) happens here.
@@ -756,6 +793,8 @@ dot-grid bg · ⌥-drag pan · zoom −/100%/+ · selection → inspector
 ```
 
 ### Issue S.3 — ouroboros-ui: [S.3] Node & edge components
+
+> **GitHub issue:** #149 · **Status:** 🟡 Open · **Parent epic:** #130
 
 - **Problem Statement:** The mockup's visual language — five node treatments,
   octagonal flow nodes, mini term pill, four edge classes with labeled pills —
@@ -783,6 +822,8 @@ dot-grid bg · ⌥-drag pan · zoom −/100%/+ · selection → inspector
 ```
 
 ### Issue S.4 — ouroboros-ui: [S.4] Inspector panel
+
+> **GitHub issue:** #150 · **Status:** 🟡 Open · **Parent epic:** #130
 
 - **Problem Statement:** The sticky inspector is where stages are actually
   configured — every section of the mockup (mode, skill, prompt template,
@@ -813,6 +854,8 @@ Limits [retries 2][budget 400k] · Permissions [fixup ✓][CI ✗]   [Delete] [A
 
 ### Issue S.5 — ouroboros-ui: [S.5] Canvas editing operations
 
+> **GitHub issue:** #151 · **Status:** 🟡 Open · **Parent epic:** #130
+
 - **Problem Statement:** The toolbar promises editing: Add stage ▾, connect
   nodes, double-click-edge insertion, auto-layout — the difference between a
   viewer and a builder.
@@ -837,6 +880,8 @@ Limits [retries 2][budget 400k] · Permissions [fixup ✓][CI ✗]   [Delete] [A
 ```
 
 ### Issue S.6 — ouroboros-ui: [S.6] Draft, publish & dry-run flows
+
+> **GitHub issue:** #152 · **Status:** 🟡 Open · **Parent epic:** #130
 
 - **Problem Statement:** Edits must persist safely (autosave, conflict-aware),
   publishing must gate on validation with designed feedback, and dry-run must
@@ -864,6 +909,8 @@ dry-run(#485) ─▶ canvas highlight: trigger→analyze→decision→plan→imp
 
 ### Issue S.7 — ouroboros-ui: [S.7] Studio states & guards
 
+> **GitHub issue:** #153 · **Status:** 🟡 Open · **Parent epic:** #130
+
 - **Problem Statement:** The mockup shows a populated studio; reality includes a
   fresh org (no workflows), paused/error workflows, members without edit
   rights, and load/error conditions.
@@ -884,6 +931,8 @@ no workflows ─▶ [Start blank] [Browse templates] (admin) · member ─▶ re
 
 ### Issue S.8 — ouroboros-ui: [S.8] Studio e2e leg
 
+> **GitHub issue:** #154 · **Status:** 🟡 Open · **Parent epic:** #130
+
 - **Problem Statement:** The authoring loop (edit → publish → version → dry-run)
   spans UI, REST, engine, and DB — only e2e certifies it.
 - **Solution/Scope:** Extend #56: seeded parity (rail, canvas, inspector for
@@ -902,18 +951,20 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
 
 ---
 
-## Epic T — Execution & Extended Sources (v2 · milestone `Workflow Studio v2`)
+## Epic T (#131) — Execution & Extended Sources (v2 · milestone `Workflow Studio v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| T.1 | ouroboros-engine: [T.1] Execution engine ADR (custom vs Temporal vs Hatchet) | Decide the durable-execution strategy with explicit graduation triggers | v2, workflow, engine | Y | N | M | docs, ouroboros-engine |
-| T.2 | ouroboros-rest: [T.2] Jira ticket-source provider | REST v3/JQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | L | ouroboros-rest |
-| T.3 | ouroboros-rest: [T.3] Linear ticket-source provider | GraphQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
-| T.4 | ouroboros-rest: [T.4] GitLab ticket-source provider | REST v4 sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
-| T.5 | ouroboros-ui: [T.5] Workflow template library | Curated starter workflows; "Browse templates" made real | v2, workflow, ui | N (after P.3) | N | M | ouroboros-ui, ouroboros-rest |
-| T.6 | ouroboros-engine: [T.6] Workflow execution bridge | Interpret published definitions over #54; runs feed DASH-J.3 | v2, workflow, engine, rest | N (after T.1, #54, DASH-J.3) | N | L | ouroboros-engine, ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| T.1 | #155 | 🟡 Open | ouroboros-engine: [T.1] Execution engine ADR (custom vs Temporal vs Hatchet) | Decide the durable-execution strategy with explicit graduation triggers | v2, workflow, engine | Y | N | M | docs, ouroboros-engine |
+| T.2 | #156 | 🟡 Open | ouroboros-rest: [T.2] Jira ticket-source provider | REST v3/JQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | L | ouroboros-rest |
+| T.3 | #157 | 🟡 Open | ouroboros-rest: [T.3] Linear ticket-source provider | GraphQL sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
+| T.4 | #158 | 🟡 Open | ouroboros-rest: [T.4] GitLab ticket-source provider | REST v4 sync + webhooks behind the Q.2 SPI | v2, sources, rest | N (after Q.5) | N | M | ouroboros-rest |
+| T.5 | #159 | 🟡 Open | ouroboros-ui: [T.5] Workflow template library | Curated starter workflows; "Browse templates" made real | v2, workflow, ui | N (after P.3) | N | M | ouroboros-ui, ouroboros-rest |
+| T.6 | #160 | 🟡 Open | ouroboros-engine: [T.6] Workflow execution bridge | Interpret published definitions over #54; runs feed DASH-J.3 | v2, workflow, engine, rest | N (after T.1, #54, DASH-J.3) | N | L | ouroboros-engine, ouroboros-rest |
 
 ### Issue T.1 — ouroboros-engine: [T.1] Execution engine ADR
+
+> **GitHub issue:** #155 · **Status:** 🟡 Open · **Parent epic:** #131
 
 - **Problem Statement:** Infrastructure option 3 must become a decision with
   teeth before T.6 builds on it — custom asyncio interpreter vs Temporal vs
@@ -931,6 +982,8 @@ e2e: parity ✓ · edit→apply ✓ · publish gate ✓ · dry-run path ✓ · r
 - **Epic:** T
 
 ### Issue T.2 — ouroboros-rest: [T.2] Jira ticket-source provider
+
+> **GitHub issue:** #156 · **Status:** 🟡 Open · **Parent epic:** #131
 
 - **Problem Statement:** Jira is the largest enterprise tracker; the SPI's first
   external proof beyond GitHub-shaped data (no repos, project keys, custom
@@ -953,6 +1006,8 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
 
 ### Issue T.3 — ouroboros-rest: [T.3] Linear ticket-source provider
 
+> **GitHub issue:** #157 · **Status:** 🟡 Open · **Parent epic:** #131
+
 - **Problem Statement:** Linear is the modern-team tracker; GraphQL pagination
   and workflow-state mapping exercise SPI corners REST providers don't.
 - **Solution/Scope:** `LinearTicketSourceProvider`: GraphQL issues query with
@@ -966,6 +1021,8 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
 - **Epic:** T
 
 ### Issue T.4 — ouroboros-rest: [T.4] GitLab ticket-source provider
+
+> **GitHub issue:** #158 · **Status:** 🟡 Open · **Parent epic:** #131
 
 - **Problem Statement:** GitLab covers self-hosted enterprises; closest to
   GitHub in shape but with instance-URL config and different pagination.
@@ -981,6 +1038,8 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
 
 ### Issue T.5 — ouroboros-ui: [T.5] Workflow template library
 
+> **GitHub issue:** #159 · **Status:** 🟡 Open · **Parent epic:** #131
+
 - **Problem Statement:** "Browse templates" and the onboarding flow (mockup 13)
   promise starters; blank-canvas cold starts waste the DSL's leverage.
 - **Solution/Scope:** Curated template set (the four seeded archetypes +
@@ -994,6 +1053,8 @@ JQL "project in (…) AND updated >= cursor" ─▶ mapTicket(status-category→
 - **Epic:** T
 
 ### Issue T.6 — ouroboros-engine: [T.6] Workflow execution bridge
+
+> **GitHub issue:** #160 · **Status:** 🟡 Open · **Parent epic:** #131
 
 - **Problem Statement:** The studio authors definitions; the loop must run them
   — interpreting published versions over the #54 task skeleton, journaling into
@@ -1083,9 +1144,25 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic T — Execution & Extended Sources | 6 | 0 | 6 |
 | **Total** | **29** | **23** | **6** |
 
-Plus amendments executed at filing: #49 (`/workflows` stub retired), #56 (studio
-e2e leg), INTAKE-K.3/K.4 coordination note, INTAKE-M.3 (trigger-service call),
-INTAKE-O.3 (folded into P.4/T.6), DASH-F.1 consumers.
+GitHub parents: Epic P #127 · Epic Q #128 · Epic R #129 · Epic S #130 · Epic T #131.
+Work issues #132–#160, each filed as a sub-issue of its epic (GitHub Relationships)
+and assigned to its epic's milestone.
+
+Plus **10 amendments** — comments posted and the `workflow` / `sources` labels applied
+on 2026-08-09; no new work created:
+
+| Issue | Amendment |
+|---|---|
+| #49 | `/workflows` placeholder retired by S.1 (#147) |
+| #56 | e2e suite gains the studio leg S.8 (#154) |
+| #64 | DASH-F.1 `runs` gains P.4 (#135) as a consumer — no schema change |
+| #99 | INTAKE-K.1 `github_issues` **replaced** by the canonical ticket model Q.1 (#138) |
+| #101 | INTAKE-K.3 credentials/client **implemented SPI-first** by Q.3 (#140) |
+| #102 | INTAKE-K.4 sync **generalized** into the Q.2 provider loop (#139) + Q.3 (#140) |
+| #112 | INTAKE-M.3 queue write calls the trigger service R.1 (#143) |
+| #118 | INTAKE-N.4 assign menu reads the workflow registry P.4 (#135) |
+| #120 | INTAKE-N.6 no-token guidance retargets the sources settings surface Q.4 (#141) |
+| #124 | INTAKE-O.3 **superseded** — scope absorbed by P.1/P.4 (#132/#135); recommend closing |
 
 ## References
 
@@ -1137,20 +1214,39 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| S.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link; subnav renders as PageSubnav, sticky in-pane |
-| S.2, S.3, S.4, S.5, S.6, S.7 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| S.8 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| S.1 (#147) | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link; subnav renders as PageSubnav, sticky in-pane |
+| S.2–S.7 (#148–#153) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| S.8 (#154) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the three infrastructure
-choices (canvas P2 = React Flow, DSL P3 = canonical JSON, execution option 3
-deferred to the T.1 ADR), the pluggable-sources design (P5/P6 — canonical
-tickets + SPI, with the filing-time coordination call on intake Epic K), and the
-MVP boundary (authoring/validation/dry-run in, execution out — P4). Once
-validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_04_WORKFLOW_BUILDER.md`) creates the `workflow` and `sources`
-labels **and the `Workflow Studio MVP` / `Workflow Studio v2` milestones**, files
-the 29 issues with epic parents, relationships, and milestone assignments, and
-posts the amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing: the
+`workflow` and `sources` labels, the **`Workflow Studio MVP`** and **`Workflow Studio
+v2`** milestones, the five epic parents (#127–#131) and twenty-nine work issues
+(#132–#160) with epic relationships, issue types and milestone assignments, plus the
+ten amendment comments listed above.
+
+**The filing-time coordination call was made and recorded.** The intake roadmap's
+Epic K is filed (#99–#104) but **unbuilt** — no migration or service code exists in
+the repository. Therefore:
+
+- **Q.1 (#138) replaces #99** rather than generalizing a shipped `github_issues` table.
+- **Q.3 (#140) implements #101/#102 SPI-first** rather than refactoring built code.
+
+Coordination comments are posted on all three intake issues; none of their acceptance
+criteria are dropped — they are re-asserted through the SPI and enforced by the
+conformance kit (#142).
+
+The three infrastructure choices stand as validated: canvas = React Flow (P2,
+implemented in #148 with its bundle cost recorded), DSL = canonical JSON document (P3,
+#133), and execution deferred to the T.1 ADR (#155) rather than pre-decided.
+
+Standing prerequisites, still unfiled: the **BetterAuth roadmap**
+([`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`](ROADMAP_LOGIN_PAGE_BETTERAUTH.md)) — BA-B.3,
+BA-C.3, BA-C.4 and BA-D.5 are referenced by name throughout. The dashboard roadmap is
+filed (#59–#93) and supplies DASH-F.1 (#64) for P.4's statistics and DASH-J.3 (#91)
+for T.6's journaling.
+
+Execution follows the work order above: begin with **#132** ([P.1] workflow schema)
+and **#138** ([Q.1] canonical ticket model) — the two parallelizable entry points of
+Phase 1.
