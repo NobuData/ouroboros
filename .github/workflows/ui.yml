@@ -1,0 +1,43 @@
+name: ouroboros-ui · ci
+
+# Path-filtered per issue #11: this runs only when the product UI, the pipeline it
+# shares with ouroboros-rest, or this file itself changes. A pull request that touches
+# only another module never queues it.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-ui/**"
+      - ".github/actions/node-module/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/ui.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-ui/**"
+      - ".github/actions/node-module/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/ui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job name is the status check name — `ci/ui`, matching `ci/rest`, `ci/engine`
+  # and `ci/db`. Renaming it renames what branch protection is configured against.
+  ci:
+    name: ci/ui
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/node-module
+        with:
+          module: ouroboros-ui
+          scaffolded-by: "#39"

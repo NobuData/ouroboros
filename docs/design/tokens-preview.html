@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ouroboros — design tokens preview (#16)</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* ============================================================
+   Preview-only component layer.
+
+   Its rule: not one colour literal. Every colour is a var(--token) from
+   tokens.css — that is the acceptance criterion for #16 made visible, and what
+   scripts/verify-tokens.sh asserts against this file. Type, rhythm and radii
+   come from the tokens too; the few remaining literal lengths are component
+   geometry the mockups fix (the 224px rail, the switch, the meter's 6px).
+
+   This is NOT the product's component layer. The real one is #40 (global
+   styles) and #46 (primitives); the markup below borrows the mockups' anatomy
+   only so the palette can be judged on something that looks like the product.
+   ============================================================ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--f-ui);
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+  color: var(--ink);
+  background:
+    radial-gradient(1100px 500px at 78% -10%, var(--accent-tint), transparent 60%),
+    radial-gradient(var(--grid-dot) 1px, transparent 1px) 0 0 / 26px 26px,
+    var(--ground);
+  min-height: 100vh;
+}
+
+::selection { background: var(--accent-select); }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-xs); }
+
+/* ---------- shell ---------- */
+
+.topbar {
+  display: flex; align-items: center; gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-7);
+  background: var(--scrim);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+.wordmark {
+  font-family: var(--f-disp); font-weight: 700; font-size: var(--t-md);
+  letter-spacing: var(--tr-wider);
+}
+.wordmark span { color: var(--accent); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-6); border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill); background: var(--surface);
+  font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-dim);
+}
+.chip .org { color: var(--ink-faint); }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--sp-4); }
+
+.live-pill {
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5); border-radius: var(--r-pill);
+  border: 1px solid var(--accent-line); background: var(--accent-tint);
+  color: var(--accent); font-family: var(--f-mono); font-size: var(--t-xs);
+}
+
+.avatar {
+  width: var(--sp-11); height: var(--sp-11); border-radius: var(--r-round);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--f-disp); font-size: var(--t-xs); font-weight: 600;
+  background: var(--accent-panel); color: var(--accent-panel-ink);
+  border: 1px solid var(--line-strong);
+}
+
+.shell { display: flex; }
+
+.sidebar {
+  width: 224px; flex: none; display: flex; flex-direction: column; gap: var(--sp-1);
+  padding: var(--sp-6) var(--sp-5); border-right: 1px solid var(--line);
+}
+.sidebar a {
+  display: flex; align-items: center; gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-6); border-radius: var(--r-md);
+  color: var(--ink-mut); font-size: var(--t-sm); font-weight: 500;
+}
+.sidebar a.active {
+  color: var(--accent); background: var(--accent-tint);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.sidebar .badge {
+  margin-left: auto; padding: 0 var(--sp-3); border-radius: var(--r-pill);
+  font-family: var(--f-mono); font-size: var(--t-2xs);
+  color: var(--warn); background: var(--warn-tint); border: 1px solid var(--warn-line);
+}
+
+.content { flex: 1; min-width: 0; padding: var(--sp-10) var(--sp-10) var(--sp-12); }
+
+/* ---------- page head ---------- */
+
+.eyebrow {
+  font-family: var(--f-mono); font-size: var(--t-2xs); letter-spacing: var(--tr-widest);
+  text-transform: uppercase; color: var(--accent); margin-bottom: var(--sp-3);
+}
+h1 {
+  font-family: var(--f-disp); font-size: var(--t-2xl); font-weight: 600;
+  line-height: var(--lh-snug); letter-spacing: var(--tr-tight);
+}
+.sub { color: var(--ink-mut); margin-top: var(--sp-2); max-width: 64ch; }
+h2 {
+  font-family: var(--f-disp); font-size: var(--t-lg); font-weight: 600;
+  letter-spacing: var(--tr-wide); margin: var(--sp-11) 0 var(--sp-6);
+}
+
+/* ---------- cards ---------- */
+
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--sp-8); }
+.c-3 { grid-column: span 3; } .c-4 { grid-column: span 4; }
+.c-6 { grid-column: span 6; } .c-8 { grid-column: span 8; } .c-12 { grid-column: span 12; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: var(--sp-9);
+}
+.card.inset { background: var(--inset); }
+.card-title {
+  font-family: var(--f-disp); font-size: var(--t-sm); font-weight: 600;
+  letter-spacing: var(--tr-wide); margin-bottom: var(--sp-6);
+}
+.card-link { font-size: var(--t-xs); color: var(--accent); margin-left: auto; }
+
+/* ---------- stats ---------- */
+
+.stat { display: flex; flex-direction: column; gap: var(--sp-2); }
+.stat .label {
+  font-family: var(--f-mono); font-size: var(--t-2xs); letter-spacing: var(--tr-wider);
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.stat .value {
+  font-family: var(--f-disp); font-size: var(--t-3xl); font-weight: 600;
+  line-height: var(--lh-tight); font-variant-numeric: tabular-nums;
+}
+.stat .delta { font-size: var(--t-xs); color: var(--ink-mut); }
+.stat .delta.up { color: var(--ok); }
+.stat .delta.down { color: var(--err); }
+
+/* ---------- buttons ---------- */
+
+.btn {
+  display: inline-flex; align-items: center; gap: var(--sp-4);
+  font-family: var(--f-ui); font-size: var(--t-sm); font-weight: 600;
+  padding: var(--sp-4) var(--sp-8); border-radius: var(--r-md);
+  border: 1px solid var(--line-control); background: var(--raised); color: var(--ink);
+  cursor: pointer;
+}
+.btn.primary {
+  background: linear-gradient(180deg, var(--accent-lift), var(--accent-deep));
+  color: var(--accent-ink); border-color: transparent;
+  box-shadow: 0 0 18px -2px var(--accent-glow);
+}
+.btn.ghost { background: transparent; border-color: var(--line-strong); color: var(--ink-dim); }
+.btn.danger { color: var(--err); border-color: var(--err-line); background: var(--err-tint); }
+
+/* ---------- pills, tags, dots ---------- */
+
+.pill {
+  display: inline-flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-5); border-radius: var(--r-pill);
+  font-size: var(--t-xs); font-weight: 500;
+  border: 1px solid var(--line-strong); color: var(--ink-dim); background: var(--raised);
+}
+.pill.run { color: var(--accent); border-color: var(--accent-line); background: var(--accent-tint); }
+.pill.ok { color: var(--ok); border-color: var(--ok-line); background: var(--ok-tint); }
+.pill.warn { color: var(--warn); border-color: var(--warn-line); background: var(--warn-tint); }
+.pill.err { color: var(--err); border-color: var(--err-line); background: var(--err-tint); }
+.pill.model {
+  color: var(--model); border-color: var(--model-line); background: var(--model-tint);
+  font-family: var(--f-mono); font-size: var(--t-2xs);
+}
+
+.tag {
+  display: inline-flex; padding: var(--sp-1) var(--sp-4); border-radius: var(--r-sm);
+  font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--ink-mut);
+  background: var(--raised); border: 1px solid var(--line);
+}
+.kbd {
+  font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--ink-mut);
+  border: 1px solid var(--line-strong); border-bottom-width: 2px;
+  border-radius: var(--r-xs); padding: 0 var(--sp-3); background: var(--raised);
+}
+
+.dot { width: var(--sp-4); height: var(--sp-4); border-radius: var(--r-round); background: var(--accent); }
+.dot.ok { background: var(--ok); }
+.dot.warn { background: var(--warn); }
+.dot.err { background: var(--err); }
+.dot.idle { background: var(--ink-faint); }
+
+/* ---------- table ---------- */
+
+table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+th {
+  text-align: left; font-family: var(--f-mono); font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider); text-transform: uppercase; color: var(--ink-faint);
+  font-weight: 500; padding: var(--sp-4) var(--sp-6); border-bottom: 1px solid var(--line);
+}
+td { padding: var(--sp-5) var(--sp-6); border-bottom: 1px solid var(--line); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--accent-wash); }
+td.mono { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--ink-dim); }
+
+/* ---------- forms ---------- */
+
+.field { display: flex; flex-direction: column; gap: var(--sp-3); }
+.field label { font-size: var(--t-xs); font-weight: 600; color: var(--ink-dim); }
+.field .hint { font-size: var(--t-xs); color: var(--ink-faint); }
+.input {
+  font-family: var(--f-ui); font-size: var(--t-md); color: var(--ink);
+  background: var(--inset); border: 1px solid var(--line-control);
+  border-radius: var(--r-md); padding: var(--sp-4) var(--sp-6); width: 100%;
+}
+.input::placeholder { color: var(--ink-faint); }
+.input.focused { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+
+.switch {
+  position: relative; width: 38px; height: 21px; border-radius: var(--r-pill);
+  background: var(--line-control); border: none; display: inline-block;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 3px; width: 16px; height: 16px;
+  border-radius: var(--r-round); background: var(--ink-mut);
+}
+.switch.on { background: var(--accent-deep); }
+.switch.on::after { left: 19px; background: var(--accent-panel-ink); }
+
+/* ---------- code, meters ---------- */
+
+.code {
+  font-family: var(--f-mono); font-size: var(--t-xs); line-height: var(--lh-loose);
+  background: var(--inset); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: var(--sp-7) var(--sp-8);
+  color: var(--ink-dim); white-space: pre; overflow-x: auto;
+}
+.c-kw { color: var(--accent); }
+.c-str { color: var(--ok); }
+.c-fn { color: var(--model); }
+.c-cm { color: var(--ink-faint); font-style: italic; }
+.c-num { color: var(--warn); }
+
+.meter { height: 6px; border-radius: var(--r-xs); background: var(--raised); overflow: hidden; }
+.meter > span {
+  display: block; height: 100%; border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+}
+.meter.ok > span { background: var(--ok); }
+.meter.warn > span { background: var(--warn); }
+.meter.err > span { background: var(--err); }
+
+/* ---------- swatches ---------- */
+
+.swatches { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
+.swatch { width: 92px; }
+.swatch i {
+  display: block; height: var(--sp-11); border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+}
+.swatch b {
+  display: block; font-family: var(--f-mono); font-size: var(--t-2xs);
+  color: var(--ink-mut); margin-top: var(--sp-3); font-weight: 500;
+}
+.sw-ground-deep i { background: var(--ground-deep); }
+.sw-ground i { background: var(--ground); }
+.sw-surface i { background: var(--surface); }
+.sw-raised i { background: var(--raised); }
+.sw-inset i { background: var(--inset); }
+.sw-accent i { background: var(--accent); }
+.sw-accent-lift i { background: var(--accent-lift); }
+.sw-accent-deep i { background: var(--accent-deep); }
+.sw-accent-panel i { background: var(--accent-panel); }
+.sw-ok i { background: var(--ok); }
+.sw-warn i { background: var(--warn); }
+.sw-err i { background: var(--err); }
+.sw-model i { background: var(--model); }
+
+/* ---------- misc ---------- */
+
+.row { display: flex; align-items: center; gap: var(--sp-5); flex-wrap: wrap; }
+.row.head { margin-bottom: var(--sp-6); }
+.col { display: flex; flex-direction: column; gap: var(--sp-5); }
+.muted { color: var(--ink-mut); }
+.faint { color: var(--ink-faint); }
+.small { font-size: var(--t-xs); }
+.divider { height: 1px; background: var(--line); border: none; margin: var(--sp-7) 0; }
+
+.foot {
+  padding: var(--sp-8) var(--sp-10);
+  color: var(--ink-faint); font-family: var(--f-mono); font-size: var(--t-2xs);
+}
+
+@media (max-width: 1100px) {
+  .c-3, .c-4 { grid-column: span 6; }
+  .c-6, .c-8 { grid-column: span 12; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="wordmark">OURO<span>BOROS</span></span>
+  <span class="chip">acme-corp <span class="org">· platform</span></span>
+  <div class="topbar-right">
+    <span class="live-pill"><span class="dot"></span> 3 loops live</span>
+    <button class="btn ghost" id="theme-toggle" type="button">Theme: system</button>
+    <span class="avatar">KS</span>
+  </div>
+</header>
+
+<div class="shell">
+  <nav class="sidebar">
+    <a href="#" class="active">◈ Dashboard</a>
+    <a href="#">▤ Issues</a>
+    <a href="#">⌬ Workflows</a>
+    <a href="#">⚙ Build farm</a>
+    <a href="#">◎ Models</a>
+    <a href="#">✦ Needs you <span class="badge">4</span></a>
+    <a href="#">☰ Settings</a>
+  </nav>
+
+  <main class="content">
+    <p class="eyebrow">Design tokens · #16</p>
+    <h1>Both palettes, one sheet</h1>
+    <p class="sub">
+      Every colour on this page comes from <code>tokens.css</code>. Nothing in the
+      preview stylesheet is a literal — switch the theme and the same markup renders
+      the other palette.
+    </p>
+
+    <h2>Surfaces and accents</h2>
+    <div class="card">
+      <div class="swatches">
+        <span class="swatch sw-ground-deep"><i></i><b>ground-deep</b></span>
+        <span class="swatch sw-ground"><i></i><b>ground</b></span>
+        <span class="swatch sw-surface"><i></i><b>surface</b></span>
+        <span class="swatch sw-raised"><i></i><b>raised</b></span>
+        <span class="swatch sw-inset"><i></i><b>inset</b></span>
+        <span class="swatch sw-accent"><i></i><b>accent</b></span>
+        <span class="swatch sw-accent-lift"><i></i><b>accent-lift</b></span>
+        <span class="swatch sw-accent-deep"><i></i><b>accent-deep</b></span>
+        <span class="swatch sw-accent-panel"><i></i><b>accent-panel</b></span>
+        <span class="swatch sw-ok"><i></i><b>ok</b></span>
+        <span class="swatch sw-warn"><i></i><b>warn</b></span>
+        <span class="swatch sw-err"><i></i><b>err</b></span>
+        <span class="swatch sw-model"><i></i><b>model</b></span>
+      </div>
+    </div>
+
+    <h2>Chrome</h2>
+    <div class="grid">
+      <div class="card c-3 stat">
+        <span class="label">Loops closed</span>
+        <span class="value">1,284</span>
+        <span class="delta up">▲ 12% this week</span>
+      </div>
+      <div class="card c-3 stat">
+        <span class="label">Mean cycle</span>
+        <span class="value">6m 12s</span>
+        <span class="delta down">▼ 4% slower</span>
+      </div>
+      <div class="card c-3 stat">
+        <span class="label">Awaiting review</span>
+        <span class="value">7</span>
+        <span class="delta">unchanged</span>
+      </div>
+      <div class="card c-3 stat">
+        <span class="label">Spend today</span>
+        <span class="value">$42</span>
+        <span class="delta muted">of $200 budget</span>
+      </div>
+
+      <div class="card c-8">
+        <div class="row head">
+          <span class="card-title">RECENT RUNS</span>
+          <a href="#" class="card-link">All runs →</a>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Run</th><th>Issue</th><th>Model</th><th>State</th><th>Duration</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">run_8f21</td><td>Split brand sheet</td>
+              <td><span class="pill model">opus-5</span></td>
+              <td><span class="pill ok"><span class="dot ok"></span> merged</span></td>
+              <td class="mono">4m 02s</td>
+            </tr>
+            <tr>
+              <td class="mono">run_8f22</td><td>Design tokens</td>
+              <td><span class="pill model">opus-5</span></td>
+              <td><span class="pill run"><span class="dot"></span> running</span></td>
+              <td class="mono">1m 47s</td>
+            </tr>
+            <tr>
+              <td class="mono">run_8f23</td><td>Theme engine</td>
+              <td><span class="pill model">sonnet-5</span></td>
+              <td><span class="pill warn"><span class="dot warn"></span> needs you</span></td>
+              <td class="mono">—</td>
+            </tr>
+            <tr>
+              <td class="mono">run_8f24</td><td>Favicon set</td>
+              <td><span class="pill model">haiku-4.5</span></td>
+              <td><span class="pill err"><span class="dot err"></span> failed</span></td>
+              <td class="mono">0m 51s</td>
+            </tr>
+            <tr>
+              <td class="mono">run_8f25</td><td>Token adoption</td>
+              <td><span class="pill model">opus-5</span></td>
+              <td><span class="pill"><span class="dot idle"></span> queued</span></td>
+              <td class="mono">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card c-4 col">
+        <span class="card-title">CONTROLS</span>
+        <div class="row">
+          <button class="btn primary" type="button">Run workflow</button>
+          <button class="btn" type="button">Plan</button>
+        </div>
+        <div class="row">
+          <button class="btn ghost" type="button">Dry run</button>
+          <button class="btn danger" type="button">Cancel</button>
+        </div>
+        <hr class="divider">
+        <div class="field">
+          <label for="repo">Repository</label>
+          <input class="input focused" id="repo" value="NobuData/ouroboros">
+          <span class="hint">Focus ring and control boundary, both AA.</span>
+        </div>
+        <div class="field">
+          <label for="branch">Branch</label>
+          <input class="input" id="branch" placeholder="ticket-16">
+        </div>
+        <div class="row small">
+          <span class="switch on"></span> <span class="muted">Auto-merge on green</span>
+        </div>
+        <div class="row small">
+          <span class="switch"></span> <span class="muted">Notify on failure</span>
+        </div>
+        <hr class="divider">
+        <div class="row small faint">Press <span class="kbd">⌘K</span> to search</div>
+        <div class="row"><span class="tag">mvp</span><span class="tag">design</span><span class="tag">ui</span></div>
+      </div>
+
+      <div class="card c-6 col">
+        <span class="card-title">BUILD FARM</span>
+        <div class="col small">
+          <div class="row"><span class="muted">runner-01</span><span class="faint">62%</span></div>
+          <div class="meter"><span style="width: 62%"></span></div>
+          <div class="row"><span class="muted">runner-02</span><span class="faint">88%</span></div>
+          <div class="meter warn"><span style="width: 88%"></span></div>
+          <div class="row"><span class="muted">runner-03</span><span class="faint">31%</span></div>
+          <div class="meter ok"><span style="width: 31%"></span></div>
+          <div class="row"><span class="muted">runner-04</span><span class="faint">97%</span></div>
+          <div class="meter err"><span style="width: 97%"></span></div>
+        </div>
+      </div>
+
+      <div class="card c-6">
+        <span class="card-title">WORKFLOW</span>
+        <div class="code"><span class="c-cm"># derive the palette, then hold it to AA</span>
+<span class="c-kw">def</span> <span class="c-fn">contrast</span>(fg, bg):
+    <span class="c-kw">return</span> (lum(fg) + <span class="c-num">0.05</span>) / (lum(bg) + <span class="c-num">0.05</span>)
+
+assert contrast(<span class="c-str">"--ink"</span>, <span class="c-str">"--ground"</span>) &gt;= <span class="c-num">4.5</span></div>
+      </div>
+
+      <div class="card inset c-12">
+        <span class="card-title">INSET / WELL</span>
+        <p class="small muted">
+          The recessed plane: canvases, wells and code sit here. Body ink, dim ink,
+          muted ink and faint ink all clear 4.5:1 on it in both palettes.
+        </p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<footer class="foot">
+  docs/design/tokens-preview.html · tokens from docs/design/tokens.css · issue #16
+</footer>
+
+<script>
+/* The preview's own three-state toggle. Not the product's theme engine — that is
+   #17, which adds first-paint stamping and persistence. `?theme=light|dark` is how
+   scripts/render-token-preview.sh asks for one palette per screenshot. */
+(function () {
+  var root = document.documentElement;
+  var button = document.getElementById("theme-toggle");
+  var states = ["system", "light", "dark"];
+  var requested = new URLSearchParams(location.search).get("theme");
+  var index = states.indexOf(requested) === -1 ? 0 : states.indexOf(requested);
+
+  function apply() {
+    var state = states[index];
+    if (state === "system") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", state);
+    }
+    button.textContent = "Theme: " + state;
+  }
+
+  button.addEventListener("click", function () {
+    index = (index + 1) % states.length;
+    apply();
+  });
+
+  apply();
+})();
+</script>
+
+</body>
+</html>

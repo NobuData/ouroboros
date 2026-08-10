@@ -1,0 +1,85 @@
+name: ouroboros-engine · ci
+
+# Path-filtered per issue #11: this runs only when the Python backend, the scaffold gate
+# it shares with the TypeScript modules, or this file itself changes.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-engine/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/engine.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-engine/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Python pin for the one Python module, kept here rather than in a step so it is
+  # findable — docs/CONVENTIONS.md § 3. Its TypeScript counterpart is the `node-version`
+  # default in .github/actions/node-module.
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # The job name is the status check name — `ci/engine`. See ui.yml.
+  ci:
+    name: ci/engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect the scaffold
+        id: gate
+        uses: ./.github/actions/scaffold-gate
+        with:
+          module: ouroboros-engine
+          manifest: pyproject.toml
+          scaffolded-by: "#50"
+
+      # Pinned to the exact release: setup-uv publishes no floating major past v7, and a
+      # `uses:` that does not resolve fails the job while it is still being set up —
+      # before the gate below has a chance to skip anything.
+      - name: Install uv and Python ${{ env.PYTHON_VERSION }}
+        if: steps.gate.outputs.scaffolded == 'true'
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # --locked is the uv equivalent of `yarn install --immutable`: a uv.lock that has
+      # drifted from pyproject.toml fails the run instead of being silently refreshed.
+      - name: Install dependencies
+        if: steps.gate.outputs.scaffolded == 'true'
+        shell: bash
+        working-directory: ouroboros-engine
+        run: uv sync --locked
+
+      - name: Lint
+        if: steps.gate.outputs.scaffolded == 'true'
+        shell: bash
+        working-directory: ouroboros-engine
+        run: uv run ruff check .
+
+      # ruff both lints and formats (docs/CONVENTIONS.md § 6), and only the formatter
+      # catches formatting — `ruff check` passes happily on unformatted code.
+      - name: Format
+        if: steps.gate.outputs.scaffolded == 'true'
+        shell: bash
+        working-directory: ouroboros-engine
+        run: uv run ruff format --check .
+
+      - name: Test
+        if: steps.gate.outputs.scaffolded == 'true'
+        shell: bash
+        working-directory: ouroboros-engine
+        run: uv run pytest

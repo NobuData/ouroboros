@@ -1,0 +1,112 @@
+# Ouroboros — repo-wide editor conventions.
+# One source of truth for indentation, encoding, and line endings across every
+# module. Per-language formatters (ESLint/Prettier for TS, ruff for Python) must
+# agree with these values rather than override them.
+# https://editorconfig.org
+
+root = true
+
+# ---------------------------------------------------------------------------
+# Defaults — apply to every file unless a more specific section overrides them.
+#
+# Line length is deliberately NOT set here. It is a linter's concern (ESLint for
+# TypeScript, ruff for Python), and declaring it globally would flag prose,
+# tables and generated markup that cannot meaningfully wrap. It is declared
+# below only for the languages whose formatters actually enforce it.
+# ---------------------------------------------------------------------------
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# ---------------------------------------------------------------------------
+# TypeScript / JavaScript — ouroboros-ui, ouroboros-rest, ouroboros-web.
+# Double quotes match ouroboros-web, the reference implementation.
+# ---------------------------------------------------------------------------
+[*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}]
+indent_size = 2
+quote_type = double
+
+# ---------------------------------------------------------------------------
+# Python — ouroboros-engine. 4-space indent (PEP 8), 88 columns (ruff default).
+# ---------------------------------------------------------------------------
+[*.{py,pyi}]
+indent_size = 4
+max_line_length = 88
+
+# ---------------------------------------------------------------------------
+# SQL — ouroboros-db Flyway migrations.
+# ---------------------------------------------------------------------------
+[*.sql]
+indent_size = 2
+max_line_length = 100
+
+# ---------------------------------------------------------------------------
+# Markdown — docs, roadmaps, module READMEs.
+# Two exceptions to the defaults, both because Markdown is whitespace-semantic:
+#   * trailing whitespace is significant (two spaces = a hard line break);
+#   * indentation is dictated by list markers ("1. " needs three), not a grid.
+# Prose wraps at ~90 columns by review convention; tables and links are exempt,
+# which is why no machine-enforced maximum is set.
+# ---------------------------------------------------------------------------
+[*.{md,mdx}]
+indent_size = unset
+trim_trailing_whitespace = false
+
+# ---------------------------------------------------------------------------
+# YAML — GitHub Actions workflows, docker-compose, issue templates.
+# YAML forbids tabs outright; 2-space indent is the ecosystem norm.
+# ---------------------------------------------------------------------------
+[*.{yml,yaml}]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# Data & config formats.
+# ---------------------------------------------------------------------------
+[*.{json,jsonc,json5}]
+indent_size = 2
+
+[*.toml]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# Web assets (mockups, UI styles).
+# ---------------------------------------------------------------------------
+[*.{css,scss,html,svg}]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# Shell scripts — ouroboros-db/scripts, repo tooling.
+# ---------------------------------------------------------------------------
+[*.{sh,bash}]
+indent_size = 2
+
+# ---------------------------------------------------------------------------
+# Containers & build files.
+# ---------------------------------------------------------------------------
+[{Dockerfile,Dockerfile.*,*.dockerfile}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+# ---------------------------------------------------------------------------
+# Verbatim third-party text — reproduced exactly as published, never reformatted.
+# ---------------------------------------------------------------------------
+[LICENSE]
+indent_size = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+
+# ---------------------------------------------------------------------------
+# Lockfiles (yarn.lock, uv.lock) — machine-generated. Every rule is unset so an
+# editor cannot introduce diff noise the package manager would immediately undo.
+# ---------------------------------------------------------------------------
+[*.lock]
+indent_size = unset
+indent_style = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset

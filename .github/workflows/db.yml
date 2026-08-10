@@ -1,0 +1,51 @@
+name: ouroboros-db · ci
+
+# Path-filtered per issue #11. The filter is wider than `ouroboros-db/**` because the
+# check below asserts the whole data tier: the migrations, the compose stack that
+# applies them, and the environment template that configures both. A change to any of
+# the three can break it, so a change to any of the three has to run it.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-db/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - ".github/workflows/db.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-db/**"
+      - "docker-compose.yml"
+      - ".env.example"
+      - ".github/workflows/db.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-db-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job name is the status check name — `ci/db`. See ui.yml.
+  ci:
+    name: ci/db
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # What can be asserted without a database: migration naming (the rule Flyway's own
+      # -validateMigrationNaming enforces at run time), the pinned images and
+      # healthcheck gate the stack depends on, credential hygiene, and that
+      # .env.example still declares every variable anything in the repo reads.
+      #
+      # It needs no Docker daemon and no network, so it is seconds rather than minutes.
+      # The live pass — postgres:17-alpine service container, `flyway migrate` against a
+      # clean database, `flyway validate`, then tests/constraints.sql — is issue #24,
+      # which adds its steps to this job once the baseline schema (#19–#22) exists to
+      # migrate. This workflow is the slot it lands in.
+      - name: Migration & data-tier contract
+        run: scripts/verify-dev-env.sh

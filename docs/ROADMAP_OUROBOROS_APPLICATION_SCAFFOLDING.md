@@ -26,8 +26,9 @@ Surveyed 2026-08-08:
   column in every table below. No duplication risk.
 - **GitHub labels:** at survey time only the nine GitHub defaults (`bug`, `enhancement`,
   `documentation`, …). The roadmap set — `mvp`, `v2`, `ui`, `rest`, `db`, `engine`,
-  `infra`, `design`, `ci`, `epic` — has since been created and applied; what remains in
-  issue 1.2 (#9) is the committed label definitions and the issue/PR templates.
+  `infra`, `design`, `ci`, `epic` — has since been created and applied, and issue 1.2
+  (#9) has committed the whole set to `.github/labels.yml` alongside the issue and pull
+  request templates.
 - **`ouroboros-web/`** — the *marketing* site (Next.js, deployed at ouroboros.build).
   Out of scope for this roadmap; nothing here modifies it. Its existing
   `docker-publish.yml` workflow is the pattern issue 7.3 extends.
@@ -123,8 +124,9 @@ one of its sub-issues (GitHub Relationships).
 Issue naming convention: `<project>: [<epic>.<issue>] <title>`, e.g.
 `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains`.
 
-Label set (issue 1.2 / #9 — **already created in the repo**): `mvp`, `v2`, `ui`, `rest`,
-`db`, `engine`, `infra`, `design`, `ci`, plus `epic` for the parent issues and GitHub's
+Label set (issue 1.2 / #9 — **created in the repo and committed to
+[`.github/labels.yml`](../.github/labels.yml)**): `mvp`, `v2`, `ui`, `rest`, `db`,
+`engine`, `infra`, `design`, `ci`, plus `epic` for the parent issues and GitHub's
 existing `documentation` where apt.
 
 Issue types: **Feature** for capability-delivering work and every epic parent, **Task**
@@ -138,16 +140,21 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 1.1 | #8 | 🟡 Open | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
-| 1.2 | #9 | 🟡 Open | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
-| 1.3 | #10 | 🟡 Open | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
-| 1.4 | #11 | 🟡 Open | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
-| 1.5 | #12 | 🟡 Open | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
+| 1.1 | #8 | 🟢 Done | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
+| 1.2 | #9 | 🟢 Done | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
+| 1.3 | #10 | 🟢 Done | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
+| 1.4 | #11 | 🟢 Done | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
+| 1.5 | #12 | 🟢 Done | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
 | 1.6 | #13 | 🟡 Open | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
 
 ### Issue 1.1 — ouroboros: [1.1] Monorepo layout & module scaffolding conventions
 
-> **GitHub issue:** #8 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #8 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: the four module directories with contract READMEs, root `README.md`
+> (module map + architecture sketch), root `.editorconfig` and `.gitignore`, the shared
+> conventions doc [`CONVENTIONS.md`](CONVENTIONS.md), and `scripts/verify-layout.sh`
+> which asserts the layout in CI. `ouroboros-web` untouched.
 
 - **Problem Statement:** The repo holds only mockups and the marketing site. The four
   application modules need homes with consistent conventions before any scaffolding
@@ -180,7 +187,14 @@ ouroboros/
 
 ### Issue 1.2 — ouroboros: [1.2] GitHub labels & issue/PR templates
 
-> **GitHub issue:** #9 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #9 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: [`.github/labels.yml`](../.github/labels.yml) committing all 35 labels this
+> repository defines, the `feature`/`bug` YAML issue forms with their `config.yml`, and
+> [`.github/pull_request_template.md`](../.github/pull_request_template.md). Applying the
+> file is `scripts/sync-labels.sh` (idempotent, never deletes); the `.github` contract is
+> asserted by `scripts/verify-github-config.sh` and the tooling is covered by
+> `scripts/run-tests.sh`.
 
 - **Problem Statement:** Only GitHub's default labels exist; the roadmap's `mvp`/`v2`
   scoping and module routing have no labels to attach to.
@@ -204,10 +218,15 @@ labels:  [mvp] [v2]   [ui] [rest] [db] [engine]   [infra] [design] [ci]
 
 ### Issue 1.3 — ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway)
 
-> **GitHub issue:** #10 · **Status:** 🟡 Open · **Parent epic:** #1
-
-- **Problem Statement:** REST and engine development need a real PostgreSQL with the
-  current schema, reproducibly, without manual setup.
+> **GitHub issue:** #10 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: repo-root `docker-compose.yml` (PostgreSQL 17 on a healthcheck and a named
+> volume, plus a Flyway 11 pass gated on `service_healthy`), `.env.example` covering
+> every `OURO_*` variable with development defaults, `ouroboros-db/migrations/` with
+> `V000__bootstrap.sql` so the first `up` leaves a readable history, and
+> `scripts/verify-dev-env.sh` with its tests. Measured on a clean volume: `up` →
+> migrated in 7s, `down -v` → `up` reapplies from scratch. Issue 3.1 (#19) still owns
+> `flyway.toml` and the migration wrapper scripts; the tenancy tables keep V001+.
 - **Solution/Scope:** Root `docker-compose.yml` (dev profile): `postgres:17-alpine`
   with healthcheck + named volume, and a `flyway` service that runs
   `ouroboros-db/migrations` against it on `up`. `.env.example` with all `OURO_*`
@@ -230,7 +249,18 @@ docker compose up
 
 ### Issue 1.4 — ouroboros: [1.4] CI pipelines per module (path-filtered)
 
-> **GitHub issue:** #11 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #11 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: `.github/workflows/{ui,rest,engine,db}.yml`, each filtered to its own
+> module and reporting as `ci/ui` / `ci/rest` / `ci/engine` / `ci/db`;
+> `.github/actions/node-module` holding the TypeScript pipeline both TS modules run and
+> the single Node 24 pin; `.github/actions/scaffold-gate`, which turns a module's checks
+> on by itself when its manifest lands, so the three unscaffolded modules skip with a
+> notice instead of failing; and `scripts/verify-ci.sh` with its tests, which proves the
+> routing table from the checkout — 106 checks, including that a change under
+> `ouroboros-ui/` queues `ci/ui` and nothing else. `ci/db` runs the data-tier contract
+> that needs no database; issue 3.6 (#24) adds the live `migrate` → `validate` →
+> `constraints.sql` pass to that same job.
 
 - **Problem Statement:** Four modules with three toolchains in one repo; unfiltered CI
   would run everything on every PR — slow and noisy.
@@ -258,7 +288,18 @@ PR paths ──┬─ ouroboros-ui/**     ─▶ ci/ui     (lint·type·test·bu
 
 ### Issue 1.5 — ouroboros: [1.5] Architecture documentation
 
-> **GitHub issue:** #12 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #12 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: [`ARCHITECTURE.md`](ARCHITECTURE.md) — the system diagram, the module
+> contracts (each marked *running* or *specified* so the document matches the checkout
+> rather than the plan), the request paths, the auth/session/tenant-context flow, both
+> API contracts including the OpenAPI generation chain (D4) and the engine's `/v0`
+> contract, the port map, the full `OURO_*` registry, the environments, the four
+> invariants with what breaking each looks like, and the trust boundaries. Kept true by
+> `scripts/verify-architecture.sh` with its tests: sections, mermaid fences, port map,
+> invariants, every relative link and in-document anchor, and — the acceptance criterion
+> — that the registry and `.env.example` declare exactly the same variables, checked in
+> both directions.
 
 - **Problem Statement:** The architecture (who talks to whom, ports, env conventions,
   tenancy boundary) lives only in this roadmap; it needs a durable home that outlives
@@ -302,15 +343,26 @@ v2?:  workspace runner · task graph · shared cache (faster, one more tool)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 2.1 | #14 | 🟡 Open | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
+| 2.1 | #14 | 🟢 Done | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
 | 2.2 | #15 | 🟡 Open | ouroboros-ui: [2.2] Favicon & web-app manifest set | Full favicon/PWA icon set generated from the web-icon asset | mvp, design, ui | N (needs 2.1, 5.1) | Y | XS | ouroboros-ui |
-| 2.3 | #16 | 🟡 Open | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
+| 2.3 | #16 | 🟢 Done | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
 | 2.4 | #17 | 🟡 Open | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
 | 2.5 | #18 | 🟡 Open | ouroboros: [2.5] Server-side brand surfaces | Glyph on REST OpenAPI page + engine/REST startup banners | v2, design, rest, engine | N (needs 2.1, 4.8, 6.2) | N | XS | ouroboros-rest, ouroboros-engine |
 
 ### Issue 2.1 — ouroboros: [2.1] Split brand sheet into logo asset set
 
-> **GitHub issue:** #14 · **Status:** 🟡 Open · **Parent epic:** #2
+> **GitHub issue:** #14 · **Status:** 🟢 Done · **Parent epic:** #2
+>
+> Delivered: [`docs/brand/`](brand) — `icon-{light,dark}.png` (512×512),
+> `glyph-{light,dark}.png` (512×296) and `lockup-tagline-{light,dark}.png` (640×471), all
+> six straight-alpha RGBA with the ground solved for and removed rather than blended away.
+> [`BRAND.md`](BRAND.md) documents each one's surface, working size, minimum size and
+> clear space, plus the colours sampled from both halves for 2.3.
+> [`split-brand-sheet.py`](../scripts/split-brand-sheet.py) regenerates every asset from
+> the sheet — nothing here is a hand crop — and refuses to write one whose ground survived
+> or whose measured crop does not close on transparency;
+> [`verify-brand.sh`](../scripts/verify-brand.sh) with its tests holds the committed files
+> and the document to each other.
 
 - **Problem Statement:** The brand exists only as `logo-unsplit.png` (1376×768 sheet
   with light and dark halves) plus two ad-hoc crops used by the mockups. The
@@ -347,6 +399,23 @@ logo-unsplit.png (1376×768: light half ┃ dark half)
 ### Issue 2.2 — ouroboros-ui: [2.2] Favicon & web-app manifest set
 
 > **GitHub issue:** #15 · **Status:** 🟡 Open · **Parent epic:** #2
+>
+> Partly delivered — the files exist, the wiring waits on 5.1. In
+> [`../ouroboros-ui/public/`](../ouroboros-ui/public): `favicon.ico` (16/32/48),
+> `favicon-32-{light,dark}.png`, `apple-touch-icon.png` (180), `icon-192.png`,
+> `icon-512.png` and `manifest.webmanifest`, all scaled from `icon-{light,dark}.png` by
+> [`build-favicons.py`](../scripts/build-favicons.py). The tab pair keeps its alpha for
+> the `prefers-color-scheme` swap; everything a launcher draws is flattened onto
+> `#12181d` and written with no alpha channel at all, so
+> [`verify-favicons.sh`](../scripts/verify-favicons.sh) can assert opacity from the PNG
+> colour type. `favicon.ico` and `apple-touch-icon.png` already resolve by convention
+> once anything serves `public/`.
+>
+> **Still open:** the `<link>` tags for the theme-aware pair and the manifest, and the
+> per-scheme `themeColor` pair — all of which are Metadata API exports in
+> `app/layout.tsx`, which 5.1 (#39) creates. The exact block to paste is in
+> [`../ouroboros-ui/README.md`](../ouroboros-ui/README.md); both acceptance criteria are
+> checkable only once that layout renders.
 
 - **Problem Statement:** The UI needs correct browser-tab and home-screen icons across
   platforms, in both themes.
@@ -370,7 +439,31 @@ icon-light.png ┘   (Next metadata)     └─ icon-192/512 + manifest
 
 ### Issue 2.3 — ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties
 
-> **GitHub issue:** #16 · **Status:** 🟡 Open · **Parent epic:** #2
+> **GitHub issue:** #16 · **Status:** 🟢 Done · **Parent epic:** #2
+>
+> Delivered: [`design/tokens.css`](design/tokens.css) — 37 colour tokens in a light and a
+> dark palette, plus theme-independent type, spacing and shape scales, arranged as `:root`
+> (light base), `:root[data-theme="dark"]` and a `prefers-color-scheme` block for the unset
+> case. The dark palette is the mockups' committed identity extracted literal for literal;
+> the light palette is derived from the brand sheet's light half against the contrast
+> tables, which is what deepens the accent to `#07708e` — `#3dd6f5` measures 1.73:1 on
+> white. [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) documents every token and publishes 53
+> measured contrast pairs; all 30 text pairs clear AA 4.5:1 and all 11 non-text pairs 3:1 in
+> **both** palettes. Three departures from the mockup sheet are named there, each forced by
+> a ratio: `--ink-faint` lightened (the mockups' `--faint` reaches 3.1:1 as text),
+> `--line-control` added for the boundaries WCAG 1.4.11 covers, and the status tints
+> unified at one alpha per palette.
+>
+> [`design/tokens-preview.html`](design/tokens-preview.html) renders the whole design system
+> with **no colour literal in its stylesheet**, and
+> [`preview-light.png`](design/preview-light.png) /
+> [`preview-dark.png`](design/preview-dark.png) are its two palettes, rebuilt by
+> [`render-token-preview.sh`](../scripts/render-token-preview.sh).
+> [`verify-tokens.sh`](../scripts/verify-tokens.sh) holds all of it together: three palette
+> blocks and nothing outside them, both dark blocks identical, every colour themed in both
+> palettes, the carried-over literals still matching the mockups' sheet, and every published
+> ratio recomputed from the sheet by [`contrast.awk`](../scripts/lib/contrast.awk) — so a
+> palette edit that drops below AA fails the build rather than the audit.
 
 - **Problem Statement:** `docs/mockups/assets/ouroboros.css` defines a dark-only
   palette as literal colors. On-the-fly theme switching requires every color to be a
@@ -473,6 +566,12 @@ per-tenant GitHub org/repo enablement.
 ### Issue 3.1 — ouroboros-db: [3.1] Flyway project scaffold & migration conventions
 
 > **GitHub issue:** #19 · **Status:** 🟡 Open · **Parent epic:** #3
+>
+> Partly landed by 1.3 (#10), which needed something to migrate: `migrations/` exists
+> and holds `V000__bootstrap.sql`, and the compose stack already passes the schema and
+> `validateMigrationNaming` settings on the command line. What remains here is
+> `flyway.toml` (so the settings live in the module rather than in compose), the
+> `scripts/` wrappers, and `tests/`. The tenancy tables still start at V001.
 
 - **Problem Statement:** Flyway needs a project home, configuration, and non-negotiable
   conventions (naming, immutability, review rules) before the first migration lands.
@@ -1623,9 +1722,20 @@ comments to post (executed by the App Shell roadmap's filing pass):
 
 ## Next Step
 
-Issues are filed, labeled, typed, and linked to their epic parents. Execution starts at
-**#8** (monorepo layout) — everything else in Phase 0 (#9, #11, #12) opens the moment it
-lands, after which the four parallel tracks in Phase 1 can run concurrently. The MVP is
-complete when **#56** (end-to-end smoke test) is green.
+Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
+layout), **#9** (labels & templates), **#10** (local dev environment), **#11** (CI
+pipelines) and **#12** (architecture documentation) are **done**, which closes Phase 0
+for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. **#14**
+(the brand asset set) is **done** as well, which unblocked the theming track: **#15**
+(favicons) has landed its files in `ouroboros-ui/public/` and now waits only on #39 for
+the Metadata API wiring, and **#16** (design tokens) is **done** — both palettes exist as
+[`design/tokens.css`](design/tokens.css) with their contrast measured and enforced, which
+releases **#17** (the runtime theme engine, which only has to stamp `data-theme`), **#40**
+(global styles, which adopts the sheet) and the shell work built on those.
+The four
+module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
+concurrently; each scaffold turns its own CI check on as it lands, and updates its
+section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
+pull request. The MVP is complete when **#56** (end-to-end smoke test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

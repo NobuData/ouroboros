@@ -1,0 +1,53 @@
+name: Scaffold gate
+description: >-
+  Report whether a module has been scaffolded yet, so its CI activates by itself the
+  moment the scaffold lands and stays green — saying why — until then.
+
+# Issue #11 asks for the CI skeletons now and for each module's job to "activate with
+# its scaffold". Three of the four modules are still a README, so a workflow that ran
+# `yarn install` today would fail on every pull request that edited that README.
+#
+# The gate is the alternative to commenting the steps out and remembering to uncomment
+# them: it looks for the module's manifest, and the checks that follow run only when it
+# is there. Nothing has to be edited when the scaffold arrives — the first pull request
+# carrying a package.json or a pyproject.toml is the one that turns its checks on.
+#
+# A missing scaffold is reported as a GitHub notice and leaves the job green, because a
+# module that does not exist yet cannot be broken by the pull request under test.
+
+inputs:
+  module:
+    description: Module directory, relative to the repository root.
+    required: true
+  manifest:
+    description: File whose presence means the module is scaffolded (package.json, pyproject.toml).
+    required: true
+  scaffolded-by:
+    description: Issue that lands the scaffold, quoted in the skip notice (e.g. "#39").
+    required: true
+
+outputs:
+  scaffolded:
+    description: "\"true\" when the manifest is present and the module's checks should run."
+    value: ${{ steps.detect.outputs.scaffolded }}
+
+runs:
+  using: composite
+  steps:
+    # Inputs reach the script through the environment rather than through ${{ }}
+    # interpolation, so a value can never be spliced into the shell as code.
+    - id: detect
+      shell: bash
+      env:
+        MODULE: ${{ inputs.module }}
+        MANIFEST: ${{ inputs.manifest }}
+        SCAFFOLDED_BY: ${{ inputs.scaffolded-by }}
+      run: |
+        set -euo pipefail
+        if [ -f "$MODULE/$MANIFEST" ]; then
+          echo "scaffolded=true" >> "$GITHUB_OUTPUT"
+          echo "$MODULE/$MANIFEST is present — running the module's checks."
+        else
+          echo "scaffolded=false" >> "$GITHUB_OUTPUT"
+          echo "::notice title=$MODULE is not scaffolded yet::There is no $MODULE/$MANIFEST, so there is nothing to lint, test or build. These checks activate on their own when $SCAFFOLDED_BY lands the scaffold — this workflow needs no edit."
+        fi
