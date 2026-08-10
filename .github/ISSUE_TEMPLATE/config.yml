@@ -1,0 +1,10 @@
+# Issue-form configuration. Blank issues are disabled so every filed issue carries the
+# structure the roadmap and the delivery loop read: scope, effort, acceptance criteria.
+blank_issues_enabled: false
+contact_links:
+  - name: Repository conventions
+    url: https://github.com/NobuData/ouroboros/blob/main/docs/CONVENTIONS.md
+    about: Toolchains, environment variables, code style, and the git/GitHub workflow.
+  - name: Application scaffolding roadmap
+    url: https://github.com/NobuData/ouroboros/blob/main/docs/ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md
+    about: The plan this repository is executing — check whether the work is already filed.

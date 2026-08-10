@@ -26,8 +26,9 @@ Surveyed 2026-08-08:
   column in every table below. No duplication risk.
 - **GitHub labels:** at survey time only the nine GitHub defaults (`bug`, `enhancement`,
   `documentation`, …). The roadmap set — `mvp`, `v2`, `ui`, `rest`, `db`, `engine`,
-  `infra`, `design`, `ci`, `epic` — has since been created and applied; what remains in
-  issue 1.2 (#9) is the committed label definitions and the issue/PR templates.
+  `infra`, `design`, `ci`, `epic` — has since been created and applied, and issue 1.2
+  (#9) has committed the whole set to `.github/labels.yml` alongside the issue and pull
+  request templates.
 - **`ouroboros-web/`** — the *marketing* site (Next.js, deployed at ouroboros.build).
   Out of scope for this roadmap; nothing here modifies it. Its existing
   `docker-publish.yml` workflow is the pattern issue 7.3 extends.
@@ -123,8 +124,9 @@ one of its sub-issues (GitHub Relationships).
 Issue naming convention: `<project>: [<epic>.<issue>] <title>`, e.g.
 `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains`.
 
-Label set (issue 1.2 / #9 — **already created in the repo**): `mvp`, `v2`, `ui`, `rest`,
-`db`, `engine`, `infra`, `design`, `ci`, plus `epic` for the parent issues and GitHub's
+Label set (issue 1.2 / #9 — **created in the repo and committed to
+[`.github/labels.yml`](../.github/labels.yml)**): `mvp`, `v2`, `ui`, `rest`, `db`,
+`engine`, `infra`, `design`, `ci`, plus `epic` for the parent issues and GitHub's
 existing `documentation` where apt.
 
 Issue types: **Feature** for capability-delivering work and every epic parent, **Task**
@@ -139,7 +141,7 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 1.1 | #8 | 🟢 Done | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
-| 1.2 | #9 | 🟡 Open | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
+| 1.2 | #9 | 🟢 Done | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
 | 1.3 | #10 | 🟡 Open | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
 | 1.4 | #11 | 🟡 Open | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
 | 1.5 | #12 | 🟡 Open | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
@@ -185,7 +187,14 @@ ouroboros/
 
 ### Issue 1.2 — ouroboros: [1.2] GitHub labels & issue/PR templates
 
-> **GitHub issue:** #9 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #9 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: [`.github/labels.yml`](../.github/labels.yml) committing all 35 labels this
+> repository defines, the `feature`/`bug` YAML issue forms with their `config.yml`, and
+> [`.github/pull_request_template.md`](../.github/pull_request_template.md). Applying the
+> file is `scripts/sync-labels.sh` (idempotent, never deletes); the `.github` contract is
+> asserted by `scripts/verify-github-config.sh` and the tooling is covered by
+> `scripts/run-tests.sh`.
 
 - **Problem Statement:** Only GitHub's default labels exist; the roadmap's `mvp`/`v2`
   scoping and module routing have no labels to attach to.
@@ -1629,8 +1638,8 @@ comments to post (executed by the App Shell roadmap's filing pass):
 ## Next Step
 
 Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
-layout) is **done**, which opens the rest of Phase 0 (#9, #11, #12) and unblocks the
-four module scaffolds (#19, #27, #39, #50) — the Phase 1 tracks can now run
-concurrently. The MVP is complete when **#56** (end-to-end smoke test) is green.
+layout) and **#9** (labels & templates) are **done**, leaving #11 and #12 in Phase 0 and
+unblocking the four module scaffolds (#19, #27, #39, #50) — the Phase 1 tracks can now
+run concurrently. The MVP is complete when **#56** (end-to-end smoke test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

@@ -64,6 +64,7 @@ ouroboros/
 ├── ouroboros-engine/  # Python/FastAPI backend
 ├── ouroboros-db/      # Flyway migrations
 ├── scripts/           # repo-level tooling
+├── .github/           # labels, issue forms, PR template, workflows
 ├── .editorconfig      # repo-wide editor conventions
 └── .gitignore         # repo-wide ignores
 ```
@@ -93,10 +94,13 @@ Environment variables are prefixed `OURO_` (except `PORT` and platform standards
 validated at boot, and are documented in the repo-root `.env.example`
 ([#10](https://github.com/NobuData/ouroboros/issues/10)).
 
-Repository structure can be checked at any time:
+Repository structure and GitHub configuration can be checked at any time, and the
+repo-level tooling has its own tests:
 
 ```bash
-scripts/verify-layout.sh
+scripts/verify-layout.sh          # module layout, READMEs, .editorconfig coverage
+scripts/verify-github-config.sh   # label definitions, issue forms, PR template
+scripts/run-tests.sh              # tests for the tooling in scripts/
 ```
 
 ## Documentation
@@ -111,9 +115,18 @@ scripts/verify-layout.sh
 
 ## Contributing
 
-Work is tracked as GitHub issues grouped into epics. Branch `ticket-<number>` from
-`main`, commit as `Fix #<number> - <title>`, and open a pull request that closes the
-issue. The conventions doc has the details.
+Work is tracked as GitHub issues grouped into epics. File one with the **Feature** or
+**Bug** form on the new-issue page, branch `ticket-<number>` from `main`, commit as
+`Fix #<number> - <title>`, and open a pull request that closes the issue — the pull
+request template carries the checklist. The conventions doc has the details.
+
+Labels are defined in [`.github/labels.yml`](.github/labels.yml) rather than only in
+GitHub's settings, so the set is reviewable and can be rebuilt:
+
+```bash
+scripts/sync-labels.sh --dry-run   # what would change
+scripts/sync-labels.sh             # create what is missing, update what has drifted
+```
 
 ## License
 

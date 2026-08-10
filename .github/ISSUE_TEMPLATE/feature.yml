@@ -1,0 +1,129 @@
+name: Feature
+description: A capability or unit of work to deliver.
+title: "<project>: [<epic>.<issue>] "
+type: Feature
+labels:
+  - mvp
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Three conventions from [`docs/CONVENTIONS.md`](https://github.com/NobuData/ouroboros/blob/main/docs/CONVENTIONS.md#7-git--github)
+        before you start:
+
+        - **Title** — `<project>: [<epic>.<issue>] <title>`, e.g.
+          `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains`. Replace the
+          placeholder above; `<project>` is the module directory, or `ouroboros` for
+          repo-wide work.
+        - **Labels** — this form applies `mvp`. Swap it for `v2` if the work lands after
+          the MVP, and add the module (`ui`, `rest`, `db`, `engine`) and cross-cutting
+          (`infra`, `design`, `ci`, `documentation`) labels that apply.
+        - **Type** — filed as **Feature**. Re-type to **Task** for scaffolding,
+          infrastructure, CI or documentation work.
+
+  - type: dropdown
+    id: release
+    attributes:
+      label: Release
+      description: Which release this work is scoped to — keep the `mvp` / `v2` label in step with it.
+      options:
+        - "MVP (v1)"
+        - "v2 — after MVP"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effort
+    attributes:
+      label: Level of effort
+      description: The same scale the product uses for its effort chips.
+      options:
+        - "XS — an hour or two"
+        - "S — under a day"
+        - "M — a day or two"
+        - "L — most of a week"
+    validations:
+      required: true
+
+  - type: input
+    id: systems
+    attributes:
+      label: Affected systems
+      description: The modules or directories this work touches.
+      placeholder: "ouroboros-rest, ouroboros-db"
+    validations:
+      required: true
+
+  - type: input
+    id: epic
+    attributes:
+      label: Parent epic
+      description: The epic issue this belongs to, if there is one.
+      placeholder: "#4"
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What is missing or wrong today, and who it blocks.
+      placeholder: The REST layer has no typed configuration, so a missing variable surfaces as a stack trace on the first request.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Solution / scope
+      description: What this issue delivers — and, where it helps, what it deliberately leaves out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checkable statements. The issue closes when every box is ticked.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Parallelism / dependencies
+      description: Issues that must land first, or a note that this runs in parallel with everything.
+      placeholder: "None — fully parallel."
+    validations:
+      required: false
+
+  - type: input
+    id: stack
+    attributes:
+      label: Technical stack
+      description: The languages, frameworks and tools the work uses.
+      placeholder: "NestJS 11, zod, TypeScript"
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagram
+    attributes:
+      label: Diagram
+      description: Optional Mermaid diagram — flow, sequence or ER — rendered in the issue body.
+      render: mermaid
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched the open issues and the roadmap documents in `docs/`; this is not a duplicate.
+          required: true
+        - label: "The title follows `<project>: [<epic>.<issue>] <title>`."
+          required: true
