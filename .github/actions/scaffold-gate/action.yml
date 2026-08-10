@@ -4,8 +4,8 @@ description: >-
   moment the scaffold lands and stays green — saying why — until then.
 
 # Issue #11 asks for the CI skeletons now and for each module's job to "activate with
-# its scaffold". Three of the four modules are still a README, so a workflow that ran
-# `yarn install` today would fail on every pull request that edited that README.
+# its scaffold". A module that is still a README has nothing to install, so a workflow
+# that ran `yarn install` would fail on every pull request that edited that README.
 #
 # The gate is the alternative to commenting the steps out and remembering to uncomment
 # them: it looks for the module's manifest, and the checks that follow run only when it

@@ -1396,7 +1396,7 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 6.1 | #50 | 🟡 Open | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
+| 6.1 | #50 | 🟢 Done | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
 | 6.2 | #51 | 🟡 Open | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
 | 6.3 | #52 | 🟡 Open | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
 | 6.4 | #53 | 🟡 Open | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
@@ -1404,7 +1404,36 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 
 ### Issue 6.1 — ouroboros-engine: [6.1] FastAPI service scaffold
 
-> **GitHub issue:** #50 · **Status:** 🟡 Open · **Parent epic:** #6
+> **GitHub issue:** #50 · **Status:** 🟢 Done · **Parent epic:** #6
+>
+> Delivered: [`ouroboros-engine/`](../ouroboros-engine) is a uv project on Python 3.12 —
+> `pyproject.toml` holds the dependencies, the task names and the configuration for both
+> tools, and `uv.lock` is committed, so `uv sync --locked` is what CI installs with.
+>
+> `src/ouroboros_engine/` is the layout the rest of Epic 6 grows into.
+> [`settings.py`](../ouroboros-engine/src/ouroboros_engine/settings.py) declares the
+> environment variable each field reads as an explicit alias, which is what lets a bad
+> value be reported as `OURO_LOG_LEVEL: Input should be 'debug', 'info', 'warning' or
+> 'error'` and an exit code of 2 rather than as a traceback — values are never echoed
+> back, because one of these variables is a secret.
+> [`main.py`](../ouroboros-engine/src/ouroboros_engine/main.py) builds the application
+> from settings handed to it or from the environment, and builds `app` at module scope,
+> so **the environment is validated at import** and a misconfigured process stops before
+> it binds a port. `api/` holds one module per router — `root.py`, which names the
+> service and its version, is the whole HTTP surface until 6.2 — and `core/` holds what
+> is not a route, logging today.
+>
+> `uv run dev` serves on 8000, reloading on a change under `src/` and binding loopback
+> only, because the engine is internal by design. **59 tests** cover the settings
+> (defaults, every accepted log level, each rejection path, that a secret is never
+> echoed, that all problems are reported at once), the factory, the route and its
+> generated OpenAPI, the logging configuration, the dev entry point with uvicorn
+> replaced by a recorder, and that the manifest and the installed package agree on the
+> version. Warnings are failures, so a deprecation in a dependency fails the suite
+> before an upgrade does.
+>
+> `ci/engine` turned itself on with this pull request: the scaffold gate looks for
+> `ouroboros-engine/pyproject.toml`, and no workflow was edited.
 
 - **Problem Statement:** The Python backend — where the actual work-execution engine
   will grow — needs its skeleton with the same rigor as the TS modules.
@@ -1779,9 +1808,11 @@ in both themes, an explicit choice beats a contrary OS, and every case produces 
 console. The visible switcher, **#42**, is now unblocked, and Epic 2's MVP work is
 complete bar #15's Metadata API wiring.
 
-The remaining module scaffolds (#19, #27, #50) are unblocked and the Phase 1 tracks can
-run concurrently; each scaffold turns its own CI check on as it lands, and updates its
-section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
-pull request. The MVP is complete when **#56** (end-to-end smoke test) is green.
+**#19** (the Flyway project) and **#50** (the FastAPI service) have since landed the same
+way, each turning its own CI check on and moving its section of
+[`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same pull
+request. That leaves **#27** as the last module scaffold; Epic 6 continues into #51, and
+the Phase 1 tracks still run concurrently. The MVP is complete when **#56** (end-to-end
+smoke test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

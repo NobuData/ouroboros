@@ -281,8 +281,8 @@ definition. Four rules keep them interchangeable:
    [`.github/actions/node-module`](../.github/actions/node-module/action.yml), the
    pipeline `ouroboros-ui` and `ouroboros-rest` share; Python lives in `engine.yml`'s
    `PYTHON_VERSION`. No workflow carries a pin of its own.
-3. **A module's checks activate with its scaffold.** Three of the four modules are still
-   a README, so each workflow asks
+3. **A module's checks activate with its scaffold.** `ouroboros-rest` is still a README,
+   so each workflow asks
    [`.github/actions/scaffold-gate`](../.github/actions/scaffold-gate/action.yml) for
    the module's manifest first and reports why it stopped when there is not one. The
    pull request that adds the `package.json` or `pyproject.toml` is the one that turns
