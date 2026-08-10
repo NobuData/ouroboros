@@ -19,8 +19,15 @@ consumes it, because deriving a palette and proving it legible is not applicatio
 | [#17](https://github.com/NobuData/ouroboros/issues/17) | Stamps `data-theme` before first paint, persists the choice, and tracks the OS while the choice is *system* |
 | [#46](https://github.com/NobuData/ouroboros/issues/46) | Builds the primitives — every colour a `var(--token)`, every surface checked in both themes |
 
-Until #40 lands, [`design/tokens-preview.html`](design/tokens-preview.html) is the only
-consumer. The mockups in [`mockups/`](mockups) keep their own frozen dark-only stylesheet
+#40 has landed, so the sheet has two consumers: the application, at
+[`../ouroboros-ui/app/tokens.css`](../ouroboros-ui/app/tokens.css), and
+[`design/tokens-preview.html`](design/tokens-preview.html), which stays the page that
+proves the sheet is *sufficient* — it renders the whole design system with no colour
+literal in its own stylesheet, which the application's placeholder page cannot yet claim
+to exercise. The application's copy is held byte-identical to this one by
+`scripts/verify-tokens.sh`; edit the palette here, not there.
+
+The mockups in [`mockups/`](mockups) keep their own frozen dark-only stylesheet
 and are not retrofitted: they are the design source of truth for page anatomy, not for
 colour.
 
@@ -80,6 +87,14 @@ The theme engine has one job here: put `data-theme="light"`, `data-theme="dark"`
 nothing at all on `<html>`. Nothing is *system* — the media query then decides. No other
 attribute or class participates, and no component reads the theme; a component reads
 tokens and gets whichever palette is in force.
+
+#17 has landed and honours it: [`../ouroboros-ui/app/theme.ts`](../ouroboros-ui/app/theme.ts)
+stamps those two values and *removes* the attribute for system, so tracking the OS is the
+absence of an attribute rather than a listener re-stamping one — no JavaScript runs when
+the OS theme changes and the choice is system. The engine sets no `color-scheme` of its
+own for the same reason: it is declared in all three blocks here, and selecting a block is
+the whole of applying a theme. See
+[`../ouroboros-ui/README.md`](../ouroboros-ui/README.md#theming).
 
 ## The palette
 
@@ -186,8 +201,10 @@ surfaces pair the colour with a word or a glyph.
 
 ## Type
 
-Families first. `next/font` will supply the real faces in #40 and can redefine these three
-tokens without touching a component.
+Families first. `next/font` supplies the real faces and redefines these three tokens
+without touching a component — the application self-hosts each face under its own
+variable and `ouroboros-ui/app/globals.css` maps it onto the token, keeping the stack
+below intact so a face that fails to load falls back to the families named here.
 
 | Token | Value | Dark override | What it is |
 |---|---|---|---|
@@ -416,9 +433,16 @@ defined in both palettes and every theme-independent token in neither dark block
 carried-over token the two sheets share still holds the same literal as
 `mockups/assets/ouroboros.css` — the seventeen colours and the three families; the preview
 links the sheet and contains no colour literal; both renders are PNGs of the same size;
-every token in the sheet is documented here with the value the sheet gives it, and every
-token this document names exists; and every contrast row's published ratio is the ratio
-recomputed from the sheet, at or above its published minimum.
+the application's copy of the sheet is byte-identical to it and imported by its global
+stylesheet; every token in the sheet is documented here with the value the sheet gives it,
+and every token this document names exists; and every contrast row's published ratio is
+the ratio recomputed from the sheet, at or above its published minimum.
+
+The complement to that copy check runs in `ci/ui` rather than here: `ouroboros-ui`'s own
+suite asserts that no stylesheet in the module except its copy of the sheet writes a
+colour down. The two together are what "every colour is a `var(--token)`" means in
+practice — one guards the copy against forking, the other guards the module against
+going around it.
 
 `render-token-preview.sh` drives headless Chrome and is the one piece of this tooling that
 is not dependency-free — like the brand generator, it runs by hand when the palette
