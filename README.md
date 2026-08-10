@@ -130,6 +130,7 @@ scripts/verify-dev-env.sh         # compose stack, .env.example, migration namin
 scripts/verify-ci.sh              # workflow status checks, path routing, toolchain pins
 scripts/verify-architecture.sh    # architecture doc sections, port map, env registry, links
 scripts/verify-brand.sh           # brand assets carry alpha, at the sizes BRAND.md publishes
+scripts/verify-favicons.sh        # favicon set, manifest and the documents that describe them
 scripts/run-tests.sh              # tests for the tooling in scripts/
 ```
 

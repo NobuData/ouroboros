@@ -399,6 +399,23 @@ logo-unsplit.png (1376×768: light half ┃ dark half)
 ### Issue 2.2 — ouroboros-ui: [2.2] Favicon & web-app manifest set
 
 > **GitHub issue:** #15 · **Status:** 🟡 Open · **Parent epic:** #2
+>
+> Partly delivered — the files exist, the wiring waits on 5.1. In
+> [`../ouroboros-ui/public/`](../ouroboros-ui/public): `favicon.ico` (16/32/48),
+> `favicon-32-{light,dark}.png`, `apple-touch-icon.png` (180), `icon-192.png`,
+> `icon-512.png` and `manifest.webmanifest`, all scaled from `icon-{light,dark}.png` by
+> [`build-favicons.py`](../scripts/build-favicons.py). The tab pair keeps its alpha for
+> the `prefers-color-scheme` swap; everything a launcher draws is flattened onto
+> `#12181d` and written with no alpha channel at all, so
+> [`verify-favicons.sh`](../scripts/verify-favicons.sh) can assert opacity from the PNG
+> colour type. `favicon.ico` and `apple-touch-icon.png` already resolve by convention
+> once anything serves `public/`.
+>
+> **Still open:** the `<link>` tags for the theme-aware pair and the manifest, and the
+> per-scheme `themeColor` pair — all of which are Metadata API exports in
+> `app/layout.tsx`, which 5.1 (#39) creates. The exact block to paste is in
+> [`../ouroboros-ui/README.md`](../ouroboros-ui/README.md); both acceptance criteria are
+> checkable only once that layout renders.
 
 - **Problem Statement:** The UI needs correct browser-tab and home-screen icons across
   platforms, in both themes.
@@ -1685,9 +1702,11 @@ Issues are filed, labeled, typed, and linked to their epic parents. **#8** (mono
 layout), **#9** (labels & templates), **#10** (local dev environment), **#11** (CI
 pipelines) and **#12** (architecture documentation) are **done**, which closes Phase 0
 for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. **#14**
-(the brand asset set) is **done** as well, which unblocks the theming track: #15
-(favicons) and #16 (design tokens, whose light palette samples the sheet's light half)
-can start, and #16 in turn releases #17 and the shell work that depends on it. The four
+(the brand asset set) is **done** as well, which unblocks the theming track: **#15**
+(favicons) has landed its files in `ouroboros-ui/public/` and now waits only on #39 for
+the Metadata API wiring, and #16 (design tokens, whose light palette samples the sheet's
+light half) can start, which in turn releases #17 and the shell work that depends on it.
+The four
 module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
 concurrently; each scaffold turns its own CI check on as it lands, and updates its
 section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
