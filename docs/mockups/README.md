@@ -90,5 +90,9 @@ screens read as a working system.
 ## Not yet mocked (future passes)
 
 Spend analytics detail, audit log, notification settings, multi-repo fleet views,
-mobile layouts, and the light theme (the brand sheet defines one; the product UI
-commits to dark for v0.1).
+mobile layouts, and these screens in the light theme — the mockups stay dark-only. The
+*product* no longer does: both palettes exist as tokens
+([`../DESIGN_TOKENS.md`](../DESIGN_TOKENS.md), #16) and switch at runtime (#17). Mocking a
+second theme by hand would be re-deciding colours the token sheet already decides, so the
+light half of the product is reviewed from
+[`../design/tokens-preview.html`](../design/tokens-preview.html) instead.
