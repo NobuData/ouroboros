@@ -47,9 +47,12 @@ jobs:
           manifest: pyproject.toml
           scaffolded-by: "#50"
 
+      # Pinned to the exact release: setup-uv publishes no floating major past v7, and a
+      # `uses:` that does not resolve fails the job while it is still being set up —
+      # before the gate below has a chance to skip anything.
       - name: Install uv and Python ${{ env.PYTHON_VERSION }}
         if: steps.gate.outputs.scaffolded == 'true'
-        uses: astral-sh/setup-uv@v9
+        uses: astral-sh/setup-uv@v9.0.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
