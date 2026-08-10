@@ -138,7 +138,7 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 1.1 | #8 | 🟡 Open | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
+| 1.1 | #8 | 🟢 Done | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
 | 1.2 | #9 | 🟡 Open | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
 | 1.3 | #10 | 🟡 Open | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
 | 1.4 | #11 | 🟡 Open | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
@@ -147,7 +147,12 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 
 ### Issue 1.1 — ouroboros: [1.1] Monorepo layout & module scaffolding conventions
 
-> **GitHub issue:** #8 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #8 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: the four module directories with contract READMEs, root `README.md`
+> (module map + architecture sketch), root `.editorconfig` and `.gitignore`, the shared
+> conventions doc [`CONVENTIONS.md`](CONVENTIONS.md), and `scripts/verify-layout.sh`
+> which asserts the layout in CI. `ouroboros-web` untouched.
 
 - **Problem Statement:** The repo holds only mockups and the marketing site. The four
   application modules need homes with consistent conventions before any scaffolding
@@ -1623,9 +1628,9 @@ comments to post (executed by the App Shell roadmap's filing pass):
 
 ## Next Step
 
-Issues are filed, labeled, typed, and linked to their epic parents. Execution starts at
-**#8** (monorepo layout) — everything else in Phase 0 (#9, #11, #12) opens the moment it
-lands, after which the four parallel tracks in Phase 1 can run concurrently. The MVP is
-complete when **#56** (end-to-end smoke test) is green.
+Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
+layout) is **done**, which opens the rest of Phase 0 (#9, #11, #12) and unblocks the
+four module scaffolds (#19, #27, #39, #50) — the Phase 1 tracks can now run
+concurrently. The MVP is complete when **#56** (end-to-end smoke test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.
