@@ -1143,7 +1143,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | 5.6 | #44 | 🟡 Open | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
 | 5.7 | #45 | 🟡 Open | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
 | 5.8 | #46 | 🟡 Open | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
-| 5.9 | #47 | 🟡 Open | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
+| 5.9 | #47 | 🟢 Done | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
 | 5.10 | #48 | 🟡 Open | ouroboros-ui: [5.10] Component workshop (Storybook/Ladle) | Isolated component playground with theme switching | v2, ui | N (after 5.8) | N | M | ouroboros-ui |
 | 5.11 | #49 | 🟡 Open | ouroboros-ui: [5.11] Placeholder routes for remaining mockup screens | Nav-complete stub pages for screens 03–21 | v2, ui | N (after 5.3) | N | S | ouroboros-ui |
 
@@ -1340,7 +1340,44 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
 
 ### Issue 5.9 — ouroboros-ui: [5.9] Dockerfile & standalone build
 
-> **GitHub issue:** #47 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #47 · **Status:** 🟢 Done · **Parent epic:** #5
+>
+> Delivered: [`ouroboros-ui/Dockerfile`](../ouroboros-ui/Dockerfile) — `deps` → `build` →
+> a runtime carrying no toolchain, on `node:24-alpine`, running as a created `nextjs`
+> user, with a `HEALTHCHECK` on `/` through the BusyBox `wget` the base image already
+> has. The image is **71 MB to pull and 217 MB of layers unpacked** against the 300 MB
+> budgeted — 288 MB of disk usage on the containerd snapshotter, which is the largest of
+> the three measures and still inside it. Brought up under compose it serves `/` with a
+> 200 and reports healthy within a second of boot.
+>
+> Two decisions the rest of Epic 5 and the compose work (#55) inherit. **The context is
+> the repository root**: this module installs from the lockfile at the root, so a context
+> of `ouroboros-ui/` could not run `yarn install --immutable` at all — the build is
+> `docker build -f ouroboros-ui/Dockerfile .` from the root, and the ignore file is
+> therefore named
+> [`Dockerfile.dockerignore`](../ouroboros-ui/Dockerfile.dockerignore), which BuildKit
+> reads in preference to `<context>/.dockerignore`. It is an allow-list, because with the
+> whole repository as the context a deny-list grows a hole every time a directory is
+> added at the root. **The trace is rooted there too**: `nodeLinker: node-modules` hoists
+> this module's dependencies one level above the default tracing root, so
+> `outputFileTracingRoot` is set to the repository root — left at the default, the trace
+> copies no dependency at all and the image builds cleanly and then dies on a missing
+> module. The standalone tree consequently unpacks as `./node_modules` and
+> `./ouroboros-ui/server.js`.
+>
+> `OURO_REST_URL` is deliberately absent from every layer: the standalone server reads it
+> at request time, so the environment supplies it, and a default here would turn a
+> missing value into a silent call to the wrong host rather than the error `app/env.ts`
+> raises by name.
+>
+> The roadmap text below says `node:22-alpine`; it predates #13, which moved the
+> workspace to Node 24, and installing under 22 would contradict `engines.node`.
+>
+> **32 tests** ([`__tests__/container.test.ts`](../ouroboros-ui/__tests__/container.test.ts))
+> assert every property of the image decided in the repository, because `ci/ui` cannot
+> run a `docker build`. One of them fails when a new workspace gains a `package.json` and
+> the `deps` stage has not been taught to copy it — the way this image would otherwise be
+> broken by another module's pull request.
 
 - **Problem Statement:** Compose integration needs a production UI image.
 - **Solution/Scope:** `output: "standalone"` in `next.config.ts`; multi-stage
@@ -1814,5 +1851,15 @@ way, each turning its own CI check on and moving its section of
 request. That leaves **#27** as the last module scaffold; Epic 6 continues into #51, and
 the Phase 1 tracks still run concurrently. The MVP is complete when **#56** (end-to-end
 smoke test) is green.
+
+**#47** (the UI image) is **done** and is the first module to ship as a container: a
+multi-stage build on the Next.js standalone output, non-root, healthy on `/`, 71 MB to
+pull against a 300 MB budget. It settles two things every workspace image after it inherits —
+a build context at the **repository root**, because that is where the lockfile an
+immutable install needs lives, and an allow-list ignore file named for the Dockerfile,
+because that is the only name BuildKit reads when the context is not the module. Both are
+written down in [`CONVENTIONS.md § 5`](CONVENTIONS.md#5-containers) for **#36**, the
+other workspace image, to follow — **#53** is a `uv` project and builds from its own
+directory. **#55** (full-stack compose) is what runs it.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

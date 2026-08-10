@@ -204,6 +204,36 @@ in [`../ouroboros-web/Dockerfile`](../ouroboros-web/Dockerfile):
 - a `.dockerignore` keeps `.git`, `node_modules`, build output and `.env*` out of the
   build context.
 
+**A workspace module builds from the repository root.** `ouroboros-ui` and
+`ouroboros-rest` install from the lockfile at the root (§ 3), so their build context has
+to contain it — a context of the module directory alone cannot run an immutable install
+at all:
+
+```bash
+docker build -f ouroboros-ui/Dockerfile -t ouroboros-ui .    # from the repo root
+```
+
+Two consequences, both of which the first such image
+([#47](https://github.com/NobuData/ouroboros/issues/47)) settles for the ones that
+follow:
+
+- **The ignore file is named for the Dockerfile**, as
+  [`ouroboros-ui/Dockerfile.dockerignore`](../ouroboros-ui/Dockerfile.dockerignore).
+  BuildKit reads `<dockerfile>.dockerignore` in preference to
+  `<context>/.dockerignore`, which is what keeps the ignores in the module they belong
+  to: a root `.dockerignore` would apply to every image in the repo, and a
+  `<module>/.dockerignore` would apply to nothing while looking exactly like the file
+  that governs the build.
+- **It is an allow-list** — `*`, then the paths the build reads. With the whole
+  repository as the context, a deny-list grows a hole every time a directory is added at
+  the root, and what leaks past it is not only size.
+
+This applies only to the modules that *install* through the root lockfile.
+`ouroboros-engine`'s `package.json` is a workspace adapter over a `uv` project and
+`ouroboros-db`'s is one over Flyway, so neither image needs anything at the root, and
+`ouroboros-web` is not a workspace at all: all three build from their own directory with
+a plain `.dockerignore` beside the Dockerfile.
+
 ### The local development stack
 
 The repo-root [`docker-compose.yml`](../docker-compose.yml) is the development data tier

@@ -1,0 +1,59 @@
+# Build context for ouroboros-ui/Dockerfile.
+#
+# Named for the Dockerfile rather than the directory because that image builds from the
+# **repository root** (it is a Yarn workspace and the lockfile lives there). BuildKit
+# reads <dockerfile>.dockerignore ahead of <context>/.dockerignore, so this file governs
+# that build and no other — a root .dockerignore would silently apply to every image in
+# the repo, and an ouroboros-ui/.dockerignore would apply to nothing at all.
+#
+# It is an allow-list. With the whole repository as the context, a deny-list quietly
+# grows a hole every time a directory is added at the root, and what leaks is not only
+# size: docs/, .git/ and four sibling modules have no business in a UI image. Starting
+# from `*` means a new path is excluded until someone says otherwise.
+
+# Nothing, unless named below.
+*
+
+# The workspace root: what Yarn resolves, installs and pins from.
+!package.json
+!yarn.lock
+!.yarnrc.yml
+
+# The sibling manifests. Yarn resolves every workspace before installing any of them, so
+# an absent manifest is a failed --immutable install, not a smaller context. They are
+# the manifests only — no sibling module's source enters this image.
+# ouroboros-rest joins them when it is scaffolded (#27).
+!ouroboros-db/package.json
+!ouroboros-engine/package.json
+
+# This module.
+!ouroboros-ui
+
+# ...minus what is generated rather than written. Both would be copied over by the build
+# and neither is portable between a laptop and the image: node_modules is resolved for
+# the host platform, and .next is the output of a previous build.
+ouroboros-ui/node_modules
+ouroboros-ui/.next
+ouroboros-ui/out
+ouroboros-ui/coverage
+ouroboros-ui/*.tsbuildinfo
+
+# ...and minus prose and the container definition itself, none of which any stage reads.
+# Excluding them is not about size — it is that editing a sentence in the README should
+# not invalidate the build cache and rebuild the application. `__tests__` is deliberately
+# *not* here: `next build` type-checks everything tsconfig includes, and dropping the
+# suites would leave the image type-checking less than `yarn build` does on a laptop.
+ouroboros-ui/README.md
+ouroboros-ui/AGENTS.md
+ouroboros-ui/CLAUDE.md
+ouroboros-ui/Dockerfile
+ouroboros-ui/Dockerfile.dockerignore
+
+# ...and minus anything holding a real value. Nothing in the build reads an env file —
+# OURO_REST_URL is supplied to the container at run time — so the only way one could
+# reach a layer is by accident. `**/` because the exclusion has to hold for every
+# directory the lines above let in, not just the root.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
