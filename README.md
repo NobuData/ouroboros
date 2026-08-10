@@ -89,6 +89,15 @@ brings up the database alone, without a migration pass. See
 [`ouroboros-db/README.md`](ouroboros-db/README.md) for how to connect and how to read
 the applied versions.
 
+To migrate a database that is already running — the compose one, a PostgreSQL installed
+on your machine, or a server across the network — use the module's own runner, which
+needs nothing containerised:
+
+```bash
+ouroboros-db/run.sh          # apply pending migrations
+ouroboros-db/run.sh info     # applied and pending versions
+```
+
 Each module is built and run on its own — see its README for the specifics:
 
 ```bash
