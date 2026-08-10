@@ -49,3 +49,10 @@ jobs:
       # migrate. This workflow is the slot it lands in.
       - name: Migration & data-tier contract
         run: scripts/verify-dev-env.sh
+
+      # The module's own suite: run.sh and the scripts/ wrappers over it, exercised
+      # against a synthetic module with both runners stubbed out (#19). Like the check
+      # above it needs no daemon and no network — the stubs record the command that
+      # would have run instead of running it.
+      - name: Module tooling tests
+        run: scripts/run-tests.sh ouroboros-db/tests

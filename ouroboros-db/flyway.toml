@@ -1,0 +1,58 @@
+# ouroboros-db — the Flyway project.
+#
+# Everything that is a property of this project rather than of a machine: where the
+# migrations are, that the schema is created if it is absent, that a misnamed file fails
+# the run before anything is applied, and that `clean` is off. Both ways of applying
+# migrations read this file — the repo-root `docker compose up` and `run.sh` with the
+# `scripts/` wrappers over it — so a rule is changed in one place and the two paths
+# cannot drift apart.
+#
+# What is deliberately *not* here: the url, the user and the password. Those say which
+# database is being migrated, they differ per machine, and one of them is a secret. They
+# arrive on the command line from the OURO_DB_* variables instead (see .env.example), so
+# this file holds nothing a public repository should not.
+#
+# Flyway is pointed at this directory with `-workingDirectory`, which is what makes the
+# relative `filesystem:migrations` below resolve to the same migrations whether Flyway
+# runs from the container (/flyway/project/migrations) or from a laptop
+# (ouroboros-db/migrations). Flyway auto-loads a `flyway.toml` found there, so no runner
+# has to name this file.
+#
+# In Flyway's TOML format the two sections mean different things: `[environments.*]`
+# describes a *connection* — which database, which schema, how to reach it — and
+# `[flyway]` describes the *project* — which migrations, and the rules for applying
+# them. A key in the wrong section is a startup error, not a silent default.
+#
+# Filed as issue #19.
+
+[environments.default]
+# The schema Flyway owns; its history table lives inside it. Overridden per run by
+# `-schemas=$OURO_DB_SCHEMA`, so migrating into a scratch schema needs no edit here.
+schemas = ["ouroboros"]
+
+# The server may still be coming up. The compose stack gates the migrator on a
+# healthcheck, but a PostgreSQL started by hand has no such gate, so retry rather than
+# fail the run on a connection that would have succeeded a second later.
+connectRetries = 10
+connectRetriesInterval = 2
+
+[flyway]
+# Relative to the working directory on purpose — see the header. An absolute path would
+# be wrong for one of the two runners whichever one it named.
+locations = ["filesystem:migrations"]
+
+# Create the schema above if it is absent, which is what lets a brand-new PostgreSQL be
+# migrated without a `create schema` by hand first. V000__bootstrap.sql restates it in
+# SQL for the databases that are migrated by something that does not pass this.
+createSchemas = true
+
+# `V###__snake_case_description.sql` / `R__snake_case_description.sql`, checked before
+# anything is applied. Without it a typo'd version is not an error — it is a migration
+# that quietly orders itself somewhere unintended. This is the rule README.md states
+# under "Migration rules" and the one `validate` enforces.
+validateMigrationNaming = true
+
+# `clean` drops every object in the schema. Off here, which means off in every context
+# by default: flyway.dev.toml is the only file that turns it back on, and
+# scripts/clean-dev is the only thing that loads flyway.dev.toml.
+cleanDisabled = true

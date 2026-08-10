@@ -43,6 +43,19 @@ check_exists() {
   fi
 }
 
+# check_missing PATH DESCRIPTION — assert a file or directory is not there.
+#
+# The inverse of check_exists, for the cases where the absence is the point: a command
+# that must not exist to be reached for by mistake, an artefact that must not be
+# committed.
+check_missing() {
+  if [ -e "$1" ]; then
+    fail "$2 (unexpectedly present: $1)"
+  else
+    pass "$2"
+  fi
+}
+
 # check_executable PATH DESCRIPTION — assert a file exists and carries the execute bit.
 check_executable() {
   if [ -x "$1" ]; then

@@ -1,0 +1,139 @@
+#!/usr/bin/env sh
+#
+# clean-dev — drop every object in the schema, so the next migrate starts from nothing.
+#
+# The reset for a migration you have edited after it was applied: `validate` will refuse
+# that database forever, and `clean` followed by `migrate` is how the checkout becomes
+# the truth again. It is also how a throwaway CI database is reset between runs.
+#
+# `clean` is a DROP of everything in the schema, so it is gated three times over:
+#
+#   1. ../flyway.toml sets cleanDisabled — the configuration every other command in this
+#      directory runs with, and the one the compose stack and CI read. `run.sh clean`
+#      refuses, and there is deliberately no `scripts/clean` to invoke by mistake.
+#   2. ../flyway.dev.toml is the only file that re-enables it, and this script is the
+#      only thing in the repository that loads it.
+#   3. The target must be a database on this machine, and its name has to be typed back.
+#      A host that is not loopback is refused outright — a staging or production URL
+#      cannot be cleaned by this script however it is invoked.
+#
+# Usage:
+#   ouroboros-db/scripts/clean-dev                  # confirm the name, then clean
+#   ouroboros-db/scripts/clean-dev --yes            # skip the prompt (CI, scripted resets)
+#   ouroboros-db/scripts/clean-dev --dry-run        # print the command, run nothing
+#   ouroboros-db/scripts/clean-dev --runner docker  # force the container
+#
+# The confirmation is read from stdin, so `printf 'ouroboros\n' | clean-dev` is the same
+# statement a person makes by typing it. Nothing on stdin means nothing is dropped.
+#
+# Which database that is comes from the OURO_DB_* variables exactly as it does for every
+# other command here — ../run.sh resolves them, so there is one implementation of what
+# they mean. See ../README.md for the full picture.
+#
+# Exit status:
+#   0  the schema was dropped (or --dry-run printed what would have run)
+#   1  Flyway failed
+#   2  refused: a database that is not on this machine, an unconfirmed prompt, bad usage
+
+set -eu
+unset CDPATH
+
+MODULE_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd)
+RUN="$MODULE_DIR/run.sh"
+
+# The overlay that turns cleanDisabled off. Named here and nowhere else.
+DEV_CONFIG=flyway.dev.toml
+
+TAB=$(printf '\t')
+assume_yes=0
+dry_run=0
+
+# die STATUS MESSAGE... — report why nothing was dropped, and stop.
+die() {
+  status=$1
+  shift
+  printf 'clean-dev: %s\n' "$*" >&2
+  exit "$status"
+}
+
+# usage — the header comment above, minus its leading `# `.
+usage() {
+  sed -n '3,36p' "$0" | cut -c 3-
+}
+
+# ---------------------------------------------------------------------------
+# Arguments — ours are consumed, the rest are run.sh's and keep their order
+# ---------------------------------------------------------------------------
+
+# Each argument is taken off the front and the ones that are not ours are put back on
+# the end, so what remains in "$@" after the loop is exactly what run.sh should see.
+remaining=$#
+while [ "$remaining" -gt 0 ]; do
+  argument=$1
+  shift
+  remaining=$((remaining - 1))
+  case $argument in
+    -y | --yes)
+      assume_yes=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      # A dry run prints a command instead of running one, so there is nothing to
+      # confirm; noting it here is what stops it prompting anyway.
+      if [ "$argument" = --dry-run ]; then
+        dry_run=1
+      fi
+      set -- "$@" "$argument"
+      ;;
+  esac
+done
+
+[ -f "$MODULE_DIR/$DEV_CONFIG" ] ||
+  die 2 "no $DEV_CONFIG in $MODULE_DIR — clean stays disabled without it"
+
+# ---------------------------------------------------------------------------
+# The target — resolved by run.sh, so .env is not read a second way here
+# ---------------------------------------------------------------------------
+
+target=$("$RUN" --print-target "$@") ||
+  die 2 'could not work out which database that would be'
+
+# field NAME — one value out of run.sh's tab-separated target report.
+field() {
+  printf '%s\n' "$target" | awk -F"$TAB" -v name="$1" '$1 == name { print $2; exit }'
+}
+
+db_host=$(field host)
+db_port=$(field port)
+db_name=$(field name)
+db_schema=$(field schema)
+
+# Gate 3a. The same loopback names run.sh treats as "on this machine" when it decides a
+# container needs host networking; anything else is somebody's server.
+case $db_host in
+  localhost | 127.0.0.1 | ::1 | host.docker.internal) ;;
+  *)
+    die 2 "refusing to clean $db_name on $db_host — clean-dev only runs against a" \
+      'database on this machine. Point OURO_DB_HOST at a local one, or drop the' \
+      'objects yourself if that really is what you want.'
+    ;;
+esac
+
+# Gate 3b. Typing the name back is the difference between meaning it and being one
+# terminal tab off. The answer is read from stdin whatever stdin is, so a script can
+# make the same statement by piping the name in; --yes is the shorter way to say it. A
+# stdin that is closed, empty or anything else answers nothing, and nothing is dropped.
+if [ "$assume_yes" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
+  printf 'clean-dev: this DROPS every object in schema %s of %s at %s:%s.\n' \
+    "$db_schema" "$db_name" "$db_host" "$db_port"
+  printf 'Type the database name (%s) to confirm, or pass --yes: ' "$db_name"
+
+  answer=''
+  read -r answer || true
+  [ "$answer" = "$db_name" ] || die 2 'not confirmed — nothing was dropped'
+fi
+
+exec "$RUN" --config "$DEV_CONFIG" "$@" clean

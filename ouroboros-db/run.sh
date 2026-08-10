@@ -12,6 +12,19 @@
 #   ouroboros-db/run.sh migrate -X         # any further argument goes to Flyway
 #   ouroboros-db/run.sh --dry-run          # print the command instead of running it
 #   ouroboros-db/run.sh --runner docker    # force a runner instead of choosing one
+#   ouroboros-db/run.sh --config FILE      # layer another config file over flyway.toml
+#   ouroboros-db/run.sh --print-target     # print the database it would migrate
+#
+# scripts/{migrate,info,validate,clean-dev} are the named commands built on this. Use
+# them for the everyday four; use this directly for anything they do not cover.
+#
+# How Flyway is *configured* is not an argument here. flyway.toml beside this script
+# holds the project's settings — where the migrations are, that the schema is created,
+# that a misnamed migration fails the run, that `clean` is off — and both runners are
+# pointed at that directory with -workingDirectory, so they read it the same way the
+# compose stack does. Only what differs per machine (url, user, password, schema) is
+# passed on the command line. --config layers one more file on top, which is how
+# scripts/clean-dev reaches flyway.dev.toml and nothing else does.
 #
 # Flyway itself comes from whichever is available, which you can override with
 # --runner:
@@ -49,6 +62,12 @@ ROOT=$(dirname -- "$MODULE_DIR")
 PARSER="$ROOT/scripts/lib/parse-env-example.awk"
 MIGRATIONS="$MODULE_DIR/migrations"
 
+# The project configuration both runners read, and the directory the container sees it
+# in. Everything under PROJECT mirrors this module, so the relative paths inside
+# flyway.toml mean the same thing on both sides of the container boundary.
+CONFIG=flyway.toml
+PROJECT=/flyway/project
+
 # The module's own .env first, so a database belonging to this module can be configured
 # without touching the settings the whole stack shares.
 ENV_FILES="$MODULE_DIR/.env $ROOT/.env"
@@ -59,7 +78,9 @@ FLYWAY_IMAGE=flyway/flyway:11-alpine
 
 TAB=$(printf '\t')
 dry_run=0
+print_target=0
 runner=auto
+overlay=''
 
 # die STATUS MESSAGE... — report why nothing ran, and stop.
 die() {
@@ -71,7 +92,7 @@ die() {
 
 # usage — the header comment above, minus its leading `# `.
 usage() {
-  sed -n '3,43p' "$0" | cut -c 3-
+  sed -n '3,54p' "$0" | cut -c 3-
 }
 
 # ---------------------------------------------------------------------------
@@ -84,6 +105,10 @@ while [ $# -gt 0 ]; do
       dry_run=1
       shift
       ;;
+    --print-target)
+      print_target=1
+      shift
+      ;;
     --runner)
       [ $# -ge 2 ] || die 2 '--runner needs a value: auto, flyway or docker'
       runner=$2
@@ -91,6 +116,15 @@ while [ $# -gt 0 ]; do
       ;;
     --runner=*)
       runner=${1#--runner=}
+      shift
+      ;;
+    --config)
+      [ $# -ge 2 ] || die 2 "--config needs the name of a file in $MODULE_DIR"
+      overlay=$2
+      shift 2
+      ;;
+    --config=*)
+      overlay=${1#--config=}
       shift
       ;;
     -h | --help)
@@ -112,10 +146,31 @@ case $runner in
   *) die 2 "unknown runner: $runner (expected auto, flyway or docker)" ;;
 esac
 
+if [ -n "$overlay" ]; then
+  # A bare file name inside this module, never a path: the container only ever sees this
+  # directory, and a --config that could reach anywhere on the disk would be a way to
+  # feed Flyway a configuration nobody reviewed.
+  case $overlay in
+    */* | .*) die 2 "--config takes the name of a file in $MODULE_DIR, not a path: $overlay" ;;
+  esac
+  [ -f "$MODULE_DIR/$overlay" ] || die 2 "no $overlay in $MODULE_DIR"
+fi
+
 # Flyway's own default is to print its usage, which is not what "run it" should mean.
 [ $# -gt 0 ] || set -- migrate
 
+# The command for the progress line: the first argument that is not a Flyway flag, so a
+# `-X info` reports itself as info rather than as -X.
 flyway_command=$1
+for argument in "$@"; do
+  case $argument in
+    -*) ;;
+    *)
+      flyway_command=$argument
+      break
+      ;;
+  esac
+done
 
 # ---------------------------------------------------------------------------
 # Parameters — the environment wins over .env, which wins over the defaults
@@ -159,6 +214,8 @@ JDBC_URL="jdbc:postgresql://$db_host:$db_port/$db_name"
 # Preflight — fail with the fix, not with a stack trace
 # ---------------------------------------------------------------------------
 
+[ -f "$MODULE_DIR/$CONFIG" ] || die 2 "no $CONFIG in $MODULE_DIR — this is not a Flyway project"
+
 [ -d "$MIGRATIONS" ] || die 2 "no migrations directory at $MIGRATIONS"
 
 migrations_found=0
@@ -198,39 +255,65 @@ case $runner in
 esac
 
 # ---------------------------------------------------------------------------
+# The resolved target, for anything that has to decide before it runs
+# ---------------------------------------------------------------------------
+
+# scripts/clean-dev refuses a database that is not on this machine, and asks for the
+# database name back before it drops anything. Both facts are resolved here, and this is
+# how it reads them rather than parsing .env a second way. The password is not among
+# them: nothing that needs to *decide* something needs the password.
+if [ "$print_target" -eq 1 ]; then
+  printf '%s\n' \
+    "host$TAB$db_host" \
+    "port$TAB$db_port" \
+    "name$TAB$db_name" \
+    "user$TAB$db_user" \
+    "schema$TAB$db_schema" \
+    "runner$TAB$runner"
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 
-# The settings both runners share, in the order the compose stack passes them.
+# What differs per machine. Everything else is flyway.toml's, which both runners reach
+# through -workingDirectory below.
 set -- \
   -url="$JDBC_URL" \
   -user="$db_user" \
   -password="$db_password" \
   -schemas="$db_schema" \
-  -createSchemas=true \
-  -validateMigrationNaming=true \
-  -connectRetries=10 \
-  -connectRetriesInterval=2 \
   "$@"
 
+# An overlay is only ever read when it is named, so flyway.toml has to be named too:
+# -configFiles replaces the auto-discovered file rather than adding to it.
 if [ "$runner" = docker ]; then
+  [ -z "$overlay" ] || set -- -configFiles="$PROJECT/$CONFIG,$PROJECT/$overlay" "$@"
+  set -- -workingDirectory="$PROJECT" "$@"
+  set -- "$FLYWAY_IMAGE" "$@"
+
+  # Only what Flyway reads is mounted, and all of it read-only: the config, the
+  # migrations, and the overlay when one was asked for. Mounting the module wholesale
+  # would hand the container this developer's .env as well, which it has no use for.
+  [ -z "$overlay" ] ||
+    set -- --volume "$MODULE_DIR/$overlay:$PROJECT/$overlay:ro" "$@"
+  set -- --volume "$MIGRATIONS:$PROJECT/migrations:ro" "$@"
+  set -- --volume "$MODULE_DIR/$CONFIG:$PROJECT/$CONFIG:ro" "$@"
+
   # A server on this machine is almost always bound to loopback, which inside a
   # container means the container itself. Host networking is what bridges that.
   case $db_host in
-    localhost | 127.0.0.1 | ::1 | host.docker.internal) network='--network=host' ;;
-    *) network='' ;;
+    localhost | 127.0.0.1 | ::1 | host.docker.internal)
+      set -- --network=host "$@"
+      ;;
   esac
 
-  set -- \
-    run --rm ${network:+"$network"} \
-    --volume "$MIGRATIONS:/flyway/sql:ro" \
-    "$FLYWAY_IMAGE" \
-    -locations=filesystem:/flyway/sql \
-    "$@"
-  set -- docker "$@"
+  set -- docker run --rm "$@"
 else
-  # The local binary reads the migrations where they actually are.
-  set -- flyway -locations="filesystem:$MIGRATIONS" "$@"
+  # The local binary reads the project where it actually is.
+  [ -z "$overlay" ] || set -- -configFiles="$MODULE_DIR/$CONFIG,$MODULE_DIR/$overlay" "$@"
+  set -- flyway -workingDirectory="$MODULE_DIR" "$@"
 fi
 
 # The password reaches Flyway but is never printed: this output lands in CI logs and

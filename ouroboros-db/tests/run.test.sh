@@ -1,18 +1,17 @@
 #!/usr/bin/env sh
 #
-# db-run.test.sh — integration tests for ouroboros-db/run.sh.
+# run.test.sh — integration tests for ouroboros-db/run.sh.
 #
 # Both runners are replaced by stubs on PATH and the script is pointed at synthetic
-# module trees, so every path — runner selection, parameter resolution, passthrough,
-# preflight, failure — is exercised without Docker, without Flyway, without a database,
-# and without reading the developer's own .env. Each stub records how it was called,
-# which is how the tests assert on the command that would really have run.
-#
-# It lives here because scripts/run-tests.sh is the only runner the repository has
-# today; it moves to the module's own suite when #19 lands ouroboros-db/tests/.
+# module trees, so every path — runner selection, parameter resolution, configuration,
+# passthrough, preflight, failure — is exercised without Docker, without Flyway, without
+# a database, and without reading the developer's own .env. Each stub records how it was
+# called, which is how the tests assert on the command that would really have run.
 #
 # Usage:
-#   scripts/tests/db-run.test.sh   # or scripts/run-tests.sh for the whole suite
+#   ouroboros-db/tests/run.test.sh          # this file alone
+#   scripts/run-tests.sh ouroboros-db/tests # the module's suite
+#   scripts/run-tests.sh                    # every suite in the repository
 #
 # Exit status: 0 all assertions passed / 1 at least one failed.
 
@@ -20,50 +19,21 @@ set -u
 
 unset CDPATH
 TEST_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-SCRIPTS_DIR=$(dirname -- "$TEST_DIR")
-REPO_ROOT=$(dirname -- "$SCRIPTS_DIR")
+MODULE_DIR=$(dirname -- "$TEST_DIR")
+REPO_ROOT=$(dirname -- "$MODULE_DIR")
+SCRIPTS_DIR="$REPO_ROOT/scripts"
 
 . "$SCRIPTS_DIR/lib/checks.sh"
+. "$TEST_DIR/lib/fixture.sh"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
+TAB=$(printf '\t')
 STUB_LOG="$work/stub.log"
 export STUB_LOG
 
-# Two PATHs, so runner auto-detection can be tested from both sides: `both` has a local
-# Flyway and Docker, `docker-only` has just Docker.
-mkdir -p "$work/both" "$work/docker-only" "$work/neither"
-
-for tool in sh awk sed cut dirname tr; do
-  resolved=$(command -v "$tool")
-  ln -sf "$resolved" "$work/both/$tool"
-  ln -sf "$resolved" "$work/docker-only/$tool"
-  ln -sf "$resolved" "$work/neither/$tool"
-done
-
-# Each stub records the command it was asked to run and then reports whatever exit
-# status the case wants, standing in for Flyway succeeding or failing.
-for tool in docker flyway; do
-  cat > "$work/both/$tool" <<STUB
-#!/usr/bin/env sh
-set -u
-printf '$tool %s\n' "\$*" >> "\$STUB_LOG"
-exit "\${STUB_EXIT:-0}"
-STUB
-  chmod +x "$work/both/$tool"
-done
-cp "$work/both/docker" "$work/docker-only/docker"
-
-# make_module DIR — a minimal tree run.sh can resolve itself inside: the script, the
-# parser it shares with the rest of the repo, and something to apply.
-make_module() {
-  module_root=$1
-  mkdir -p "$module_root/ouroboros-db/migrations" "$module_root/scripts/lib"
-  cp "$REPO_ROOT/ouroboros-db/run.sh" "$module_root/ouroboros-db/run.sh"
-  cp "$SCRIPTS_DIR/lib/parse-env-example.awk" "$module_root/scripts/lib/"
-  printf 'select 1;\n' > "$module_root/ouroboros-db/migrations/V000__bootstrap.sql"
-}
+fixture_stubs "$work"
 
 # run_db DIR [ARG...] — run the fixture's run.sh with both runners available, leaving
 # combined output in $out, the exit status in $status and the stub's record in $log.
@@ -110,7 +80,7 @@ check_absent_in_text() {
 printf '\nouroboros-db/run.sh\n\n'
 
 base="$work/base"
-make_module "$base"
+fixture_module "$base"
 
 # ---------------------------------------------------------------------------
 # Choosing a runner
@@ -180,14 +150,78 @@ out=$(PATH="$work/both" OURO_DB_HOST=db.example.test \
   "$base/ouroboros-db/run.sh" --dry-run --runner docker 2>&1)
 check_absent_in_text "$out" '--network=host' 'a remote database gets ordinary networking'
 
-# Each runner reads the migrations where it can actually see them.
+# ---------------------------------------------------------------------------
+# The Flyway project
+# ---------------------------------------------------------------------------
+
+printf '\nThe Flyway project\n'
+
+# Each runner is pointed at the project where it can actually see it, and flyway.toml
+# resolves its own relative locations from there.
 run_db "$base" --dry-run --runner docker
-check_matches "$out" '/migrations:/flyway/sql:ro ' 'the container mounts them read-only'
-check_matches "$out" '\-locations=filesystem:/flyway/sql ' 'and reads them from the mount'
+check_matches "$out" '/flyway\.toml:/flyway/project/flyway\.toml:ro ' \
+  'the container mounts the configuration read-only'
+check_matches "$out" '/migrations:/flyway/project/migrations:ro ' \
+  'and the migrations read-only beside it'
+check_matches "$out" '\-workingDirectory=/flyway/project ' 'and works from the mount'
 
 run_db "$base" --dry-run --runner flyway
-check_matches "$out" "\\-locations=filesystem:$base/ouroboros-db/migrations " \
-  'the local binary reads them in place'
+check_matches "$out" "\\-workingDirectory=$base/ouroboros-db " \
+  'the local binary works from the module directory'
+
+# The settings belong to flyway.toml. Repeating them here is what let the compose stack
+# and this script drift apart before #19.
+for repeated in -locations= -createSchemas -validateMigrationNaming -connectRetries; do
+  run_db "$base" --dry-run
+  check_absent_in_text "$out" "$repeated" "$repeated is left to flyway.toml"
+done
+
+# Only the module's own .env is left out of the container: it is the developer's, and a
+# migrator has no use for it.
+run_db "$base" --dry-run --runner docker
+check_absent_in_text "$out" "$base/ouroboros-db:" 'the module is not mounted wholesale'
+
+no_config="$work/no-config"
+fixture_module "$no_config"
+rm -f "$no_config/ouroboros-db/flyway.toml"
+run_db "$no_config" --dry-run
+check_equals 2 "$status" 'a module with no flyway.toml is not a Flyway project'
+check_matches "$out" 'no flyway\.toml' 'and the refusal names the file'
+
+# ---------------------------------------------------------------------------
+# Layering a second configuration file
+# ---------------------------------------------------------------------------
+
+printf '\nLayering a second configuration file\n'
+
+run_db "$base" --dry-run --config flyway.dev.toml --runner docker
+check_matches "$out" '/flyway\.dev\.toml:/flyway/project/flyway\.dev\.toml:ro ' \
+  'the overlay is mounted alongside the configuration'
+check_matches "$out" '\-configFiles=/flyway/project/flyway\.toml,/flyway/project/flyway\.dev\.toml ' \
+  'and both files are named, because -configFiles replaces the discovered one'
+
+run_db "$base" --dry-run --config flyway.dev.toml --runner flyway
+check_matches "$out" "\\-configFiles=$base/ouroboros-db/flyway\\.toml,$base/ouroboros-db/flyway\\.dev\\.toml " \
+  'the local binary is given the same pair'
+
+run_db "$base" --dry-run --config=flyway.dev.toml
+check_matches "$out" 'flyway\.dev\.toml' '--config=value is accepted too'
+
+run_db "$base" --dry-run
+check_absent_in_text "$out" 'configFiles' 'no overlay means no -configFiles at all'
+
+run_db "$base" --dry-run --config
+check_equals 2 "$status" '--config without a value is refused'
+
+run_db "$base" --dry-run --config nothing.toml
+check_equals 2 "$status" 'a file that is not there is refused'
+
+# The container only ever sees this module, so a --config that could name a path would
+# be a way to feed Flyway a configuration from anywhere on the disk.
+for escape in ../.env /etc/passwd ./flyway.dev.toml .env; do
+  run_db "$base" --dry-run --config "$escape"
+  check_equals 2 "$status" "--config $escape is refused"
+done
 
 # ---------------------------------------------------------------------------
 # The Flyway command
@@ -197,8 +231,6 @@ printf '\nThe Flyway command\n'
 
 run_db "$base" --dry-run
 check_matches "$out" ' migrate$' 'migrate is the default command'
-check_matches "$out" '\-validateMigrationNaming=true' 'misnamed migrations are rejected'
-check_matches "$out" '\-createSchemas=true' 'the schema is created if absent'
 
 run_db "$base" --dry-run info
 check_matches "$out" ' info$' 'an explicit command replaces migrate'
@@ -211,6 +243,32 @@ check_matches "$out" ' info$' 'a -- separator is not passed on'
 
 run_db "$base" --dry-run --runner docker info
 check_matches "$out" ' info$' 'the runner flag is not passed on'
+
+# The wrappers put their command last, so a Flyway flag can precede it.
+run_db "$base" -X info
+check_matches "$out" 'run\.sh: info on ' 'the command reported is the command, not a flag'
+
+# ---------------------------------------------------------------------------
+# Reporting the target
+# ---------------------------------------------------------------------------
+
+printf '\nReporting the target\n'
+
+run_db "$base" --print-target
+check_equals 0 "$status" '--print-target exits zero'
+check_matches "$out" "^host${TAB}localhost\$" 'it reports the host'
+check_matches "$out" "^port${TAB}5432\$" 'it reports the port'
+check_matches "$out" "^name${TAB}ouroboros\$" 'it reports the database'
+check_matches "$out" "^schema${TAB}ouroboros\$" 'it reports the schema'
+check_matches "$out" "^runner${TAB}flyway\$" 'it reports the runner it would use'
+check_equals '' "$log" 'and runs nothing at all'
+
+write_module_env "$base" 'OURO_DB_PASSWORD=hunter2
+OURO_DB_HOST=db.example.test'
+run_db "$base" --print-target
+check_matches "$out" "^host${TAB}db\.example\.test\$" 'it resolves .env exactly as a real run does'
+check_absent_in_text "$out" 'hunter2' 'and never reports the password'
+rm -f "$base/ouroboros-db/.env"
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -295,14 +353,14 @@ rm -f "$base/ouroboros-db/.env"
 printf '\nPreflight and failure\n'
 
 no_migrations="$work/no-migrations"
-make_module "$no_migrations"
+fixture_module "$no_migrations"
 rm -f "$no_migrations"/ouroboros-db/migrations/*.sql
 run_db "$no_migrations" --dry-run
 check_equals 2 "$status" 'an empty migrations directory stops the run'
 check_matches "$out" 'nothing to apply' 'and says there is nothing to apply'
 
 no_dir="$work/no-dir"
-make_module "$no_dir"
+fixture_module "$no_dir"
 rm -rf "$no_dir/ouroboros-db/migrations"
 run_db "$no_dir" --dry-run
 check_equals 2 "$status" 'a missing migrations directory stops the run'
@@ -319,12 +377,13 @@ printf '\nInvocation\n'
 
 # The script resolves its own location, so where it is called from cannot matter.
 out=$(cd / && PATH="$work/both" "$base/ouroboros-db/run.sh" --dry-run 2>&1)
-check_matches "$out" "$base/ouroboros-db/migrations" 'it works when called from another directory'
+check_matches "$out" "$base/ouroboros-db" 'it works when called from another directory'
 
 out=$(PATH="$work/both" "$base/ouroboros-db/run.sh" --help 2>&1)
 status=$?
 check_equals 0 "$status" '--help exits zero'
 check_matches "$out" 'run\.sh --runner docker' '--help shows the runner flag'
+check_matches "$out" 'run\.sh --config FILE' '--help shows the configuration flag'
 check_matches "$out" 'OURO_DB_HOST' '--help lists the parameters it reads'
 
 # ---------------------------------------------------------------------------
@@ -333,26 +392,27 @@ check_matches "$out" 'OURO_DB_HOST' '--help lists the parameters it reads'
 
 printf '\nThe committed module\n'
 
-check_executable "$REPO_ROOT/ouroboros-db/run.sh" 'ouroboros-db/run.sh is executable'
+check_executable "$MODULE_DIR/run.sh" 'ouroboros-db/run.sh is executable'
 check_run 'ouroboros-db/.env.example parses' \
-  awk -f "$SCRIPTS_DIR/lib/parse-env-example.awk" "$REPO_ROOT/ouroboros-db/.env.example"
+  awk -f "$SCRIPTS_DIR/lib/parse-env-example.awk" "$MODULE_DIR/.env.example"
 
 # Every parameter run.sh reads has to be in the template a developer copies.
 declared=$(awk -f "$SCRIPTS_DIR/lib/parse-env-example.awk" \
-  "$REPO_ROOT/ouroboros-db/.env.example" | cut -f 1)
+  "$MODULE_DIR/.env.example" | cut -f 1)
 for name in OURO_DB_HOST OURO_DB_PORT OURO_DB_NAME OURO_DB_USER OURO_DB_PASSWORD \
   OURO_DB_SCHEMA; do
   check_matches "$declared" "^$name\$" "the module template declares $name"
-  check_contains "$REPO_ROOT/ouroboros-db/run.sh" "$name" "run.sh reads $name"
+  check_contains "$MODULE_DIR/run.sh" "$name" "run.sh reads $name"
 done
 
 # The two migration paths must not drift: whatever compose applies, this applies too.
-for setting in '\-createSchemas=true' '\-validateMigrationNaming=true' 'flyway/flyway:11'; do
-  # The leading dash has to be escaped for the regex; it is noise in the report.
-  label=$(printf '%s' "$setting" | tr -d '\\')
-  check_contains "$REPO_ROOT/ouroboros-db/run.sh" "$setting" "run.sh carries $label"
-  check_contains "$REPO_ROOT/docker-compose.yml" "$setting" \
-    "docker-compose.yml carries the same $label"
-done
+# Since #19 that is one assertion rather than one per setting — both are pointed at the
+# same project directory, and the settings live in the file they find there.
+check_contains "$MODULE_DIR/run.sh" 'flyway/flyway:11' 'run.sh pins the Flyway 11 image'
+check_contains "$REPO_ROOT/docker-compose.yml" 'flyway/flyway:11' \
+  'docker-compose.yml pins the same image'
+check_contains "$MODULE_DIR/run.sh" '\-workingDirectory=' 'run.sh reads the project config'
+check_contains "$REPO_ROOT/docker-compose.yml" '\-workingDirectory=/flyway/project' \
+  'docker-compose.yml reads the same project config'
 
 check_summary

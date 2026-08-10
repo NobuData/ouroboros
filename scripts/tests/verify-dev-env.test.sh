@@ -59,16 +59,14 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./ouroboros-db/migrations:/flyway/sql:ro
+      - ./ouroboros-db/flyway.toml:/flyway/project/flyway.toml:ro
+      - ./ouroboros-db/migrations:/flyway/project/migrations:ro
     command:
+      - -workingDirectory=/flyway/project
       - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
       - -user=${OURO_DB_USER:-ouroboros}
       - -password=${OURO_DB_PASSWORD:-ouroboros}
       - -schemas=${OURO_DB_SCHEMA:-ouroboros}
-      - -createSchemas=true
-      - -locations=filesystem:/flyway/sql
-      - -validateMigrationNaming=true
-      - -connectRetries=10
       - migrate
     restart: "no"
 
@@ -124,17 +122,48 @@ DOC
 
   printf 'select 1;\n' > "$fixture/ouroboros-db/migrations/V000__bootstrap.sql"
 
-  # Only what the verifier cross-checks — the settings that must match the compose
-  # stack, and the parameters the template declares. The real runner is exercised by
-  # db-run.test.sh.
+  # The Flyway project: the settings the compose stack no longer spells out, and the
+  # overlay that is the only way to a `clean`. What Flyway makes of them is exercised by
+  # the module's own suite; here they only have to satisfy the contract.
+  cat > "$fixture/ouroboros-db/flyway.toml" <<'TOML'
+[environments.default]
+schemas = ["ouroboros"]
+connectRetries = 10
+
+[flyway]
+locations = ["filesystem:migrations"]
+createSchemas = true
+validateMigrationNaming = true
+cleanDisabled = true
+TOML
+
+  cat > "$fixture/ouroboros-db/flyway.dev.toml" <<'TOML'
+[flyway]
+cleanDisabled = false
+TOML
+
+  # Only what the verifier cross-checks — the project directory and image that must
+  # match the compose stack, and the parameters the template declares. The real runner
+  # is exercised by ouroboros-db/tests/run.test.sh.
   cat > "$fixture/ouroboros-db/run.sh" <<'RUNNER'
 #!/usr/bin/env sh
 : "${OURO_DB_HOST?} ${OURO_DB_PORT?} ${OURO_DB_NAME?}"
 : "${OURO_DB_USER?} ${OURO_DB_PASSWORD?} ${OURO_DB_SCHEMA?}"
 exec docker run --rm flyway/flyway:11-alpine \
-  -password="$db_password" -createSchemas=true -validateMigrationNaming=true migrate
+  -workingDirectory=/flyway/project -password="$db_password" migrate
 RUNNER
   chmod +x "$fixture/ouroboros-db/run.sh"
+
+  # The named commands over it. Each one only has to be there and be runnable; what they
+  # do is ouroboros-db/tests/scripts.test.sh's subject.
+  mkdir -p "$fixture/ouroboros-db/scripts"
+  for named in migrate info validate; do
+    printf '#!/usr/bin/env sh\nexec ../run.sh %s\n' "$named" \
+      > "$fixture/ouroboros-db/scripts/$named"
+  done
+  printf '#!/usr/bin/env sh\nexec ../run.sh --config flyway.dev.toml clean\n' \
+    > "$fixture/ouroboros-db/scripts/clean-dev"
+  chmod +x "$fixture/ouroboros-db/scripts/"*
 
   cat > "$fixture/ouroboros-db/.env.example" <<'MODULEENV'
 # Where the database is.
@@ -236,11 +265,23 @@ check_break 'starting the migrator before the healthcheck is reported' \
 
 check_break 'a writable migrations mount is reported' \
   'flyway mounts the migrations read-only' \
-  'sed -i "s|/flyway/sql:ro|/flyway/sql|" "$root/docker-compose.yml"'
+  'sed -i "s|/flyway/project/migrations:ro|/flyway/project/migrations|" "$root/docker-compose.yml"'
 
-check_break 'a migrator that does not validate naming is reported' \
-  'flyway rejects misnamed migrations' \
-  'sed -i "s|-validateMigrationNaming=true|-validateMigrationNaming=false|" "$root/docker-compose.yml"'
+check_break 'a writable configuration mount is reported' \
+  'flyway mounts the project configuration read-only' \
+  'sed -i "s|/flyway/project/flyway.toml:ro|/flyway/project/flyway.toml|" "$root/docker-compose.yml"'
+
+check_break 'a migrator that never reads the project is reported' \
+  'flyway takes its settings from the module' \
+  'sed -i "/-workingDirectory=/d" "$root/docker-compose.yml"'
+
+check_break 'a stack that restates a setting flyway.toml settles is reported' \
+  'does not restate what flyway\.toml settles' \
+  'sed -i "s|^      - migrate|      - -validateMigrationNaming=false\n      - migrate|" "$root/docker-compose.yml"'
+
+check_break 'a stack that loads the development overlay is reported' \
+  'never loads the dev overlay' \
+  'sed -i "s|^      - migrate|      - -configFiles=/flyway/project/flyway.dev.toml\n      - migrate|" "$root/docker-compose.yml"'
 
 check_break 'a restarting migrator is reported' \
   'flyway does not restart after it succeeds' \
@@ -312,6 +353,62 @@ check_break 'a misnamed migration is reported' \
   'follows the migration naming rule' \
   'mv "$root/ouroboros-db/migrations/V000__bootstrap.sql" "$root/ouroboros-db/migrations/V1__Bootstrap.sql"'
 
+printf '\nFlyway project violations\n'
+
+check_break 'a module with no flyway.toml is reported' \
+  'flyway\.toml exists' \
+  'rm "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a project that does not find its own migrations is reported' \
+  'flyway\.toml locates the migrations' \
+  'sed -i "s|^locations = .*|locations = [\"filesystem:/flyway/sql\"]|" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a project that stops rejecting misnamed migrations is reported' \
+  'flyway\.toml rejects a misnamed migration' \
+  'sed -i "s|^validateMigrationNaming = true|validateMigrationNaming = false|" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a project that no longer creates its schema is reported' \
+  'flyway\.toml creates that schema' \
+  'sed -i "/^createSchemas = /d" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a project that owns some other schema is reported' \
+  'flyway\.toml owns the ouroboros schema' \
+  'sed -i "s|^schemas = .*|schemas = [\"public\"]|" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a credential committed into the project is reported' \
+  'flyway\.toml carries no connection or credential' \
+  'printf "password = \"hunter2\"\n" >> "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a project that ships with clean enabled is reported' \
+  'flyway\.toml disables clean' \
+  'sed -i "s|^cleanDisabled = true|cleanDisabled = false|" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a missing development overlay is reported' \
+  'flyway\.dev\.toml exists' \
+  'rm "$root/ouroboros-db/flyway.dev.toml"'
+
+check_break 'an overlay that no longer enables clean is reported' \
+  'the dev overlay is what re-enables it' \
+  'sed -i "s|^cleanDisabled = false|cleanDisabled = true|" "$root/ouroboros-db/flyway.dev.toml"'
+
+check_break 'a clean-dev that does not load the overlay is reported' \
+  'clean-dev is what does load it' \
+  'printf "#!/usr/bin/env sh\nexec ../run.sh clean\n" > "$root/ouroboros-db/scripts/clean-dev"'
+
+printf '\nNamed command violations\n'
+
+check_break 'a missing named command is reported' \
+  'scripts/info is executable' \
+  'rm "$root/ouroboros-db/scripts/info"'
+
+check_break 'a named command that is not executable is reported' \
+  'scripts/migrate is executable' \
+  'chmod -x "$root/ouroboros-db/scripts/migrate"'
+
+check_break 'an ungated clean is reported' \
+  'no ouroboros-db/scripts/clean' \
+  'printf "#!/usr/bin/env sh\nexec ../run.sh clean\n" > "$root/ouroboros-db/scripts/clean"'
+
 printf '\nMigration runner violations\n'
 
 check_break 'a runner that is not executable is reported' \
@@ -319,8 +416,12 @@ check_break 'a runner that is not executable is reported' \
   'chmod -x "$root/ouroboros-db/run.sh"'
 
 check_break 'a runner that has drifted from the stack is reported' \
-  'run\.sh applies -validateMigrationNaming=true' \
-  'sed -i "s|-validateMigrationNaming=true|-validateMigrationNaming=false|" "$root/ouroboros-db/run.sh"'
+  'run\.sh reads flyway\.toml' \
+  'sed -i "s|-workingDirectory=/flyway/project ||" "$root/ouroboros-db/run.sh"'
+
+check_break 'a runner on a different Flyway is reported' \
+  'run\.sh pins the same Flyway 11 image' \
+  'sed -i "s|flyway/flyway:11-alpine|flyway/flyway:10|" "$root/ouroboros-db/run.sh"'
 
 check_break 'a literal password in the runner is reported' \
   'run\.sh holds no literal password' \
