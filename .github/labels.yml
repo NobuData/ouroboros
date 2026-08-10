@@ -1,0 +1,176 @@
+# Ouroboros label definitions — the source of truth for this repository's labels.
+#
+# Apply them to GitHub with:
+#
+#   scripts/sync-labels.sh --dry-run    # show what would change
+#   scripts/sync-labels.sh              # create missing, update drifted
+#
+# Filed as issue #9. The label taxonomy is documented in
+# docs/CONVENTIONS.md § 7 (Git & GitHub).
+#
+# Format — a top-level list; every entry is exactly these three keys, each value
+# double-quoted, parsed by scripts/lib/parse-labels.awk:
+#
+#   - name: "<= 50 characters, unique>"
+#     color: "six hex digits, no leading #"
+#     description: "<= 100 characters, no double quotes"
+#
+# GitHub's own defaults that this repository does not use (`enhancement`,
+# `duplicate`, `good first issue`, `help wanted`, `invalid`, `question`,
+# `wontfix`) are deliberately absent: the sync script never deletes, so they are
+# reported as extras and left alone.
+
+# ── Release scoping ───────────────────────────────────────────────────────────
+# Which release a piece of work belongs to. Every work issue carries exactly one.
+
+- name: "mvp"
+  color: "3dd6f5"                       # brand accent cyan
+  description: "Targeted for the v1 / MVP release"
+
+- name: "v2"
+  color: "6f42c1"
+  description: "Extended scope — after MVP"
+
+# ── Module routing ────────────────────────────────────────────────────────────
+# Which module of the monorepo the work lands in. An issue may carry several.
+
+- name: "ui"
+  color: "1d76db"
+  description: "ouroboros-ui (Next.js product UI)"
+
+- name: "rest"
+  color: "0e8a16"
+  description: "ouroboros-rest (NestJS communications layer)"
+
+- name: "db"
+  color: "b60205"
+  description: "ouroboros-db (PostgreSQL + Flyway)"
+
+- name: "engine"
+  color: "fbca04"
+  description: "ouroboros-engine (Python / FastAPI backend)"
+
+# ── Cross-cutting ─────────────────────────────────────────────────────────────
+# Concerns that belong to no single module.
+
+- name: "infra"
+  color: "5319e7"
+  description: "Repo infrastructure, containers, dev environment"
+
+- name: "design"
+  color: "e99695"
+  description: "Brand assets, design system, theming"
+
+- name: "ci"
+  color: "c2e0c6"
+  description: "Continuous integration and automation"
+
+- name: "epic"
+  color: "d4c5f9"
+  description: "Epic — parent tracking issue"
+
+# GitHub defaults this repository does use, pinned here so a repo whose defaults
+# were deleted can be rebuilt from this file alone.
+
+- name: "bug"
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: "documentation"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+# ── Product areas ─────────────────────────────────────────────────────────────
+# One per designed screen or subsystem, from the mockup roadmaps in docs/.
+
+- name: "shell"
+  color: "0366d6"
+  description: "Application shell & UI/UX standards — header, sidebar, scroll containment, type scale"
+
+- name: "dashboard"
+  color: "0052cc"
+  description: "Mission Control dashboard (mockup 02) — read-model, services, page"
+
+- name: "intake"
+  color: "0e6b8a"
+  description: "Issue intake & sizing (mockup 03) — backlog sync, estimation, intake UI"
+
+- name: "workflow"
+  color: "8a4b0e"
+  description: "Workflow Studio (mockup 04) — workflow entities, DSL, canvas builder"
+
+- name: "code-view"
+  color: "5319e7"
+  description: "Workflow as Code (mockup 05) — TS-DSL projection, code editor, round-trip"
+
+- name: "routing"
+  color: "7b4bd6"
+  description: "Model routing (mockup 06) — routes, aliases, resolution, escalation"
+
+- name: "providers"
+  color: "0b6e6e"
+  description: "Providers & keys (mockup 07) — adapters, credentials, vault, discovery"
+
+- name: "build-farm"
+  color: "b35c00"
+  description: "Build Farm (mockup 08) — runner agent, control plane, dispatch, logs"
+
+- name: "planning"
+  color: "1f7a3d"
+  description: "Planning (mockup 09) — roadmaps, ticket generation, gantt, tracker writes"
+
+- name: "runs"
+  color: "9a3412"
+  description: "Run Console (mockup 10) — run observability, transcript, guardrails, controls"
+
+- name: "tests"
+  color: "0b7285"
+  description: "Test Results (mockup 11) — result ingestion, flake truth, triage, classification & routing"
+
+- name: "pr"
+  color: "4c1d95"
+  description: "PR Verification (mockup 12) — PR plane, gates, criteria matrix, merge executor"
+
+- name: "onboarding"
+  color: "0a7d5a"
+  description: "Get Started / Onboarding (mockup 13) — wizard, repo detection, templates, dry-run policy"
+
+- name: "knowledge"
+  color: "7d4f0a"
+  description: "Knowledge (mockup 14) — skills, learned facts, playbooks, context assembly"
+
+- name: "insights"
+  color: "5a3d9a"
+  description: "Insights (mockup 15) — metrics rollups, methodology registry, charts, digests"
+
+- name: "inbox"
+  color: "8a2be2"
+  description: "Needs-You Inbox (mockup 16) — decision items, kinds registry, actions, channels"
+
+- name: "settings"
+  color: "3f6212"
+  description: "Workspace Settings (mockup 17) — policy doc, audit plane, members, webhooks, lifecycle"
+
+- name: "analyzer"
+  color: "7f1d4d"
+  description: "Build Analyzer (mockup 18) — analysis runs, analyzers, suggestions, measurement loop"
+
+- name: "chatops"
+  color: "1a7f8c"
+  description: "Chat Ops (mockup 19) — Slack app, card renderer, /ouro commands, routing, escalation"
+
+- name: "copilot"
+  color: "a21caf"
+  description: "Workflow Copilot & Dry Run (mockup 20) — conversational authoring, typed ops, dry-run harness"
+
+- name: "registry"
+  color: "9c5bd6"
+  description: "Model Registry (mockup 21) — aliases, pricing catalog, params, governance"
+
+- name: "research"
+  color: "0b6b4f"
+  description: "Research (mockup 22) — investigations, tool SPI, citations, regression watch, roadmap pipeline"
+
+- name: "sources"
+  color: "006b75"
+  description: "Pluggable ticket sources — provider SPI, GitHub/Jira/Linear/GitLab"

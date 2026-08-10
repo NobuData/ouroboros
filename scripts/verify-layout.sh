@@ -33,39 +33,9 @@ cd "$ROOT"
 # it is the marketing site and predates these conventions.
 MODULES="ouroboros-ui ouroboros-rest ouroboros-engine ouroboros-db"
 
-failures=0
-checks=0
-
-# pass MESSAGE — record a satisfied check.
-pass() {
-  checks=$((checks + 1))
-  printf '  ok    %s\n' "$1"
-}
-
-# fail MESSAGE — record a violated check and mark the run as failed.
-fail() {
-  checks=$((checks + 1))
-  failures=$((failures + 1))
-  printf '  FAIL  %s\n' "$1"
-}
-
-# check_exists PATH DESCRIPTION — assert a file or directory exists.
-check_exists() {
-  if [ -e "$1" ]; then
-    pass "$2"
-  else
-    fail "$2 (missing: $1)"
-  fi
-}
-
-# check_contains FILE PATTERN DESCRIPTION — assert FILE matches an extended regex.
-check_contains() {
-  if [ -f "$1" ] && grep -Eq -- "$2" "$1"; then
-    pass "$3"
-  else
-    fail "$3 (no match for /$2/ in $1)"
-  fi
-}
+# The assertion harness (pass/fail/check_*/check_summary) is shared with the repo's
+# other verify-* scripts.
+. "$SCRIPT_DIR/lib/checks.sh"
 
 printf '\nRepository layout — %s\n\n' "$ROOT"
 
@@ -102,6 +72,4 @@ check_contains .editorconfig '^\[\*\.sql\]' '.editorconfig covers SQL'
 check_contains .editorconfig '^\[\*\.\{?md' '.editorconfig covers Markdown'
 check_contains .editorconfig '^\[\*\.\{?yml' '.editorconfig covers YAML'
 
-printf '\n%s checks, %s failed\n\n' "$checks" "$failures"
-
-[ "$failures" -eq 0 ]
+check_summary

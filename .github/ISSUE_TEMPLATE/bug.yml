@@ -1,0 +1,105 @@
+name: Bug
+description: Something behaves differently from how it is documented.
+title: "<project>: <what is broken>"
+type: Bug
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Title bugs the same way work is titled, minus the epic reference —
+        `<project>: <what is broken>`, e.g. `ouroboros-rest: /health/ready reports ready
+        while the database is down`. See
+        [`docs/CONVENTIONS.md`](https://github.com/NobuData/ouroboros/blob/main/docs/CONVENTIONS.md#7-git--github).
+
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      description: Where the behaviour shows up. Add the matching label after filing.
+      options:
+        - "ouroboros-ui"
+        - "ouroboros-rest"
+        - "ouroboros-engine"
+        - "ouroboros-db"
+        - "ouroboros-web"
+        - "repo tooling (scripts, CI, containers)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences on what goes wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest path from a clean checkout to the failure.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should have happened — and where that is written down, if it is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Relevant output. Redact secrets — `OURO_*` values are never safe to paste.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: The commit SHA or image tag the failure was seen on.
+      placeholder: "da448c0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - "Local development"
+        - "Container / docker compose"
+        - "CI"
+        - "Deployed"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched the open issues; this is not a duplicate.
+          required: true
+        - label: The logs above carry no credentials, tokens or `OURO_*` secret values.
+          required: true

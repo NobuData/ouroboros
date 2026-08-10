@@ -167,6 +167,36 @@ sizes are lint-banned so the user font-scale preference scales every surface.
 - **Roadmap status:** the roadmap documents in `docs/` carry 🟡 Open / 🟢 Done markers
   per issue; closing an issue updates its marker in the same PR.
 
+### Templates
+
+The new-issue page offers two YAML issue forms
+([`.github/ISSUE_TEMPLATE/`](../.github/ISSUE_TEMPLATE)) that collect the anatomy every
+roadmap issue shares — release scope, effort, affected systems, problem statement,
+solution, acceptance criteria, dependencies, stack. **Feature** files a Feature and
+seeds the title convention; **Bug** files a Bug. Blank issues are disabled so nothing
+arrives without that structure; re-type a Feature to **Task** for scaffolding,
+infrastructure, CI or documentation work.
+
+[`.github/pull_request_template.md`](../.github/pull_request_template.md) auto-populates
+every pull request with what/why, changes, how to test, risk notes, `Closes #<number>`,
+and the checklist for the conventions above.
+
+### Labels are code
+
+The label set lives in [`.github/labels.yml`](../.github/labels.yml) — name, colour and
+description for every label this repository defines — so it is reviewable in a diff and
+can be rebuilt from the checkout:
+
+```bash
+scripts/sync-labels.sh --dry-run   # report drift
+scripts/sync-labels.sh             # create what is missing, update what has drifted
+```
+
+The sync is idempotent and **never deletes**: a label on GitHub that the file does not
+define is reported and left alone, because deleting one silently strips it from every
+issue carrying it. Colours are six hex digits with no leading `#`; `mvp` is the brand
+accent cyan `#3dd6f5`.
+
 ## 8. Versioning
 
 Each module is versioned **independently** with semver in its own manifest
@@ -186,8 +216,16 @@ ouroboros-engine/** ─▶ ci/engine  ruff · pytest
 ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
 ```
 
-Repo-level structure is checked by [`../scripts/verify-layout.sh`](../scripts/verify-layout.sh),
-which is dependency-free and safe to run locally at any time.
+Repo-level checks are dependency-free POSIX shell and safe to run locally at any time:
+
+| Script | What it asserts |
+|---|---|
+| [`verify-layout.sh`](../scripts/verify-layout.sh) | Module directories, README sections, root docs, `.editorconfig` coverage |
+| [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
+| [`run-tests.sh`](../scripts/run-tests.sh) | Runs `scripts/tests/*.test.sh` — the unit and integration tests for the tooling above |
+
+They share one assertion harness, [`scripts/lib/checks.sh`](../scripts/lib/checks.sh), so
+every check reads and reports the same way.
 
 ## 10. Architectural invariants
 
