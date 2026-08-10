@@ -16,11 +16,11 @@ export default function Page() {
         The application scaffold is up: App Router, TypeScript, and the lint, typecheck,
         test and build pipeline <code>ci/ui</code> runs. This page is a placeholder — it
         renders in Chakra Petch, IBM Plex Sans and IBM Plex Mono, which is how you can
-        tell the three faces loaded.
+        tell the three faces loaded, and in whichever palette your system asks for until
+        you choose one.
       </p>
       <ul className="placeholder__next">
-        <li>#40 — global styles: the token sheet and the type scale</li>
-        <li>#17 — the runtime theme engine</li>
+        <li>#42 — the visible light / dark / system switcher</li>
         <li>#41 — the app shell</li>
         <li>#45 — the dashboard, at this route</li>
       </ul>

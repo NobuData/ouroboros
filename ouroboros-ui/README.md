@@ -1,10 +1,11 @@
 # ouroboros-ui
 
 > **Status:** scaffolded ([#39](https://github.com/NobuData/ouroboros/issues/39), epic
-> [#5](https://github.com/NobuData/ouroboros/issues/5)) and rendering from the design
-> tokens ([#40](https://github.com/NobuData/ouroboros/issues/40)) — `yarn dev` runs and
-> `ci/ui` is live. What renders is still a placeholder: the theme engine
-> ([#17](https://github.com/NobuData/ouroboros/issues/17)) and the app shell
+> [#5](https://github.com/NobuData/ouroboros/issues/5)), rendering from the design tokens
+> ([#40](https://github.com/NobuData/ouroboros/issues/40)), and switching themes at
+> runtime ([#17](https://github.com/NobuData/ouroboros/issues/17)) — `yarn dev` runs and
+> `ci/ui` is live. What renders is still a placeholder: the visible theme switcher
+> ([#42](https://github.com/NobuData/ouroboros/issues/42)) and the app shell
 > ([#41](https://github.com/NobuData/ouroboros/issues/41)) land on top of it.
 
 ## Purpose
@@ -69,12 +70,14 @@ address of a service it is not calling. The typed API client
 ```
 ouroboros-ui/
 ├── app/
-│   ├── layout.tsx      # the root layout: fonts, theme bootstrap slot
-│   ├── tokens.css      # the design tokens — a copy of docs/design/tokens.css
-│   ├── globals.css     # base element styles, built on those tokens
-│   ├── env.ts          # OURO_REST_URL, read and validated
-│   ├── (app)/          # signed-in screens — shell #41 → dashboard #45
-│   └── (auth)/         # signed-out screens — sign-in & tenancy #44
+│   ├── layout.tsx           # the root layout: fonts, theme bootstrap, provider
+│   ├── tokens.css           # the design tokens — a copy of docs/design/tokens.css
+│   ├── globals.css          # base element styles, built on those tokens
+│   ├── theme.ts             # the theme engine: vocabulary, DOM ops, boot script
+│   ├── theme-provider.tsx   # ThemeProvider / useTheme()
+│   ├── env.ts               # OURO_REST_URL, read and validated
+│   ├── (app)/               # signed-in screens — shell #41 → dashboard #45
+│   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
 ├── public/             # brand assets, favicons
 ├── eslint.config.mjs   # ESLint flat config
@@ -116,9 +119,8 @@ Three things the module owes it:
    `layout.tsx` is deliberate: both would target `<html>` with equal specificity, so
    writing the same name twice would leave the winner to stylesheet order. **Done.**
 3. **Stamp `data-theme` before first paint.** Nothing on `<html>` means *system*, and the
-   sheet's `prefers-color-scheme` block decides;
-   [#17](https://github.com/NobuData/ouroboros/issues/17) adds the stamping, the
-   persistence and the live OS tracking. **Pending** — `app/layout.tsx` marks the slot.
+   sheet's `prefers-color-scheme` block decides. **Done**
+   ([#17](https://github.com/NobuData/ouroboros/issues/17)) — see [Theming](#theming).
 
 `app/tokens.css` is the only file in this module that may write a colour down.
 `__tests__/styles.test.ts` fails `ci/ui` if a literal appears in any other stylesheet,
@@ -126,6 +128,57 @@ which is what makes the sentence above a rule rather than an intention.
 
 Every colour in this module is a `var(--token)`. There is no second place a colour may come
 from, which is what makes the theme switch a redefinition rather than a restyle.
+
+## Theming
+
+Three states — `light`, `dark`, `system` — and *system* is the default. The engine is
+[`app/theme.ts`](app/theme.ts) (vocabulary, the two DOM operations, and the boot script)
+plus [`app/theme-provider.tsx`](app/theme-provider.tsx) (`ThemeProvider`, `useTheme()`).
+The visible switcher is [#42](https://github.com/NobuData/ouroboros/issues/42); this is
+what it will call.
+
+```tsx
+"use client";
+import { useTheme } from "@/app/theme-provider";
+
+const { theme, resolved, setTheme } = useTheme();
+// theme    → "light" | "dark" | "system"   — what the user chose
+// resolved → "light" | "dark"              — what is actually rendering
+// setTheme → applies, persists, re-renders
+```
+
+Four things make it work, and each is a decision worth knowing before changing any of it.
+
+**Absence is `system`.** `data-theme` on `<html>` is `"light"`, `"dark"`, or **not
+there** — the contract
+[`../docs/DESIGN_TOKENS.md`](../docs/DESIGN_TOKENS.md#the-contract-for-17) sets out. So
+while the choice is *system* the attribute is removed, the sheet's
+`prefers-color-scheme` block applies, and the OS is tracked **by CSS, with no JavaScript
+running at all**. The provider does listen to `matchMedia`, but only to keep `resolved`
+truthful for a control that has to draw a sun or a moon — never to stamp. `system` is
+likewise stored as the *absence* of the `ouro-theme` key, so there is exactly one
+representation of it in storage and one on the element.
+
+**The boot script is inline, in `<head>`, and generated.** It runs while the browser
+parses the HTML — before the first paint, before React exists — because on a slow
+connection the browser paints the server's HTML long before hydration. It is built from
+the same constants the module reads, so the key and the attribute cannot drift; it never
+consults the OS, never writes, and cannot throw. Not `next/script`:
+`beforeInteractive` is preloaded rather than parser-blocking and its own documentation
+says it does not block hydration, which is weaker than this needs.
+
+**React's initial state matches the server, not storage.** A lazy initialiser reading
+`localStorage` would make the first client render disagree with the server's HTML — a
+hydration mismatch in every consumer. Instead the state starts where the server left it
+and a layout effect corrects it after hydration but *before paint*, so no consumer needs
+`suppressHydrationWarning` and nothing visible was ever wrong: the colours came from the
+boot script. That effect also re-stamps the attribute, which repairs the one in
+development that React's Strict Mode drops when it remounts and resets `<html>` to the
+attributes it renders from JSX.
+
+**`color-scheme` is not set here.** The sheet declares it in all three palette blocks, so
+native scrollbars, form controls and the browser's own canvas follow the theme for the
+same reason the palette does. There is no second place a theme is expressed.
 
 ## Favicons and the web-app manifest
 

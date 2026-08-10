@@ -346,7 +346,7 @@ v2?:  workspace runner · task graph · shared cache (faster, one more tool)
 | 2.1 | #14 | 🟢 Done | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
 | 2.2 | #15 | 🟡 Open | ouroboros-ui: [2.2] Favicon & web-app manifest set | Full favicon/PWA icon set generated from the web-icon asset | mvp, design, ui | N (needs 2.1, 5.1) | Y | XS | ouroboros-ui |
 | 2.3 | #16 | 🟢 Done | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
-| 2.4 | #17 | 🟡 Open | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
+| 2.4 | #17 | 🟢 Done | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
 | 2.5 | #18 | 🟡 Open | ouroboros: [2.5] Server-side brand surfaces | Glyph on REST OpenAPI page + engine/REST startup banners | v2, design, rest, engine | N (needs 2.1, 4.8, 6.2) | N | XS | ouroboros-rest, ouroboros-engine |
 
 ### Issue 2.1 — ouroboros: [2.1] Split brand sheet into logo asset set
@@ -493,7 +493,7 @@ icon-light.png ┘   (Next metadata)     └─ icon-192/512 + manifest
 
 ### Issue 2.4 — ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark)
 
-> **GitHub issue:** #17 · **Status:** 🟡 Open · **Parent epic:** #2
+> **GitHub issue:** #17 · **Status:** 🟢 Done · **Parent epic:** #2
 
 - **Problem Statement:** The brief requires switching themes on the fly — no reload, no
   flash of wrong theme on first paint, respecting the OS preference until the user
@@ -1743,8 +1743,16 @@ edit: **#15**'s Metadata API wiring and **#17**'s theme bootstrap.
 **#40** (global styles) is **done** on top of it: the sheet is copied to
 `ouroboros-ui/app/tokens.css` and held byte-identical to its source, the three faces are
 mapped onto the family tokens, and the base element styles — ground, ink, selection, one
-focus ring — read nothing but tokens. Both palettes render by flipping `data-theme` by
-hand, which is the state #17 automates.
+focus ring — read nothing but tokens.
+
+**#17** (the runtime theme engine) is **done** on top of that: an inline `<head>` script
+stamps the stored choice while the browser parses the HTML, a `ThemeProvider`/`useTheme()`
+pair owns it afterwards, and *system* is expressed as the absence of the attribute — so
+the OS is tracked by CSS with no JavaScript running at all. Measured on 6×-CPU-throttled
+hard loads: `data-theme` and the palette are already correct at the first animation frame
+in both themes, an explicit choice beats a contrary OS, and every case produces an empty
+console. The visible switcher, **#42**, is now unblocked, and Epic 2's MVP work is
+complete bar #15's Metadata API wiring.
 
 The remaining module scaffolds (#19, #27, #50) are unblocked and the Phase 1 tracks can
 run concurrently; each scaffold turns its own CI check on as it lands, and updates its
