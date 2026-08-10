@@ -32,7 +32,7 @@ describing:
 | [`ouroboros-db`](../ouroboros-db) | **Running** — migrations apply against a live PostgreSQL | Complete: the Flyway project landed with [#19](https://github.com/NobuData/ouroboros/issues/19) |
 | [`ouroboros-rest`](../ouroboros-rest) | Specified | [#27](https://github.com/NobuData/ouroboros/issues/27) → epic [#4](https://github.com/NobuData/ouroboros/issues/4) |
 | [`ouroboros-ui`](../ouroboros-ui) | **Running** — the App Router skeleton builds and serves | Scaffolded by [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
-| [`ouroboros-engine`](../ouroboros-engine) | **Running** — the FastAPI service builds, serves and validates its environment | Scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
+| [`ouroboros-engine`](../ouroboros-engine) | **Running** — the FastAPI service serves liveness and a key-guarded `/v0` | Scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50), guarded by [#51](https://github.com/NobuData/ouroboros/issues/51) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-web`](../ouroboros-web) | **Running** — the marketing site, outside the application stack | — |
 
 Keeping the document true as those scaffolds land is a maintenance obligation, and part
@@ -150,16 +150,21 @@ migrations rather than defining them.
 **Running.** Python 3.12, FastAPI, uv, port 8000. The scaffold —
 `src/ouroboros_engine/` with its application factory, `OURO_*` settings validated at
 import, and `GET /` naming the service and version — landed with
-[#50](https://github.com/NobuData/ouroboros/issues/50).
+[#50](https://github.com/NobuData/ouroboros/issues/50); the guarded surface with
+[#51](https://github.com/NobuData/ouroboros/issues/51).
 
 The engine executes the work the REST layer brokers, and in time the autonomous loops the
-product is named for. It is **internal only**: `/healthz` is open so a container platform
-can probe liveness, and everything under `/v0/` requires the shared secret on
-`X-Ouro-Internal-Key`, compared in constant time
-([#51](https://github.com/NobuData/ouroboros/issues/51), which is also what makes
-`OURO_ENGINE_SHARED_SECRET` mandatory — the scaffold reads it but no route requires it
-yet). A request without the key gets a 401 that reveals nothing about whether the path
-exists.
+product is named for. It is **internal only**, and enforces that itself rather than
+trusting the network to: `/healthz` is open so a container platform can probe liveness,
+and **every other path** — `/v0/status`, `GET /`, the generated OpenAPI document, a path
+that does not exist — requires the shared secret on `X-Ouro-Internal-Key`, compared in
+constant time. The check is middleware, so it runs before routing and a request without
+the key gets a 401 that reveals nothing about whether the path exists.
+
+`OURO_ENGINE_SHARED_SECRET` is therefore **mandatory**: an engine without one could serve
+nothing but liveness, so it names the missing variable and exits 2 rather than starting.
+Records are emitted as one JSON object per line, uvicorn's included, and a rejected key
+is never one of the fields.
 
 It holds no database connection. Anything the engine needs to know arrives in the request
 the REST layer makes, which keeps tenancy enforcement on the REST side of the boundary
@@ -368,16 +373,17 @@ header from the active-tenant store, and parsing of the error envelope into a ty
 
 ### 5.2 REST ↔ engine — the internal contract
 
-**Specified** ([#52](https://github.com/NobuData/ouroboros/issues/52),
-[#35](https://github.com/NobuData/ouroboros/issues/35)). The engine publishes a versioned
-contract under `/v0/`, exports its own FastAPI-generated `openapi.json` for the same
-drift check, and REST mirrors it in a typed client:
+**Partly running** ([#51](https://github.com/NobuData/ouroboros/issues/51) landed the
+first two routes; [#52](https://github.com/NobuData/ouroboros/issues/52) and
+[#35](https://github.com/NobuData/ouroboros/issues/35) are the rest). The engine
+publishes a versioned contract under `/v0/`, exports its own FastAPI-generated
+`openapi.json` for the same drift check, and REST mirrors it in a typed client:
 
-| Route | Auth | Purpose |
-|---|---|---|
-| `GET /healthz` | open | Liveness, for the container healthcheck and REST's readiness probe |
-| `GET /v0/status` | `X-Ouro-Internal-Key` | Version and uptime |
-| `POST /v0/tasks/echo` | `X-Ouro-Internal-Key` | The contract exemplar: `{task_kind, payload}` → `{accepted, echo, engine_version}` |
+| Route | Auth | Purpose | State |
+|---|---|---|---|
+| `GET /healthz` | open | Liveness, for the container healthcheck and REST's readiness probe | **Running** (#51) |
+| `GET /v0/status` | `X-Ouro-Internal-Key` | Version and uptime | **Running** (#51) |
+| `POST /v0/tasks/echo` | `X-Ouro-Internal-Key` | The contract exemplar: `{task_kind, payload}` → `{accepted, echo, engine_version}` | Specified (#52) |
 
 The version lives in the path (`/v0`), so a breaking change to the internal contract is a
 new prefix served alongside the old one rather than a flag day. `OURO_ENGINE_SHARED_SECRET`

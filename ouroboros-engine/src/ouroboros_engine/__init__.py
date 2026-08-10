@@ -3,8 +3,9 @@
 The package is deliberately thin at this point: an application factory
 (:mod:`ouroboros_engine.main`), validated configuration
 (:mod:`ouroboros_engine.settings`), the routers under :mod:`ouroboros_engine.api`, and
-the process-wide concerns under :mod:`ouroboros_engine.core`. Liveness, the internal-key
-middleware and the ``/v0`` contract land in issues #51 and #52.
+the process-wide concerns under :mod:`ouroboros_engine.core` — among them the guard that
+puts every route but liveness behind the internal shared secret. The rest of the ``/v0``
+contract lands in #52.
 
 Attributes:
     __version__: The installed distribution's version, taken from package metadata so

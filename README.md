@@ -158,8 +158,14 @@ on one in isolation — see its README for the specifics:
 yarn install --immutable && yarn dev
 
 # Python module (ouroboros-engine)
-uv sync && uv run dev
+uv sync && OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me uv run dev
 ```
+
+`ouroboros-engine` is the one module that will not start on defaults alone: it is
+internal-only, every path but `/healthz` requires the shared secret, and a process
+without one could serve nothing — so it names the missing variable and exits rather than
+starting. Export it (`.env.example` carries the development value) and `yarn dev` runs
+the whole stack as before.
 
 `ouroboros-web`, `ouroboros-ui` ([#39](https://github.com/NobuData/ouroboros/issues/39))
 and `ouroboros-engine` ([#50](https://github.com/NobuData/ouroboros/issues/50)) are

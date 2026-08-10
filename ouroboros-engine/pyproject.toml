@@ -7,7 +7,7 @@
 
 [project]
 name = "ouroboros-engine"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ouroboros backend — executes the work ouroboros-rest brokers."
 readme = "README.md"
 license = "Apache-2.0"
@@ -86,8 +86,10 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 # Tests document themselves in their names and their assert messages; a docstring on
-# every case is noise. `assert` is the point of a test, so S101 does not apply either.
-"tests/**/*.py" = ["D100", "D103", "S101"]
+# every case is noise. `assert` is the point of a test, so S101 does not apply either,
+# and S105/S106 flag the throwaway strings a test of the internal key is made of — a
+# secret no deployment ever holds is not a hardcoded credential.
+"tests/**/*.py" = ["D100", "D103", "S101", "S105", "S106"]
 
 [tool.ruff.format]
 docstring-code-format = true

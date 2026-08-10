@@ -1434,7 +1434,7 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 6.1 | #50 | 🟢 Done | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
-| 6.2 | #51 | 🟡 Open | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
+| 6.2 | #51 | 🟢 Done | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
 | 6.3 | #52 | 🟡 Open | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
 | 6.4 | #53 | 🟡 Open | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
 | 6.5 | #54 | 🟡 Open | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | v2, engine | N (after 6.3) | N | L | ouroboros-engine |
@@ -1494,7 +1494,41 @@ src/ouroboros_engine/
 
 ### Issue 6.2 — ouroboros-engine: [6.2] Health, version & internal auth
 
-> **GitHub issue:** #51 · **Status:** 🟡 Open · **Parent epic:** #6
+> **GitHub issue:** #51 · **Status:** 🟢 Done · **Parent epic:** #6
+>
+> Delivered: `GET /healthz` answers `{"status":"ok"}` to anyone, and **everything else
+> requires the shared secret** — `/v0/status`, `GET /`, the generated OpenAPI document,
+> and a path that does not exist. The scope is wider than "`/v0/*`" on purpose: the
+> problem this issue names is a misrouted engine port, and a port that hands out
+> `/openapi.json` has handed out a map of the internal surface.
+>
+> [`core/security.py`](../ouroboros-engine/src/ouroboros_engine/core/security.py) is
+> ASGI middleware, so it runs **before routing**: an unauthenticated caller gets the
+> same bare `401 {"detail":"Unauthorized"}` whether the path exists or not, and cannot
+> map the surface by reading status codes. The comparison is `hmac.compare_digest`, and
+> a *missing* header is compared like a wrong one rather than short-circuiting, so
+> neither the presence of the header nor the length of the prefix that matched is
+> readable from how long the answer took. The path and method of a rejection are
+> logged; the key that was offered is not, right or wrong — it may be another
+> environment's.
+>
+> `/v0/status` reports the version from package metadata and uptime from a monotonic
+> stopwatch started when the application was built, which is what tells "the engine is
+> up" from "the engine keeps coming back up". `OURO_ENGINE_SHARED_SECRET` became
+> **mandatory**, as [`ARCHITECTURE.md`](ARCHITECTURE.md) § 2.3 said this issue would
+> make it: an engine without one could serve nothing but liveness, so it names the
+> variable and exits 2 rather than starting. Logging is now one JSON object per line
+> with `extra` fields promoted to top-level keys, and uvicorn's own records are routed
+> through the same formatter so a served process emits one format rather than two.
+>
+> **139 tests**, up from 59: every guarded path and method, near-miss keys (a prefix of
+> the real one, differing case, a trailing space, non-ASCII), that liveness needs no key
+> and is the only path that does not, that the rejection body and headers echo nothing,
+> that `hmac.compare_digest` is what decides and is not reached at all for a public
+> path, the status shape and its rounding, and the formatter down to a base field a
+> call site cannot overwrite. `/healthz` is asserted to keep working with the settings
+> deleted out from under it, because a liveness probe that fails for a reason a restart
+> cannot fix is worse than none.
 
 - **Problem Statement:** The engine is internal-only; every route except liveness must
   require the shared secret so a misrouted engine port exposes nothing.
@@ -1848,8 +1882,10 @@ complete bar #15's Metadata API wiring.
 **#19** (the Flyway project) and **#50** (the FastAPI service) have since landed the same
 way, each turning its own CI check on and moving its section of
 [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same pull
-request. That leaves **#27** as the last module scaffold; Epic 6 continues into #51, and
-the Phase 1 tracks still run concurrently. The MVP is complete when **#56** (end-to-end
+request. That leaves **#27** as the last module scaffold. Epic 6 has since continued into
+**#51**, which closed the engine's boundary — liveness open, everything else behind the
+shared secret — and so unblocks #52, #53 and the engine leg of #29; the Phase 1 tracks
+still run concurrently. The MVP is complete when **#56** (end-to-end
 smoke test) is green.
 
 **#47** (the UI image) is **done** and is the first module to ship as a container: a
