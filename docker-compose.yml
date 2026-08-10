@@ -1,0 +1,91 @@
+# Ouroboros — local development data tier.
+#
+# One command brings up PostgreSQL 17 and applies every Flyway migration in
+# ouroboros-db/migrations, so `ouroboros-rest` and `ouroboros-engine` development has a
+# real database with the current schema without a manual setup step:
+#
+#   docker compose up            # database + migrations
+#   docker compose up db         # database only, no migration pass
+#   docker compose down -v       # reset — stops everything and drops the volume
+#
+# Every value is interpolated from the environment with a development default, so a
+# clean checkout with no .env file works as-is. Copy .env.example to .env to override
+# any of them; real .env files are git-ignored.
+#
+# This file is the data tier only. The full application stack — ui, rest, engine — is
+# issue #55; it extends this file rather than replacing it.
+#
+# Filed as issue #10.
+
+name: ouroboros
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 17 — the tenancy database (docs/CONVENTIONS.md § 4, port 5432).
+  #
+  # The healthcheck is what makes `up` deterministic: the migrator waits on it rather
+  # than on a sleep, so the first migration never races the server's own restart during
+  # initdb. Data lives in a named volume, which is what `down -v` drops.
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${OURO_DB_USER:-ouroboros}
+      POSTGRES_PASSWORD: ${OURO_DB_PASSWORD:-ouroboros}
+      POSTGRES_DB: ${OURO_DB_NAME:-ouroboros}
+    ports:
+      # Bound to the loopback interface on purpose: this database holds a well-known
+      # development password, and publishing it on 0.0.0.0 would offer it to every
+      # machine on the network the laptop happens to be joined to. Other containers are
+      # unaffected — they reach it as db:5432 over the compose network.
+      #
+      # The host port is configurable so a PostgreSQL already listening on 5432 does not
+      # block the stack; the container port never moves.
+      - "127.0.0.1:${OURO_DB_PORT:-5432}:5432"
+    volumes:
+      - ouroboros-db-data:/var/lib/postgresql/data
+    healthcheck:
+      # -U/-d are passed explicitly: pg_isready otherwise probes as the OS user, which
+      # reports ready while the database being created is still absent.
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${OURO_DB_USER:-ouroboros} -d ${OURO_DB_NAME:-ouroboros}",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Flyway 11 — the sole owner of DDL (docs/CONVENTIONS.md § 10, invariant 2).
+  #
+  # Runs once per `up`, applies what is pending, and exits. Migrations are mounted
+  # read-only so a container can never rewrite the checkout, and `validateMigrationNaming`
+  # fails the run on a file that breaks the V###__snake_case rule rather than applying it.
+  # ---------------------------------------------------------------------------
+  flyway:
+    image: flyway/flyway:11-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./ouroboros-db/migrations:/flyway/sql:ro
+    command:
+      - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
+      - -user=${OURO_DB_USER:-ouroboros}
+      - -password=${OURO_DB_PASSWORD:-ouroboros}
+      - -schemas=${OURO_DB_SCHEMA:-ouroboros}
+      - -createSchemas=true
+      - -locations=filesystem:/flyway/sql
+      - -validateMigrationNaming=true
+      - -connectRetries=10
+      - -connectRetriesInterval=2
+      - migrate
+    # A migrator is a task, not a service: it must not come back after it succeeds.
+    restart: "no"
+
+volumes:
+  # Named rather than anonymous so `down -v` reclaims it and a plain `down` does not.
+  ouroboros-db-data:
