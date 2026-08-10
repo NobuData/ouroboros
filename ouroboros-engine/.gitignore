@@ -1,0 +1,26 @@
+# Module-local artefacts. The repo-root .gitignore covers what any module can produce;
+# this file adds what only a Python/uv module emits, so the directory still behaves
+# correctly if it is lifted out of the repo (docs/CONVENTIONS.md § 2).
+
+# environment — created by `uv sync`, never committed
+.venv/
+.python-version
+
+# bytecode and build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# tool caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# env files — the documented template is the repo-root .env.example
+.env
+.env.*
+!.env.example

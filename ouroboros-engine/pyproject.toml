@@ -1,0 +1,107 @@
+# ouroboros-engine — the Python backend.
+#
+# One manifest holds the dependencies, the task names, and the configuration for both
+# tools (docs/CONVENTIONS.md § 3). uv resolves it into the committed uv.lock; CI runs
+# `uv sync --locked`, so a lockfile that has drifted from this file fails the run
+# instead of being silently refreshed.
+
+[project]
+name = "ouroboros-engine"
+version = "0.1.0"
+description = "Ouroboros backend — executes the work ouroboros-rest brokers."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "uvicorn[standard]>=0.52.1",
+]
+
+# `uv run dev` — the dev verb every module exposes (docs/CONVENTIONS.md § 3). uv
+# installs this project into its environment, so the console script below is what that
+# command resolves to. Production runs uvicorn against `ouroboros_engine.main:app`
+# directly, without the reloader; the container that does so is #53.
+[project.scripts]
+dev = "ouroboros_engine.dev:main"
+
+[dependency-groups]
+# Installed by a plain `uv sync` (PEP 735 default group), which is what CI and a
+# developer both run. Nothing here reaches a production image.
+dev = [
+    # The HTTP client behind fastapi.testclient.TestClient. httpx2 rather than httpx:
+    # starlette 1.x warns that the httpx backend is deprecated, and this suite treats a
+    # warning as a failure.
+    "httpx2>=2.10.0",
+    "pytest>=9.1.1",
+    "ruff>=0.16.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# src layout: the package is importable in tests only because it is installed, never
+# because pytest happened to start in this directory.
+[tool.hatch.build.targets.wheel]
+packages = ["src/ouroboros_engine"]
+
+# ---------------------------------------------------------------------------
+# ruff — lint and format, the Python half of docs/CONVENTIONS.md § 6
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+target-version = "py312"
+# 88 columns and 4-space indent are what .editorconfig declares for *.py; the formatter
+# has to agree with it rather than override it.
+line-length = 88
+indent-width = 4
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "A",   # flake8-builtins — no shadowing a builtin
+  "ARG", # flake8-unused-arguments
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "D",   # pydocstyle — every module, class and function carries a docstring
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort — import order
+  "N",   # pep8-naming
+  "PTH", # flake8-use-pathlib
+  "RUF", # ruff's own rules
+  "S",   # flake8-bandit — the security rules that do not need type inference
+  "SIM", # flake8-simplify
+  "UP",  # pyupgrade
+  "W",   # pycodestyle warnings
+]
+ignore = [
+  # The formatter owns line breaks; a long URL or table in a docstring is not a defect.
+  "E501",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests document themselves in their names and their assert messages; a docstring on
+# every case is noise. `assert` is the point of a test, so S101 does not apply either.
+"tests/**/*.py" = ["D100", "D103", "S101"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# --strict-markers and --strict-config turn a typo in a marker or in this table into a
+# failure rather than a silent no-op; -ra reports every non-passing outcome, so a skip
+# that creeps in is visible in the CI log rather than folded into the dot line.
+addopts = "-ra --strict-markers --strict-config"
+# A warning is a failure. Deprecations in a dependency are the earliest signal that an
+# upgrade will break this module, and the only way to keep them is to not let them pass.
+filterwarnings = ["error"]

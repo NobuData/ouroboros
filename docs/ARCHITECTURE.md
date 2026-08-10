@@ -32,7 +32,7 @@ describing:
 | [`ouroboros-db`](../ouroboros-db) | **Running** — migrations apply against a live PostgreSQL | Complete: the Flyway project landed with [#19](https://github.com/NobuData/ouroboros/issues/19) |
 | [`ouroboros-rest`](../ouroboros-rest) | Specified | [#27](https://github.com/NobuData/ouroboros/issues/27) → epic [#4](https://github.com/NobuData/ouroboros/issues/4) |
 | [`ouroboros-ui`](../ouroboros-ui) | **Running** — the App Router skeleton builds and serves | Scaffolded by [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
-| [`ouroboros-engine`](../ouroboros-engine) | Specified | [#50](https://github.com/NobuData/ouroboros/issues/50) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
+| [`ouroboros-engine`](../ouroboros-engine) | **Running** — the FastAPI service builds, serves and validates its environment | Scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-web`](../ouroboros-web) | **Running** — the marketing site, outside the application stack | — |
 
 Keeping the document true as those scaffolds land is a maintenance obligation, and part
@@ -147,15 +147,19 @@ migrations rather than defining them.
 
 ### 2.3 `ouroboros-engine` — the backend
 
-**Specified** ([#50](https://github.com/NobuData/ouroboros/issues/50)). Python 3.12,
-FastAPI, uv, port 8000.
+**Running.** Python 3.12, FastAPI, uv, port 8000. The scaffold —
+`src/ouroboros_engine/` with its application factory, `OURO_*` settings validated at
+import, and `GET /` naming the service and version — landed with
+[#50](https://github.com/NobuData/ouroboros/issues/50).
 
 The engine executes the work the REST layer brokers, and in time the autonomous loops the
 product is named for. It is **internal only**: `/healthz` is open so a container platform
 can probe liveness, and everything under `/v0/` requires the shared secret on
 `X-Ouro-Internal-Key`, compared in constant time
-([#51](https://github.com/NobuData/ouroboros/issues/51)). A request without the key gets
-a 401 that reveals nothing about whether the path exists.
+([#51](https://github.com/NobuData/ouroboros/issues/51), which is also what makes
+`OURO_ENGINE_SHARED_SECRET` mandatory — the scaffold reads it but no route requires it
+yet). A request without the key gets a 401 that reveals nothing about whether the path
+exists.
 
 It holds no database connection. Anything the engine needs to know arrives in the request
 the REST layer makes, which keeps tenancy enforcement on the REST side of the boundary
