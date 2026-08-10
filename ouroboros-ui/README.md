@@ -3,8 +3,10 @@
 > **Status:** scaffolded ([#39](https://github.com/NobuData/ouroboros/issues/39), epic
 > [#5](https://github.com/NobuData/ouroboros/issues/5)), rendering from the design tokens
 > ([#40](https://github.com/NobuData/ouroboros/issues/40)), and switching themes at
-> runtime ([#17](https://github.com/NobuData/ouroboros/issues/17)) — `yarn dev` runs and
-> `ci/ui` is live. What renders is still a placeholder: the visible theme switcher
+> runtime ([#17](https://github.com/NobuData/ouroboros/issues/17)) — `yarn dev` runs,
+> `ci/ui` is live, and it [ships as a container](#container)
+> ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders is still a
+> placeholder: the visible theme switcher
 > ([#42](https://github.com/NobuData/ouroboros/issues/42)) and the app shell
 > ([#41](https://github.com/NobuData/ouroboros/issues/41)) land on top of it.
 
@@ -31,7 +33,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
 | Lint | ESLint flat config |
-| Container | Multi-stage Dockerfile, Next.js standalone output ([#47](https://github.com/NobuData/ouroboros/issues/47)) |
+| Container | Multi-stage Dockerfile on `node:24-alpine`, Next.js standalone output — see [Container](#container) |
 
 ## Run
 
@@ -76,6 +78,68 @@ rather than a module constant on purpose: a constant would be evaluated while
 address of a service it is not calling. The typed API client
 ([#43](https://github.com/NobuData/ouroboros/issues/43)) is its first caller.
 
+## Container
+
+[`Dockerfile`](Dockerfile) is the production image
+([#47](https://github.com/NobuData/ouroboros/issues/47)) — `deps` → `build` → a runtime
+that carries no toolchain, per [conventions § 5](../docs/CONVENTIONS.md#5-containers).
+**Build it from the repository root, not from here:**
+
+```bash
+docker build -f ouroboros-ui/Dockerfile -t ouroboros-ui .          # from the repo root
+docker run --rm -p 3000:3000 -e OURO_REST_URL=http://localhost:4000 ouroboros-ui
+```
+
+The context is the root because this module is a Yarn workspace: the lockfile it
+installs from, the Yarn version and `nodeLinker` all live there, so a context of
+`ouroboros-ui/` could not run an immutable install at all. Two things follow from it,
+and both are easy to trip over.
+
+**The ignore file is named for the Dockerfile.** BuildKit reads
+`<dockerfile>.dockerignore` in preference to `<context>/.dockerignore`, so
+[`Dockerfile.dockerignore`](Dockerfile.dockerignore) is what governs this build — a root
+`.dockerignore` would apply to every image in the repo, and an `ouroboros-ui/.dockerignore`
+would apply to nothing while looking exactly like the file that does. It is an
+**allow-list**: `*`, then the root manifests, the sibling workspace manifests Yarn has to
+resolve before it installs anything, and this directory.
+
+**The standalone tree is rooted at the repository.**
+[`next.config.ts`](next.config.ts) sets `outputFileTracingRoot` to the repo root, because
+`nodeLinker: node-modules` hoists this module's dependencies one level above the default
+tracing root — left at the default, the trace copies none of them and the image builds
+cleanly and then dies on a missing module. So the output unpacks as `./node_modules` and
+`./ouroboros-ui/server.js`, which is the path `CMD` names.
+
+| Property | Value |
+|---|---|
+| Base image | `node:24-alpine`, every stage |
+| User | `nextjs`, created in the runtime stage; nothing runs as root |
+| Port | 3000 (`PORT`), bound on `0.0.0.0` (`HOSTNAME`) |
+| Healthcheck | BusyBox `wget` against `/` every 30 s, after a 10 s grace |
+| Size | 71 MB to pull, 217 MB of layers unpacked — against a 300 MB budget |
+| Runtime config | `OURO_REST_URL`, supplied per environment — never baked into a layer |
+
+On Docker's containerd snapshotter `docker images` reports a third number — 288 MB of
+*disk usage*, which is those same layers plus the per-file overhead of unpacking some
+thousands of small `node_modules` files. Every measure is inside the budget; that is the
+largest of the three.
+
+`OURO_REST_URL` is deliberately absent from the image. The standalone server reads it
+from the process at request time, so it is `docker run -e` or the compose service that
+supplies it; a default in a layer would turn a missing value into a silent call to the
+wrong host instead of the error `app/env.ts` raises by name.
+
+[`__tests__/container.test.ts`](__tests__/container.test.ts) asserts every one of these
+properties that is decided in the repository — the stages, the pinned base, the non-root
+user, the healthcheck, the copied manifests and the allow-list — because `ci/ui` cannot
+run a `docker build`. Notably it fails when a new workspace gains a `package.json` and
+the `deps` stage has not been taught to copy it, which is exactly the change that would
+otherwise break the image from another module's pull request.
+
+The compose service that runs this image is
+[#55](https://github.com/NobuData/ouroboros/issues/55); the repo-root
+[`docker-compose.yml`](../docker-compose.yml) is the data tier until then.
+
 ## Layout
 
 ```
@@ -91,17 +155,16 @@ ouroboros-ui/
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
 ├── public/             # brand assets, favicons
+├── Dockerfile          # the production image — built from the *repo root*
+├── Dockerfile.dockerignore   # …and the context that image is built from
 ├── eslint.config.mjs   # ESLint flat config
-├── next.config.ts
+├── next.config.ts      # standalone output, traced from the repo root
 └── vitest.config.mts   # + vitest.setup.ts
 ```
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
 contribute nothing to the URL, so the dashboard is `/` rather than `/app`. Both hold a
 pass-through layout today — the chrome that belongs in them is #41 and #44.
-
-Still to arrive: the `Dockerfile`
-([#47](https://github.com/NobuData/ouroboros/issues/47)).
 
 Tests live in `__tests__/` rather than beside the code they cover, so that no file under
 `app/` can ever be mistaken for a route segment. `yarn test` runs them once and exits;
