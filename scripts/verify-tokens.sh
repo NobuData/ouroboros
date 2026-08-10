@@ -19,6 +19,8 @@
 #   - holds the dark palette to docs/mockups/assets/ouroboros.css, the committed identity
 #     it was extracted from, token by carried-over token;
 #   - holds the preview page to containing no colour literal at all;
+#   - holds the application's copy of the sheet byte-identical to it, because "copy, do
+#     not fork" is only a rule if something notices the fork;
 #   - holds the document to the sheet in both directions — every token documented with the
 #     value the sheet gives it, and no token documented that the sheet does not define;
 #   - recomputes every contrast ratio the document publishes, with
@@ -66,6 +68,8 @@ cd "$ROOT"
 . "$SCRIPT_DIR/lib/checks.sh"
 
 SHEET=docs/design/tokens.css
+ADOPTED=ouroboros-ui/app/tokens.css
+GLOBALS=ouroboros-ui/app/globals.css
 PREVIEW=docs/design/tokens-preview.html
 DOC=docs/DESIGN_TOKENS.md
 MOCKUP_SHEET=docs/mockups/assets/ouroboros.css
@@ -476,6 +480,35 @@ done < "$work/light.tokens"
 # ---------------------------------------------------------------------------
 # The documents that point here
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Adoption by the application (#40)
+# ---------------------------------------------------------------------------
+#
+# ouroboros-ui carries its own copy of the sheet, because Next.js has to bundle a file
+# inside the module. A copy is a fork waiting to happen, so the two are held byte-
+# identical here: a palette change is made at the source, where this script and the
+# contrast tables can see it, and copied down.
+#
+# This is the check that spans two directories, which is why it lives at the repository
+# level. The complementary rule — that no stylesheet in the module except its copy of the
+# sheet writes a colour down — is asserted by the module's own suite, so that it runs in
+# ci/ui on every pull request touching the UI.
+
+printf '\nAdoption\n'
+check_exists "$ADOPTED" "$ADOPTED exists"
+check_exists "$GLOBALS" "$GLOBALS exists"
+
+if [ -f "$SHEET" ] && [ -f "$ADOPTED" ]; then
+  if cmp -s "$SHEET" "$ADOPTED"; then
+    pass "$ADOPTED is byte-identical to $SHEET"
+  else
+    fail "$ADOPTED has drifted from $SHEET — copy it down rather than editing it"
+  fi
+fi
+
+check_contains "$GLOBALS" '@import[[:space:]]*"\./tokens\.css"' \
+  'the application imports its copy of the sheet'
 
 printf '\nCross-references\n'
 check_contains docs/CONVENTIONS.md 'design/tokens\.css' 'CONVENTIONS.md points at the sheet'

@@ -1,0 +1,137 @@
+/*
+ * Base element styles for the product UI.
+ *
+ * The token sheet comes first and everything below reads from it. There is no colour
+ * literal in this file and there is not meant to be one in any stylesheet the module
+ * adds: `app/tokens.css` is the only place a colour may be written down, which is what
+ * makes a theme change a redefinition rather than a restyle (docs/CONVENTIONS.md § 6).
+ * `__tests__/styles.test.ts` fails the build if a literal appears anywhere else.
+ *
+ * app/tokens.css is a copy of docs/design/tokens.css, not a fork of it. A palette change
+ * is made at the source, where scripts/verify-tokens.sh and the contrast tables can see
+ * it, and copied down; that script holds the two files byte-identical.
+ */
+
+@import "./tokens.css";
+
+:root {
+  /*
+   * Where the self-hosted faces meet the sheet's family tokens.
+   *
+   * next/font publishes each face as its own variable (app/layout.tsx), carrying the
+   * real family plus the metric-adjusted fallback it generates. These three lines are
+   * the only tokens the application overrides, and the reason no component names a
+   * font. Each keeps the sheet's original stack behind it, so a face that failed to
+   * load degrades to the same families the sheet nominates rather than to nothing.
+   */
+  --f-disp: var(--font-display, "Chakra Petch"), "Trebuchet MS", sans-serif;
+  --f-ui: var(--font-ui, "IBM Plex Sans"), system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --f-mono: var(--font-mono, "IBM Plex Mono"), ui-monospace, "SFMono-Regular", Menlo,
+    monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* The font-scale preference (DESIGN_SYSTEM_APP_SHELL.md § 4) moves this percentage.
+     Every length below is rem or a token, so one change here rescales every surface. */
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+a {
+  color: var(--accent);
+}
+
+::selection {
+  background: var(--accent-select);
+}
+
+/* One ring for the whole product, on the element the keyboard actually reached.
+   Width and offset match docs/design/tokens-preview.html, where these base styles were
+   reviewed; --r-xs is the sheet's radius for exactly this. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/*
+ * The scaffold's placeholder page. Replaced wholesale by the app shell (#41) and the
+ * dashboard (#45); it exists so `yarn dev` renders something that proves the three
+ * faces loaded and both palettes resolve.
+ */
+
+.placeholder {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--sp-12) var(--sp-10);
+}
+
+.placeholder__eyebrow {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.placeholder__title {
+  font-size: var(--t-2xl);
+  font-weight: 700;
+  letter-spacing: var(--tr-tight);
+}
+
+.placeholder__body {
+  margin: var(--sp-8) 0 0;
+  color: var(--ink-dim);
+}
+
+.placeholder__next {
+  margin: var(--sp-10) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.placeholder__next li + li {
+  margin-top: var(--sp-3);
+}

@@ -31,7 +31,7 @@ describing:
 |---|---|---|
 | [`ouroboros-db`](../ouroboros-db) | **Running** — migrations apply against a live PostgreSQL | Complete: the Flyway project landed with [#19](https://github.com/NobuData/ouroboros/issues/19) |
 | [`ouroboros-rest`](../ouroboros-rest) | Specified | [#27](https://github.com/NobuData/ouroboros/issues/27) → epic [#4](https://github.com/NobuData/ouroboros/issues/4) |
-| [`ouroboros-ui`](../ouroboros-ui) | Specified | [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
+| [`ouroboros-ui`](../ouroboros-ui) | **Running** — the App Router skeleton builds and serves | Scaffolded by [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
 | [`ouroboros-engine`](../ouroboros-engine) | Specified | [#50](https://github.com/NobuData/ouroboros/issues/50) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-web`](../ouroboros-web) | **Running** — the marketing site, outside the application stack | — |
 
@@ -102,8 +102,10 @@ criteria.
 
 ### 2.1 `ouroboros-ui` — the product UI
 
-**Specified** ([#39](https://github.com/NobuData/ouroboros/issues/39)). Next.js App
-Router, TypeScript, Yarn 4, port 3000.
+**Running** ([#39](https://github.com/NobuData/ouroboros/issues/39)). Next.js 16 App
+Router, TypeScript `strict`, Yarn 4, port 3000. What is up is the skeleton — route
+groups, the three self-hosted faces, and the lint/typecheck/test/build pipeline `ci/ui`
+runs; the screens below are what lands on it.
 
 It renders the screens designed in [`mockups/`](mockups/README.md) inside the shell
 specified in [`DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md), with on-the-fly
