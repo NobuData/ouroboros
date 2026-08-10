@@ -53,7 +53,14 @@ cd "$ROOT"
 COMPOSE=docker-compose.yml
 ENV_EXAMPLE=.env.example
 MIGRATIONS=ouroboros-db/migrations
+FLYWAY_CONFIG=ouroboros-db/flyway.toml
+FLYWAY_DEV_CONFIG=ouroboros-db/flyway.dev.toml
+DB_SCRIPTS=ouroboros-db/scripts
 PARSER="$SCRIPT_DIR/lib/parse-env-example.awk"
+
+# Where the container sees the module. Both mounts and -workingDirectory name it, so the
+# relative locations inside flyway.toml resolve the same way on both sides.
+PROJECT=/flyway/project
 
 printf '\nLocal development environment — %s\n\n' "$ROOT"
 
@@ -87,11 +94,14 @@ printf '\nMigration service\n'
 check_contains "$COMPOSE" '^    image: flyway/flyway:11' 'flyway pins the Flyway 11 image'
 check_contains "$COMPOSE" '^      db:$' 'flyway depends on db'
 check_contains "$COMPOSE" '^        condition: service_healthy$' 'flyway waits for the healthcheck, not a sleep'
-check_contains "$COMPOSE" "^      - \\./$MIGRATIONS:/flyway/sql:ro\$" 'flyway mounts the migrations read-only'
+check_contains "$COMPOSE" "^      - \\./$FLYWAY_CONFIG:$PROJECT/flyway\\.toml:ro\$" 'flyway mounts the project configuration read-only'
+check_contains "$COMPOSE" "^      - \\./$MIGRATIONS:$PROJECT/migrations:ro\$" 'flyway mounts the migrations read-only'
+check_contains "$COMPOSE" "^      - -workingDirectory=$PROJECT\$" 'flyway takes its settings from the module, not from this file'
 check_contains "$COMPOSE" '^      - migrate$' 'flyway runs migrate'
-check_contains "$COMPOSE" '^      - -validateMigrationNaming=true$' 'flyway rejects misnamed migrations'
-check_contains "$COMPOSE" '^      - -createSchemas=true$' 'flyway creates the schema it owns'
-check_contains "$COMPOSE" '^      - -connectRetries=' 'flyway retries the connection rather than failing the run'
+# Everything that is a rule rather than a connection moved into flyway.toml with #19.
+# Restating one here would put the stack back in a position to disagree with run.sh.
+check_absent "$COMPOSE" '^ *- -(locations|createSchemas|validateMigrationNaming|connectRetries)' \
+  'the compose file does not restate what flyway.toml settles'
 # A migrator is a task: a restart policy would re-run it forever behind `up -d`.
 check_contains "$COMPOSE" '^    restart: "no"$' 'flyway does not restart after it succeeds'
 
@@ -166,6 +176,40 @@ else
   fail "$MIGRATIONS/ holds at least one migration to apply (none found)"
 fi
 
+# ---------------------------------------------------------------------------
+# Flyway project
+# ---------------------------------------------------------------------------
+
+printf '\nFlyway project\n'
+
+# The settings that used to be spelled out on two command lines. They live here once, in
+# the module, and both the compose stack and run.sh read them from here (#19).
+check_exists "$FLYWAY_CONFIG" "$FLYWAY_CONFIG exists"
+check_contains "$FLYWAY_CONFIG" '^locations = \["filesystem:migrations"\]$' \
+  'flyway.toml locates the migrations relative to the project, so both runners find the same ones'
+check_contains "$FLYWAY_CONFIG" '^schemas = \["ouroboros"\]$' 'flyway.toml owns the ouroboros schema'
+check_contains "$FLYWAY_CONFIG" '^createSchemas = true$' 'flyway.toml creates that schema if it is absent'
+check_contains "$FLYWAY_CONFIG" '^validateMigrationNaming = true$' 'flyway.toml rejects a misnamed migration'
+check_contains "$FLYWAY_CONFIG" '^connectRetries = ' 'flyway.toml retries a database that is still starting'
+# It is committed, so anything that names a machine or authenticates to one is out: those
+# arrive from OURO_DB_* on the command line.
+check_absent "$FLYWAY_CONFIG" '^(url|user|password) = ' 'flyway.toml carries no connection or credential'
+
+# `clean` drops every object in the schema, so the configuration everything else reads
+# has it off, one file turns it back on, and one script loads that file.
+check_contains "$FLYWAY_CONFIG" '^cleanDisabled = true$' 'flyway.toml disables clean'
+check_exists "$FLYWAY_DEV_CONFIG" "$FLYWAY_DEV_CONFIG exists"
+check_contains "$FLYWAY_DEV_CONFIG" '^cleanDisabled = false$' 'the dev overlay is what re-enables it'
+check_absent "$COMPOSE" 'flyway\.dev\.toml' 'the stack never loads the dev overlay'
+check_contains "$DB_SCRIPTS/clean-dev" 'flyway\.dev\.toml' 'clean-dev is what does load it'
+
+printf '\nNamed commands\n'
+for name in migrate info validate clean-dev; do
+  check_executable "$DB_SCRIPTS/$name" "$DB_SCRIPTS/$name is executable"
+done
+# An ungated clean is the one command this module must not offer.
+check_missing "$DB_SCRIPTS/clean" "there is no $DB_SCRIPTS/clean to reach for by mistake"
+
 printf '\nMigration runner\n'
 check_executable ouroboros-db/run.sh 'ouroboros-db/run.sh is executable'
 
@@ -184,12 +228,12 @@ for name in OURO_DB_HOST OURO_DB_PORT OURO_DB_NAME OURO_DB_USER OURO_DB_PASSWORD
   check_matches "$module_declared" "^$name\$" "$MODULE_ENV declares $name"
 done
 
-# It applies the same migrations the compose pass does, so a setting that drifts between
-# the two would give `up` and `run.sh` different databases from the same checkout.
-for setting in '\-createSchemas=true' '\-validateMigrationNaming=true' 'flyway/flyway:11'; do
-  label=$(printf '%s' "$setting" | tr -d '\\')
-  check_contains ouroboros-db/run.sh "$setting" "run.sh applies $label, as the stack does"
-done
+# It applies the same migrations the compose pass does, so anything that drifted between
+# the two would give `up` and `run.sh` different databases from the same checkout. Since
+# #19 that is the project directory and the image: the rules themselves are in the one
+# flyway.toml they both read from it.
+check_contains ouroboros-db/run.sh '\-workingDirectory=' 'run.sh reads flyway.toml, as the stack does'
+check_contains ouroboros-db/run.sh 'flyway/flyway:11' 'run.sh pins the same Flyway 11 image'
 # A password that comes from a variable opens with `"` or `$`, and the redaction branch
 # opens with `*`; anything alphanumeric is a credential someone typed in.
 check_absent ouroboros-db/run.sh '\-password=[[:alnum:]]' 'run.sh holds no literal password'

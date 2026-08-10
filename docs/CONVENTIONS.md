@@ -72,7 +72,14 @@ build rather than silently updating.
 **Python uses uv** — `uv sync` for install, `uv run <cmd>` for everything else. `uv.lock`
 is committed. Lint and format are ruff; tests are pytest.
 
-**SQL uses Flyway from its container**, so no module requires a local Java install.
+**SQL uses Flyway from its container**, so no module requires a local Java install — a
+Flyway on the developer's own PATH is used when there is one, and neither is needed to
+work on anything else. `ouroboros-db` is a Flyway project in the ordinary sense:
+[`flyway.toml`](../ouroboros-db/flyway.toml) holds every setting that is a rule rather
+than a connection, [`migrations/`](../ouroboros-db/migrations) holds the SQL, and
+[`scripts/`](../ouroboros-db/scripts) names the four things anyone does to a database —
+`migrate`, `info`, `validate`, and a `clean-dev` that refuses anything but a development
+one. Its tests are POSIX shell, run by `scripts/run-tests.sh ouroboros-db/tests`.
 
 ### Standard task names
 
@@ -284,9 +291,12 @@ definition. Four rules keep them interchangeable:
    more than `contents: read`.
 
 `ci/db` today asserts what needs no database — migration naming, the pinned images and
-healthcheck gate, credential hygiene, the environment template. The live pass
-(`flyway migrate` against a throwaway PostgreSQL, `validate`, `tests/constraints.sql`)
-is [#24](https://github.com/NobuData/ouroboros/issues/24), which adds its steps to that
+healthcheck gate, the Flyway project's own settings, credential hygiene, the environment
+template — and then runs the module's tooling tests
+([`ouroboros-db/tests`](../ouroboros-db/tests)), which exercise the migration runner and
+its `scripts/` wrappers against stubbed runners. The live pass (`flyway migrate` against
+a throwaway PostgreSQL, `validate`, `tests/constraints.sql`) is
+[#24](https://github.com/NobuData/ouroboros/issues/24), which adds its steps to that
 same job.
 
 One consequence of filtering by path is worth stating: **a check that does not run does
@@ -307,7 +317,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-tokens.sh`](../scripts/verify-tokens.sh) | [`design/tokens.css`](design/tokens.css) parses to exactly three palette blocks with no literal outside them, both dark blocks are identical, every colour is themed in both palettes, the dark palette still matches the mockups' sheet, the preview page carries no literal, and every contrast ratio [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) publishes is the recomputed one, at or above its minimum |
 | [`verify-favicons.sh`](../scripts/verify-favicons.sh) | The favicon set in [`../ouroboros-ui/public`](../ouroboros-ui/public) is the size and colour type each file promises, `favicon.ico` carries every resolution it should, the manifest names only files that exist, and [`BRAND.md`](BRAND.md) and the module README still describe the set on disk |
 | [`verify-architecture.sh`](../scripts/verify-architecture.sh) | [`ARCHITECTURE.md`](ARCHITECTURE.md) carries its required sections, renders its diagrams, states every invariant, resolves every link, and documents exactly the `OURO_*` variables `.env.example` declares |
-| [`run-tests.sh`](../scripts/run-tests.sh) | Runs `scripts/tests/*.test.sh` — the unit and integration tests for the tooling above |
+| [`run-tests.sh`](../scripts/run-tests.sh) | Runs every shell suite — `scripts/tests/*.test.sh` for the tooling above, and each module's own `tests/*.test.sh`, as [`ouroboros-db`](../ouroboros-db/tests) has. Name a directory to run one suite: `scripts/run-tests.sh ouroboros-db/tests` |
 
 They share one assertion harness, [`scripts/lib/checks.sh`](../scripts/lib/checks.sh), so
 every check reads and reports the same way.

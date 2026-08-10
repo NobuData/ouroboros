@@ -61,9 +61,15 @@ services:
   # ---------------------------------------------------------------------------
   # Flyway 11 — the sole owner of DDL (docs/CONVENTIONS.md § 10, invariant 2).
   #
-  # Runs once per `up`, applies what is pending, and exits. Migrations are mounted
-  # read-only so a container can never rewrite the checkout, and `validateMigrationNaming`
-  # fails the run on a file that breaks the V###__snake_case rule rather than applying it.
+  # Runs once per `up`, applies what is pending, and exits. How it is configured is not
+  # written here: ouroboros-db/flyway.toml holds where the migrations are, that the
+  # schema is created, that a misnamed file fails the run and that `clean` is off, and
+  # -workingDirectory points Flyway at it — the same file ouroboros-db/run.sh reads, so
+  # `up` and a hand-run migration cannot apply the same checkout under different rules
+  # (issue #19).
+  #
+  # Both mounts are read-only, so a container can never rewrite the checkout, and only
+  # what Flyway reads is mounted — the module's .env belongs to the developer.
   # ---------------------------------------------------------------------------
   flyway:
     image: flyway/flyway:11-alpine
@@ -71,17 +77,14 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./ouroboros-db/migrations:/flyway/sql:ro
+      - ./ouroboros-db/flyway.toml:/flyway/project/flyway.toml:ro
+      - ./ouroboros-db/migrations:/flyway/project/migrations:ro
     command:
+      - -workingDirectory=/flyway/project
       - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
       - -user=${OURO_DB_USER:-ouroboros}
       - -password=${OURO_DB_PASSWORD:-ouroboros}
       - -schemas=${OURO_DB_SCHEMA:-ouroboros}
-      - -createSchemas=true
-      - -locations=filesystem:/flyway/sql
-      - -validateMigrationNaming=true
-      - -connectRetries=10
-      - -connectRetriesInterval=2
       - migrate
     # A migrator is a task, not a service: it must not come back after it succeeds.
     restart: "no"

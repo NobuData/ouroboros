@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+#
+# info — print the migration history: what has been applied, and what is pending.
+#
+# The read-only view of the same database `migrate` writes to. It touches nothing, so it
+# is the first thing to run when a database is not in the state you expect.
+#
+#   ouroboros-db/scripts/info                    # history and pending versions
+#   ouroboros-db/scripts/info --dry-run          # print the command, run nothing
+#   ouroboros-db/scripts/info --runner docker    # force the container
+#
+# Configuration is flyway.toml plus the OURO_DB_* variables; see ../README.md. Every
+# argument is handed to ../run.sh ahead of the command, so all of its flags work here
+# too — `../run.sh --help` lists them.
+#
+# Exit status is Flyway's: 0 the history was read, 1 it could not be, 2 could not run.
+
+set -eu
+unset CDPATH
+
+exec "$(cd -- "$(dirname -- "$0")/.." && pwd)/run.sh" "$@" info

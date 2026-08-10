@@ -71,7 +71,11 @@ yarn-error.log*
 # ---------------------------------------------------------------------------
 # Database & migrations — ouroboros-db
 # ---------------------------------------------------------------------------
-# Flyway credentials are supplied by env/compose, never committed.
+# Flyway credentials are supplied by env/compose, never committed. flyway.user.toml is
+# the one Flyway loads by itself from the project directory, so it is where a local
+# override — and a password — would end up; the committed project is flyway.toml and its
+# flyway.dev.toml overlay, which carry no credential at all.
+flyway.user.toml
 flyway.local.toml
 flyway.conf
 *.dump
