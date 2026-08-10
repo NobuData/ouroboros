@@ -61,11 +61,38 @@ Copy the repo-root `.env.example` and never commit a populated `.env`.
 ouroboros-ui/
 ├── app/
 │   ├── layout.tsx      # fonts, theme bootstrap
+│   ├── tokens.css      # the design tokens (#40, copied from docs/design)
+│   ├── globals.css     # base element styles, built on those tokens
 │   ├── (auth)/login/   # sign-in & tenancy selection
 │   └── (app)/          # app shell → dashboard and product screens
 ├── public/             # brand assets, favicons
 └── Dockerfile
 ```
+
+## Design tokens
+
+The palettes already exist. [`../docs/design/tokens.css`](../docs/design/tokens.css) is the
+light and dark palettes, the type, spacing and shape scales, and nothing else
+([#16](https://github.com/NobuData/ouroboros/issues/16));
+[`../docs/DESIGN_TOKENS.md`](../docs/DESIGN_TOKENS.md) documents every token and publishes
+the measured WCAG contrast for both palettes.
+
+Three things the scaffold owes it:
+
+1. **Copy, do not fork.** [#40](https://github.com/NobuData/ouroboros/issues/40) copies the
+   sheet to `app/tokens.css` and imports it first from `globals.css`. A change to the
+   palette is made in `docs/design/tokens.css`, where `scripts/verify-tokens.sh` and the
+   contrast tables can see it, and copied down.
+2. **Point `next/font` at the family tokens.** The three faces load through `next/font` and
+   redefine `--f-disp`, `--f-ui` and `--f-mono` — the only tokens the application is
+   expected to override, and the reason no component names a font.
+3. **Stamp `data-theme` before first paint.** Nothing on `<html>` means *system*, and the
+   sheet's `prefers-color-scheme` block decides;
+   [#17](https://github.com/NobuData/ouroboros/issues/17) adds the stamping, the
+   persistence and the live OS tracking.
+
+Every colour in this module is a `var(--token)`. There is no second place a colour may come
+from, which is what makes the theme switch a redefinition rather than a restyle.
 
 ## Favicons and the web-app manifest
 
