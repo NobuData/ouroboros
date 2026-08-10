@@ -7,8 +7,8 @@ each invent their own.
 
 Filed as issue [#8](https://github.com/NobuData/ouroboros/issues/8). The system design
 these conventions serve is described in
-[`ARCHITECTURE.md`](ARCHITECTURE.md) (landing in
-[#12](https://github.com/NobuData/ouroboros/issues/12)); the plan that produced them is
+[`ARCHITECTURE.md`](ARCHITECTURE.md) ([#12](https://github.com/NobuData/ouroboros/issues/12));
+the plan that produced them is
 [`ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md`](ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md).
 
 ## 1. Repository shape
@@ -298,6 +298,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
 | [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule |
 | [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold |
+| [`verify-architecture.sh`](../scripts/verify-architecture.sh) | [`ARCHITECTURE.md`](ARCHITECTURE.md) carries its required sections, renders its diagrams, states every invariant, resolves every link, and documents exactly the `OURO_*` variables `.env.example` declares |
 | [`run-tests.sh`](../scripts/run-tests.sh) | Runs `scripts/tests/*.test.sh` — the unit and integration tests for the tooling above |
 
 They share one assertion harness, [`scripts/lib/checks.sh`](../scripts/lib/checks.sh), so
