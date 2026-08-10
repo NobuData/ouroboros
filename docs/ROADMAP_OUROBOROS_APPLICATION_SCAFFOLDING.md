@@ -144,7 +144,7 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 | 1.2 | #9 | 🟢 Done | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
 | 1.3 | #10 | 🟢 Done | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
 | 1.4 | #11 | 🟢 Done | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
-| 1.5 | #12 | 🟡 Open | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
+| 1.5 | #12 | 🟢 Done | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
 | 1.6 | #13 | 🟡 Open | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
 
 ### Issue 1.1 — ouroboros: [1.1] Monorepo layout & module scaffolding conventions
@@ -288,7 +288,18 @@ PR paths ──┬─ ouroboros-ui/**     ─▶ ci/ui     (lint·type·test·bu
 
 ### Issue 1.5 — ouroboros: [1.5] Architecture documentation
 
-> **GitHub issue:** #12 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #12 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: [`ARCHITECTURE.md`](ARCHITECTURE.md) — the system diagram, the module
+> contracts (each marked *running* or *specified* so the document matches the checkout
+> rather than the plan), the request paths, the auth/session/tenant-context flow, both
+> API contracts including the OpenAPI generation chain (D4) and the engine's `/v0`
+> contract, the port map, the full `OURO_*` registry, the environments, the four
+> invariants with what breaking each looks like, and the trust boundaries. Kept true by
+> `scripts/verify-architecture.sh` with its tests: sections, mermaid fences, port map,
+> invariants, every relative link and in-document anchor, and — the acceptance criterion
+> — that the registry and `.env.example` declare exactly the same variables, checked in
+> both directions.
 
 - **Problem Statement:** The architecture (who talks to whom, ports, env conventions,
   tenancy boundary) lives only in this roadmap; it needs a durable home that outlives
@@ -1660,10 +1671,12 @@ comments to post (executed by the App Shell roadmap's filing pass):
 ## Next Step
 
 Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
-layout), **#9** (labels & templates), **#10** (local dev environment) and **#11** (CI
-pipelines) are **done**, leaving #12 in Phase 0 and unblocking the four module scaffolds
-(#19, #27, #39, #50) — the Phase 1 tracks can now run concurrently. Each scaffold turns
-its own CI check on as it lands. The MVP is complete when **#56** (end-to-end smoke
-test) is green.
+layout), **#9** (labels & templates), **#10** (local dev environment), **#11** (CI
+pipelines) and **#12** (architecture documentation) are **done**, which closes Phase 0
+for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. The four
+module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
+concurrently; each scaffold turns its own CI check on as it lands, and updates its
+section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
+pull request. The MVP is complete when **#56** (end-to-end smoke test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

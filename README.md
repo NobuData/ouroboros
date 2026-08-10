@@ -6,8 +6,8 @@ pull requests out, continuously.
 This repository is a monorepo of independent modules. Each one owns its toolchain and
 builds on its own; there is no workspace runner between them. See
 [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) for the rules they share and
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — landing in
-[#12](https://github.com/NobuData/ouroboros/issues/12) — for the system design in depth.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the system design in depth — the
+modules, the boundaries between them, the request paths, and the `OURO_*` registry.
 
 ## Module map
 
@@ -128,6 +128,7 @@ scripts/verify-layout.sh          # module layout, READMEs, .editorconfig covera
 scripts/verify-github-config.sh   # label definitions, issue forms, PR template
 scripts/verify-dev-env.sh         # compose stack, .env.example, migration naming
 scripts/verify-ci.sh              # workflow status checks, path routing, toolchain pins
+scripts/verify-architecture.sh    # architecture doc sections, port map, env registry, links
 scripts/run-tests.sh              # tests for the tooling in scripts/
 ```
 
@@ -163,7 +164,7 @@ routing table, the Node and Python pins, and that every step waits for its scaff
 | Document | What it covers |
 |---|---|
 | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) | Toolchains, env vars, containers, code style, git workflow |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System diagram, port map, env registry, module contracts (lands in [#12](https://github.com/NobuData/ouroboros/issues/12)) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System diagram, module contracts, request paths, auth flow, API contracts, port map, `OURO_*` registry, invariants |
 | [`docs/DESIGN_SYSTEM_APP_SHELL.md`](docs/DESIGN_SYSTEM_APP_SHELL.md) | The application shell specification |
 | [`docs/mockups/`](docs/mockups) | 22 designed screens plus the design-system stylesheet |
 | [`docs/ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md`](docs/ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md) | The plan this repository is executing |
