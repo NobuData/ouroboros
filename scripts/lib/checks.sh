@@ -95,6 +95,53 @@ check_run() {
   fi
 }
 
+# check_markdown_links FILE — assert every link a markdown file makes resolves.
+#
+# Inline links only, deduplicated. A relative target is resolved against the file's own
+# directory; an anchor against the headings the file itself defines, using GitHub's slug
+# rules — lower-cased, everything but alphanumerics, spaces, underscores and hyphens
+# dropped, spaces hyphenated. Headings inside a fenced block are code rather than headings,
+# so the fence state is tracked. External links are somebody else's uptime problem and are
+# left alone.
+#
+# Locals are prefixed so a caller's own variables survive the call.
+check_markdown_links() {
+  links_file=$1
+  links_dir=$(dirname -- "$links_file")
+  links_targets=$(grep -oE '\]\([^)]+\)' "$links_file" 2>/dev/null | sed 's/^](//; s/)$//' | sort -u || true)
+  links_slugs=$(LC_ALL=C awk '
+    /^```/ { fence = !fence; next }
+    !fence && /^#+[[:space:]]/ {
+      sub(/^#+[[:space:]]+/, "")
+      line = tolower($0)
+      gsub(/[^a-z0-9 _-]/, "", line)
+      gsub(/ /, "-", line)
+      print line
+    }
+  ' "$links_file" 2>/dev/null || true)
+
+  for links_target in $links_targets; do
+    case $links_target in
+      http://* | https://* | mailto:*)
+        ;;
+      '#'*)
+        links_anchor=${links_target#\#}
+        if printf '%s\n' "$links_slugs" | grep -qx -- "$links_anchor"; then
+          pass "the anchor $links_target resolves to a heading"
+        else
+          fail "the anchor $links_target resolves to a heading (no heading with that slug)"
+        fi
+        ;;
+      *)
+        # Strip any anchor: the file is what the checkout can vouch for.
+        links_path=${links_target%%#*}
+        [ -n "$links_path" ] || continue
+        check_exists "$links_dir/$links_path" "the link to $links_path resolves"
+        ;;
+    esac
+  done
+}
+
 # check_summary — print the tally. Returns non-zero if any check failed, so it can be
 # the last statement of a `set -e` script and become its exit status.
 check_summary() {

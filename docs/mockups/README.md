@@ -54,7 +54,10 @@ Everything shares `assets/ouroboros.css`, derived from the brand logo
   code, identifiers).
 - **Logo assets** — `assets/logo-mark.png` (snake) and `assets/logo-lockup.png`
   (snake + wordmark), cropped from the dark half of the brand sheet; rendered with
-  `mix-blend-mode: screen` so they sit on any dark surface.
+  `mix-blend-mode: screen` so they sit on any dark surface. These two are the mockups'
+  own ad-hoc crops and stay as they are; the product's brand assets — light and dark,
+  genuinely transparent, no blend mode — are [`../brand/`](../brand), documented in
+  [`../BRAND.md`](../BRAND.md).
 
 All product data on the screens is fictional demo content (tenant `acme-robotics`,
 repo `helios-firmware`, a Zephyr RTOS robotics firmware project) chosen to make the

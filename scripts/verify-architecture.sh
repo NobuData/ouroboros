@@ -176,46 +176,9 @@ check_contains "$DOC" '[Tt]enancy is enforced in one place' \
 # ---------------------------------------------------------------------------
 
 printf '\nLinks\n'
-DOC_DIR=$(dirname -- "$DOC")
-
-# Every inline link target, deduplicated. External links are left to the internet; what is
-# checked here is what this checkout is responsible for.
-targets=$(grep -oE '\]\([^)]+\)' "$DOC" 2>/dev/null | sed 's/^](//; s/)$//' | sort -u || true)
-
-# The heading slugs GitHub generates: lower-cased, everything but alphanumerics, spaces,
-# underscores and hyphens dropped, spaces hyphenated. Headings inside a fenced block are
-# code, not headings, so the fence state is tracked.
-slugs=$(LC_ALL=C awk '
-  /^```/ { fence = !fence; next }
-  !fence && /^#+[[:space:]]/ {
-    sub(/^#+[[:space:]]+/, "")
-    line = tolower($0)
-    gsub(/[^a-z0-9 _-]/, "", line)
-    gsub(/ /, "-", line)
-    print line
-  }
-' "$DOC" 2>/dev/null || true)
-
-for target in $targets; do
-  case $target in
-    http://* | https://* | mailto:*)
-      # Someone else's server; not this checkout's contract.
-      ;;
-    '#'*)
-      anchor=${target#\#}
-      if printf '%s\n' "$slugs" | grep -qx -- "$anchor"; then
-        pass "the anchor $target resolves to a heading"
-      else
-        fail "the anchor $target resolves to a heading (no heading with that slug)"
-      fi
-      ;;
-    *)
-      # Strip any anchor: the file is what this checkout can vouch for.
-      path=${target%%#*}
-      [ -n "$path" ] || continue
-      check_exists "$DOC_DIR/$path" "the link to $path resolves"
-      ;;
-  esac
-done
+# Every relative link resolves to something in the checkout and every anchor to a real
+# heading; external links are left to the internet. Shared with the repo's other document
+# checks, so both hold links to the same standard.
+check_markdown_links "$DOC"
 
 check_summary
