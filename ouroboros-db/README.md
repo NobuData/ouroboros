@@ -157,7 +157,11 @@ volume is dropped — `docker compose down -v`, then `up`.
 
 ## Migration rules
 
-These are non-negotiable and enforced by `flyway validate` in CI:
+These are non-negotiable. `ci/db` checks the naming rule on every pull request touching
+this directory, and Flyway's own `validateMigrationNaming` and `validate` enforce the
+rest whenever the migrations are applied — see [conventions](../docs/CONVENTIONS.md#9-ci)
+for what `ci/db` covers today and what
+[#24](https://github.com/NobuData/ouroboros/issues/24) adds to it.
 
 1. **Versioned migrations are immutable.** Once `V###__*.sql` has been applied
    anywhere, it is never edited — fix forward with a new version.

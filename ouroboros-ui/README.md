@@ -36,9 +36,13 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 yarn install    # immutable install from the committed lockfile
 yarn dev        # http://localhost:3000
 yarn lint
+yarn typecheck
 yarn test
 yarn build && yarn start
 ```
+
+`lint`, `typecheck`, `test` and `build` are what `ci/ui` runs on every pull request
+touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
 ## Configuration
 

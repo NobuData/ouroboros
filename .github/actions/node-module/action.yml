@@ -1,0 +1,81 @@
+name: TypeScript module checks
+description: >-
+  Install and check one TypeScript module — lint, typecheck, test, build — on the Node
+  version every TypeScript module in this repository is pinned to.
+
+# ouroboros-ui and ouroboros-rest run the identical pipeline over different directories,
+# so it lives here once rather than twice in .github/workflows. This is also the single
+# place the Node version is written down: neither caller passes `node-version`, so
+# moving the default below moves both modules' CI at once.
+#
+# There is deliberately no workspace runner in this repo (docs/CONVENTIONS.md § 1), so
+# every command runs from inside the module directory against that module's own
+# lockfile — the same way a developer runs it.
+
+inputs:
+  module:
+    description: Module directory, relative to the repository root.
+    required: true
+  scaffolded-by:
+    description: Issue that lands the module's scaffold (e.g. "#39").
+    required: true
+  node-version:
+    description: >-
+      Node major every TypeScript module builds on — docs/CONVENTIONS.md § 3. Callers
+      leave this alone; it is an input so a single module can be pinned elsewhere for a
+      migration without forking this action.
+    default: "24"
+
+runs:
+  using: composite
+  steps:
+    - name: Detect the scaffold
+      id: gate
+      uses: ./.github/actions/scaffold-gate
+      with:
+        module: ${{ inputs.module }}
+        manifest: package.json
+        scaffolded-by: ${{ inputs.scaffolded-by }}
+
+    - name: Install Node ${{ inputs.node-version }}
+      if: steps.gate.outputs.scaffolded == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Enable corepack (Yarn 4)
+      if: steps.gate.outputs.scaffolded == 'true'
+      shell: bash
+      run: corepack enable
+
+    # --immutable fails the run when the lockfile does not match package.json, rather
+    # than quietly resolving something the developer never committed.
+    - name: Install dependencies
+      if: steps.gate.outputs.scaffolded == 'true'
+      shell: bash
+      working-directory: ${{ inputs.module }}
+      run: yarn install --immutable
+
+    - name: Lint
+      if: steps.gate.outputs.scaffolded == 'true'
+      shell: bash
+      working-directory: ${{ inputs.module }}
+      run: yarn lint
+
+    - name: Typecheck
+      if: steps.gate.outputs.scaffolded == 'true'
+      shell: bash
+      working-directory: ${{ inputs.module }}
+      run: yarn typecheck
+
+    - name: Test
+      if: steps.gate.outputs.scaffolded == 'true'
+      shell: bash
+      working-directory: ${{ inputs.module }}
+      run: yarn test
+
+    - name: Build
+      if: steps.gate.outputs.scaffolded == 'true'
+      shell: bash
+      working-directory: ${{ inputs.module }}
+      run: yarn build

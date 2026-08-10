@@ -143,7 +143,7 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 | 1.1 | #8 | 🟢 Done | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
 | 1.2 | #9 | 🟢 Done | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
 | 1.3 | #10 | 🟢 Done | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
-| 1.4 | #11 | 🟡 Open | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
+| 1.4 | #11 | 🟢 Done | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
 | 1.5 | #12 | 🟡 Open | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
 | 1.6 | #13 | 🟡 Open | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
 
@@ -249,7 +249,18 @@ docker compose up
 
 ### Issue 1.4 — ouroboros: [1.4] CI pipelines per module (path-filtered)
 
-> **GitHub issue:** #11 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #11 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: `.github/workflows/{ui,rest,engine,db}.yml`, each filtered to its own
+> module and reporting as `ci/ui` / `ci/rest` / `ci/engine` / `ci/db`;
+> `.github/actions/node-module` holding the TypeScript pipeline both TS modules run and
+> the single Node 24 pin; `.github/actions/scaffold-gate`, which turns a module's checks
+> on by itself when its manifest lands, so the three unscaffolded modules skip with a
+> notice instead of failing; and `scripts/verify-ci.sh` with its tests, which proves the
+> routing table from the checkout — 106 checks, including that a change under
+> `ouroboros-ui/` queues `ci/ui` and nothing else. `ci/db` runs the data-tier contract
+> that needs no database; issue 3.6 (#24) adds the live `migrate` → `validate` →
+> `constraints.sql` pass to that same job.
 
 - **Problem Statement:** Four modules with three toolchains in one repo; unfiltered CI
   would run everything on every PR — slow and noisy.
@@ -1649,8 +1660,10 @@ comments to post (executed by the App Shell roadmap's filing pass):
 ## Next Step
 
 Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
-layout) and **#9** (labels & templates) are **done**, leaving #11 and #12 in Phase 0 and
-unblocking the four module scaffolds (#19, #27, #39, #50) — the Phase 1 tracks can now
-run concurrently. The MVP is complete when **#56** (end-to-end smoke test) is green.
+layout), **#9** (labels & templates), **#10** (local dev environment) and **#11** (CI
+pipelines) are **done**, leaving #12 in Phase 0 and unblocking the four module scaffolds
+(#19, #27, #39, #50) — the Phase 1 tracks can now run concurrently. Each scaffold turns
+its own CI check on as it lands. The MVP is complete when **#56** (end-to-end smoke
+test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

@@ -36,9 +36,13 @@ in a single, auditable place.
 yarn install    # immutable install from the committed lockfile
 yarn dev        # http://localhost:4000/api/v1
 yarn lint
+yarn typecheck
 yarn test
 yarn build && yarn start
 ```
+
+`lint`, `typecheck`, `test` and `build` are what `ci/rest` runs on every pull request
+touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
 A running database is required for anything past the heartbeat — bring it up with the
 root `docker compose up db` ([#10](https://github.com/NobuData/ouroboros/issues/10)).
