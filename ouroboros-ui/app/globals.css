@@ -1,0 +1,93 @@
+/*
+ * Base element styles for the product UI.
+ *
+ * Scope note: this sheet carries no colour, on purpose. The palettes live in
+ * docs/design/tokens.css (#16) and are adopted here by #40, which copies the sheet to
+ * app/tokens.css, imports it above these rules and maps the type scale onto them. Until
+ * that lands the browser's own colours apply, and there is no literal to unpick later —
+ * the rule docs/CONVENTIONS.md § 6 sets out is that no CSS in this repository carries a
+ * colour a token could carry.
+ *
+ * The three font variables are defined by next/font in app/layout.tsx.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* The font-scale work (#41 · CQ.2) moves this percentage; everything below is rem,
+     so one change here rescales every surface. */
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--f-ui);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-family: var(--f-disp);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--f-mono);
+  font-size: 0.8125rem;
+}
+
+/*
+ * The scaffold's placeholder page. Replaced wholesale by the app shell (#41) and the
+ * dashboard (#45); it exists so `yarn dev` renders something that proves all three
+ * faces loaded.
+ */
+
+.placeholder {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+}
+
+.placeholder__eyebrow {
+  margin: 0 0 0.5rem;
+  font-family: var(--f-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.placeholder__title {
+  font-size: 1.875rem;
+  font-weight: 700;
+}
+
+.placeholder__body {
+  margin: 1rem 0 0;
+}
+
+.placeholder__next {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--f-mono);
+  font-size: 0.8125rem;
+}
+
+.placeholder__next li + li {
+  margin-top: 0.375rem;
+}

@@ -1110,7 +1110,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 5.1 | #39 | 🟡 Open | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
+| 5.1 | #39 | 🟢 Done | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
 | 5.2 | #40 | 🟡 Open | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
 | 5.3 | #41 | 🟡 Open | ouroboros-ui: [5.3] App shell — top bar, navigation, footer | The chrome every screen shares, per the mockups | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.4 | #42 | 🟡 Open | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
@@ -1124,7 +1124,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 
 ### Issue 5.1 — ouroboros-ui: [5.1] Next.js application scaffold
 
-> **GitHub issue:** #39 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #39 · **Status:** 🟢 Done · **Parent epic:** #5
 
 - **Problem Statement:** The product UI needs its application skeleton, distinct from
   the marketing site, with the same toolchain discipline.
@@ -1732,9 +1732,16 @@ the Metadata API wiring, and **#16** (design tokens) is **done** — both palett
 [`design/tokens.css`](design/tokens.css) with their contrast measured and enforced, which
 releases **#17** (the runtime theme engine, which only has to stamp `data-theme`), **#40**
 (global styles, which adopts the sheet) and the shell work built on those.
-The four
-module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
-concurrently; each scaffold turns its own CI check on as it lands, and updates its
+
+**#39** (the `ouroboros-ui` scaffold) is **done**: Next.js 16 App Router on TypeScript
+`strict` and Yarn 4, the `(app)`/`(auth)` route groups, the three faces self-hosted by
+`next/font`, `OURO_REST_URL` read and validated, and Vitest + Testing Library — which
+turned `ci/ui` on by itself, exactly as the scaffold gate was built to do. That releases
+the rest of Epic 5 and the two theming issues that were waiting on a `layout.tsx` to
+edit: **#15**'s Metadata API wiring and **#17**'s theme bootstrap.
+
+The remaining module scaffolds (#19, #27, #50) are unblocked and the Phase 1 tracks can
+run concurrently; each scaffold turns its own CI check on as it lands, and updates its
 section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
 pull request. The MVP is complete when **#56** (end-to-end smoke test) is green.
 

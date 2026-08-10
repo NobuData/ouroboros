@@ -1,9 +1,11 @@
 # ouroboros-ui
 
-> **Status:** directory reserved — the application scaffold lands in
-> [#39](https://github.com/NobuData/ouroboros/issues/39) (epic
-> [#5](https://github.com/NobuData/ouroboros/issues/5)). Until then this README is the
-> contract the scaffold must satisfy.
+> **Status:** scaffolded ([#39](https://github.com/NobuData/ouroboros/issues/39), epic
+> [#5](https://github.com/NobuData/ouroboros/issues/5)) — `yarn dev` runs and `ci/ui` is
+> live. What renders is a placeholder: the token sheet
+> ([#40](https://github.com/NobuData/ouroboros/issues/40)), the theme engine
+> ([#17](https://github.com/NobuData/ouroboros/issues/17)) and the app shell
+> ([#41](https://github.com/NobuData/ouroboros/issues/41)) land on top of it.
 
 ## Purpose
 
@@ -28,7 +30,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
 | Lint | ESLint flat config |
-| Container | Multi-stage Dockerfile, Next.js standalone output |
+| Container | Multi-stage Dockerfile, Next.js standalone output ([#47](https://github.com/NobuData/ouroboros/issues/47)) |
 
 ## Run
 
@@ -55,19 +57,41 @@ Development default port: **3000** (`PORT`).
 
 Copy the repo-root `.env.example` and never commit a populated `.env`.
 
-## Layout (target)
+[`app/env.ts`](app/env.ts) reads and validates `OURO_REST_URL` — absolute, `http`/`https`,
+trailing slash trimmed — and throws naming the variable when it is not. It is a function
+rather than a module constant on purpose: a constant would be evaluated while
+`next build` prerenders, failing the build on a machine that has no reason to know the
+address of a service it is not calling. The typed API client
+([#43](https://github.com/NobuData/ouroboros/issues/43)) is its first caller.
+
+## Layout
 
 ```
 ouroboros-ui/
 ├── app/
-│   ├── layout.tsx      # fonts, theme bootstrap
-│   ├── tokens.css      # the design tokens (#40, copied from docs/design)
-│   ├── globals.css     # base element styles, built on those tokens
-│   ├── (auth)/login/   # sign-in & tenancy selection
-│   └── (app)/          # app shell → dashboard and product screens
+│   ├── layout.tsx      # the root layout: fonts, theme bootstrap slot
+│   ├── globals.css     # base element styles
+│   ├── env.ts          # OURO_REST_URL, read and validated
+│   ├── (app)/          # signed-in screens — shell #41 → dashboard #45
+│   └── (auth)/         # signed-out screens — sign-in & tenancy #44
+├── __tests__/          # Vitest suites, mirroring app/
 ├── public/             # brand assets, favicons
-└── Dockerfile
+├── eslint.config.mjs   # ESLint flat config
+├── next.config.ts
+└── vitest.config.mts   # + vitest.setup.ts
 ```
+
+`(app)` and `(auth)` are **route groups**: the parentheses are organisational and
+contribute nothing to the URL, so the dashboard is `/` rather than `/app`. Both hold a
+pass-through layout today — the chrome that belongs in them is #41 and #44.
+
+Still to arrive: `app/tokens.css` (the design tokens, copied down by
+[#40](https://github.com/NobuData/ouroboros/issues/40)) and the `Dockerfile`
+([#47](https://github.com/NobuData/ouroboros/issues/47)).
+
+Tests live in `__tests__/` rather than beside the code they cover, so that no file under
+`app/` can ever be mistaken for a route segment. `yarn test` runs them once and exits;
+`yarn test:watch` is the interactive form.
 
 ## Design tokens
 
@@ -82,14 +106,18 @@ Three things the scaffold owes it:
 1. **Copy, do not fork.** [#40](https://github.com/NobuData/ouroboros/issues/40) copies the
    sheet to `app/tokens.css` and imports it first from `globals.css`. A change to the
    palette is made in `docs/design/tokens.css`, where `scripts/verify-tokens.sh` and the
-   contrast tables can see it, and copied down.
+   contrast tables can see it, and copied down. **Pending.**
 2. **Point `next/font` at the family tokens.** The three faces load through `next/font` and
    redefine `--f-disp`, `--f-ui` and `--f-mono` — the only tokens the application is
-   expected to override, and the reason no component names a font.
+   expected to override, and the reason no component names a font. **Done** in
+   `app/layout.tsx`.
 3. **Stamp `data-theme` before first paint.** Nothing on `<html>` means *system*, and the
    sheet's `prefers-color-scheme` block decides;
    [#17](https://github.com/NobuData/ouroboros/issues/17) adds the stamping, the
-   persistence and the live OS tracking.
+   persistence and the live OS tracking. **Pending** — `app/layout.tsx` marks the slot.
+
+Until (1) lands, `app/globals.css` carries no colour at all rather than a placeholder
+palette: a literal written now is a literal someone has to find and unpick later.
 
 Every colour in this module is a `var(--token)`. There is no second place a colour may come
 from, which is what makes the theme switch a redefinition rather than a restyle.
@@ -119,11 +147,12 @@ surface it sits on. A home screen is an unknown background, which the same docum
 answers by putting the mark on a brand-coloured panel first, so every icon a launcher
 draws is flattened onto the dark ground `#12181d` and carries no alpha channel at all.
 
-### What the scaffold still has to wire
+### What is still to wire
 
 `favicon.ico` and `apple-touch-icon.png` resolve by convention, but the theme-aware pair
-and the manifest need `<link>` tags, which means the Metadata API. Add this to
-`app/layout.tsx` when [#39](https://github.com/NobuData/ouroboros/issues/39) lands:
+and the manifest need `<link>` tags, which means the Metadata API. The scaffold is in
+place; adding this to `app/layout.tsx` is what closes
+[#15](https://github.com/NobuData/ouroboros/issues/15):
 
 ```ts
 import type { Metadata, Viewport } from "next";
