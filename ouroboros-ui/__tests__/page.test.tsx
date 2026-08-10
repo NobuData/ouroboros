@@ -30,7 +30,7 @@ describe("the placeholder home page", () => {
     render(<Page />);
 
     const items = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toHaveLength(4);
-    expect(items.join(" ")).toContain("#17");
+    expect(items).toHaveLength(3);
+    expect(items.join(" ")).toContain("#42");
   });
 });

@@ -68,6 +68,25 @@ describe("the module's stylesheets", () => {
   });
 });
 
+describe("the token sheet", () => {
+  const sheet = readFileSync(join(APP_DIR, SHEET), "utf8");
+
+  it("declares color-scheme in all three palette blocks", () => {
+    // This is what makes native scrollbars, form controls and the browser's own canvas
+    // follow the theme, and it is why the engine (#17) sets no `color-scheme` of its own:
+    // stamping `data-theme` selects a block, and the block carries the property. Three
+    // occurrences — light on :root, dark for the explicit choice, dark for the unset case.
+    expect(sheet.match(/^\s*color-scheme:/gm)).toHaveLength(3);
+  });
+
+  it("selects the dark palette both explicitly and from the OS", () => {
+    expect(sheet).toContain('[data-theme="dark"]');
+    expect(sheet).toContain('(prefers-color-scheme: dark)');
+    // The selector that lets an explicit light choice beat a dark OS.
+    expect(sheet).toContain(':not([data-theme="light"])');
+  });
+});
+
 describe("globals.css", () => {
   const source = readFileSync(join(APP_DIR, "globals.css"), "utf8");
 

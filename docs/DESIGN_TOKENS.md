@@ -88,6 +88,14 @@ nothing at all on `<html>`. Nothing is *system* — the media query then decides
 attribute or class participates, and no component reads the theme; a component reads
 tokens and gets whichever palette is in force.
 
+#17 has landed and honours it: [`../ouroboros-ui/app/theme.ts`](../ouroboros-ui/app/theme.ts)
+stamps those two values and *removes* the attribute for system, so tracking the OS is the
+absence of an attribute rather than a listener re-stamping one — no JavaScript runs when
+the OS theme changes and the choice is system. The engine sets no `color-scheme` of its
+own for the same reason: it is declared in all three blocks here, and selecting a block is
+the whole of applying a theme. See
+[`../ouroboros-ui/README.md`](../ouroboros-ui/README.md#theming).
+
 ## The palette
 
 Thirty-seven colour tokens, in the order the sheet defines them.
