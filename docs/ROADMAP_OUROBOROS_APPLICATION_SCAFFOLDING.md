@@ -1111,7 +1111,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 5.1 | #39 | 🟢 Done | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
-| 5.2 | #40 | 🟡 Open | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
+| 5.2 | #40 | 🟢 Done | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
 | 5.3 | #41 | 🟡 Open | ouroboros-ui: [5.3] App shell — top bar, navigation, footer | The chrome every screen shares, per the mockups | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.4 | #42 | 🟡 Open | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
 | 5.5 | #43 | 🟡 Open | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
@@ -1150,7 +1150,7 @@ app/
 
 ### Issue 5.2 — ouroboros-ui: [5.2] Global styles — tokens & typography
 
-> **GitHub issue:** #40 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #40 · **Status:** 🟢 Done · **Parent epic:** #5
 
 - **Problem Statement:** The UI must render from the shared token sheet, not its own
   colors, or the theme engine has nothing to switch.
@@ -1739,6 +1739,12 @@ releases **#17** (the runtime theme engine, which only has to stamp `data-theme`
 turned `ci/ui` on by itself, exactly as the scaffold gate was built to do. That releases
 the rest of Epic 5 and the two theming issues that were waiting on a `layout.tsx` to
 edit: **#15**'s Metadata API wiring and **#17**'s theme bootstrap.
+
+**#40** (global styles) is **done** on top of it: the sheet is copied to
+`ouroboros-ui/app/tokens.css` and held byte-identical to its source, the three faces are
+mapped onto the family tokens, and the base element styles — ground, ink, selection, one
+focus ring — read nothing but tokens. Both palettes render by flipping `data-theme` by
+hand, which is the state #17 automates.
 
 The remaining module scaffolds (#19, #27, #50) are unblocked and the Phase 1 tracks can
 run concurrently; each scaffold turns its own CI check on as it lands, and updates its

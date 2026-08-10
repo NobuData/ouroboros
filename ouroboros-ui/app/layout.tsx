@@ -7,11 +7,13 @@ import "./globals.css";
  * The three faces the design system names, self-hosted by `next/font` so no request
  * ever leaves for fonts.google.com and no layout shift is possible.
  *
- * Each one publishes a CSS custom property rather than a class, because the token sheet
- * (#16) already declares `--f-disp`, `--f-ui` and `--f-mono` with their fallback stacks
- * and every rule in the product reads those. Redefining the three variables here is the
- * only override the application makes to the sheet — see docs/DESIGN_TOKENS.md — and it
- * is why no component names a font.
+ * Each one publishes a CSS custom property rather than a class, and each is named for
+ * the face rather than for the token it feeds: app/globals.css maps `--font-display`,
+ * `--font-ui` and `--font-mono` onto the sheet's `--f-disp`, `--f-ui` and `--f-mono`.
+ * Mapping there rather than writing the token names here is what makes the override
+ * deterministic — both this class and the sheet's `:root` block target `<html>` with
+ * equal specificity, so writing the same names in both places would leave which one
+ * wins to stylesheet order.
  *
  * Weights are the ones the mockups actually use (docs/mockups/assets/ouroboros.css);
  * asking for more would ship files nothing renders.
@@ -19,21 +21,21 @@ import "./globals.css";
 const display = Chakra_Petch({
   weight: ["500", "600", "700"],
   subsets: ["latin"],
-  variable: "--f-disp",
+  variable: "--font-display",
   display: "swap",
 });
 
 const ui = IBM_Plex_Sans({
   weight: ["400", "500", "600"],
   subsets: ["latin"],
-  variable: "--f-ui",
+  variable: "--font-ui",
   display: "swap",
 });
 
 const mono = IBM_Plex_Mono({
   weight: ["400", "500"],
   subsets: ["latin"],
-  variable: "--f-mono",
+  variable: "--font-mono",
   display: "swap",
 });
 

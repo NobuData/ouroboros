@@ -96,6 +96,17 @@ make_fixture() {
 }
 SHEET
 
+  # The application's copy of the sheet (#40) and the stylesheet that imports it. A copy
+  # rather than a link because Next.js bundles files from inside the module; held
+  # byte-identical to the source, which is what makes "copy, do not fork" checkable.
+  mkdir -p "$fixture/ouroboros-ui/app"
+  cp "$fixture/docs/design/tokens.css" "$fixture/ouroboros-ui/app/tokens.css"
+  cat > "$fixture/ouroboros-ui/app/globals.css" <<'GLOBALS'
+@import "./tokens.css";
+
+body { background: var(--ground); color: var(--ink); }
+GLOBALS
+
   cat > "$fixture/docs/design/tokens-preview.html" <<'PREVIEW'
 <!doctype html>
 <html lang="en" data-theme="light">
@@ -449,6 +460,26 @@ check_break 'a document with no contrast table at all is reported' \
 # ---------------------------------------------------------------------------
 # The documents that point here
 # ---------------------------------------------------------------------------
+
+printf '\nAdoption violations\n'
+
+check_break "an application that has not adopted the sheet is reported" \
+  'ouroboros-ui/app/tokens\.css exists' \
+  'rm "$root/ouroboros-ui/app/tokens.css"'
+
+# The fork this whole section exists to catch: a palette edited in the copy, where neither
+# the contrast tables nor this script would ever look at it.
+check_break 'a copy of the sheet that has drifted from the source is reported' \
+  'has drifted from docs/design/tokens\.css' \
+  'sed -i "s/^  --ground: #f5f8fa;$/  --ground: #ffffff;/" "$root/ouroboros-ui/app/tokens.css"'
+
+check_break 'a copy the application never imports is reported' \
+  'imports its copy of the sheet' \
+  'printf "body { color: var(--ink); }\n" > "$root/ouroboros-ui/app/globals.css"'
+
+check_break 'a missing global stylesheet is reported' \
+  'ouroboros-ui/app/globals\.css exists' \
+  'rm "$root/ouroboros-ui/app/globals.css"'
 
 printf '\nCross-reference violations\n'
 
