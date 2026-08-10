@@ -102,9 +102,12 @@ Configuration is **validated at boot and fails fast** — zod in the NestJS laye
 pydantic-settings in the engine. A missing or malformed variable exits non-zero naming
 the exact variable; it never surfaces as a stack trace on the first request.
 
-Real `.env` files are never committed; the repo-root `.env.example`
-([#10](https://github.com/NobuData/ouroboros/issues/10)) documents every `OURO_*`
-variable and is the file that is. Secrets are redacted from any configuration logging.
+Real `.env` files are never committed; the repo-root [`.env.example`](../.env.example)
+documents every `OURO_*` variable with its development default and is the file that is.
+A variable that no longer appears there is a variable a developer cannot discover, so
+[`verify-dev-env.sh`](../scripts/verify-dev-env.sh) fails the build when the template
+falls behind either the compose stack or a module README. Secrets are redacted from any
+configuration logging.
 
 ### Port map (development defaults)
 
@@ -130,6 +133,33 @@ in [`../ouroboros-web/Dockerfile`](../ouroboros-web/Dockerfile):
 - a `HEALTHCHECK` hits the service's liveness endpoint;
 - a `.dockerignore` keeps `.git`, `node_modules`, build output and `.env*` out of the
   build context.
+
+### The local development stack
+
+The repo-root [`docker-compose.yml`](../docker-compose.yml) is the development data tier
+— PostgreSQL 17 plus the Flyway pass that migrates it
+([#10](https://github.com/NobuData/ouroboros/issues/10)). The application services are
+added to this same file by [#55](https://github.com/NobuData/ouroboros/issues/55) rather
+than to a second one, so there is only ever one stack to bring up:
+
+```bash
+docker compose up            # database, migrated and listening on :5432
+docker compose down -v       # reset — drops the named volume and all data
+```
+
+Three rules keep it reproducible:
+
+1. **Images are pinned** to a major version (`postgres:17-alpine`, `flyway/flyway:11`),
+   never `latest`, so two developers a month apart get the same database.
+2. **Dependencies wait on healthchecks, never on sleeps.** The migrator starts on
+   `condition: service_healthy`, which is what stops the first migration racing the
+   restart PostgreSQL performs at the end of its own initialisation.
+3. **Every credential is interpolated with a development default** —
+   `${OURO_DB_USER:-ouroboros}`. A clean checkout runs with no `.env` at all, and a
+   literal credential never enters the file.
+4. **Published ports name the loopback interface** — `127.0.0.1:5432:5432`. A
+   development password is a real password to anything that can reach the port, and
+   Docker's default is every interface on the machine.
 
 ## 6. Code style
 
@@ -222,6 +252,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 |---|---|
 | [`verify-layout.sh`](../scripts/verify-layout.sh) | Module directories, README sections, root docs, `.editorconfig` coverage |
 | [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
+| [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule |
 | [`run-tests.sh`](../scripts/run-tests.sh) | Runs `scripts/tests/*.test.sh` — the unit and integration tests for the tooling above |
 
 They share one assertion harness, [`scripts/lib/checks.sh`](../scripts/lib/checks.sh), so

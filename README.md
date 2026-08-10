@@ -65,11 +65,29 @@ ouroboros/
 ├── ouroboros-db/      # Flyway migrations
 ├── scripts/           # repo-level tooling
 ├── .github/           # labels, issue forms, PR template, workflows
+├── docker-compose.yml # local development data tier — PostgreSQL + Flyway
+├── .env.example       # every OURO_* variable, with development defaults
 ├── .editorconfig      # repo-wide editor conventions
 └── .gitignore         # repo-wide ignores
 ```
 
 ## Getting started
+
+The database is the one piece that runs today. From a clean checkout, with Docker
+running:
+
+```bash
+docker compose up            # PostgreSQL 17 on :5432, Flyway migrations applied
+docker compose down -v       # reset — stops everything and drops the volume
+```
+
+That is the whole setup: `up` starts PostgreSQL, waits for its healthcheck, applies
+every migration in [`ouroboros-db/migrations/`](ouroboros-db/migrations), and leaves the
+database listening. It needs no `.env` — every value has a development default — and
+is safe to repeat, because Flyway applies only what is pending. `docker compose up db`
+brings up the database alone, without a migration pass. See
+[`ouroboros-db/README.md`](ouroboros-db/README.md) for how to connect and how to read
+the applied versions.
 
 Each module is built and run on its own — see its README for the specifics:
 
@@ -79,20 +97,19 @@ yarn install --immutable && yarn dev
 
 # Python module (ouroboros-engine)
 uv sync && uv run dev
-
-# Database (ouroboros-db) — from the repo root, once #10 lands
-docker compose up db
 ```
 
-Only `ouroboros-web` is scaffolded today; the other three commands become live as their
+Only `ouroboros-web` is scaffolded today; the other commands become live as their
 scaffolding issues land ([#39](https://github.com/NobuData/ouroboros/issues/39),
 [#27](https://github.com/NobuData/ouroboros/issues/27),
-[#50](https://github.com/NobuData/ouroboros/issues/50),
-[#19](https://github.com/NobuData/ouroboros/issues/19)).
+[#50](https://github.com/NobuData/ouroboros/issues/50)). The full-stack compose file
+that adds those services to this one is
+[#55](https://github.com/NobuData/ouroboros/issues/55).
 
 Environment variables are prefixed `OURO_` (except `PORT` and platform standards), are
-validated at boot, and are documented in the repo-root `.env.example`
-([#10](https://github.com/NobuData/ouroboros/issues/10)).
+validated at boot, and are documented with their development defaults in
+[`.env.example`](.env.example). Copy it to `.env` to override any of them; real `.env`
+files are never committed.
 
 Repository structure and GitHub configuration can be checked at any time, and the
 repo-level tooling has its own tests:
@@ -100,8 +117,12 @@ repo-level tooling has its own tests:
 ```bash
 scripts/verify-layout.sh          # module layout, READMEs, .editorconfig coverage
 scripts/verify-github-config.sh   # label definitions, issue forms, PR template
+scripts/verify-dev-env.sh         # compose stack, .env.example, migration naming
 scripts/run-tests.sh              # tests for the tooling in scripts/
 ```
+
+`verify-dev-env.sh` reads files and starts nothing, so it runs with Docker stopped —
+whether the stack really comes up is what `docker compose up` answers.
 
 ## Documentation
 

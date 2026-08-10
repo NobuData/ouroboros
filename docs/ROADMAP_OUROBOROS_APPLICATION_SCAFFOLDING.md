@@ -142,7 +142,7 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 1.1 | #8 | 🟢 Done | ouroboros: [1.1] Monorepo layout & module scaffolding conventions | Create the four module directories with READMEs and shared conventions | mvp, infra | N (first) | Y | S | repo root |
 | 1.2 | #9 | 🟢 Done | ouroboros: [1.2] GitHub labels & issue/PR templates | Create `mvp`, `v2`, and module labels; add issue/PR templates | mvp, infra | Y | Y | XS | .github |
-| 1.3 | #10 | 🟡 Open | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
+| 1.3 | #10 | 🟢 Done | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
 | 1.4 | #11 | 🟡 Open | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
 | 1.5 | #12 | 🟡 Open | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
 | 1.6 | #13 | 🟡 Open | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
@@ -218,10 +218,15 @@ labels:  [mvp] [v2]   [ui] [rest] [db] [engine]   [infra] [design] [ci]
 
 ### Issue 1.3 — ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway)
 
-> **GitHub issue:** #10 · **Status:** 🟡 Open · **Parent epic:** #1
-
-- **Problem Statement:** REST and engine development need a real PostgreSQL with the
-  current schema, reproducibly, without manual setup.
+> **GitHub issue:** #10 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: repo-root `docker-compose.yml` (PostgreSQL 17 on a healthcheck and a named
+> volume, plus a Flyway 11 pass gated on `service_healthy`), `.env.example` covering
+> every `OURO_*` variable with development defaults, `ouroboros-db/migrations/` with
+> `V000__bootstrap.sql` so the first `up` leaves a readable history, and
+> `scripts/verify-dev-env.sh` with its tests. Measured on a clean volume: `up` →
+> migrated in 7s, `down -v` → `up` reapplies from scratch. Issue 3.1 (#19) still owns
+> `flyway.toml` and the migration wrapper scripts; the tenancy tables keep V001+.
 - **Solution/Scope:** Root `docker-compose.yml` (dev profile): `postgres:17-alpine`
   with healthcheck + named volume, and a `flyway` service that runs
   `ouroboros-db/migrations` against it on `up`. `.env.example` with all `OURO_*`
@@ -487,6 +492,12 @@ per-tenant GitHub org/repo enablement.
 ### Issue 3.1 — ouroboros-db: [3.1] Flyway project scaffold & migration conventions
 
 > **GitHub issue:** #19 · **Status:** 🟡 Open · **Parent epic:** #3
+>
+> Partly landed by 1.3 (#10), which needed something to migrate: `migrations/` exists
+> and holds `V000__bootstrap.sql`, and the compose stack already passes the schema and
+> `validateMigrationNaming` settings on the command line. What remains here is
+> `flyway.toml` (so the settings live in the module rather than in compose), the
+> `scripts/` wrappers, and `tests/`. The tenancy tables still start at V001.
 
 - **Problem Statement:** Flyway needs a project home, configuration, and non-negotiable
   conventions (naming, immutability, review rules) before the first migration lands.
