@@ -154,6 +154,44 @@ check_equals '' "$out" 'one invalid entry suppresses the whole output'
 check_equals 1 "$status" 'one invalid entry fails the parse'
 
 # ---------------------------------------------------------------------------
+# Reading a working .env rather than the committed template
+# ---------------------------------------------------------------------------
+
+printf '\nWorking copies (template=0)\n'
+
+# run_working CONTENT — parse CONTENT the way ouroboros-db/run.sh reads a real .env.
+run_working() {
+  printf '%s\n' "$1" > "$work/env"
+  out=$(awk -v template=0 -f "$PARSER" "$work/env" 2>"$work/err")
+  status=$?
+  err=$(cat "$work/err")
+}
+
+run_working 'OURO_DB_USER=ouroboros'
+check_equals 0 "$status" 'an undocumented entry is accepted in a working copy'
+check_equals "OURO_DB_USER${TAB}ouroboros" "$out" 'and is still flattened to TSV'
+
+run_working '# Everything commented out.'
+check_equals 0 "$status" 'a working copy that declares nothing is accepted'
+check_equals '' "$out" 'and yields no entries'
+
+# Relaxing the documentation rule must not relax anything else, or a .env would feed
+# Docker Compose one value and this parser another.
+run_working 'OURO_DB_USER="quoted"'
+check_equals 1 "$status" 'a quoted value is still refused in a working copy'
+
+run_working 'OURO_DB_USER=a
+OURO_DB_USER=b'
+check_equals 1 "$status" 'a duplicate is still refused in a working copy'
+
+run_working 'DATABASE_URL=postgresql://localhost'
+check_equals 1 "$status" 'the OURO_ prefix rule still applies in a working copy'
+
+# The default is strict, so a caller that forgets the flag validates the template.
+run_parser 'OURO_DB_USER=ouroboros'
+check_equals 1 "$status" 'template mode is the default'
+
+# ---------------------------------------------------------------------------
 # The template this repository actually ships
 # ---------------------------------------------------------------------------
 

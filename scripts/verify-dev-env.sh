@@ -166,6 +166,18 @@ else
   fail "$MIGRATIONS/ holds at least one migration to apply (none found)"
 fi
 
+printf '\nMigration runner\n'
+check_executable ouroboros-db/run.sh 'ouroboros-db/run.sh is executable'
+# It applies the same migrations the compose pass does, so a setting that drifts between
+# the two would give `up` and `run.sh` different databases from the same checkout.
+for setting in '\-createSchemas=true' '\-validateMigrationNaming=true' 'flyway/flyway:11'; do
+  label=$(printf '%s' "$setting" | tr -d '\\')
+  check_contains ouroboros-db/run.sh "$setting" "run.sh applies $label, as the stack does"
+done
+# A password that comes from a variable opens with `"` or `$`, and the redaction branch
+# opens with `*`; anything alphanumeric is a credential someone typed in.
+check_absent ouroboros-db/run.sh '\-password=[[:alnum:]]' 'run.sh holds no literal password'
+
 # ---------------------------------------------------------------------------
 # Documentation
 # ---------------------------------------------------------------------------

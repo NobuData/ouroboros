@@ -25,14 +25,23 @@
 #   * every entry documented — its blank-line-delimited block opens with a comment
 #     carrying actual prose, not just a section rule.
 #
+# The last two are asked of the committed template only. Pass `-v template=0` to read a
+# working `.env` instead, where prose comments are not owed to anyone and a file that
+# declares nothing is a developer's choice rather than a mistake. Every other rule still
+# applies either way, so a `.env` that would feed Docker Compose something different
+# from what this parser reports is refused rather than half-read.
+#
 # Usage:
 #   awk -f scripts/lib/parse-env-example.awk .env.example
+#   awk -v template=0 -f scripts/lib/parse-env-example.awk .env
 #
 # Exit status:
 #   0  every entry valid; TSV written to stdout
 #   1  at least one problem; each is printed to stderr as `<file>:<line>: <reason>`
 
 BEGIN {
+    # 1 validates the committed template, 0 reads a working copy of it.
+    if (template == "") template = 1
     # Unprefixed names the conventions allow: the port every container platform sets,
     # plus the standard runtime and Compose variables. Anything else must be OURO_*.
     split("PORT NODE_ENV HOSTNAME COMPOSE_PROJECT_NAME COMPOSE_FILE", allowed, " ")
@@ -134,7 +143,7 @@ function report(message) {
         next
     }
 
-    if (!documented) {
+    if (template && !documented) {
         report(name " is undeclared in prose: add a comment above it")
         next
     }
@@ -148,7 +157,9 @@ function report(message) {
 # ---------------------------------------------------------------------------
 
 END {
-    if (entries == 0 && errors == 0) {
+    # A template that declares nothing documents nothing, so it is a mistake. A working
+    # .env that declares nothing just means every default applies.
+    if (template && entries == 0 && errors == 0) {
         printf "%s: no variables found\n", FILENAME > "/dev/stderr"
         errors++
     }

@@ -123,6 +123,15 @@ Everything Ouroboros-specific is prefixed, e.g. `OURO_LOG_LEVEL`.
 DOC
 
   printf 'select 1;\n' > "$fixture/ouroboros-db/migrations/V000__bootstrap.sql"
+
+  # Only the settings the verifier cross-checks against the compose stack; the real
+  # runner is exercised by db-run.test.sh.
+  cat > "$fixture/ouroboros-db/run.sh" <<'RUNNER'
+#!/usr/bin/env sh
+exec docker run --rm flyway/flyway:11-alpine \
+  -password="$db_password" -createSchemas=true -validateMigrationNaming=true migrate
+RUNNER
+  chmod +x "$fixture/ouroboros-db/run.sh"
 }
 
 # run_verify DIR [ARG...] — run the script, leaving combined output in $out and the exit
@@ -284,6 +293,20 @@ check_break 'an empty migrations directory is reported' \
 check_break 'a misnamed migration is reported' \
   'follows the migration naming rule' \
   'mv "$root/ouroboros-db/migrations/V000__bootstrap.sql" "$root/ouroboros-db/migrations/V1__Bootstrap.sql"'
+
+printf '\nMigration runner violations\n'
+
+check_break 'a runner that is not executable is reported' \
+  'run\.sh is executable' \
+  'chmod -x "$root/ouroboros-db/run.sh"'
+
+check_break 'a runner that has drifted from the stack is reported' \
+  'run\.sh applies -validateMigrationNaming=true' \
+  'sed -i "s|-validateMigrationNaming=true|-validateMigrationNaming=false|" "$root/ouroboros-db/run.sh"'
+
+check_break 'a literal password in the runner is reported' \
+  'run\.sh holds no literal password' \
+  'sed -i "s|-password=\\\"\$db_password\\\"|-password=hunter2|" "$root/ouroboros-db/run.sh"'
 
 # A repeatable migration is legal under the same rule, so it must not be flagged.
 root="$work/repeatable"
