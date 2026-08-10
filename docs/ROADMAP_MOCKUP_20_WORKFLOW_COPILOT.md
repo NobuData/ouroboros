@@ -223,12 +223,15 @@ class (CF.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| CC | Copilot Domain | Sessions/messages, op provenance, dry-run records, suggestions, seeds | ouroboros-db | Workflow Copilot MVP |
-| CD | Copilot & Dry-Run Services | Conversation service, typed ops, the harness, estimators, rules | ouroboros-engine, ouroboros-rest | Workflow Copilot MVP |
-| CE | Copilot UI | Conversation, draft list, dry-run results, safety strip, e2e | ouroboros-ui | Workflow Copilot MVP |
-| CF | Advanced Verification (v2) | PoC-runner stage kind, access grants, deep+build, batch what-if | all | Workflow Copilot v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| CC | #551 | 🟡 Open | Copilot Domain | Sessions/messages, op provenance, dry-run records, suggestions, seeds | ouroboros-db | Workflow Copilot MVP |
+| CD | #552 | 🟡 Open | Copilot & Dry-Run Services | Conversation service, typed ops, the harness, estimators, rules | ouroboros-engine, ouroboros-rest | Workflow Copilot MVP |
+| CE | #553 | 🟡 Open | Copilot UI | Conversation, draft list, dry-run results, safety strip, e2e | ouroboros-ui | Workflow Copilot MVP |
+| CF | #554 | 🟡 Open | Advanced Verification (v2) | PoC-runner stage kind, access grants, deep+build, batch what-if | all | Workflow Copilot v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`, `workflow`) **plus new
@@ -238,16 +241,18 @@ chips: **XS · S · M · L**.
 
 ---
 
-## Epic CC — Copilot Domain (`ouroboros-db`)
+## Epic CC (#551) — Copilot Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CC.1 | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
-| CC.2 | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
-| CC.3 | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
-| CC.4 | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CC.1 | #555 | 🟡 Open | ouroboros-db: [CC.1] Copilot sessions & messages | Typed conversation records: bubbles, chips, tool traces | mvp, copilot, db | N (after WF-P.1) | Y | M | ouroboros-db |
+| CC.2 | #556 | 🟡 Open | ouroboros-db: [CC.2] Draft-operation provenance | Applied ops per draft: actor, source, versions (`v0.3`) | mvp, copilot, db | N (after CC.1, WF-P.1) | Y | S | ouroboros-db |
+| CC.3 | #557 | 🟡 Open | ouroboros-db: [CC.3] Dry-run records | Per-stage results, overlay diffs, costs, history — own domain (W4) | mvp, copilot, db | N (after CC.1) | Y | M | ouroboros-db |
+| CC.4 | #558 | 🟡 Open | ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity | Rule/LLM suggestion rows; the full seeded exchange; ci probes | mvp, copilot, db, ci | N (after CC.2/CC.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CC.1 — ouroboros-db: [CC.1] Copilot sessions & messages
+
+> **GitHub issue:** #555 · **Status:** 🟡 Open · **Parent epic:** #551
 
 - **Problem Statement:** The conversation is a durable artifact — bubbles,
   choice questions with answers, and the tool activity behind each reply.
@@ -286,6 +291,8 @@ erDiagram
 
 ### Issue CC.2 — ouroboros-db: [CC.2] Draft-operation provenance
 
+> **GitHub issue:** #556 · **Status:** 🟡 Open · **Parent epic:** #551
+
 - **Problem Statement:** `draft v0.3 (2 copilot edits applied)` and the
   `added by copilot` pill need per-op provenance on the shared draft
   (W2) — visible to all three editing surfaces.
@@ -312,6 +319,8 @@ stage.exploit-verify.provenance = copilot ─▶ "added by copilot" pill
 ```
 
 ### Issue CC.3 — ouroboros-db: [CC.3] Dry-run records
+
+> **GitHub issue:** #557 · **Status:** 🟡 Open · **Parent epic:** #551
 
 - **Problem Statement:** Dry runs need their own domain (W4): per-stage
   results with `how` labels, overlay diffs, costs, and history — never
@@ -345,6 +354,8 @@ dry_run{#489, sha: b7e…, 2m41s, $0.31, guards: clean}
 
 ### Issue CC.4 — ouroboros-db: [CC.4] Suggestions & seeds — mockup-20 parity
 
+> **GitHub issue:** #558 · **Status:** 🟡 Open · **Parent epic:** #551
+
 - **Problem Statement:** Suggestion rows with rule/LLM provenance, and
   the full seeded page state over the shared universe.
 - **Solution/Scope:** `dry_run_suggestions` — dry_run FK, `source` CHECK
@@ -374,18 +385,20 @@ seeds: session(6 msgs, chips ✓) · draft v0.3 (9 stages, 2 copilot ops, W7 war
 
 ---
 
-## Epic CD — Copilot & Dry-Run Services (`ouroboros-engine` + `ouroboros-rest`)
+## Epic CD (#552) — Copilot & Dry-Run Services (`ouroboros-engine` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CD.1 | ouroboros-engine: [CD.1] Copilot conversation service | `/v0/copilot-workflow`: tool-calling ops + ask_user + reads (W2) | mvp, copilot, engine, rest | N (after CC.2, WF-P.2, AF.2) | Y | L | ouroboros-engine, ouroboros-rest |
-| CD.2 | ouroboros-engine: [CD.2] Deep dry-run harness | Virtual FS, guarded tools, real LLM stages, conditional logic (W3) | mvp, copilot, engine | N (after CC.3, AF.2, BF.5) | Y | L | ouroboros-engine |
-| CD.3 | ouroboros-rest: [CD.3] Infra replay estimators | Similar-build/test statistics with sample counts + spread | mvp, copilot, rest | N (after AH.1, BI.2) | Y | M | ouroboros-rest |
-| CD.4 | ouroboros-rest: [CD.4] Dry-run orchestration & guards | Pre-check, budget caps, guard enforcement audit, records | mvp, copilot, rest | N (after CD.2/CD.3, WF-R.2) | Y | M | ouroboros-rest |
-| CD.5 | ouroboros-rest: [CD.5] Suggestion rules & apply flow | Deterministic post-run rules, edge-case picker, op application | mvp, copilot, rest | N (after CD.4, CC.4) | Y | M | ouroboros-rest |
-| CD.6 | ouroboros-rest: [CD.6] Copilot integration tests | Op parity, harness guards, estimator math, promote gate | mvp, copilot, rest, ci | N (after CD.1–CD.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CD.1 | #559 | 🟡 Open | ouroboros-engine: [CD.1] Copilot conversation service | `/v0/copilot-workflow`: tool-calling ops + ask_user + reads (W2) | mvp, copilot, engine, rest | N (after CC.2, WF-P.2, AF.2) | Y | L | ouroboros-engine, ouroboros-rest |
+| CD.2 | #560 | 🟡 Open | ouroboros-engine: [CD.2] Deep dry-run harness | Virtual FS, guarded tools, real LLM stages, conditional logic (W3) | mvp, copilot, engine | N (after CC.3, AF.2, BF.5) | Y | L | ouroboros-engine |
+| CD.3 | #561 | 🟡 Open | ouroboros-rest: [CD.3] Infra replay estimators | Similar-build/test statistics with sample counts + spread | mvp, copilot, rest | N (after AH.1, BI.2) | Y | M | ouroboros-rest |
+| CD.4 | #562 | 🟡 Open | ouroboros-rest: [CD.4] Dry-run orchestration & guards | Pre-check, budget caps, guard enforcement audit, records | mvp, copilot, rest | N (after CD.2/CD.3, WF-R.2) | Y | M | ouroboros-rest |
+| CD.5 | #563 | 🟡 Open | ouroboros-rest: [CD.5] Suggestion rules & apply flow | Deterministic post-run rules, edge-case picker, op application | mvp, copilot, rest | N (after CD.4, CC.4) | Y | M | ouroboros-rest |
+| CD.6 | #564 | 🟡 Open | ouroboros-rest: [CD.6] Copilot integration tests | Op parity, harness guards, estimator math, promote gate | mvp, copilot, rest, ci | N (after CD.1–CD.5) | Y | M | ouroboros-rest |
 
 ### Issue CD.1 — ouroboros-engine: [CD.1] Copilot conversation service
+
+> **GitHub issue:** #559 · **Status:** 🟡 Open · **Parent epic:** #552
 
 - **Problem Statement:** The conversational author (W2): a tool-calling
   loop whose only write path is typed, validated draft operations.
@@ -420,6 +433,8 @@ seeds: session(6 msgs, chips ✓) · draft v0.3 (9 stages, 2 copilot ops, W7 war
 
 ### Issue CD.2 — ouroboros-engine: [CD.2] Deep dry-run harness
 
+> **GitHub issue:** #560 · **Status:** 🟡 Open · **Parent epic:** #552
+
 - **Problem Statement:** The page's crown jewel (W3): real models,
   virtual writes, replayed infra, provable guards.
 - **Solution/Scope:** Harness in the engine: **virtual workspace**
@@ -453,6 +468,8 @@ guards: farm ∅ · SPI-write ∅ · PR ∅ — audited clean
 
 ### Issue CD.3 — ouroboros-rest: [CD.3] Infra replay estimators
 
+> **GitHub issue:** #561 · **Status:** 🟡 Open · **Parent epic:** #552
+
 - **Problem Statement:** `est. 4m 02s (214 similar builds, ±20s)` —
   honest infra estimates from farm history.
 - **Solution/Scope:** Estimator service: similarity classing (repo +
@@ -476,6 +493,8 @@ n < 12 ─▶ "insufficient history — first real build will measure"
 ```
 
 ### Issue CD.4 — ouroboros-rest: [CD.4] Dry-run orchestration & guards
+
+> **GitHub issue:** #562 · **Status:** 🟡 Open · **Parent epic:** #552
 
 - **Problem Statement:** The run lifecycle around the harness: pre-check,
   budgets, guard audit, records, and the API surface.
@@ -506,6 +525,8 @@ picker: #489 (security×no-CVE — exercises the conditional path) · #491 (has-
 
 ### Issue CD.5 — ouroboros-rest: [CD.5] Suggestion rules & apply flow
 
+> **GitHub issue:** #563 · **Status:** 🟡 Open · **Parent epic:** #552
+
 - **Problem Statement:** Post-run intelligence (W5): deterministic rules
   over outcomes, LLM enrichment through the conversation, and Apply as
   typed ops.
@@ -535,6 +556,8 @@ rule(skipped, nothing-to-do) ─▶ suggest{ops: [set_predicate(exploit-verify,
 
 ### Issue CD.6 — ouroboros-rest: [CD.6] Copilot integration tests
 
+> **GitHub issue:** #564 · **Status:** 🟡 Open · **Parent epic:** #552
+
 - **Problem Statement:** Op-DSL parity, harness guards, and the
   promote gate are the safety core of a page that writes workflows by
   conversation.
@@ -557,22 +580,24 @@ suites: op⊇DSL ✓ · session ✓ · guards(exhaustive) ✓ · overlay ✓ · 
 
 ---
 
-## Epic CE — Copilot UI (`ouroboros-ui`)
+## Epic CE (#553) — Copilot UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/20-workflow-copilot.html`](mockups/20-workflow-copilot.html)
 as the design source — bubble/chip/stage-row/res-row/suggest/safe-col
 treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CE.1 | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
-| CE.2 | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
-| CE.3 | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
-| CE.4 | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
-| CE.5 | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CE.1 | #565 | 🟡 Open | ouroboros-ui: [CE.1] Copilot route, head & promote/discard | Third-surface frame, live segment, the promote gate flow | mvp, copilot, ui, design | N (after WF-S.1, CD.4, BA-D.5) | Y | M | ouroboros-ui |
+| CE.2 | #566 | 🟡 Open | ouroboros-ui: [CE.2] Conversation card | Bubbles, choice chips, composer, streaming replies | mvp, copilot, ui, design | N (after CE.1, CD.1) | Y | L | ouroboros-ui |
+| CE.3 | #567 | 🟡 Open | ouroboros-ui: [CE.3] Draft stage list | Numbered rows, tags, provenance pills, W7 warnings, edit links | mvp, copilot, ui, design | N (after CE.1, CC.2) | Y | M | ouroboros-ui |
+| CE.4 | #568 | 🟡 Open | ouroboros-ui: [CE.4] Dry-run card | Result rows, simulated diff, suggestion callouts, pickers | mvp, copilot, ui, design | N (after CE.1, CD.4/CD.5) | Y | L | ouroboros-ui |
+| CE.5 | #569 | 🟡 Open | ouroboros-ui: [CE.5] Safety strip, states & e2e leg | Mechanism-traced strip; cold/error states; the full-chain e2e | mvp, copilot, ui, ci | N (after CE.2–CE.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CE.1 — ouroboros-ui: [CE.1] Copilot route, head & promote/discard
+
+> **GitHub issue:** #565 · **Status:** 🟡 Open · **Parent epic:** #553
 
 - **Problem Statement:** The third surface joins the studio: the live
   segment (W9), the draft-named promote action, and discard.
@@ -600,6 +625,8 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 ```
 
 ### Issue CE.2 — ouroboros-ui: [CE.2] Conversation card
+
+> **GitHub issue:** #566 · **Status:** 🟡 Open · **Parent epic:** #553
 
 - **Problem Statement:** The conversation surface: bubbles with the
   mockup's treatments, working choice chips, streamed replies, and the
@@ -629,6 +656,8 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 
 ### Issue CE.3 — ouroboros-ui: [CE.3] Draft stage list
 
+> **GitHub issue:** #567 · **Status:** 🟡 Open · **Parent epic:** #553
+
 - **Problem Statement:** The live draft rendered as the mockup's stage
   rows — with provenance pills, W7 unresolved-reference warnings, and
   the cross-surface edit links.
@@ -655,6 +684,8 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 ```
 
 ### Issue CE.4 — ouroboros-ui: [CE.4] Dry-run card
+
+> **GitHub issue:** #568 · **Status:** 🟡 Open · **Parent epic:** #553
 
 - **Problem Statement:** The results surface: per-stage rows with their
   `how` truth, the simulated diff, the glowing suggestion callouts,
@@ -688,6 +719,8 @@ promote ─▶ "publishes v1 · never-auto-merge + $5/run guard compiled" ─▶
 
 ### Issue CE.5 — ouroboros-ui: [CE.5] Safety strip, states & e2e leg
 
+> **GitHub issue:** #569 · **Status:** 🟡 Open · **Parent epic:** #553
+
 - **Problem Statement:** The safety strip must trace to mechanism, cold
   states must guide, and the whole conversational chain needs
   certification.
@@ -718,17 +751,19 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
 
 ---
 
-## Epic CF — Advanced Verification (v2 · milestone `Workflow Copilot v2`)
+## Epic CF (#554) — Advanced Verification (v2 · milestone `Workflow Copilot v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CF.1 | ouroboros-engine: [CF.1] `exploit-verify` stage kind & sandboxed PoC runner | The invented stage becomes real: isolated CVE-PoC execution | v2, copilot, workflow, engine | N (after WF-P.2, AG.4/AJ.5) | N | L | ouroboros-engine, ouroboros-runner |
-| CF.2 | ouroboros-rest: [CF.2] Conversation access grants & advisory-DB skill | First-class permission asks; the advisory-db skill lands | v2, copilot, knowledge, rest | N (after CD.1, BF.1) | N | M | ouroboros-rest |
-| CF.3 | ouroboros-rest: [CF.3] Deep+build dry-run mode | Opt-in real farm builds on throwaway branches | v2, copilot, build-farm, rest | N (after CD.4, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
-| CF.4 | ouroboros-engine: [CF.4] Batch what-if dry runs | Draft × N historical/sized issues; shared with BX.2 | v2, copilot, engine | N (after CD.2, BX.2-shape) | N | M | ouroboros-engine |
-| CF.5 | ouroboros-rest: [CF.5] Review-replay statistics | Reviewer-pair disagreement data; the 81% suggestion class earns its basis | v2, copilot, rest | N (after CD.2, AS/AW history) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CF.1 | #570 | 🟡 Open | ouroboros-engine: [CF.1] `exploit-verify` stage kind & sandboxed PoC runner | The invented stage becomes real: isolated CVE-PoC execution | v2, copilot, workflow, engine | N (after WF-P.2, AG.4/AJ.5) | N | L | ouroboros-engine, ouroboros-runner |
+| CF.2 | #571 | 🟡 Open | ouroboros-rest: [CF.2] Conversation access grants & advisory-DB skill | First-class permission asks; the advisory-db skill lands | v2, copilot, knowledge, rest | N (after CD.1, BF.1) | N | M | ouroboros-rest |
+| CF.3 | #572 | 🟡 Open | ouroboros-rest: [CF.3] Deep+build dry-run mode | Opt-in real farm builds on throwaway branches | v2, copilot, build-farm, rest | N (after CD.4, AH.4) | N | M | ouroboros-rest, ouroboros-engine |
+| CF.4 | #573 | 🟡 Open | ouroboros-engine: [CF.4] Batch what-if dry runs | Draft × N historical/sized issues; shared with BX.2 | v2, copilot, engine | N (after CD.2, BX.2-shape) | N | M | ouroboros-engine |
+| CF.5 | #574 | 🟡 Open | ouroboros-rest: [CF.5] Review-replay statistics | Reviewer-pair disagreement data; the 81% suggestion class earns its basis | v2, copilot, rest | N (after CD.2, AS/AW history) | N | M | ouroboros-rest |
 
 ### Issue CF.1 — ouroboros-engine: [CF.1] `exploit-verify` stage kind & sandboxed PoC runner
+
+> **GitHub issue:** #570 · **Status:** 🟡 Open · **Parent epic:** #554
 
 - **Problem Statement:** The copilot invented a stage the mockup treats
   as real: re-running a CVE's proof-of-concept against the patched
@@ -754,6 +789,8 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
 
 ### Issue CF.2 — ouroboros-rest: [CF.2] Conversation access grants & advisory-DB skill
 
+> **GitHub issue:** #571 · **Status:** 🟡 Open · **Parent epic:** #554
+
 - **Problem Statement:** *"May it read the GitHub Advisory DB?"* — the
   chip implies a permission system for conversation-granted
   capabilities, and the `advisory-db` skill must exist.
@@ -773,6 +810,8 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
 
 ### Issue CF.3 — ouroboros-rest: [CF.3] Deep+build dry-run mode
 
+> **GitHub issue:** #572 · **Status:** 🟡 Open · **Parent epic:** #554
+
 - **Problem Statement:** Replay estimates satisfy iteration; release
   confidence sometimes wants the real thing — option 2-B as an
   explicit opt-in.
@@ -791,6 +830,8 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
 
 ### Issue CF.4 — ouroboros-engine: [CF.4] Batch what-if dry runs
 
+> **GitHub issue:** #573 · **Status:** 🟡 Open · **Parent epic:** #554
+
 - **Problem Statement:** One issue proves a path; fifty prove a
   distribution — the BX.2 promise from the copilot's side.
 - **Solution/Scope:** Batch harness (shared machinery with BX.2's
@@ -807,6 +848,8 @@ e2e: brief→draft ✓ · chips ✓ · dry-run(rows·diff·suggestions) ✓ · a
 - **Epic:** CF
 
 ### Issue CF.5 — ouroboros-rest: [CF.5] Review-replay statistics
+
+> **GitHub issue:** #574 · **Status:** 🟡 Open · **Parent epic:** #554
 
 - **Problem Statement:** The 81% suggestion ("6 of 10 replayed review
   pairs disagreed") needs its data source: replaying review pairs
@@ -865,29 +908,57 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** **AF.2 (hard, W1)**, Z.1, BF.5,
-   WF-P.2/P.3/R.2/R.3/S.1 + U/V, AH.1/BI.2, INTAKE, #41/#46, BA-D.5.
-2. **Phase 1 — Domain:** CC.1 → { CC.2 ⊕ CC.3 } → CC.4
-3. **Phase 2 — Services:** { CD.1 ⊕ CD.2 ⊕ CD.3 } → CD.4 → CD.5 → CD.6
-4. **Phase 3 — UI:** CE.1 → { CE.2 ⊕ CE.3 ⊕ CE.4 } → **CE.5 ✅**
-   *(MVP gate, amending #56)*
-5. **v2:** CF.1–CF.5 after their dependencies (CF.4 coordinated with
-   BX.2).
+1. **Phase 0 — Prerequisites:** **AF.2 (#235 — hard, W1)**, Z.1 (#194),
+   BF.5 (#414), BF.1 (#410), WF-P.1/P.2/P.3 (#132/#133/#134), R.2 (#144),
+   R.3 (#145), S.1 (#147) + U/V (#165–#169), AH.1 (#249) / BI.2 (#433),
+   INTAKE (#138), #41/#46/#16, BA-D.5 (unfiled).
+2. **Phase 1 — Domain:** CC.1 (#555) → { CC.2 (#556) ⊕ CC.3 (#557) } →
+   CC.4 (#558)
+3. **Phase 2 — Services:** { CD.1 (#559) ⊕ CD.2 (#560) ⊕ CD.3 (#561) } →
+   CD.4 (#562) → CD.5 (#563) → CD.6 (#564)
+4. **Phase 3 — UI:** CE.1 (#565) → { CE.2 (#566) ⊕ CE.3 (#567) ⊕
+   CE.4 (#568) } → **CE.5 (#569) ✅** *(MVP gate, amending #56)*
+5. **v2:** CF.1 (#570) ⊕ CF.2 (#571) ⊕ CF.3 (#572) ⊕ CF.4 (#573) ⊕
+   CF.5 (#574) after their dependencies (CF.4 coordinated with BX.2, #523).
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic CC — Copilot Domain | 4 | 4 | 0 |
-| Epic CD — Copilot & Dry-Run Services | 6 | 6 | 0 |
-| Epic CE — Copilot UI | 5 | 5 | 0 |
-| Epic CF — Advanced Verification | 5 | 0 | 5 |
-| **Total** | **20** | **15** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic CC — Copilot Domain | #551 | 4 | 4 | 0 |
+| Epic CD — Copilot & Dry-Run Services | #552 | 6 | 6 | 0 |
+| Epic CE — Copilot UI | #553 | 5 | 5 | 0 |
+| Epic CF — Advanced Verification | #554 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **20** | **15** | **5** |
 
-Plus amendments executed at filing: WF-S.1/V.1 (Copilot segment live,
-context-preserving switches), WF-P.1 (draft_rev + provenance), BZ.3
-(`/ouro dry-run` links here), the studio rail (+ new-workflow copilot
-entry), #49 (copilot stub retired), #56 (copilot e2e leg).
+Issues **#555–#574**, filed 2026-08-09 as sub-issues of their epics
+(#551–#554), with the new `copilot` label and the `Workflow Copilot MVP` /
+`Workflow Copilot v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| AF.2 (#235) | **Declared a hard MVP prerequisite** (W1) — CD.1 (#559) and CD.2 (#560) invoke through the gateway with real routing; dry-run spend rides its accounting; the page ships an honest gateway-unavailable state |
+| WF-P.2 (#133) | The copilot's op vocabulary is bound to this schema; **parity is CI-enforced** (#564) — a DSL construct without an op fails the build; validator messages are model-facing (self-correction) |
+| WF-P.3 (#134) | Copilot edits apply to **this** draft under **this** etag; promote is this publish gate, with the conversation-set guards compiled and asserted at the enforcement planes |
+| WF-P.1 (#132) | The draft row gains `draft_rev` and a provenance summary (CC.2, #556); node provenance draws the `added by copilot` pill and **clears on human edit** |
+| WF-R.2 (#144) | Becomes the deep dry run's **structural pre-check** (#562) — a structural failure returns anchored findings and invokes nothing |
+| WF-R.3 (#145) | The catalog grounds the copilot's proposals; unresolved kinds carry W7 warnings until CF.1 (#570) adds `exploit_verify` |
+| WF-S.1 (#147) | The **Copilot segment goes live** (#565) and the rail's create flow gains a copilot entry; the surface sits under the sidebar's Workflows entry |
+| WF-S.6 (#152) | Dry runs gain a **deep tier** alongside the deterministic one; results live in their own domain, never the run read-model (W4) |
+| V.1 (#169) | Mode switching preserves the **conversation** as well as the draft (W9) |
+| BF.5 (#414) | Dry-run LLM stages assemble **real** manifests — that is the point; only the environment around the model is virtualized |
+| BF.1 (#410) | The registry grounds `skill:` references; `advisory-db` is registered by CF.2 (#571), retiring its W7 warning |
+| AH.1 (#249) | Farm history becomes the infra estimator's source (#561): similarity classing, median/spread/**sample count**, and an `insufficient_history` floor. The dry run never dispatches — the farm stays idle |
+| BI.2 (#433) | Replay estimators join the rollup/formula discipline — every estimate reports median, spread, sample and window, with a registered formula behind the popover |
+| BX.2 (#523) | **One batch engine, two entry points** — CF.4 (#573) builds the batch/aggregation layer over the CD.2 harness; BX.2 is its second entry |
+| BQ.3 (#482) | Three new retention classes: sessions/messages (chat-class, promoted transcripts longer), dry-run records, and artifacts (shortest — the bulk) |
+| K.5 (#103) | The copilot seeds reuse the shared **`#489`** rather than inventing a ticket; the mockup's edge-case framing drives the picker's scorer (#562) |
+| BZ.3 (#537) | `/ouro dry-run` starts a real deep dry run and its reply links to `/workflows/:slug/copilot` — the placeholder link goes live |
+| AX.2 (#358) | `exploit-verify` arrives as a gate provider (#570); `inconclusive` must **not** satisfy the gate |
+| #49 | The copilot placeholder is retired by CE.1 (#565) |
+| #56 | The smoke test gains a copilot leg (#569) — the one leg that needs a **live gateway**, because "real models" is the claim under test |
 
 ## References
 
@@ -935,25 +1006,45 @@ the mockup's top-bar navigation for every UI issue in this roadmap:
 
 Issue-level impact:
 
-| Issue | Amendment |
-|---|---|
-| CE.1 | Mounts in the shell content pane; navigation reached via the sidebar **Workflows** entry, not a topbar link; the Workflows subnav renders as PageSubnav, sticky in-pane |
-| CE.2, CE.3, CE.4 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| CE.5 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| Issue | GitHub | Status | Amendment |
+|---|:---:|:---:|---|
+| CE.1 | #565 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar **Workflows** entry, not a topbar link; the Workflows subnav renders as PageSubnav, sticky in-pane |
+| CE.2, CE.3, CE.4 | #566, #567, #568 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| CE.5 | #569 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the hard-prerequisite
-declaration (W1 — the first roadmap gated on AF.2 for its MVP, with the
-reasoning stated), the typed-operation architecture (W2 — the copilot can
-only produce what the canvas produces), the harness's three-way honesty
-(W3 — real models, virtual writes, replayed infra with sample counts), the
-dry-run domain isolation (W4 — no fake runs on any dashboard), the
-suggestion grounding (W5), and the unresolved-reference discipline (W7 —
-the copilot may invent, the system must say so, and CF.1/CF.2 make the
-inventions real). Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_20_WORKFLOW_COPILOT.md`) creates the `copilot` label **and
-the `Workflow Copilot MVP` / `Workflow Copilot v2` milestones**, files the
-20 issues with epic parents, relationships, and milestone assignments, and
-posts the amendment comments listed above.
+**Filed 2026-08-09.** The `copilot` label and the `Workflow Copilot MVP` /
+`Workflow Copilot v2` milestones were created; the four epics (#551–#554) and
+twenty issues (#555–#574) are on GitHub with parent relationships,
+milestones, labels and types set, and the twenty amendment comments above are
+posted.
+
+**Before starting: AF.2 (#235) is a hard prerequisite** — decision W1, stated
+as an amendment on that issue. Phase 1 (the domain) can proceed without it,
+but nothing in Epic CD can be verified until the provider gateway is live,
+and the e2e leg (#569) needs a configured gateway that cannot be stubbed.
+
+Execution starts at **CC.1 (#555)** — sessions block the rest of the domain.
+The critical path to the MVP gate is
+#555 → #556 → #559 → #562 → #563 → #565 → #568 → **#569**, with the harness
+leg (#557 → #560, plus #561 in parallel) joining at #562 and the seeds (#558)
+feeding every parity fixture.
+
+The deepest risk in this roadmap is **CD.2 (#560)**: a dry run that touches
+anything is not a dry run. The guarantee rests on an allow-list at the tool
+boundary — no repository writes, no farm dispatch, no PR capability — plus a
+guard audit that treats a blocked attempt as a **run failure**, not a
+warning. #564's rule that removing a guard must turn the suite red is the
+mechanism that keeps that true after the first refactor.
+
+The second risk is **CD.1 (#559)**: the copilot's only write path is the
+typed operation vocabulary. The moment anything else can mutate a draft, the
+page's caption — *"nothing is a special case"* — stops being architecture and
+becomes a slogan, silently, with no error anywhere. The op-⊇-DSL parity test
+in #564 is what detects the drift.
+
+Two dependency families remain unfiled and are called out in the issues that
+need them: the **BetterAuth roadmap** (BA-D.5 role gating) and the **App
+Shell roadmap** (CP.2 sidebar registry, CP.4 in-pane chrome, CQ.1 rem tokens,
+CQ.2 font-size preference). Neither blocks starting CC.1.

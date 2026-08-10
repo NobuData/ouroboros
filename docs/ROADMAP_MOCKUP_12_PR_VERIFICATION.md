@@ -214,31 +214,37 @@ execution (AZ.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| AW | PR Domain | PRs, revisions, gate snapshots, criteria, thread, merge plans, seeds | ouroboros-db | PR Verification MVP |
-| AX | PR Services | SPI PR capability, gate engine, criteria service, merge executor, reads | ouroboros-rest | PR Verification MVP |
-| AY | PR Verification UI | All eight page regions, states, e2e | ouroboros-ui | PR Verification MVP |
-| AZ | Intelligent Verification (v2) | Model-review gate, claim extraction, GitLab, App identity + SCA, loop PRs | all | PR Verification v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| AW | #348 | 🟡 Open | PR Domain | PRs, revisions, gate snapshots, criteria, thread, merge plans, seeds | ouroboros-db | PR Verification MVP |
+| AX | #349 | 🟡 Open | PR Services | SPI PR capability, gate engine, criteria service, merge executor, reads | ouroboros-rest | PR Verification MVP |
+| AY | #350 | 🟡 Open | PR Verification UI | All eight page regions, states, e2e | ouroboros-ui | PR Verification MVP |
+| AZ | #351 | 🟡 Open | Intelligent Verification (v2) | Model-review gate, claim extraction, GitLab, App identity + SCA, loop PRs | all | PR Verification v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
-`v2`, `rest`, `db`, `ui`, `ci`, `design`, `sources`, `runs`, `tests`) **plus new
-`pr`** (decision V10). Milestones **`PR Verification MVP`** / **`PR Verification
-v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M · L**.
+`v2`, `rest`, `db`, `ui`, `engine`, `ci`, `design`, `sources`, `runs`, `routing`,
+`workflow`, `intake`) **plus new `pr`** (decision V10, created at filing).
+Milestones **`PR Verification MVP`** / **`PR Verification v2`** created at filing;
+every issue assigned. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic AW — PR Domain (`ouroboros-db`)
+## Epic AW (#348) — PR Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AW.1 | ouroboros-db: [AW.1] Pull requests & revisions schema | Host-mirrored PRs with revision history + attempt links (V1/V4) | mvp, pr, db | N (after AO.1, WF-Q.1) | Y | M | ouroboros-db |
-| AW.2 | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
-| AW.3 | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
-| AW.4 | ouroboros-db: [AW.4] Merge plans & auto-merge intents | Policy snapshot, action toggles, armed-intent state, audit refs | mvp, pr, db | N (after AW.1) | Y | S | ouroboros-db |
-| AW.5 | ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes | The #514 story across two revisions; ci constraint checks | mvp, pr, db, ci | N (after AW.2–AW.4, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AW.1 | #352 | 🟡 Open | ouroboros-db: [AW.1] Pull requests & revisions schema | Host-mirrored PRs with revision history + attempt links (V1/V4) | mvp, pr, db | N (after AO.1, WF-Q.1) | Y | M | ouroboros-db |
+| AW.2 | #353 | 🟡 Open | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
+| AW.3 | #354 | 🟡 Open | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
+| AW.4 | #355 | 🟡 Open | ouroboros-db: [AW.4] Merge plans & auto-merge intents | Policy snapshot, action toggles, armed-intent state, audit refs | mvp, pr, db | N (after AW.1) | Y | S | ouroboros-db |
+| AW.5 | #356 | 🟡 Open | ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes | The #514 story across two revisions; ci constraint checks | mvp, pr, db, ci | N (after AW.2–AW.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue AW.1 — ouroboros-db: [AW.1] Pull requests & revisions schema
+
+> **GitHub issue:** #352 · **Status:** 🟡 Open · **Parent epic:** #348
 
 - **Problem Statement:** The page scopes everything to a PR and a revision;
   neither exists as an entity (decision V1), and revisions must map to run
@@ -282,6 +288,8 @@ erDiagram
 
 ### Issue AW.2 — ouroboros-db: [AW.2] Gate definitions & revision snapshots
 
+> **GitHub issue:** #353 · **Status:** 🟡 Open · **Parent epic:** #348
+
 - **Problem Statement:** "5 of 7 green" must be declarative, provider-fed,
   and historically inspectable per revision (decision V2).
 - **Solution/Scope:** `pr_gate_definitions` — pr FK, `gate_key` CHECK-listed
@@ -308,6 +316,8 @@ results(rev2): 5×green · model_review: pending│unavailable · human: not_req
 ```
 
 ### Issue AW.3 — ouroboros-db: [AW.3] Criteria, evidence links & review thread
+
+> **GitHub issue:** #354 · **Status:** 🟡 Open · **Parent epic:** #348
 
 - **Problem Statement:** The criteria matrix and the review thread need
   durable rows: quoted claims with typed evidence, and thread entries with
@@ -340,6 +350,8 @@ thread: {cursor/composer-2, second opinion·rev1, blocking→resolved "Addressed
 
 ### Issue AW.4 — ouroboros-db: [AW.4] Merge plans & auto-merge intents
 
+> **GitHub issue:** #355 · **Status:** 🟡 Open · **Parent epic:** #348
+
 - **Problem Statement:** The merge card's policy snapshot, action toggles,
   and the armed "merge when green" state need durable, auditable rows
   (decision V3).
@@ -363,6 +375,8 @@ armed by Ken @14:35 ─▶ merged_result: {sha, identity: "pat:ken-token", actio
 ```
 
 ### Issue AW.5 — ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes
+
+> **GitHub issue:** #356 · **Status:** 🟡 Open · **Parent epic:** #348
 
 - **Problem Statement:** Design review needs #514's full two-revision story
   with every card populated, coherent with the `#482` universe.
@@ -391,18 +405,20 @@ seeds: PR#514 rev1(blocked: HIL 2.4%) → correction(attempt 4) → rev2(5/7, vo
 
 ---
 
-## Epic AX — PR Services (`ouroboros-rest`)
+## Epic AX (#349) — PR Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AX.1 | ouroboros-rest: [AX.1] SPI PR capability & GitHub implementation | create/sync/merge/comment/review-request + PR event ingestion | mvp, pr, sources, rest | N (after AL.2, WF-Q.3) | Y | L | ouroboros-rest |
-| AX.2 | ouroboros-rest: [AX.2] Gate engine & providers | Declarative defs from policy; six MVP providers; revision snapshots | mvp, pr, rest | N (after AW.2, AX.1) | Y | L | ouroboros-rest |
-| AX.3 | ouroboros-rest: [AX.3] Criteria & evidence service | Claims CRUD, typed evidence resolution, waiver render + host annotation | mvp, pr, rest | N (after AW.3, AX.1) | Y | M | ouroboros-rest |
-| AX.4 | ouroboros-rest: [AX.4] Merge executor & host publishing | Armed intents, TOCTOU re-check, actions, evidence comments (V3/V9) | mvp, pr, rest | N (after AX.2, AW.4) | Y | L | ouroboros-rest |
-| AX.5 | ouroboros-rest: [AX.5] PR read APIs & head actions | Page payloads; return-to-loop + request-review compositions (V5) | mvp, pr, rest, runs | N (after AX.2, AP.4) | Y | M | ouroboros-rest |
-| AX.6 | ouroboros-rest: [AX.6] PR-plane integration tests | Sync, gate matrix, merge safety, publishing idempotency, isolation | mvp, pr, rest, ci | N (after AX.3–AX.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AX.1 | #357 | 🟡 Open | ouroboros-rest: [AX.1] SPI PR capability & GitHub implementation | create/sync/merge/comment/review-request + PR event ingestion | mvp, pr, sources, rest | N (after AL.2, WF-Q.3) | Y | L | ouroboros-rest |
+| AX.2 | #358 | 🟡 Open | ouroboros-rest: [AX.2] Gate engine & providers | Declarative defs from policy; six MVP providers; revision snapshots | mvp, pr, rest | N (after AW.2, AX.1) | Y | L | ouroboros-rest |
+| AX.3 | #359 | 🟡 Open | ouroboros-rest: [AX.3] Criteria & evidence service | Claims CRUD, typed evidence resolution, waiver render + host annotation | mvp, pr, rest | N (after AW.3, AX.1) | Y | M | ouroboros-rest |
+| AX.4 | #360 | 🟡 Open | ouroboros-rest: [AX.4] Merge executor & host publishing | Armed intents, TOCTOU re-check, actions, evidence comments (V3/V9) | mvp, pr, rest | N (after AX.2, AW.4) | Y | L | ouroboros-rest |
+| AX.5 | #361 | 🟡 Open | ouroboros-rest: [AX.5] PR read APIs & head actions | Page payloads; return-to-loop + request-review compositions (V5) | mvp, pr, rest, runs | N (after AX.2, AP.4) | Y | M | ouroboros-rest |
+| AX.6 | #362 | 🟡 Open | ouroboros-rest: [AX.6] PR-plane integration tests | Sync, gate matrix, merge safety, publishing idempotency, isolation | mvp, pr, rest, ci | N (after AX.3–AX.5) | Y | M | ouroboros-rest |
 
 ### Issue AX.1 — ouroboros-rest: [AX.1] SPI PR capability & GitHub implementation
+
+> **GitHub issue:** #357 · **Status:** 🟡 Open · **Parent epic:** #349
 
 - **Problem Statement:** The provider SPI reads tickets (WF-Q) and writes
   them (AL.2); the PR plane needs its third capability family (option 1-A),
@@ -434,6 +450,8 @@ mergePR(squash, msg, deleteBranch) ─▶ merged · closes #482 verified
 ```
 
 ### Issue AX.2 — ouroboros-rest: [AX.2] Gate engine & providers
+
+> **GitHub issue:** #358 · **Status:** 🟡 Open · **Parent epic:** #349
 
 - **Problem Statement:** Seven gates, each a different evidence system,
   must evaluate declaratively and snapshot per revision (decision V2).
@@ -473,6 +491,8 @@ aggregate: 5/7 green · model_review unavailable→pending(AZ.1) ─▶ state: v
 
 ### Issue AX.3 — ouroboros-rest: [AX.3] Criteria & evidence service
 
+> **GitHub issue:** #359 · **Status:** 🟡 Open · **Parent epic:** #349
+
 - **Problem Statement:** The matrix needs claims CRUD with typed evidence
   that resolves, waiver rendering, and host annotation (V6/V9).
 - **Solution/Scope:** APIs: criteria CRUD (plan-sourced import from the
@@ -497,6 +517,8 @@ waive {reason: "thermal chamber not in bench"} ─▶ AS.4 waiver + PR annotatio
 ```
 
 ### Issue AX.4 — ouroboros-rest: [AX.4] Merge executor & host publishing
+
+> **GitHub issue:** #360 · **Status:** 🟡 Open · **Parent epic:** #349
 
 - **Problem Statement:** The primary button: armed auto-merge that fires
   safely when the last gate flips, executes the plan's actions, and
@@ -537,6 +559,8 @@ sequenceDiagram
 
 ### Issue AX.5 — ouroboros-rest: [AX.5] PR read APIs & head actions
 
+> **GitHub issue:** #361 · **Status:** 🟡 Open · **Parent epic:** #349
+
 - **Problem Statement:** The page needs shaped reads (strip, gates,
   matrix, files, thread, plan, spend) and the two composed head actions
   (V5).
@@ -567,6 +591,8 @@ POST /prs/514/request-review ─▶ human_approval: required · needs-you
 
 ### Issue AX.6 — ouroboros-rest: [AX.6] PR-plane integration tests
 
+> **GitHub issue:** #362 · **Status:** 🟡 Open · **Parent epic:** #349
+
 - **Problem Statement:** Merge safety, gate re-evaluation, and host
   publishing are the highest-stakes logic in the product.
 - **Solution/Scope:** Harness suites (fake provider + recorded GitHub
@@ -587,25 +613,27 @@ suites: sync ✓ · gates+snapshots ✓ · TOCTOU ✓ · publish idempotent ✓ 
 
 ---
 
-## Epic AY — PR Verification UI (`ouroboros-ui`)
+## Epic AY (#350) — PR Verification UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/12-pr-verification.html`](mockups/12-pr-verification.html) as
 the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AY.1 | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
-| AY.2 | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
-| AY.3 | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
-| AY.4 | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
-| AY.5 | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
-| AY.6 | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
-| AY.7 | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
-| AY.8 | ouroboros-ui: [AY.8] PR states & e2e leg | Merged/blocked/conflict states, themes, sandbox e2e | mvp, pr, ui, ci | N (after AY.2–AY.7) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AY.1 | #363 | 🟡 Open | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
+| AY.2 | #364 | 🟡 Open | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
+| AY.3 | #365 | 🟡 Open | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
+| AY.4 | #366 | 🟡 Open | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
+| AY.5 | #367 | 🟡 Open | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
+| AY.6 | #368 | 🟡 Open | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
+| AY.7 | #369 | 🟡 Open | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
+| AY.8 | #370 | 🟡 Open | ouroboros-ui: [AY.8] PR states & e2e leg | Merged/blocked/conflict states, themes, sandbox e2e | mvp, pr, ui, ci | N (after AY.2–AY.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue AY.1 — ouroboros-ui: [AY.1] PR route, head & actions
+
+> **GitHub issue:** #363 · **Status:** 🟡 Open · **Parent epic:** #350
 
 - **Problem Statement:** The frame: PR-scoped route reachable from runs,
   test results, and the dashboard's recently-closed rows; the meta row;
@@ -633,6 +661,8 @@ can: fix flaky telemetry frame order under ISR load
 
 ### Issue AY.2 — ouroboros-ui: [AY.2] Revision cycle strip
 
+> **GitHub issue:** #364 · **Status:** 🟡 Open · **Parent epic:** #350
+
 - **Problem Statement:** The strip narrates the loop's convergence — and
   every step must be a join, not prose (V4).
 - **Solution/Scope:** Steps from revisions + linked attempts: revision
@@ -656,6 +686,8 @@ can: fix flaky telemetry frame order under ISR load
 ```
 
 ### Issue AY.3 — ouroboros-ui: [AY.3] Verification gates card
+
+> **GitHub issue:** #365 · **Status:** 🟡 Open · **Parent epic:** #350
 
 - **Problem Statement:** The seven-row gate list with every verdict
   treatment — including the pending gradient row and the honest
@@ -682,6 +714,8 @@ can: fix flaky telemetry frame order under ISR load
 ```
 
 ### Issue AY.4 — ouroboros-ui: [AY.4] Acceptance criteria matrix
+
+> **GitHub issue:** #366 · **Status:** 🟡 Open · **Parent epic:** #350
 
 - **Problem Statement:** The matrix — quoted claims, mono evidence with
   hunk accents, verified/waived pills — plus the authoring and waive
@@ -710,6 +744,8 @@ can: fix flaky telemetry frame order under ISR load
 
 ### Issue AY.5 — ouroboros-ui: [AY.5] Changed files & diff excerpt
 
+> **GitHub issue:** #367 · **Status:** 🟡 Open · **Parent epic:** #350
+
 - **Problem Statement:** File rows with proportional add/del meters and
   the diff excerpt block — the revision's material truth.
 - **Solution/Scope:** Rows from the revision snapshot (mono path, +/-
@@ -732,6 +768,8 @@ drivers/can/telemetry_buf.c  +38 −12  [▮add▮del░rest]
 
 ### Issue AY.6 — ouroboros-ui: [AY.6] Review thread card
 
+> **GitHub issue:** #368 · **Status:** 🟡 Open · **Parent epic:** #350
+
 - **Problem Statement:** The thread's three author kinds, the blocking→
   resolved arc, and honest provenance (model entries only when real —
   seeds watermarked).
@@ -753,6 +791,8 @@ cursor/composer-2 [second opinion · rev 1] (was blocking) 14:12:44
 ```
 
 ### Issue AY.7 — ouroboros-ui: [AY.7] Merge plan & spend cards
+
+> **GitHub issue:** #369 · **Status:** 🟡 Open · **Parent epic:** #350
 
 - **Problem Statement:** The merge card's plan editing, the arm flow with
   its safety story, truthful identity, and the spend rollup.
@@ -783,6 +823,8 @@ Strategy [squash · delete branch] · msg preview [fix(can): … Closes #482.]
 
 ### Issue AY.8 — ouroboros-ui: [AY.8] PR states & e2e leg
 
+> **GitHub issue:** #370 · **Status:** 🟡 Open · **Parent epic:** #350
+
 - **Problem Statement:** Merged/blocked/conflict/closed states, and the
   full sandbox chain needs end-to-end certification.
 - **Solution/Scope:** States: merged (frozen head, receipt banner, host
@@ -809,17 +851,19 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
 
 ---
 
-## Epic AZ — Intelligent Verification (v2 · milestone `PR Verification v2`)
+## Epic AZ (#351) — Intelligent Verification (v2 · milestone `PR Verification v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AZ.1 | ouroboros-engine: [AZ.1] Second-model review gate | Real vote via routing `add_vote` + invocation; thread entries live | v2, pr, engine, routing | N (after AX.2, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
-| AZ.2 | ouroboros-engine: [AZ.2] Claim extraction & auto-evidence mapping | `/v0/extract-criteria` + evidence suggestion over run context | v2, pr, engine | N (after AX.3, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
-| AZ.3 | ouroboros-rest: [AZ.3] GitLab merge-request support | MR mapping for the SPI PR capability; approvals model | v2, pr, sources, rest | N (after AX.1, WF-T.4) | N | M | ouroboros-rest |
-| AZ.4 | ouroboros-rest: [AZ.4] App merge identity & deep license scanning | `ouroboros-app[bot]` merges; ScanCode-class + SCA tier | v2, pr, rest | N (after INTAKE-O.1, AX.2) | N | M | ouroboros-rest |
-| AZ.5 | ouroboros-engine: [AZ.5] Loop-created PRs end-to-end | Execution opens PRs via the SPI; full autonomous publish cycle | v2, pr, workflow, engine | N (after AR.1, AX.1) | N | M | ouroboros-engine, ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AZ.1 | #371 | 🟡 Open | ouroboros-engine: [AZ.1] Second-model review gate | Real vote via routing `add_vote` + invocation; thread entries live | v2, pr, engine, routing | N (after AX.2, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
+| AZ.2 | #372 | 🟡 Open | ouroboros-engine: [AZ.2] Claim extraction & auto-evidence mapping | `/v0/extract-criteria` + evidence suggestion over run context | v2, pr, engine | N (after AX.3, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
+| AZ.3 | #373 | 🟡 Open | ouroboros-rest: [AZ.3] GitLab merge-request support | MR mapping for the SPI PR capability; approvals model | v2, pr, sources, rest | N (after AX.1, WF-T.4) | N | M | ouroboros-rest |
+| AZ.4 | #374 | 🟡 Open | ouroboros-rest: [AZ.4] App merge identity & deep license scanning | `ouroboros-app[bot]` merges; ScanCode-class + SCA tier | v2, pr, rest | N (after INTAKE-O.1, AX.2) | N | M | ouroboros-rest |
+| AZ.5 | #375 | 🟡 Open | ouroboros-engine: [AZ.5] Loop-created PRs end-to-end | Execution opens PRs via the SPI; full autonomous publish cycle | v2, pr, workflow, engine | N (after AR.1, AX.1) | N | M | ouroboros-engine, ouroboros-rest |
 
 ### Issue AZ.1 — ouroboros-engine: [AZ.1] Second-model review gate
+
+> **GitHub issue:** #371 · **Status:** 🟡 Open · **Parent epic:** #351
 
 - **Problem Statement:** The pending gate row and the thread's
   second-opinion entries are model work — real once invocation exists,
@@ -840,6 +884,8 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
 
 ### Issue AZ.2 — ouroboros-engine: [AZ.2] Claim extraction & auto-evidence mapping
 
+> **GitHub issue:** #372 · **Status:** 🟡 Open · **Parent epic:** #351
+
 - **Problem Statement:** MVP criteria are plan-sourced or hand-authored;
   the mockup's ideal extracts claims from the ticket and maps evidence
   automatically.
@@ -857,6 +903,8 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
 
 ### Issue AZ.3 — ouroboros-rest: [AZ.3] GitLab merge-request support
 
+> **GitHub issue:** #373 · **Status:** 🟡 Open · **Parent epic:** #351
+
 - **Problem Statement:** The pluggability promise on the PR side: GitLab
   MRs behind the same capability, mapped honestly (approvals ≠ reviews,
   squash options differ).
@@ -872,6 +920,8 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
 - **Epic:** AZ
 
 ### Issue AZ.4 — ouroboros-rest: [AZ.4] App merge identity & deep license scanning
+
+> **GitHub issue:** #374 · **Status:** 🟡 Open · **Parent epic:** #351
 
 - **Problem Statement:** Two truth upgrades: merges as `ouroboros-app[bot]`
   (with the GitHub App) and license coverage beyond headers+manifest
@@ -890,6 +940,8 @@ e2e: sync ✓ · gates ✓ · waive+annotate ✓ · arm→flip→merge ✓ · ac
 - **Epic:** AZ
 
 ### Issue AZ.5 — ouroboros-engine: [AZ.5] Loop-created PRs end-to-end
+
+> **GitHub issue:** #375 · **Status:** 🟡 Open · **Parent epic:** #351
 
 - **Problem Statement:** The autonomous publish cycle: execution's
   `openPr` terminal stage creates the PR through the SPI, verification
@@ -968,10 +1020,27 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AZ — Intelligent Verification | 5 | 0 | 5 |
 | **Total** | **24** | **19** | **5** |
 
-Plus amendments executed at filing: AV.2 (scope delivered here —
-coordination), AS.4/AU.6 (intents/waivers activate; toggle tooltips drop),
-AQ/AU/DASH (links target `/prs/:id`), WF-Q.5/AL.2 kit (PR suites), #49 (PR
-stubs retired), #56 (PR e2e leg).
+Amendment comments posted at filing:
+
+| Issue | Amendment |
+|---|---|
+| #344 (AV.2) | PR-plane activation scope is delivered by **#358/#359/#360**; disposition — close as superseded, or retain as the test-results-side verification ticket |
+| #327 (AS.4) | `run_pr_intents` and waivers are consumed here — gating in **#358/#360**, waiver rendering and host annotation in **#354/#359/#366** |
+| #340 (AU.6) | The Block-PR toggle's activation point is now filed (**#360**); the tooltip stays until it ships, tracked by #344 |
+| #309 (AQ.1) | The run console links to `/prs/:id` (**#363**); *Return to loop* (**#361**) arrives back in its transcript as an AP.4 steer |
+| #335 (AU.1) | Test results link to the PR page, and the PR's gate and criteria evidence links point back here (**#365**, **#366**) |
+| #142 (WF-Q.5) | The conformance kit gains PR-capability suites plus a fake provider (**#357**); **#373** implements GitLab against the same suites |
+| #49 | The PR placeholder is retired by **#363** |
+| #56 | The smoke suite gains the PR e2e leg (**#370**), the MVP gate — including the TOCTOU assertion |
+
+**Reference note.** Every cross-roadmap reference in this document resolved as
+written: AO.1 → #298, AO.3 → #300, AO.5 → #302, AP.3 → #305, AP.4 → #306,
+AS.1/AS.2/AS.4/AS.5 → #324/#325/#327/#328, AT.4 → #332, AU.1/AU.4/AU.6 → #335/#338/#340,
+AV.2 → #344, AR.1 → #315, WF-Q.1/Q.3/Q.5 → #138/#140/#142, WF-T.4 → #158,
+AL.2 → #278, AK.3 → #274, WF-P.1/P.2 → #132/#133, Z.1 → #194, AH.1/AH.4 → #249/#252,
+AD.4 → #225, AF.2 → #235, INTAKE-O.1 → #122, DASH-I.7/I.8 → #86/#87.
+Two roadmaps remain **unfiled** and gate work here: BetterAuth (BA-C.3/BA-D.5 gate
+role visibility on AY.1/AY.7) and the app shell (CP.2 registry, CQ.1/CQ.2 type scale).
 
 ## References
 
@@ -1019,22 +1088,69 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AY.1 | Mounts in the shell content pane as a contextual route (no sidebar entry); diff/check regions scroll in their own wrappers |
-| AY.2, AY.3, AY.4, AY.5, AY.6, AY.7 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| AY.8 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| AY.1 (#363) | Mounts in the shell content pane as a contextual route (no sidebar entry); diff/check regions scroll in their own wrappers |
+| AY.2–AY.7 (#364–#369) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| AY.8 (#370) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the SPI's third
-capability family (AX.1 — PR operations join tickets read/write under one
-pluggability discipline), the declarative gate engine (V2 — including the
-honest `unavailable` vocabulary for the AI gate), the merge executor's
-safety story (V3 — TOCTOU re-checks, truthful identity until the GitHub
-App), the criteria staging (V6 — authored/plan-sourced claims now,
-extraction v2), and the coordination notes (AV.2's scope lands here; #514
-seeds share the #482 universe with AO/AS). Once validated, the follow-up
-pass (`/create-issues ROADMAP_MOCKUP_12_PR_VERIFICATION.md`) creates the
-`pr` label **and the `PR Verification MVP` / `PR Verification v2`
-milestones**, files the 24 issues with epic parents, relationships, and
-milestone assignments, and posts the amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `pr` label, the **`PR Verification MVP`** and **`PR Verification v2`** milestones,
+the four epic parents (#348–#351) and twenty-four work issues (#352–#375) with epic
+relationships, issue types and milestone assignments, plus the eight amendment
+comments listed above.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **Option 1-A — PR operations join the pluggability discipline** (#357). Reading
+  tickets (WF-Q) and writing them (#278) already ride one SPI; PR create/sync/merge/
+  comment is its **third capability family**, conformance-tested with a fake provider,
+  and #373 proves it by adding GitLab against the same suites with none skipped. The
+  rejected alternative worth remembering is option 1-C: merging at the git level
+  ourselves would be host-independent and would bypass branch protection, host merge
+  queues and the audit trail — a product selling *verified* merges must not merge
+  around the host's own verification.
+- **V2 — gates are declarative, and `unavailable` is a real verdict** (#353, #358,
+  #365). Definitions come from the pinned policy because the DSL already lets tenants
+  vary them; results snapshot per revision so revision 1's two-red state stays
+  inspectable. And the vocabulary distinguishes *pending* from *unavailable* — the
+  second-model row has no provider until #371, and rendering it as a spinner would
+  leave someone waiting for a review that is never going to run.
+- **V3 — the merge executor's safety story** (#360). The danger is not the merge, it
+  is the gap between arming and firing: a gate can go red, a commit can land, the host
+  can conflict. A **transactional re-check** guards every merge — human-armed or
+  policy-armed (#375) — and any failure disarms with a stated reason. The TOCTOU test
+  is the most important assertion in the roadmap, and #370's e2e leg runs it.
+- **V3 — identity is permanent** (#355, #369). The mockup promises `ouroboros-app[bot]`.
+  Until the GitHub App lands (#374), merges happen as a configured token belonging to
+  a real person, and that attribution lives in a git history forever. The schema
+  *forbids* claiming a bot identity while token-based; the footer says who really
+  merged.
+- **V6 / V9 — evidence must resolve, and waivers must leave the building** (#354,
+  #359, #366). Typed evidence refs are validated at write, so a claim always points at
+  a test, a measurement or a hunk that exists. And waiving annotates the **host PR** —
+  a waiver visible only inside Ouroboros lets a reviewer on GitHub merge believing
+  every criterion was met.
+- **Option 4-A — criteria are authored now, extracted later** (#359, #372). The MVP's
+  editorial step is honest friction. When extraction arrives, the boundary is sharp:
+  the model **suggests**, a human **confirms**, and no code path auto-verifies — a model
+  that both invents a claim and decides it is satisfied would turn an audit into
+  self-grading.
+
+**Prerequisites.** AO/AP (#298–#307), AS/AT (#324–#334), AH (#249, #252), WF-P.1/P.2
+(#132, #133), Z.1 (#194), WF-Q.3 + AL.2 (#140, #278), the conformance kit (#142),
+AD.4 (#225), AK.3 (#274) and #16/#24/#37/#41/#46/#56 are all filed. Two external
+gates remain unfiled: **BetterAuth** (role visibility on #363/#369) and the **app
+shell** (CP.2 registry, CQ type scale). #371 and #372 additionally need **AF.2**
+(#235), itself behind the AF.1 ADR (#234); #375 needs **AR.1** (#315).
+
+Once those are in place, begin with **#352** ([AW.1] PRs and revisions) — it blocks
+every other issue here — and **#357** ([AX.1] the SPI PR capability), the piece with
+reach beyond this roadmap. The MVP closes at **#370**, the e2e leg that merges code.
+
+And then **#375** ([AZ.5] loop-created PRs end to end) is where this whole sequence of
+roadmaps arrives: execution opens the PR, verification runs on evidence the same run
+produced, policy arms the merge, the re-check passes, and it lands — with the run
+console, test results and PR pages all telling one story about one piece of work. The
+loop closes itself.

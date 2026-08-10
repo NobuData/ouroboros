@@ -212,12 +212,15 @@ import/export (BD.3), devcontainer prebuild snapshots + deep repo scans
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BA | Onboarding Domain & Policy | Wizard state, detection storage, template registry, dry-run policy, seeds | ouroboros-db, ouroboros-rest | Onboarding MVP |
-| BB | Detection & Orchestration Services | Rule-pack detection, wizard API, template instantiation, picker, launch | ouroboros-rest | Onboarding MVP |
-| BC | Onboarding UI | Wizard frame, all cards, deployment-aware variants, states, e2e | ouroboros-ui | Onboarding MVP |
-| BD | First-Loop Magic & SaaS Tier (v2) | Live progress, managed pools, import/export, prebuilds, telemetry | all | Onboarding v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BA | #376 | 🟡 Open | Onboarding Domain & Policy | Wizard state, detection storage, template registry, dry-run policy, seeds | ouroboros-db, ouroboros-rest | Onboarding MVP |
+| BB | #377 | 🟡 Open | Detection & Orchestration Services | Rule-pack detection, wizard API, template instantiation, picker, launch | ouroboros-rest | Onboarding MVP |
+| BC | #378 | 🟡 Open | Onboarding UI | Wizard frame, all cards, deployment-aware variants, states, e2e | ouroboros-ui | Onboarding MVP |
+| BD | #379 | 🟡 Open | First-Loop Magic & SaaS Tier (v2) | Live progress, managed pools, import/export, prebuilds, telemetry | all | Onboarding v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `workflow`, `intake`, `pr`) **plus new
@@ -226,16 +229,18 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 
 ---
 
-## Epic BA — Onboarding Domain & Policy (`ouroboros-db` + `ouroboros-rest`)
+## Epic BA (#376) — Onboarding Domain & Policy (`ouroboros-db` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BA.1 | ouroboros-db: [BA.1] Wizard state & detection storage | `onboarding_state`, detection results with evidence, protected paths | mvp, onboarding, db | N (after WF-Q.1) | Y | M | ouroboros-db |
-| BA.2 | ouroboros-db: [BA.2] Workflow template registry schema | Templates with definitions, tiers, unlock rules (delivers WF-T.5 data) | mvp, onboarding, workflow, db | N (after WF-P.1) | Y | S | ouroboros-db |
-| BA.3 | ouroboros-rest: [BA.3] Dry-run policy plane | `policy.dry_run` storage + PR-plane enforcement + audited flip | mvp, onboarding, pr, rest | N (after AX.4, AW.4) | Y | M | ouroboros-rest, ouroboros-db |
-| BA.4 | ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes | Mid-wizard state, detection rows, four templates, safe pick | mvp, onboarding, db, ci | N (after BA.1–BA.3, #24) | Y | S | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BA.1 | #380 | 🟡 Open | ouroboros-db: [BA.1] Wizard state & detection storage | `onboarding_state`, detection results with evidence, protected paths | mvp, onboarding, db | N (after WF-Q.1) | Y | M | ouroboros-db |
+| BA.2 | #381 | 🟡 Open | ouroboros-db: [BA.2] Workflow template registry schema | Templates with definitions, tiers, unlock rules (delivers WF-T.5 data) | mvp, onboarding, workflow, db | N (after WF-P.1) | Y | S | ouroboros-db |
+| BA.3 | #382 | 🟡 Open | ouroboros-rest: [BA.3] Dry-run policy plane | `policy.dry_run` storage + PR-plane enforcement + audited flip | mvp, onboarding, pr, rest | N (after AX.4, AW.4) | Y | M | ouroboros-rest, ouroboros-db |
+| BA.4 | #383 | 🟡 Open | ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes | Mid-wizard state, detection rows, four templates, safe pick | mvp, onboarding, db, ci | N (after BA.1–BA.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BA.1 — ouroboros-db: [BA.1] Wizard state & detection storage
+
+> **GitHub issue:** #380 · **Status:** 🟡 Open · **Parent epic:** #376
 
 - **Problem Statement:** The wizard needs persistence that mixes derived
   step truth with wizard-local choices (decision O1), and detection results
@@ -284,6 +289,9 @@ erDiagram
 
 ### Issue BA.2 — ouroboros-db: [BA.2] Workflow template registry schema
 
+> **GitHub issue:** #381 · **Status:** 🟡 Open · **Parent epic:** #376
+
+
 - **Problem Statement:** The tiles are product data (decision O4) — template
   definitions with tiers and computed unlock rules — delivering WF-T.5's
   data layer.
@@ -313,6 +321,9 @@ instantiate ─▶ workflows row {template: quick-fixes@v3}  (editable in the St
 
 ### Issue BA.3 — ouroboros-rest: [BA.3] Dry-run policy plane
 
+> **GitHub issue:** #382 · **Status:** 🟡 Open · **Parent epic:** #376
+
+
 - **Problem Statement:** "Starts in dry-run: draft PRs, never merges" must
   be enforced mechanism (decision O3), not onboarding copy.
 - **Solution/Scope:** Org policy storage (`org_policies.dry_run` bool,
@@ -341,6 +352,9 @@ Settings flip (owner, audited, confirm) ─▶ enforcement lifts everywhere at o
 
 ### Issue BA.4 — ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes
 
+> **GitHub issue:** #383 · **Status:** 🟡 Open · **Parent epic:** #376
+
+
 - **Problem Statement:** Design review needs the mockup's exact mid-wizard
   moment (steps 1–2 done, 3 active) with every card populated.
 - **Solution/Scope:** Extend the dev seed: onboarding state for
@@ -365,18 +379,21 @@ seeds: steps 1–2 ✓ (derived) · scan(6 rows, 38s, detected) · quick-fixes s
 
 ---
 
-## Epic BB — Detection & Orchestration Services (`ouroboros-rest`)
+## Epic BB (#377) — Detection & Orchestration Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BB.1 | ouroboros-rest: [BB.1] Repo detection service (rule packs) | Probe-based detectors over the provider SPI; six MVP rows | mvp, onboarding, rest | N (after BA.1, WF-Q.3) | Y | L | ouroboros-rest |
-| BB.2 | ouroboros-rest: [BB.2] Wizard orchestration API | Derived steps, resume, choices, completion; import-skip hook | mvp, onboarding, rest | N (after BA.1) | Y | M | ouroboros-rest |
-| BB.3 | ouroboros-rest: [BB.3] Template instantiation service | Tiles payload, unlock evaluation, create-from-template (WF-T.5) | mvp, onboarding, workflow, rest | N (after BA.2, WF-P.3) | Y | M | ouroboros-rest |
-| BB.4 | ouroboros-rest: [BB.4] Safe-first-issue picker | Deterministic scoring with rendered reasoning (O5) | mvp, onboarding, intake, rest | N (after INTAKE-L.3) | Y | M | ouroboros-rest |
-| BB.5 | ouroboros-rest: [BB.5] First-run launcher & smart defaults | Queue+pin+dry-run launch; deployment-aware defaults payload | mvp, onboarding, rest | N (after BB.2–BB.4, BA.3) | Y | M | ouroboros-rest |
-| BB.6 | ouroboros-rest: [BB.6] Onboarding integration tests | State derivation, rule packs, instantiation, picker, launch | mvp, onboarding, rest, ci | N (after BB.1–BB.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BB.1 | #384 | 🟡 Open | ouroboros-rest: [BB.1] Repo detection service (rule packs) | Probe-based detectors over the provider SPI; six MVP rows | mvp, onboarding, rest | N (after BA.1, WF-Q.3) | Y | L | ouroboros-rest |
+| BB.2 | #385 | 🟡 Open | ouroboros-rest: [BB.2] Wizard orchestration API | Derived steps, resume, choices, completion; import-skip hook | mvp, onboarding, rest | N (after BA.1) | Y | M | ouroboros-rest |
+| BB.3 | #386 | 🟡 Open | ouroboros-rest: [BB.3] Template instantiation service | Tiles payload, unlock evaluation, create-from-template (WF-T.5) | mvp, onboarding, workflow, rest | N (after BA.2, WF-P.3) | Y | M | ouroboros-rest |
+| BB.4 | #387 | 🟡 Open | ouroboros-rest: [BB.4] Safe-first-issue picker | Deterministic scoring with rendered reasoning (O5) | mvp, onboarding, intake, rest | N (after INTAKE-L.3) | Y | M | ouroboros-rest |
+| BB.5 | #388 | 🟡 Open | ouroboros-rest: [BB.5] First-run launcher & smart defaults | Queue+pin+dry-run launch; deployment-aware defaults payload | mvp, onboarding, rest | N (after BB.2–BB.4, BA.3) | Y | M | ouroboros-rest |
+| BB.6 | #389 | 🟡 Open | ouroboros-rest: [BB.6] Onboarding integration tests | State derivation, rule packs, instantiation, picker, launch | mvp, onboarding, rest, ci | N (after BB.1–BB.5) | Y | M | ouroboros-rest |
 
 ### Issue BB.1 — ouroboros-rest: [BB.1] Repo detection service (rule packs)
+
+> **GitHub issue:** #384 · **Status:** 🟡 Open · **Parent epic:** #377
+
 
 - **Problem Statement:** The "we already figured this out" card must be
   computed in seconds from real repo signals (decision O2, option 1-A).
@@ -412,6 +429,9 @@ scan(helios-firmware): languages ─▶ C 92% · probes {west.yml ✓, .devconta
 
 ### Issue BB.2 — ouroboros-rest: [BB.2] Wizard orchestration API
 
+> **GitHub issue:** #385 · **Status:** 🟡 Open · **Parent epic:** #377
+
+
 - **Problem Statement:** The rail's truth-derived steps, resumable
   choices, and completion semantics need one orchestration surface
   (decision O1).
@@ -440,6 +460,9 @@ source disconnected ─▶ step1: todo (rail regresses honestly)
 
 ### Issue BB.3 — ouroboros-rest: [BB.3] Template instantiation service
 
+> **GitHub issue:** #386 · **Status:** 🟡 Open · **Parent epic:** #377
+
+
 - **Problem Statement:** Tile selection must create a real, Studio-editable
   workflow with provenance, and the locked tier must compute (decision O4)
   — WF-T.5's service layer.
@@ -466,6 +489,9 @@ select ─▶ WF-P.3 create+publish {template: quick-fixes@v3} ─▶ editable i
 
 ### Issue BB.4 — ouroboros-rest: [BB.4] Safe-first-issue picker
 
+> **GitHub issue:** #387 · **Status:** 🟡 Open · **Parent epic:** #377
+
+
 - **Problem Statement:** "We picked a safe one" must be a scored,
   explained selection over the sized backlog (decision O5).
 - **Solution/Scope:** Scoring function (documented weights): effort rank
@@ -491,6 +517,9 @@ reason: "no code paths touched · est. 4 min" (+ "$0.03" only when priced)
 ```
 
 ### Issue BB.5 — ouroboros-rest: [BB.5] First-run launcher & smart defaults
+
+> **GitHub issue:** #388 · **Status:** 🟡 Open · **Parent epic:** #377
+
 
 - **Problem Statement:** "Run my first loop" must do everything real
   (queue, pin, arm dry-run) and the defaults card must tell each
@@ -521,6 +550,9 @@ defaults(self-hosted): [BYOK → providers][enroll farm → build-farm][estimato
 
 ### Issue BB.6 — ouroboros-rest: [BB.6] Onboarding integration tests
 
+> **GitHub issue:** #389 · **Status:** 🟡 Open · **Parent epic:** #377
+
+
 - **Problem Statement:** Truth-derivation, detection packs, and the launch
   composition are cross-plane logic needing harness certification.
 - **Solution/Scope:** Suites: step derivation matrix + regression,
@@ -541,23 +573,26 @@ suites: steps ✓ · detection ✓ · templates ✓ · picker ✓ · launch+dry-
 
 ---
 
-## Epic BC — Onboarding UI (`ouroboros-ui`)
+## Epic BC (#378) — Onboarding UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/13-onboarding.html`](mockups/13-onboarding.html) as the design
 source — steprail/detect/tile/safety/timeline/action-bar treatments — via the
 #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BC.1 | ouroboros-ui: [BC.1] Wizard route, step rail & action bar | `/get-started` frame, derived rail, glow bar, nav surfacing | mvp, onboarding, ui, design | N (after #41, BB.2, BA-D.5) | Y | M | ouroboros-ui |
-| BC.2 | ouroboros-ui: [BC.2] Detection card | Six evidence rows, warn variant, re-scan, protected-path edit | mvp, onboarding, ui, design | N (after BC.1, BB.1) | Y | M | ouroboros-ui |
-| BC.3 | ouroboros-ui: [BC.3] Template tiles | Selection/locked treatments, stage dots, instantiation flow | mvp, onboarding, ui, design | N (after BC.1, BB.3) | Y | M | ouroboros-ui |
-| BC.4 | ouroboros-ui: [BC.4] First-issue & safety card | Scored pick with reasoning, own-pick flow, safety truth rows | mvp, onboarding, ui, design | N (after BC.1, BB.4, BA.3) | Y | M | ouroboros-ui |
-| BC.5 | ouroboros-ui: [BC.5] Defaults, timeline & reassure cards | Deployment-aware defaults, projection timeline, O9 strip | mvp, onboarding, ui, design | N (after BC.1, BB.5) | Y | M | ouroboros-ui |
-| BC.6 | ouroboros-ui: [BC.6] Wizard states & e2e leg | Steps 1–2 flows, regression, completion, themes, full e2e | mvp, onboarding, ui, ci | N (after BC.2–BC.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BC.1 | #390 | 🟡 Open | ouroboros-ui: [BC.1] Wizard route, step rail & action bar | `/get-started` frame, derived rail, glow bar, nav surfacing | mvp, onboarding, ui, design | N (after #41, BB.2, BA-D.5) | Y | M | ouroboros-ui |
+| BC.2 | #391 | 🟡 Open | ouroboros-ui: [BC.2] Detection card | Six evidence rows, warn variant, re-scan, protected-path edit | mvp, onboarding, ui, design | N (after BC.1, BB.1) | Y | M | ouroboros-ui |
+| BC.3 | #392 | 🟡 Open | ouroboros-ui: [BC.3] Template tiles | Selection/locked treatments, stage dots, instantiation flow | mvp, onboarding, ui, design | N (after BC.1, BB.3) | Y | M | ouroboros-ui |
+| BC.4 | #393 | 🟡 Open | ouroboros-ui: [BC.4] First-issue & safety card | Scored pick with reasoning, own-pick flow, safety truth rows | mvp, onboarding, ui, design | N (after BC.1, BB.4, BA.3) | Y | M | ouroboros-ui |
+| BC.5 | #394 | 🟡 Open | ouroboros-ui: [BC.5] Defaults, timeline & reassure cards | Deployment-aware defaults, projection timeline, O9 strip | mvp, onboarding, ui, design | N (after BC.1, BB.5) | Y | M | ouroboros-ui |
+| BC.6 | #395 | 🟡 Open | ouroboros-ui: [BC.6] Wizard states & e2e leg | Steps 1–2 flows, regression, completion, themes, full e2e | mvp, onboarding, ui, ci | N (after BC.2–BC.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BC.1 — ouroboros-ui: [BC.1] Wizard route, step rail & action bar
+
+> **GitHub issue:** #390 · **Status:** 🟡 Open · **Parent epic:** #378
+
 
 - **Problem Statement:** The wizard frame: the four-step rail with derived
   states, the head's dry-run promise, the import-skip link, and the glow
@@ -586,6 +621,9 @@ Step 3 of 4                                   [Back] [Run my first loop →](gat
 
 ### Issue BC.2 — ouroboros-ui: [BC.2] Detection card
 
+> **GitHub issue:** #391 · **Status:** 🟡 Open · **Parent epic:** #378
+
+
 - **Problem Statement:** The detection rows with their evidence, the warn
   variant, `detected/measured` labeling, re-scan, and protected-path
   editing.
@@ -610,6 +648,9 @@ Step 3 of 4                                   [Back] [Run my first loop →](gat
 ```
 
 ### Issue BC.3 — ouroboros-ui: [BC.3] Template tiles
+
+> **GitHub issue:** #392 · **Status:** 🟡 Open · **Parent epic:** #378
+
 
 - **Problem Statement:** The tile grid — selection glow, stage dots,
   effort chips, the locked tier with computed progress — driving real
@@ -636,6 +677,9 @@ Step 3 of 4                                   [Back] [Run my first loop →](gat
 
 ### Issue BC.4 — ouroboros-ui: [BC.4] First-issue & safety card
 
+> **GitHub issue:** #393 · **Status:** 🟡 Open · **Parent epic:** #378
+
+
 - **Problem Statement:** The scored pick with its reasoning, the own-pick
   path, and safety rows that state mechanism truth (O3/O5/O9).
 - **Solution/Scope:** Pick row from BB.4 (mono key, title, effort chip,
@@ -659,6 +703,9 @@ Step 3 of 4                                   [Back] [Run my first loop →](gat
 ```
 
 ### Issue BC.5 — ouroboros-ui: [BC.5] Defaults, timeline & reassure cards
+
+> **GitHub issue:** #394 · **Status:** 🟡 Open · **Parent epic:** #378
+
 
 - **Problem Statement:** The right column's three cards — deployment-aware
   defaults, the projection-labeled timeline, and the mechanism-traced
@@ -688,6 +735,9 @@ WHAT HAPPENS NEXT [projected]: 0:00 loop starts → ~1min plan → ~3min draft P
 
 ### Issue BC.6 — ouroboros-ui: [BC.6] Wizard states & e2e leg
 
+> **GitHub issue:** #395 · **Status:** 🟡 Open · **Parent epic:** #378
+
+
 - **Problem Statement:** Steps 1–2's orchestrated flows, regression
   states, completion, and the full cold-start chain need certification.
 - **Solution/Scope:** Step-1/2 embedded flows (source connect via Q.4's
@@ -713,17 +763,20 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 
 ---
 
-## Epic BD — First-Loop Magic & SaaS Tier (v2 · milestone `Onboarding v2`)
+## Epic BD (#379) — First-Loop Magic & SaaS Tier (v2 · milestone `Onboarding v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BD.1 | ouroboros-ui: [BD.1] Live first-loop experience | Timeline flips to real run telemetry; guided first review | v2, onboarding, runs, ui | N (after AR.1, BB.5) | N | M | ouroboros-ui, ouroboros-rest |
-| BD.2 | ouroboros-rest: [BD.2] Managed keys & hosted runner tier | Deployment pools: trial-credit keys, hosted first-loop runners | v2, onboarding, providers, build-farm | N (after AF.2, AJ.1) | N | L | ouroboros-rest |
-| BD.3 | ouroboros-rest: [BD.3] Config import/export | Org config bundles: sources, workflows, routes, policies | v2, onboarding, rest | N (after BB.2) | N | M | ouroboros-rest, ouroboros-ui |
-| BD.4 | ouroboros-rest: [BD.4] Devcontainer prebuilds & deep scans | Farm-built env snapshots; clone-based detection tier | v2, onboarding, build-farm | N (after AG.4/AJ.5, BB.1) | N | L | ouroboros-rest, ouroboros-runner |
-| BD.5 | ouroboros-rest: [BD.5] Opt-in aggregate telemetry | Cross-tenant stats behind consent; social-proof lines go live | v2, onboarding, rest | N (after BB.3/BB.5) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BD.1 | #396 | 🟡 Open | ouroboros-ui: [BD.1] Live first-loop experience | Timeline flips to real run telemetry; guided first review | v2, onboarding, runs, ui | N (after AR.1, BB.5) | N | M | ouroboros-ui, ouroboros-rest |
+| BD.2 | #397 | 🟡 Open | ouroboros-rest: [BD.2] Managed keys & hosted runner tier | Deployment pools: trial-credit keys, hosted first-loop runners | v2, onboarding, providers, build-farm | N (after AF.2, AJ.1) | N | L | ouroboros-rest |
+| BD.3 | #398 | 🟡 Open | ouroboros-rest: [BD.3] Config import/export | Org config bundles: sources, workflows, routes, policies | v2, onboarding, rest | N (after BB.2) | N | M | ouroboros-rest, ouroboros-ui |
+| BD.4 | #399 | 🟡 Open | ouroboros-rest: [BD.4] Devcontainer prebuilds & deep scans | Farm-built env snapshots; clone-based detection tier | v2, onboarding, build-farm | N (after AG.4/AJ.5, BB.1) | N | L | ouroboros-rest, ouroboros-runner |
+| BD.5 | #400 | 🟡 Open | ouroboros-rest: [BD.5] Opt-in aggregate telemetry | Cross-tenant stats behind consent; social-proof lines go live | v2, onboarding, rest | N (after BB.3/BB.5) | N | M | ouroboros-rest |
 
 ### Issue BD.1 — ouroboros-ui: [BD.1] Live first-loop experience
+
+> **GitHub issue:** #396 · **Status:** 🟡 Open · **Parent epic:** #379
+
 
 - **Problem Statement:** The wizard's aha moment — watching the first loop
   actually run — activates when execution exists (O7's upgrade slot).
@@ -742,6 +795,9 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 - **Epic:** BD
 
 ### Issue BD.2 — ouroboros-rest: [BD.2] Managed keys & hosted runner tier
+
+> **GitHub issue:** #397 · **Status:** 🟡 Open · **Parent epic:** #379
+
 
 - **Problem Statement:** The mockup's zero-config promises (managed keys
   with trial credit, hosted first-loop runners) are SaaS-deployment
@@ -762,6 +818,9 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 
 ### Issue BD.3 — ouroboros-rest: [BD.3] Config import/export
 
+> **GitHub issue:** #398 · **Status:** 🟡 Open · **Parent epic:** #379
+
+
 - **Problem Statement:** "I've done this before — import config" deserves
   a real bundle: reproducing a tuned org in minutes.
 - **Solution/Scope:** Export: org config bundle (sources sans secrets,
@@ -777,6 +836,9 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 - **Epic:** BD
 
 ### Issue BD.4 — ouroboros-rest: [BD.4] Devcontainer prebuilds & deep scans
+
+> **GitHub issue:** #399 · **Status:** 🟡 Open · **Parent epic:** #379
+
 
 - **Problem Statement:** `env ready in 38s (snapshotted)` and precise
   test counts want the option-B tier: farm-built prebuilds and
@@ -796,6 +858,9 @@ e2e: connect ✓ · scan ✓ · template→Studio ✓ · pick ✓ · launch→qu
 - **Epic:** BD
 
 ### Issue BD.5 — ouroboros-rest: [BD.5] Opt-in aggregate telemetry
+
+> **GitHub issue:** #400 · **Status:** 🟡 Open · **Parent epic:** #379
+
 
 - **Problem Statement:** The social-proof lines (`92% of teams`,
   `average 4m 10s`) need consented, aggregated truth or permanent
@@ -854,29 +919,40 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** WF-Q.3/Q.4, BA enablement, WF-P.1–P.3,
-   INTAKE-L.3/M.3 + R.1, AX.4/AW.4, AL.5, AP.5, #41/#46, BA-D.5.
-2. **Phase 1 — Domain & policy:** { BA.1 ⊕ BA.2 ⊕ BA.3 } → BA.4
-3. **Phase 2 — Services:** { BB.1 ⊕ BB.2 ⊕ BB.3 ⊕ BB.4 } → BB.5 → BB.6
-4. **Phase 3 — UI:** BC.1 → { BC.2 ⊕ BC.3 ⊕ BC.4 ⊕ BC.5 } → **BC.6 ✅**
+1. **Phase 0 — Prerequisites:** WF-Q.3 (#140)/Q.4 (#141), BA enablement,
+   WF-P.1–P.3 (#132–#134), INTAKE-L.3 (#107)/M.3 (#112) + R.1 (#143),
+   AX.4 (#360)/AW.4 (#355), AL.5 (#281), AP.5 (#307), #41/#46, BA-D.5.
+2. **Phase 1 — Domain & policy:** { BA.1 (#380) ⊕ BA.2 (#381) ⊕ BA.3 (#382) } → BA.4 (#383)
+3. **Phase 2 — Services:** { BB.1 (#384) ⊕ BB.2 (#385) ⊕ BB.3 (#386) ⊕ BB.4 (#387) } → BB.5 (#388) → BB.6 (#389)
+4. **Phase 3 — UI:** BC.1 (#390) → { BC.2 (#391) ⊕ BC.3 (#392) ⊕ BC.4 (#393) ⊕ BC.5 (#394) } → **BC.6 (#395) ✅**
    *(MVP gate, amending #56)*
-5. **v2:** BD.1 after AR.1; BD.2 after AF.2 + AJ.1; BD.3–BD.5 after their
-   dependencies.
+5. **v2:** BD.1 (#396) after AR.1 (#315); BD.2 (#397) after AF.2 (#235) + AJ.1
+   (#263); BD.3–BD.5 (#398–#400) after their dependencies.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BA — Onboarding Domain & Policy | 4 | 4 | 0 |
-| Epic BB — Detection & Orchestration | 6 | 6 | 0 |
-| Epic BC — Onboarding UI | 6 | 6 | 0 |
-| Epic BD — First-Loop Magic & SaaS Tier | 5 | 0 | 5 |
-| **Total** | **21** | **16** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BA — Onboarding Domain & Policy | #376 | 4 | 4 | 0 |
+| Epic BB — Detection & Orchestration | #377 | 6 | 6 | 0 |
+| Epic BC — Onboarding UI | #378 | 6 | 6 | 0 |
+| Epic BD — First-Loop Magic & SaaS Tier | #379 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **21** | **16** | **5** |
 
-Plus amendments executed at filing: WF-T.5 (template scope delivered by
-BA.2/BB.3 — coordination), AX.4/AY.7 (dry-run enforcement + labels), AP.3
-(protected paths join guardrail evaluation), WF-S.1 ("Browse templates" goes
-live), #49 (get-started stub retired), #56 (onboarding e2e leg).
+Issues **#380–#400**, filed 2026-08-09 as sub-issues of their epics, with the
+`onboarding` label and the `Onboarding MVP` / `Onboarding v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| WF-T.5 (#159) | template scope delivered by BA.2 (#381) + BB.3 (#386) + BC.3 (#392) — coordination |
+| AX.4 (#360) | dry-run enforcement in the merge executor (arm + execution re-check, auto-merge override) |
+| AY.7 (#369) | merge affordance relabelling under dry-run |
+| AP.3 (#305) | protected paths join guardrail path evaluation |
+| WF-S.1 (#147) | "Browse templates" goes live; instantiation provenance in the Studio |
+| #49 | `/get-started` stub retired by BC.1 (#390) |
+| #56 | onboarding e2e leg + standalone-chrome/font-scale assertions (BC.6, #395) |
 
 ## References
 
@@ -922,23 +998,28 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BC.1 | `/get-started` renders standalone outside the shell (pre-workspace, like login; the shell appears once a workspace exists); any in-page tabs/sticky chrome via the CP.4 primitives (sticky within its scroll container) |
+| BC.1 | #390 | 🟡 Open | `/get-started` renders standalone outside the shell (pre-workspace, like login; the shell appears once a workspace exists); any in-page tabs/sticky chrome via the CP.4 primitives (sticky within its scroll container) |
 | BC.2–BC.5, BD.1 | rem-based type (CQ.1 tokens); sticky elements stick within the scroll container (CP.4); component/state/a11y standards per spec §3 |
-| BC.6 | Gains shell assertions: chrome fixed while content scrolls, a standalone chrome check (no shell header/sidebar pre-workspace), and a font-scale (125%) render check |
+| BC.6 | #395 | 🟡 Open | Gains shell assertions: chrome fixed while content scrolls, a standalone chrome check (no shell header/sidebar pre-workspace), and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the truth-derived
-wizard (O1 — step states computed from subsystem reality, never stored
-checkmarks), the detection staging (O2 — `detected` vs `measured` labeling,
-prebuilds deferred to BD.4), the dry-run policy plane (O3 — the page's
-safety promise as enforced mechanism in the PR plane), the template-registry
-delivery of WF-T.5 (O4 — filing-time coordination), the deployment-aware
-smart defaults (O6 — no managed-pool promises on self-hosted installs), and
-the social-proof omission (O8 — no invented percentages until consented
-telemetry exists). Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_13_ONBOARDING.md`) creates the `onboarding` label **and the
-`Onboarding MVP` / `Onboarding v2` milestones**, files the 21 issues with
-epic parents, relationships, and milestone assignments, and posts the
-amendment comments listed above.
+**Filed 2026-08-09.** The `onboarding` label and the `Onboarding MVP` /
+`Onboarding v2` milestones were created, the four epics (#376–#379) and 21
+issues (#380–#400) were filed with parent relationships and milestone
+assignments, and the seven amendment comments were posted.
+
+Execution begins at **Phase 1**: BA.1 (#380) ⊕ BA.2 (#381) ⊕ BA.3 (#382) are
+independent and unblock everything else — #380 is the widest blocker, and
+#382 (the dry-run policy plane) is the one whose absence would make the
+page's central promise untrue, so neither should trail the UI work.
+
+The decisions this roadmap locked in, restated as the review criteria for
+the work as it lands: the truth-derived wizard (**O1** — step states computed
+from subsystem reality, never stored checkmarks), the detection staging
+(**O2** — `detected` vs `measured` labelling, prebuilds deferred to BD.4/#399),
+dry-run as enforced mechanism rather than copy (**O3**), the template-registry
+delivery of WF-T.5 (**O4**), deployment-aware smart defaults (**O6** — no
+managed-pool promises on self-hosted installs), and the social-proof omission
+(**O8** — no invented percentages until consented telemetry exists in
+BD.5/#400).

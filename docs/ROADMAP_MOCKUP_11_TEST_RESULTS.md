@@ -210,31 +210,37 @@ AI-pick affix (AV.1), PR-plane activation of gating/waivers with mockup 12
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| AS | Test Results Domain | Runs/suites/cases/HIL/history/classification schema, seeds, CI | ouroboros-db | Test Results MVP |
-| AT | Ingestion & Routing Services | Upload path, parser SPI, flake scorer, classify/route, reads | ouroboros-rest, ouroboros-runner, ouroboros-engine | Test Results MVP |
-| AU | Test Results UI | All eight page regions, states, e2e | ouroboros-ui | Test Results MVP |
-| AV | Intelligent Triage & Extended (v2) | LLM triage, PR gating activation, quarantine automation, coverage | all | Test Results v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| AS | #320 | 🟡 Open | Test Results Domain | Runs/suites/cases/HIL/history/classification schema, seeds, CI | ouroboros-db | Test Results MVP |
+| AT | #321 | 🟡 Open | Ingestion & Routing Services | Upload path, parser SPI, flake scorer, classify/route, reads | ouroboros-rest, ouroboros-runner, ouroboros-engine | Test Results MVP |
+| AU | #322 | 🟡 Open | Test Results UI | All eight page regions, states, e2e | ouroboros-ui | Test Results MVP |
+| AV | #323 | 🟡 Open | Intelligent Triage & Extended (v2) | LLM triage, PR gating activation, quarantine automation, coverage | all | Test Results v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
-`v2`, `rest`, `db`, `ui`, `ci`, `design`, `runs`, `build-farm`) **plus new
-`tests`** (decision T10). Milestones **`Test Results MVP`** / **`Test Results
-v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M · L**.
+`v2`, `rest`, `db`, `ui`, `engine`, `ci`, `design`, `infra`, `sources`, `runs`,
+`build-farm`) **plus new `tests`** (decision T10, created at filing). Milestones
+**`Test Results MVP`** / **`Test Results v2`** created at filing; every issue
+assigned. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic AS — Test Results Domain (`ouroboros-db`)
+## Epic AS (#320) — Test Results Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AS.1 | ouroboros-db: [AS.1] Test runs, suites & cases schema | Per-attempt results tree with retry truth (T1/T2) | mvp, tests, db | N (after AO.1, AH.1) | Y | M | ouroboros-db |
-| AS.2 | ouroboros-db: [AS.2] HIL measurements schema | Structured trials/measurements/limits for physical tests | mvp, tests, db | N (after AS.1) | Y | S | ouroboros-db |
-| AS.3 | ouroboros-db: [AS.3] Case history, flake scores & quarantine | Durable case identity, occurrence history, watching states | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
-| AS.4 | ouroboros-db: [AS.4] Classifications, PR intents & artifacts meta | Mark-&-route records, gating intents, artifact registry | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
-| AS.5 | ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes | Build 1→3 story, suites, HIL rows, flake case; ci checks | mvp, tests, db, ci | N (after AS.2–AS.4, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AS.1 | #324 | 🟡 Open | ouroboros-db: [AS.1] Test runs, suites & cases schema | Per-attempt results tree with retry truth (T1/T2) | mvp, tests, db | N (after AO.1, AH.1) | Y | M | ouroboros-db |
+| AS.2 | #325 | 🟡 Open | ouroboros-db: [AS.2] HIL measurements schema | Structured trials/measurements/limits for physical tests | mvp, tests, db | N (after AS.1) | Y | S | ouroboros-db |
+| AS.3 | #326 | 🟡 Open | ouroboros-db: [AS.3] Case history, flake scores & quarantine | Durable case identity, occurrence history, watching states | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
+| AS.4 | #327 | 🟡 Open | ouroboros-db: [AS.4] Classifications, PR intents & artifacts meta | Mark-&-route records, gating intents, artifact registry | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
+| AS.5 | #328 | 🟡 Open | ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes | Build 1→3 story, suites, HIL rows, flake case; ci checks | mvp, tests, db, ci | N (after AS.2–AS.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue AS.1 — ouroboros-db: [AS.1] Test runs, suites & cases schema
+
+> **GitHub issue:** #324 · **Status:** 🟡 Open · **Parent epic:** #320
 
 - **Problem Statement:** Every number on the page hangs off a results tree
   scoped to a build attempt (decision T1) with durable case identity
@@ -283,6 +289,8 @@ erDiagram
 
 ### Issue AS.2 — ouroboros-db: [AS.2] HIL measurements schema
 
+> **GitHub issue:** #325 · **Status:** 🟡 Open · **Parent epic:** #320
+
 - **Problem Statement:** Physical tests carry structure JUnit can't: a
   procedure line, trials, measured values with units against limits
   (option 2-A).
@@ -307,6 +315,8 @@ hil: {procedure: "power-cycler kills 24V rail at 40/60/80%…",
 
 ### Issue AS.3 — ouroboros-db: [AS.3] Case history, flake scores & quarantine
 
+> **GitHub issue:** #326 · **Status:** 🟡 Open · **Parent epic:** #320
+
 - **Problem Statement:** Flake truth needs memory: per-case occurrence
   history across builds/runs, a score, and the `watching` state
   (option 4-A, decision T5).
@@ -330,6 +340,8 @@ history(case_key) ─▶ occurrences[{build, pass_on_retry: true}…] ─▶ sco
 ```
 
 ### Issue AS.4 — ouroboros-db: [AS.4] Classifications, PR intents & artifacts meta
+
+> **GitHub issue:** #327 · **Status:** 🟡 Open · **Parent epic:** #320
 
 - **Problem Statement:** Mark & Route writes durable decisions (T7), PR
   toggles store intents (T8), and artifacts need a registry with retention
@@ -359,6 +371,8 @@ pr_intents: {block_until_green: true, waivers: []}   artifacts: junit-build3.xml
 
 ### Issue AS.5 — ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes
 
+> **GitHub issue:** #328 · **Status:** 🟡 Open · **Parent epic:** #320
+
 - **Problem Statement:** Design review needs the exact Build 1→3 story with
   every card populated, without running the pipeline.
 - **Solution/Scope:** Extend the dev seed (coordinated with AO.5's `#482`
@@ -385,18 +399,20 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 
 ---
 
-## Epic AT — Ingestion & Routing Services (`ouroboros-rest` + `ouroboros-runner` + `ouroboros-engine`)
+## Epic AT (#321) — Ingestion & Routing Services (`ouroboros-rest` + `ouroboros-runner` + `ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AT.1 | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
-| AT.2 | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
-| AT.3 | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
-| AT.4 | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
-| AT.5 | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
-| AT.6 | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AT.1 | #329 | 🟡 Open | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
+| AT.2 | #330 | 🟡 Open | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
+| AT.3 | #331 | 🟡 Open | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
+| AT.4 | #332 | 🟡 Open | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
+| AT.5 | #333 | 🟡 Open | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
+| AT.6 | #334 | 🟡 Open | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue AT.1 — ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage)
+
+> **GitHub issue:** #329 · **Status:** 🟡 Open · **Parent epic:** #321
 
 - **Problem Statement:** Uploaded files must become the AS tree — with retry
   truth, HIL structure, and coverage summaries — via a format-pluggable
@@ -428,6 +444,8 @@ uploads{junit.xml, hil.json, lcov.info} ─▶ detect ─▶ parse ─▶ normal
 
 ### Issue AT.2 — ouroboros-runner: [AT.2] Job artifact & result upload
 
+> **GitHub issue:** #330 · **Status:** 🟡 Open · **Parent epic:** #321
+
 - **Problem Statement:** Results live on the runner when a job finishes;
   they must reach the store safely (decision T4) without abusing the
   control WebSocket.
@@ -457,6 +475,8 @@ job finish ─▶ collect globs ─▶ POST /internal/jobs/:id/artifacts (single
 
 ### Issue AT.3 — ouroboros-rest: [AT.3] Flake scorer & quarantine service
 
+> **GitHub issue:** #331 · **Status:** 🟡 Open · **Parent epic:** #321
+
 - **Problem Statement:** Flake state must be computed truth (T5): occurrence
   marking at parse time, history accumulation, scoring, and the `watching`
   list the mockup links to.
@@ -481,6 +501,8 @@ nightly ─▶ re-score ─▶ candidates[] (insights boundary)
 ```
 
 ### Issue AT.4 — ouroboros-rest: [AT.4] Classification & routing service
+
+> **GitHub issue:** #332 · **Status:** 🟡 Open · **Parent epic:** #321
 
 - **Problem Statement:** Mark & Route must do real things (T6/T7): honest
   hints, recorded decisions, and dispatch into the loop and the farm.
@@ -517,6 +539,8 @@ re-run failed(2) ─▶ AH.4 job {suite filter} ─▶ Build 4 attempt
 
 ### Issue AT.5 — ouroboros-rest: [AT.5] Test-results read APIs & artifact serving
 
+> **GitHub issue:** #333 · **Status:** 🟡 Open · **Parent epic:** #321
+
 - **Problem Statement:** The page needs shaped reads — attempt timeline,
   suite/case trees, HIL rows, failure payloads, artifact links — plus
   safe artifact downloads and the retention sweep.
@@ -544,6 +568,8 @@ GET /test-runs/:id ─▶ {suites[5], hil[4], failure, flake, classifications, a
 
 ### Issue AT.6 — ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios
 
+> **GitHub issue:** #334 · **Status:** 🟡 Open · **Parent epic:** #321
+
 - **Problem Statement:** The parse→score→classify→route chain and the
   upload path are the correctness core; the simulated driver needs
   test-stage scenarios to certify them end to end.
@@ -568,25 +594,27 @@ driver: fail→classify→correct→green scenario for e2e
 
 ---
 
-## Epic AU — Test Results UI (`ouroboros-ui`)
+## Epic AU (#322) — Test Results UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/11-test-results.html`](mockups/11-test-results.html) as the
 design source — attempt/suite/ptest/radio/artifact treatments — via the #16
 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AU.1 | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
-| AU.2 | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
-| AU.3 | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
-| AU.4 | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
-| AU.5 | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
-| AU.6 | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
-| AU.7 | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
-| AU.8 | ouroboros-ui: [AU.8] Test-results states & e2e leg | Running/empty/error states, themes, full-chain e2e | mvp, tests, ui, ci | N (after AU.2–AU.7) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AU.1 | #335 | 🟡 Open | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
+| AU.2 | #336 | 🟡 Open | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
+| AU.3 | #337 | 🟡 Open | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
+| AU.4 | #338 | 🟡 Open | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
+| AU.5 | #339 | 🟡 Open | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
+| AU.6 | #340 | 🟡 Open | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
+| AU.7 | #341 | 🟡 Open | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
+| AU.8 | #342 | 🟡 Open | ouroboros-ui: [AU.8] Test-results states & e2e leg | Running/empty/error states, themes, full-chain e2e | mvp, tests, ui, ci | N (after AU.2–AU.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue AU.1 — ouroboros-ui: [AU.1] Test-results route, head & summary strip
+
+> **GitHub issue:** #335 · **Status:** 🟡 Open · **Parent epic:** #322
 
 - **Problem Statement:** The frame: attempt-scoped route reachable from the
   run console's Test stage and the farm's job rows, the head actions, and
@@ -617,6 +645,8 @@ Test Results · Run #1847 · Build 3
 
 ### Issue AU.2 — ouroboros-ui: [AU.2] Build attempts timeline
 
+> **GitHub issue:** #336 · **Status:** 🟡 Open · **Parent epic:** #322
+
 - **Problem Statement:** The attempts strip tells the loop's convergence
   story — err → warn → live → gated future — and switches the page's
   attempt scope.
@@ -641,6 +671,8 @@ Test Results · Run #1847 · Build 3
 
 ### Issue AU.3 — ouroboros-ui: [AU.3] Suites card
 
+> **GitHub issue:** #337 · **Status:** 🟡 Open · **Parent epic:** #322
+
 - **Problem Statement:** The suite grid — name, platform tag, meter,
   count, selection — is the page's navigation spine into cases.
 - **Solution/Scope:** Suite rows per the mockup's grid (meter coloring by
@@ -661,6 +693,8 @@ PHYSICAL · HIL rig [rig:helios-rig-02] ▓▓░░ 1/2
 ```
 
 ### Issue AU.4 — ouroboros-ui: [AU.4] Physical tests card
+
+> **GitHub issue:** #338 · **Status:** 🟡 Open · **Parent epic:** #322
 
 - **Problem Statement:** HIL rows carry the page's most distinctive
   content: procedure prose, measured values against limits, comparatives
@@ -688,6 +722,8 @@ measured: overshoot 2.4% vs limit 2.0%   ◀ selected · syncs failure detail
 
 ### Issue AU.5 — ouroboros-ui: [AU.5] Failure detail card
 
+> **GitHub issue:** #339 · **Status:** 🟡 Open · **Parent epic:** #322
+
 - **Problem Statement:** The selected failure's full story: test path,
   the rig/assert log block, and the triage slot — honest until AV.1.
 - **Solution/Scope:** Card bound to the selected failed case: mono path
@@ -712,6 +748,8 @@ TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrat
 ```
 
 ### Issue AU.6 — ouroboros-ui: [AU.6] Mark & Route card
+
+> **GitHub issue:** #340 · **Status:** 🟡 Open · **Parent epic:** #322
 
 - **Problem Statement:** The decision surface: classify with honest
   hints, write the correction, set intents, and dispatch the routing
@@ -743,6 +781,8 @@ TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrat
 
 ### Issue AU.7 — ouroboros-ui: [AU.7] Artifacts card & downloads
 
+> **GitHub issue:** #341 · **Status:** 🟡 Open · **Parent epic:** #322
+
 - **Problem Statement:** The artifacts row list with sizes, the coverage
   delta line, retention labeling, and safe open/download.
 - **Solution/Scope:** Rows from the registry (name, size when notable,
@@ -761,6 +801,8 @@ junit-build3.xml ↗ · rig-capture-estop.csv 2.1MB ↗ · serial-console.log �
 ```
 
 ### Issue AU.8 — ouroboros-ui: [AU.8] Test-results states & e2e leg
+
+> **GitHub issue:** #342 · **Status:** 🟡 Open · **Parent epic:** #322
 
 - **Problem Statement:** Running/no-results/error states, and the full
   chain — upload → parse → classify → correction → re-run → green —
@@ -786,17 +828,19 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
 
 ---
 
-## Epic AV — Intelligent Triage & Extended (v2 · milestone `Test Results v2`)
+## Epic AV (#323) — Intelligent Triage & Extended (v2 · milestone `Test Results v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AV.1 | ouroboros-engine: [AV.1] LLM failure triage | `/v0/triage` narrative + class + confidence; AI-pick affix goes live | v2, tests, engine | N (after AT.4, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
-| AV.2 | ouroboros-rest: [AV.2] PR-plane activation (gating, waivers, annotations) | Block-until-green enforced; waive annotates the PR (mockup 12 tie) | v2, tests, rest | N (after mockup-12 roadmap, AS.4) | N | M | ouroboros-rest |
-| AV.3 | ouroboros-rest: [AV.3] Quarantine automation & insights feed | Auto-quarantine policy, soft-signal semantics, analytics export | v2, tests, rest | N (after AT.3) | N | M | ouroboros-rest |
-| AV.4 | ouroboros-ui: [AV.4] Coverage deep-dive | Per-file coverage, diff coverage, trend lines | v2, tests, ui | N (after AT.1 coverage) | N | M | ouroboros-ui, ouroboros-rest |
-| AV.5 | ouroboros-rest: [AV.5] Artifact store migration & scale-out | Local→S3 migration tooling, dedup, larger retention tiers | v2, tests, rest | N (after AT.2) | N | S | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AV.1 | #343 | 🟡 Open | ouroboros-engine: [AV.1] LLM failure triage | `/v0/triage` narrative + class + confidence; AI-pick affix goes live | v2, tests, engine | N (after AT.4, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
+| AV.2 | #344 | 🟡 Open | ouroboros-rest: [AV.2] PR-plane activation (gating, waivers, annotations) | Block-until-green enforced; waive annotates the PR (mockup 12 tie) | v2, tests, rest | N (after mockup-12 roadmap, AS.4) | N | M | ouroboros-rest |
+| AV.3 | #345 | 🟡 Open | ouroboros-rest: [AV.3] Quarantine automation & insights feed | Auto-quarantine policy, soft-signal semantics, analytics export | v2, tests, rest | N (after AT.3) | N | M | ouroboros-rest |
+| AV.4 | #346 | 🟡 Open | ouroboros-ui: [AV.4] Coverage deep-dive | Per-file coverage, diff coverage, trend lines | v2, tests, ui | N (after AT.1 coverage) | N | M | ouroboros-ui, ouroboros-rest |
+| AV.5 | #347 | 🟡 Open | ouroboros-rest: [AV.5] Artifact store migration & scale-out | Local→S3 migration tooling, dedup, larger retention tiers | v2, tests, rest | N (after AT.2) | N | S | ouroboros-rest |
 
 ### Issue AV.1 — ouroboros-engine: [AV.1] LLM failure triage
+
+> **GitHub issue:** #343 · **Status:** 🟡 Open · **Parent epic:** #323
 
 - **Problem Statement:** The mockup's triage paragraph — causal narrative
   linking the diff to the regression, class pick, confidence — needs the
@@ -817,6 +861,8 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
 
 ### Issue AV.2 — ouroboros-rest: [AV.2] PR-plane activation (gating, waivers, annotations)
 
+> **GitHub issue:** #344 · **Status:** 🟡 Open · **Parent epic:** #323
+
 - **Problem Statement:** T8's stored intents become enforcement when the
   PR plane (mockup 12) exists: block-until-green gates the publish,
   waivers annotate the PR.
@@ -833,6 +879,8 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
 - **Epic:** AV
 
 ### Issue AV.3 — ouroboros-rest: [AV.3] Quarantine automation & insights feed
+
+> **GitHub issue:** #345 · **Status:** 🟡 Open · **Parent epic:** #323
 
 - **Problem Statement:** `watching` is manual-adjacent; real quarantine
   needs policy (auto-quarantine thresholds, soft-signal merge semantics)
@@ -851,6 +899,8 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
 
 ### Issue AV.4 — ouroboros-ui: [AV.4] Coverage deep-dive
 
+> **GitHub issue:** #346 · **Status:** 🟡 Open · **Parent epic:** #323
+
 - **Problem Statement:** The summary percent undersells coverage: per-file
   breakdowns, diff coverage (did the change's lines get tested?), trends.
 - **Solution/Scope:** Coverage detail surface: per-file table from parsed
@@ -864,6 +914,8 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
 - **Epic:** AV
 
 ### Issue AV.5 — ouroboros-rest: [AV.5] Artifact store migration & scale-out
+
+> **GitHub issue:** #347 · **Status:** 🟡 Open · **Parent epic:** #323
 
 - **Problem Statement:** The local-volume default (option 3-A) needs a
   clean growth path: driver migration, dedup, tiered retention.
@@ -936,10 +988,27 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AV — Intelligent Triage & Extended | 5 | 0 | 5 |
 | **Total** | **24** | **19** | **5** |
 
-Plus amendments executed at filing: AG protocol/AH.2 (upload tokens), AH.1
-(`build_jobs` result linkage), AO/AQ (Test-stage + full-log links target this
-page), AP.5 (test scenarios), DASH-F.1 (check counts reconcile), #49 (`/tests`
-stub retired), #56 (test-results e2e leg).
+Amendment comments posted at filing:
+
+| Issue | Amendment |
+|---|---|
+| #243 (AG.1) | The agent protocol gains the post-job artifact upload path (**#330**) — job-scoped HTTPS, **not** the control WebSocket (T4) |
+| #250 (AH.2) | The job offer mints the single-use, job-scoped upload token; quota breach warns rather than failing the job |
+| #249 (AH.1) | `build_jobs` gains test-result linkage (**#324**) and artifact attachment (**#330**); rig↔runner linkage feeds **#338**'s online pill and **#332**'s infra flag |
+| #311 (AQ.3) | The run console's Test stage node links to **#335**; correction rounds appear in that console's transcript |
+| #307 (AP.5) | The simulated driver gains the `failing-HIL` scenario (**#334**), emitting through the real upload path |
+| #64 (DASH-F.1) | Check counts reconcile with parsed test totals (**#324**), stored-equals-recomputed asserted |
+| #49 | The `/tests` placeholder is retired by **#335** |
+| #56 | The smoke suite gains the test-results e2e leg (**#342**), the MVP gate |
+
+**Reference note.** Every cross-roadmap reference in this document resolved as
+written: AO.1 → #298, AO.3 → #300, AO.5 → #302, AP.4 → #306, AP.5 → #307,
+AG.4 → #246, AH.1 → #249, AH.2 → #250, AH.4 → #252, WF-P.2 → #133,
+DASH-F.1 → #64, DASH-I.7/I.8 → #86/#87, AF.2 → #235, Z.1 → #194, AL.2 → #278.
+Four referenced roadmaps remain **unfiled** and gate work here: BetterAuth
+(BA-C.3/BA-D.5 gate role visibility on AU.1/AU.6), the app shell (CP.2 registry,
+CQ.1/CQ.2 type scale), mockup 12 (PR verification — gates AV.2), and mockup 15
+(insights — consumes AV.3's feed).
 
 ## References
 
@@ -988,22 +1057,64 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AU.1 | Mounts in the shell content pane as a contextual route (no sidebar entry); wide result tables scroll in their own wrappers |
-| AU.2, AU.3, AU.4, AU.5, AU.6, AU.7 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| AU.8 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| AU.1 (#335) | Mounts in the shell content pane as a contextual route (no sidebar entry); wide result tables scroll in their own wrappers |
+| AU.2–AU.7 (#336–#341) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| AU.8 (#342) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the ingestion stack
-(T3/T4 — JUnit-canonical parser SPI, the HIL JSON schema, and the job-scoped
-agent upload path), the flake-truth model (T5 — retry-derived, policy-aware,
-`watching` before any automation), the routing compositions (T6/T7 —
-corrections ride the real run-control queue; re-runs are real farm
-dispatches), the PR-intent boundary with mockup 12 (T8), and the triage
-honesty staging (option 5-A — heuristic hints now, the LLM narrative slot
-empty until AV.1). Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_11_TEST_RESULTS.md`) creates the `tests` label **and the
-`Test Results MVP` / `Test Results v2` milestones**, files the 24 issues with
-epic parents, relationships, and milestone assignments, and posts the
-amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `tests` label, the **`Test Results MVP`** and **`Test Results v2`** milestones,
+the four epic parents (#320–#323) and twenty-four work issues (#324–#347) with epic
+relationships, issue types and milestone assignments, plus the eight amendment
+comments listed above.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **T3 / option 1-A — one canonical format, many emitters** (#329). JUnit XML is the
+  interchange because twister, pytest, ctest and Playwright all already emit it; a
+  parser SPI admits TAP or ctest JSON later **without core changes**, proven by adding
+  a stub parser in the test suite rather than asserted. Physical measurements get their
+  own versioned schema because JUnit cannot express a value, a unit and a limit — and
+  rigs that emit only JUnit **degrade to plain case rows** rather than having numbers
+  invented for them.
+- **T4 — artifacts do not ride the control channel** (#330). A 2.1 MB rig capture on
+  the agent WebSocket would degrade the connection that decides whether a runner looks
+  alive. Job-scoped HTTPS, a single-use token minted with the job offer, and a
+  **truncation manifest** rather than a silently shorter artifact list.
+- **T5 / option 4-A — flake truth is retry-derived and policy-aware** (#331). Pass-on-retry
+  is a fact, not an inference — but only when the pinned DSL's `flakes:` policy sanctioned
+  that retry. The score formula is documented and `formula_version`-stamped, so a
+  `watching` badge is defensible and a later re-tuning does not silently reinterpret
+  history. `quarantined` is storable now and **nothing writes it** in the MVP.
+- **T6 / T7 — the actions compose over machinery that already exists** (#332). *Queue
+  correction round* is an AP.4 steer (#306) carrying the note into the next attempt's
+  planning context plus a stage retry; *Re-run failed* is an AH.4 dispatch (#252)
+  filtered to the failed set. Building either separately would fork the control path.
+  The card proves it with a **routed receipt** — control id and target attempt — not a
+  toast.
+- **Option 5-A — heuristic hints now, the narrative slot honestly empty** (#332, #339,
+  #340). The MVP's triage is deterministic rules with `confidence: null` and a stated
+  rule; the schema (#327) *rejects* a confidence value from a heuristic actor, and no
+  `AI pick · N%` affix can render until #343 makes it true. This is the run console's
+  transcript honesty rule applied to the surface most able to mislead.
+- **T8 — PR controls store intents** (#327, #336, #340). The toggles persist and the UI
+  labels their activation point; #344 turns them into enforcement when mockup 12's PR
+  plane lands. And quarantined failures, when that happens, **do not block and are still
+  reported distinctly** — hiding failures is the one bad default this feature is closest
+  to.
+
+**Prerequisites.** AO.1/AO.3 (#298, #300), AP.4/AP.5 (#306, #307), AG.4 (#246),
+AH.1/AH.2/AH.4 (#249, #250, #252), WF-P.2 (#133), #16/#24/#37/#41/#46/#56 and
+DASH-I.7/I.8 (#86, #87) are all filed. Four external gates remain unfiled: **BetterAuth**
+(role visibility on #335/#340), the **app shell** (CP.2 registry, CQ type scale),
+**mockup 12** (gates #344), and **mockup 15** (consumes #345's feed). #343 additionally
+needs **AF.2** (#235), itself behind the AF.1 ADR (#234).
+
+Once those are in place, begin with **#324** ([AS.1] the results tree) — it blocks every
+other issue here — and **#329** ([AT.1] the parser), since every number on the page is its
+output. **#330** ([AT.2] the upload path) is the piece with reach beyond this roadmap: it
+adds the farm's first artifact channel and the `ArtifactStore` interface other surfaces
+will want. The MVP closes at **#342**, the e2e leg that follows an artifact off a runner
+all the way to a decision that changes what an agent does next.

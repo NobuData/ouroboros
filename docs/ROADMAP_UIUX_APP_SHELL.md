@@ -106,11 +106,14 @@ customization (CR.2), display-aware scale suggestion (CR.3).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| CP | Application Shell & Navigation | Header, sidebar registry, scroll containment, migration, e2e | ouroboros-ui | App Shell MVP |
-| CQ | Readability & Type Scale | rem tokens + lint, font-size preference, QA matrix | ouroboros-ui, ouroboros-rest | App Shell MVP |
-| CR | Shell Enhancements (v2) | Density modes, nav customization, display-aware scaling | ouroboros-ui | App Shell v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| CP | #640 | 🟡 Open | Application Shell & Navigation | Header, sidebar registry, scroll containment, migration, e2e | ouroboros-ui | App Shell MVP |
+| CQ | #641 | 🟡 Open | Readability & Type Scale | rem tokens + lint, font-size preference, QA matrix | ouroboros-ui, ouroboros-rest | App Shell MVP |
+| CR | #642 | 🟡 Open | Shell Enhancements (v2) | Density modes, nav customization, display-aware scaling | ouroboros-ui | App Shell v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `ui`, `design`, `rest`, `ci`) **plus new `shell`** (decision
@@ -119,17 +122,19 @@ Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic CP — Application Shell & Navigation (`ouroboros-ui`)
+## Epic CP (#640) — Application Shell & Navigation (`ouroboros-ui`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CP.1 | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
-| CP.2 | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
-| CP.3 | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
-| CP.4 | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
-| CP.5 | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CP.1 | #643 | 🟡 Open | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
+| CP.2 | #644 | 🟡 Open | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
+| CP.3 | #645 | 🟡 Open | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
+| CP.4 | #646 | 🟡 Open | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
+| CP.5 | #647 | 🟡 Open | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CP.1 — ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment
+
+> **GitHub issue:** #643 · **Status:** 🟡 Open · **Parent epic:** #640
 
 - **Problem Statement:** The current #41 shell is a top bar with nav links
   and a page that scrolls whole. The spec demands the standard SaaS frame:
@@ -163,6 +168,8 @@ pane: overflow-y auto · gutter stable · max 1440px  ─▶ the ONLY scrollbar
 ```
 
 ### Issue CP.2 — ouroboros-ui: [CP.2] Sidebar navigation & module registry
+
+> **GitHub issue:** #644 · **Status:** 🟡 Open · **Parent epic:** #640
 
 - **Problem Statement:** Navigation moves from topbar links to a left
   sidebar of icon+name entries — driven by a registry so twelve modules
@@ -202,6 +209,8 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 
 ### Issue CP.3 — ouroboros-ui: [CP.3] Profile & session menu
 
+> **GitHub issue:** #645 · **Status:** 🟡 Open · **Parent epic:** #640
+
 - **Problem Statement:** "Profile information in the upper right-hand (as
   with standard SaaS applications)" — the avatar must open a real account
   menu, and it is the spec'd home of the font-size quick control (spec
@@ -229,6 +238,8 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 
 ### Issue CP.4 — ouroboros-ui: [CP.4] In-pane chrome standards & primitives
 
+> **GitHub issue:** #646 · **Status:** 🟡 Open · **Parent epic:** #640
+
 - **Problem Statement:** With one scroll container, every sticky behavior
   the mockup roadmaps assume (subnav tabs, dirty-state bars, table
   headers) must stick against the pane — a shared primitive, not
@@ -251,6 +262,8 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 - **Epic:** CP
 
 ### Issue CP.5 — ouroboros-ui: [CP.5] Route migration & shell e2e leg
+
+> **GitHub issue:** #647 · **Status:** 🟡 Open · **Parent epic:** #640
 
 - **Problem Statement:** Every existing route (#49 placeholders and the
   built pages) must mount inside the pane, the old topbar retired, and
@@ -278,15 +291,17 @@ e2e: fixed chrome ✓ · nav states ×11 ✓ · rail/drawer ✓ · restoration �
 
 ---
 
-## Epic CQ — Readability & Type Scale (`ouroboros-ui` + `ouroboros-rest`)
+## Epic CQ (#641) — Readability & Type Scale (`ouroboros-ui` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CQ.1 | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
-| CQ.2 | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
-| CQ.3 | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CQ.1 | #648 | 🟡 Open | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
+| CQ.2 | #649 | 🟡 Open | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
+| CQ.3 | #650 | 🟡 Open | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue CQ.1 — ouroboros-ui: [CQ.1] rem-based token scale & px lint
+
+> **GitHub issue:** #648 · **Status:** 🟡 Open · **Parent epic:** #641
 
 - **Problem Statement:** Font scaling only works if nothing is pinned in
   px; the #16 token sheet and existing components carry px type sizes from
@@ -311,6 +326,8 @@ stylelint: "font-size: 12px" ─▶ ✗ error (use rem token)
 ```
 
 ### Issue CQ.2 — ouroboros-rest: [CQ.2] Font-size preference & no-flash boot
+
+> **GitHub issue:** #649 · **Status:** 🟡 Open · **Parent epic:** #641
 
 - **Problem Statement:** The description's ask: adjustable font size for
   high-resolution monitors — per user, instant, persistent, and applied
@@ -342,6 +359,8 @@ boot: inline script reads mirror ─▶ no flash ─▶ session reconciles
 
 ### Issue CQ.3 — ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix
 
+> **GitHub issue:** #650 · **Status:** 🟡 Open · **Parent epic:** #641
+
 - **Problem Statement:** Five scales × two themes × dense pages is a
   combinatorial surface where clipping and overflow hide; the QA bar must
   be automated (spec §4 QA).
@@ -366,15 +385,17 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
 
 ---
 
-## Epic CR — Shell Enhancements (v2 · milestone `App Shell v2`)
+## Epic CR (#642) — Shell Enhancements (v2 · milestone `App Shell v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CR.1 | ouroboros-ui: [CR.1] Density modes | Comfortable/compact spacing presets composing with font scale | v2, shell, ui, design | Y | N | M | ouroboros-ui |
-| CR.2 | ouroboros-ui: [CR.2] Navigation customization | Pin/reorder/hide sidebar entries per user; reset to default | v2, shell, ui | N (after CP.2) | N | S | ouroboros-ui |
-| CR.3 | ouroboros-ui: [CR.3] Display-aware scale suggestion | First-run DPI/resolution heuristic suggests (never forces) a scale | v2, shell, ui | N (after CQ.2) | N | S | ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CR.1 | #651 | 🟡 Open | ouroboros-ui: [CR.1] Density modes | Comfortable/compact spacing presets composing with font scale | v2, shell, ui, design | Y | N | M | ouroboros-ui |
+| CR.2 | #652 | 🟡 Open | ouroboros-ui: [CR.2] Navigation customization | Pin/reorder/hide sidebar entries per user; reset to default | v2, shell, ui | N (after CP.2) | N | S | ouroboros-ui |
+| CR.3 | #653 | 🟡 Open | ouroboros-ui: [CR.3] Display-aware scale suggestion | First-run DPI/resolution heuristic suggests (never forces) a scale | v2, shell, ui | N (after CQ.2) | N | S | ouroboros-ui |
 
 ### Issue CR.1 — ouroboros-ui: [CR.1] Density modes
+
+> **GitHub issue:** #651 · **Status:** 🟡 Open · **Parent epic:** #642
 
 - **Problem Statement:** Font scale changes size, not breathing room;
   large-scale users on small screens (and dense-data users on large ones)
@@ -391,6 +412,8 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
 
 ### Issue CR.2 — ouroboros-ui: [CR.2] Navigation customization
 
+> **GitHub issue:** #652 · **Status:** 🟡 Open · **Parent epic:** #642
+
 - **Problem Statement:** Different roles live in different modules; a
   build-farm operator wants Build Farm on top.
 - **Solution/Scope:** Per-user sidebar order + hide (capability-gated
@@ -403,6 +426,8 @@ matrix: 3 scales × 2 themes × 5 pages ─▶ diffs ✓ · overflow probe ✓ �
 - **Epic:** CR
 
 ### Issue CR.3 — ouroboros-ui: [CR.3] Display-aware scale suggestion
+
+> **GitHub issue:** #653 · **Status:** 🟡 Open · **Parent epic:** #642
 
 - **Problem Statement:** The user who needs 125% most is the one squinting
   at a 4K laptop panel who never opens Settings.
@@ -450,27 +475,46 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0:** #16, #39/#40, #31, #33, #46/#48.
-2. **Phase 1:** { CP.1 ⊕ CQ.1 }
-3. **Phase 2:** { CP.2 ⊕ CP.4 ⊕ CQ.2 } → CP.3
-4. **Phase 3:** CP.5 → **CQ.3 ✅** *(MVP gate with CP.5; amends #41, #49,
-   #56, mockup-17 roadmap, and every roadmap's compliance table)*
-5. **v2:** CR.1 ⊕ CR.2 ⊕ CR.3.
+2. **Phase 1:** { CP.1 (#643) ⊕ CQ.1 (#648) }
+3. **Phase 2:** { CP.2 (#644) ⊕ CP.4 (#646) ⊕ CQ.2 (#649) } → CP.3 (#645)
+4. **Phase 3:** CP.5 (#647) → **CQ.3 (#650) ✅** *(MVP gate with CP.5;
+   amends #41, #49, #56, the mockup-17 Settings surface, and every roadmap's
+   compliance table)*
+5. **v2:** CR.1 (#651) ⊕ CR.2 (#652) ⊕ CR.3 (#653).
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic CP — Application Shell & Navigation | 5 | 5 | 0 |
-| Epic CQ — Readability & Type Scale | 3 | 3 | 0 |
-| Epic CR — Shell Enhancements | 3 | 0 | 3 |
-| **Total** | **11** | **8** | **3** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic CP — Application Shell & Navigation | #640 | 5 | 5 | 0 |
+| Epic CQ — Readability & Type Scale | #641 | 3 | 3 | 0 |
+| Epic CR — Shell Enhancements | #642 | 3 | 0 | 3 |
+| **Total** | **3 epics** | **11** | **8** | **3** |
 
-Plus amendments executed at filing: #41 (shell re-scope: sidebar +
-containment), #49 (placeholders mount in the pane), #56 (shell e2e leg +
-scale smoke), #16/#40/#46/#48 (rem tokens, shell primitives, workshop
-stories), mockup-17 roadmap (Settings → Appearance font-size control),
-mockup-16 roadmap (sidebar badge source), and the **UI/UX Shell Compliance**
-tables now present in every roadmap under `docs/`.
+Issues **#643–#653**, filed 2026-08-09 as sub-issues of their epics
+(#640–#642), with the new `shell` label and the `App Shell MVP` /
+`App Shell v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| #41 | **Re-scoped**: header keeps brand/tenant/profile and carries **no nav links**; navigation moves to the registry-driven sidebar (CP.2, #644); scroll containment added (CP.1, #643); the old topbar retires during migration (CP.5, #647) |
+| #49 | Placeholder routes now **mount in the content pane** and register sidebar entries; individual placeholders continue to be retired by their own roadmaps' frame issues |
+| #56 | Gains the **shell leg** (CP.5, #647 — fixed chrome under deep scroll, eleven nav states, rail/drawer, scroll restoration, both themes) and the **scale-switch smoke** (CQ.3, #650) |
+| #16 | Token sheet goes **rem-based** (CQ.1, #648) with a stylelint ban on `px` font sizes; proven a no-op at 100% by screenshot diff |
+| #40 | Global styles: rem type scale, the `html`/`body` scroll lock, and the lint rule with its documented allowlist |
+| #46 | **ShellHeader, ContentPane, SidebarNav, StickyBar, PageSubnav** join the primitive set, plus the sticky table-header recipe; existing primitives swept for `px` type |
+| #48 | Gains a **shell chrome story** — subnav + dirty bar + sticky table header over a long fixture, both themes, multiple scales |
+| BS.1 (#491) | Settings gains an **Appearance** section with the full font-size control beside the theme choice (CQ.2, #649); density and nav-reset controls join it in v2 |
+| BN.4 (#464) | Wires the sidebar's **Needs You badge**; when the count source is absent the badge is **hidden**, never `0` |
+| #31 | The preferences surface gains **`font_scale`** (five CHECK-constrained steps, default 100), with density and sidebar preferences alongside it in v2 |
+| #17 | The **no-flash boot pattern is reused, not re-implemented**, for font scale; the theme toggle itself is reused by the profile menu |
+
+Per-route amendments on each mockup roadmap's frame issue are **posted during
+migration** (CP.5's scope), against that roadmap's UI/UX Shell Compliance
+section — the sections themselves are already present in every roadmap under
+`docs/`.
 
 ## References
 
@@ -483,13 +527,28 @@ tables now present in every roadmap under `docs/`.
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate, together with the compliance sections now
-embedded in every other roadmap. Review in particular: the sidebar registry
-model (S1), the one-scroll-container rule (S2) and its sticky-chrome
-consequences (S5), the five-step rem-based font scale (S4), and the
-disposition table (what #41 becomes). Once validated — and per the
-description, **only after every roadmap's compliance coverage is confirmed**
-— the follow-up pass (`/create-issues ROADMAP_UIUX_APP_SHELL.md`) creates
-the `shell` label and the `App Shell MVP` / `App Shell v2` milestones, files
-the 11 issues, and posts the amendment comments listed above.
+**Filed 2026-08-09.** The `shell` label and the `App Shell MVP` /
+`App Shell v2` milestones were created; the three epics (#640–#642) and
+eleven issues (#643–#653) are on GitHub with parent relationships,
+milestones, labels and types set, and the eleven amendment comments above are
+posted.
+
+**This roadmap gates the UI half of every other one.** Each mockup roadmap's
+frame issue now assumes the shell exists — pages mount in the content pane,
+register a sidebar entry, and put their tab sets in a PageSubnav. The
+practical consequence: CP.1 (#643) and CP.2 (#644) are worth landing before
+much more page work, or each new surface pays the migration cost twice.
+
+Execution starts with **CP.1 (#643) ⊕ CQ.1 (#648)** — they are independent
+and both block everything after them. The critical path to the MVP gate is
+#643 → #644 → #647 → **#650**, with the type-scale leg (#648 → #649 → #645)
+joining at the profile menu and the sticky primitives (#646) landing beside
+the sidebar.
+
+Two risks worth naming. **Scroll containment regresses silently** — one
+`position: fixed` bar or one table without its `overflow-x` wrapper, and the
+pane starts scrolling sideways on a single page, invisible in review; #647's
+rule that a planted offender must turn the e2e leg red is what keeps that
+honest. And **the font scale is only as complete as the rem sweep** — a
+single `px` font size becomes the one thing still unreadable at 150%, which
+is why #648 ships a lint rule rather than just a conversion.

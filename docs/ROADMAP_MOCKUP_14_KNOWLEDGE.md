@@ -214,12 +214,15 @@ analytics + inbox deep-integration (BH.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BE | Knowledge Domain | Skills/facts/playbooks/env-recipe schema, injection records, seeds | ouroboros-db | Knowledge MVP |
-| BF | Knowledge Services | Skills+generator, fact lifecycle+proposers, import, assembly, playbooks | ouroboros-rest | Knowledge MVP |
-| BG | Knowledge UI | All five page regions, states, e2e | ouroboros-ui | Knowledge MVP |
-| BH | Learned Intelligence (v2) | LLM extraction, retrieval, git-backed skills, snapshots, analytics | all | Knowledge v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BE | #401 | 🟡 Open | Knowledge Domain | Skills/facts/playbooks/env-recipe schema, injection records, seeds | ouroboros-db | Knowledge MVP |
+| BF | #402 | 🟡 Open | Knowledge Services | Skills+generator, fact lifecycle+proposers, import, assembly, playbooks | ouroboros-rest | Knowledge MVP |
+| BG | #403 | 🟡 Open | Knowledge UI | All five page regions, states, e2e | ouroboros-ui | Knowledge MVP |
+| BH | #404 | 🟡 Open | Learned Intelligence (v2) | LLM extraction, retrieval, git-backed skills, snapshots, analytics | all | Knowledge v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `workflow`, `intake`, `runs`) **plus
@@ -228,17 +231,19 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 
 ---
 
-## Epic BE — Knowledge Domain (`ouroboros-db`)
+## Epic BE (#401) — Knowledge Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BE.1 | ouroboros-db: [BE.1] Skills & versions schema | Markdown+frontmatter skills, scopes, required/draft flags (K1) | mvp, knowledge, db | N (after WF-P.1, BA-B.3) | Y | M | ouroboros-db |
-| BE.2 | ouroboros-db: [BE.2] Facts, anchors & injection records | Lifecycle states, typed provenance, expiry anchors, usage (K3/K4) | mvp, knowledge, db | N (after BE.1) | Y | M | ouroboros-db |
-| BE.3 | ouroboros-db: [BE.3] Playbooks schema | Recipes: pins, skill overrides, context presets, run counts (K6) | mvp, knowledge, db | N (after BE.1, WF-P.1) | Y | S | ouroboros-db |
-| BE.4 | ouroboros-db: [BE.4] Environment recipes | Ordered setup commands per repo, versioned, consumer-ready (K7) | mvp, knowledge, db | N (after BA.1) | Y | S | ouroboros-db |
-| BE.5 | ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes | Six skills, five facts, three playbooks, profile; ci checks | mvp, knowledge, db, ci | N (after BE.2–BE.4, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BE.1 | #405 | 🟡 Open | ouroboros-db: [BE.1] Skills & versions schema | Markdown+frontmatter skills, scopes, required/draft flags (K1) | mvp, knowledge, db | N (after WF-P.1, BA-B.3) | Y | M | ouroboros-db |
+| BE.2 | #406 | 🟡 Open | ouroboros-db: [BE.2] Facts, anchors & injection records | Lifecycle states, typed provenance, expiry anchors, usage (K3/K4) | mvp, knowledge, db | N (after BE.1) | Y | M | ouroboros-db |
+| BE.3 | #407 | 🟡 Open | ouroboros-db: [BE.3] Playbooks schema | Recipes: pins, skill overrides, context presets, run counts (K6) | mvp, knowledge, db | N (after BE.1, WF-P.1) | Y | S | ouroboros-db |
+| BE.4 | #408 | 🟡 Open | ouroboros-db: [BE.4] Environment recipes | Ordered setup commands per repo, versioned, consumer-ready (K7) | mvp, knowledge, db | N (after BA.1) | Y | S | ouroboros-db |
+| BE.5 | #409 | 🟡 Open | ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes | Six skills, five facts, three playbooks, profile; ci checks | mvp, knowledge, db, ci | N (after BE.2–BE.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BE.1 — ouroboros-db: [BE.1] Skills & versions schema
+
+> **GitHub issue:** #405 · **Status:** 🟡 Open · **Parent epic:** #401
 
 - **Problem Statement:** Skills need the workflow-grade storage model
   (decision K1): scoped, versioned markdown with typed frontmatter and the
@@ -281,6 +286,8 @@ erDiagram
 
 ### Issue BE.2 — ouroboros-db: [BE.2] Facts, anchors & injection records
 
+> **GitHub issue:** #406 · **Status:** 🟡 Open · **Parent epic:** #401
+
 - **Problem Statement:** Facts need the K3 lifecycle, typed provenance,
   K4 expiry anchors, and counted usage — the card's every state as data.
 - **Solution/Scope:** Migration: `facts` — id, org FK, repo_ref nullable
@@ -311,6 +318,8 @@ context_injections ─▶ used 48× · zephyr-conventions in 61% of runs (counte
 
 ### Issue BE.3 — ouroboros-db: [BE.3] Playbooks schema
 
+> **GitHub issue:** #407 · **Status:** 🟡 Open · **Parent epic:** #401
+
 - **Problem Statement:** Playbooks are recipes (decision K6): a pinned
   workflow + skill overrides + a context preset, with real run counts.
 - **Solution/Scope:** `playbooks` — id, org FK, `name`, `description`,
@@ -333,6 +342,8 @@ playbook{Flaky test hunt, workflow: standard-fix@v14, preset: {steer: "focus fla
 ```
 
 ### Issue BE.4 — ouroboros-db: [BE.4] Environment recipes
+
+> **GitHub issue:** #408 · **Status:** 🟡 Open · **Parent epic:** #401
 
 - **Problem Statement:** The profile card's Environment block — ordered,
   versioned setup commands — is new truth the farm/execution envs will
@@ -357,6 +368,8 @@ env_recipe(helios-firmware, v3): [west init -m …, west update --narrow…,
 ```
 
 ### Issue BE.5 — ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes
+
+> **GitHub issue:** #409 · **Status:** 🟡 Open · **Parent epic:** #401
 
 - **Problem Statement:** Design review needs the mockup's exact knowledge
   state without running proposers or generators.
@@ -383,19 +396,21 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 
 ---
 
-## Epic BF — Knowledge Services (`ouroboros-rest`)
+## Epic BF (#402) — Knowledge Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BF.1 | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
-| BF.2 | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
-| BF.3 | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
-| BF.4 | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
-| BF.5 | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
-| BF.6 | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
-| BF.7 | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BF.1 | #410 | 🟡 Open | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
+| BF.2 | #411 | 🟡 Open | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
+| BF.3 | #412 | 🟡 Open | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
+| BF.4 | #413 | 🟡 Open | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
+| BF.5 | #414 | 🟡 Open | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
+| BF.6 | #415 | 🟡 Open | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
+| BF.7 | #416 | 🟡 Open | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
 
 ### Issue BF.1 — ouroboros-rest: [BF.1] Skills service & registry integration
+
+> **GitHub issue:** #410 · **Status:** 🟡 Open · **Parent epic:** #402
 
 - **Problem Statement:** Skills need CRUD/versioning with the K1 flags —
   and the three surfaces already pointing at skills (WF catalog,
@@ -429,6 +444,8 @@ code-view: skills/zephyr-conventions.skill.md ⇄ BF.1 document API
 
 ### Issue BF.2 — ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep
 
+> **GitHub issue:** #411 · **Status:** 🟡 Open · **Parent epic:** #402
+
 - **Problem Statement:** The K3 state machine with K4 staleness — plus
   the review-surface contracts (Confirm/Reject here, `Review all` in
   the future inbox).
@@ -455,6 +472,8 @@ expired{reason: "Zephyr 4.1 migration", was_used: 31} · [Re-learn] ─▶ propo
 ```
 
 ### Issue BF.3 — ouroboros-rest: [BF.3] Deterministic fact proposers
+
+> **GitHub issue:** #412 · **Status:** 🟡 Open · **Parent epic:** #402
 
 - **Problem Statement:** "Learned by the loop" starts honest (K5):
   promote the correction notes, waiver reasons, and steering messages
@@ -483,6 +502,8 @@ AT.4 note "Keep k_msgq, but move PID sampling…" ─▶ proposer ─▶
 
 ### Issue BF.4 — ouroboros-rest: [BF.4] Rule-file import service
 
+> **GitHub issue:** #413 · **Status:** 🟡 Open · **Parent epic:** #402
+
 - **Problem Statement:** The head's import button: existing agent rule
   files become reviewable knowledge in minutes (option 4).
 - **Solution/Scope:** Import flow: probe the enabled repo (BB.1
@@ -506,6 +527,8 @@ import(helios-firmware): CLAUDE.md(3 sections) + .cursorrules(12 bullets)
 ```
 
 ### Issue BF.5 — ouroboros-rest: [BF.5] Context assembly & manifests
+
+> **GitHub issue:** #414 · **Status:** 🟡 Open · **Parent epic:** #402
 
 - **Problem Statement:** The point of the page (K9): one resolution
   service turning scoped knowledge into the manifests every consumer
@@ -539,6 +562,8 @@ assemble({org, repo: helios, workflow: standard-fix}, run_stage)
 
 ### Issue BF.6 — ouroboros-rest: [BF.6] Playbooks & repo-map generator
 
+> **GitHub issue:** #415 · **Status:** 🟡 Open · **Parent epic:** #402
+
 - **Problem Statement:** Playbooks must compose real launches (K6), and
   `repo-map` must regenerate nightly from real repo data (K2).
 - **Solution/Scope:** **Playbooks**: CRUD; create-from-run (copy the
@@ -566,6 +591,8 @@ nightly: tree+CODEOWNERS ─▶ repo-map v(n+1) only on change · tagged auto-ge
 
 ### Issue BF.7 — ouroboros-rest: [BF.7] Knowledge integration tests
 
+> **GitHub issue:** #416 · **Status:** 🟡 Open · **Parent epic:** #402
+
 - **Problem Statement:** Lifecycle, resolution, and cross-plane wiring
   are the regression surface.
 - **Solution/Scope:** Harness suites: skill lifecycle + locks +
@@ -585,23 +612,25 @@ suites: skills ✓ · facts ✓ · proposers ✓ · import ✓ · assembly ✓ �
 
 ---
 
-## Epic BG — Knowledge UI (`ouroboros-ui`)
+## Epic BG (#403) — Knowledge UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/14-knowledge.html`](mockups/14-knowledge.html) as the design
 source — skill-table/fact/playbook/profile/scope treatments — via the #16
 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BG.1 | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
-| BG.2 | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
-| BG.3 | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
-| BG.4 | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui |
-| BG.5 | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
-| BG.6 | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BG.1 | #417 | 🟡 Open | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
+| BG.2 | #418 | 🟡 Open | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
+| BG.3 | #419 | 🟡 Open | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
+| BG.4 | #420 | 🟡 Open | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui |
+| BG.5 | #421 | 🟡 Open | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
+| BG.6 | #422 | 🟡 Open | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BG.1 — ouroboros-ui: [BG.1] Knowledge route, head & import flow
+
+> **GitHub issue:** #417 · **Status:** 🟡 Open · **Parent epic:** #403
 
 - **Problem Statement:** The frame: headline copy, the New-skill entry
   (into the code-view editing frame), and the working import flow with
@@ -623,6 +652,8 @@ tokens (both themes; the mockup is dark-only).
 ```
 
 ### Issue BG.2 — ouroboros-ui: [BG.2] Skills table
+
+> **GitHub issue:** #418 · **Status:** 🟡 Open · **Parent epic:** #403
 
 - **Problem Statement:** The table's five columns with every state:
   scopes, injection-derived used-by, version/age, the auto-generated
@@ -650,6 +681,8 @@ power-budget-checks (draft) … [repo] — v1 · 20m [off]   ← tinted row
 
 ### Issue BG.3 — ouroboros-ui: [BG.3] Learned-facts card
 
+> **GitHub issue:** #419 · **Status:** 🟡 Open · **Parent epic:** #403
+
 - **Problem Statement:** The fact lifecycle surface: confirmed rows with
   counts, awaiting rows with working Confirm/Reject, the expired
   strikethrough with Re-learn — provenance honest throughout.
@@ -676,6 +709,8 @@ power-budget-checks (draft) … [repo] — v1 · 20m [off]   ← tinted row
 ```
 
 ### Issue BG.4 — ouroboros-ui: [BG.4] Playbooks & repo-profile cards
+
+> **GitHub issue:** #420 · **Status:** 🟡 Open · **Parent epic:** #403
 
 - **Problem Statement:** Recipes with real launches, and the profile
   card composing detection + protected paths + the env recipe + the
@@ -705,6 +740,8 @@ ENV: west init… · ccache… [edit v3]   snapshot: "prebuilds arrive with BD.4
 
 ### Issue BG.5 — ouroboros-ui: [BG.5] Scope ladder & manifest preview
 
+> **GitHub issue:** #421 · **Status:** 🟡 Open · **Parent epic:** #403
+
 - **Problem Statement:** The ladder with live counts and the assembly's
   most valuable UI: what-would-inject.
 - **Solution/Scope:** Ladder per the mockup (org/repo/workflow steps,
@@ -726,6 +763,8 @@ Org acme-robotics · 3 skills ↓ [Repo helios-firmware · 4 skills + 5 facts] �
 ```
 
 ### Issue BG.6 — ouroboros-ui: [BG.6] Knowledge states & e2e leg
+
+> **GitHub issue:** #422 · **Status:** 🟡 Open · **Parent epic:** #403
 
 - **Problem Statement:** Cold orgs (no skills/facts), generator-pending
   states, and the full knowledge chain need certification.
@@ -750,17 +789,19 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
 
 ---
 
-## Epic BH — Learned Intelligence (v2 · milestone `Knowledge v2`)
+## Epic BH (#404) — Learned Intelligence (v2 · milestone `Knowledge v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BH.1 | ouroboros-engine: [BH.1] LLM fact extraction (`/v0/learn`) | PR-review-cycle + run-observation proposers behind the contract | v2, knowledge, engine | N (after BF.3, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
-| BH.2 | ouroboros-rest: [BH.2] Retrieval layer (embeddings) | Semantic search over knowledge + history; feeds INTAKE-O.4 | v2, knowledge, rest, engine | N (after BF.5, AF.2) | N | L | ouroboros-rest, ouroboros-engine |
-| BH.3 | ouroboros-rest: [BH.3] Git-backed skills sync | `.ouroboros/skills/` in-repo projection (X.3 pattern) | v2, knowledge, rest | N (after BF.1, X.3) | N | M | ouroboros-rest |
-| BH.4 | ouroboros-rest: [BH.4] Warm-snapshot activation | BD.4 prebuilds wired to the profile card; measured boots | v2, knowledge, build-farm | N (after BD.4, BE.4) | N | S | ouroboros-rest, ouroboros-ui |
-| BH.5 | ouroboros-rest: [BH.5] Knowledge analytics & inbox integration | Fact ROI, skill effectiveness, needs-you deep flows | v2, knowledge, rest, ui | N (after BF.5, mockup-16) | N | M | ouroboros-rest, ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BH.1 | #423 | 🟡 Open | ouroboros-engine: [BH.1] LLM fact extraction (`/v0/learn`) | PR-review-cycle + run-observation proposers behind the contract | v2, knowledge, engine | N (after BF.3, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
+| BH.2 | #424 | 🟡 Open | ouroboros-rest: [BH.2] Retrieval layer (embeddings) | Semantic search over knowledge + history; feeds INTAKE-O.4 | v2, knowledge, rest, engine | N (after BF.5, AF.2) | N | L | ouroboros-rest, ouroboros-engine |
+| BH.3 | #425 | 🟡 Open | ouroboros-rest: [BH.3] Git-backed skills sync | `.ouroboros/skills/` in-repo projection (X.3 pattern) | v2, knowledge, rest | N (after BF.1, X.3) | N | M | ouroboros-rest |
+| BH.4 | #426 | 🟡 Open | ouroboros-rest: [BH.4] Warm-snapshot activation | BD.4 prebuilds wired to the profile card; measured boots | v2, knowledge, build-farm | N (after BD.4, BE.4) | N | S | ouroboros-rest, ouroboros-ui |
+| BH.5 | #427 | 🟡 Open | ouroboros-rest: [BH.5] Knowledge analytics & inbox integration | Fact ROI, skill effectiveness, needs-you deep flows | v2, knowledge, rest, ui | N (after BF.5, mockup-16) | N | M | ouroboros-rest, ouroboros-ui |
 
 ### Issue BH.1 — ouroboros-engine: [BH.1] LLM fact extraction (`/v0/learn`)
+
+> **GitHub issue:** #423 · **Status:** 🟡 Open · **Parent epic:** #404
 
 - **Problem Statement:** The mockup's provenance ("from PR #498 review
   cycle", "observed in loop #1847") implies extraction from rich
@@ -781,6 +822,8 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
 
 ### Issue BH.2 — ouroboros-rest: [BH.2] Retrieval layer (embeddings)
 
+> **GitHub issue:** #424 · **Status:** 🟡 Open · **Parent epic:** #404
+
 - **Problem Statement:** Similar-closed-issues, code-map lookups, and
   fact dedupe want semantic retrieval — the layer INTAKE-O.4's
   estimation signals were promised.
@@ -800,6 +843,8 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
 
 ### Issue BH.3 — ouroboros-rest: [BH.3] Git-backed skills sync
 
+> **GitHub issue:** #425 · **Status:** 🟡 Open · **Parent epic:** #404
+
 - **Problem Statement:** Teams that review everything in git want
   skills in-repo (`.ouroboros/skills/`) — the X.3 projection pattern
   applied to knowledge.
@@ -817,6 +862,8 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
 
 ### Issue BH.4 — ouroboros-rest: [BH.4] Warm-snapshot activation
 
+> **GitHub issue:** #426 · **Status:** 🟡 Open · **Parent epic:** #404
+
 - **Problem Statement:** The profile card's snapshot rows (`38s vs 6m
   cold`, nightly re-snapshot, rebuild-now) activate when BD.4's
   prebuilds exist.
@@ -831,6 +878,8 @@ e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playboo
 - **Epic:** BH
 
 ### Issue BH.5 — ouroboros-rest: [BH.5] Knowledge analytics & inbox integration
+
+> **GitHub issue:** #427 · **Status:** 🟡 Open · **Parent epic:** #404
 
 - **Problem Statement:** Which knowledge pays for itself — and the
   review workflow's real home (the needs-you inbox) once mockup 16
@@ -892,31 +941,44 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** WF-P.1/R.3/S.4, U.3/X.2 frame, AT.4/AS.4/
-   AP.4, BB.1/BA.1, INTAKE-L.1/M.3 + R.1, #41/#46, BA-D.5.
-2. **Phase 1 — Domain:** BE.1 → { BE.2 ⊕ BE.3 } ⊕ BE.4 → BE.5
-3. **Phase 2 — Services:** { BF.1 ⊕ BF.2 } → { BF.3 ⊕ BF.4 ⊕ BF.5 } →
-   BF.6 → BF.7
-4. **Phase 3 — UI:** BG.1 → { BG.2 ⊕ BG.3 ⊕ BG.4 ⊕ BG.5 } → **BG.6 ✅**
+1. **Phase 0 — Prerequisites:** WF-P.1 (#132)/R.3 (#145)/S.4 (#150), the
+   U.3 (#167)/X.2 (#181) frame, AT.4 (#332)/AS.4 (#327)/AP.4 (#306),
+   BB.1 (#384)/BA.1 (#380), INTAKE-L.1 (#105)/M.3 (#112) + R.1 (#143),
+   #41/#46, BA-D.5.
+2. **Phase 1 — Domain:** BE.1 (#405) → { BE.2 (#406) ⊕ BE.3 (#407) } ⊕ BE.4 (#408) → BE.5 (#409)
+3. **Phase 2 — Services:** { BF.1 (#410) ⊕ BF.2 (#411) } → { BF.3 (#412) ⊕ BF.4 (#413) ⊕ BF.5 (#414) } →
+   BF.6 (#415) → BF.7 (#416)
+4. **Phase 3 — UI:** BG.1 (#417) → { BG.2 (#418) ⊕ BG.3 (#419) ⊕ BG.4 (#420) ⊕ BG.5 (#421) } → **BG.6 (#422) ✅**
    *(MVP gate, amending #56)*
-5. **v2:** BH.1/BH.2 after AF.2; BH.3 after X.3; BH.4 after BD.4; BH.5
-   with mockup 16.
+5. **v2:** BH.1 (#423)/BH.2 (#424) after AF.2 (#235); BH.3 (#425) after X.3
+   (#182); BH.4 (#426) after BD.4 (#399); BH.5 (#427) with mockup 16.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BE — Knowledge Domain | 5 | 5 | 0 |
-| Epic BF — Knowledge Services | 7 | 7 | 0 |
-| Epic BG — Knowledge UI | 6 | 6 | 0 |
-| Epic BH — Learned Intelligence | 5 | 0 | 5 |
-| **Total** | **23** | **18** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BE — Knowledge Domain | #401 | 5 | 5 | 0 |
+| Epic BF — Knowledge Services | #402 | 7 | 7 | 0 |
+| Epic BG — Knowledge UI | #403 | 6 | 6 | 0 |
+| Epic BH — Learned Intelligence | #404 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **23** | **18** | **5** |
 
-Plus amendments executed at filing: WF-R.3/S.4 (registry-backed skills),
-X.2 (skills tree scope delivered), INTAKE-L.1 (facts in estimator context),
-INTAKE-M.3 (`playbook_id`), AP.4 (remember-this steer flag), DASH-J.2
-(needs-you feed gains fact reviews), #49 (`/knowledge` stub retired), #56
-(knowledge e2e leg).
+Issues **#405–#427**, filed 2026-08-09 as sub-issues of their epics, with the
+`knowledge` label and the `Knowledge MVP` / `Knowledge v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| WF-R.3 (#145) | the stage catalog serves registry skills instead of a config list |
+| WF-S.4 (#150) | inspector select + unknown-reference validation read the registry (P7's design unchanged — references stay validated strings) |
+| X.2 (#181) | the `skills/` tree gets real documents; scope delivered by BE.1 (#405) + BF.1 (#410) |
+| INTAKE-L.1 (#105) | estimator context carries confirmed facts and posts an injection record |
+| INTAKE-M.3 (#112) | queue items carry `playbook_id` — the preset reaches the run and `run 9×` derives |
+| AP.4 (#306) | steers gain an explicit remember-this flag |
+| DASH-J.2 (#90) | the needs-you feed gains fact reviews (contract for mockup 16) |
+| #49 | `/knowledge` stub retired by BG.1 (#417) |
+| #56 | knowledge e2e leg, including the estimator-context assertion (BG.6, #422) |
 
 ## References
 
@@ -958,22 +1020,30 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BG.1 | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BG.1 | #417 | 🟡 Open | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BG.2–BG.5 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BG.6 | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BG.6 | #422 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the skills storage
-model (K1 — DB versions now, git-backed v2), the fact lifecycle + anchor
-expiry (K3/K4 — deterministic staleness, human-gated confirmation), the
-learning staging (K5 — correction-note/waiver/steer/import proposers with
-honest provenance now, `/v0/learn` LLM extraction later), the context-
-assembly contract (K9 — the estimator consumes facts immediately; execution
-consumes manifests when it lands), and the snapshot honesty (K7 — no fake
-38s until BD.4 measures it). Once validated, the follow-up pass
-(`/create-issues ROADMAP_MOCKUP_14_KNOWLEDGE.md`) creates the `knowledge`
-label **and the `Knowledge MVP` / `Knowledge v2` milestones**, files the 23
-issues with epic parents, relationships, and milestone assignments, and
-posts the amendment comments listed above.
+**Filed 2026-08-09.** The `knowledge` label and the `Knowledge MVP` /
+`Knowledge v2` milestones were created, the four epics (#401–#404) and 23
+issues (#405–#427) were filed with parent relationships and milestone
+assignments, and the nine amendment comments were posted.
+
+Execution begins at **Phase 1**, and BE.1 (#405) is the single widest
+blocker — skills storage gates the services epic entirely. Within Phase 2,
+BF.5 (#414) is the keystone rather than BF.1: context assembly is what makes
+knowledge reach the loop, and the estimator wiring in that issue is the only
+MVP proof that the contract works before execution exists.
+
+The decisions this roadmap locked in, restated as the review criteria for the
+work as it lands: the skills storage model (**K1** — DB versions now,
+git-backed in BH.3/#425), the fact lifecycle and anchor expiry (**K3**/**K4** —
+deterministic staleness, human-gated confirmation, `used N×` counted from
+injection records and never stored), the learning staging (**K5** —
+correction-note/waiver/steer/import proposers with honest provenance now,
+`/v0/learn` extraction in BH.1/#423, and **no proposer may auto-confirm**),
+the context-assembly contract (**K9** — closest-scope-wins implemented once,
+the estimator consuming facts immediately), and the snapshot honesty
+(**K7** — no fabricated `38s` until BD.4/#399 measures one).

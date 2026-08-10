@@ -231,12 +231,15 @@ assistant (CJ.4), registry-as-code export/import + per-alias spend analytics
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| CG | Registry Domain & Pricing Foundations | Alias extensions, pricing catalog, reference index, seeds, CI | ouroboros-db | Model Registry MVP |
-| CH | Registry Services | Lifecycle API, params/capabilities, pricing, import, read model, governance, tests | ouroboros-rest, ouroboros-engine | Model Registry MVP |
-| CI | Registry UI | Route/subnav, table, inspector, flows, cards, states, e2e | ouroboros-ui | Model Registry MVP |
-| CJ | Extended Registry (v2) | Catalog refresh, history/audit, env tiers, deprecation assistant, as-code + analytics | all | Model Registry v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| CG | #575 | 🟡 Open | Registry Domain & Pricing Foundations | Alias extensions, pricing catalog, reference index, seeds, CI | ouroboros-db | Model Registry MVP |
+| CH | #576 | 🟡 Open | Registry Services | Lifecycle API, params/capabilities, pricing, import, read model, governance, tests | ouroboros-rest, ouroboros-engine | Model Registry MVP |
+| CI | #577 | 🟡 Open | Registry UI | Route/subnav, table, inspector, flows, cards, states, e2e | ouroboros-ui | Model Registry MVP |
+| CJ | #578 | 🟡 Open | Extended Registry (v2) | Catalog refresh, history/audit, env tiers, deprecation assistant, as-code + analytics | all | Model Registry v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `routing`, `providers`)
@@ -246,17 +249,19 @@ chips: **XS · S · M · L**.
 
 ---
 
-## Epic CG — Registry Domain & Pricing Foundations (`ouroboros-db`)
+## Epic CG (#575) — Registry Domain & Pricing Foundations (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CG.1 | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
-| CG.2 | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
-| CG.3 | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
-| CG.4 | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds second-opinion + unbound gpt5-experiments), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
-| CG.5 | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CG.1 | #579 | 🟡 Open | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
+| CG.2 | #580 | 🟡 Open | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
+| CG.3 | #581 | 🟡 Open | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
+| CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds second-opinion + unbound gpt5-experiments), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
+| CG.5 | #583 | 🟡 Open | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue CG.1 — ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions
+
+> **GitHub issue:** #579 · **Status:** 🟡 Open · **Parent epic:** #575
 
 - **Problem Statement:** Y.1's `model_aliases` was a foundation: alias, FK to a
   provider connection, raw `model_id`, loose `params` jsonb. The mockup needs
@@ -301,6 +306,8 @@ erDiagram
 
 ### Issue CG.2 — ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot
 
+> **GitHub issue:** #580 · **Status:** 🟡 Open · **Parent epic:** #575
+
 - **Problem Statement:** The `$ per 1M in·out` column needs a truth source
   that is self-hostable, provenance-honest, and covers non-token billing
   (decision R4, infrastructure option 1-A) — and DASH-J.4's "provider price
@@ -341,6 +348,8 @@ lookup(_, gpt-5.2-preview·unbound) ─▶ ∅ ─▶ renders "—"   (never $0)
 
 ### Issue CG.3 — ouroboros-db: [CG.3] Alias reference index
 
+> **GitHub issue:** #581 · **Status:** 🟡 Open · **Parent epic:** #575
+
 - **Problem Statement:** `Used by` counts, the inspector's chip list, the
   blocked Remove state, and rename safety all need one answer to "what
   references this alias?" across four different storage shapes (decision R5,
@@ -377,6 +386,8 @@ delete(coder-max) ─▶ 409 naming the four   ·   delete(gpt5-experiments) ─
 
 ### Issue CG.4 — ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity
 
+> **GitHub issue:** #582 · **Status:** 🟡 Open · **Parent epic:** #575
+
 - **Problem Statement:** Design review and e2e need the mockup's exact
   registry state — which is a superset of Y.4's six aliases — plus pricing
   rows and the run #482 resolution snapshot (R9's fixture).
@@ -409,6 +420,8 @@ seeds: 8 aliases (6 from Y.4 + second-opinion + unbound gpt5-experiments)
 
 ### Issue CG.5 — ouroboros-db: [CG.5] Registry constraints in ci/db
 
+> **GitHub issue:** #583 · **Status:** 🟡 Open · **Parent epic:** #575
+
 - **Problem Statement:** The unbound/enabled invariant, params shapes, price
   provenance, and reference integrity are what every service above trusts.
 - **Solution/Scope:** Extend #24 `tests/constraints.sql`: unbound ⇒ disabled
@@ -428,19 +441,21 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 
 ---
 
-## Epic CH — Registry Services (`ouroboros-rest` + `ouroboros-engine`)
+## Epic CH (#576) — Registry Services (`ouroboros-rest` + `ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CH.1 | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
-| CH.2 | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
-| CH.3 | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
-| CH.4 | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
-| CH.5 | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
-| CH.6 | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
-| CH.7 | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CH.1 | #584 | 🟡 Open | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
+| CH.2 | #585 | 🟡 Open | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
+| CH.3 | #586 | 🟡 Open | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
+| CH.4 | #587 | 🟡 Open | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
+| CH.5 | #588 | 🟡 Open | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
+| CH.6 | #589 | 🟡 Open | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
+| CH.7 | #590 | 🟡 Open | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
 
 ### Issue CH.1 — ouroboros-rest: [CH.1] Alias lifecycle API
+
+> **GitHub issue:** #584 · **Status:** 🟡 Open · **Parent epic:** #576
 
 - **Problem Statement:** The inspector's whole surface — create, edit, rebind,
   duplicate, enable/disable, remove — plus the guards that make the caption
@@ -487,6 +502,8 @@ POST /aliases/coder-max/duplicate ─▶ coder-max-copy (off)
 
 ### Issue CH.2 — ouroboros-rest: [CH.2] Param & capability service
 
+> **GitHub issue:** #585 · **Status:** 🟡 Open · **Parent epic:** #576
+
 - **Problem Statement:** The inspector must offer only tunables the bound
   model actually supports, and the table's chips must derive from validated
   structure (decision R3, option 2-A).
@@ -523,6 +540,8 @@ params {thinking: max} on qwen3-coder ─▶ 422 "model does not support thinkin
 
 ### Issue CH.3 — ouroboros-rest: [CH.3] Pricing service
 
+> **GitHub issue:** #586 · **Status:** 🟡 Open · **Parent epic:** #576
+
 - **Problem Statement:** The `$ per 1M in·out` cell has four honest shapes —
   priced, billing-mode word, `$0`, `—` — and downstream accounting
   (DASH-J.4, Z.5 spend, AB.4) needs the same resolution (decision R4).
@@ -550,6 +569,8 @@ override PUT {anthropic, claude-fable-5, 1200¢/6000¢} ─▶ wins over bundled
 ```
 
 ### Issue CH.4 — ouroboros-rest: [CH.4] Import from provider
+
+> **GitHub issue:** #587 · **Status:** 🟡 Open · **Parent epic:** #576
 
 - **Problem Statement:** The head's **Import from provider ▾** must bulk-create
   curated aliases from discovery truth — never from typed model strings
@@ -579,6 +600,8 @@ import {items: [opus-5, haiku-tiny]} ─▶ tx: validate all ─▶ create all �
 ```
 
 ### Issue CH.5 — ouroboros-rest: [CH.5] Registry read model & alias health
+
+> **GitHub issue:** #588 · **Status:** 🟡 Open · **Parent epic:** #576
 
 - **Problem Statement:** The table renders eight columns spanning five
   subsystems (bindings, params, provider health, pricing, references) — one
@@ -611,6 +634,8 @@ row(coder-fallback) ─▶ {GH copilot · gpt-5-codex · ⚠ degraded · seat-ba
 ```
 
 ### Issue CH.6 — ouroboros-rest: [CH.6] Governance & resolution-snapshot contract
+
+> **GitHub issue:** #589 · **Status:** 🟡 Open · **Parent epic:** #576
 
 - **Problem Statement:** Two promises remain unowned: *"raw model strings are
   rejected at publish time"* (why-card) and *"every hop is inspectable in the
@@ -651,6 +676,8 @@ snapshot(run#482): task→route→alias coder-max→Anthropic(…Xq4A)→claude-
 
 ### Issue CH.7 — ouroboros-rest: [CH.7] Registry integration tests
 
+> **GitHub issue:** #590 · **Status:** 🟡 Open · **Parent epic:** #576
+
 - **Problem Statement:** Guards, rebind semantics, pricing precedence, and
   governance rejection are cross-table logic that regressions will find
   before users do — unless tests find them first.
@@ -675,7 +702,7 @@ suites: lifecycle+guards ✓ · params ✓ · pricing ✓ · import tx ✓ · re
 
 ---
 
-## Epic CI — Registry UI (`ouroboros-ui`)
+## Epic CI (#577) — Registry UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/21-model-registry.html`](mockups/21-model-registry.html) as the
@@ -684,17 +711,19 @@ design source — the `.pill.alias` accent treatment, provider monograms
 rows, and chain-rail hops — via the #16 tokens (both themes; the mockup is
 dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CI.1 | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
-| CI.2 | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
-| CI.3 | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
-| CI.4 | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
-| CI.5 | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
-| CI.6 | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
-| CI.7 | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CI.1 | #591 | 🟡 Open | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
+| CI.2 | #592 | 🟡 Open | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
+| CI.3 | #593 | 🟡 Open | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
+| CI.4 | #594 | 🟡 Open | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
+| CI.5 | #595 | 🟡 Open | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
+| CI.6 | #596 | 🟡 Open | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
+| CI.7 | #597 | 🟡 Open | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue CI.1 — ouroboros-ui: [CI.1] Registry route, subnav & page frame
+
+> **GitHub issue:** #591 · **Status:** 🟡 Open · **Parent epic:** #577
 
 - **Problem Statement:** The page frame: the naming-promise head copy, the two
   head actions, and the shared Models subnav with the Registry tab going
@@ -720,6 +749,8 @@ Routing | ●Model registry | Providers & keys | Spend·soon
 ```
 
 ### Issue CI.2 — ouroboros-ui: [CI.2] Allowed-models table
+
+> **GitHub issue:** #592 · **Status:** 🟡 Open · **Parent epic:** #577
 
 - **Problem Statement:** The table is the page's core: eight dense columns
   where every cell is a different subsystem's truth — pills, monograms,
@@ -753,6 +784,8 @@ Routing | ●Model registry | Providers & keys | Spend·soon
 ```
 
 ### Issue CI.3 — ouroboros-ui: [CI.3] Alias inspector
+
+> **GitHub issue:** #593 · **Status:** 🟡 Open · **Parent epic:** #577
 
 - **Problem Statement:** The inspector is where BYOK becomes tangible: rename
   with guard awareness, rebind provider/model from live lists, edit only the
@@ -794,6 +827,8 @@ USED BY (implement-primary)(plan-primary)(review-primary)(escalation:effort≥L)
 
 ### Issue CI.4 — ouroboros-ui: [CI.4] New-alias & import flows
 
+> **GitHub issue:** #594 · **Status:** 🟡 Open · **Parent epic:** #577
+
 - **Problem Statement:** Two creation paths: a single curated alias (+ New
   alias — including the create-ahead-of-a-key unbound path the orphan row
   implies) and bulk import from a provider's discovered models (R7).
@@ -825,6 +860,8 @@ USED BY (implement-primary)(plan-primary)(review-primary)(escalation:effort≥L)
 ```
 
 ### Issue CI.5 — ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards
+
+> **GitHub issue:** #595 · **Status:** 🟡 Open · **Parent epic:** #577
 
 - **Problem Statement:** The right column carries the page's argument: the
   three-row BYOK explainer, and the chain card proving aliases resolve —
@@ -859,6 +896,8 @@ no snapshot ─▶ same rail + tag: (simulated — live runs arrive with invocat
 
 ### Issue CI.6 — ouroboros-ui: [CI.6] Registry states & guards
 
+> **GitHub issue:** #596 · **Status:** 🟡 Open · **Parent epic:** #577
+
 - **Problem Statement:** A fresh org has an empty registry; a member must
   browse without touching; errors and loading must not blank the densest
   table in the product.
@@ -877,6 +916,8 @@ no snapshot ─▶ same rail + tag: (simulated — live runs arrive with invocat
 - **Epic:** CI
 
 ### Issue CI.7 — ouroboros-ui: [CI.7] Registry e2e leg
+
+> **GitHub issue:** #597 · **Status:** 🟡 Open · **Parent epic:** #577
 
 - **Problem Statement:** The registry's promises — BYOK rebind without
   breakage, guards that block, governance that rejects — span db, services,
@@ -901,17 +942,19 @@ e2e: parity ✓ · lifecycle ✓ · rebind→routing re-renders ✓ · import �
 
 ---
 
-## Epic CJ — Extended Registry (v2 · milestone `Model Registry v2`)
+## Epic CJ (#578) — Extended Registry (v2 · milestone `Model Registry v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CJ.1 | ouroboros-rest: [CJ.1] Pricing catalog refresh & drift alerts | Scheduled snapshot refresh from live catalogs; price-change review queue | v2, registry, rest | N (after CG.2, CH.3) | N | M | ouroboros-rest, ouroboros-db |
-| CJ.2 | ouroboros-rest: [CJ.2] Alias change history & audit surface | Revision timeline per alias; #26 audit events; inspector History tab | v2, registry, rest, ui | N (after CH.1, #26) | N | M | ouroboros-rest, ouroboros-ui |
-| CJ.3 | ouroboros-rest: [CJ.3] Environment-tier aliases | First-class prod/dev bindings per alias (same model, different keys/caps) | v2, registry, rest, ui | N (after CH.1, AD.2) | N | L | ouroboros-rest, ouroboros-ui, ouroboros-db |
-| CJ.4 | ouroboros-rest: [CJ.4] Model deprecation watch & migration assistant | Discovery-diff deprecation detection; guided rebind with simulate-diff | v2, registry, rest, ui | N (after CH.4, Z.4) | N | L | ouroboros-rest, ouroboros-ui |
-| CJ.5 | ouroboros-rest: [CJ.5] Registry as code & per-alias analytics | Export/import JSON/YAML (GitOps); per-alias spend/usage panels | v2, registry, rest, ui | N (after CH.1, Z.5) | N | M | ouroboros-rest, ouroboros-ui |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CJ.1 | #598 | 🟡 Open | ouroboros-rest: [CJ.1] Pricing catalog refresh & drift alerts | Scheduled snapshot refresh from live catalogs; price-change review queue | v2, registry, rest | N (after CG.2, CH.3) | N | M | ouroboros-rest, ouroboros-db |
+| CJ.2 | #599 | 🟡 Open | ouroboros-rest: [CJ.2] Alias change history & audit surface | Revision timeline per alias; #26 audit events; inspector History tab | v2, registry, rest, ui | N (after CH.1, #26) | N | M | ouroboros-rest, ouroboros-ui |
+| CJ.3 | #600 | 🟡 Open | ouroboros-rest: [CJ.3] Environment-tier aliases | First-class prod/dev bindings per alias (same model, different keys/caps) | v2, registry, rest, ui | N (after CH.1, AD.2) | N | L | ouroboros-rest, ouroboros-ui, ouroboros-db |
+| CJ.4 | #601 | 🟡 Open | ouroboros-rest: [CJ.4] Model deprecation watch & migration assistant | Discovery-diff deprecation detection; guided rebind with simulate-diff | v2, registry, rest, ui | N (after CH.4, Z.4) | N | L | ouroboros-rest, ouroboros-ui |
+| CJ.5 | #602 | 🟡 Open | ouroboros-rest: [CJ.5] Registry as code & per-alias analytics | Export/import JSON/YAML (GitOps); per-alias spend/usage panels | v2, registry, rest, ui | N (after CH.1, Z.5) | N | M | ouroboros-rest, ouroboros-ui |
 
 ### Issue CJ.1 — ouroboros-rest: [CJ.1] Pricing catalog refresh & drift alerts
+
+> **GitHub issue:** #598 · **Status:** 🟡 Open · **Parent epic:** #578
 
 - **Problem Statement:** The bundled snapshot (R4) ages between releases;
   option 1-B's live sources exist precisely to keep it current — as a
@@ -933,6 +976,8 @@ e2e: parity ✓ · lifecycle ✓ · rebind→routing re-renders ✓ · import �
 
 ### Issue CJ.2 — ouroboros-rest: [CJ.2] Alias change history & audit surface
 
+> **GitHub issue:** #599 · **Status:** 🟡 Open · **Parent epic:** #578
+
 - **Problem Statement:** CH.1's lightweight revision records answer *that*
   something changed; operators of a BYOK vocabulary need *who rebound
   coder-max to what, when* — auditable and visible.
@@ -949,6 +994,8 @@ e2e: parity ✓ · lifecycle ✓ · rebind→routing re-renders ✓ · import �
 - **Epic:** CJ
 
 ### Issue CJ.3 — ouroboros-rest: [CJ.3] Environment-tier aliases
+
+> **GitHub issue:** #600 · **Status:** 🟡 Open · **Parent epic:** #578
 
 - **Problem Statement:** The why-card's second promise — *"coder-max (prod
   key, $600 cap) vs coder-max-dev (dev key, $50 cap)"* — is a naming
@@ -977,6 +1024,8 @@ resolve(implement, env=dev) ─▶ same alias · dev key   env tier unbound ─�
 
 ### Issue CJ.4 — ouroboros-rest: [CJ.4] Model deprecation watch & migration assistant
 
+> **GitHub issue:** #601 · **Status:** 🟡 Open · **Parent epic:** #578
+
 - **Problem Statement:** Providers retire models; today that surfaces only as
   the CH.5 `model_missing` warning after the fact. The registry — the one
   place every model binding lives — should see it coming and walk the
@@ -999,6 +1048,8 @@ resolve(implement, env=dev) ─▶ same alias · dev key   env tier unbound ─�
 - **Epic:** CJ
 
 ### Issue CJ.5 — ouroboros-rest: [CJ.5] Registry as code & per-alias analytics
+
+> **GitHub issue:** #602 · **Status:** 🟡 Open · **Parent epic:** #578
 
 - **Problem Statement:** Fleet operators want the vocabulary reviewable in
   git (option 3-C), and the table's `Used by` count begs the next question —
@@ -1064,36 +1115,57 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** routing Y.1–Y.4/Z.1/Z.3/Z.4; providers
-   AC.1/AC.6; workflow P.2; scaffolding #19/#24/#41/#46; BA-C.3/D.5; AA.1
+1. **Phase 0 — Prerequisites:** routing Y.1–Y.4 (#189–#192) / Z.1 (#194) /
+   Z.3 (#196) / Z.4 (#197); providers AC.1 (#216) / AC.6 (#221); workflow P.2
+   (#133); scaffolding #19/#24/#41/#46; BA-C.3/D.5 (unfiled); AA.1 (#200)
    subnav in place to amend.
-2. **Phase 1 — Domain:** { CG.1 ⊕ CG.2 } → CG.3 → CG.4 → CG.5
-3. **Phase 2 — Services:** { CH.1 ⊕ CH.2 ⊕ CH.3 ⊕ CH.6 } → { CH.4 ⊕ CH.5 } →
-   CH.7
-4. **Phase 3 — UI:** CI.1 → CI.2 → { CI.3 ⊕ CI.4 ⊕ CI.5 } → CI.6 →
-   **CI.7 ✅** *(MVP gate, amending #56)*
-5. **v2:** CJ.1 ⊕ CJ.2 ⊕ CJ.3 ⊕ CJ.4 ⊕ CJ.5 as their dependencies allow
-   (CJ.5's analytics truth and CJ.3's full value arrive with invocation
-   AF.2).
+2. **Phase 1 — Domain:** { CG.1 (#579) ⊕ CG.2 (#580) } → CG.3 (#581) →
+   CG.4 (#582) → CG.5 (#583)
+3. **Phase 2 — Services:** { CH.1 (#584) ⊕ CH.2 (#585) ⊕ CH.3 (#586) ⊕
+   CH.6 (#589) } → { CH.4 (#587) ⊕ CH.5 (#588) } → CH.7 (#590)
+4. **Phase 3 — UI:** CI.1 (#591) → CI.2 (#592) → { CI.3 (#593) ⊕ CI.4 (#594)
+   ⊕ CI.5 (#595) } → CI.6 (#596) → **CI.7 (#597) ✅** *(MVP gate,
+   amending #56)*
+5. **v2:** CJ.1 (#598) ⊕ CJ.2 (#599) ⊕ CJ.3 (#600) ⊕ CJ.4 (#601) ⊕
+   CJ.5 (#602) as their dependencies allow (CJ.5's analytics truth and CJ.3's
+   full value arrive with invocation AF.2, #235).
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic CG — Registry Domain & Pricing Foundations | 5 | 5 | 0 |
-| Epic CH — Registry Services | 7 | 7 | 0 |
-| Epic CI — Registry UI | 7 | 7 | 0 |
-| Epic CJ — Extended Registry | 5 | 0 | 5 |
-| **Total** | **24** | **19** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic CG — Registry Domain & Pricing Foundations | #575 | 5 | 5 | 0 |
+| Epic CH — Registry Services | #576 | 7 | 7 | 0 |
+| Epic CI — Registry UI | #577 | 7 | 7 | 0 |
+| Epic CJ — Extended Registry | #578 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **24** | **19** | **5** |
 
-Plus amendments executed at filing: AA.1 (Registry subnav tab live — mirrored
-in AE.1's copy), #49 (registry route stub retired), #56 (registry e2e leg),
-Z.2 (minimal alias-list endpoint superseded by CH.1), Z.1 (disabled/unbound
-dropped-hop semantics, CH.6), WF P.2 (`llm` nodes reference aliases —
-raw-model rejection, CH.6), AC.1 (`paramSchema` SPI extension, CH.2), Y.4/AC.6
-(seed coordination for the two added aliases, CG.4), DASH-J.4 + Z.5/AB.4
-(consume CG.2/CH.3 price tables), run-console roadmap (resolution-snapshot
-contract coordination, CH.6).
+Issues **#579–#602**, filed 2026-08-09 as sub-issues of their epics
+(#575–#578), with the new `registry` label and the `Model Registry MVP` /
+`Model Registry v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| AA.1 (#200) | The **Model registry** subnav tab goes live with CI.1 (#591), mirroring AE.1's change; Spend stays an honest stub until AB.4 (#210) |
+| AE.1 (#227) | Registry becomes a working cross-link in the shared subnav; the AE.2 (#228) provider monograms are **reused** by the registry table (#592), not re-implemented |
+| Z.2 (#195) | **The minimal alias-list read is superseded by CH.1 (#584)**; routing's swap menus consume CH.5's (#588) composed read model |
+| Z.1 (#194) | Resolution gains **disabled/unbound dropped hops with explanations** (CH.6, #589); floor semantics unchanged; simulate surfaces them |
+| WF-P.2 (#133) | **`llm` nodes go alias-only** — raw model strings fail publish validation with a designed error; the side effect is that workflow references become structural, which is what CG.3's (#581) index needs |
+| AC.1 (#216) | The SPI gains **`paramSchema(modelId)`** (CH.2, #585); the inspector renders fields from it with zero UI special-casing; restriction flags stay adapter-independent |
+| Y.4 (#192) | Seeds **extended, not forked** — `second-opinion` and the unbound `gpt5-experiments` join the shared universe, plus params, prices and the run #482 snapshot (CG.4, #582) |
+| AC.6 (#221) | P6's "discovery feeds the registry" is claimed: import (#587), the inspector's live model list (#593), param metadata (#585), and the `model not in discovery` health state (#588) |
+| DASH-J.4 (#92) | **The "provider price tables" are being built here** — consume CG.2 (#580) + CH.3 (#586) rather than re-inventing them |
+| Z.5 (#198) | Spend prices through CH.3 (#586), so route spend, dashboard accounting and the registry column agree — including non-token billing modes |
+| AB.4 (#210) | Same pricing layer; the by-model drill-down should read CJ.5's (#602) per-alias attribution when it lands; Spend remains a stub in CI.1 until this ships |
+| AP.2 (#304) | The **resolution-snapshot contract** (CH.6, #589) is offered as the shared truth behind the console's read APIs |
+| AQ.4 (#312) | The stage model pill's "active stage's resolution" now has a defined persisted artifact; registry and transcript read one snapshot |
+| AF.2 (#235) | Declared the **writer** of resolution snapshots and the source of per-hop usage attribution (CJ.5); dropped-hop explanations carry into run records |
+| BZ.3 (#537) | `/ouro route` validates aliases through CH.1 (#584); chat route pins are the fourth reference kind in CG.3 (#581), zero rows until that storage exists |
+| AD.2 (#223) | The registry **mirrors** this guard in the other direction; the nullable binding for unbound aliases leaves AD.2 unaffected, regression-verified in CG.1 (#579) |
+| #49 | The `/models/registry` placeholder is retired by CI.1 (#591) |
+| #56 | Gains the registry e2e leg (CI.7, #597) — the MVP gate |
 
 ## References
 
@@ -1148,26 +1220,40 @@ the mockup's top-bar navigation for every UI issue in this roadmap:
 
 Issue-level impact:
 
-| Issue | Amendment |
-|---|---|
-| CI.1 | Mounts in the shell content pane; navigation reached via the sidebar **Models** entry, not a topbar link; the Models subnav renders as PageSubnav, sticky in-pane |
-| CI.2, CI.3, CI.4, CI.5, CI.6 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| CI.7 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| Issue | GitHub | Status | Amendment |
+|---|:---:|:---:|---|
+| CI.1 | #591 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar **Models** entry, not a topbar link; the Models subnav renders as PageSubnav, sticky in-pane |
+| CI.2, CI.3, CI.4, CI.5, CI.6 | #592, #593, #594, #595, #596 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| CI.7 | #597 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the alias-state model
-(R2 — `unbound` as a first-class, deliberately-created state with enabling
-blocked), the pricing architecture (R4 — bundled LiteLLM snapshot + org
-overrides + billing modes as the shared price-table layer DASH-J.4 will
-consume, versus manual-only or live-API-only), the rename-is-guarded stance
-(R5 — by-name workflow references make rename as dangerous as delete), the
-governance amendment to the workflow DSL (R6/CH.6 — `llm` nodes go
-alias-only, a breaking schema change best made before workflows proliferate),
-and the resolution-snapshot honesty rule (R9 — labeled simulation until
-invocation lands). Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_21_MODEL_REGISTRY.md`) creates the `registry` label **and the
-`Model Registry MVP` / `Model Registry v2` milestones**, files the 24 issues
-with epic parents, relationships, and milestone assignments, and posts the
-amendment comments listed above.
+**Filed 2026-08-09.** The `registry` label and the `Model Registry MVP` /
+`Model Registry v2` milestones were created; the four epics (#575–#578) and
+twenty-four issues (#579–#602) are on GitHub with parent relationships,
+milestones, labels and types set, and the eighteen amendment comments listed
+above are posted.
+
+**Before starting, note two breaking coordination points** that are cheaper
+now than later:
+
+1. **WF-P.2 (#133) goes alias-only** (R6/CH.6, #589). Every `llm` node in the
+   workflow DSL references a registry alias; raw model strings fail publish
+   validation. This is a schema break, and it is far cheaper before workflows
+   proliferate — it is also what makes workflow references queryable for
+   CG.3 (#581).
+2. **DASH-J.4 (#92) should not build its own price tables** — CG.2 (#580) and
+   CH.3 (#586) are that layer (R4), together with Z.5 (#198) and AB.4 (#210).
+
+Execution starts at **CG.1 (#579)** — the alias extensions block the domain,
+and CG.2 (#580) can run beside them. The critical path to the MVP gate is
+#579 → #581 → #584 → #588 → #591 → #592 → #593 → #596 → **#597**, with
+pricing (#580 → #586), capabilities (#585) and governance (#589) joining at
+#588, and the seeds (#582) feeding every parity fixture.
+
+The deepest risk here is **CG.3 / CH.1 (#581, #584)**: the reference index is
+what makes `Used by`, the blocked Remove and the rename guard true, and a
+reference kind it silently misses does not fail loudly — it returns a smaller
+number and lets a referenced alias disappear. #590's rule that removing the
+delete guard, the rename guard or the unbound CHECK must turn the suite red
+is what keeps that honest after the first refactor.

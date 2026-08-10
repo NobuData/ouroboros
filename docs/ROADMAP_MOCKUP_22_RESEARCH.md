@@ -296,13 +296,16 @@ refresh alerts), scheduled/continuous investigations + full research library
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| CK | Research Domain | Investigations, citation ledger, matrices, watch, roadmap docs, seeds, CI | ouroboros-db | Research MVP |
-| CL | Research Tool SPI & Tools | SPI + conformance kit, five MVP tool adapters | ouroboros-rest, ouroboros-engine | Research MVP |
-| CM | Investigation Engine & Pipeline | `/v0/investigate` loop, briefs/matrices, estimates, watch+bisect, pipeline, API, tests | ouroboros-engine, ouroboros-rest | Research MVP |
-| CN | Research UI | All seven page regions, states, e2e | ouroboros-ui | Research MVP |
-| CO | Research at Scale (v2) | Papers tool, deep multi-agent research, tracker expansion, library, knowledge flywheel | all | Research v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| CK | #603 | 🟡 Open | Research Domain | Investigations, citation ledger, matrices, watch, roadmap docs, seeds, CI | ouroboros-db | Research MVP |
+| CL | #604 | 🟡 Open | Research Tool SPI & Tools | SPI + conformance kit, five MVP tool adapters | ouroboros-rest, ouroboros-engine | Research MVP |
+| CM | #605 | 🟡 Open | Investigation Engine & Pipeline | `/v0/investigate` loop, briefs/matrices, estimates, watch+bisect, pipeline, API, tests | ouroboros-engine, ouroboros-rest | Research MVP |
+| CN | #606 | 🟡 Open | Research UI | All seven page regions, states, e2e | ouroboros-ui | Research MVP |
+| CO | #607 | 🟡 Open | Research at Scale (v2) | Papers tool, deep multi-agent research, tracker expansion, library, knowledge flywheel | all | Research v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`, `planning`,
@@ -312,18 +315,20 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic CK — Research Domain (`ouroboros-db`)
+## Epic CK (#603) — Research Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CK.1 | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| CK.2 | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
-| CK.3 | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
-| CK.4 | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
-| CK.5 | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
-| CK.6 | ouroboros-db: [CK.6] Research dev seeds — mockup-22 parity + probes | RS-118/121/124/127, 44-source ledger, matrix, watch rows, doc; ci checks | mvp, research, db, ci | N (after CK.2–CK.5, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CK.1 | #608 | 🟡 Open | ouroboros-db: [CK.1] Investigations & kind registry schema | RS-### entities: kind, depth, tools, status, provenance, spend | mvp, research, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| CK.2 | #609 | 🟡 Open | ouroboros-db: [CK.2] Citation ledger — source records & claims | Archived sources (external+internal URIs), claim→citation links | mvp, research, db | N (after CK.1) | Y | M | ouroboros-db |
+| CK.3 | #610 | 🟡 Open | ouroboros-db: [CK.3] Capability matrices & competitor watch schema | Matrix cells with citations; rival registry, watched sources, diffs | mvp, research, db | N (after CK.2) | Y | M | ouroboros-db |
+| CK.4 | #611 | 🟡 Open | ouroboros-db: [CK.4] Regression baselines & watch items | Release baselines, metric windows, drift states, bisect results | mvp, research, db | N (after CK.1, AS.1) | Y | M | ouroboros-db |
+| CK.5 | #612 | 🟡 Open | ouroboros-db: [CK.5] Roadmap docs & suggested changes | Versioned doc entities, projection state, writeback refs, suggestions | mvp, research, db | N (after CK.1, AK.1) | Y | M | ouroboros-db |
+| CK.6 | #613 | 🟡 Open | ouroboros-db: [CK.6] Research dev seeds — mockup-22 parity + probes | RS-118/121/124/127, 44-source ledger, matrix, watch rows, doc; ci checks | mvp, research, db, ci | N (after CK.2–CK.5, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue CK.1 — ouroboros-db: [CK.1] Investigations & kind registry schema
+
+> **GitHub issue:** #608 · **Status:** 🟡 Open · **Parent epic:** #603
 
 - **Problem Statement:** Everything on the page hangs off an investigation
   entity that doesn't exist — with a per-org human id (`RS-127`), a kind, a
@@ -358,6 +363,8 @@ investigations{RS-127, gap_analysis, deep_dive, tools:[web,competitor,code,ticke
 
 ### Issue CK.2 — ouroboros-db: [CK.2] Citation ledger — source records & claims
 
+> **GitHub issue:** #609 · **Status:** 🟡 Open · **Parent epic:** #603
+
 - **Problem Statement:** "Every claim cited" needs storage where citations
   are archived facts, stable while the web moves — and where a brief's
   claims link to them structurally (decision V3).
@@ -390,6 +397,8 @@ brief_claims: "gap is control, not sensors" ──▶ {[07],[12],[31],[git]}   (
 ```
 
 ### Issue CK.3 — ouroboros-db: [CK.3] Capability matrices & competitor watch schema
+
+> **GitHub issue:** #610 · **Status:** 🟡 Open · **Parent epic:** #603
 
 - **Problem Statement:** The featured card's matrix and the tracker's rival
   registry are structured evidence, not markup (decisions V7, V9).
@@ -424,6 +433,8 @@ watch: skylink/release_notes url+selector ─▶ snapshots{hash, diff} ─▶ ci
 
 ### Issue CK.4 — ouroboros-db: [CK.4] Regression baselines & watch items
 
+> **GitHub issue:** #611 · **Status:** 🟡 Open · **Parent epic:** #603
+
 - **Problem Statement:** "Nightly vs. v2.0.4 baseline" needs per-release
   metric baselines, drift states, and bisect outcomes as data — the card's
   three rows and their lifecycle (decision V6).
@@ -452,6 +463,8 @@ baseline{v2.0.4, hover_drift_gusts, window} × nightly ─▶ item{+14%, err,
 ```
 
 ### Issue CK.5 — ouroboros-db: [CK.5] Roadmap docs & suggested changes
+
+> **GitHub issue:** #612 · **Status:** 🟡 Open · **Parent epic:** #603
 
 - **Problem Statement:** The pipeline card's `ROADMAP.md` is a versioned
   product entity projected to a file — with writeback state and a
@@ -485,6 +498,8 @@ apply ─▶ re-run create-roadmap ─▶ v4 (suggestion → applied@v4)
 ```
 
 ### Issue CK.6 — ouroboros-db: [CK.6] Research dev seeds — mockup-22 parity + probes
+
+> **GitHub issue:** #613 · **Status:** 🟡 Open · **Parent epic:** #603
 
 - **Problem Statement:** Design review and e2e need the page's full state:
   four investigations, a 44-record ledger, the matrix, watch rows, and the
@@ -520,18 +535,20 @@ seeds: 4 kinds · RS-118/121/124/127 · ledger(44 + 312 compact) · matrix 5×4
 
 ---
 
-## Epic CL — Research Tool SPI & Tools (`ouroboros-rest` + `ouroboros-engine`)
+## Epic CL (#604) — Research Tool SPI & Tools (`ouroboros-rest` + `ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CL.1 | ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit | Interface, capability/config schemas, source-record contract, registry, lint | mvp, research, rest | N (after CK.2) | Y | L | ouroboros-rest |
-| CL.2 | ouroboros-rest: [CL.2] Web search & page reader tool | SearXNG default + Brave/Tavily/Firecrawl configs; robots-aware fetch/extract/archive | mvp, research, rest | N (after CL.1) | Y | L | ouroboros-rest |
-| CL.3 | ouroboros-rest: [CL.3] Competitor tracker tool | Rival registry CRUD, scheduled snapshots+diffs, citable change feed | mvp, research, rest | N (after CL.1, CK.3) | Y | M | ouroboros-rest |
-| CL.4 | ouroboros-engine: [CL.4] Codebase & git mining tool | Blame/log/dep-graph queries over repo clones; bisect execution primitive | mvp, research, engine | N (after CL.1, #54) | Y | M | ouroboros-engine, ouroboros-rest |
-| CL.5 | ouroboros-rest: [CL.5] Issue & PR history index tool | Canonical tickets (tracker-agnostic via WF-Q), PRs, imported docs; query ops | mvp, research, rest | N (after CL.1, WF-Q) | Y | M | ouroboros-rest |
-| CL.6 | ouroboros-rest: [CL.6] Build & test telemetry tool | Read-only queries over AS/AT history, AJ.4 telemetry, BI rollups | mvp, research, rest | N (after CL.1, BI.2) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CL.1 | #614 | 🟡 Open | ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit | Interface, capability/config schemas, source-record contract, registry, lint | mvp, research, rest | N (after CK.2) | Y | L | ouroboros-rest |
+| CL.2 | #615 | 🟡 Open | ouroboros-rest: [CL.2] Web search & page reader tool | SearXNG default + Brave/Tavily/Firecrawl configs; robots-aware fetch/extract/archive | mvp, research, rest | N (after CL.1) | Y | L | ouroboros-rest |
+| CL.3 | #616 | 🟡 Open | ouroboros-rest: [CL.3] Competitor tracker tool | Rival registry CRUD, scheduled snapshots+diffs, citable change feed | mvp, research, rest | N (after CL.1, CK.3) | Y | M | ouroboros-rest |
+| CL.4 | #617 | 🟡 Open | ouroboros-engine: [CL.4] Codebase & git mining tool | Blame/log/dep-graph queries over repo clones; bisect execution primitive | mvp, research, engine | N (after CL.1, #54) | Y | M | ouroboros-engine, ouroboros-rest |
+| CL.5 | #618 | 🟡 Open | ouroboros-rest: [CL.5] Issue & PR history index tool | Canonical tickets (tracker-agnostic via WF-Q), PRs, imported docs; query ops | mvp, research, rest | N (after CL.1, WF-Q) | Y | M | ouroboros-rest |
+| CL.6 | #619 | 🟡 Open | ouroboros-rest: [CL.6] Build & test telemetry tool | Read-only queries over AS/AT history, AJ.4 telemetry, BI rollups | mvp, research, rest | N (after CL.1, BI.2) | Y | M | ouroboros-rest |
 
 ### Issue CL.1 — ouroboros-rest: [CL.1] ResearchToolAdapter SPI & conformance kit
+
+> **GitHub issue:** #614 · **Status:** 🟡 Open · **Parent epic:** #604
 
 - **Problem Statement:** Six tools ship across MVP+v2 and orgs will want
   more (internal wikis, vendor portals, data lakes); pluggability must be
@@ -572,6 +589,8 @@ engine ──/internal/research/tools/web/search──▶ REST(adapter) ─▶ r
 
 ### Issue CL.2 — ouroboros-rest: [CL.2] Web search & page reader tool
 
+> **GitHub issue:** #615 · **Status:** 🟡 Open · **Parent epic:** #604
+
 - **Problem Statement:** The first chip: search the web, read pages fully,
   archive what was read — robots-aware, self-hostable by default,
   upgradeable to hosted AI-search providers (infrastructure option 1-A).
@@ -604,6 +623,8 @@ robots denied ─▶ skipped-source note (recorded, honest)
 
 ### Issue CL.3 — ouroboros-rest: [CL.3] Competitor tracker tool
 
+> **GitHub issue:** #616 · **Status:** 🟡 Open · **Parent epic:** #604
+
 - **Problem Statement:** "4 rivals watched · release notes, changelogs,
   filings" — a watch registry with scheduled, scoped, archived diffing the
   researcher can cite (decisions V9, option 2-A).
@@ -633,6 +654,8 @@ query changes(skylink, 90d) ─▶ [diff records]
 
 ### Issue CL.4 — ouroboros-engine: [CL.4] Codebase & git mining tool
 
+> **GitHub issue:** #617 · **Status:** 🟡 Open · **Parent epic:** #604
+
 - **Problem Statement:** "blame, bisect, dependency graph over
   helios-firmware" — deterministic code archaeology the researcher and the
   regression watch both need (V6 uses the bisect primitive).
@@ -661,6 +684,8 @@ bisect(v2.0.4, nightly, hil:hover_drift) ─▶ farm jobs ×9 ─▶ culprit a41
 ```
 
 ### Issue CL.5 — ouroboros-rest: [CL.5] Issue & PR history index tool
+
+> **GitHub issue:** #618 · **Status:** 🟡 Open · **Parent epic:** #604
 
 - **Problem Statement:** "3,412 issues · support tickets · churn
   interviews" — the org's institutional memory, **tracker-agnostic**: this
@@ -694,6 +719,8 @@ import churn-2026-q2.csv ─▶ 14 docs · citable · counted in the card sub-li
 
 ### Issue CL.6 — ouroboros-rest: [CL.6] Build & test telemetry tool
 
+> **GitHub issue:** #619 · **Status:** 🟡 Open · **Parent epic:** #604
+
 - **Problem Statement:** "HIL bench measurements, fleet metrics warehouse"
   — the loop must query what the product already measures, read-only, with
   windows it can cite (V6's data plane shared with the watch).
@@ -720,19 +747,21 @@ compare(hover_drift_gusts, baseline:v2.0.4, nightly) ─▶ {+14%, unit:%, n, wi
 
 ---
 
-## Epic CM — Investigation Engine & Pipeline (`ouroboros-engine` + `ouroboros-rest`)
+## Epic CM (#605) — Investigation Engine & Pipeline (`ouroboros-engine` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CM.1 | ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract | Plan→tools→synthesize→brief; checkpoints, budgets, citations; AF.2 LLM | mvp, research, engine, providers | N (after CL.1, AF.2, CK.2) | Y | L | ouroboros-engine, ouroboros-rest |
-| CM.2 | ouroboros-rest: [CM.2] Brief composition, matrices & export | Claim-linked briefs, matrix builder, source panels, Markdown export | mvp, research, rest | N (after CM.1, CK.3) | Y | M | ouroboros-rest |
-| CM.3 | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
-| CM.4 | ouroboros-rest: [CM.4] Regression watch service & bisect orchestration | Baseline capture, nightly compare, drift→bisect→forensics→draft chain | mvp, research, rest, engine | N (after CK.4, CL.4, CL.6) | Y | L | ouroboros-rest, ouroboros-engine |
-| CM.5 | ouroboros-rest: [CM.5] Gaps→Planning handoff & roadmap-doc pipeline | Draft batches from gaps; create-roadmap/create-issues skill runs, suggestions, writeback, repo PR | mvp, research, rest, planning, knowledge | N (after CM.2, CK.5, AL.4, BE.1) | Y | L | ouroboros-rest, ouroboros-engine |
-| CM.6 | ouroboros-rest: [CM.6] Investigation lifecycle API | Start/cancel/list/detail/history/library payloads; progress stream | mvp, research, rest | N (after CM.1, CM.3) | Y | M | ouroboros-rest |
-| CM.7 | ouroboros-rest: [CM.7] Research integration tests | Loop, citations, watch chain, pipeline writeback, estimates, isolation | mvp, research, rest, engine, ci | N (after CM.1–CM.6) | Y | M | ouroboros-rest, ouroboros-engine |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CM.1 | #620 | 🟡 Open | ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract | Plan→tools→synthesize→brief; checkpoints, budgets, citations; AF.2 LLM | mvp, research, engine, providers | N (after CL.1, AF.2, CK.2) | Y | L | ouroboros-engine, ouroboros-rest |
+| CM.2 | #621 | 🟡 Open | ouroboros-rest: [CM.2] Brief composition, matrices & export | Claim-linked briefs, matrix builder, source panels, Markdown export | mvp, research, rest | N (after CM.1, CK.3) | Y | M | ouroboros-rest |
+| CM.3 | #622 | 🟡 Open | ouroboros-rest: [CM.3] Scope & cost estimation + research routing | Depth×tools×alias-pricing estimates; `research` task kinds registered | mvp, research, rest, routing | N (after CK.1, CH.3) | Y | M | ouroboros-rest |
+| CM.4 | #623 | 🟡 Open | ouroboros-rest: [CM.4] Regression watch service & bisect orchestration | Baseline capture, nightly compare, drift→bisect→forensics→draft chain | mvp, research, rest, engine | N (after CK.4, CL.4, CL.6) | Y | L | ouroboros-rest, ouroboros-engine |
+| CM.5 | #624 | 🟡 Open | ouroboros-rest: [CM.5] Gaps→Planning handoff & roadmap-doc pipeline | Draft batches from gaps; create-roadmap/create-issues skill runs, suggestions, writeback, repo PR | mvp, research, rest, planning, knowledge | N (after CM.2, CK.5, AL.4, BE.1) | Y | L | ouroboros-rest, ouroboros-engine |
+| CM.6 | #625 | 🟡 Open | ouroboros-rest: [CM.6] Investigation lifecycle API | Start/cancel/list/detail/history/library payloads; progress stream | mvp, research, rest | N (after CM.1, CM.3) | Y | M | ouroboros-rest |
+| CM.7 | #626 | 🟡 Open | ouroboros-rest: [CM.7] Research integration tests | Loop, citations, watch chain, pipeline writeback, estimates, isolation | mvp, research, rest, engine, ci | N (after CM.1–CM.6) | Y | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue CM.1 — ouroboros-engine: [CM.1] Investigation loop & `/v0/investigate` contract
+
+> **GitHub issue:** #620 · **Status:** 🟡 Open · **Parent epic:** #605
 
 - **Problem Statement:** The product promise — a principal-engineer-grade
   investigation with every claim cited — needs one orchestrated loop:
@@ -779,6 +808,8 @@ deliver ─▶ brief + matrix rows · actuals{44 src, 612¢} · checkpoint each 
 
 ### Issue CM.2 — ouroboros-rest: [CM.2] Brief composition, matrices & export
 
+> **GitHub issue:** #621 · **Status:** 🟡 Open · **Parent epic:** #605
+
 - **Problem Statement:** Briefs must render with superscript citations, the
   matrix must build from cited cells, and **Export brief ↗** must produce
   a faithful artifact (decisions V3, V7).
@@ -809,6 +840,8 @@ export.md: brief + matrix + 44 numbered sources + provenance
 ```
 
 ### Issue CM.3 — ouroboros-rest: [CM.3] Scope & cost estimation + research routing
+
+> **GitHub issue:** #622 · **Status:** 🟡 Open · **Parent epic:** #605
 
 - **Problem Statement:** `est. 40–60 sources · ~$6` must be computed
   before start (decision V5), and the composer's `researcher:
@@ -842,6 +875,8 @@ route.task("research") ─▶ alias researcher-long-ctx ─▶ composer pill (re
 ```
 
 ### Issue CM.4 — ouroboros-rest: [CM.4] Regression watch service & bisect orchestration
+
+> **GitHub issue:** #623 · **Status:** 🟡 Open · **Parent epic:** #605
 
 - **Problem Statement:** The watch card's promise — every nightly compared
   to the release baseline, any drift bisected and turned into a forensics
@@ -883,6 +918,8 @@ nightly ─▶ compare(hover_drift, v2.0.4) ─▶ +14% > threshold ─▶ item(
 ```
 
 ### Issue CM.5 — ouroboros-rest: [CM.5] Gaps→Planning handoff & roadmap-doc pipeline
+
+> **GitHub issue:** #624 · **Status:** 🟡 Open · **Parent epic:** #605
 
 - **Problem Statement:** The page's two action paths — **Draft epic from
   gaps** and the RS-124 brief→ROADMAP.md→issues pipeline with suggested
@@ -932,6 +969,8 @@ brief ─create-roadmap─▶ doc v1 ─▶ PR #88 · suggestions{KS, AI} ─app
 
 ### Issue CM.6 — ouroboros-rest: [CM.6] Investigation lifecycle API
 
+> **GitHub issue:** #625 · **Status:** 🟡 Open · **Parent epic:** #605
+
 - **Problem Statement:** The composer, the investigations card, History,
   and the library button need the full lifecycle surface with live
   progress (decisions V1, V11).
@@ -959,6 +998,8 @@ GET /research?quarter=current ─▶ {active: 4, quarter: 23, rows[]}
 
 ### Issue CM.7 — ouroboros-rest: [CM.7] Research integration tests
 
+> **GitHub issue:** #626 · **Status:** 🟡 Open · **Parent epic:** #605
+
 - **Problem Statement:** The loop's citation discipline, the watch chain,
   and pipeline idempotency are the page's promises — cross-plane logic
   only harness tests certify.
@@ -983,7 +1024,7 @@ suites: SPI ✓ · loop ✓ · citations ✓ · watch chain ✓ · matrix ✓ ·
 
 ---
 
-## Epic CN — Research UI (`ouroboros-ui`)
+## Epic CN (#606) — Research UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/22-research.html`](mockups/22-research.html) as the design
@@ -992,18 +1033,20 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
 `skill-chip`s, `md-render` preview, `sugg` rows, and milestone-grouped
 `iss-row`s — via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CN.1 | ouroboros-ui: [CN.1] Research route, head & page frame | `/research`, head copy, library/new actions, layout | mvp, research, ui, design | N (after #41, BA-D.5) | Y | S | ouroboros-ui |
-| CN.2 | ouroboros-ui: [CN.2] Investigation composer | Question, kind segments, depth, tool chips, estimate, start + progress | mvp, research, ui, design | N (after CN.1, CM.3, CM.6) | Y | L | ouroboros-ui |
-| CN.3 | ouroboros-ui: [CN.3] Research tools & regression watch cards | Tool rows with health + enable; watch rows with lifecycle pills | mvp, research, ui, design | N (after CN.1, CL.1, CM.4) | Y | M | ouroboros-ui |
-| CN.4 | ouroboros-ui: [CN.4] Investigation brief view | Matrix, cited brief, sources panel, export, draft-epic action | mvp, research, ui, design | N (after CN.1, CM.2) | Y | L | ouroboros-ui |
-| CN.5 | ouroboros-ui: [CN.5] Roadmap pipeline card | Rendered/raw doc, suggestions apply/dismiss, milestone-grouped issues | mvp, research, ui, design | N (after CN.1, CM.5) | Y | L | ouroboros-ui |
-| CN.6 | ouroboros-ui: [CN.6] Investigations list, history & library | Active rows, kind chips, links; filterable history/library view | mvp, research, ui | N (after CN.1, CM.6) | Y | M | ouroboros-ui |
-| CN.7 | ouroboros-ui: [CN.7] Research states & guards | Empty org, AF.2-absent honesty, member gates, load/error | mvp, research, ui, design | N (after CN.2–CN.6) | Y | S | ouroboros-ui |
-| CN.8 | ouroboros-ui: [CN.8] Research e2e leg | Parity, run-to-brief, watch chain, pipeline, gaps→planning, themes | mvp, research, ui, ci | N (after CN.1–CN.7) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CN.1 | #627 | 🟡 Open | ouroboros-ui: [CN.1] Research route, head & page frame | `/research`, head copy, library/new actions, layout | mvp, research, ui, design | N (after #41, BA-D.5) | Y | S | ouroboros-ui |
+| CN.2 | #628 | 🟡 Open | ouroboros-ui: [CN.2] Investigation composer | Question, kind segments, depth, tool chips, estimate, start + progress | mvp, research, ui, design | N (after CN.1, CM.3, CM.6) | Y | L | ouroboros-ui |
+| CN.3 | #629 | 🟡 Open | ouroboros-ui: [CN.3] Research tools & regression watch cards | Tool rows with health + enable; watch rows with lifecycle pills | mvp, research, ui, design | N (after CN.1, CL.1, CM.4) | Y | M | ouroboros-ui |
+| CN.4 | #630 | 🟡 Open | ouroboros-ui: [CN.4] Investigation brief view | Matrix, cited brief, sources panel, export, draft-epic action | mvp, research, ui, design | N (after CN.1, CM.2) | Y | L | ouroboros-ui |
+| CN.5 | #631 | 🟡 Open | ouroboros-ui: [CN.5] Roadmap pipeline card | Rendered/raw doc, suggestions apply/dismiss, milestone-grouped issues | mvp, research, ui, design | N (after CN.1, CM.5) | Y | L | ouroboros-ui |
+| CN.6 | #632 | 🟡 Open | ouroboros-ui: [CN.6] Investigations list, history & library | Active rows, kind chips, links; filterable history/library view | mvp, research, ui | N (after CN.1, CM.6) | Y | M | ouroboros-ui |
+| CN.7 | #633 | 🟡 Open | ouroboros-ui: [CN.7] Research states & guards | Empty org, AF.2-absent honesty, member gates, load/error | mvp, research, ui, design | N (after CN.2–CN.6) | Y | S | ouroboros-ui |
+| CN.8 | #634 | 🟡 Open | ouroboros-ui: [CN.8] Research e2e leg | Parity, run-to-brief, watch chain, pipeline, gaps→planning, themes | mvp, research, ui, ci | N (after CN.1–CN.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue CN.1 — ouroboros-ui: [CN.1] Research route, head & page frame
+
+> **GitHub issue:** #627 · **Status:** 🟡 Open · **Parent epic:** #606
 
 - **Problem Statement:** The page frame: the evidenced-answer head copy, the
   two head actions, and the top-nav Research entry going live.
@@ -1024,6 +1067,8 @@ anatomy, kind-chip hues, capability/`gap-sev` treatments, `cite` rows,
 ```
 
 ### Issue CN.2 — ouroboros-ui: [CN.2] Investigation composer
+
+> **GitHub issue:** #628 · **Status:** 🟡 Open · **Parent epic:** #606
 
 - **Problem Statement:** The composer is the product's front door: a
   question, a kind, a depth, a tool mix — with a computed estimate and a
@@ -1058,6 +1103,8 @@ est. 40–60 sources · ~$6                                  [Start investigatio
 
 ### Issue CN.3 — ouroboros-ui: [CN.3] Research tools & regression watch cards
 
+> **GitHub issue:** #629 · **Status:** 🟡 Open · **Parent epic:** #606
+
 - **Problem Statement:** The side column: tool health truth and the watch's
   three-state lifecycle rows — both honest surfaces over CL/CM services.
 - **Solution/Scope:** **Tools card**: rows from the adapter registry
@@ -1088,6 +1135,8 @@ REGRESSION WATCH (nightly vs v2.0.4)
 ```
 
 ### Issue CN.4 — ouroboros-ui: [CN.4] Investigation brief view
+
+> **GitHub issue:** #630 · **Status:** 🟡 Open · **Parent epic:** #606
 
 - **Problem Statement:** The featured card is the deliverable made visible:
   a cited brief, a structured matrix, the sources ledger, and the actions
@@ -1120,6 +1169,8 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
 ```
 
 ### Issue CN.5 — ouroboros-ui: [CN.5] Roadmap pipeline card
+
+> **GitHub issue:** #631 · **Status:** 🟡 Open · **Parent epic:** #606
 
 - **Problem Statement:** The two-step pipeline — skill-generated doc with a
   suggestion loop, then tracker truth grouped by milestone — is the page's
@@ -1155,6 +1206,8 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
 
 ### Issue CN.6 — ouroboros-ui: [CN.6] Investigations list, history & library
 
+> **GitHub issue:** #632 · **Status:** 🟡 Open · **Parent epic:** #606
+
 - **Problem Statement:** The active list with its cross-plane links, plus
   History and the head's Research library, complete the surface
   (decision V11).
@@ -1173,6 +1226,8 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
 - **Epic:** CN
 
 ### Issue CN.7 — ouroboros-ui: [CN.7] Research states & guards
+
+> **GitHub issue:** #633 · **Status:** 🟡 Open · **Parent epic:** #606
 
 - **Problem Statement:** A fresh org has no tools configured, no
   investigations, no baselines — and a deployment without the invocation
@@ -1195,6 +1250,8 @@ SOURCES — 44 CITED: [07][12][19][31][git] · all ↗       [Export ↗][Draft 
 - **Epic:** CN
 
 ### Issue CN.8 — ouroboros-ui: [CN.8] Research e2e leg
+
+> **GitHub issue:** #634 · **Status:** 🟡 Open · **Parent epic:** #606
 
 - **Problem Statement:** Ask→evidence→brief→tickets spans the engine, five
   tools, three sibling planes, and the repo — only e2e certifies the loop
@@ -1221,17 +1278,19 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
 
 ---
 
-## Epic CO — Research at Scale (v2 · milestone `Research v2`)
+## Epic CO (#607) — Research at Scale (v2 · milestone `Research v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CO.1 | ouroboros-rest: [CO.1] Docs, standards & papers tool | Docling+GROBID PDF pipeline; datasheets/RFCs/arXiv with citation anchors | v2, research, rest, engine | N (after CL.1) | N | L | ouroboros-rest, ouroboros-engine |
-| CO.2 | ouroboros-engine: [CO.2] Deep multi-agent research & theme clustering | Parallel sub-investigations, verification passes; embedding clustering at scale | v2, research, engine | N (after CM.1) | N | L | ouroboros-engine |
-| CO.3 | ouroboros-rest: [CO.3] Competitor tracker expansion | Render tier, filings ingestion, watch auto-discovery, matrix refresh alerts | v2, research, rest | N (after CL.3) | N | M | ouroboros-rest |
-| CO.4 | ouroboros-rest: [CO.4] Scheduled investigations & research library | Recurring/triggered investigations; library with tags, search, cross-links | v2, research, rest, ui | N (after CM.6) | N | M | ouroboros-rest, ouroboros-ui |
-| CO.5 | ouroboros-rest: [CO.5] Brief→Knowledge flywheel | Findings proposed as facts (K3 lifecycle); skill improvement suggestions | v2, research, rest, knowledge | N (after CM.2, BF facts) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CO.1 | #635 | 🟡 Open | ouroboros-rest: [CO.1] Docs, standards & papers tool | Docling+GROBID PDF pipeline; datasheets/RFCs/arXiv with citation anchors | v2, research, rest, engine | N (after CL.1) | N | L | ouroboros-rest, ouroboros-engine |
+| CO.2 | #636 | 🟡 Open | ouroboros-engine: [CO.2] Deep multi-agent research & theme clustering | Parallel sub-investigations, verification passes; embedding clustering at scale | v2, research, engine | N (after CM.1) | N | L | ouroboros-engine |
+| CO.3 | #637 | 🟡 Open | ouroboros-rest: [CO.3] Competitor tracker expansion | Render tier, filings ingestion, watch auto-discovery, matrix refresh alerts | v2, research, rest | N (after CL.3) | N | M | ouroboros-rest |
+| CO.4 | #638 | 🟡 Open | ouroboros-rest: [CO.4] Scheduled investigations & research library | Recurring/triggered investigations; library with tags, search, cross-links | v2, research, rest, ui | N (after CM.6) | N | M | ouroboros-rest, ouroboros-ui |
+| CO.5 | #639 | 🟡 Open | ouroboros-rest: [CO.5] Brief→Knowledge flywheel | Findings proposed as facts (K3 lifecycle); skill improvement suggestions | v2, research, rest, knowledge | N (after CM.2, BF facts) | N | M | ouroboros-rest |
 
 ### Issue CO.1 — ouroboros-rest: [CO.1] Docs, standards & papers tool
+
+> **GitHub issue:** #635 · **Status:** 🟡 Open · **Parent epic:** #607
 
 - **Problem Statement:** The sixth chip — datasheets, RFCs, arXiv — needs a
   real PDF pipeline with citation anchors; the mockup itself ships it
@@ -1254,6 +1313,8 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
 - **Epic:** CO
 
 ### Issue CO.2 — ouroboros-engine: [CO.2] Deep multi-agent research & theme clustering
+
+> **GitHub issue:** #636 · **Status:** 🟡 Open · **Parent epic:** #607
 
 - **Problem Statement:** Deep dives serialize today; RS-124's `312 tickets
   clustered into 7 themes` needs retrieval + clustering machinery beyond
@@ -1281,6 +1342,8 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
 
 ### Issue CO.3 — ouroboros-rest: [CO.3] Competitor tracker expansion
 
+> **GitHub issue:** #637 · **Status:** 🟡 Open · **Parent epic:** #607
+
 - **Problem Statement:** MVP watches static pages, releases, and feeds;
   real rivals ship JS-rendered changelogs, regulatory filings, and pages
   nobody thought to watch.
@@ -1300,6 +1363,8 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
 
 ### Issue CO.4 — ouroboros-rest: [CO.4] Scheduled investigations & research library
 
+> **GitHub issue:** #638 · **Status:** 🟡 Open · **Parent epic:** #607
+
 - **Problem Statement:** Investigations are one-shot; the quarterly
   roadmap review and the competitor sweep want cadence — and 23-a-quarter
   wants a real library (V11's deferral).
@@ -1318,6 +1383,8 @@ e2e: parity ✓ · investigate→brief ✓ · citations ✓ · gaps→planning �
 - **Epic:** CO
 
 ### Issue CO.5 — ouroboros-rest: [CO.5] Brief→Knowledge flywheel
+
+> **GitHub issue:** #639 · **Status:** 🟡 Open · **Parent epic:** #607
 
 - **Problem Statement:** Investigations learn facts (`gains last tuned 14
   months ago`, `Skylink uses wind-feedforward MPC`) that die in briefs;
@@ -1381,37 +1448,59 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** **AF.1 → AF.2** (the pulled-forward gate —
-   V4); routing Z.1 + registry CH.3; Planning AL.3/AL.4 + N3; Knowledge
-   BE.1; WF-Q store; AS/AT + AJ.4 + BI planes; AH dispatch;
-   #19/#24/#41/#46/#54; BA-B.3/C.3/D.5.
-2. **Phase 1 — Domain:** CK.1 → { CK.2 ⊕ CK.4 ⊕ CK.5 } → CK.3 → CK.6
-3. **Phase 2 — Tools:** CL.1 → { CL.2 ⊕ CL.3 ⊕ CL.4 ⊕ CL.5 ⊕ CL.6 }
-4. **Phase 3 — Engine & pipeline:** CM.3 → CM.1 → { CM.2 ⊕ CM.4 ⊕ CM.6 } →
-   CM.5 → CM.7
-5. **Phase 4 — UI:** CN.1 → { CN.2 ⊕ CN.3 ⊕ CN.4 ⊕ CN.5 ⊕ CN.6 } → CN.7 →
-   **CN.8 ✅** *(MVP gate, amending #56)*
-6. **v2:** CO.1 ⊕ CO.3 ⊕ CO.4 ⊕ CO.5; CO.2 after CM.1 bedding-in.
+1. **Phase 0 — Prerequisites:** **AF.1 (#234) → AF.2 (#235)** (the
+   pulled-forward gate — V4); routing Z.1 (#194) + registry CH.3 (#586);
+   Planning AL.3 (#279) / AL.4 (#280) + the sizer (#107/#123); Knowledge
+   BE.1 (#405); WF-Q store (#138/#139); AS/AT (#324/#326) + AJ.4 (#266) +
+   BI.2/BJ.1 (#433/#437); AH dispatch (#253); #19/#24/#41/#46/#54;
+   BA-B.3/C.3/D.5 (unfiled).
+2. **Phase 1 — Domain:** CK.1 (#608) → { CK.2 (#609) ⊕ CK.4 (#611) ⊕
+   CK.5 (#612) } → CK.3 (#610) → CK.6 (#613)
+3. **Phase 2 — Tools:** CL.1 (#614) → { CL.2 (#615) ⊕ CL.3 (#616) ⊕
+   CL.4 (#617) ⊕ CL.5 (#618) ⊕ CL.6 (#619) }
+4. **Phase 3 — Engine & pipeline:** CM.3 (#622) → CM.1 (#620) →
+   { CM.2 (#621) ⊕ CM.4 (#623) ⊕ CM.6 (#625) } → CM.5 (#624) → CM.7 (#626)
+5. **Phase 4 — UI:** CN.1 (#627) → { CN.2 (#628) ⊕ CN.3 (#629) ⊕
+   CN.4 (#630) ⊕ CN.5 (#631) ⊕ CN.6 (#632) } → CN.7 (#633) →
+   **CN.8 (#634) ✅** *(MVP gate, amending #56)*
+6. **v2:** CO.1 (#635) ⊕ CO.3 (#637) ⊕ CO.4 (#638) ⊕ CO.5 (#639);
+   CO.2 (#636) after CM.1 bedding-in.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic CK — Research Domain | 6 | 6 | 0 |
-| Epic CL — Research Tool SPI & Tools | 6 | 6 | 0 |
-| Epic CM — Investigation Engine & Pipeline | 7 | 7 | 0 |
-| Epic CN — Research UI | 8 | 8 | 0 |
-| Epic CO — Research at Scale | 5 | 0 | 5 |
-| **Total** | **32** | **27** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic CK — Research Domain | #603 | 6 | 6 | 0 |
+| Epic CL — Research Tool SPI & Tools | #604 | 6 | 6 | 0 |
+| Epic CM — Investigation Engine & Pipeline | #605 | 7 | 7 | 0 |
+| Epic CN — Research UI | #606 | 8 | 8 | 0 |
+| Epic CO — Research at Scale | #607 | 5 | 0 | 5 |
+| **Total** | **5 epics** | **32** | **27** | **5** |
 
-Plus amendments executed at filing: #49 (`/research` stub retired + top-nav
-entry), #56 (research e2e leg), Y.2/Y.4 (`research` task-kind family
-registered + routed — CM.3), AF.2 (first-consumer contract notes +
-prerequisite pull-forward flagged on the providers milestone), AL.4
-(draft-batch gap/pipeline provenance fields), BE.5 (create-roadmap /
-create-issues skills seeded — CM.5), AS/AT + AJ.4 + BI.2 (read-only research
-consumers noted), BM inbox (watch + brief-ready event kinds), BZ.3 (`/ouro
-research` grammar entry noted for v2).
+Issues **#608–#639**, filed 2026-08-09 as sub-issues of their epics
+(#603–#607), with the new `research` label and the `Research MVP` /
+`Research v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| AF.2 (#235) | **Declared a hard MVP prerequisite** (V4) — CM.1 (#620) is the gateway's first consumer, synthesizing through the routed `research` alias and reconciling spend against its usage rows; the deterministic-only fallback is recorded, and CN.7 (#633) renders an honest gateway-absent page |
+| AF.1 (#234) | The ADR now gates a second surface; the pull-forward and its fallback stance are noted |
+| Y.2 (#190) | A **`research` task-kind family** (`research`, `research-plan`) joins the registry (CM.3, #622) — which is what makes the composer's alias pill a real resolution and puts research spend under normal routing rules |
+| Y.4 (#192) | Seeded research routes so the alias pill resolves from seeds; coordinated with CK.6 (#613) so the shared seed universe stays coherent |
+| AL.4 (#280) | Draft batches gain **research provenance** (investigation, gap row, citations) from both the gaps hand-off and the pipeline (CM.5, #624); neither path files anything |
+| AL.3 (#279) | The pipeline files **through this service and no other path** (V8) — plus milestone mapping and the writeback step; re-runs must stay idempotent (asserted red-when-removed in CM.7, #626) |
+| BE.5 (#409) | **`create-roadmap` and `create-issues` seeded as skills** (`origin: generated`, org-forkable) — the mockup's skill chips, and what makes "applying re-runs create-roadmap" literally true |
+| Q.2 (#139) | The pluggable-sources requirement is honoured **here, not in research** — CL.5 (#618) reads canonical tickets only, with a second-tracker fixture as its pluggability proof; the research tool SPI (#614) is this pattern's third application |
+| AJ.4 (#266) | Read-only research consumer (CL.6, #619) with `telemetry://` reproducible citations; the same `compare` operation backs the regression watch |
+| BI.2 (#433) | Windowed metrics consumed read-only; baselines are captured from these windows, and empty windows must return no-data rather than zero |
+| AS.1 (#324) | Case/metric identity keys the regression baselines (CK.4, #611); flake context (#326) consulted so a flaky metric is not read as drift |
+| BM.1 (#457) | Three new decision kinds requested: **drift detected**, **bisect complete**, **brief ready** (plus scheduled results and matrix-staleness alerts in v2) |
+| BZ.3 (#537) | A **`/ouro research`** grammar entry recorded as a v2 addition — nothing required now; it would call the CM.6 (#625) lifecycle |
+| CH.3 (#586) | Research consumes the pricing service for the composer's estimate line, carrying the honesty rule over: **unpriced alias ⇒ no dollar figure anywhere** |
+| #49 | The `/research` placeholder is retired by CN.1 (#627) |
+| #56 | Gains the research e2e leg (CN.8, #634) — the MVP gate, budgeted at ≤ 3 min |
 
 ## References
 
@@ -1468,25 +1557,44 @@ the mockup's top-bar navigation for every UI issue in this roadmap:
 
 Issue-level impact:
 
-| Issue | Amendment |
-|---|---|
-| CN.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
-| CN.2, CN.3, CN.4, CN.5, CN.6, CN.7 | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
-| CN.8 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| Issue | GitHub | Status | Amendment |
+|---|:---:|:---:|---|
+| CN.1 | #627 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar **Research** entry (icon `telescope`), not a topbar link |
+| CN.2, CN.3, CN.4, CN.5, CN.6, CN.7 | #628, #629, #630, #631, #632, #633 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions (matrices, documents, long lists) scroll in their own wrappers |
+| CN.8 | #634 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: **the AF.2
-pull-forward (V4)** — the researcher is LLM-backed in MVP, making the
-providers-v2 invocation gateway a hard prerequisite (the recorded fallback
-is option 5-C: deterministic-only MVP with regression watch and tools, LLM
-kinds deferred); the citation contract (V3 — tools *return* source records,
-uncited claims demote); the watch policy default (V6 — auto-draft, file+queue
-opt-in); the repo-PR stance for `ROADMAP.md` (V8 — PR not direct commit);
-the self-host-default web stack (option 1-A — SearXNG + own fetcher, hosted
-APIs as configs); and the five-epic split. Once validated, the follow-up
-pass (`/create-issues ROADMAP_MOCKUP_22_RESEARCH.md`) creates the `research`
-label **and the `Research MVP` / `Research v2` milestones**, files the 32
-issues with epic parents, relationships, and milestone assignments, and
-posts the amendment comments listed above.
+**Filed 2026-08-09.** The `research` label and the `Research MVP` /
+`Research v2` milestones were created; the five epics (#603–#607) and
+thirty-two issues (#608–#639) are on GitHub with parent relationships,
+milestones, labels and types set, and the sixteen amendment comments above
+are posted.
+
+**Before starting: AF.2 (#235) is a hard prerequisite** — decision V4, now
+stated as an amendment on that issue. Phases 1 and 2 (the domain and the
+tools) can proceed without it, and the regression watch (#623) never needs a
+model at all — but nothing in the investigation loop can be verified until
+the invocation gateway is live, and the e2e leg (#634) needs a configured
+gateway that fixtures can stand in for only at the synthesis boundary. If the
+pull-forward is rejected, the recorded fallback is a deterministic-only MVP:
+watch, bisect and tools, with the three LLM-backed kinds deferred.
+
+Execution starts at **CK.1 (#608)** — the investigation entity blocks the
+domain — with CM.3 (#622) first in the services phase, because CM.1 needs the
+routed alias before it can synthesize anything. The critical path to the MVP
+gate is #608 → #609 → #614 → #622 → #620 → #621 → #624 → #627 → #631 →
+#633 → **#634**, with the tools (#615–#619) fanning out after #614, the watch
+chain (#611 → #623) running in parallel, and the seeds (#613) feeding every
+parity fixture.
+
+The deepest risk here is **CL.1 / CM.1 (#614, #620)**: the citation contract.
+If an adapter can return an answer without source records, or if the demotion
+path stops turning uncited claims into open questions, the page keeps
+rendering confident briefs — and nothing goes red. #626's rule that removing
+the citation junction check must turn the suite red is the mechanism that
+keeps "every claim cited" true after the first refactor.
+
+The second risk is **CM.5 (#624)**: the no-drift promise depends on there
+being exactly one push path and one owner of the document↔tracker round trip.
+The moment a second writer appears, the caption stops being true.

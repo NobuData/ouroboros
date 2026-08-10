@@ -195,31 +195,37 @@ secrets scanning + policy escalation (AR.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| AO | Run Observability Domain | Stage history, event store, changes/guardrails/controls schema, seeds | ouroboros-db | Run Console MVP |
-| AP | Run Services & Contracts | Ingestion API, streaming reads, guardrail evaluation, control queue, simulator | ouroboros-rest, ouroboros-engine | Run Console MVP |
-| AQ | Run Console UI | Head/controls, stepper, transcript + steering, cards, states, e2e | ouroboros-ui | Run Console MVP |
-| AR | Live Execution & Extended (v2) | Real-run integration, IDE takeover, SSE, Slack steering, verified scanning | all | Run Console v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| AO | #294 | 🟡 Open | Run Observability Domain | Stage history, event store, changes/guardrails/controls schema, seeds | ouroboros-db | Run Console MVP |
+| AP | #295 | 🟡 Open | Run Services & Contracts | Ingestion API, streaming reads, guardrail evaluation, control queue, simulator | ouroboros-rest, ouroboros-engine | Run Console MVP |
+| AQ | #296 | 🟡 Open | Run Console UI | Head/controls, stepper, transcript + steering, cards, states, e2e | ouroboros-ui | Run Console MVP |
+| AR | #297 | 🟡 Open | Live Execution & Extended (v2) | Real-run integration, IDE takeover, SSE, Slack steering, verified scanning | all | Run Console v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`, `workflow`) **plus new
-`runs`** (decision R10). Milestones **`Run Console MVP`** / **`Run Console v2`**
-created at filing; every issue assigned. Complexity chips: **XS · S · M · L**.
+`runs`** (decision R10, created at filing). Milestones **`Run Console MVP`** /
+**`Run Console v2`** created at filing; every issue assigned. Complexity chips:
+**XS · S · M · L**.
 
 ---
 
-## Epic AO — Run Observability Domain (`ouroboros-db`)
+## Epic AO (#294) — Run Observability Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AO.1 | ouroboros-db: [AO.1] Stage history & attempts schema | `run_stages` per stage×attempt; DASH-F.1 extension (R1) | mvp, runs, db | N (after DASH-F.1) | Y | M | ouroboros-db |
-| AO.2 | ouroboros-db: [AO.2] Run event store | Append-only typed `run_events` with caps + JSONL projection shape | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
-| AO.3 | ouroboros-db: [AO.3] Changes, resources & farm-link schema | `run_files`, `run_commits`, resource snapshots, reservation refs | mvp, runs, db | N (after AO.1) | Y | S | ouroboros-db |
-| AO.4 | ouroboros-db: [AO.4] Guardrail evaluations & control queue schema | Verdict rows with evidence; durable `run_controls` (R5/R6) | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
-| AO.5 | ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes | The #482 run mid-flight, full transcript, cards; constraint probes | mvp, runs, db, ci | N (after AO.2–AO.4, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AO.1 | #298 | 🟡 Open | ouroboros-db: [AO.1] Stage history & attempts schema | `run_stages` per stage×attempt; DASH-F.1 extension (R1) | mvp, runs, db | N (after DASH-F.1) | Y | M | ouroboros-db |
+| AO.2 | #299 | 🟡 Open | ouroboros-db: [AO.2] Run event store | Append-only typed `run_events` with caps + JSONL projection shape | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
+| AO.3 | #300 | 🟡 Open | ouroboros-db: [AO.3] Changes, resources & farm-link schema | `run_files`, `run_commits`, resource snapshots, reservation refs | mvp, runs, db | N (after AO.1) | Y | S | ouroboros-db |
+| AO.4 | #301 | 🟡 Open | ouroboros-db: [AO.4] Guardrail evaluations & control queue schema | Verdict rows with evidence; durable `run_controls` (R5/R6) | mvp, runs, db | N (after AO.1) | Y | M | ouroboros-db |
+| AO.5 | #302 | 🟡 Open | ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes | The #482 run mid-flight, full transcript, cards; constraint probes | mvp, runs, db, ci | N (after AO.2–AO.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue AO.1 — ouroboros-db: [AO.1] Stage history & attempts schema
+
+> **GitHub issue:** #298 · **Status:** 🟡 Open · **Parent epic:** #294
 
 - **Problem Statement:** The stepper needs per-stage truth (durations,
   attempts, gate-return notes) that DASH-F.1's current-stage columns cannot
@@ -258,6 +264,8 @@ erDiagram
 
 ### Issue AO.2 — ouroboros-db: [AO.2] Run event store
 
+> **GitHub issue:** #299 · **Status:** 🟡 Open · **Parent epic:** #294
+
 - **Problem Statement:** The transcript is the flight recorder (decision R3):
   ordered, typed, capped, exportable.
 - **Solution/Scope:** `run_events` — run FK, `seq` (dense per run), `ts`,
@@ -283,6 +291,8 @@ run_events(seq↑): {ts, actor: tool, tool_tag: edit_file, payload: {file, hunks
 
 ### Issue AO.3 — ouroboros-db: [AO.3] Changes, resources & farm-link schema
 
+> **GitHub issue:** #300 · **Status:** 🟡 Open · **Parent epic:** #294
+
 - **Problem Statement:** The right column's Changes and Resources cards need
   their own truth: cumulative file stats, commits, resource snapshots, and
   the farm reservation link.
@@ -306,6 +316,8 @@ runs.merge_strategy: auto-squash (pin snapshot) · reserved_build_job_id → AH.
 ```
 
 ### Issue AO.4 — ouroboros-db: [AO.4] Guardrail evaluations & control queue schema
+
+> **GitHub issue:** #301 · **Status:** 🟡 Open · **Parent epic:** #294
 
 - **Problem Statement:** Guardrail verdicts need evidence-bearing rows
   (decision R5); controls need a durable, ack-tracked queue (decision R6).
@@ -331,6 +343,8 @@ run_controls: {kind: steer, payload: "prefer a fix inside the ISR…", state: pe
 ```
 
 ### Issue AO.5 — ouroboros-db: [AO.5] Console dev seeds — mockup-10 parity + ci probes
+
+> **GitHub issue:** #302 · **Status:** 🟡 Open · **Parent epic:** #294
 
 - **Problem Statement:** Design review needs the exact mid-flight state of
   `#482` — transcript, timeline, cards — without running the simulator.
@@ -358,18 +372,20 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 
 ---
 
-## Epic AP — Run Services & Contracts (`ouroboros-rest` + `ouroboros-engine`)
+## Epic AP (#295) — Run Services & Contracts (`ouroboros-rest` + `ouroboros-engine`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AP.1 | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
-| AP.2 | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
-| AP.3 | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
-| AP.4 | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
-| AP.5 | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
-| AP.6 | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AP.1 | #303 | 🟡 Open | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
+| AP.2 | #304 | 🟡 Open | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
+| AP.3 | #305 | 🟡 Open | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
+| AP.4 | #306 | 🟡 Open | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
+| AP.5 | #307 | 🟡 Open | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
+| AP.6 | #308 | 🟡 Open | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
 
 ### Issue AP.1 — ouroboros-rest: [AP.1] Run ingestion contract & API
+
+> **GitHub issue:** #303 · **Status:** 🟡 Open · **Parent epic:** #295
 
 - **Problem Statement:** One internal contract must carry everything an
   executor reports (decision R2) — for the simulator today and WF-T.6
@@ -400,6 +416,8 @@ executor ─▶ POST stage-transitions {implement, attempt:2, from: gate-fail} �
 
 ### Issue AP.2 — ouroboros-rest: [AP.2] Console read APIs & JSONL export
 
+> **GitHub issue:** #304 · **Status:** 🟡 Open · **Parent epic:** #295
+
 - **Problem Statement:** The console needs shaped reads: the timeline, the
   incremental transcript, card payloads, and the raw export.
 - **Solution/Scope:** Under tenant context: `GET /api/v1/runs/:id` (head
@@ -423,6 +441,8 @@ GET /runs/:id/transcript.jsonl ─▶ streamed · "# simulated run" watermark
 ```
 
 ### Issue AP.3 — ouroboros-rest: [AP.3] Guardrail evaluation service
+
+> **GitHub issue:** #305 · **Status:** 🟡 Open · **Parent epic:** #295
 
 - **Problem Statement:** The Guardrails card must be computed truth
   (decision R5): four checks against the pinned workflow policy and the
@@ -457,6 +477,8 @@ fail ─▶ {verdict: fail, evidence: {path, rule: aws-access-key-id}}  (no secr
 
 ### Issue AP.4 — ouroboros-rest: [AP.4] Control queue & delivery
 
+> **GitHub issue:** #306 · **Status:** 🟡 Open · **Parent epic:** #295
+
 - **Problem Statement:** Pause/abort/steer must survive executor hiccups,
   prove delivery, and leave an audit trail (decision R6).
 - **Solution/Scope:** Public API: `POST /api/v1/runs/:id/controls`
@@ -484,6 +506,8 @@ POST controls {abort} (typed confirm, admin+) ─▶ … ─▶ run: canceled ·
 
 ### Issue AP.5 — ouroboros-engine: [AP.5] Simulated-run driver
 
+> **GitHub issue:** #307 · **Status:** 🟡 Open · **Parent epic:** #295
+
 - **Problem Statement:** The MVP's proof: scripted lifecycles exercising the
   entire contract — including control acknowledgment — so the console is
   end-to-end real before execution exists.
@@ -509,6 +533,8 @@ scenario "482-gate-return" ─▶ queued→analyze→plan→implement(1)→gate�
 
 ### Issue AP.6 — ouroboros-rest: [AP.6] Console integration tests
 
+> **GitHub issue:** #308 · **Status:** 🟡 Open · **Parent epic:** #295
+
 - **Problem Statement:** Ingestion ordering, guardrail matrices, and control
   semantics are the console's correctness core.
 - **Solution/Scope:** Harness suites: ingestion (interleaved batches,
@@ -528,23 +554,25 @@ suites: ingest ✓ · guardrails ✓ · controls ✓ · reads/export ✓ · isol
 
 ---
 
-## Epic AQ — Run Console UI (`ouroboros-ui`)
+## Epic AQ (#296) — Run Console UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/10-run-detail.html`](mockups/10-run-detail.html) as the design
 source — stepper/transcript/card treatments, actor chips, diff line classes —
 via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AQ.1 | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
-| AQ.2 | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
-| AQ.3 | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
-| AQ.4 | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
-| AQ.5 | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
-| AQ.6 | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AQ.1 | #309 | 🟡 Open | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
+| AQ.2 | #310 | 🟡 Open | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
+| AQ.3 | #311 | 🟡 Open | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
+| AQ.4 | #312 | 🟡 Open | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
+| AQ.5 | #313 | 🟡 Open | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
+| AQ.6 | #314 | 🟡 Open | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue AQ.1 — ouroboros-ui: [AQ.1] Run route, head & meta row
+
+> **GitHub issue:** #309 · **Status:** 🟡 Open · **Parent epic:** #296
 
 - **Problem Statement:** The console's frame: loop-numbered eyebrow, ticket
   headline, live meta row — and the incoming links (dashboard active-loops
@@ -570,6 +598,8 @@ Run Console · Loop #1847
 ```
 
 ### Issue AQ.2 — ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over)
+
+> **GitHub issue:** #310 · **Status:** 🟡 Open · **Parent epic:** #296
 
 - **Problem Statement:** The head's three actions carry real consequences —
   ack-visible delivery, typed-confirmation abort, and the honest take-over
@@ -597,6 +627,8 @@ Run Console · Loop #1847
 
 ### Issue AQ.3 — ouroboros-ui: [AQ.3] Stage timeline stepper
 
+> **GitHub issue:** #311 · **Status:** 🟡 Open · **Parent epic:** #296
+
 - **Problem Statement:** The stepper renders stage history with the mockup's
   exact states — done glow, pulsing active node, attempt caption, warn
   note — from the R1 model.
@@ -621,6 +653,8 @@ Run Console · Loop #1847
 ```
 
 ### Issue AQ.4 — ouroboros-ui: [AQ.4] Agent transcript & steering
+
+> **GitHub issue:** #312 · **Status:** 🟡 Open · **Parent epic:** #296
 
 - **Problem Statement:** The transcript is the page's soul: typed entries
   with actor chips, inline diffs, the live tail — plus the steering input
@@ -655,6 +689,8 @@ Run Console · Loop #1847
 
 ### Issue AQ.5 — ouroboros-ui: [AQ.5] Changes, resources & guardrails cards
 
+> **GitHub issue:** #313 · **Status:** 🟡 Open · **Parent epic:** #296
+
 - **Problem Statement:** The right column's three cards — cumulative
   changes, resource meters, guardrail verdicts — from computed payloads
   with the established honesty rules.
@@ -684,6 +720,8 @@ GUARDRAILS (clean)  ✓ paths ✓ no CI ✓ secrets ○ review not required — 
 
 ### Issue AQ.6 — ouroboros-ui: [AQ.6] Console states & e2e leg
 
+> **GitHub issue:** #314 · **Status:** 🟡 Open · **Parent epic:** #296
+
 - **Problem Statement:** Runs end (merged/failed/canceled), queue, and
   error; and the whole console must certify end-to-end against a live
   simulated run.
@@ -708,17 +746,19 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 
 ---
 
-## Epic AR — Live Execution & Extended (v2 · milestone `Run Console v2`)
+## Epic AR (#297) — Live Execution & Extended (v2 · milestone `Run Console v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AR.1 | ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement | WF-T.6 reports through AP.1; guardrail fails block; caps enforced | v2, runs, workflow, engine, rest | N (after WF-T.6, AP.1) | N | L | ouroboros-engine, ouroboros-rest |
-| AR.2 | ouroboros-ui: [AR.2] IDE take-over protocol | Deep hand-off: editor deep links, context transfer, resume-from-IDE | v2, runs, ui | N (after AQ.2) | N | L | ouroboros-ui, ouroboros-rest |
-| AR.3 | ouroboros-rest: [AR.3] SSE live transcript | Push streaming over DASH-J.1's channel; poll fallback retained | v2, runs, rest, ui | N (after DASH-J.1, AP.2) | N | M | ouroboros-rest, ouroboros-ui |
-| AR.4 | ouroboros-rest: [AR.4] Slack-thread steering | Mockup-19 tie-in: steer/pause from the run's Slack thread | v2, runs, rest | N (after mockup-19 roadmap, AP.4) | N | M | ouroboros-rest |
-| AR.5 | ouroboros-rest: [AR.5] Verified secrets scanning & policy escalation | TruffleHog-class verification; enforcement policies per tenant | v2, runs, rest | N (after AP.3, AR.1) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| AR.1 | #315 | 🟡 Open | ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement | WF-T.6 reports through AP.1; guardrail fails block; caps enforced | v2, runs, workflow, engine, rest | N (after WF-T.6, AP.1) | N | L | ouroboros-engine, ouroboros-rest |
+| AR.2 | #316 | 🟡 Open | ouroboros-ui: [AR.2] IDE take-over protocol | Deep hand-off: editor deep links, context transfer, resume-from-IDE | v2, runs, ui | N (after AQ.2) | N | L | ouroboros-ui, ouroboros-rest |
+| AR.3 | #317 | 🟡 Open | ouroboros-rest: [AR.3] SSE live transcript | Push streaming over DASH-J.1's channel; poll fallback retained | v2, runs, rest, ui | N (after DASH-J.1, AP.2) | N | M | ouroboros-rest, ouroboros-ui |
+| AR.4 | #318 | 🟡 Open | ouroboros-rest: [AR.4] Slack-thread steering | Mockup-19 tie-in: steer/pause from the run's Slack thread | v2, runs, rest | N (after mockup-19 roadmap, AP.4) | N | M | ouroboros-rest |
+| AR.5 | #319 | 🟡 Open | ouroboros-rest: [AR.5] Verified secrets scanning & policy escalation | TruffleHog-class verification; enforcement policies per tenant | v2, runs, rest | N (after AP.3, AR.1) | N | M | ouroboros-rest |
 
 ### Issue AR.1 — ouroboros-engine: [AR.1] Real-execution integration & guardrail enforcement
+
+> **GitHub issue:** #315 · **Status:** 🟡 Open · **Parent epic:** #297
 
 - **Problem Statement:** When WF-T.6's executor exists, it must report
   through AP.1 — and guardrails graduate from verdicts to enforcement
@@ -741,6 +781,8 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 
 ### Issue AR.2 — ouroboros-ui: [AR.2] IDE take-over protocol
 
+> **GitHub issue:** #316 · **Status:** 🟡 Open · **Parent epic:** #297
+
 - **Problem Statement:** R7's handoff dialog is honest but manual; the
   promise is a seamless jump into the editor with context.
 - **Solution/Scope:** Deep-link handoff (`vscode://`/JetBrains protocols +
@@ -758,6 +800,8 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 
 ### Issue AR.3 — ouroboros-rest: [AR.3] SSE live transcript
 
+> **GitHub issue:** #317 · **Status:** 🟡 Open · **Parent epic:** #297
+
 - **Problem Statement:** Poll-cadence liveness undersells a streaming
   transcript once runs are real; DASH-J.1's SSE channel is the upgrade
   slot (option 2-A's reserved path).
@@ -772,6 +816,8 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 - **Epic:** AR
 
 ### Issue AR.4 — ouroboros-rest: [AR.4] Slack-thread steering
+
+> **GitHub issue:** #318 · **Status:** 🟡 Open · **Parent epic:** #297
 
 - **Problem Statement:** The steering caption's Slack claim (R9-deferred)
   — steer, pause, and status from the run's thread — lands with mockup
@@ -788,6 +834,8 @@ e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ ·
 - **Epic:** AR
 
 ### Issue AR.5 — ouroboros-rest: [AR.5] Verified secrets scanning & policy escalation
+
+> **GitHub issue:** #319 · **Status:** 🟡 Open · **Parent epic:** #297
 
 - **Problem Statement:** Regex verdicts (option 3-A) catch formats, not
   live credentials; enforcement-grade scanning wants verification and
@@ -863,10 +911,24 @@ Ordered checklist (⊕ = parallelizable within its phase):
 | Epic AR — Live Execution & Extended | 5 | 0 | 5 |
 | **Total** | **22** | **17** | **5** |
 
-Plus amendments executed at filing: DASH-J.3 (scope absorbed by AP.1 —
-coordination), DASH-F.1/I.3 (stage reads + run links), AI.2/AH.5 (farm job
-links + full-log target), WF-P.9 (evaluation half delivered), #49 (run-detail
-stubs retired), #56 (console e2e leg).
+Amendment comments posted at filing:
+
+| Issue | Amendment |
+|---|---|
+| #91 (DASH-J.3) | Ingestion scope absorbed by **#303** (decision R2); disposition — close as superseded, or retain as the dashboard-side verification ticket |
+| #64 (DASH-F.1) | Stage reads move to `run_stages` (**#298**); legacy columns retained through the migration, removal deferred |
+| #82 (DASH-I.3) | Active-loop rows now target the real console route (**#309**) |
+| #257 (AI.2) | Farm current-job cells link to **#309**; the reservation link is rendered by **#313**, omitted when absent |
+| #253 (AH.5) | Pattern-reuse note — the offset-fetch log pattern carries the run transcript (**#304**), caps/elision follow AG.5 |
+| #133 (WF-P.2) | Stage permissions become *evaluated* in **#305**; DSL limits snapshot onto stage rows in **#298**; enforcement stays deferred to **#315** |
+| #49 | The `/runs/:id` placeholder is retired by **#309** |
+| #56 | The smoke suite gains the console e2e leg (**#314**), the MVP gate |
+
+**Reference correction made at filing.** This roadmap cites the permissions debt
+as *WF-P.9*; no P.9 issue exists. The `permissions: {push_fixup, touch_ci}` and
+`limits: {max_retries, token_budget}` declarations live in **WF-P.2 (#133)**, so
+the amendment was posted there. Every other reference in this document resolved
+as written.
 
 ## References
 
@@ -915,22 +977,55 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| AQ.1 | Mounts in the shell content pane as a contextual route (no sidebar entry); breadcrumbs/back affordances orient the user; any streaming log/transcript regions scroll in their own wrappers within the pane |
-| AQ.2, AQ.3, AQ.4, AQ.5 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| AQ.6 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| AQ.1 (#309) | Mounts in the shell content pane as a contextual route (no sidebar entry); breadcrumbs/back affordances orient the user; any streaming log/transcript regions scroll in their own wrappers within the pane |
+| AQ.2–AQ.5 (#310–#313) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| AQ.6 (#314) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the
-simulated-run-first strategy (the console is proven end-to-end against the
-real ingestion contract before execution exists — R2's absorption of
-DASH-J.3 needs the filing-time coordination call), the transcript honesty
-rules (R3/R4 — typed events, provenance, simulated watermarks), the
-guardrail split (R5 — genuine evaluation now, enforcement with AR.1,
-regex-recall limits stated), the control-queue semantics (R6), and the
-honest take-over (R7) and Slack-caption (R9) stances. Once validated, the
-follow-up pass (`/create-issues ROADMAP_MOCKUP_10_RUN_CONSOLE.md`) creates
-the `runs` label **and the `Run Console MVP` / `Run Console v2`
-milestones**, files the 22 issues with epic parents, relationships, and
-milestone assignments, and posts the amendment comments listed above.
+**Issues filed 2026-08-09.** The validation gate is closed. Created during filing:
+the `runs` label, the **`Run Console MVP`** and **`Run Console v2`** milestones, the
+four epic parents (#294–#297) and twenty-two work issues (#298–#319) with epic
+relationships, issue types and milestone assignments, plus the eight amendment
+comments listed above.
+
+The decisions worth re-reading before work starts, all now recorded in the filed
+issues:
+
+- **R2 — one ingestion contract, built before the executor exists** (#303). The
+  console is proven end-to-end against the *real* contract by a simulated-run driver
+  (#307), so when WF-T.6 (#160) lands it plugs into a finished page rather than a
+  mockup. That is why the driver exercises interleaving, idempotency and control acks
+  rather than a happy path — the bet is settled at #315, and the simulator is what
+  makes it safe.
+- **R3 / R4 — the transcript is a flight recorder, and it never invents** (#299).
+  Typed events with provenance, `simulated` set from the ingesting principal rather
+  than a client claim, and caps that insert **elision markers** instead of truncating
+  silently. Model reasoning is the most sensitive surface in the product; this is the
+  issue that keeps it checkable.
+- **R5 — genuine evaluation now, enforcement later, limits stated** (#305). Four
+  guardrail checks run for real against reported diffs with evidence that carries a
+  path and a rule id and **never the matched value**. The regex ruleset's ~70 % recall
+  class is stated in the card's tooltip — a tick that implied more would be the one
+  lie on this page that could hurt someone. Blocking arrives with #315; verification
+  with #319.
+- **R6 — controls are durable and their delivery is visible** (#306, #310). Abort is
+  needed exactly when an executor is wedged, which is when a synchronous RPC fails. So
+  controls are rows with acks, and the UI distinguishes *acknowledged* from *sent* from
+  *expired* rather than rendering all three as success.
+- **R7 / R9 — two captions that tell today's truth** (#310, #312). Take-over pauses and
+  hands over the branch instead of faking IDE magic (#316 makes it real), and the
+  steering caption does not mention Slack until #318 makes that true.
+
+**Prerequisites.** DASH-F.1/F.3/F.5 (#64, #66, #68), WF-P.1/P.2 (#132, #133), Z.1
+(#194), AH.1/AH.5 (#249, #253), AD.4 (#225), #24/#41/#46/#51/#52/#56, DASH-I.7/I.8
+(#86, #87) and AI.6 (#261) are all filed. Two external gates remain: the **BetterAuth
+roadmap is unfiled** (BA-C.3/BA-D.5 gate role visibility on #309/#310), and the
+**app-shell roadmap is unfiled** (CP.2 registry, CQ.1/CQ.2 type scale). AR.4 (#318)
+additionally waits on the **mockup-19 ChatOps roadmap**, also unfiled.
+
+Once those are in place, begin with **#298** ([AO.1] stage history) — it blocks every
+other issue in the roadmap — and then **#303** ([AP.1] the ingestion contract), which
+is the piece with reach beyond this roadmap: it is the one door every executor,
+simulated or real, reports through, and #91's unbuilt scope is delivered inside it.
+The MVP closes at **#314**, the e2e leg that drives a live simulated run.

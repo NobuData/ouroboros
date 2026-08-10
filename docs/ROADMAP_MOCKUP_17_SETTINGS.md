@@ -217,12 +217,15 @@ enrichment + anomaly alerts (BT.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BQ | Policy & Governance Domain | Policy document + resolution, retention service, workspace config, seeds | ouroboros-db, ouroboros-rest | Settings MVP |
-| BR | Admin Services | Members/capabilities/service accounts, audit plane, webhooks, lifecycle | ouroboros-rest | Settings MVP |
-| BS | Settings UI | Frame + six sections + mounted tabs, states, e2e | ouroboros-ui | Settings MVP |
-| BT | Enterprise Governance (v2) | SCIM, policy-as-code, connectors, SaaS tier, audit intelligence | all | Settings v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BQ | #476 | 🟡 Open | Policy & Governance Domain | Policy document + resolution, retention service, workspace config, seeds | ouroboros-db, ouroboros-rest | Settings MVP |
+| BR | #477 | 🟡 Open | Admin Services | Members/capabilities/service accounts, audit plane, webhooks, lifecycle | ouroboros-rest | Settings MVP |
+| BS | #478 | 🟡 Open | Settings UI | Frame + six sections + mounted tabs, states, e2e | ouroboros-ui | Settings MVP |
+| BT | #479 | 🟡 Open | Enterprise Governance (v2) | SCIM, policy-as-code, connectors, SaaS tier, audit intelligence | all | Settings v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `inbox`, `pr`, `providers`) **plus new
@@ -231,17 +234,19 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ---
 
-## Epic BQ — Policy & Governance Domain (`ouroboros-db` + `ouroboros-rest`)
+## Epic BQ (#476) — Policy & Governance Domain (`ouroboros-db` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BQ.1 | ouroboros-db: [BQ.1] Versioned org-policy document schema | `org_policies` + immutable versions; the five rules as structured data | mvp, settings, db | N (after WF-P.2, BA-B.3) | Y | M | ouroboros-db |
-| BQ.2 | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
-| BQ.3 | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
-| BQ.4 | ouroboros-rest: [BQ.4] Workspace config & deployment truth | Name/domain edit, region/training truth rendering (S6) | mvp, settings, rest | N (after BA-B.3, AD.5) | Y | S | ouroboros-rest |
-| BQ.5 | ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes | Policy v7, members, audit rows, webhooks, tiers; ci checks | mvp, settings, db, ci | N (after BQ.1–BQ.4, #24) | Y | S | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BQ.1 | #480 | 🟡 Open | ouroboros-db: [BQ.1] Versioned org-policy document schema | `org_policies` + immutable versions; the five rules as structured data | mvp, settings, db | N (after WF-P.2, BA-B.3) | Y | M | ouroboros-db |
+| BQ.2 | #481 | 🟡 Open | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
+| BQ.3 | #482 | 🟡 Open | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
+| BQ.4 | #483 | 🟡 Open | ouroboros-rest: [BQ.4] Workspace config & deployment truth | Name/domain edit, region/training truth rendering (S6) | mvp, settings, rest | N (after BA-B.3, AD.5) | Y | S | ouroboros-rest |
+| BQ.5 | #484 | 🟡 Open | ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes | Policy v7, members, audit rows, webhooks, tiers; ci checks | mvp, settings, db, ci | N (after BQ.1–BQ.4, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BQ.1 — ouroboros-db: [BQ.1] Versioned org-policy document schema
+
+> **GitHub issue:** #480 · **Status:** 🟡 Open · **Parent epic:** #476
 
 - **Problem Statement:** Five autonomy policies live scattered across
   planes; the card demands one versioned artifact (`policy v7`) with
@@ -284,6 +289,8 @@ document.dry_run_new_repos = {enabled: true, first_n_loops: 10}
 
 ### Issue BQ.2 — ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring
 
+> **GitHub issue:** #481 · **Status:** 🟡 Open · **Parent epic:** #476
+
 - **Problem Statement:** A document nobody reads is decoration; every
   enforcement point must consume one resolver — the migration this
   codebase deferred here.
@@ -317,6 +324,8 @@ publish v8 (owner, loosening) ─▶ audit "enabled auto-merge (policy v8)" · e
 
 ### Issue BQ.3 — ouroboros-rest: [BQ.3] Retention policy service
 
+> **GitHub issue:** #482 · **Status:** 🟡 Open · **Parent epic:** #476
+
 - **Problem Statement:** Four retention knobs exist in four sweeps; the
   workspace card's selector must govern them all (decision S5).
 - **Solution/Scope:** `retention_policies` — org FK, `data_class` CHECK
@@ -342,6 +351,8 @@ retention{transcripts: 30d, build_logs: 30d, artifacts: 30d, audit: 400d}
 
 ### Issue BQ.4 — ouroboros-rest: [BQ.4] Workspace config & deployment truth
 
+> **GitHub issue:** #483 · **Status:** 🟡 Open · **Parent epic:** #476
+
 - **Problem Statement:** Name/domain editing composes existing planes;
   region and training-data must render deployment truth, never SaaS
   cosplay (decision S6).
@@ -365,6 +376,8 @@ self-hosted: region "self-hosted (single region)" ro · training "off — never 
 ```
 
 ### Issue BQ.5 — ouroboros-db: [BQ.5] Settings seeds — mockup-17 parity + probes
+
+> **GitHub issue:** #484 · **Status:** 🟡 Open · **Parent epic:** #476
 
 - **Problem Statement:** Design review needs the mockup's exact admin
   state, coherent with the seeded universe.
@@ -395,18 +408,20 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 
 ---
 
-## Epic BR — Admin Services (`ouroboros-rest`)
+## Epic BR (#477) — Admin Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BR.1 | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
-| BR.2 | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
-| BR.3 | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
-| BR.4 | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
-| BR.5 | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
-| BR.6 | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BR.1 | #485 | 🟡 Open | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
+| BR.2 | #486 | 🟡 Open | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
+| BR.3 | #487 | 🟡 Open | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
+| BR.4 | #488 | 🟡 Open | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
+| BR.5 | #489 | 🟡 Open | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
+| BR.6 | #490 | 🟡 Open | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
 
 ### Issue BR.1 — ouroboros-rest: [BR.1] Members, capabilities & service accounts
+
+> **GitHub issue:** #485 · **Status:** 🟡 Open · **Parent epic:** #477
 
 - **Problem Statement:** The members card needs enforceable columns
   (decision S3): display-mapped roles, the approve-loops capability, and
@@ -438,6 +453,8 @@ service_account devops-bot {scopes: [farm.submit, api.read]} · token orb_svc_�
 
 ### Issue BR.2 — ouroboros-rest: [BR.2] Audit plane — viewer, export & retention
 
+> **GitHub issue:** #486 · **Status:** 🟡 Open · **Parent epic:** #477
+
 - **Problem Statement:** Every plane writes AD.4-shaped events; #26's
   deferred scope — the queryable, exportable, retained log — lands here
   (decision S4).
@@ -463,6 +480,8 @@ purge: audit > 400d ─▶ tombstone counts (never silent)
 ```
 
 ### Issue BR.3 — ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming
+
+> **GitHub issue:** #487 · **Status:** 🟡 Open · **Parent epic:** #477
 
 - **Problem Statement:** The extensibility substrate (decision S8): signed
   event delivery to customer endpoints — and the SIEM row is its first
@@ -494,6 +513,8 @@ event(audit.provider.rotated) ─▶ outbox ─▶ POST https://siem.acme.dev/ho
 
 ### Issue BR.4 — ouroboros-rest: [BR.4] Integrations status hub & org notification routes
 
+> **GitHub issue:** #488 · **Status:** 🟡 Open · **Parent epic:** #477
+
 - **Problem Statement:** The integrations grid is a truth composition
   (S10), and the notifications card adds *org-level* routes above BN.3's
   per-user prefs.
@@ -524,6 +545,8 @@ routes: daily_digest{09:00, email} ✓ · loop_failures{pagerduty} 🔒 "connect
 ```
 
 ### Issue BR.5 — ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete
+
+> **GitHub issue:** #489 · **Status:** 🟡 Open · **Parent epic:** #477
 
 - **Problem Statement:** The danger zone's three operations must be exact
   mechanism (decision S9): graceful pause, consequence-previewed
@@ -557,6 +580,8 @@ delete "acme-robotics" + step-up ─▶ pending_delete (30d recovery) ─▶ pur
 
 ### Issue BR.6 — ouroboros-rest: [BR.6] Settings integration tests
 
+> **GitHub issue:** #490 · **Status:** 🟡 Open · **Parent epic:** #477
+
 - **Problem Statement:** Policy enforcement, capability checks, webhook
   security, and lifecycle transitions are the platform's governance core.
 - **Solution/Scope:** Harness suites: per-rule policy enforcement
@@ -576,23 +601,25 @@ suites: policy ✓ · capabilities ✓ · tokens ✓ · audit ✓ · webhooks �
 
 ---
 
-## Epic BS — Settings UI (`ouroboros-ui`)
+## Epic BS (#478) — Settings UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/17-settings.html`](mockups/17-settings.html) as the design
 source — section-nav/switch-row/policy-row/member/audit/integ/danger
 treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BS.1 | ouroboros-ui: [BS.1] Settings frame, section nav & save model | Route, tabs (+mounted existing surfaces), dirty-state Save (S7) | mvp, settings, ui, design | N (after #41, BA-D.5) | Y | M | ouroboros-ui |
-| BS.2 | ouroboros-ui: [BS.2] Workspace card | Name/domain/region/retention/training — deployment-truth variants | mvp, settings, ui, design | N (after BS.1, BQ.3/BQ.4) | Y | S | ouroboros-ui |
-| BS.3 | ouroboros-ui: [BS.3] Members & roles card | Table with all row classes, invites, capabilities, service accounts | mvp, settings, ui, design | N (after BS.1, BR.1) | Y | M | ouroboros-ui |
-| BS.4 | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
-| BS.5 | ouroboros-ui: [BS.5] Audit, integrations & notifications cards | Viewer + export + SIEM row; truth-state grid; org routes | mvp, settings, ui, design | N (after BS.1, BR.2–BR.4) | Y | M | ouroboros-ui |
-| BS.6 | ouroboros-ui: [BS.6] Danger zone, states & e2e leg | Lifecycle flows with safety UX; banners; full e2e | mvp, settings, ui, ci | N (after BS.2–BS.5, BR.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BS.1 | #491 | 🟡 Open | ouroboros-ui: [BS.1] Settings frame, section nav & save model | Route, tabs (+mounted existing surfaces), dirty-state Save (S7) | mvp, settings, ui, design | N (after #41, BA-D.5) | Y | M | ouroboros-ui |
+| BS.2 | #492 | 🟡 Open | ouroboros-ui: [BS.2] Workspace card | Name/domain/region/retention/training — deployment-truth variants | mvp, settings, ui, design | N (after BS.1, BQ.3/BQ.4) | Y | S | ouroboros-ui |
+| BS.3 | #493 | 🟡 Open | ouroboros-ui: [BS.3] Members & roles card | Table with all row classes, invites, capabilities, service accounts | mvp, settings, ui, design | N (after BS.1, BR.1) | Y | M | ouroboros-ui |
+| BS.4 | #494 | 🟡 Open | ouroboros-ui: [BS.4] Autonomy policies card | Rule rows with terms chips, editing, version tag, publish flow | mvp, settings, ui, design | N (after BS.1, BQ.2) | Y | L | ouroboros-ui |
+| BS.5 | #495 | 🟡 Open | ouroboros-ui: [BS.5] Audit, integrations & notifications cards | Viewer + export + SIEM row; truth-state grid; org routes | mvp, settings, ui, design | N (after BS.1, BR.2–BR.4) | Y | M | ouroboros-ui |
+| BS.6 | #496 | 🟡 Open | ouroboros-ui: [BS.6] Danger zone, states & e2e leg | Lifecycle flows with safety UX; banners; full e2e | mvp, settings, ui, ci | N (after BS.2–BS.5, BR.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BS.1 — ouroboros-ui: [BS.1] Settings frame, section nav & save model
+
+> **GitHub issue:** #491 · **Status:** 🟡 Open · **Parent epic:** #478
 
 - **Problem Statement:** The frame: section nav with anchor tabs (plus
   the S2-mounted existing admin surfaces), and the explicit Save model
@@ -619,6 +646,8 @@ Workspace · Members · Policies · Integrations · Audit · Danger zone │ Sou
 
 ### Issue BS.2 — ouroboros-ui: [BS.2] Workspace card
 
+> **GitHub issue:** #492 · **Status:** 🟡 Open · **Parent epic:** #478
+
 - **Problem Statement:** The workspace card with S6's deployment-truth
   variants — no SaaS cosplay.
 - **Solution/Scope:** Fields per the mockup (name, domain with the
@@ -641,6 +670,8 @@ Training: "off — this deployment never trains on your data"
 ```
 
 ### Issue BS.3 — ouroboros-ui: [BS.3] Members & roles card
+
+> **GitHub issue:** #493 · **Status:** 🟡 Open · **Parent epic:** #478
 
 - **Problem Statement:** The members table with every row class — you-tag,
   approve capability, service account, pending invite — and the
@@ -668,6 +699,8 @@ Training: "off — this deployment never trains on your data"
 ```
 
 ### Issue BS.4 — ouroboros-ui: [BS.4] Autonomy policies card
+
+> **GitHub issue:** #494 · **Status:** 🟡 Open · **Parent epic:** #478
 
 - **Problem Statement:** The governance centerpiece: five rule rows with
   structured terms chips, editable conditions, and the versioned publish
@@ -697,6 +730,8 @@ policy v7 ⓘ history · [Save] ─▶ "loosens human-review — owner confirm" 
 ```
 
 ### Issue BS.5 — ouroboros-ui: [BS.5] Audit, integrations & notifications cards
+
+> **GitHub issue:** #495 · **Status:** 🟡 Open · **Parent epic:** #478
 
 - **Problem Statement:** The record surfaces: the audit viewer with
   export + SIEM status, the truth-state integrations grid, and org
@@ -728,6 +763,8 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 
 ### Issue BS.6 — ouroboros-ui: [BS.6] Danger zone, states & e2e leg
 
+> **GitHub issue:** #496 · **Status:** 🟡 Open · **Parent epic:** #478
+
 - **Problem Statement:** The danger zone's safety UX, the global paused
   banner, and the page's end-to-end certification.
 - **Solution/Scope:** Danger card per the mockup: **Pause all loops**
@@ -758,17 +795,19 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 
 ---
 
-## Epic BT — Enterprise Governance (v2 · milestone `Settings v2`)
+## Epic BT (#479) — Enterprise Governance (v2 · milestone `Settings v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BT.1 | ouroboros-rest: [BT.1] SCIM provisioning & IdP group sync | `/Users`+`/Groups` endpoints, Okta group→role mapping, nightly recon | v2, settings, rest | N (after BR.1, BA-E) | N | L | ouroboros-rest |
-| BT.2 | ouroboros-rest: [BT.2] Policy as code & engine ADR | YAML/TS projection of the policy document; OPA/Cedar evaluation | v2, settings, rest | N (after BQ.1/BQ.2) | N | M | ouroboros-rest, docs |
-| BT.3 | ouroboros-rest: [BT.3] Teams, Datadog & PagerDuty connectors | Vendor connectors over the webhook/notification substrate | v2, settings, rest | N (after BR.3/BR.4) | N | L | ouroboros-rest |
-| BT.4 | ouroboros-rest: [BT.4] SaaS governance tier | Region choice, training-data controls, plan locks, compliance packs | v2, settings, rest | N (after BQ.4) | N | L | ouroboros-rest |
-| BT.5 | ouroboros-rest: [BT.5] Audit intelligence | Anomaly alerts, session-context enrichment, compliance reports | v2, settings, rest, engine | N (after BR.2, AF.2) | N | M | ouroboros-rest, ouroboros-engine |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BT.1 | #497 | 🟡 Open | ouroboros-rest: [BT.1] SCIM provisioning & IdP group sync | `/Users`+`/Groups` endpoints, Okta group→role mapping, nightly recon | v2, settings, rest | N (after BR.1, BA-E) | N | L | ouroboros-rest |
+| BT.2 | #498 | 🟡 Open | ouroboros-rest: [BT.2] Policy as code & engine ADR | YAML/TS projection of the policy document; OPA/Cedar evaluation | v2, settings, rest | N (after BQ.1/BQ.2) | N | M | ouroboros-rest, docs |
+| BT.3 | #499 | 🟡 Open | ouroboros-rest: [BT.3] Teams, Datadog & PagerDuty connectors | Vendor connectors over the webhook/notification substrate | v2, settings, rest | N (after BR.3/BR.4) | N | L | ouroboros-rest |
+| BT.4 | #500 | 🟡 Open | ouroboros-rest: [BT.4] SaaS governance tier | Region choice, training-data controls, plan locks, compliance packs | v2, settings, rest | N (after BQ.4) | N | L | ouroboros-rest |
+| BT.5 | #501 | 🟡 Open | ouroboros-rest: [BT.5] Audit intelligence | Anomaly alerts, session-context enrichment, compliance reports | v2, settings, rest, engine | N (after BR.2, AF.2) | N | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue BT.1 — ouroboros-rest: [BT.1] SCIM provisioning & IdP group sync
+
+> **GitHub issue:** #497 · **Status:** 🟡 Open · **Parent epic:** #479
 
 - **Problem Statement:** The members footer's promise — roles synced from
   Okta groups — is enterprise table stakes: SCIM `/Users` + `/Groups`
@@ -791,6 +830,8 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 
 ### Issue BT.2 — ouroboros-rest: [BT.2] Policy as code & engine ADR
 
+> **GitHub issue:** #498 · **Status:** 🟡 Open · **Parent epic:** #479
+
 - **Problem Statement:** "Edit as code" and the growth path beyond five
   rules: a code projection (the U-epic round-trip discipline) and a
   decision on graduating to a policy engine.
@@ -806,6 +847,8 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 - **Epic:** BT
 
 ### Issue BT.3 — ouroboros-rest: [BT.3] Teams, Datadog & PagerDuty connectors
+
+> **GitHub issue:** #499 · **Status:** 🟡 Open · **Parent epic:** #479
 
 - **Problem Statement:** The grid's v2 tiles: vendor-native delivery over
   the substrate that already exists.
@@ -824,6 +867,8 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 
 ### Issue BT.4 — ouroboros-rest: [BT.4] SaaS governance tier
 
+> **GitHub issue:** #500 · **Status:** 🟡 Open · **Parent epic:** #479
+
 - **Problem Statement:** The mockup's enterprise-flavored controls
   (region choice, training locks, plan gating) belong to a managed
   deployment tier (S6 kept them honest on self-hosted).
@@ -840,6 +885,8 @@ Loop failures → PagerDuty 🔒 "connect PagerDuty first"
 - **Epic:** BT
 
 ### Issue BT.5 — ouroboros-rest: [BT.5] Audit intelligence
+
+> **GitHub issue:** #501 · **Status:** 🟡 Open · **Parent epic:** #479
 
 - **Problem Statement:** 400 days of audit is a haystack; enterprises
   want anomaly surfacing and compliance-shaped reports.
@@ -905,30 +952,50 @@ Ordered checklist (⊕ = parallelizable within its phase):
 1. **Phase 0 — Prerequisites:** BA-A.5/B.3/E, AD.1/AD.4/AD.5, AX.2/AX.4,
    AP.3, BA.3, caps, AH/AP dispatch, AO.2/AH.5/AT.5 sweeps, BN.3/BJ.4,
    WF-P.2/P.8, #41/#46, driver + sandbox.
-2. **Phase 1 — Governance domain:** BQ.1 → BQ.2 ⊕ { BQ.3 ⊕ BQ.4 } → BQ.5
-3. **Phase 2 — Admin services:** { BR.1 ⊕ BR.2 ⊕ BR.3 ⊕ BR.4 ⊕ BR.5 } →
-   BR.6
-4. **Phase 3 — UI:** BS.1 → { BS.2 ⊕ BS.3 ⊕ BS.4 ⊕ BS.5 } → **BS.6 ✅**
-   *(MVP gate, amending #56)*
-5. **v2:** BT.1–BT.5 after their dependencies.
+2. **Phase 1 — Governance domain:** BQ.1 (#480) → BQ.2 (#481) ⊕ { BQ.3 (#482)
+   ⊕ BQ.4 (#483) } → BQ.5 (#484)
+3. **Phase 2 — Admin services:** { BR.1 (#485) ⊕ BR.2 (#486) ⊕ BR.3 (#487) ⊕
+   BR.4 (#488) ⊕ BR.5 (#489) } → BR.6 (#490)
+4. **Phase 3 — UI:** BS.1 (#491) → { BS.2 (#492) ⊕ BS.3 (#493) ⊕ BS.4 (#494) ⊕
+   BS.5 (#495) } → **BS.6 (#496) ✅** *(MVP gate, amending #56)*
+5. **v2:** BT.1 (#497) ⊕ BT.2 (#498) ⊕ BT.3 (#499) ⊕ BT.4 (#500) ⊕ BT.5 (#501)
+   after their dependencies.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BQ — Policy & Governance Domain | 5 | 5 | 0 |
-| Epic BR — Admin Services | 6 | 6 | 0 |
-| Epic BS — Settings UI | 6 | 6 | 0 |
-| Epic BT — Enterprise Governance | 5 | 0 | 5 |
-| **Total** | **22** | **17** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BQ — Policy & Governance Domain | #476 | 5 | 5 | 0 |
+| Epic BR — Admin Services | #477 | 6 | 6 | 0 |
+| Epic BS — Settings UI | #478 | 6 | 6 | 0 |
+| Epic BT — Enterprise Governance | #479 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **22** | **17** | **5** |
 
-Plus amendments executed at filing: #26 (audit scope delivered — filing
-coordination), BA.3 (dry-run generalized), X7/BN.4 (policy read-view →
-document), BA.1 (protected paths join the document), AF.4/Z.1 (spend guard
-reads policy), AO.2/AH.5/AT.5 (retention service), AH.4/AP (org-state
-dispatch checks), inbox/AX (capability checks), Q.4/AE/AI.3 (surfaces mount
-as tabs), #41 (gear target), #49 (settings stub retired), #56 (settings e2e
-leg).
+Issues **#480–#501**, filed 2026-08-09 as sub-issues of their epics, with the
+new `settings` label and the `Settings MVP` / `Settings v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| #26 (scaffolding audit log) | the deferred audit **surface** lands in BR.2 (#486) — filterable viewer, streamed CSV export, 400d retention tier and `audit.*` webhook streaming; the AD.4 shape is the schema, reconciled at implementation |
+| AD.4 (#225) | the audit store gains its readers: BR.2's query API, the export, the retention purge and the webhook fan-out; actor kinds must distinguish human/bot/system/`service:<name>` |
+| AD.5 (#226) | the security model documents **crypto-shredding** (BR.5, #489) as the deletion guarantee, and the deployment-truth rules (S6) for data region and training-data claims |
+| AX.2 (#358) | the refactor-label org-policy row is replaced by the policy document's `human_review` rule (BQ.2, #481); approval APIs gain the `can_approve_loops` capability check (BR.1, #485) |
+| AX.4 (#360) | merge eligibility reads the document's `auto_merge` conditions (`effort ≤ M ∧ ¬refactor`) through the resolver |
+| AP.3 (#305) | protected-path globs come from the policy document instead of BA.1's rows; the settings card becomes the single editing path |
+| BA.1 (#380) | wizard-stored protected paths join the policy document; the glob editor is shared with the policies card (BS.4, #494) |
+| BA.3 (#382) | the dry-run boolean generalises to the document's per-repo `first_n_loops` rule; the org-wide boolean survives as the stricter override |
+| AF.4 (#237) / Z.1 (#194) | cap checks consult the document's `spend_guard`; precedence against per-provider caps is stated and tested (stricter wins, and the pause names which limit fired) |
+| AO.2 (#299), AH.5 (#253), AT.5 (#333) | the sweeps read BQ.3's retention service (#482) instead of hard-coded windows, and report tombstone counts |
+| AH.4 (#252) + AP dispatch | dispatch points consult `org_state` (BR.5, #489): in-flight stages finish, nothing new starts while paused |
+| BN.4 (#464) | the inbox policy read-view (X7) re-points at the policy resolver; inbox actions gain the capability check |
+| BN.3 (#463), BJ.4 (#440) | org-level notification routes (BR.4, #488) layer above per-user preferences; digest and weekly-report sends honour them |
+| Q.4 (#141), AE (#227–#233), AI.3 (#258) | these admin surfaces mount as tabs under `/settings` (S2); their nav entries relocate |
+| #41 | the shell's settings/gear target is `/settings` (BS.1, #491) |
+| #49 | the `/settings` placeholder is retired by BS.1 (#491) |
+| #56 | the e2e smoke test gains a settings leg (BS.6, #496): policy edit → enforcement → audit, capability → inbox, webhook ping, CSV export, pause-all → stage finishes → resume |
+| #229 (AE.3) | the one-time-secret clipboard discipline is reused for service-account tokens (BS.3, #493) |
 
 ## References
 
@@ -972,22 +1039,28 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BS.1 | Mounts in the shell content pane; navigation via the sidebar **Settings** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BS.1 | #491 | 🟡 Open | Mounts in the shell content pane; navigation via the sidebar **Settings** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BS.2–BS.5 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BS.2 | Gains the **font-size preference control** (App Shell CQ.2 — five steps 87.5–150%, rendered beside the theme control with a live preview) |
-| BS.6 | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BS.2 | #492 | 🟡 Open | Gains the **font-size preference control** (App Shell CQ.2 — five steps 87.5–150%, rendered beside the theme control with a live preview) |
+| BS.6 | #496 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the unified policy
-document (S1 — the largest cross-plane migration in the series, with the
-per-plane absorption amendments), the audit-plane delivery (S4 — closing
-#26's long deferral), the deployment-truth rules for the workspace card
-(S6), the danger-zone semantics (S9 — graceful pause, recovery window,
-DEK-destruction deletion), and the webhook substrate (S8) that SIEM and
-the v2 connectors ride. Once validated, the follow-up pass
-(`/create-issues ROADMAP_MOCKUP_17_SETTINGS.md`) creates the `settings`
-label **and the `Settings MVP` / `Settings v2` milestones**, files the 22
-issues with epic parents, relationships, and milestone assignments, and
-posts the amendment comments listed above.
+**Filed 2026-08-09.** The `settings` label and the `Settings MVP` /
+`Settings v2` milestones were created; the four epics (#476–#479) and
+twenty-two issues (#480–#501) are on GitHub with parent relationships,
+milestones, labels and types set, and the amendment comments above are
+posted.
+
+Execution starts at **BQ.1 (#480)** — the policy document blocks the resolver,
+which blocks the policies card and every enforcement amendment. The critical
+path to the MVP gate is
+#480 → #481 → #491 → #494 → **#496**, with the admin services (#485–#489) and
+the remaining cards running in parallel behind #491.
+
+Two dependency families remain unfiled and are called out in the issues that
+need them: the **BetterAuth roadmap** (BA-A.5 org plugin, BA-B.3 tenancy
+reconciliation, BA-D.5 role gating, BA-E SSO state and step-up) and the **App
+Shell roadmap** (CP.2 sidebar registry, CP.4 in-pane chrome, CQ.1 rem tokens,
+CQ.2 font-size preference). Neither blocks starting BQ.1; the members footer,
+the SSO tag and the shell primitives render honestly until they land.

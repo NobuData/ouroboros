@@ -209,12 +209,15 @@ channel-scoped digests/subscriptions expansion (CB.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BY | Chat Domain | Connections, channel bindings, message/command records, links, seeds | ouroboros-db | Chat Ops MVP |
-| BZ | Slack App & Command Services | App endpoints, renderer, publisher, grammar/dispatcher, escalation, console | ouroboros-rest, ouroboros-ui | Chat Ops MVP |
-| CA | Chat Ops UI | Mirror card, commands/routing/presence cards, states, e2e | ouroboros-ui | Chat Ops MVP |
-| CB | Sentence Interface & Platforms (v2) | AI presence, Teams, rotations, thread steering, digest expansion | all | Chat Ops v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BY | #527 | 🟡 Open | Chat Domain | Connections, channel bindings, message/command records, links, seeds | ouroboros-db | Chat Ops MVP |
+| BZ | #528 | 🟡 Open | Slack App & Command Services | App endpoints, renderer, publisher, grammar/dispatcher, escalation, console | ouroboros-rest, ouroboros-ui | Chat Ops MVP |
+| CA | #529 | 🟡 Open | Chat Ops UI | Mirror card, commands/routing/presence cards, states, e2e | ouroboros-ui | Chat Ops MVP |
+| CB | #530 | 🟡 Open | Sentence Interface & Platforms (v2) | AI presence, Teams, rotations, thread steering, digest expansion | all | Chat Ops v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `inbox`, `settings`, `runs`) **plus
@@ -224,16 +227,18 @@ v2`** created at filing; every issue assigned. Complexity chips:
 
 ---
 
-## Epic BY — Chat Domain (`ouroboros-db`)
+## Epic BY (#527) — Chat Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BY.1 | ouroboros-db: [BY.1] Chat connections & channel bindings | Workspace installs (sealed tokens), channels, route targets | mvp, chatops, db | N (after AD.1, BR.4) | Y | M | ouroboros-db |
-| BY.2 | ouroboros-db: [BY.2] Message & command records | Published cards (for edits + mirror), command invocations, links | mvp, chatops, db | N (after BY.1, BM.1) | Y | M | ouroboros-db |
-| BY.3 | ouroboros-db: [BY.3] Identity links & on-call | Slack↔member mappings, link states, designated on-call | mvp, chatops, db | N (after BY.1, BR.1) | Y | S | ouroboros-db |
-| BY.4 | ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes | The six-message stream, bindings, links; ci checks | mvp, chatops, db, ci | N (after BY.2/BY.3, #24) | Y | S | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BY.1 | #531 | 🟡 Open | ouroboros-db: [BY.1] Chat connections & channel bindings | Workspace installs (sealed tokens), channels, route targets | mvp, chatops, db | N (after AD.1, BR.4) | Y | M | ouroboros-db |
+| BY.2 | #532 | 🟡 Open | ouroboros-db: [BY.2] Message & command records | Published cards (for edits + mirror), command invocations, links | mvp, chatops, db | N (after BY.1, BM.1) | Y | M | ouroboros-db |
+| BY.3 | #533 | 🟡 Open | ouroboros-db: [BY.3] Identity links & on-call | Slack↔member mappings, link states, designated on-call | mvp, chatops, db | N (after BY.1, BR.1) | Y | S | ouroboros-db |
+| BY.4 | #534 | 🟡 Open | ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes | The six-message stream, bindings, links; ci checks | mvp, chatops, db, ci | N (after BY.2/BY.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BY.1 — ouroboros-db: [BY.1] Chat connections & channel bindings
+
+> **GitHub issue:** #531 · **Status:** 🟡 Open · **Parent epic:** #527
 
 - **Problem Statement:** Installs, channels, and route targets need durable
   rows — the substrate for publishing and the Settings/`#eng-leads`
@@ -267,6 +272,8 @@ erDiagram
 
 ### Issue BY.2 — ouroboros-db: [BY.2] Message & command records
 
+> **GitHub issue:** #532 · **Status:** 🟡 Open · **Parent epic:** #527
+
 - **Problem Statement:** Edits (`chat.update`), the page's truthful mirror
   (C7), and command auditing all need records of what was said and asked.
 - **Solution/Scope:** `chat_messages` — channel FK, platform ts/id,
@@ -293,6 +300,8 @@ chat_commands{/ouro status, invoker: ken-link, outcome: ok}
 
 ### Issue BY.3 — ouroboros-db: [BY.3] Identity links & on-call
 
+> **GitHub issue:** #533 · **Status:** 🟡 Open · **Parent epic:** #527
+
 - **Problem Statement:** "Same permissions" needs the Slack-user↔member
   mapping (C4), and DM-on-call needs a designee (C6).
 - **Solution/Scope:** `chat_identity_links` — connection FK, platform user
@@ -313,6 +322,8 @@ on_call{ken} ─▶ blocking questions DM Ken (rotations: CB.3)
 ```
 
 ### Issue BY.4 — ouroboros-db: [BY.4] Chat seeds — mockup-19 parity + probes
+
+> **GitHub issue:** #534 · **Status:** 🟡 Open · **Parent epic:** #527
 
 - **Problem Statement:** Design review needs the mockup's exact stream and
   configuration over the shared universe.
@@ -339,18 +350,20 @@ seeds: connection(app v2.4) · 3 channels · 6-message stream (refs live) ·
 
 ---
 
-## Epic BZ — Slack App & Command Services (`ouroboros-rest` + `ouroboros-ui`)
+## Epic BZ (#528) — Slack App & Command Services (`ouroboros-rest` + `ouroboros-ui`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BZ.1 | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
-| BZ.2 | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
-| BZ.3 | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
-| BZ.4 | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
-| BZ.5 | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
-| BZ.6 | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BZ.1 | #535 | 🟡 Open | ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity | OAuth install, signature-verified events/interactivity/slash, linking | mvp, chatops, rest | N (after BY.1/BY.3) | Y | L | ouroboros-rest |
+| BZ.2 | #536 | 🟡 Open | ouroboros-rest: [BZ.2] Card renderer & event publisher | Block Kit kinds, outbox publishing, chat.update lifecycle | mvp, chatops, rest, inbox | N (after BY.2, BN.1, BR.3) | Y | L | ouroboros-rest |
+| BZ.3 | #537 | 🟡 Open | ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher | The command registry + nine bindings; console mount contract | mvp, chatops, rest | N (after BZ.1, plane APIs) | Y | L | ouroboros-rest |
+| BZ.4 | #538 | 🟡 Open | ouroboros-rest: [BZ.4] Interactive answers & escalation | Button→BN.2 flows, session-confirm gating, timers (C5) | mvp, chatops, rest, inbox | N (after BZ.2, BN.2) | Y | M | ouroboros-rest |
+| BZ.5 | #539 | 🟡 Open | ouroboros-ui: [BZ.5] In-app command console | The `/ouro` surface in ⌘K (H.3 extension) with completions | mvp, chatops, ui | N (after BZ.3, H.3) | Y | M | ouroboros-ui |
+| BZ.6 | #540 | 🟡 Open | ouroboros-rest: [BZ.6] ChatOps integration tests | Signatures, renderer goldens, command matrix, escalation | mvp, chatops, rest, ci | N (after BZ.1–BZ.5) | Y | M | ouroboros-rest |
 
 ### Issue BZ.1 — ouroboros-rest: [BZ.1] Slack app — install, endpoints & identity
+
+> **GitHub issue:** #535 · **Status:** 🟡 Open · **Parent epic:** #528
 
 - **Problem Statement:** The foundation (C1/C4): a per-deployment Slack app
   with verified endpoints, org installs, and the linking flow.
@@ -380,6 +393,8 @@ POST /slack/interactivity ─▶ verify sig+ts ─▶ ack ≤3s ─▶ async han
 ```
 
 ### Issue BZ.2 — ouroboros-rest: [BZ.2] Card renderer & event publisher
+
+> **GitHub issue:** #536 · **Status:** 🟡 Open · **Parent epic:** #528
 
 - **Problem Statement:** Typed cards with edit lifecycles (C2): decision
   kinds and event families rendered once, published reliably, updated on
@@ -411,6 +426,8 @@ item(protected_path) + route ─▶ outbox ─▶ Block Kit card {⏸ headline, 
 ```
 
 ### Issue BZ.3 — ouroboros-rest: [BZ.3] `/ouro` grammar & dispatcher
+
+> **GitHub issue:** #537 · **Status:** 🟡 Open · **Parent epic:** #528
 
 - **Problem Statement:** One versioned command registry (C3) binding nine
   deterministic commands to their planes — identically for Slack and the
@@ -446,6 +463,8 @@ item(protected_path) + route ─▶ outbox ─▶ Block Kit card {⏸ headline, 
 
 ### Issue BZ.4 — ouroboros-rest: [BZ.4] Interactive answers & escalation
 
+> **GitHub issue:** #538 · **Status:** 🟡 Open · **Parent epic:** #528
+
 - **Problem Statement:** The page's soul: buttons that resume loops (via
   the inbox executor) and timers that escalate honestly (C4/C5).
 - **Solution/Scope:** Interactivity handling: button payloads (signed,
@@ -475,6 +494,8 @@ unanswered 30m ─▶ escalate: inbox ↑ + DM on-call + card "⚠ escalated"
 
 ### Issue BZ.5 — ouroboros-ui: [BZ.5] In-app command console
 
+> **GitHub issue:** #539 · **Status:** 🟡 Open · **Parent epic:** #528
+
 - **Problem Statement:** The caption's third surface: the same grammar in
   the app, mounted in the ⌘K palette (C3).
 - **Solution/Scope:** H.3 extension: `/ouro ` prefix in the palette enters
@@ -499,6 +520,8 @@ unanswered 30m ─▶ escalate: inbox ↑ + DM on-call + card "⚠ escalated"
 
 ### Issue BZ.6 — ouroboros-rest: [BZ.6] ChatOps integration tests
 
+> **GitHub issue:** #540 · **Status:** 🟡 Open · **Parent epic:** #528
+
 - **Problem Statement:** Signatures, renderer fidelity, command
   permissions, and escalation are the integration's correctness core.
 - **Solution/Scope:** Harness suites (Slack fixture receiver/emitter):
@@ -519,22 +542,24 @@ suites: sig ✓ · renderer ✓ · commands ✓ · answers ✓ · escalation ✓
 
 ---
 
-## Epic CA — Chat Ops UI (`ouroboros-ui`)
+## Epic CA (#529) — Chat Ops UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/19-chatops.html`](mockups/19-chatops.html) as the design
 source — chan-head/msg/rich-card/sys-line/cmd-row/route-row treatments — via
 the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CA.1 | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
-| CA.2 | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
-| CA.3 | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
-| CA.4 | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
-| CA.5 | ouroboros-ui: [CA.5] ChatOps states & e2e leg | No-connection/unlinked/error states; full-chain e2e | mvp, chatops, ui, ci | N (after CA.2–CA.4) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CA.1 | #541 | 🟡 Open | ouroboros-ui: [CA.1] ChatOps route, head & connection flow | Frame, add-channel, open-channel, install/setup states | mvp, chatops, ui, design | N (after #41, BZ.1, BA-D.5) | Y | M | ouroboros-ui |
+| CA.2 | #542 | 🟡 Open | ouroboros-ui: [CA.2] Channel mirror card | The truthful stream (C7): all archetypes + composer console | mvp, chatops, ui, design | N (after CA.1, BZ.2) | Y | L | ouroboros-ui |
+| CA.3 | #543 | 🟡 Open | ouroboros-ui: [CA.3] Commands & routing cards | Registry-driven command list; BR.4 binding editors | mvp, chatops, ui, design | N (after CA.1, BZ.3, BR.4) | Y | M | ouroboros-ui |
+| CA.4 | #544 | 🟡 Open | ouroboros-ui: [CA.4] AI-presence card & honest preview | The C8 designed preview + the CB.1 activation slot | mvp, chatops, ui, design | N (after CA.1) | Y | S | ouroboros-ui |
+| CA.5 | #545 | 🟡 Open | ouroboros-ui: [CA.5] ChatOps states & e2e leg | No-connection/unlinked/error states; full-chain e2e | mvp, chatops, ui, ci | N (after CA.2–CA.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CA.1 — ouroboros-ui: [CA.1] ChatOps route, head & connection flow
+
+> **GitHub issue:** #541 · **Status:** 🟡 Open · **Parent epic:** #529
 
 - **Problem Statement:** The frame plus the real install/connect journey —
   this page doubles as the Slack integration's home surface.
@@ -558,6 +583,8 @@ the #16 tokens (both themes; the mockup is dark-only).
 ```
 
 ### Issue CA.2 — ouroboros-ui: [CA.2] Channel mirror card
+
+> **GitHub issue:** #542 · **Status:** 🟡 Open · **Parent epic:** #529
 
 - **Problem Statement:** The centerpiece: the mockup's chat stream rendered
   from real records (C7) — labeled a mirror, never a counterfeit — plus a
@@ -588,6 +615,8 @@ the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue CA.3 — ouroboros-ui: [CA.3] Commands & routing cards
 
+> **GitHub issue:** #543 · **Status:** 🟡 Open · **Parent epic:** #529
+
 - **Problem Statement:** The command reference (registry-driven, never
   hand-maintained) and the routing card editing the BR.4 bindings.
 - **Solution/Scope:** **Commands card**: rows generated from the BZ.3
@@ -612,6 +641,8 @@ Blocking questions → [#ouroboros-loops ▾] + DM on-call (Ken · rotations arr
 
 ### Issue CA.4 — ouroboros-ui: [CA.4] AI-presence card & honest preview
 
+> **GitHub issue:** #544 · **Status:** 🟡 Open · **Parent epic:** #529
+
 - **Problem Statement:** The sentence interface is v2 (C8); the card must
   show the design without faking the capability.
 - **Solution/Scope:** The mini-thread rendered as a **designed preview**
@@ -634,6 +665,8 @@ today: the /ouro commands ↓ work everywhere
 ```
 
 ### Issue CA.5 — ouroboros-ui: [CA.5] ChatOps states & e2e leg
+
+> **GitHub issue:** #545 · **Status:** 🟡 Open · **Parent epic:** #529
 
 - **Problem Statement:** Connection-less, unlinked, and error states —
   and the full install→publish→answer→command chain certification.
@@ -661,17 +694,19 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
 
 ---
 
-## Epic CB — Sentence Interface & Platforms (v2 · milestone `Chat Ops v2`)
+## Epic CB (#530) — Sentence Interface & Platforms (v2 · milestone `Chat Ops v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CB.1 | ouroboros-engine: [CB.1] AI presence (`/v0/chat-answer`) | Grounded NL answers + suggest-confirm applies; `explain pr` | v2, chatops, engine | N (after BZ.3, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
-| CB.2 | ouroboros-rest: [CB.2] MS Teams integration | Teams app: adaptive cards, commands, the platform adapter | v2, chatops, rest | N (after BZ.2/BZ.3) | N | L | ouroboros-rest |
-| CB.3 | ouroboros-rest: [CB.3] On-call rotations & DM policies | Schedules, handoffs, escalation-chain integration | v2, chatops, rest | N (after BY.3, BP.5-shape) | N | M | ouroboros-rest |
-| CB.4 | ouroboros-rest: [CB.4] Run-thread steering continuity | Per-loop threads, reply-to-steer, transcript mirroring (AR.4) | v2, chatops, runs, rest | N (after BZ.2, AP.4) | N | M | ouroboros-rest |
-| CB.5 | ouroboros-rest: [CB.5] Channel digests & subscriptions | Per-channel digest schedules, subscribe commands, quiet hours | v2, chatops, rest | N (after BZ.2, BJ.4) | N | S | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| CB.1 | #546 | 🟡 Open | ouroboros-engine: [CB.1] AI presence (`/v0/chat-answer`) | Grounded NL answers + suggest-confirm applies; `explain pr` | v2, chatops, engine | N (after BZ.3, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
+| CB.2 | #547 | 🟡 Open | ouroboros-rest: [CB.2] MS Teams integration | Teams app: adaptive cards, commands, the platform adapter | v2, chatops, rest | N (after BZ.2/BZ.3) | N | L | ouroboros-rest |
+| CB.3 | #548 | 🟡 Open | ouroboros-rest: [CB.3] On-call rotations & DM policies | Schedules, handoffs, escalation-chain integration | v2, chatops, rest | N (after BY.3, BP.5-shape) | N | M | ouroboros-rest |
+| CB.4 | #549 | 🟡 Open | ouroboros-rest: [CB.4] Run-thread steering continuity | Per-loop threads, reply-to-steer, transcript mirroring (AR.4) | v2, chatops, runs, rest | N (after BZ.2, AP.4) | N | M | ouroboros-rest |
+| CB.5 | #550 | 🟡 Open | ouroboros-rest: [CB.5] Channel digests & subscriptions | Per-channel digest schedules, subscribe commands, quiet hours | v2, chatops, rest | N (after BZ.2, BJ.4) | N | S | ouroboros-rest |
 
 ### Issue CB.1 — ouroboros-engine: [CB.1] AI presence (`/v0/chat-answer`)
+
+> **GitHub issue:** #546 · **Status:** 🟡 Open · **Parent epic:** #530
 
 - **Problem Statement:** "Anything the UI can do, a sentence can do" — the
   NL layer over the deterministic surface, grounded and permission-equal.
@@ -696,6 +731,8 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
 
 ### Issue CB.2 — ouroboros-rest: [CB.2] MS Teams integration
 
+> **GitHub issue:** #547 · **Status:** 🟡 Open · **Parent epic:** #530
+
 - **Problem Statement:** The header segment's second platform: the same
   cards and commands on Teams.
 - **Solution/Scope:** Platform adapter behind the renderer/dispatcher
@@ -712,6 +749,8 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
 
 ### Issue CB.3 — ouroboros-rest: [CB.3] On-call rotations & DM policies
 
+> **GitHub issue:** #548 · **Status:** 🟡 Open · **Parent epic:** #530
+
 - **Problem Statement:** The single designee (BY.3) scales to rotations —
   schedules, handoffs, and escalation-chain alignment.
 - **Solution/Scope:** Rotation schedules (members, cadence, handoff
@@ -726,6 +765,8 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
 - **Epic:** CB
 
 ### Issue CB.4 — ouroboros-rest: [CB.4] Run-thread steering continuity
+
+> **GitHub issue:** #549 · **Status:** 🟡 Open · **Parent epic:** #530
 
 - **Problem Statement:** AR.4's full scope: each loop's chat presence as
   a coherent thread — events threaded, replies steering.
@@ -744,6 +785,8 @@ e2e: install ✓ · publish→mirror ✓ · button→resume→update ✓ · comm
 - **Epic:** CB
 
 ### Issue CB.5 — ouroboros-rest: [CB.5] Channel digests & subscriptions
+
+> **GitHub issue:** #550 · **Status:** 🟡 Open · **Parent epic:** #530
 
 - **Problem Statement:** Beyond the fixed routes: per-channel digest
   schedules and self-serve subscriptions.
@@ -798,32 +841,58 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** BM/BN, BR.3/BR.4, BR.1, AD.1/AD.4, AP.4,
-   INTAKE-M.3/R.1, WF-R.2, Z.2, BR.5, BJ.4, H.3, #41/#46, driver +
-   sandbox + test workspace.
-2. **Phase 1 — Domain:** BY.1 → { BY.2 ⊕ BY.3 } → BY.4
-3. **Phase 2 — App & services:** BZ.1 → { BZ.2 ⊕ BZ.3 } → { BZ.4 ⊕ BZ.5 }
-   → BZ.6
-4. **Phase 3 — UI:** CA.1 → { CA.2 ⊕ CA.3 ⊕ CA.4 } → **CA.5 ✅**
-   *(MVP gate, amending #56)*
-5. **v2:** CB.1 after AF.2; CB.2–CB.5 after their dependencies.
+1. **Phase 0 — Prerequisites:** BM/BN (#457, #461, #462), BR.3/BR.4 (#487,
+   #488), BR.1 (#485), AD.1/AD.4 (#222, #225), AP.4 (#306), INTAKE-M.3/R.1
+   (#112, #143), WF-R.2 (#144), Z.2 (#195), BR.5 (#489), BJ.4 (#440), H.3
+   (#79), #41/#46/#16, driver + sandbox + test Slack workspace.
+2. **Phase 1 — Domain:** BY.1 (#531) → { BY.2 (#532) ⊕ BY.3 (#533) } →
+   BY.4 (#534)
+3. **Phase 2 — App & services:** BZ.1 (#535) → { BZ.2 (#536) ⊕ BZ.3 (#537) }
+   → { BZ.4 (#538) ⊕ BZ.5 (#539) } → BZ.6 (#540)
+4. **Phase 3 — UI:** CA.1 (#541) → { CA.2 (#542) ⊕ CA.3 (#543) ⊕
+   CA.4 (#544) } → **CA.5 (#545) ✅** *(MVP gate, amending #56)*
+5. **v2:** CB.1 (#546) after AF.2 (#235); CB.2 (#547) ⊕ CB.3 (#548) ⊕
+   CB.4 (#549) ⊕ CB.5 (#550) after their dependencies.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BY — Chat Domain | 4 | 4 | 0 |
-| Epic BZ — Slack App & Command Services | 6 | 6 | 0 |
-| Epic CA — Chat Ops UI | 5 | 5 | 0 |
-| Epic CB — Sentence Interface & Platforms | 5 | 5 | 0* |
-| **Total** | **20** | **15** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BY — Chat Domain | #527 | 4 | 4 | 0 |
+| Epic BZ — Slack App & Command Services | #528 | 6 | 6 | 0 |
+| Epic CA — Chat Ops UI | #529 | 5 | 5 | 0 |
+| Epic CB — Sentence Interface & Platforms | #530 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **20** | **15** | **5** |
 
-*CB rows are v2 (the table's MVP column reads N for all five).
+Issues **#531–#550**, filed 2026-08-09 as sub-issues of their epics
+(#527–#530), with the new `chatops` label and the `Chat Ops MVP` /
+`Chat Ops v2` milestones.
 
-Plus amendments executed at filing: BP.1/BL.1/AR.4 (scopes delivered —
-coordination), BN.3/BO.4/BC.5/BK.2 (Slack truth rows/buttons flip), BR.4
-(channel-target bindings), settings integrations tile, H.3 (console mount),
-R9 caption (with CB.4), #49 (chatops stub retired), #56 (chatops e2e leg).
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| BP.1 (#471) | Slack answering is **delivered** by BZ.4 (#538) — cards render from the kind registry, buttons execute through BN.2, merge-class keeps X5 |
+| BL.1 (#448) | Slack digest delivery is **delivered** by BZ.2 (#536); the insights "Send to Slack" affordance goes live; per-channel schedules follow in CB.5 (#550) |
+| AR.4 (#318) | Thread steering is **delivered** by CB.4 (#549); the run console's steering caption flips from honest-absent to live |
+| BN.3 (#463) | Slack joins the decision-channel set (BZ.2/BZ.4); channel provenance recorded on every action's audit entry |
+| BO.4 (#469) | The Slack channel rows go live against BZ.1's connection-status API (#535) and link to `/chatops` |
+| BC.5 (#394) | The onboarding Slack row links to `/chatops` and `docs/CHATOPS_SETUP.md` — per-deployment registration, not one-click connect |
+| BK.2 (#443) | The insights "Send to Slack" affordance is enabled once BZ.2 (#536) lands; the soon-state copy retires |
+| BR.4 (#488) | Notification-route bindings gain `chat_channel_id` and `dm_on_call` (BY.1, #531); the routing card and Settings edit **one** store |
+| BS.5 (#495) | The Slack integrations tile becomes real connection truth; the notifications section shares the routing store |
+| H.3 (#79) | The ⌘K palette gains a `/ouro ` command mode (BZ.5, #539) — the third surface, with parity asserted by fixtures |
+| BM.1 (#457) | Kinds gain an **escalation window** (the computed countdown) and a **merge-class marker** (the X5 gate); `card_kind` references kind ids |
+| BN.1 (#461) | A resolution lifecycle hook drives `chat.update` + the system line (BZ.2, #536) |
+| BN.2 (#462) | Chat buttons **compose** the action executor; idempotency on the double-press race and merge-class marking are the two properties depended on |
+| BR.3 (#487) | Chat publishing rides the outbox discipline — retry, `Retry-After`, digest dedupe, DLQ with a surfaced health signal |
+| BQ.3 (#482) | A chat retention class: messages are telemetry-class, command records are **audit-class** and outlive them |
+| BP.5 (#475) | BZ.4 (#538) is the chat leg of escalation; CB.3 (#548) replaces the single designee with rotations that BP.5's chains resolve through |
+| BV.5 (#514) | Apply-by-sentence (CB.1, #546) returns **references** to existing suggestions — the language layer never mutates |
+| BJ.4 (#440) | Digest assemblies gain a chat rendering (#536); per-channel schedules and quiet hours in CB.5 (#550) |
+| AP.4 (#306) | `/ouro pause\|resume\|abort` and thread steers compose the control queue — no new control path; `abort` requires an explicit `confirm` |
+| #49 | The `/chatops` placeholder is retired by CA.1 (#541) |
+| #56 | The smoke test gains the chatops leg (CA.5, #545): install → publish → mirror → button-answer → command parity → escalation → routing edit |
 
 ## References
 
@@ -869,26 +938,43 @@ the mockup's top-bar navigation for every UI issue in this roadmap:
 
 Issue-level impact:
 
-| Issue | Amendment |
-|---|---|
-| CA.1 | In-app surfaces (palette console mount, settings cards) render inside the shell (palette portals over the content pane and locks its scroll); no sidebar entry is added |
-| CA.2, CA.3, CA.4 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
-| CA.5 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| Issue | GitHub | Status | Amendment |
+|---|:---:|:---:|---|
+| CA.1 | #541 | 🟡 Open | In-app surfaces (palette console mount, settings cards) render inside the shell (palette portals over the content pane and locks its scroll); no sidebar entry is added |
+| CA.2, CA.3, CA.4 | #542, #543, #544 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| CA.5 | #545 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| BZ.5 | #539 | 🟡 Open | The ⌘K command console portals over the content pane and restores its scroll on close; rem-based type |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the per-deployment
-Slack-app model (C1 — self-hosted operators register their own app via the
-setup guide), the single card-renderer/command-registry architecture
-(C2/C3 — the inbox's kind registry becomes the chat vocabulary; one grammar
-across Slack, the console, and future Teams), the identity/permission rule
-(C4 — explicit linking, session-confirm on merge-class actions), the
-truthful-mirror decision (C7 — the page renders our records, never a
-counterfeit Slack), the AI-presence staging (C8), and the consolidation
-rule (C9 — every deferred Slack contract lands or flips here). Once
-validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_19_CHATOPS.md`) creates the `chatops` label **and the
-`Chat Ops MVP` / `Chat Ops v2` milestones**, files the 20 issues with epic
-parents, relationships, and milestone assignments, and posts the amendment
-comments listed above.
+**Filed 2026-08-09.** The `chatops` label and the `Chat Ops MVP` /
+`Chat Ops v2` milestones were created; the four epics (#527–#530) and twenty
+issues (#531–#550) are on GitHub with parent relationships, milestones,
+labels and types set, and the twenty-one amendment comments above are posted.
+
+Execution starts at **BY.1 (#531)** — connections and channel bindings block
+everything, including the BR.4 route amendment the routing card depends on.
+The critical path to the MVP gate is
+#531 → #532 → #535 → #536 → #538 → #541 → #542 → **#545**, with the grammar
+leg (#537 → #539 → #543) running alongside and the seeds (#534) feeding every
+parity fixture.
+
+The deepest risk in this roadmap is **BZ.1 (#535)**: signature verification
+over the *raw* body inside a replay window is the entire security boundary of
+a surface that can resume paused builds on protected paths. A body-parser
+ordering change silently removes it, which is why #540's negative-control
+discipline — remove the check, the suite must go red — is a stated acceptance
+criterion rather than a nicety.
+
+The second risk is **CA.2 (#542)**: the mirror must render our own records
+(C7). The tempting shortcut — a convincing chat panel over mock data — would
+make the page look finished while telling users their build failures reached
+a channel they never reached.
+
+Two dependency families remain unfiled and are called out in the issues that
+need them: the **BetterAuth roadmap** (BA-D.5 role gating, for admin-only
+install) and the **App Shell roadmap** (CP.2 sidebar registry, CP.4 in-pane
+chrome, CQ.1 rem tokens, CQ.2 font-size preference). Neither blocks starting
+BY.1. One operational prerequisite is not a code dependency and should be
+arranged early: a **test Slack workspace** with its own registered app, which
+Phase 2 cannot be verified without.

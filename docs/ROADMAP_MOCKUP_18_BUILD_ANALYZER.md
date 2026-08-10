@@ -215,12 +215,15 @@ suggestions (BX.3), cross-repo/org analysis (BX.4), custom analyzer SDK
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BU | Analysis Domain | Runs/corpus snapshots, findings/suggestions, measurements, seeds | ouroboros-db | Build Analyzer MVP |
-| BV | Analyzers & Pipeline | Corpus readers, the analyzer SPI + six families, composer, actions, measurement | ouroboros-engine, ouroboros-rest | Build Analyzer MVP |
-| BW | Analyzer UI | All seven page regions, apply flows, states, e2e | ouroboros-ui | Build Analyzer MVP |
-| BX | Synthesis & Scale (v2) | LLM pass, simulation, auto-apply, cross-repo, analyzer SDK | all | Build Analyzer v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BU | #502 | 🟡 Open | Analysis Domain | Runs/corpus snapshots, findings/suggestions, measurements, seeds | ouroboros-db | Build Analyzer MVP |
+| BV | #503 | 🟡 Open | Analyzers & Pipeline | Corpus readers, the analyzer SPI + six families, composer, actions, measurement | ouroboros-engine, ouroboros-rest | Build Analyzer MVP |
+| BW | #504 | 🟡 Open | Analyzer UI | All seven page regions, apply flows, states, e2e | ouroboros-ui | Build Analyzer MVP |
+| BX | #505 | 🟡 Open | Synthesis & Scale (v2) | LLM pass, simulation, auto-apply, cross-repo, analyzer SDK | all | Build Analyzer v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`, `build-farm`, `tests`,
@@ -230,16 +233,18 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic BU — Analysis Domain (`ouroboros-db`)
+## Epic BU (#502) — Analysis Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BU.1 | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
-| BU.2 | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
-| BU.3 | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
-| BU.4 | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BU.1 | #506 | 🟡 Open | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
+| BU.2 | #507 | 🟡 Open | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
+| BU.3 | #508 | 🟡 Open | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
+| BU.4 | #509 | 🟡 Open | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BU.1 — ouroboros-db: [BU.1] Analysis runs & corpus snapshots
+
+> **GitHub issue:** #506 · **Status:** 🟡 Open · **Parent epic:** #502
 
 - **Problem Statement:** Every analysis needs a durable record of what it
   read, when, under what budget — the meta strip is a snapshot manifest
@@ -275,6 +280,8 @@ erDiagram
 
 ### Issue BU.2 — ouroboros-db: [BU.2] Findings & suggestions schema
 
+> **GitHub issue:** #507 · **Status:** 🟡 Open · **Parent epic:** #502
+
 - **Problem Statement:** Typed findings with resolvable evidence, and
   suggestions with the A4 lifecycle — the page's two suggestion cards and
   the chart's chips as data.
@@ -309,6 +316,8 @@ suggestion{build_process, "Re-warm ccache after deps-refresh merges",
 
 ### Issue BU.3 — ouroboros-db: [BU.3] Application measurements & calibration
 
+> **GitHub issue:** #508 · **Status:** 🟡 Open · **Parent epic:** #502
+
 - **Problem Statement:** The predicted-vs-measured card and the
   recalibration loop need rows (decision A6).
 - **Solution/Scope:** `suggestion_measurements` — suggestion FK,
@@ -334,6 +343,8 @@ measurement{ccache warm, predicted: −110s, measured: −72s, verdict: under}
 ```
 
 ### Issue BU.4 — ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes
+
+> **GitHub issue:** #509 · **Status:** 🟡 Open · **Parent epic:** #502
 
 - **Problem Statement:** Design review needs the mockup's full analysis
   state over the shared seeded universe — including a 90-day duration
@@ -365,18 +376,20 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 
 ---
 
-## Epic BV — Analyzers & Pipeline (`ouroboros-engine` + `ouroboros-rest`)
+## Epic BV (#503) — Analyzers & Pipeline (`ouroboros-engine` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BV.1 | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
-| BV.2 | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
-| BV.3 | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
-| BV.4 | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
-| BV.5 | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
-| BV.6 | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BV.1 | #510 | 🟡 Open | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
+| BV.2 | #511 | 🟡 Open | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
+| BV.3 | #512 | 🟡 Open | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
+| BV.4 | #513 | 🟡 Open | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
+| BV.5 | #514 | 🟡 Open | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
+| BV.6 | #515 | 🟡 Open | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
 
 ### Issue BV.1 — ouroboros-rest: [BV.1] Corpus assembly & run orchestration
+
+> **GitHub issue:** #510 · **Status:** 🟡 Open · **Parent epic:** #503
 
 - **Problem Statement:** Analysis must read four planes within budgets,
   snapshot what it read, and run on schedule (A2/A7).
@@ -406,6 +419,8 @@ trigger(every_50: counter=50) ─▶ assemble{1284 builds, 4.1M lines (sampled: 
 
 ### Issue BV.2 — ouroboros-engine: [BV.2] Analyzer SPI & statistical core
 
+> **GitHub issue:** #511 · **Status:** 🟡 Open · **Parent epic:** #503
+
 - **Problem Statement:** The engine-side framework (A1) and the flagship
   analyzer: change-point detection with attribution (option 1-A).
 - **Solution/Scope:** Python `Analyzer` SPI (id, version, corpus
@@ -432,6 +447,8 @@ attribution(Jun22): [{merge "enable ccache" d=0, .94}, {config Δ d=1, .31}] ─
 ```
 
 ### Issue BV.3 — ouroboros-engine: [BV.3] Pattern analyzers
+
+> **GitHub issue:** #512 · **Status:** 🟡 Open · **Parent epic:** #503
 
 - **Problem Statement:** The remaining five MVP families — each mockup
   evidence line's generator.
@@ -466,6 +483,8 @@ workflow_outcome: P(flake ≤7d | touched drivers/can) = 3.1× baseline (21 case
 
 ### Issue BV.4 — ouroboros-rest: [BV.4] Suggestion composer
 
+> **GitHub issue:** #513 · **Status:** 🟡 Open · **Parent epic:** #503
+
 - **Problem Statement:** Findings become suggestions through typed
   templates with computed impact and documented confidence (option
   3-A) — never free prose.
@@ -494,6 +513,8 @@ finding(cache_window) × calibration(0.65 → post-BU.3) ─▶
 ```
 
 ### Issue BV.5 — ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push
+
+> **GitHub issue:** #514 · **Status:** 🟡 Open · **Parent epic:** #503
 
 - **Problem Statement:** Apply/Dismiss/Draft must compose the owning
   planes with previews (A4/A5) — the analyzer never mutates directly.
@@ -527,6 +548,8 @@ draft(BA-1..4) ─▶ AK batch(analyzer-v1) ─▶ sized ─▶ push → sandbox
 
 ### Issue BV.6 — ouroboros-rest: [BV.6] Measurement job & calibration
 
+> **GitHub issue:** #515 · **Status:** 🟡 Open · **Parent epic:** #503
+
 - **Problem Statement:** The accountability loop (A6): measure every
   application for 14 days, verdict it, recalibrate transparently —
   plus the epic's test coverage.
@@ -555,23 +578,25 @@ confound: second apply in window ─▶ verdict: confounded (flagged, never sile
 
 ---
 
-## Epic BW — Analyzer UI (`ouroboros-ui`)
+## Epic BW (#504) — Analyzer UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/18-build-analyzer.html`](mockups/18-build-analyzer.html) as
 the design source — meta-strip/sugg/ticket/pv/hiw treatments and the
 annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BW.1 | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
-| BW.2 | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
-| BW.3 | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
-| BW.4 | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
-| BW.5 | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
-| BW.6 | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BW.1 | #516 | 🟡 Open | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
+| BW.2 | #517 | 🟡 Open | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
+| BW.3 | #518 | 🟡 Open | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
+| BW.4 | #519 | 🟡 Open | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
+| BW.5 | #520 | 🟡 Open | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
+| BW.6 | #521 | 🟡 Open | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BW.1 — ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip
+
+> **GitHub issue:** #516 · **Status:** 🟡 Open · **Parent epic:** #504
 
 - **Problem Statement:** The frame: the corpus-composed headline, real
   run/schedule controls, and the A3-honest meta strip.
@@ -598,6 +623,8 @@ Corpus 1,284 builds · … · Analyzed by [deterministic analyzers v1 ⓘ] · La
 
 ### Issue BW.2 — ouroboros-ui: [BW.2] Annotated duration chart
 
+> **GitHub issue:** #517 · **Status:** 🟡 Open · **Parent epic:** #504
+
 - **Problem Statement:** The chart with detection verticals and
   attributed chips — findings rendered, not drawn (A8).
 - **Solution/Scope:** BK.1 TimeSeries extension: annotation layer
@@ -621,6 +648,8 @@ chip → Details: candidates [{merge zephyr-4.1 bump, .91}, {config Δ, .22}] ·
 ```
 
 ### Issue BW.3 — ouroboros-ui: [BW.3] Suggestion cards & apply flows
+
+> **GitHub issue:** #518 · **Status:** 🟡 Open · **Parent epic:** #504
 
 - **Problem Statement:** The two suggestion cards with their full
   lifecycle UX: evidence, impact, confidence, apply-with-preview,
@@ -650,6 +679,8 @@ standard-fix: self-review BEFORE build … [Draft as v16 → studio][Simulate �
 
 ### Issue BW.4 — ouroboros-ui: [BW.4] Drafted-tickets card
 
+> **GitHub issue:** #519 · **Status:** 🟡 Open · **Parent epic:** #504
+
 - **Problem Statement:** The analyzer's ticket drafts riding the
   planning flow: selection, evidence, editing, sized total, push.
 - **Solution/Scope:** Ticket rows per the mockup (checkbox, mono BA-id
@@ -672,6 +703,8 @@ est. ~1.5 days · [Push 4 tickets to backlog →] ─▶ ✓#621 ✓#622 … (in
 ```
 
 ### Issue BW.5 — ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards
+
+> **GitHub issue:** #520 · **Status:** 🟡 Open · **Parent epic:** #504
 
 - **Problem Statement:** The accountability card (verdict rows, notes,
   the re-measure caption) and the truthful explainer.
@@ -696,6 +729,8 @@ ccache warm-up: −1m50s / −1m12s ⚠ "under-delivered — cache model factor 
 ```
 
 ### Issue BW.6 — ouroboros-ui: [BW.6] Analyzer states & e2e leg
+
+> **GitHub issue:** #521 · **Status:** 🟡 Open · **Parent epic:** #504
 
 - **Problem Statement:** Cold repos (no corpus), insufficient history,
   running states, and the full-chain certification.
@@ -722,17 +757,19 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
 
 ---
 
-## Epic BX — Synthesis & Scale (v2 · milestone `Build Analyzer v2`)
+## Epic BX (#505) — Synthesis & Scale (v2 · milestone `Build Analyzer v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BX.1 | ouroboros-engine: [BX.1] LLM synthesis pass | `/v0/synthesize-findings`: novel suggestions, upstream matching, prose | v2, analyzer, engine | N (after BV.4, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
-| BX.2 | ouroboros-engine: [BX.2] Workflow simulation on historical loops | "Simulate on last 50 loops" — counterfactual replay evaluation | v2, analyzer, workflow, engine | N (after BV.3, WF-R.2) | N | L | ouroboros-engine |
-| BX.3 | ouroboros-rest: [BX.3] Auto-apply policies | High-confidence classes auto-apply under policy, measured + reversible | v2, analyzer, rest | N (after BV.5/BV.6, BQ.2) | N | M | ouroboros-rest |
-| BX.4 | ouroboros-rest: [BX.4] Cross-repo & org-level analysis | Fleet-wide patterns; shared-infra findings | v2, analyzer, rest | N (after BV.1, BL.4) | N | M | ouroboros-rest, ouroboros-engine |
-| BX.5 | ouroboros-engine: [BX.5] Custom analyzer SDK | Tenant-authored analyzers on the SPI with sandbox + budgets | v2, analyzer, engine | N (after BV.2) | N | M | ouroboros-engine, docs |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BX.1 | #522 | 🟡 Open | ouroboros-engine: [BX.1] LLM synthesis pass | `/v0/synthesize-findings`: novel suggestions, upstream matching, prose | v2, analyzer, engine | N (after BV.4, AF.2) | N | L | ouroboros-engine, ouroboros-rest |
+| BX.2 | #523 | 🟡 Open | ouroboros-engine: [BX.2] Workflow simulation on historical loops | "Simulate on last 50 loops" — counterfactual replay evaluation | v2, analyzer, workflow, engine | N (after BV.3, WF-R.2) | N | L | ouroboros-engine |
+| BX.3 | #524 | 🟡 Open | ouroboros-rest: [BX.3] Auto-apply policies | High-confidence classes auto-apply under policy, measured + reversible | v2, analyzer, rest | N (after BV.5/BV.6, BQ.2) | N | M | ouroboros-rest |
+| BX.4 | #525 | 🟡 Open | ouroboros-rest: [BX.4] Cross-repo & org-level analysis | Fleet-wide patterns; shared-infra findings | v2, analyzer, rest | N (after BV.1, BL.4) | N | M | ouroboros-rest, ouroboros-engine |
+| BX.5 | #526 | 🟡 Open | ouroboros-engine: [BX.5] Custom analyzer SDK | Tenant-authored analyzers on the SPI with sandbox + budgets | v2, analyzer, engine | N (after BV.2) | N | M | ouroboros-engine, docs |
 
 ### Issue BX.1 — ouroboros-engine: [BX.1] LLM synthesis pass
+
+> **GitHub issue:** #522 · **Status:** 🟡 Open · **Parent epic:** #505
 
 - **Problem Statement:** The deterministic floor finds what its analyzers
   encode; the synthesis pass adds cross-plane creativity — novel
@@ -756,6 +793,8 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
 
 ### Issue BX.2 — ouroboros-engine: [BX.2] Workflow simulation on historical loops
 
+> **GitHub issue:** #523 · **Status:** 🟡 Open · **Parent epic:** #505
+
 - **Problem Statement:** "Simulate on last 50 loops" — estimate a
   workflow change's effect by replaying history against the modified
   definition.
@@ -776,6 +815,8 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
 
 ### Issue BX.3 — ouroboros-rest: [BX.3] Auto-apply policies
 
+> **GitHub issue:** #524 · **Status:** 🟡 Open · **Parent epic:** #505
+
 - **Problem Statement:** Mature tenants may want high-confidence,
   low-risk suggestion classes applied automatically — under policy,
   measured, reversible.
@@ -795,6 +836,8 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
 
 ### Issue BX.4 — ouroboros-rest: [BX.4] Cross-repo & org-level analysis
 
+> **GitHub issue:** #525 · **Status:** 🟡 Open · **Parent epic:** #505
+
 - **Problem Statement:** Patterns that span repos (shared runners,
   common deps, org-wide flake classes) are invisible per-repo.
 - **Solution/Scope:** Org-scoped runs (corpus across enabled repos,
@@ -810,6 +853,8 @@ e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→trac
 - **Epic:** BX
 
 ### Issue BX.5 — ouroboros-engine: [BX.5] Custom analyzer SDK
+
+> **GitHub issue:** #526 · **Status:** 🟡 Open · **Parent epic:** #505
 
 - **Problem Statement:** Tenants have domain patterns no built-in
   analyzer encodes; the SPI deserves a safe authoring surface.
@@ -870,27 +915,46 @@ Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
-2. **Phase 1 — Domain:** BU.1 → BU.2 → BU.3 → BU.4
-3. **Phase 2 — Pipeline:** BV.1 ⊕ (→) BV.2 → BV.3 → BV.4 → BV.5 → BV.6
-4. **Phase 3 — UI:** BW.1 → { BW.2 ⊕ BW.3 ⊕ BW.4 ⊕ BW.5 } → **BW.6 ✅**
-   *(MVP gate, amending #56)*
-5. **v2:** BX.1 after AF.2; BX.2–BX.5 after their dependencies.
+2. **Phase 1 — Domain:** BU.1 (#506) → BU.2 (#507) → BU.3 (#508) → BU.4 (#509)
+3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) BV.2 (#511) → BV.3 (#512) →
+   BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
+4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
+   BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
+5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕
+   BX.4 (#525) ⊕ BX.5 (#526) after their dependencies.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BU — Analysis Domain | 4 | 4 | 0 |
-| Epic BV — Analyzers & Pipeline | 6 | 6 | 0 |
-| Epic BW — Analyzer UI | 6 | 6 | 0 |
-| Epic BX — Synthesis & Scale | 5 | 0 | 5 |
-| **Total** | **21** | **16** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BU — Analysis Domain | #502 | 4 | 4 | 0 |
+| Epic BV — Analyzers & Pipeline | #503 | 6 | 6 | 0 |
+| Epic BW — Analyzer UI | #504 | 6 | 6 | 0 |
+| Epic BX — Synthesis & Scale | #505 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **21** | **16** | **5** |
 
-Plus amendments executed at filing: AJ.4 (corpus-shape delivery
-coordination), BI (build-duration metric family), BK.5 (cluster-line
-honesty gate flips), AI.1/BK.2 (analyzer buttons live), farm config
-(time-windowed pool assignment), AK planner vocabulary (`analyzer-vN`),
-#49 (analyzer stub retired), #56 (analyzer e2e leg).
+Issues **#506–#526**, filed 2026-08-09 as sub-issues of their epics, with the
+new `analyzer` label and the `Build Analyzer MVP` / `Build Analyzer v2`
+milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| AJ.4 (#266) | rig/HIL telemetry is a corpus source for BV.1 (#510); the read shape is specified there and treated as **optional with recorded absence** until this lands — an honest missing input, never a fabricated one |
+| BI.1 (#432) / BI.2 (#433) | a **build-duration metric family** joins the rollup registry (BV.1, #510); it is the duration chart's series (BW.2, #517) and the measurement job's target-metric source (BV.6, #515) |
+| BK.5 (#446) | the *"failures cluster on deps-refresh days"* honesty gate gets its source — the `cache_window` analyzer's finding (BV.3, #512) — and the line renders |
+| AI.1 (#256) / BK.2 (#443) | the **✦ Build Analyzer** buttons go live, navigating to `/analyzer` (BW.1, #516); their honest-soon states retire |
+| AH.1 (#249) / AH.4 (#252) | farm config gains **time-windowed pool assignment** (the pool-move apply binding, BV.5 #514), and job completion increments the every-N-builds analysis counter (BV.1, #510) |
+| AK.1 (#272) | the planner vocabulary gains `analyzer-vN` provenance; analyzer ticket drafts are ordinary AK draft batches (BV.5, #514) |
+| AL.3 (#279) / AL.2 (#278) | analyzer drafts push through the existing idempotent pipeline and the write-capable SPI — GitHub, Jira, Linear, GitLab; no second push path |
+| WF-P.3 (#134) | workflow suggestions create real drafts with the finding cited in the change note; **publishing stays human** (BV.5, #514) |
+| AM.2 (#284) | the batch editor is the edit surface for analyzer draft batches (BW.4, #519) — one editor, one set of validation rules |
+| AD.5 (#226) | the security model documents analyzer **tenant locality**: corpus assembly and analysis are engine-local, and no corpus leaves the deployment (A2) |
+| AS.4 (#327) / AT.3 (#331) / AG.5 (#247) | waivers, flake history and cache statistics are corpus inputs for the `waiver_cite`, `workflow_outcome` and `cache_window` analyzers (BV.3, #512) |
+| #49 | the `/analyzer` placeholder is retired by BW.1 (#516) |
+| #56 | the e2e smoke test gains an analyzer leg (BW.6, #521): run → findings reproduce → apply→farm → draft→studio → push→tracker → dismiss survives a re-run |
+| #52 | the engine internal API contract carries the analysis dispatch: corpus references + budgets in, findings out, with per-analyzer progress |
 
 ## References
 
@@ -938,22 +1002,30 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BW.1 | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
+| BW.1 | #516 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
 | BW.2, BW.3, BW.4, BW.5 | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
-| BW.6 | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| BW.6 | #521 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the
-deterministic-first architecture (A1 — six analyzer families whose golden
-fixtures must *reproduce* the seeded mockup numbers, the deepest parity
-bar in the series), the provenance honesty on the flagship AI page (A3 —
-no model pill until BX.1 earns it), the composition rule for every action
-(A4/A5 — farm config, studio drafts, planning batches; the analyzer never
-mutates directly), and the self-measurement loop (A6 — 14-day windows,
-confound flags, transparent recalibration). Once validated, the follow-up
-pass (`/create-issues ROADMAP_MOCKUP_18_BUILD_ANALYZER.md`) creates the
-`analyzer` label **and the `Build Analyzer MVP` / `Build Analyzer v2`
-milestones**, files the 21 issues with epic parents, relationships, and
-milestone assignments, and posts the amendment comments listed above.
+**Filed 2026-08-09.** The `analyzer` label and the `Build Analyzer MVP` /
+`Build Analyzer v2` milestones were created; the four epics (#502–#505) and
+twenty-one issues (#506–#526) are on GitHub with parent relationships,
+milestones, labels and types set, and the amendment comments above are
+posted.
+
+Execution starts at **BU.1 (#506)** — the run and corpus-snapshot schema
+blocks the whole pipeline. The critical path to the MVP gate is
+#506 → #507 → #510 → #511 → #512 → #513 → #514 → #516 → **#521**, with the
+seeds (#509) feeding every golden fixture and the measurement loop
+(#508 → #515 → #520) running alongside.
+
+The deepest risk in this roadmap is **BU.4 (#509)**: its seeds must plant the
+three duration shifts and their attribution anchors *in the corpus* so the
+analyzers rediscover them. A seed that plants the findings instead would let
+the entire analysis layer be broken while the page looked perfect.
+
+Two dependency families remain unfiled and are called out in the issues that
+need them: the **BetterAuth roadmap** (BA-D.5 role gating) and the **App
+Shell roadmap** (CP.2 sidebar registry, CP.4 in-pane chrome, CQ.1 rem tokens,
+CQ.2 font-size preference). Neither blocks starting BU.1.

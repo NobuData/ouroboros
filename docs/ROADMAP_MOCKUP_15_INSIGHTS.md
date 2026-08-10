@@ -223,12 +223,15 @@ annotations (BL.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BI | Metrics Domain & Rollups | Rollup tables, methodology registry, taxonomy, calibration, seeds | ouroboros-db, ouroboros-rest | Insights MVP |
-| BJ | Analytics Services | Windowed metrics, series/scoreboard/DORA endpoints, digests, tests | ouroboros-rest | Insights MVP |
-| BK | Insights UI | Chart primitives + all eleven visuals, popovers, states, e2e | ouroboros-ui | Insights MVP |
-| BL | Deep Analytics (v2) | Slack, suggestions surface, custom ranges/export, scale-up, narratives | all | Insights v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BI | #428 | 🟡 Open | Metrics Domain & Rollups | Rollup tables, methodology registry, taxonomy, calibration, seeds | ouroboros-db, ouroboros-rest | Insights MVP |
+| BJ | #429 | 🟡 Open | Analytics Services | Windowed metrics, series/scoreboard/DORA endpoints, digests, tests | ouroboros-rest | Insights MVP |
+| BK | #430 | 🟡 Open | Insights UI | Chart primitives + all eleven visuals, popovers, states, e2e | ouroboros-ui | Insights MVP |
+| BL | #431 | 🟡 Open | Deep Analytics (v2) | Slack, suggestions surface, custom ranges/export, scale-up, narratives | all | Insights v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `tests`, `routing`, `runs`) **plus new
@@ -237,17 +240,19 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ---
 
-## Epic BI — Metrics Domain & Rollups (`ouroboros-db` + `ouroboros-rest`)
+## Epic BI (#428) — Metrics Domain & Rollups (`ouroboros-db` + `ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BI.1 | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
-| BI.2 | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
-| BI.3 | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
-| BI.4 | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
-| BI.5 | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BI.1 | #432 | 🟡 Open | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
+| BI.2 | #433 | 🟡 Open | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
+| BI.3 | #434 | 🟡 Open | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
+| BI.4 | #435 | 🟡 Open | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
+| BI.5 | #436 | 🟡 Open | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BI.1 — ouroboros-db: [BI.1] Metric rollup schema & methodology registry
+
+> **GitHub issue:** #432 · **Status:** 🟡 Open · **Parent epic:** #428
 
 - **Problem Statement:** Every page number needs a queryable daily grain and
   a formula that can be shown to the user (decisions I1/I2).
@@ -291,6 +296,8 @@ erDiagram
 
 ### Issue BI.2 — ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors
 
+> **GitHub issue:** #433 · **Status:** 🟡 Open · **Parent epic:** #428
+
 - **Problem Statement:** The daily grain must fill incrementally from every
   source plane — correctly, restartably, and provably equal to on-the-fly
   computation (I2's oracle rule).
@@ -323,6 +330,8 @@ nightly: consolidate + backfill cursor ─▶ parity(CI): rollup ≡ oracle ✓
 
 ### Issue BI.3 — ouroboros-db: [BI.3] Intervention-cause taxonomy
 
+> **GitHub issue:** #434 · **Status:** 🟡 Open · **Parent epic:** #428
+
 - **Problem Statement:** The "where loops still need humans" bars need
   every intervention mapped to a cause deterministically, with human
   correction (decision I5).
@@ -352,6 +361,8 @@ human re-categorize ─▶ cause: ambiguous_ticket (origin: human, audited)
 
 ### Issue BI.4 — ouroboros-rest: [BI.4] Estimator calibration records
 
+> **GitHub issue:** #435 · **Status:** 🟡 Open · **Parent epic:** #428
+
 - **Problem Statement:** `89% of issues land within their predicted band`
   must join predictions to outcomes (decision I7).
 - **Solution/Scope:** `estimate_outcomes` — merged-loop rows joining the
@@ -374,6 +385,8 @@ window: 89% within band · L-effort bias: +12% over
 ```
 
 ### Issue BI.5 — ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes
+
+> **GitHub issue:** #436 · **Status:** 🟡 Open · **Parent epic:** #428
 
 - **Problem Statement:** Eleven visuals need 30 days of coherent seeded
   history that also reconciles with every other roadmap's seeds.
@@ -403,17 +416,19 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 
 ---
 
-## Epic BJ — Analytics Services (`ouroboros-rest`)
+## Epic BJ (#429) — Analytics Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BJ.1 | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
-| BJ.2 | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
-| BJ.3 | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
-| BJ.4 | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
-| BJ.5 | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BJ.1 | #437 | 🟡 Open | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
+| BJ.2 | #438 | 🟡 Open | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
+| BJ.3 | #439 | 🟡 Open | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
+| BJ.4 | #440 | 🟡 Open | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
+| BJ.5 | #441 | 🟡 Open | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
 
 ### Issue BJ.1 — ouroboros-rest: [BJ.1] Windowed metrics service
+
+> **GitHub issue:** #437 · **Status:** 🟡 Open · **Parent epic:** #429
 
 - **Problem Statement:** One service must answer "metric X over range R with
   prior-period delta" for every consumer — the page, the digest, and the
@@ -440,6 +455,8 @@ window(merge_rate, 30d) ─▶ {value: 92%, prior: 89%, delta: +3pts,
 ```
 
 ### Issue BJ.2 — ouroboros-rest: [BJ.2] Insights read APIs
+
+> **GitHub issue:** #438 · **Status:** 🟡 Open · **Parent epic:** #429
 
 - **Problem Statement:** The page needs shaped payloads for eleven visuals
   plus the head's composed sentence.
@@ -469,6 +486,8 @@ GET /insights?range=30d ─▶ {kpis[5]+deltas, series{throughput, cost+guide},
 
 ### Issue BJ.3 — ouroboros-rest: [BJ.3] Model scoreboard aggregation
 
+> **GitHub issue:** #439 · **Status:** 🟡 Open · **Parent epic:** #429
+
 - **Problem Statement:** Task×model outcome quality — merge-untouched %,
   $/success, trend — is the routing feedback loop's read side (I6).
 - **Solution/Scope:** Aggregation over runs+PRs+usage: group by task kind ×
@@ -493,6 +512,8 @@ implement(fallback) × gpt-5-codex ─▶ 61% · $0.94 · ▼   (+ AB.3 suggesti
 ```
 
 ### Issue BJ.4 — ouroboros-rest: [BJ.4] Email digest generation
+
+> **GitHub issue:** #440 · **Status:** 🟡 Open · **Parent epic:** #429
 
 - **Problem Statement:** "Email weekly digest" must produce a real,
   subscriber-scoped weekly render of this page's truth (decision I9).
@@ -519,6 +540,8 @@ weekly ─▶ assemble(range: 7d) ─▶ HTML+text digest ─▶ mailer ─▶ s
 
 ### Issue BJ.5 — ouroboros-rest: [BJ.5] Insights integration tests
 
+> **GitHub issue:** #441 · **Status:** 🟡 Open · **Parent epic:** #429
+
 - **Problem Statement:** Formula drift is this page's failure mode; the
   oracle discipline needs harness enforcement.
 - **Solution/Scope:** Suites: rollup-oracle parity across families,
@@ -539,7 +562,7 @@ suites: parity ✓ · windows ✓ · taxonomy ✓ · untouched-def ✓ · dora �
 
 ---
 
-## Epic BK — Insights UI (`ouroboros-ui`)
+## Epic BK (#430) — Insights UI (`ouroboros-ui`)
 
 Every issue references
 [`docs/mockups/15-insights.html`](mockups/15-insights.html) as the design
@@ -548,16 +571,18 @@ anatomy — via the #16 tokens (both themes; the mockup is dark-only). Chart
 implementation additionally follows the repo's dataviz guidance where the
 mockup is silent; the mockup remains binding where they differ.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BK.1 | ouroboros-ui: [BK.1] Chart primitives (SVG) | TimeSeries, HBars, Sparkline, StackedVBars — token-driven (I4) | mvp, insights, ui, design | N (after #46, #16) | Y | L | ouroboros-ui |
-| BK.2 | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
-| BK.3 | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
-| BK.4 | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
-| BK.5 | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
-| BK.6 | ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e | Methodology popovers, subscribe flow, cold states, themes, e2e | mvp, insights, ui, ci | N (after BK.3–BK.5, BJ.4) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BK.1 | #442 | 🟡 Open | ouroboros-ui: [BK.1] Chart primitives (SVG) | TimeSeries, HBars, Sparkline, StackedVBars — token-driven (I4) | mvp, insights, ui, design | N (after #46, #16) | Y | L | ouroboros-ui |
+| BK.2 | #443 | 🟡 Open | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
+| BK.3 | #444 | 🟡 Open | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
+| BK.4 | #445 | 🟡 Open | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
+| BK.5 | #446 | 🟡 Open | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
+| BK.6 | #447 | 🟡 Open | ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e | Methodology popovers, subscribe flow, cold states, themes, e2e | mvp, insights, ui, ci | N (after BK.3–BK.5, BJ.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue BK.1 — ouroboros-ui: [BK.1] Chart primitives (SVG)
+
+> **GitHub issue:** #442 · **Status:** 🟡 Open · **Parent epic:** #430
 
 - **Problem Statement:** Eleven visuals reduce to four primitives — built
   once, token-themed, accessible, matching the mockup's hand-authored
@@ -588,6 +613,8 @@ mockup is silent; the mockup remains binding where they differ.
 
 ### Issue BK.2 — ouroboros-ui: [BK.2] Insights route, head, range & KPI row
 
+> **GitHub issue:** #443 · **Status:** 🟡 Open · **Parent epic:** #430
+
 - **Problem Statement:** The frame: a headline composed from live weekly
   data, the range segment driving everything, and five delta-bearing KPI
   cards.
@@ -612,6 +639,8 @@ mockup is silent; the mockup remains binding where they differ.
 ```
 
 ### Issue BK.3 — ouroboros-ui: [BK.3] Time-series cards (throughput & cost)
+
+> **GitHub issue:** #444 · **Status:** 🟡 Open · **Parent epic:** #430
 
 - **Problem Statement:** The two SVG time-series cards with their
   distinctive furniture: crosshair tooltip with meta, the budget guide,
@@ -639,6 +668,8 @@ mockup is silent; the mockup remains binding where they differ.
 
 ### Issue BK.4 — ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards
 
+> **GitHub issue:** #445 · **Status:** 🟡 Open · **Parent epic:** #430
+
 - **Problem Statement:** The scoreboard table with its suggestion slot,
   and the two explanatory hbar cards with computed insight lines.
 - **Solution/Scope:** Scoreboard: #46 Table (task cell with fallback
@@ -664,6 +695,8 @@ Flaky env/rig ▓▓▓▓▓ 8 … "Fix the top row and interventions drop ~40%
 ```
 
 ### Issue BK.5 — ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card
+
+> **GitHub issue:** #446 · **Status:** 🟡 Open · **Parent epic:** #430
 
 - **Problem Statement:** The wide stat strip, the stacked build bars, the
   three remaining hbar cards, and the flaky-tests card with its history
@@ -694,6 +727,8 @@ flaky: test_estop_release.py (quarantined) ▂▃▅▇ 4.1% rising on hil-rig-0
 ```
 
 ### Issue BK.6 — ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e
+
+> **GitHub issue:** #447 · **Status:** 🟡 Open · **Parent epic:** #430
 
 - **Problem Statement:** The DORA cells with proxy-honest popovers, the
   digest subscribe flow, cold-workspace states, and the page's e2e
@@ -726,17 +761,19 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
 
 ---
 
-## Epic BL — Deep Analytics (v2 · milestone `Insights v2`)
+## Epic BL (#431) — Deep Analytics (v2 · milestone `Insights v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BL.1 | ouroboros-rest: [BL.1] Slack digest & sends | Digest + on-demand sends via mockup 19's integration | v2, insights, rest | N (after BJ.4, mockup-19) | N | M | ouroboros-rest |
-| BL.2 | ouroboros-ui: [BL.2] Routing-suggestion surface & apply flow | AB.3 suggestions live in the scoreboard with guided apply | v2, insights, routing, ui | N (after AB.3, BK.4) | N | S | ouroboros-ui |
-| BL.3 | ouroboros-rest: [BL.3] Custom ranges, saved views & export | Date-picker ranges, saved configurations, CSV export | v2, insights, rest, ui | N (after BJ.1) | N | M | ouroboros-rest, ouroboros-ui |
-| BL.4 | ouroboros-rest: [BL.4] Scale-up & org-level analytics | TimescaleDB graduation ADR + cross-repo/org rollups | v2, insights, rest, db | N (after BI.2) | N | L | ouroboros-rest, ouroboros-db |
-| BL.5 | ouroboros-engine: [BL.5] Insight narratives & anomaly notes | LLM-composed insight lines + anomaly annotations, honesty-gated | v2, insights, engine | N (after BJ.2, AF.2) | N | M | ouroboros-engine, ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BL.1 | #448 | 🟡 Open | ouroboros-rest: [BL.1] Slack digest & sends | Digest + on-demand sends via mockup 19's integration | v2, insights, rest | N (after BJ.4, mockup-19) | N | M | ouroboros-rest |
+| BL.2 | #449 | 🟡 Open | ouroboros-ui: [BL.2] Routing-suggestion surface & apply flow | AB.3 suggestions live in the scoreboard with guided apply | v2, insights, routing, ui | N (after AB.3, BK.4) | N | S | ouroboros-ui |
+| BL.3 | #450 | 🟡 Open | ouroboros-rest: [BL.3] Custom ranges, saved views & export | Date-picker ranges, saved configurations, CSV export | v2, insights, rest, ui | N (after BJ.1) | N | M | ouroboros-rest, ouroboros-ui |
+| BL.4 | #451 | 🟡 Open | ouroboros-rest: [BL.4] Scale-up & org-level analytics | TimescaleDB graduation ADR + cross-repo/org rollups | v2, insights, rest, db | N (after BI.2) | N | L | ouroboros-rest, ouroboros-db |
+| BL.5 | #452 | 🟡 Open | ouroboros-engine: [BL.5] Insight narratives & anomaly notes | LLM-composed insight lines + anomaly annotations, honesty-gated | v2, insights, engine | N (after BJ.2, AF.2) | N | M | ouroboros-engine, ouroboros-rest |
 
 ### Issue BL.1 — ouroboros-rest: [BL.1] Slack digest & sends
+
+> **GitHub issue:** #448 · **Status:** 🟡 Open · **Parent epic:** #431
 
 - **Problem Statement:** "Send to Slack" and channel digests activate with
   mockup 19's integration (I9's deferral).
@@ -751,6 +788,8 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
 - **Epic:** BL
 
 ### Issue BL.2 — ouroboros-ui: [BL.2] Routing-suggestion surface & apply flow
+
+> **GitHub issue:** #449 · **Status:** 🟡 Open · **Parent epic:** #431
 
 - **Problem Statement:** The scoreboard's suggestion row goes live when
   AB.3 computes suggestions — with a guided apply.
@@ -767,6 +806,8 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
 
 ### Issue BL.3 — ouroboros-rest: [BL.3] Custom ranges, saved views & export
 
+> **GitHub issue:** #450 · **Status:** 🟡 Open · **Parent epic:** #431
+
 - **Problem Statement:** The `custom` segment, plus the analyst
   workflows: saved configurations and data export.
 - **Solution/Scope:** Custom date-picker ranges (bounded by retention),
@@ -782,6 +823,8 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
 
 ### Issue BL.4 — ouroboros-rest: [BL.4] Scale-up & org-level analytics
 
+> **GitHub issue:** #451 · **Status:** 🟡 Open · **Parent epic:** #431
+
 - **Problem Statement:** Option 1-B's graduation path (event volume) and
   the org/cross-repo dimension the schema reserved.
 - **Solution/Scope:** ADR with measured triggers (rollup-job duration,
@@ -796,6 +839,8 @@ e2e: parity ✓ · ranges ✓ · popovers ✓ · digest→mailpit ✓ · honesty
 - **Epic:** BL
 
 ### Issue BL.5 — ouroboros-engine: [BL.5] Insight narratives & anomaly notes
+
+> **GitHub issue:** #452 · **Status:** 🟡 Open · **Parent epic:** #431
 
 - **Problem Statement:** The mockup's connective prose ("failures cluster
   on deps-refresh days") at its best is generated insight — honesty-gated
@@ -851,29 +896,41 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** AO/AW/AS/AT.3/AH, DASH-F.1/F.3/J.4,
-   INTAKE-K.2, AT.4, E.3 mailer, #41/#46/#16, BA-D.5, DASH-I.8.
-2. **Phase 1 — Domain & rollups:** BI.1 → BI.2 ⊕ { BI.3 ⊕ BI.4 } → BI.5
-3. **Phase 2 — Services:** BJ.1 → { BJ.2 ⊕ BJ.3 ⊕ BJ.4 } → BJ.5
-4. **Phase 3 — UI:** BK.1 ⊕ BK.2 → { BK.3 ⊕ BK.4 ⊕ BK.5 } → **BK.6 ✅**
+1. **Phase 0 — Prerequisites:** runs (#298, #301), PRs (#352), tests
+   (#324, #331), farm (#249), DASH-F.1 (#64)/F.3 (#66)/J.4 (#92),
+   INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
+   DASH-I.8 (#87).
+2. **Phase 1 — Domain & rollups:** BI.1 (#432) → BI.2 (#433) ⊕ { BI.3 (#434) ⊕ BI.4 (#435) } → BI.5 (#436)
+3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
+4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
-5. **v2:** BL.1 with 19; BL.2 with AB.3; BL.5 with AF.2; BL.3/BL.4 after
-   their dependencies.
+5. **v2:** BL.1 (#448) with mockup 19; BL.2 (#449) with AB.3 (#209);
+   BL.5 (#452) with AF.2 (#235); BL.3 (#450)/BL.4 (#451) after their
+   dependencies.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BI — Metrics Domain & Rollups | 5 | 5 | 0 |
-| Epic BJ — Analytics Services | 5 | 5 | 0 |
-| Epic BK — Insights UI | 6 | 6 | 0 |
-| Epic BL — Deep Analytics | 5 | 0 | 5 |
-| **Total** | **21** | **16** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BI — Metrics Domain & Rollups | #428 | 5 | 5 | 0 |
+| Epic BJ — Analytics Services | #429 | 5 | 5 | 0 |
+| Epic BK — Insights UI | #430 | 6 | 6 | 0 |
+| Epic BL — Deep Analytics | #431 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **21** | **16** | **5** |
 
-Plus amendments executed at filing: DASH-G.3 (pulse reads the shared
-metrics service), AT.4 (classification subtype vocabulary), AT.3/AV.3
-(insights-feed consumer landed), INTAKE (calibration citation), #49
-(`/insights` stub retired), #56 (insights e2e leg).
+Issues **#432–#452**, filed 2026-08-09 as sub-issues of their epics, with the
+`insights` label and the `Insights MVP` / `Insights v2` milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| DASH-G.3 (#72) | the pulse card reads the shared windowed metrics service (#437) — one implementation of every shared metric |
+| AT.4 (#332) | `unclear_requirements` classification subtype, so `ambiguous_ticket` maps from a record rather than from note text |
+| AT.3/AV.3 (#345) | the insights feed's consumer has landed — the flaky card (#446) reads AT.3's states rather than recomputing flake truth |
+| INTAKE-K.2 (#100) | estimates are graded: calibration joins the queue-time estimate to the actual (#435) |
+| #49 | `/insights` stub retired by BK.2 (#443) |
+| #56 | insights e2e leg, including the mailpit digest assertion and the honesty-variant checks (BK.6, #447) |
 
 ## References
 
@@ -916,22 +973,31 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BK.2 | Mounts in the shell content pane; navigation via the sidebar **Insights** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BK.2 | #443 | 🟡 Open | Mounts in the shell content pane; navigation via the sidebar **Insights** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BK.1, BK.3–BK.5, BL.2 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BK.6 | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BK.6 | #447 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the single-truth
-metrics service + methodology registry (I1 — including the dashboard
-amendment), the plain-Postgres rollup strategy with the on-the-fly oracle
-(I2), the one-definition rule for "merged w/o human edits" (I6), the
-proxy-labeled DORA formulas (option 4), the deterministic intervention
-taxonomy (I5), and the page's many honesty gates (I8 alerts claim, I9
-Slack, I10 suggestion/cluster lines, no invented spike stories). Once
-validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_15_INSIGHTS.md`) creates the `insights` label **and the
-`Insights MVP` / `Insights v2` milestones**, files the 21 issues with epic
-parents, relationships, and milestone assignments, and posts the amendment
-comments listed above.
+**Filed 2026-08-09.** The `insights` label and the `Insights MVP` /
+`Insights v2` milestones were created, the four epics (#428–#431) and 21
+issues (#432–#452) were filed with parent relationships and milestone
+assignments, and the six amendment comments were posted.
+
+Execution begins at **Phase 1**, and BI.1 (#432) gates everything. Two
+issues carry disproportionate weight for their size: BI.2 (#433), because
+its oracle-parity suite is what makes every number on this page falsifiable,
+and BJ.1 (#437), because the dashboard amendment lands there — until it
+does, two surfaces still compute merge rate independently.
+
+The decisions this roadmap locked in, restated as the review criteria for the
+work as it lands: one windowed metrics service with a methodology registry
+(**I1**, including the DASH-G.3 amendment), plain-Postgres rollups kept
+honest by the on-the-fly oracle (**I2**, with the graduation path in
+BL.4/#451), rate metrics that re-window from stored components rather than
+averaging daily rates, the single definition of *merged w/o human edits*
+(**I6**), the proxy-labelled DORA formulas, the deterministic intervention
+taxonomy with human override (**I5**), and the honesty gates — the alerts
+claim only with cap alerts (**I8**), Slack absent until mockup 19 (**I9**),
+the suggestion row and analyzer cluster line absent until their sources exist
+(**I10**), and no invented spike narrative.

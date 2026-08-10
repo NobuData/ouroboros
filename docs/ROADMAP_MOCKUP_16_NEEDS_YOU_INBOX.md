@@ -206,12 +206,15 @@ escalation chains (BP.5).
 
 ## Epics, Labels & Milestones
 
-| Epic | Name | Goal | Modules | Milestone |
-|------|------|------|---------|-----------|
-| BM | Decision Domain | Items, kinds registry schema, resolutions, snooze, exceptions, seeds | ouroboros-db | Needs-You Inbox MVP |
-| BN | Decision Services | Kind SPI + emitters, action executor, channels, policy view, metrics | ouroboros-rest | Needs-You Inbox MVP |
-| BO | Inbox UI | Cards, resolved, side cards, empty state, pill wiring, e2e | ouroboros-ui | Needs-You Inbox MVP |
-| BP | Answer Anywhere & Automation (v2) | Slack, push, briefs, auto-accept authoring, SLAs | all | Needs-You Inbox v2 |
+Each epic is a parent tracking issue on GitHub; every roadmap issue below is filed as
+one of its sub-issues (GitHub Relationships).
+
+| Epic | GitHub | Status | Name | Goal | Modules | Milestone |
+|------|:------:|:------:|------|------|---------|-----------|
+| BM | #453 | 🟡 Open | Decision Domain | Items, kinds registry schema, resolutions, snooze, exceptions, seeds | ouroboros-db | Needs-You Inbox MVP |
+| BN | #454 | 🟡 Open | Decision Services | Kind SPI + emitters, action executor, channels, policy view, metrics | ouroboros-rest | Needs-You Inbox MVP |
+| BO | #455 | 🟡 Open | Inbox UI | Cards, resolved, side cards, empty state, pill wiring, e2e | ouroboros-ui | Needs-You Inbox MVP |
+| BP | #456 | 🟡 Open | Answer Anywhere & Automation (v2) | Slack, push, briefs, auto-accept authoring, SLAs | all | Needs-You Inbox v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set (`mvp`,
 `v2`, `rest`, `db`, `ui`, `ci`, `design`, `runs`, `pr`, `knowledge`) **plus new
@@ -221,16 +224,18 @@ Inbox v2`** created at filing; every issue assigned. Complexity chips:
 
 ---
 
-## Epic BM — Decision Domain (`ouroboros-db`)
+## Epic BM (#453) — Decision Domain (`ouroboros-db`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BM.1 | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
-| BM.2 | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
-| BM.3 | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
-| BM.4 | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BM.1 | #457 | 🟡 Open | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
+| BM.2 | #458 | 🟡 Open | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
+| BM.3 | #459 | 🟡 Open | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
+| BM.4 | #460 | 🟡 Open | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BM.1 — ouroboros-db: [BM.1] Decision items & kind registry schema
+
+> **GitHub issue:** #457 · **Status:** 🟡 Open · **Parent epic:** #453
 
 - **Problem Statement:** The unified queue needs typed items whose shape,
   prose, and actions come from versioned kind declarations (X1/X2).
@@ -274,6 +279,8 @@ erDiagram
 
 ### Issue BM.2 — ouroboros-db: [BM.2] Resolutions, snooze & metrics spans
 
+> **GitHub issue:** #458 · **Status:** 🟡 Open · **Parent epic:** #453
+
 - **Problem Statement:** Resolution truth (X4) and snooze mechanics (X6)
   need rows the resolved list, pill math, and stat card compute from.
 - **Solution/Scope:** `decision_resolutions` — item FK (1:1), `action_id`,
@@ -298,6 +305,8 @@ resolution{resize#486, resolver: policy(auto_accept_resize), channel: api} → "
 ```
 
 ### Issue BM.3 — ouroboros-db: [BM.3] Guardrail exceptions & action tokens
+
+> **GitHub issue:** #459 · **Status:** 🟡 Open · **Parent epic:** #453
 
 - **Problem Statement:** Allow-once needs a real grant object (X3), and
   email answering needs signed single-use tokens with revocation (X5).
@@ -324,6 +333,8 @@ action_token{item, allow_once, ken, hash, TTL 48h, requires_confirm: false} · m
 
 ### Issue BM.4 — ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes
 
+> **GitHub issue:** #460 · **Status:** 🟡 Open · **Parent epic:** #453
+
 - **Problem Statement:** Design review needs the mockup's exact inbox
   moment, coherent with the seeded #482/#514/#509 universe.
 - **Solution/Scope:** Extend the dev seed: the three open decisions
@@ -348,17 +359,19 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 
 ---
 
-## Epic BN — Decision Services (`ouroboros-rest`)
+## Epic BN (#454) — Decision Services (`ouroboros-rest`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BN.1 | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
-| BN.2 | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
-| BN.3 | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
-| BN.4 | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
-| BN.5 | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BN.1 | #461 | 🟡 Open | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
+| BN.2 | #462 | 🟡 Open | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
+| BN.3 | #463 | 🟡 Open | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
+| BN.4 | #464 | 🟡 Open | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
+| BN.5 | #465 | 🟡 Open | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
 
 ### Issue BN.1 — ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring
+
+> **GitHub issue:** #461 · **Status:** 🟡 Open · **Parent epic:** #454
 
 - **Problem Statement:** The registry (X1) and the emitters: every plane
   that blocks on a human must file a typed item exactly once.
@@ -392,6 +405,8 @@ PR#509 merged out-of-band ─▶ item auto-resolved (resolver: policy(source_res
 
 ### Issue BN.2 — ouroboros-rest: [BN.2] Action executor & allow-once exceptions
 
+> **GitHub issue:** #462 · **Status:** 🟡 Open · **Parent epic:** #454
+
 - **Problem Statement:** Buttons must execute the owning machinery and
   resume the loop (X3) — with the allow-once grant as the one new
   mechanism.
@@ -422,6 +437,8 @@ action(approve_merge) ─▶ AX.5 approve ─▶ gate green ─▶ AX.4 merges (
 ```
 
 ### Issue BN.3 — ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens
+
+> **GitHub issue:** #463 · **Status:** 🟡 Open · **Parent epic:** #454
 
 - **Problem Statement:** Answer-from-anywhere starts with two real
   channels (X5): host mirroring and secure email actions.
@@ -454,6 +471,8 @@ email [Allow once] link ─▶ token ✓ ─▶ receipt · [Approve & merge] lin
 
 ### Issue BN.4 — ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view
 
+> **GitHub issue:** #464 · **Status:** 🟡 Open · **Parent epic:** #454
+
 - **Problem Statement:** The page's reads (queue, resolved, stats, head
   math), snooze mechanics, and the composed policy card.
 - **Solution/Scope:** `GET /api/v1/inbox` (open items newest-first with
@@ -482,6 +501,8 @@ policy rows: refactor→human (org policy) · protected→allow-once (BA.1) · �
 
 ### Issue BN.5 — ouroboros-rest: [BN.5] Inbox integration tests
 
+> **GitHub issue:** #465 · **Status:** 🟡 Open · **Parent epic:** #454
+
 - **Problem Statement:** The inbox touches every plane; its correctness
   core is handlers, races, and token security.
 - **Solution/Scope:** Harness suites: registry rendering matrix, emitter
@@ -502,22 +523,24 @@ suites: kinds ✓ · emitters ✓ · handlers ✓ · races ✓ · exceptions ✓
 
 ---
 
-## Epic BO — Inbox UI (`ouroboros-ui`)
+## Epic BO (#455) — Inbox UI (`ouroboros-ui`)
 
 Every issue references [`docs/mockups/16-inbox.html`](mockups/16-inbox.html)
 as the design source — decision-card/resolved/chan/rule treatments, the lit
 needs-pill, the zero-card — via the #16 tokens (both themes; the mockup is
 dark-only).
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BO.1 | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
-| BO.2 | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
-| BO.3 | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
-| BO.4 | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
-| BO.5 | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BO.1 | #466 | 🟡 Open | ouroboros-ui: [BO.1] Inbox route, head & pill wiring | `/inbox`, computed head, snooze-all, lit pill states | mvp, inbox, ui, design | N (after #41, BN.4, BA-D.5) | Y | S | ouroboros-ui |
+| BO.2 | #467 | 🟡 Open | ouroboros-ui: [BO.2] Decision cards | Kind-templated cards: severity, refs, why, action rows | mvp, inbox, ui, design | N (after BO.1, BN.2) | Y | L | ouroboros-ui |
+| BO.3 | #468 | 🟡 Open | ouroboros-ui: [BO.3] Resolved list & empty state | Collapsible resolved rows, auto-accept class, the zero card | mvp, inbox, ui, design | N (after BO.1) | Y | S | ouroboros-ui |
+| BO.4 | #469 | 🟡 Open | ouroboros-ui: [BO.4] Channels & policy cards | Truth-state channel rows + prefs; composed policy rows | mvp, inbox, ui, design | N (after BO.1, BN.3/BN.4) | Y | M | ouroboros-ui |
+| BO.5 | #470 | 🟡 Open | ouroboros-ui: [BO.5] Stat card, states & e2e leg | Computed weekly stat; snoozed/error states; full e2e | mvp, inbox, ui, ci | N (after BO.2–BO.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue BO.1 — ouroboros-ui: [BO.1] Inbox route, head & pill wiring
+
+> **GitHub issue:** #466 · **Status:** 🟡 Open · **Parent epic:** #455
 
 - **Problem Statement:** The frame: computed head sentence, snooze-all,
   and the shell pill lighting up on-page with truthful counts.
@@ -541,6 +564,8 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 ```
 
 ### Issue BO.2 — ouroboros-ui: [BO.2] Decision cards
+
+> **GitHub issue:** #467 · **Status:** 🟡 Open · **Parent epic:** #455
 
 - **Problem Statement:** The heart of the page: severity-bordered cards
   rendered entirely from kind declarations — question, age, refs, why,
@@ -575,6 +600,8 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 
 ### Issue BO.3 — ouroboros-ui: [BO.3] Resolved list & empty state
 
+> **GitHub issue:** #468 · **Status:** 🟡 Open · **Parent epic:** #455
+
 - **Problem Statement:** The collapsible resolved-today list (with the
   policy auto-accept class rendered distinctly) and the true zero
   state.
@@ -601,6 +628,8 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 ```
 
 ### Issue BO.4 — ouroboros-ui: [BO.4] Channels & policy cards
+
+> **GitHub issue:** #469 · **Status:** 🟡 Open · **Parent epic:** #455
 
 - **Problem Statement:** The side cards: channel rows in truth state
   with working prefs, and the composed policy read-view.
@@ -629,6 +658,8 @@ WHAT NEEDS A HUMAN   refactor label → human review ⓘ [edit →] … (5 rows,
 
 ### Issue BO.5 — ouroboros-ui: [BO.5] Stat card, states & e2e leg
 
+> **GitHub issue:** #470 · **Status:** 🟡 Open · **Parent epic:** #455
+
 - **Problem Statement:** The computed weekly stat, snoozed/error states,
   and the full answer-everything e2e.
 - **Solution/Scope:** Stat card (BM.2 views: count, median latency, max
@@ -656,17 +687,19 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
 
 ---
 
-## Epic BP — Answer Anywhere & Automation (v2 · milestone `Needs-You Inbox v2`)
+## Epic BP (#456) — Answer Anywhere & Automation (v2 · milestone `Needs-You Inbox v2`)
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BP.1 | ouroboros-rest: [BP.1] Slack answering | Decision threads with action buttons via mockup 19's integration | v2, inbox, rest | N (after BN.1, mockup-19) | N | L | ouroboros-rest |
-| BP.2 | ouroboros-ui: [BP.2] Mobile & web push | Web-push/PWA ADR + critical-only pushes with deep links | v2, inbox, ui, rest | N (after BN.3) | N | M | ouroboros-ui, ouroboros-rest |
-| BP.3 | ouroboros-engine: [BP.3] Decision briefs | LLM-composed context summaries on cards, provenance-labeled | v2, inbox, engine | N (after BN.1, AF.2) | N | M | ouroboros-engine, ouroboros-rest |
-| BP.4 | ouroboros-rest: [BP.4] Auto-accept policy authoring & batch answers | User-authored auto-resolvers + multi-select answering | v2, inbox, rest, ui | N (after BN.2, BN.4) | N | M | ouroboros-rest, ouroboros-ui |
-| BP.5 | ouroboros-rest: [BP.5] SLA alerts & escalation chains | Wait thresholds → escalating notifications → delegates | v2, inbox, rest | N (after BN.3, BM.2) | N | M | ouroboros-rest |
+| Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
+|-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
+| BP.1 | #471 | 🟡 Open | ouroboros-rest: [BP.1] Slack answering | Decision threads with action buttons via mockup 19's integration | v2, inbox, rest | N (after BN.1, mockup-19) | N | L | ouroboros-rest |
+| BP.2 | #472 | 🟡 Open | ouroboros-ui: [BP.2] Mobile & web push | Web-push/PWA ADR + critical-only pushes with deep links | v2, inbox, ui, rest | N (after BN.3) | N | M | ouroboros-ui, ouroboros-rest |
+| BP.3 | #473 | 🟡 Open | ouroboros-engine: [BP.3] Decision briefs | LLM-composed context summaries on cards, provenance-labeled | v2, inbox, engine | N (after BN.1, AF.2) | N | M | ouroboros-engine, ouroboros-rest |
+| BP.4 | #474 | 🟡 Open | ouroboros-rest: [BP.4] Auto-accept policy authoring & batch answers | User-authored auto-resolvers + multi-select answering | v2, inbox, rest, ui | N (after BN.2, BN.4) | N | M | ouroboros-rest, ouroboros-ui |
+| BP.5 | #475 | 🟡 Open | ouroboros-rest: [BP.5] SLA alerts & escalation chains | Wait thresholds → escalating notifications → delegates | v2, inbox, rest | N (after BN.3, BM.2) | N | M | ouroboros-rest |
 
 ### Issue BP.1 — ouroboros-rest: [BP.1] Slack answering
+
+> **GitHub issue:** #471 · **Status:** 🟡 Open · **Parent epic:** #456
 
 - **Problem Statement:** "Approve with a button, right in the thread" —
   the channel card's Slack row goes live with mockup 19's integration.
@@ -686,6 +719,8 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
 
 ### Issue BP.2 — ouroboros-ui: [BP.2] Mobile & web push
 
+> **GitHub issue:** #472 · **Status:** 🟡 Open · **Parent epic:** #456
+
 - **Problem Statement:** "From your phone" needs a push channel — with
   an honest platform decision (web push/PWA vs native).
 - **Solution/Scope:** ADR (web-push + PWA install vs native wrappers;
@@ -703,6 +738,8 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
 
 ### Issue BP.3 — ouroboros-engine: [BP.3] Decision briefs
 
+> **GitHub issue:** #473 · **Status:** 🟡 Open · **Parent epic:** #456
+
 - **Problem Statement:** Cards show facts; a busy owner wants the
   30-second brief — LLM-composed context with provenance.
 - **Solution/Scope:** `/v0/brief-decision` over AF.2: item payload +
@@ -719,6 +756,8 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
 - **Epic:** BP
 
 ### Issue BP.4 — ouroboros-rest: [BP.4] Auto-accept policy authoring & batch answers
+
+> **GitHub issue:** #474 · **Status:** 🟡 Open · **Parent epic:** #456
 
 - **Problem Statement:** The resolved list's `auto-accepted by policy`
   class deserves user authoring (which decisions self-resolve), plus
@@ -738,6 +777,8 @@ e2e: parity ✓ · approve→merge ✓ · allow-once→resume ✓ · waive→ann
 - **Epic:** BP
 
 ### Issue BP.5 — ouroboros-rest: [BP.5] SLA alerts & escalation chains
+
+> **GitHub issue:** #475 · **Status:** 🟡 Open · **Parent epic:** #456
 
 - **Problem Statement:** "Loops never waited longer than 6m" is an
   outcome to *protect*: wait thresholds, escalating notifications,
@@ -792,30 +833,45 @@ flowchart TB
 
 Ordered checklist (⊕ = parallelizable within its phase):
 
-1. **Phase 0 — Prerequisites:** AX.3/AX.5, AP.3/AP.4, WF gates, BF.2,
-   AT.4/AO, AL, BA.1, BJ.4/E.3, AD.4, #41/#46, BA-D.5, driver + sandbox.
-2. **Phase 1 — Domain:** BM.1 → { BM.2 ⊕ BM.3 } → BM.4
-3. **Phase 2 — Services:** BN.1 → { BN.2 ⊕ BN.3 ⊕ BN.4 } → BN.5
-4. **Phase 3 — UI:** BO.1 → { BO.2 ⊕ BO.3 ⊕ BO.4 } → **BO.5 ✅**
+1. **Phase 0 — Prerequisites:** AX.3 (#359)/AX.5 (#361)/AX.4 (#360)/AX.2
+   (#358), AP.3 (#305)/AP.4 (#306)/AP.5 (#307), WF gates (#133/#145), BF.2
+   (#411), AT.4 (#332)/AO (#298–#302), AL.4 (#280), BA.1 (#380)/BA.3
+   (#382), BJ.4 (#440) + E.3 mailer, AD.4 (#225), #41/#46/#16/#87,
+   BA-D.5 (**BetterAuth roadmap not yet filed**), driver + PR sandbox.
+2. **Phase 1 — Domain:** BM.1 (#457) → { BM.2 (#458) ⊕ BM.3 (#459) } → BM.4 (#460)
+3. **Phase 2 — Services:** BN.1 (#461) → { BN.2 (#462) ⊕ BN.3 (#463) ⊕ BN.4 (#464) } → BN.5 (#465)
+4. **Phase 3 — UI:** BO.1 (#466) → { BO.2 (#467) ⊕ BO.3 (#468) ⊕ BO.4 (#469) } → **BO.5 (#470) ✅**
    *(MVP gate, amending #56)*
-5. **v2:** BP.1 with 19; BP.3 with AF.2; BP.2/BP.4/BP.5 after their
-   dependencies.
+5. **v2:** BP.1 (#471) with mockup 19; BP.3 (#473) with AF.2 (#235);
+   BP.2 (#472)/BP.4 (#474)/BP.5 (#475) after their dependencies.
 
 ## Totals
 
-| | Issues | MVP | v2 |
-|---|:---:|:---:|:---:|
-| Epic BM — Decision Domain | 4 | 4 | 0 |
-| Epic BN — Decision Services | 5 | 5 | 0 |
-| Epic BO — Inbox UI | 5 | 5 | 0 |
-| Epic BP — Answer Anywhere & Automation | 5 | 0 | 5 |
-| **Total** | **19** | **14** | **5** |
+| | Epic | Issues | MVP | v2 |
+|---|:---:|:---:|:---:|:---:|
+| Epic BM — Decision Domain | #453 | 4 | 4 | 0 |
+| Epic BN — Decision Services | #454 | 5 | 5 | 0 |
+| Epic BO — Inbox UI | #455 | 5 | 5 | 0 |
+| Epic BP — Answer Anywhere & Automation | #456 | 5 | 0 | 5 |
+| **Total** | **4 epics** | **19** | **14** | **5** |
 
-Plus amendments executed at filing: DASH-H.2/J.2 (pill feed delivered,
-snooze-aware counts), AP.3 (guardrail-exception consumption), AX gate
-engine (refactor-label org policy), BF.2/BC.4/BG.3/AY (inbox links go
-live), BI registry (decision metrics), #49 (inbox stub retired), #56
-(inbox e2e leg).
+Issues **#457–#475**, filed 2026-08-09 as sub-issues of their epics, with the
+new `inbox` label and the `Needs-You Inbox MVP` / `Needs-You Inbox v2`
+milestones.
+
+Amendments posted at filing:
+
+| Amended | Comment |
+|---|---|
+| DASH-H.2 (#78) | the pill's count comes from the decision-item feed (#461/#464) and **excludes snoozed items**; the pill navigates to `/inbox` |
+| DASH-J.2 (#90) | the needs-you routing contract is **delivered** — typed items, per-plane idempotency, out-of-band auto-resolution |
+| AP.3 (#305) | guardrail evaluation consults and **consumes** scoped single-use exceptions (#459), and emits `protected_path_allow_once` items keyed on run+path |
+| AX.2 gate engine (#358) | the `refactor label → human review` org policy becomes real, is named in the card's `why`, and derives into the policy read-view |
+| BI.1 (#432) | decision metrics (count, median answer latency, max loop wait, auto-accept share, per-kind medians) join the methodology registry |
+| BF.2 (#411) | `fact_review` is a registered decision kind at `info` severity, auto-resolving when the fact is reviewed elsewhere |
+| BC.4 (#393), BG.3 (#419), AY.4 (#366) | the "review it in your inbox" links go live and deep-link to the item |
+| #49 | `/inbox` stub retired by BO.1 (#466) |
+| #56 | inbox e2e leg — answer all three decisions, verify merge/resume/annotate, plus snooze, email-token and race legs (BO.5, #470) |
 
 ## References
 
@@ -856,23 +912,23 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BO.1 | Mounts in the shell content pane; navigation via the sidebar **Needs You** entry (CP.2 registry), not a topbar link; the sidebar entry's live count badge is fed by this roadmap's inbox counts via the CP.2 badge slot; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
-| BO.2–BO.4, BP.2 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BO.5 | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BO.1 (#466) | Mounts in the shell content pane; navigation via the sidebar **Needs You** entry (CP.2 registry), not a topbar link; the sidebar entry's live count badge is fed by this roadmap's inbox counts via the CP.2 badge slot; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BO.2–BO.4 (#467–#469), BP.2 (#472) | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
+| BO.5 (#470) | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 
-Per the roadmap process, **no GitHub issues have been created yet** — this
-document is the validation gate. Review in particular: the DecisionKind
-registry (X1 — the pluggable pattern applied to human decisions, with the
-eight MVP kinds), the composition rule (X3 — every button executes the
-owning subsystem; allow-once is the one new mechanism, scoped and
-single-use), the channel staging (X5 — GitHub mirror + tokened email now
-with session-confirm on merge-class actions, Slack/push honestly deferred),
-the resolution/auto-accept truth model (X4), and the composed policy
-read-view (X7 — including the new refactor-label org policy amendment).
-Once validated, the follow-up pass (`/create-issues
-ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md`) creates the `inbox` label **and the
-`Needs-You Inbox MVP` / `Needs-You Inbox v2` milestones**, files the 19
-issues with epic parents, relationships, and milestone assignments, and
-posts the amendment comments listed above.
+**Filed 2026-08-09.** The `inbox` label and the `Needs-You Inbox MVP` /
+`Needs-You Inbox v2` milestones were created; the four epics (#453–#456) and
+nineteen issues (#457–#475) are on GitHub with parent relationships,
+milestones, labels and types set, and the amendment comments above are
+posted.
+
+Execution starts at **BM.1 (#457)** — the kind registry and item schema block
+everything else. The critical path to the MVP gate is
+#457 → #461 → #464 → #466 → #467 → **#470**.
+
+Two dependencies remain unfiled and are called out in the issues that need
+them: **BA-D.5** (role gating — the BetterAuth roadmap) and the **mockup-19
+ChatOps roadmap** (BP.1's Slack integration). Neither blocks the MVP; the
+channel card renders Slack's absence honestly until 19 lands.
