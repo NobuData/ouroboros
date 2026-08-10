@@ -343,7 +343,7 @@ v2?:  workspace runner · task graph · shared cache (faster, one more tool)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 2.1 | #14 | 🟡 Open | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
+| 2.1 | #14 | 🟢 Done | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
 | 2.2 | #15 | 🟡 Open | ouroboros-ui: [2.2] Favicon & web-app manifest set | Full favicon/PWA icon set generated from the web-icon asset | mvp, design, ui | N (needs 2.1, 5.1) | Y | XS | ouroboros-ui |
 | 2.3 | #16 | 🟡 Open | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
 | 2.4 | #17 | 🟡 Open | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
@@ -351,7 +351,18 @@ v2?:  workspace runner · task graph · shared cache (faster, one more tool)
 
 ### Issue 2.1 — ouroboros: [2.1] Split brand sheet into logo asset set
 
-> **GitHub issue:** #14 · **Status:** 🟡 Open · **Parent epic:** #2
+> **GitHub issue:** #14 · **Status:** 🟢 Done · **Parent epic:** #2
+>
+> Delivered: [`docs/brand/`](brand) — `icon-{light,dark}.png` (512×512),
+> `glyph-{light,dark}.png` (512×296) and `lockup-tagline-{light,dark}.png` (640×471), all
+> six straight-alpha RGBA with the ground solved for and removed rather than blended away.
+> [`BRAND.md`](BRAND.md) documents each one's surface, working size, minimum size and
+> clear space, plus the colours sampled from both halves for 2.3.
+> [`split-brand-sheet.py`](../scripts/split-brand-sheet.py) regenerates every asset from
+> the sheet — nothing here is a hand crop — and refuses to write one whose ground survived
+> or whose measured crop does not close on transparency;
+> [`verify-brand.sh`](../scripts/verify-brand.sh) with its tests holds the committed files
+> and the document to each other.
 
 - **Problem Statement:** The brand exists only as `logo-unsplit.png` (1376×768 sheet
   with light and dark halves) plus two ad-hoc crops used by the mockups. The
@@ -1673,7 +1684,10 @@ comments to post (executed by the App Shell roadmap's filing pass):
 Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
 layout), **#9** (labels & templates), **#10** (local dev environment), **#11** (CI
 pipelines) and **#12** (architecture documentation) are **done**, which closes Phase 0
-for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. The four
+for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. **#14**
+(the brand asset set) is **done** as well, which unblocks the theming track: #15
+(favicons) and #16 (design tokens, whose light palette samples the sheet's light half)
+can start, and #16 in turn releases #17 and the shell work that depends on it. The four
 module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
 concurrently; each scaffold turns its own CI check on as it lands, and updates its
 section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
