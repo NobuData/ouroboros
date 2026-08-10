@@ -104,6 +104,10 @@ the exact variable; it never surfaces as a stack trace on the first request.
 
 Real `.env` files are never committed; the repo-root [`.env.example`](../.env.example)
 documents every `OURO_*` variable with its development default and is the file that is.
+A module may add its own `.env.example` for the variables only its tooling reads — as
+[`ouroboros-db`](../ouroboros-db/.env.example) does for the database `run.sh` migrates —
+but the root file stays the complete list, and the module's is a subset of it. The more
+specific file wins where both declare a variable.
 A variable that no longer appears there is a variable a developer cannot discover, so
 [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) fails the build when the template
 falls behind either the compose stack or a module README. Secrets are redacted from any

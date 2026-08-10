@@ -168,6 +168,22 @@ fi
 
 printf '\nMigration runner\n'
 check_executable ouroboros-db/run.sh 'ouroboros-db/run.sh is executable'
+
+MODULE_ENV=ouroboros-db/.env.example
+check_exists "$MODULE_ENV" "$MODULE_ENV exists"
+check_run "$MODULE_ENV parses" awk -f "$PARSER" "$MODULE_ENV"
+
+# A parameter the runner reads but the template omits is one a developer cannot
+# discover; a variable the template declares but nothing reads is a lie.
+module_declared=$(awk -f "$PARSER" "$MODULE_ENV" 2>/dev/null | cut -f 1 || true)
+for name in $module_declared; do
+  check_contains ouroboros-db/run.sh "$name" "run.sh reads the $name the template declares"
+done
+for name in OURO_DB_HOST OURO_DB_PORT OURO_DB_NAME OURO_DB_USER OURO_DB_PASSWORD \
+  OURO_DB_SCHEMA; do
+  check_matches "$module_declared" "^$name\$" "$MODULE_ENV declares $name"
+done
+
 # It applies the same migrations the compose pass does, so a setting that drifts between
 # the two would give `up` and `run.sh` different databases from the same checkout.
 for setting in '\-createSchemas=true' '\-validateMigrationNaming=true' 'flyway/flyway:11'; do

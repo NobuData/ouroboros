@@ -76,36 +76,54 @@ OURO_DB_PORT=45432 docker compose up
 The port only changes where the database is published on the host; inside the compose
 network it is always `db:5432`, and it is only ever published on `127.0.0.1`.
 
-### Applying migrations without cycling the stack
+### Migrating a running database — `run.sh`
 
-`docker compose up` migrates on the way up, which covers most days. When you have just
-written a migration and the database is already running, `run.sh` applies it on its own:
-
-```bash
-docker compose up -d db       # from the repo root, if it is not already up
-ouroboros-db/run.sh           # migrate — apply what is pending
-ouroboros-db/run.sh info      # applied and pending versions, as a table
-ouroboros-db/run.sh validate  # checksums and naming rules
-ouroboros-db/run.sh --dry-run # print the docker command instead of running it
-```
-
-It takes its connection parameters from the repo-root `.env` — `OURO_DB_USER`,
-`OURO_DB_PASSWORD`, `OURO_DB_NAME` and `OURO_DB_SCHEMA` — falling back to the same
-development defaults the compose stack uses, so it works with no `.env` at all. Any of
-them can be overridden for a single run:
+`docker compose up` migrates on the way up, which covers most days. `run.sh` is for
+everything else: a migration you just wrote against a database already running, a
+PostgreSQL installed on your machine, a server across the network.
 
 ```bash
-OURO_DB_SCHEMA=scratch ouroboros-db/run.sh info
+cp ouroboros-db/.env.example ouroboros-db/.env   # point it at your database
+ouroboros-db/run.sh                              # migrate — apply what is pending
+ouroboros-db/run.sh info                         # applied and pending versions
+ouroboros-db/run.sh validate                     # checksums and naming rules
+ouroboros-db/run.sh --dry-run                    # print the command, run nothing
 ```
 
-Like the compose stack, it runs Flyway from its container, so no local Java is needed.
-It attaches to the compose network and connects as `db:5432`, which is why the database
-has to be up first — the published port is bound to loopback, where a container cannot
-reach it. `OURO_DB_PORT` is therefore not read: it decides where the database appears on
-*your* machine, not where Flyway finds it.
+It connects by host and port like any other client, so **nothing has to be
+containerised**. Out of the box it points at `localhost:5432`, which is both a default
+PostgreSQL install and — with the port the compose stack publishes — the compose
+database.
+
+Flyway itself comes from whichever is available, and `--runner` overrides the choice:
+
+| Runner | What it uses | When it is chosen |
+|---|---|---|
+| `flyway` | the `flyway` on your PATH | automatically, if you have one — no Docker at all |
+| `docker` | the pinned `flyway/flyway:11` image | otherwise, so no local Java is needed |
+
+```bash
+ouroboros-db/run.sh --runner docker    # ignore the local install
+ouroboros-db/run.sh --runner flyway    # insist on it
+```
+
+When the container runs against a database on this machine it is given host networking,
+because a server bound to loopback — which both a default PostgreSQL install and the
+compose stack are — is not otherwise reachable from inside a container.
+
+Parameters come from `ouroboros-db/.env`, then the repo-root `.env`, then the defaults,
+and anything already in the environment beats all three. So a one-off needs no file:
+
+```bash
+OURO_DB_PORT=45432 OURO_DB_SCHEMA=scratch ouroboros-db/run.sh info
+```
 
 Any argument it does not recognise goes to Flyway untouched, and the password is never
 printed — not in the progress line, not by `--dry-run`.
+
+> `run.sh` migrates whatever `OURO_DB_HOST`/`OURO_DB_PORT` resolve to, and the default
+> is `localhost:5432`. If you have a PostgreSQL of your own there, that is the one it
+> will migrate. `--dry-run` prints the target without touching it.
 
 The fuller set of wrappers is still to come *(pending #19)*:
 
@@ -118,17 +136,20 @@ scripts/clean-dev             # drop everything — refuses to run outside dev
 
 ## Configuration
 
-Development default port: **5432**. Every variable is declared with its development
-default in the repo-root [`.env.example`](../.env.example); the compose stack falls back
-to those defaults when no `.env` exists.
+Development default port: **5432**. Two templates, because they answer two questions:
+[`.env.example`](.env.example) here is *which database `run.sh` migrates*, and the
+repo-root [`../.env.example`](../.env.example) is *every `OURO_*` variable the whole
+system reads*. Both carry development defaults, so the stack and the runner work with
+no `.env` at all.
 
 | Variable | Purpose |
 |---|---|
-| `OURO_DATABASE_URL` | Connection string used by the scripts and by `ouroboros-rest` |
-| `OURO_DB_USER` / `OURO_DB_PASSWORD` | Credentials for the local compose database |
+| `OURO_DATABASE_URL` | Connection string used by `ouroboros-rest` |
+| `OURO_DB_HOST` | Host `run.sh` connects to, default `localhost` |
+| `OURO_DB_PORT` | Port it connects to, and the one the container publishes, default `5432` |
+| `OURO_DB_USER` / `OURO_DB_PASSWORD` | Credentials for the database |
 | `OURO_DB_NAME` | Database name, default `ouroboros` |
 | `OURO_DB_SCHEMA` | Schema Flyway owns and migrates, default `ouroboros` |
-| `OURO_DB_PORT` | Host port the container publishes, default `5432` |
 
 `OURO_DB_USER`, `OURO_DB_PASSWORD` and `OURO_DB_NAME` are read by PostgreSQL's own
 first-boot initialisation. Changing one after the volume exists has no effect until the
@@ -152,6 +173,7 @@ These are non-negotiable and enforced by `flyway validate` in CI:
 ```
 ouroboros-db/
 ├── run.sh                            # apply migrations to a live database — #10
+├── .env.example                      # which database run.sh migrates — #10
 ├── flyway.toml
 ├── migrations/
 │   ├── V000__bootstrap.sql           # the schema itself — landed by #10

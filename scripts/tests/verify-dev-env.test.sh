@@ -124,14 +124,32 @@ DOC
 
   printf 'select 1;\n' > "$fixture/ouroboros-db/migrations/V000__bootstrap.sql"
 
-  # Only the settings the verifier cross-checks against the compose stack; the real
-  # runner is exercised by db-run.test.sh.
+  # Only what the verifier cross-checks — the settings that must match the compose
+  # stack, and the parameters the template declares. The real runner is exercised by
+  # db-run.test.sh.
   cat > "$fixture/ouroboros-db/run.sh" <<'RUNNER'
 #!/usr/bin/env sh
+: "${OURO_DB_HOST?} ${OURO_DB_PORT?} ${OURO_DB_NAME?}"
+: "${OURO_DB_USER?} ${OURO_DB_PASSWORD?} ${OURO_DB_SCHEMA?}"
 exec docker run --rm flyway/flyway:11-alpine \
   -password="$db_password" -createSchemas=true -validateMigrationNaming=true migrate
 RUNNER
   chmod +x "$fixture/ouroboros-db/run.sh"
+
+  cat > "$fixture/ouroboros-db/.env.example" <<'MODULEENV'
+# Where the database is.
+OURO_DB_HOST=localhost
+# What it is listening on.
+OURO_DB_PORT=5432
+# What to migrate.
+OURO_DB_NAME=ouroboros
+# Who to connect as.
+OURO_DB_USER=ouroboros
+# The password for that role.
+OURO_DB_PASSWORD=ouroboros
+# The schema Flyway owns.
+OURO_DB_SCHEMA=ouroboros
+MODULEENV
 }
 
 # run_verify DIR [ARG...] — run the script, leaving combined output in $out and the exit
@@ -307,6 +325,18 @@ check_break 'a runner that has drifted from the stack is reported' \
 check_break 'a literal password in the runner is reported' \
   'run\.sh holds no literal password' \
   'sed -i "s|-password=\\\"\$db_password\\\"|-password=hunter2|" "$root/ouroboros-db/run.sh"'
+
+check_break 'a missing module template is reported' \
+  'ouroboros-db/\.env\.example exists' \
+  'rm "$root/ouroboros-db/.env.example"'
+
+check_break 'a module template missing a parameter is reported' \
+  'ouroboros-db/\.env\.example declares OURO_DB_HOST' \
+  'sed -i "/OURO_DB_HOST=/d" "$root/ouroboros-db/.env.example"'
+
+check_break 'a module template declaring what nothing reads is reported' \
+  'run\.sh reads the OURO_DB_SCHEMA' \
+  'sed -i "/OURO_DB_SCHEMA/d" "$root/ouroboros-db/run.sh"'
 
 # A repeatable migration is legal under the same rule, so it must not be flagged.
 root="$work/repeatable"
