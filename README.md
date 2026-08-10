@@ -127,11 +127,36 @@ repo-level tooling has its own tests:
 scripts/verify-layout.sh          # module layout, READMEs, .editorconfig coverage
 scripts/verify-github-config.sh   # label definitions, issue forms, PR template
 scripts/verify-dev-env.sh         # compose stack, .env.example, migration naming
+scripts/verify-ci.sh              # workflow status checks, path routing, toolchain pins
 scripts/run-tests.sh              # tests for the tooling in scripts/
 ```
 
 `verify-dev-env.sh` reads files and starts nothing, so it runs with Docker stopped —
 whether the stack really comes up is what `docker compose up` answers.
+
+## Continuous integration
+
+Every module has its own workflow, filtered to its own directory, so a pull request runs
+only the checks it can affect:
+
+| Change | Status check | What runs |
+|---|---|---|
+| `ouroboros-ui/**` | `ci/ui` | `yarn install --immutable` → lint → typecheck → test → build |
+| `ouroboros-rest/**` | `ci/rest` | the same pipeline, against `ouroboros-rest` |
+| `ouroboros-engine/**` | `ci/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
+| `ouroboros-db/**` | `ci/db` | the migration and data-tier contract |
+| `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
+
+A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
+TypeScript modules share queues both of the modules that run it.
+
+Three of the four modules are still a README, so each workflow looks for its module's
+manifest first and reports why it stopped when there is not one. Nothing has to be
+edited when a scaffold lands — the pull request that adds a `package.json` or a
+`pyproject.toml` is the one that turns that module's checks on.
+
+`scripts/verify-ci.sh` asserts all of the above from the checkout: the check names, the
+routing table, the Node and Python pins, and that every step waits for its scaffold.
 
 ## Documentation
 

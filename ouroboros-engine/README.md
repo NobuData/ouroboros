@@ -36,6 +36,9 @@ uv run ruff format --check .
 uv run pytest
 ```
 
+Those three, after `uv sync --locked`, are what `ci/engine` runs on every pull request
+touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
+
 ## Configuration
 
 Development default port: **8000** (`PORT`).

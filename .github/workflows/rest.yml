@@ -1,0 +1,41 @@
+name: ouroboros-rest · ci
+
+# Path-filtered per issue #11: this runs only when the communications layer, the
+# pipeline it shares with ouroboros-ui, or this file itself changes.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "ouroboros-rest/**"
+      - ".github/actions/node-module/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/rest.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ouroboros-rest/**"
+      - ".github/actions/node-module/**"
+      - ".github/actions/scaffold-gate/**"
+      - ".github/workflows/rest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-rest-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The job name is the status check name — `ci/rest`. See ui.yml.
+  ci:
+    name: ci/rest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/node-module
+        with:
+          module: ouroboros-rest
+          scaffolded-by: "#27"

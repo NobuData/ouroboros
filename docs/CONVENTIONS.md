@@ -76,15 +76,21 @@ is committed. Lint and format are ruff; tests are pytest.
 
 ### Standard task names
 
-Each toolchain exposes the same five verbs, so CI and humans can rely on them:
+Each toolchain exposes the same verbs, so CI and humans can rely on them:
 
 | Task | TypeScript | Python |
 |---|---|---|
 | install | `yarn install --immutable` | `uv sync` |
 | dev | `yarn dev` | `uv run dev` |
 | lint | `yarn lint` | `uv run ruff check .` |
+| typecheck | `yarn typecheck` | — (ruff only; a type checker is post-MVP) |
+| format | (Prettier, via `yarn lint`) | `uv run ruff format --check .` |
 | test | `yarn test` | `uv run pytest` |
 | build | `yarn build` | (container build) |
+
+CI runs the locked form of each install — `yarn install --immutable` and
+`uv sync --locked` — so a lockfile that has drifted from its manifest fails the run
+instead of being silently refreshed.
 
 ## 4. Configuration & environment variables
 
@@ -250,6 +256,40 @@ ouroboros-engine/** ─▶ ci/engine  ruff · pytest
 ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
 ```
 
+One file per module — [`ui.yml`](../.github/workflows/ui.yml),
+[`rest.yml`](../.github/workflows/rest.yml),
+[`engine.yml`](../.github/workflows/engine.yml),
+[`db.yml`](../.github/workflows/db.yml) — each watching its own directory and its own
+definition. Four rules keep them interchangeable:
+
+1. **The job name is the status check name.** `ci/ui`, `ci/rest`, `ci/engine`, `ci/db`
+   are what GitHub names the check runs and therefore what branch protection is
+   configured against; renaming a job silently un-requires the check.
+2. **A version is pinned once.** Node lives in the `node-version` default of
+   [`.github/actions/node-module`](../.github/actions/node-module/action.yml), the
+   pipeline `ouroboros-ui` and `ouroboros-rest` share; Python lives in `engine.yml`'s
+   `PYTHON_VERSION`. No workflow carries a pin of its own.
+3. **A module's checks activate with its scaffold.** Three of the four modules are still
+   a README, so each workflow asks
+   [`.github/actions/scaffold-gate`](../.github/actions/scaffold-gate/action.yml) for
+   the module's manifest first and reports why it stopped when there is not one. The
+   pull request that adds the `package.json` or `pyproject.toml` is the one that turns
+   the checks on — no workflow is edited.
+4. **Actions are pinned to a release**, never to `@main`, and every workflow asks for no
+   more than `contents: read`.
+
+`ci/db` today asserts what needs no database — migration naming, the pinned images and
+healthcheck gate, credential hygiene, the environment template. The live pass
+(`flyway migrate` against a throwaway PostgreSQL, `validate`, `tests/constraints.sql`)
+is [#24](https://github.com/NobuData/ouroboros/issues/24), which adds its steps to that
+same job.
+
+One consequence of filtering by path is worth stating: **a check that does not run does
+not report.** These four are advisory today. Marking one *required* in branch protection
+would leave every pull request that does not touch its module waiting for a check that
+will never arrive, so making them required means giving each one a companion job that
+reports the skip — not simply ticking the box.
+
 Repo-level checks are dependency-free POSIX shell and safe to run locally at any time:
 
 | Script | What it asserts |
@@ -257,6 +297,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-layout.sh`](../scripts/verify-layout.sh) | Module directories, README sections, root docs, `.editorconfig` coverage |
 | [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
 | [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule |
+| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold |
 | [`run-tests.sh`](../scripts/run-tests.sh) | Runs `scripts/tests/*.test.sh` — the unit and integration tests for the tooling above |
 
 They share one assertion harness, [`scripts/lib/checks.sh`](../scripts/lib/checks.sh), so
