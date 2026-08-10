@@ -10,6 +10,10 @@
 # assertion it makes. Failures print the reason inline and are counted; nothing exits
 # early, so one run reports every problem rather than only the first.
 #
+# Alongside the assertions it carries the readers they need — png_header, documented_size
+# — for facts more than one verify-* script has to pull out of a file's bytes or a
+# document's tables.
+#
 # POSIX shell with no dependencies — the same portability contract as its callers, so
 # these checks run identically on a laptop, in a container and in CI.
 
@@ -140,6 +144,45 @@ check_markdown_links() {
         ;;
     esac
   done
+}
+
+# png_header FILE — print "WIDTH HEIGHT DEPTH COLOURTYPE" for a PNG, or nothing.
+#
+# Reads the signature and the IHDR chunk, which a PNG is required to open with: 8 bytes of
+# signature, a 4-byte length, the type "IHDR", then the width and height as 4-byte
+# big-endian integers, the bit depth and the colour type. od is POSIX, so no image library
+# is needed to learn what the file claims to be — which is what lets a script assert an
+# image's size and whether it carries an alpha channel without decoding a pixel.
+#
+# Shared because both the scripts that check images want the same four numbers: the brand
+# assets have to carry alpha at the sizes BRAND.md publishes, and the favicons derived
+# from them have to carry it in one group and not in the other.
+png_header() {
+  png_file=$1
+  [ -f "$png_file" ] || return 1
+  set -- $(od -An -tu1 -N8 -- "$png_file" 2>/dev/null)
+  [ "$*" = "137 80 78 71 13 10 26 10" ] || return 1
+  set -- $(od -An -tu1 -j16 -N10 -- "$png_file" 2>/dev/null)
+  [ $# -eq 10 ] || return 1
+  printf '%s %s %s %s\n' \
+    "$(( $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 ))" \
+    "$(( $5 * 16777216 + $6 * 65536 + $7 * 256 + $8 ))" \
+    "$9" "${10}"
+}
+
+# documented_size FILE_NAME DOC — print the WIDTH×HEIGHT a document publishes for a file.
+#
+# Finds the first row naming the file and takes the first dimension pair on it, which by
+# the convention both asset tables follow is the file's own pixel size — the columns after
+# it are working sizes, minimums and prose. Prints nothing when the file is not in the
+# document or its row publishes no size, which a caller reports as the mismatch it is.
+#
+# Shared because a document that goes on publishing the size an asset used to be is the
+# same failure whether the asset is a brand master or a favicon cut from one.
+documented_size() {
+  size_row=$(grep -F -m 1 -- "$1" "$2" 2>/dev/null || true)
+  [ -n "$size_row" ] || return 0
+  printf '%s\n' "$size_row" | grep -oE '[0-9]+×[0-9]+' | head -n 1
 }
 
 # check_summary — print the tally. Returns non-zero if any check failed, so it can be

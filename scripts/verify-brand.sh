@@ -79,36 +79,6 @@ SHEET_HEIGHT=768
 PNG_DEPTH=8
 PNG_COLOUR_RGBA=6
 
-# png_header FILE — print "WIDTH HEIGHT DEPTH COLOURTYPE" for a PNG, or nothing.
-#
-# Reads the signature and the IHDR chunk, which a PNG is required to open with: 8 bytes of
-# signature, a 4-byte length, the type "IHDR", then the width and height as 4-byte
-# big-endian integers, the bit depth and the colour type. od is POSIX, so no image library
-# is needed to learn what the file claims to be.
-png_header() {
-  png_file=$1
-  [ -f "$png_file" ] || return 1
-  set -- $(od -An -tu1 -N8 -- "$png_file" 2>/dev/null)
-  [ "$*" = "137 80 78 71 13 10 26 10" ] || return 1
-  set -- $(od -An -tu1 -j16 -N10 -- "$png_file" 2>/dev/null)
-  [ $# -eq 10 ] || return 1
-  printf '%s %s %s %s\n' \
-    "$(( $1 * 16777216 + $2 * 65536 + $3 * 256 + $4 ))" \
-    "$(( $5 * 16777216 + $6 * 65536 + $7 * 256 + $8 ))" \
-    "$9" "${10}"
-}
-
-# documented_size FILE_NAME — print the WIDTHxHEIGHT the document publishes for an asset.
-#
-# The asset table gives each pair one row, and the first dimension pair on that row is the
-# file's own pixel size (the columns after it are the working size, which is half of it,
-# and the minimum). Prints nothing when the file is not in the table.
-documented_size() {
-  row=$(grep -F -m 1 -- "$1" "$DOC" 2>/dev/null || true)
-  [ -n "$row" ] || return 0
-  printf '%s\n' "$row" | grep -oE '[0-9]+×[0-9]+' | head -n 1
-}
-
 printf '\nBrand assets — %s\n\n' "$ROOT"
 
 # ---------------------------------------------------------------------------
@@ -166,7 +136,7 @@ for piece in $PIECES; do
     # and publish the size the file actually is.
     if grep -qF -- "$name" "$DOC"; then
       pass "$DOC documents $name"
-      check_equals "$(documented_size "$name")" "${width}×${height}" \
+      check_equals "$(documented_size "$name" "$DOC")" "${width}×${height}" \
         "$DOC publishes $name as ${width}×${height}"
     else
       fail "$DOC documents $name (not named anywhere in the document)"

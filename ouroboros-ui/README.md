@@ -67,6 +67,81 @@ ouroboros-ui/
 └── Dockerfile
 ```
 
+## Favicons and the web-app manifest
+
+[`public/`](public) already holds the browser and home-screen icon set, generated from
+the brand icon pair by [`../scripts/build-favicons.py`](../scripts/build-favicons.py)
+([#15](https://github.com/NobuData/ouroboros/issues/15)). It landed ahead of the scaffold
+because none of it is application code — the files are static, and two of them work with
+no wiring at all.
+
+| File | Size | Transparent | For |
+|---|---|---|---|
+| [`public/favicon.ico`](public/favicon.ico) | 16, 32, 48 | no | The tab, the address bar, the desktop shortcut. Served at `/favicon.ico`, which every browser probes on its own |
+| [`public/favicon-32-light.png`](public/favicon-32-light.png) | 32×32 | yes | The tab under light browser chrome |
+| [`public/favicon-32-dark.png`](public/favicon-32-dark.png) | 32×32 | yes | The tab under dark browser chrome |
+| [`public/apple-touch-icon.png`](public/apple-touch-icon.png) | 180×180 | no | The iOS home screen. Served at `/apple-touch-icon.png`, which iOS Safari probes on its own |
+| [`public/icon-192.png`](public/icon-192.png) | 192×192 | no | Manifest icon — Android home screen, task switcher |
+| [`public/icon-512.png`](public/icon-512.png) | 512×512 | no | Manifest icon — splash screen, install prompt |
+| [`public/manifest.webmanifest`](public/manifest.webmanifest) | — | — | App name, scheme colours and the two icons above |
+
+Why two kinds. A browser tab is a surface whose colour the page does not own, so the tab
+icons are a transparent pair and the browser picks one by `prefers-color-scheme` — the
+rule [`../docs/BRAND.md`](../docs/BRAND.md) sets out, that the treatment follows the
+surface it sits on. A home screen is an unknown background, which the same document
+answers by putting the mark on a brand-coloured panel first, so every icon a launcher
+draws is flattened onto the dark ground `#12181d` and carries no alpha channel at all.
+
+### What the scaffold still has to wire
+
+`favicon.ico` and `apple-touch-icon.png` resolve by convention, but the theme-aware pair
+and the manifest need `<link>` tags, which means the Metadata API. Add this to
+`app/layout.tsx` when [#39](https://github.com/NobuData/ouroboros/issues/39) lands:
+
+```ts
+import type { Metadata, Viewport } from "next";
+
+export const metadata: Metadata = {
+  icons: {
+    icon: [
+      {
+        url: "/favicon-32-light.png",
+        type: "image/png",
+        sizes: "32x32",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/favicon-32-dark.png",
+        type: "image/png",
+        sizes: "32x32",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
+  },
+  manifest: "/manifest.webmanifest",
+};
+
+// themeColor is a viewport export in Next 14+, not a metadata field. The manifest
+// carries one colour because the format has one; the per-scheme pair lives here.
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f8fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#12181d" },
+  ],
+};
+```
+
+Two things to leave alone. Do not add `app/favicon.ico` or `app/icon.*`: those are
+Next's own file conventions and they would emit a second, competing set of `<link>` tags
+alongside the ones above. And do not hand-edit anything in `public/` — regenerate:
+
+```bash
+uv run --with Pillow scripts/build-favicons.py           # rewrite ouroboros-ui/public/
+uv run --with Pillow scripts/build-favicons.py --check   # still match the brand icons?
+scripts/verify-favicons.sh                               # files ↔ manifest ↔ this document
+```
+
 ## Related issues
 
 Scaffold [#39](https://github.com/NobuData/ouroboros/issues/39) ·

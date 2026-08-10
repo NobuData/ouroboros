@@ -155,11 +155,54 @@ scripts/verify-brand.sh                                    # assets ↔ this doc
 side. Look at those before merging a brand change: contrast and halos are a judgement a
 script cannot make for you.
 
+A change to the icon pair does not stop here. The favicon set above is scaled from those
+two files, so rebuilding the brand means rebuilding it too, in the same pull request —
+otherwise the browser tab goes on showing the previous mark and nothing says so:
+
+```bash
+uv run --with Pillow scripts/build-favicons.py    # rewrite ouroboros-ui/public/
+scripts/verify-favicons.sh                        # files ↔ manifest ↔ documents
+```
+
+## The favicon and manifest set
+
+The icon pair is a source as well as an asset: it is what the browser and home-screen
+icons in [`../ouroboros-ui/public/`](../ouroboros-ui/public) are scaled from, by
+[`scripts/build-favicons.py`](../scripts/build-favicons.py)
+([#15](https://github.com/NobuData/ouroboros/issues/15)). Seven derived files, and the
+same rule about surfaces decides which treatment each one gets.
+
+| File | Size | From | Ground |
+|---|---|---|---|
+| `favicon.ico` | 16, 32, 48 | `icon-dark.png` | `#12181d`, opaque |
+| `favicon-32-light.png` | 32×32 | `icon-light.png` | transparent |
+| `favicon-32-dark.png` | 32×32 | `icon-dark.png` | transparent |
+| `apple-touch-icon.png` | 180×180 | `icon-dark.png` | `#12181d`, opaque |
+| `icon-192.png` | 192×192 | `icon-dark.png` | `#12181d`, opaque |
+| `icon-512.png` | 512×512 | `icon-dark.png` | `#12181d`, opaque |
+| `manifest.webmanifest` | — | — | declares `#12181d` |
+
+A browser tab is a surface whose colour the page does not own, so the tab icons stay
+transparent and the browser picks between them with `prefers-color-scheme`. A home screen
+is an unknown background — the case the table above answers with "place the mark on a
+solid brand-coloured panel first" — so every icon a launcher draws is flattened onto the
+dark ground and written without an alpha channel, which is what stops a launcher drawing
+its own colour through the mark. `favicon.ico` is flattened for a different reason: one
+file cannot answer a media query, so the fallback is the one that reads on any chrome
+rather than the one that reads on half of it.
+
+Nothing in that set is re-cropped, re-tinted or re-centred; scaling is the only thing
+done to the artwork, which is the rule below applied to a generator rather than to a
+person. The two treatments frame their mark slightly differently inside the shared
+square, so trimming either one to its ink would make the tab jump as the scheme changed.
+
+Sizes, the wiring the Next.js app owes them, and the regeneration commands are in
+[`../ouroboros-ui/README.md`](../ouroboros-ui/README.md);
+[`scripts/verify-favicons.sh`](../scripts/verify-favicons.sh) asserts the files, the
+manifest and both documents still agree.
+
 ## Formats still to come
 
-- **Favicon and manifest set** — `.ico`, `apple-touch-icon`, 192/512 PWA icons and the
-  theme-aware `<link rel="icon">` pair, generated from `icon-*.png` by
-  [#15](https://github.com/NobuData/ouroboros/issues/15).
 - **SVG** — the sheet is a raster, so the icon is enlarged 1.7× from its native crop to
   give #15 a 512 px master; the glyph and lockup are at (or within 13% of) native size. A
   retrace to vector is the v2 answer if the mark ever needs to go bigger than these
