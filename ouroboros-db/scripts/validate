@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+#
+# validate — check the migrations against the database without applying anything.
+#
+# Two failures it catches, both of which are the same mistake seen from different sides:
+# a migration file that has been edited after it was applied (its checksum no longer
+# matches the history row), and a file whose name breaks the V###__snake_case rule
+# (`validateMigrationNaming` in ../flyway.toml). Applied migrations are immutable — see
+# ../README.md § Migration rules — and this is what says so out loud.
+#
+#   ouroboros-db/scripts/validate                    # checksums and naming rules
+#   ouroboros-db/scripts/validate --dry-run          # print the command, run nothing
+#   ouroboros-db/scripts/validate --runner docker    # force the container
+#
+# Configuration is flyway.toml plus the OURO_DB_* variables; see ../README.md. Every
+# argument is handed to ../run.sh ahead of the command, so all of its flags work here
+# too — `../run.sh --help` lists them.
+#
+# Exit status is Flyway's: 0 the migrations validate, 1 they do not, 2 could not run.
+
+set -eu
+unset CDPATH
+
+exec "$(cd -- "$(dirname -- "$0")/.." && pwd)/run.sh" "$@" validate

@@ -554,7 +554,7 @@ per-tenant GitHub org/repo enablement.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 3.1 | #19 | 🟡 Open | ouroboros-db: [3.1] Flyway project scaffold & migration conventions | Directory layout, config, naming rules, local runner scripts | mvp, db, infra | N (after 1.1) | Y | S | ouroboros-db |
+| 3.1 | #19 | 🟢 Done | ouroboros-db: [3.1] Flyway project scaffold & migration conventions | Directory layout, config, naming rules, local runner scripts | mvp, db, infra | N (after 1.1) | Y | S | ouroboros-db |
 | 3.2 | #20 | 🟡 Open | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
 | 3.3 | #21 | 🟡 Open | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
 | 3.4 | #22 | 🟡 Open | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
@@ -565,13 +565,38 @@ per-tenant GitHub org/repo enablement.
 
 ### Issue 3.1 — ouroboros-db: [3.1] Flyway project scaffold & migration conventions
 
-> **GitHub issue:** #19 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #19 · **Status:** 🟢 Done · **Parent epic:** #3
 >
-> Partly landed by 1.3 (#10), which needed something to migrate: `migrations/` exists
-> and holds `V000__bootstrap.sql`, and the compose stack already passes the schema and
-> `validateMigrationNaming` settings on the command line. What remains here is
-> `flyway.toml` (so the settings live in the module rather than in compose), the
-> `scripts/` wrappers, and `tests/`. The tenancy tables still start at V001.
+> Begun by 1.3 (#10), which needed something to migrate: `migrations/` and
+> `V000__bootstrap.sql` landed there, with the settings spelled out on the compose
+> stack's command line.
+>
+> Delivered here: [`ouroboros-db/flyway.toml`](../ouroboros-db/flyway.toml) — locations,
+> schema, `createSchemas`, `validateMigrationNaming` and `cleanDisabled` in one file,
+> with no url, user or password in it, because those describe a machine rather than a
+> project. Both paths now read it: the compose stack and `run.sh` mount the module at
+> `/flyway/project` and pass `-workingDirectory`, so `docker compose up` and a hand-run
+> migration cannot apply the same checkout under different rules. Only what differs per
+> machine still travels on the command line.
+>
+> `scripts/{migrate,info,validate,clean-dev}` are one-line names over `run.sh`, which
+> keeps the runner selection, `.env` resolution and password redaction it already had
+> and gains `--config` (layer one more file) and `--print-target` (resolve the database
+> without touching it). **`clean` is gated three times over**: `flyway.toml` disables it,
+> [`flyway.dev.toml`](../ouroboros-db/flyway.dev.toml) is the only file that re-enables
+> it and `clean-dev` the only thing that loads that file, and `clean-dev` itself refuses
+> any host that is not this machine and asks for the database name back first. There is
+> no `scripts/clean`.
+>
+> `ouroboros-db/tests/` is the module's own suite — 177 assertions across the runner and
+> the four commands, run against a synthetic module with both Flyway runners stubbed, so
+> it needs neither a database nor Docker. `scripts/run-tests.sh` now runs every module's
+> suite as well as its own, and `ci/db` runs this one after the data-tier contract.
+>
+> Verified against a live PostgreSQL 17: `docker compose up` migrates the baseline
+> clean, `scripts/info` renders the history, a misnamed file fails `validate` (and
+> `migrate`), `run.sh clean` is refused by `cleanDisabled`, and `clean-dev` drops the
+> schema only once its own gates are satisfied. The tenancy tables still start at V001.
 
 - **Problem Statement:** Flyway needs a project home, configuration, and non-negotiable
   conventions (naming, immutability, review rules) before the first migration lands.
@@ -1732,10 +1757,13 @@ the Metadata API wiring, and **#16** (design tokens) is **done** — both palett
 [`design/tokens.css`](design/tokens.css) with their contrast measured and enforced, which
 releases **#17** (the runtime theme engine, which only has to stamp `data-theme`), **#40**
 (global styles, which adopts the sheet) and the shell work built on those.
-The four
-module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
-concurrently; each scaffold turns its own CI check on as it lands, and updates its
-section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
-pull request. The MVP is complete when **#56** (end-to-end smoke test) is green.
+Of the four
+module scaffolds, **#19** (the Flyway project) is **done** — `ouroboros-db` has its
+configuration, its four named commands and its own test suite, and `ci/db` runs them —
+which releases the tenancy schema itself (**#20**, then #21 and #22) and the live
+migration CI pass (**#24**). The remaining three (#27, #39, #50) are unblocked and the
+Phase 1 tracks can run concurrently; each scaffold turns its own CI check on as it
+lands, and updates its section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified*
+to *running* in the same pull request. The MVP is complete when **#56** (end-to-end smoke test) is green.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

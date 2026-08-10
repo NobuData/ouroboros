@@ -1,13 +1,13 @@
 # ouroboros-db
 
-> **Status:** migrations run. [#10](https://github.com/NobuData/ouroboros/issues/10)
-> added `migrations/`, the repo-root compose stack that applies it, and
-> [`run.sh`](run.sh) for applying it to a database that is already up — so
-> `docker compose up` gives you a live, migrated database today. The rest of the Flyway
-> project — `flyway.toml`, the `scripts/` wrappers, `tests/` — lands in
-> [#19](https://github.com/NobuData/ouroboros/issues/19) (epic
-> [#3](https://github.com/NobuData/ouroboros/issues/3)); until then the sections below
-> marked *(pending #19)* are the contract that scaffold must satisfy.
+> **Status:** the Flyway project is complete.
+> [#10](https://github.com/NobuData/ouroboros/issues/10) added `migrations/` and the
+> repo-root compose stack that applies it;
+> [#19](https://github.com/NobuData/ouroboros/issues/19) added
+> [`flyway.toml`](flyway.toml) — where every setting now lives, for the stack and for a
+> hand-run migration alike — the [`scripts/`](scripts) commands, and
+> [`tests/`](tests). The tenancy tables themselves start at `V001`
+> ([#20](https://github.com/NobuData/ouroboros/issues/20) onwards).
 
 ## Purpose
 
@@ -26,11 +26,14 @@ Flyway is the **sole owner of DDL**. No application module creates or alters tab
 | Migrations | Flyway 11, run from its container — no local Java required |
 | Language | Plain SQL (no templating, no ORM DSL) |
 | Schema | `ouroboros` |
+| Configuration | [`flyway.toml`](flyway.toml) — one file, read by every path |
 | CI | `flyway migrate` + `validate` against a throwaway PostgreSQL |
 
 ## Run
 
-The database comes from the repo-root compose file
+### The database
+
+It comes from the repo-root compose file
 ([#10](https://github.com/NobuData/ouroboros/issues/10)). Run these from the **repo
 root**, not from this directory:
 
@@ -63,7 +66,7 @@ PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros
 
 A reset is `docker compose down -v` followed by `docker compose up`: the named volume is
 dropped, PostgreSQL initialises an empty cluster, and every migration is applied again
-from scratch. Use it whenever a migration has been edited or the data has drifted.
+from scratch.
 
 If `up` fails with `bind: address already in use`, something else on the machine already
 holds 5432 — a system PostgreSQL, or another project's stack. Publish this one somewhere
@@ -76,24 +79,54 @@ OURO_DB_PORT=45432 docker compose up
 The port only changes where the database is published on the host; inside the compose
 network it is always `db:5432`, and it is only ever published on `127.0.0.1`.
 
-### Migrating a running database — `run.sh`
+### The four commands
 
-`docker compose up` migrates on the way up, which covers most days. `run.sh` is for
-everything else: a migration you just wrote against a database already running, a
-PostgreSQL installed on your machine, a server across the network.
+`docker compose up` migrates on the way up, which covers most days. These are for
+everything else — a migration you just wrote against a database already running, a
+PostgreSQL installed on your machine, a server across the network:
 
 ```bash
-cp ouroboros-db/.env.example ouroboros-db/.env   # point it at your database
-ouroboros-db/run.sh                              # migrate — apply what is pending
-ouroboros-db/run.sh info                         # applied and pending versions
-ouroboros-db/run.sh validate                     # checksums and naming rules
-ouroboros-db/run.sh --dry-run                    # print the command, run nothing
+ouroboros-db/scripts/migrate     # apply what is pending
+ouroboros-db/scripts/info        # applied and pending versions
+ouroboros-db/scripts/validate    # checksums and naming rules
+ouroboros-db/scripts/clean-dev   # drop everything — development databases only
 ```
 
-It connects by host and port like any other client, so **nothing has to be
-containerised**. Out of the box it points at `localhost:5432`, which is both a default
+They connect by host and port like any other client, so **nothing has to be
+containerised**. Out of the box they point at `localhost:5432`, which is both a default
 PostgreSQL install and — with the port the compose stack publishes — the compose
-database.
+database. Point them anywhere else with the `OURO_*` variables below:
+
+```bash
+OURO_DB_PORT=45432 OURO_DB_SCHEMA=scratch ouroboros-db/scripts/info
+```
+
+`clean-dev` drops **every object in the schema**, which is the reset for a migration you
+have edited after it was applied — `validate` will refuse that database until you do.
+Three things stand in its way, and all three have to be got past deliberately:
+`flyway.toml` disables `clean` outright, only [`flyway.dev.toml`](flyway.dev.toml)
+re-enables it and only `clean-dev` loads that file, and `clean-dev` itself refuses any
+host that is not this machine and asks for the database name back before it drops
+anything:
+
+```bash
+ouroboros-db/scripts/clean-dev          # names the database, waits for you to type it
+ouroboros-db/scripts/clean-dev --yes    # no prompt — scripted resets and CI
+```
+
+There is deliberately no `scripts/clean`.
+
+### The runner underneath
+
+Each command is a name for one [`run.sh`](run.sh) invocation; use `run.sh` directly for
+anything the four do not cover, and pass its flags through any of them:
+
+```bash
+ouroboros-db/run.sh repair                    # any Flyway command
+ouroboros-db/scripts/migrate --dry-run        # print the command, run nothing
+ouroboros-db/scripts/migrate --runner docker  # force a runner instead of choosing one
+ouroboros-db/run.sh --help                    # every flag, and what it reads
+```
 
 Flyway itself comes from whichever is available, and `--runner` overrides the choice:
 
@@ -102,51 +135,58 @@ Flyway itself comes from whichever is available, and `--runner` overrides the ch
 | `flyway` | the `flyway` on your PATH | automatically, if you have one — no Docker at all |
 | `docker` | the pinned `flyway/flyway:11` image | otherwise, so no local Java is needed |
 
-```bash
-ouroboros-db/run.sh --runner docker    # ignore the local install
-ouroboros-db/run.sh --runner flyway    # insist on it
-```
-
 When the container runs against a database on this machine it is given host networking,
 because a server bound to loopback — which both a default PostgreSQL install and the
-compose stack are — is not otherwise reachable from inside a container.
+compose stack are — is not otherwise reachable from inside a container. Only what Flyway
+reads is mounted into it, read-only: `flyway.toml` and `migrations/`.
 
 Parameters come from `ouroboros-db/.env`, then the repo-root `.env`, then the defaults,
-and anything already in the environment beats all three. So a one-off needs no file:
-
-```bash
-OURO_DB_PORT=45432 OURO_DB_SCHEMA=scratch ouroboros-db/run.sh info
-```
-
-Any argument it does not recognise goes to Flyway untouched, and the password is never
-printed — not in the progress line, not by `--dry-run`.
+and anything already in the environment beats all three. Any argument the runner does
+not recognise goes to Flyway untouched, and the password is never printed — not in the
+progress line, not by `--dry-run`.
 
 > `run.sh` migrates whatever `OURO_DB_HOST`/`OURO_DB_PORT` resolve to, and the default
 > is `localhost:5432`. If you have a PostgreSQL of your own there, that is the one it
 > will migrate. `--dry-run` prints the target without touching it.
 
-The fuller set of wrappers is still to come *(pending #19)*:
+### The tests
+
+The module's tooling has its own suite — the runner and the four commands, exercised
+against a synthetic module with both Flyway runners stubbed out, so it needs no database
+and no Docker:
 
 ```bash
-scripts/migrate               # apply pending migrations
-scripts/info                  # migration history and pending versions
-scripts/validate              # verify checksums and naming rules
-scripts/clean-dev             # drop everything — refuses to run outside dev
+scripts/run-tests.sh ouroboros-db/tests   # this module's suite
+scripts/run-tests.sh                      # every suite in the repository
 ```
+
+`ci/db` runs it on every pull request that touches this directory, after
+[`scripts/verify-dev-env.sh`](../scripts/verify-dev-env.sh).
 
 ## Configuration
 
-Development default port: **5432**. Two templates, because they answer two questions:
-[`.env.example`](.env.example) here is *which database `run.sh` migrates*, and the
+Two files, because they answer two different questions.
+
+**[`flyway.toml`](flyway.toml) — how migrations are applied.** Where they are, that the
+schema is created if absent, that a misnamed file fails the run, and that `clean` is
+off. Every path reads it: the compose stack, `run.sh`, and the `scripts/` commands are
+all pointed at this directory with `-workingDirectory`, so there is one place to change
+a rule and no way for `up` and a hand-run migration to disagree.
+[`flyway.dev.toml`](flyway.dev.toml) is a one-setting overlay that only `clean-dev`
+loads. Neither carries a url, a user or a password — those describe a machine, not a
+project.
+
+**`.env` — which database.** Development default port: **5432**.
+[`.env.example`](.env.example) here is *which database the commands migrate*; the
 repo-root [`../.env.example`](../.env.example) is *every `OURO_*` variable the whole
-system reads*. Both carry development defaults, so the stack and the runner work with
+system reads*. Both carry development defaults, so the stack and the commands work with
 no `.env` at all.
 
 | Variable | Purpose |
 |---|---|
 | `OURO_DATABASE_URL` | Connection string used by `ouroboros-rest` |
-| `OURO_DB_HOST` | Host `run.sh` connects to, default `localhost` |
-| `OURO_DB_PORT` | Port it connects to, and the one the container publishes, default `5432` |
+| `OURO_DB_HOST` | Host the commands connect to, default `localhost` |
+| `OURO_DB_PORT` | Port they connect to, and the one the container publishes, default `5432` |
 | `OURO_DB_USER` / `OURO_DB_PASSWORD` | Credentials for the database |
 | `OURO_DB_NAME` | Database name, default `ouroboros` |
 | `OURO_DB_SCHEMA` | Schema Flyway owns and migrates, default `ouroboros` |
@@ -155,12 +195,15 @@ no `.env` at all.
 first-boot initialisation. Changing one after the volume exists has no effect until the
 volume is dropped — `docker compose down -v`, then `up`.
 
+A local `flyway.user.toml` is Flyway's own per-developer override file and is
+git-ignored; the committed project is `flyway.toml` and its overlay.
+
 ## Migration rules
 
-These are non-negotiable. `ci/db` checks the naming rule on every pull request touching
-this directory, and Flyway's own `validateMigrationNaming` and `validate` enforce the
-rest whenever the migrations are applied — see [conventions](../docs/CONVENTIONS.md#9-ci)
-for what `ci/db` covers today and what
+These are non-negotiable. `ci/db` checks them on every pull request touching this
+directory, and Flyway's own `validateMigrationNaming` and `validate` enforce them again
+whenever the migrations are applied — see [conventions](../docs/CONVENTIONS.md#9-ci) for
+what `ci/db` covers today and what
 [#24](https://github.com/NobuData/ouroboros/issues/24) adds to it.
 
 1. **Versioned migrations are immutable.** Once `V###__*.sql` has been applied
@@ -172,22 +215,33 @@ for what `ci/db` covers today and what
    `validateMigrationNaming` fails the build on anything else.
 5. **Dev seed data never runs in production** — it is gated by the dev Flyway config.
 
-## Layout (target)
+## Layout
 
 ```
 ouroboros-db/
-├── run.sh                            # apply migrations to a live database — #10
-├── .env.example                      # which database run.sh migrates — #10
-├── flyway.toml
+├── flyway.toml                       # the project: locations, schema, naming, clean off
+├── flyway.dev.toml                   # the overlay that re-enables clean — dev only
+├── run.sh                            # apply migrations to a live database
+├── .env.example                      # which database the commands migrate
+├── scripts/
+│   ├── migrate                       # apply what is pending
+│   ├── info                          # applied and pending versions
+│   ├── validate                      # checksums and naming rules
+│   └── clean-dev                     # drop everything — gated three ways
 ├── migrations/
-│   ├── V000__bootstrap.sql           # the schema itself — landed by #10
-│   ├── V001__tenants.sql             # tenants, tenant_domains
-│   ├── V002__users_membership.sql    # users, user_identities, tenant_members
-│   ├── V003__github_enablement.sql   # github_orgs, github_repos
-│   └── R__dev_seed.sql               # deterministic demo data, dev only
-├── scripts/{migrate,info,validate,clean-dev}
-└── tests/constraints.sql             # assertion queries run in CI
+│   ├── V000__bootstrap.sql           # the schema itself
+│   ├── V001__tenants.sql             # tenants, tenant_domains — #20
+│   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21
+│   ├── V003__github_enablement.sql   # github_orgs, github_repos — #22
+│   └── R__dev_seed.sql               # deterministic demo data, dev only — #23
+└── tests/
+    ├── run.test.sh                   # the runner
+    ├── scripts.test.sh               # the four commands and the project configuration
+    └── constraints.sql               # assertion queries run in CI — #24
 ```
+
+Everything below `V000` and beside `tests/constraints.sql` is named for the issue that
+lands it.
 
 ## Related issues
 

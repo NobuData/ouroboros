@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+#
+# migrate — apply every pending migration to the configured database.
+#
+# The everyday command: it brings a database up to the version this checkout describes
+# and does nothing to one that is already there. Safe to repeat — Flyway applies what is
+# pending and reports "no migration necessary" when nothing is.
+#
+#   ouroboros-db/scripts/migrate                    # apply what is pending
+#   ouroboros-db/scripts/migrate --dry-run          # print the command, run nothing
+#   ouroboros-db/scripts/migrate --runner docker    # force the container
+#
+# Configuration is flyway.toml plus the OURO_DB_* variables; see ../README.md. Every
+# argument is handed to ../run.sh ahead of the command, so all of its flags work here
+# too — `../run.sh --help` lists them.
+#
+# Exit status is Flyway's: 0 applied (or nothing to apply), 1 failed, 2 could not run.
+
+set -eu
+unset CDPATH
+
+exec "$(cd -- "$(dirname -- "$0")/.." && pwd)/run.sh" "$@" migrate

@@ -1,0 +1,20 @@
+# ouroboros-db — the development-only overlay on flyway.toml.
+#
+# Inert unless something names it: Flyway auto-loads `flyway.toml` from the working
+# directory and never this file, so it takes an explicit
+# `-configFiles=flyway.toml,flyway.dev.toml` to have any effect at all. The only thing
+# in this repository that passes that is `scripts/clean-dev`.
+#
+# It exists to hold the one setting that must never be on by default. Keeping it in a
+# separate file rather than behind a flag means the safe configuration is the one every
+# other command — the compose stack, `run.sh`, `scripts/migrate`, CI — already reads.
+#
+# Filed as issue #19.
+
+[flyway]
+# Re-enables `clean`, which drops every object in the schema: the reset a developer
+# wants after editing a migration that has already been applied, and the reset CI wants
+# between runs against a throwaway database. `scripts/clean-dev` adds two gates on top
+# of this one — the target has to be a database on this machine, and the database name
+# has to be typed back before anything is dropped.
+cleanDisabled = false

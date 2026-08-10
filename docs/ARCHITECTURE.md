@@ -29,7 +29,7 @@ describing:
 
 | Module | State | Landing in |
 |---|---|---|
-| [`ouroboros-db`](../ouroboros-db) | **Running** — migrations apply against a live PostgreSQL | Flyway project completed by [#19](https://github.com/NobuData/ouroboros/issues/19) |
+| [`ouroboros-db`](../ouroboros-db) | **Running** — migrations apply against a live PostgreSQL | Complete: the Flyway project landed with [#19](https://github.com/NobuData/ouroboros/issues/19) |
 | [`ouroboros-rest`](../ouroboros-rest) | Specified | [#27](https://github.com/NobuData/ouroboros/issues/27) → epic [#4](https://github.com/NobuData/ouroboros/issues/4) |
 | [`ouroboros-ui`](../ouroboros-ui) | Specified | [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
 | [`ouroboros-engine`](../ouroboros-engine) | Specified | [#50](https://github.com/NobuData/ouroboros/issues/50) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |

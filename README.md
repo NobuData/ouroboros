@@ -90,13 +90,20 @@ brings up the database alone, without a migration pass. See
 the applied versions.
 
 To migrate a database that is already running — the compose one, a PostgreSQL installed
-on your machine, or a server across the network — use the module's own runner, which
-needs nothing containerised:
+on your machine, or a server across the network — use the module's own commands, which
+need nothing containerised:
 
 ```bash
-ouroboros-db/run.sh          # apply pending migrations
-ouroboros-db/run.sh info     # applied and pending versions
+ouroboros-db/scripts/migrate     # apply pending migrations
+ouroboros-db/scripts/info        # applied and pending versions
+ouroboros-db/scripts/validate    # checksums and naming rules
+ouroboros-db/scripts/clean-dev   # drop everything — development databases only
 ```
+
+They are named commands over [`ouroboros-db/run.sh`](ouroboros-db/run.sh), which is
+still there for anything they do not cover. All of them read one configuration —
+[`ouroboros-db/flyway.toml`](ouroboros-db/flyway.toml), the same file the compose stack
+above applies its migrations with.
 
 Each module is built and run on its own — see its README for the specifics:
 
@@ -131,7 +138,7 @@ scripts/verify-ci.sh              # workflow status checks, path routing, toolch
 scripts/verify-architecture.sh    # architecture doc sections, port map, env registry, links
 scripts/verify-brand.sh           # brand assets carry alpha, at the sizes BRAND.md publishes
 scripts/verify-favicons.sh        # favicon set, manifest and the documents that describe them
-scripts/run-tests.sh              # tests for the tooling in scripts/
+scripts/run-tests.sh              # every shell suite: scripts/tests and each module's
 ```
 
 `verify-dev-env.sh` reads files and starts nothing, so it runs with Docker stopped —
@@ -147,7 +154,7 @@ only the checks it can affect:
 | `ouroboros-ui/**` | `ci/ui` | `yarn install --immutable` → lint → typecheck → test → build |
 | `ouroboros-rest/**` | `ci/rest` | the same pipeline, against `ouroboros-rest` |
 | `ouroboros-engine/**` | `ci/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
-| `ouroboros-db/**` | `ci/db` | the migration and data-tier contract |
+| `ouroboros-db/**` | `ci/db` | the migration and data-tier contract, then the module's tooling tests |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 
 A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
