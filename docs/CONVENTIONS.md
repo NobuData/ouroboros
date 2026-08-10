@@ -190,9 +190,14 @@ markup are not flagged for being unwrappable.
 - **Lockfiles and `LICENSE`** — every rule unset; they are never reformatted.
 
 CSS carries **no hard-coded colour or spacing values** — everything is a design token
-from the shared token sheet ([#16](https://github.com/NobuData/ouroboros/issues/16)), so
-light and dark themes swap by redefining variables. Font sizes are rem-based; px font
-sizes are lint-banned so the user font-scale preference scales every surface.
+from the shared token sheet [`design/tokens.css`](design/tokens.css)
+([#16](https://github.com/NobuData/ouroboros/issues/16), documented in
+[`DESIGN_TOKENS.md`](DESIGN_TOKENS.md)), so light and dark themes swap by redefining
+variables. A colour literal belongs in that sheet's three palette blocks and nowhere else;
+[`verify-tokens.sh`](../scripts/verify-tokens.sh) fails a build where one escapes, and
+re-derives every published contrast ratio from the sheet so a palette edit cannot quietly
+drop below WCAG AA. Font sizes are rem-based; px font sizes are lint-banned so the user
+font-scale preference scales every surface.
 
 ## 7. Git & GitHub
 
@@ -299,6 +304,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule |
 | [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold |
 | [`verify-brand.sh`](../scripts/verify-brand.sh) | [`BRAND.md`](BRAND.md) and [`brand/`](brand) agree: every asset is a PNG with an alpha channel, at the size the document publishes, named and linked by it |
+| [`verify-tokens.sh`](../scripts/verify-tokens.sh) | [`design/tokens.css`](design/tokens.css) parses to exactly three palette blocks with no literal outside them, both dark blocks are identical, every colour is themed in both palettes, the dark palette still matches the mockups' sheet, the preview page carries no literal, and every contrast ratio [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) publishes is the recomputed one, at or above its minimum |
 | [`verify-favicons.sh`](../scripts/verify-favicons.sh) | The favicon set in [`../ouroboros-ui/public`](../ouroboros-ui/public) is the size and colour type each file promises, `favicon.ico` carries every resolution it should, the manifest names only files that exist, and [`BRAND.md`](BRAND.md) and the module README still describe the set on disk |
 | [`verify-architecture.sh`](../scripts/verify-architecture.sh) | [`ARCHITECTURE.md`](ARCHITECTURE.md) carries its required sections, renders its diagrams, states every invariant, resolves every link, and documents exactly the `OURO_*` variables `.env.example` declares |
 | [`run-tests.sh`](../scripts/run-tests.sh) | Runs `scripts/tests/*.test.sh` — the unit and integration tests for the tooling above |

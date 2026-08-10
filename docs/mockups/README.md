@@ -52,6 +52,12 @@ Everything shares `assets/ouroboros.css`, derived from the brand logo
   hue for model/LLM chips stay distinct from the accent.
 - **Type** — Chakra Petch (display/headings), IBM Plex Sans (UI), IBM Plex Mono (data,
   code, identifiers).
+- **The palette the product uses** — this stylesheet is dark-only and stays that way; it is
+  the design source of truth for page anatomy, not for colour. Both palettes as tokens are
+  [`../design/tokens.css`](../design/tokens.css), documented with their measured contrast in
+  [`../DESIGN_TOKENS.md`](../DESIGN_TOKENS.md). The dark half of that sheet is these
+  literals extracted, so a colour changed here has to be changed there too — and
+  `scripts/verify-tokens.sh` fails the build if only one of them moves.
 - **Logo assets** — `assets/logo-mark.png` (snake) and `assets/logo-lockup.png`
   (snake + wordmark), cropped from the dark half of the brand sheet; rendered with
   `mix-blend-mode: screen` so they sit on any dark surface. These two are the mockups'

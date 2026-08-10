@@ -125,8 +125,8 @@ against the committed files.
 ## Colours sampled from the sheet
 
 Measured from the halves, as the starting point for the token work in
-[#16](https://github.com/NobuData/ouroboros/issues/16) — the derived palette lives there,
-not here.
+[#16](https://github.com/NobuData/ouroboros/issues/16) — the derived palette lives in
+[`DESIGN_TOKENS.md`](DESIGN_TOKENS.md), not here.
 
 | Sample | Light half | Dark half |
 |---|---|---|
@@ -136,7 +136,9 @@ not here.
 | Mark, mid-tone | `#32b1e5` | `#2496c5` |
 
 The committed accent stays `#3dd6f5`, the electric cyan the mockups' design system
-already builds on.
+already builds on — in the dark palette. On a light surface it measures 1.7:1 and cannot
+carry text, so the light palette deepens it to `#07708e`; the reasoning and the measured
+ratios are in [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md#where-the-two-palettes-came-from).
 
 ## Regenerating and verifying
 

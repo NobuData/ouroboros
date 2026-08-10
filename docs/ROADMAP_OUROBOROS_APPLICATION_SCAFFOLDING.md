@@ -345,7 +345,7 @@ v2?:  workspace runner · task graph · shared cache (faster, one more tool)
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 2.1 | #14 | 🟢 Done | ouroboros: [2.1] Split brand sheet into logo asset set | Web icon, standalone glyph, tagline lockup — light + dark variants | mvp, design | Y | Y | M | docs/brand, assets |
 | 2.2 | #15 | 🟡 Open | ouroboros-ui: [2.2] Favicon & web-app manifest set | Full favicon/PWA icon set generated from the web-icon asset | mvp, design, ui | N (needs 2.1, 5.1) | Y | XS | ouroboros-ui |
-| 2.3 | #16 | 🟡 Open | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
+| 2.3 | #16 | 🟢 Done | ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties | Port `ouroboros.css` to a token sheet; derive the light palette | mvp, design, ui | N (needs 2.1) | Y | M | docs/mockups/assets → shared tokens |
 | 2.4 | #17 | 🟡 Open | ouroboros-ui: [2.4] Runtime theme engine (on-the-fly light/dark) | `data-theme` switching: system default, persisted, no flash | mvp, ui | N (needs 2.3, 5.1) | Y | S | ouroboros-ui |
 | 2.5 | #18 | 🟡 Open | ouroboros: [2.5] Server-side brand surfaces | Glyph on REST OpenAPI page + engine/REST startup banners | v2, design, rest, engine | N (needs 2.1, 4.8, 6.2) | N | XS | ouroboros-rest, ouroboros-engine |
 
@@ -439,7 +439,31 @@ icon-light.png ┘   (Next metadata)     └─ icon-192/512 + manifest
 
 ### Issue 2.3 — ouroboros: [2.3] Design tokens — light & dark palettes as CSS custom properties
 
-> **GitHub issue:** #16 · **Status:** 🟡 Open · **Parent epic:** #2
+> **GitHub issue:** #16 · **Status:** 🟢 Done · **Parent epic:** #2
+>
+> Delivered: [`design/tokens.css`](design/tokens.css) — 37 colour tokens in a light and a
+> dark palette, plus theme-independent type, spacing and shape scales, arranged as `:root`
+> (light base), `:root[data-theme="dark"]` and a `prefers-color-scheme` block for the unset
+> case. The dark palette is the mockups' committed identity extracted literal for literal;
+> the light palette is derived from the brand sheet's light half against the contrast
+> tables, which is what deepens the accent to `#07708e` — `#3dd6f5` measures 1.73:1 on
+> white. [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) documents every token and publishes 53
+> measured contrast pairs; all 30 text pairs clear AA 4.5:1 and all 11 non-text pairs 3:1 in
+> **both** palettes. Three departures from the mockup sheet are named there, each forced by
+> a ratio: `--ink-faint` lightened (the mockups' `--faint` reaches 3.1:1 as text),
+> `--line-control` added for the boundaries WCAG 1.4.11 covers, and the status tints
+> unified at one alpha per palette.
+>
+> [`design/tokens-preview.html`](design/tokens-preview.html) renders the whole design system
+> with **no colour literal in its stylesheet**, and
+> [`preview-light.png`](design/preview-light.png) /
+> [`preview-dark.png`](design/preview-dark.png) are its two palettes, rebuilt by
+> [`render-token-preview.sh`](../scripts/render-token-preview.sh).
+> [`verify-tokens.sh`](../scripts/verify-tokens.sh) holds all of it together: three palette
+> blocks and nothing outside them, both dark blocks identical, every colour themed in both
+> palettes, the carried-over literals still matching the mockups' sheet, and every published
+> ratio recomputed from the sheet by [`contrast.awk`](../scripts/lib/contrast.awk) — so a
+> palette edit that drops below AA fails the build rather than the audit.
 
 - **Problem Statement:** `docs/mockups/assets/ouroboros.css` defines a dark-only
   palette as literal colors. On-the-fly theme switching requires every color to be a
@@ -1702,10 +1726,12 @@ Issues are filed, labeled, typed, and linked to their epic parents. **#8** (mono
 layout), **#9** (labels & templates), **#10** (local dev environment), **#11** (CI
 pipelines) and **#12** (architecture documentation) are **done**, which closes Phase 0
 for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. **#14**
-(the brand asset set) is **done** as well, which unblocks the theming track: **#15**
+(the brand asset set) is **done** as well, which unblocked the theming track: **#15**
 (favicons) has landed its files in `ouroboros-ui/public/` and now waits only on #39 for
-the Metadata API wiring, and #16 (design tokens, whose light palette samples the sheet's
-light half) can start, which in turn releases #17 and the shell work that depends on it.
+the Metadata API wiring, and **#16** (design tokens) is **done** — both palettes exist as
+[`design/tokens.css`](design/tokens.css) with their contrast measured and enforced, which
+releases **#17** (the runtime theme engine, which only has to stamp `data-theme`), **#40**
+(global styles, which adopts the sheet) and the shell work built on those.
 The four
 module scaffolds (#19, #27, #39, #50) are unblocked and the Phase 1 tracks can run
 concurrently; each scaffold turns its own CI check on as it lands, and updates its
