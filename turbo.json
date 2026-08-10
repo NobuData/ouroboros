@@ -1,0 +1,77 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+
+  // The task graph over the four application modules (docs/CONVENTIONS.md § 3). Each
+  // module still owns how a verb is carried out — `next dev`, `uv run dev`, a Flyway
+  // pass; this file owns only what has to happen before what.
+  //
+  // ouroboros-web is not in the graph. It is the marketing site, it deploys on its own
+  // pipeline, and it wants the same port 3000 the product UI does, so it is not a
+  // workspace and `yarn dev` never starts it — `yarn dev:web` does.
+
+  // A change to any of these invalidates every cached task, because any of them can
+  // change what a build produces without appearing in a package's own inputs.
+  "globalDependencies": [".env", ".env.example", ".editorconfig"],
+
+  // turbo runs tasks in a *strict* environment by default: a variable that is not
+  // declared here does not reach the task at all. That is what keeps a cache hit
+  // honest — a task cannot behave differently under a value the hash never saw — and it
+  // is also why this list has to be complete, because an undeclared variable is not
+  // ignored, it is missing.
+  //
+  // The whole `OURO_*` namespace is declared with one glob rather than variable by
+  // variable, because docs/CONVENTIONS.md § 4 already guarantees every Ouroboros
+  // setting carries that prefix: a variable added to .env.example works under `yarn dev`
+  // without this file being edited. `PORT` is the documented unprefixed exception, and
+  // the two DOCKER_* variables are how a rootless or remote daemon is addressed —
+  // without them `ouroboros-db#dev` cannot reach Docker at all.
+  "globalEnv": [
+    "NODE_ENV",
+    "PORT",
+    "OURO_*",
+    "DOCKER_HOST",
+    "DOCKER_CONTEXT",
+    "NEXT_TELEMETRY_DISABLED"
+  ],
+
+  "tasks": {
+    // `yarn dev` — the whole application stack in one terminal.
+    //
+    // Persistent: these processes are meant to stay up and stream their logs, so turbo
+    // runs them side by side and never caches them. The data tier is the one part that
+    // is not a long-running process — it is a container to start and a migration pass
+    // to apply — so it is a dependency rather than a peer, and every service starts
+    // against a database that is already listening and already at this checkout's
+    // schema version.
+    "dev": {
+      "dependsOn": ["ouroboros-db#dev"],
+      "cache": false,
+      "persistent": true
+    },
+
+    // The data tier: bring PostgreSQL up and migrate it, then exit. Declared separately
+    // because it must *not* be persistent — turbo refuses to let anything depend on a
+    // task that never finishes, and the services above depend on this one.
+    //
+    // It talks to Docker, so nothing about it is cacheable.
+    "ouroboros-db#dev": {
+      "cache": false,
+      "persistent": false
+    },
+
+    // A module is built after everything it depends on has been (`^build`). No module
+    // declares a workspace dependency yet, so today this orders nothing; it is here so
+    // that the first shared package to land is built before its consumers rather than
+    // beside them.
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+
+    "lint": {},
+    "typecheck": {},
+    "test": {
+      "dependsOn": ["^build"]
+    }
+  }
+}

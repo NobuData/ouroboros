@@ -47,6 +47,17 @@ yarn build && yarn start
 `lint`, `typecheck`, `test` and `build` are what `ci/ui` runs on every pull request
 touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
+All of them work from here, which is how CI runs them, but this module is a **Yarn
+workspace**: the lockfile it installs from, the Yarn version it is pinned to and the
+`nodeLinker` setting all live at the repository root, and Yarn finds them from inside
+this directory. `yarn install` here therefore installs every workspace, not only this
+one.
+
+`yarn dev` from the repo root starts this UI alongside `ouroboros-rest`,
+`ouroboros-engine` and a migrated database rather than on its own — which is what you
+want the moment anything here calls the API
+([conventions § 1](../docs/CONVENTIONS.md#1-repository-shape)).
+
 ## Configuration
 
 Development default port: **3000** (`PORT`).

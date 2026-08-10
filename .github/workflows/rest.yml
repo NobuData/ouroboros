@@ -1,7 +1,11 @@
 name: ouroboros-rest · ci
 
 # Path-filtered per issue #11: this runs only when the communications layer, the
-# pipeline it shares with ouroboros-ui, or this file itself changes.
+# pipeline it shares with ouroboros-ui, the workspace this module resolves its
+# dependencies through, or this file itself changes.
+#
+# The four root files are here because #13 made this module a Yarn workspace — see
+# ui.yml, which carries the same set for the same reason.
 
 on:
   pull_request:
@@ -11,6 +15,10 @@ on:
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/rest.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "turbo.json"
+      - ".yarnrc.yml"
   push:
     branches: [main]
     paths:
@@ -18,6 +26,10 @@ on:
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/rest.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "turbo.json"
+      - ".yarnrc.yml"
   workflow_dispatch:
 
 permissions:

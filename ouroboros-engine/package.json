@@ -1,0 +1,10 @@
+{
+  "name": "ouroboros-engine",
+  "private": true,
+  "description": "Workspace adapter only. pyproject.toml is this module's real manifest — it holds the dependencies, the version and the tool configuration. This file exists so the repo-root Turborepo run can reach the Python module's standard verbs, and it carries no version of its own so there is one place a version is written down (docs/CONVENTIONS.md § 8).",
+  "scripts": {
+    "dev": "uv run dev",
+    "lint": "uv run ruff check . && uv run ruff format --check .",
+    "test": "uv run pytest"
+  }
+}

@@ -44,8 +44,18 @@ yarn build && yarn start
 `lint`, `typecheck`, `test` and `build` are what `ci/rest` runs on every pull request
 touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
-A running database is required for anything past the heartbeat — bring it up with the
-root `docker compose up db` ([#10](https://github.com/NobuData/ouroboros/issues/10)).
+The scaffold lands this directory as a **Yarn workspace**
+([#13](https://github.com/NobuData/ouroboros/issues/13)): the `package.json` it adds
+carries no `packageManager` and no lockfile of its own — the repo-root `package.json`,
+`yarn.lock` and `.yarnrc.yml` are what the commands above resolve through, and the
+workspace list at the root already names this directory, so nothing has to be wired up
+when it arrives. `ouroboros-ui` is the reference implementation.
+
+A running database is required for anything past the heartbeat. `yarn dev` from the repo
+root brings one up, migrated, before it starts this service — and starts
+`ouroboros-engine` beside it, which is the other thing this module needs
+([conventions § 1](../docs/CONVENTIONS.md#1-repository-shape)). `docker compose up db`
+([#10](https://github.com/NobuData/ouroboros/issues/10)) is the data tier on its own.
 
 ## Configuration
 

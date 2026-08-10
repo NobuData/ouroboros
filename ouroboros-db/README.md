@@ -33,9 +33,21 @@ Flyway is the **sole owner of DDL**. No application module creates or alters tab
 
 ### The database
 
-It comes from the repo-root compose file
-([#10](https://github.com/NobuData/ouroboros/issues/10)). Run these from the **repo
-root**, not from this directory:
+The short way, from the **repo root**, is the same command that starts everything else:
+
+```bash
+yarn dev                      # this database, migrated, plus the application services
+```
+
+That runs [`scripts/dev`](scripts/dev) first and waits for it: PostgreSQL up, healthcheck
+passed, migrations applied. Run it directly — `ouroboros-db/scripts/dev` — for the data
+tier alone. It goes through the compose file for both halves, which is what guarantees
+the migration lands in the database it just started; `run.sh` below is the tool for
+migrating a database that is already running somewhere else.
+
+The stack it drives comes from the repo-root compose file
+([#10](https://github.com/NobuData/ouroboros/issues/10)), and is equally usable by hand.
+Run these from the **repo root**, not from this directory:
 
 ```bash
 docker compose up             # PostgreSQL 17 on :5432, migrations applied
@@ -223,7 +235,9 @@ ouroboros-db/
 ├── flyway.dev.toml                   # the overlay that re-enables clean — dev only
 ├── run.sh                            # apply migrations to a live database
 ├── .env.example                      # which database the commands migrate
+├── package.json                      # workspace adapter — `yarn dev` reaches scripts/dev
 ├── scripts/
+│   ├── dev                           # up, healthy, migrated — the `dev` verb
 │   ├── migrate                       # apply what is pending
 │   ├── info                          # applied and pending versions
 │   ├── validate                      # checksums and naming rules

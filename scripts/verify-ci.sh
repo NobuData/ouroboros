@@ -64,6 +64,11 @@ PARSER="$SCRIPT_DIR/lib/parse-workflow-paths.awk"
 # not among them: it is the marketing site, and docker-publish.yml is its own pipeline.
 MODULES="ui rest engine db"
 
+# The repo-root files the Yarn workspace and its Turborepo task graph are made of (#13).
+# A change to any of them can change what a TypeScript module builds without touching
+# that module's directory, so both TypeScript workflows have to watch all four.
+WORKSPACE_FILES="package.json yarn.lock turbo.json .yarnrc.yml"
+
 TAB=$(printf '\t')
 
 printf '\nCI workflows — %s\n\n' "$ROOT"
@@ -167,6 +172,17 @@ for module in $MODULES; do
   done
 done
 
+# Both events, not only pull_request: a filter that is right on one and wrong on the
+# other passes review and then lets a broken main through.
+for module in ui rest; do
+  for event in pull_request push; do
+    for workspace_file in $WORKSPACE_FILES; do
+      check_glob "$WORKFLOWS/$module.yml" "$event" "$workspace_file" \
+        "$module.yml watches $workspace_file on $event"
+    done
+  done
+done
+
 printf '\nRouting\n'
 # The acceptance criterion: a change confined to one module runs that module's workflow
 # and nothing else — including nothing belonging to ouroboros-web.
@@ -186,6 +202,17 @@ check_route scripts/verify-ci.sh ''
 # runs it, so editing it has to run all of them.
 check_route "$NODE_ACTION" 'rest.yml ui.yml'
 check_route "$GATE_ACTION" 'engine.yml rest.yml ui.yml'
+
+# The workspace root is the other exception, and it exists for the same reason (#13).
+# Both TypeScript modules are Yarn workspaces: they resolve from one lockfile, against
+# one manifest, through one task graph. None of those files lives under a module
+# directory, so without these a change that breaks both builds would queue neither.
+#
+# ouroboros-web is deliberately absent — it is not a workspace, it keeps its own
+# lockfile, and docker-publish.yml is its own pipeline.
+for workspace_file in $WORKSPACE_FILES; do
+  check_route "$workspace_file" 'rest.yml ui.yml'
+done
 
 # The data tier is one contract across three files, and ci/db asserts all of it.
 check_route docker-compose.yml 'db.yml'

@@ -1,0 +1,31 @@
+{
+  "name": "ouroboros",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Workspace root — the Turborepo task runner over the Ouroboros modules. Not a publishable package and not a module: it owns no source, only the graph.",
+  "license": "Apache-2.0",
+  "packageManager": "yarn@4.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "ouroboros-db",
+    "ouroboros-engine",
+    "ouroboros-rest",
+    "ouroboros-ui"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:stop": "docker compose stop",
+    "dev:reset": "docker compose down -v",
+    "dev:web": "cd ouroboros-web && yarn install --immutable && yarn dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "verify": "scripts/run-tests.sh"
+  },
+  "devDependencies": {
+    "turbo": "2.10.9"
+  }
+}

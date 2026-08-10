@@ -8,9 +8,12 @@ description: >-
 # place the Node version is written down: neither caller passes `node-version`, so
 # moving the default below moves both modules' CI at once.
 #
-# There is deliberately no workspace runner in this repo (docs/CONVENTIONS.md § 1), so
-# every command runs from inside the module directory against that module's own
-# lockfile — the same way a developer runs it.
+# Every command runs from inside the module directory, against the module's own scripts.
+# Since #13 those modules are Yarn workspaces, so the lockfile the install below resolves
+# is the repository root's — Yarn finds the workspace root from any directory inside it,
+# which is why this needs no path of its own. That is deliberate: `ci/ui` proves the
+# module builds the way a developer builds it, not the way `turbo run` orchestrates it,
+# so a break in the task graph can never be what makes a module's checks pass.
 
 inputs:
   module:

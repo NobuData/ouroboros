@@ -21,14 +21,45 @@ ouroboros/
 ├── ouroboros-rest/    # NestJS communications layer   · epic #4
 ├── ouroboros-engine/  # Python/FastAPI backend        · epic #6
 ├── ouroboros-db/      # Flyway migrations             · epic #3
-└── scripts/           # repo-level tooling
+├── scripts/           # repo-level tooling
+├── package.json       # the Yarn workspace and the repo-level verbs
+├── turbo.json         # the task graph between the modules
+└── yarn.lock          # one resolution for every workspace
 ```
 
-**Each module is self-contained.** It owns its toolchain, its lockfile, its lint and
-test configuration, its `Dockerfile`, and its `.dockerignore`. There is deliberately no
-workspace runner (Turborepo/Nx) yet — adopting one is a post-MVP decision tracked in
-[#13](https://github.com/NobuData/ouroboros/issues/13). Duplication of a few scripts is
-the price of every module staying independently buildable.
+**Each module still owns its work.** Its lint and test configuration, its `Dockerfile`,
+its `.dockerignore`, and the commands its verbs actually run are all its own — the four
+application modules are three toolchains, and nothing at the root knows how to run any of
+them. What the root owns is the *graph*: which verb runs in which order, and where the
+one Node resolution comes from.
+
+**The workspace runner is Turborepo** ([#13](https://github.com/NobuData/ouroboros/issues/13)),
+over Yarn 4 workspaces. It buys exactly one thing that per-module commands could not:
+
+```bash
+yarn install    # every workspace, from one lockfile
+yarn dev        # the whole application stack, in order, in one terminal
+```
+
+`yarn dev` starts the database, waits for its healthcheck, applies the pending
+migrations, and only then brings up `ouroboros-rest` and `ouroboros-engine` and
+`ouroboros-ui` side by side — the ordering expressed in `turbo.json` rather than in a
+paragraph of a README nobody re-reads. `yarn build`, `yarn lint`, `yarn typecheck` and
+`yarn test` run their verb across every module that has one.
+
+Three limits on it are deliberate:
+
+1. **`ouroboros-web` is not a workspace.** It is the marketing site, it deploys on its
+   own pipeline, and it wants the same port 3000 the product UI does, so it keeps its own
+   lockfile and its own `.yarnrc.yml` and `yarn dev` never starts it. `yarn dev:web` does.
+2. **CI does not go through turbo.** Each module's workflow runs that module's verbs from
+   inside that module's directory, the way a developer does. A break in the task graph
+   must not be the thing that makes a module's checks pass (§ 9).
+3. **The non-JavaScript modules are adapters, not ports.** `ouroboros-engine` and
+   `ouroboros-db` carry a `package.json` whose scripts are one line each — `uv run dev`,
+   `scripts/dev` — so the graph can reach them. `pyproject.toml` and `flyway.toml` remain
+   those modules' real manifests, and neither adapter carries a version, so § 8 still has
+   one place per module where a version is written down.
 
 **Directory names are kebab-case and prefixed `ouroboros-`.** A module directory is
 never nested inside another module.
@@ -41,7 +72,16 @@ never nested inside another module.
 | `Dockerfile` | yes, once scaffolded | Every module ships as a container |
 | `.dockerignore` | yes, with the Dockerfile | Keeps build context small and secrets out |
 | `.gitignore` | yes | Module-local artefacts, so the directory is portable |
-| Lockfile | yes | `yarn.lock` (TS) or `uv.lock` (Python) — committed, installs are immutable |
+| Lockfile | see below | `uv.lock` (Python) and `ouroboros-web/yarn.lock` are module-local; the workspace modules share the root `yarn.lock` |
+
+There is exactly one `yarn.lock` per Yarn project, so making `ouroboros-ui` and
+`ouroboros-rest` workspaces moved theirs to the root (§ 1). It is still committed and
+installs are still immutable — `yarn install --immutable` from inside either module
+resolves it, because Yarn finds the workspace root from anywhere inside it. The rule that
+did not survive is that a module directory can be lifted out of the repo and still
+install; for those two that now takes the root `package.json`, `yarn.lock` and
+`.yarnrc.yml` with it. `ouroboros-web` is untouched by this and remains genuinely
+self-contained.
 
 The repo-root [`.gitignore`](../.gitignore) covers artefacts any module can produce;
 module-level `.gitignore` files add what only that toolchain emits. Both exist on
@@ -64,10 +104,12 @@ Module READMEs follow the same five sections so they are skimmable side by side:
 | `ouroboros-db` | SQL | — (Flyway container) | PostgreSQL 17 |
 
 **TypeScript modules use Yarn 4**, enabled through corepack and pinned by the
-`packageManager` field, with `nodeLinker: node-modules` in `.yarnrc.yml` — matching
-`ouroboros-web`, which is the reference implementation. CI and Docker builds run
-`yarn install --immutable`; a lockfile that does not match `package.json` fails the
-build rather than silently updating.
+`packageManager` field, with `nodeLinker: node-modules` in `.yarnrc.yml`. Both of those
+now live in the repo-root `package.json` and `.yarnrc.yml`, once, for every workspace —
+a module that carried its own copy could drift from the version the lockfile was written
+by. `ouroboros-web` is not a workspace and keeps both files itself. CI and Docker builds
+run `yarn install --immutable`; a lockfile that does not match the manifests it resolves
+fails the build rather than silently updating.
 
 **Python uses uv** — `uv sync` for install, `uv run <cmd>` for everything else. `uv.lock`
 is committed. Lint and format are ruff; tests are pytest.
@@ -77,23 +119,34 @@ Flyway on the developer's own PATH is used when there is one, and neither is nee
 work on anything else. `ouroboros-db` is a Flyway project in the ordinary sense:
 [`flyway.toml`](../ouroboros-db/flyway.toml) holds every setting that is a rule rather
 than a connection, [`migrations/`](../ouroboros-db/migrations) holds the SQL, and
-[`scripts/`](../ouroboros-db/scripts) names the four things anyone does to a database —
-`migrate`, `info`, `validate`, and a `clean-dev` that refuses anything but a development
-one. Its tests are POSIX shell, run by `scripts/run-tests.sh ouroboros-db/tests`.
+[`scripts/`](../ouroboros-db/scripts) names the things anyone does to a database —
+`migrate`, `info`, `validate`, a `clean-dev` that refuses anything but a development one,
+and the `dev` that brings the compose stack up and migrates it in one step. Its tests are
+POSIX shell, run by `scripts/run-tests.sh ouroboros-db/tests`.
 
 ### Standard task names
 
-Each toolchain exposes the same verbs, so CI and humans can rely on them:
+Each toolchain exposes the same verbs, so CI, the workspace runner and humans can all
+rely on them:
 
-| Task | TypeScript | Python |
-|---|---|---|
-| install | `yarn install --immutable` | `uv sync` |
-| dev | `yarn dev` | `uv run dev` |
-| lint | `yarn lint` | `uv run ruff check .` |
-| typecheck | `yarn typecheck` | — (ruff only; a type checker is post-MVP) |
-| format | (Prettier, via `yarn lint`) | `uv run ruff format --check .` |
-| test | `yarn test` | `uv run pytest` |
-| build | `yarn build` | (container build) |
+| Task | TypeScript | Python | SQL | From the repo root |
+|---|---|---|---|---|
+| install | `yarn install --immutable` | `uv sync` | — | `yarn install` |
+| dev | `yarn dev` | `uv run dev` | `scripts/dev` | `yarn dev` |
+| lint | `yarn lint` | `uv run ruff check .` | — | `yarn lint` |
+| typecheck | `yarn typecheck` | — (ruff only; a type checker is post-MVP) | — | `yarn typecheck` |
+| format | (Prettier, via `yarn lint`) | `uv run ruff format --check .` | — | (with `lint`) |
+| test | `yarn test` | `uv run pytest` | `scripts/run-tests.sh` | `yarn test` |
+| build | `yarn build` | (container build) | — | `yarn build` |
+
+The last column is the same verb run across every module at once, through Turborepo
+(§ 1). It is a fan-out, not a reimplementation: `yarn lint` at the root runs each
+module's own `lint`, so there is no second definition of what linting means.
+
+The `dev` verb is the one with an ordering. `ouroboros-db`'s is not a process — it starts
+PostgreSQL from the compose stack, waits for the healthcheck, migrates, and exits — which
+is what lets the other three declare it as a dependency and start against a database that
+is already current.
 
 CI runs the locked form of each install — `yarn install --immutable` and
 `uv sync --locked` — so a lockfile that has drifted from its manifest fails the run
@@ -163,6 +216,15 @@ than to a second one, so there is only ever one stack to bring up:
 docker compose up            # database, migrated and listening on :5432
 docker compose down -v       # reset — drops the named volume and all data
 ```
+
+`yarn dev` (§ 1) drives this same file rather than a second one:
+[`ouroboros-db/scripts/dev`](../ouroboros-db/scripts/dev) is `up --detach --wait db`
+followed by the compose stack's own `flyway` service. Going through compose for both is
+what guarantees the migration lands in the database that was just started: this file
+interpolates one set of database credentials, and it reaches the server and the migrator
+alike.
+[`ouroboros-db/run.sh`](../ouroboros-db/run.sh) answers the other question, migrating a
+database wherever it happens to be, and reads the module's own `.env` to do it.
 
 Three rules keep it reproducible:
 
@@ -266,7 +328,18 @@ ouroboros-ui/**     ─▶ ci/ui      lint · typecheck · test · build
 ouroboros-rest/**   ─▶ ci/rest    lint · typecheck · test · build
 ouroboros-engine/** ─▶ ci/engine  ruff · pytest
 ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
+
+package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
+yarn.lock
+turbo.json
+.yarnrc.yml
 ```
+
+Those four are the one filter that is not a directory. Since the TypeScript modules
+became workspaces (§ 1) the lockfile they install from lives at the root, so a change to
+it can break both builds without touching either module — and a filter that misses it
+would report nothing at all. `ouroboros-web` is unaffected: it is not a workspace, and
+`docker-publish.yml` watches only its own directory.
 
 One file per module — [`ui.yml`](../.github/workflows/ui.yml),
 [`rest.yml`](../.github/workflows/rest.yml),

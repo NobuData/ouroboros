@@ -30,6 +30,5 @@
     "typescript": "^5",
     "vite": "^8",
     "vitest": "^4"
-  },
-  "packageManager": "yarn@4.18.0"
+  }
 }

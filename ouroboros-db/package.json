@@ -1,0 +1,9 @@
+{
+  "name": "ouroboros-db",
+  "private": true,
+  "description": "Workspace adapter only. This module is SQL and Flyway configuration — flyway.toml is what configures it and scripts/ is what runs it. This file exists so the repo-root Turborepo run can reach those commands, and it carries no version because the schema is versioned by its migrations.",
+  "scripts": {
+    "dev": "./run.sh",
+    "test": "cd .. && scripts/run-tests.sh ouroboros-db/tests"
+  }
+}

@@ -3,9 +3,16 @@
 **Infinity in Autonomy** — an autonomous software delivery loop: issues in, verified
 pull requests out, continuously.
 
-This repository is a monorepo of independent modules. Each one owns its toolchain and
-builds on its own; there is no workspace runner between them. See
-[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) for the rules they share and
+This repository is a monorepo of modules across three toolchains, each owning how it is
+built, run and tested, with [Turborepo](https://turborepo.com) over them so that one
+command starts the whole stack:
+
+```bash
+yarn install    # every workspace, from one lockfile
+yarn dev        # PostgreSQL, migrated · engine · rest · UI — in order, in one terminal
+```
+
+See [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) for the rules the modules share and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the system design in depth — the
 modules, the boundaries between them, the request paths, and the `OURO_*` registry.
 
@@ -65,6 +72,9 @@ ouroboros/
 ├── ouroboros-db/      # Flyway migrations
 ├── scripts/           # repo-level tooling
 ├── .github/           # labels, issue forms, PR template, workflows
+├── package.json       # the Yarn workspace and the repo-level verbs
+├── turbo.json         # the task graph — what `yarn dev` starts, and in what order
+├── yarn.lock          # one resolution for every workspace
 ├── docker-compose.yml # local development data tier — PostgreSQL + Flyway
 ├── .env.example       # every OURO_* variable, with development defaults
 ├── .editorconfig      # repo-wide editor conventions
@@ -73,8 +83,43 @@ ouroboros/
 
 ## Getting started
 
-The database is the one piece that runs today. From a clean checkout, with Docker
-running:
+You need [Node 24](https://nodejs.org) with corepack, [uv](https://docs.astral.sh/uv/)
+and Docker. From a clean checkout:
+
+```bash
+corepack enable      # Yarn 4, pinned by package.json
+yarn install         # every workspace, from the committed lockfile
+yarn dev             # the whole application stack
+```
+
+`yarn dev` starts PostgreSQL, waits for its healthcheck, applies every pending
+migration, and then brings the services up side by side, streaming all of their logs
+into one terminal:
+
+| | |
+|---|---|
+| `ouroboros-ui` | http://localhost:3000 |
+| `ouroboros-rest` | http://localhost:4000 — once [#27](https://github.com/NobuData/ouroboros/issues/27) lands |
+| `ouroboros-engine` | http://127.0.0.1:8000 |
+| `ouroboros-db` | `postgresql://ouroboros:ouroboros@localhost:5432/ouroboros` |
+
+`Ctrl-C` stops the services; the database is a container and keeps running, which is
+usually what you want between restarts. `yarn dev:stop` stops it too, and
+`yarn dev:reset` drops the volume with it. If something else on the machine already
+holds 5432, publish this one somewhere else — `OURO_DB_PORT=45432 yarn dev`.
+
+The marketing site is deliberately not part of that stack: it deploys on its own and
+wants the same port 3000 the product UI does. `yarn dev:web` runs it by itself.
+
+Repo-level verbs fan the same task out across every module — `yarn build`, `yarn lint`,
+`yarn typecheck`, `yarn test`. Each one runs that module's own script, so there is no
+second definition of what any of them means, and results are cached: a second
+`yarn test` with nothing changed replays rather than re-runs.
+
+### The database on its own
+
+The data tier also comes up without the rest of the stack, which is what `yarn dev` uses
+underneath:
 
 ```bash
 docker compose up            # PostgreSQL 17 on :5432, Flyway migrations applied
@@ -105,7 +150,8 @@ still there for anything they do not cover. All of them read one configuration �
 [`ouroboros-db/flyway.toml`](ouroboros-db/flyway.toml), the same file the compose stack
 above applies its migrations with.
 
-Each module is built and run on its own — see its README for the specifics:
+Every module also builds and runs on its own, which is how CI runs them and how you work
+on one in isolation — see its README for the specifics:
 
 ```bash
 # TypeScript modules (ouroboros-ui, ouroboros-rest, ouroboros-web)
@@ -156,9 +202,15 @@ only the checks it can affect:
 | `ouroboros-engine/**` | `ci/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
 | `ouroboros-db/**` | `ci/db` | the migration and data-tier contract, then the module's tooling tests |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
+| `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
 
 A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
-TypeScript modules share queues both of the modules that run it.
+TypeScript modules share queues both of the modules that run it, and so does a change to
+the workspace root they install from.
+
+Each module's checks run that module's own verbs from inside its own directory, not
+through `turbo run`. That is deliberate: a break in the task graph must never be what
+makes a module's checks pass.
 
 `ouroboros-rest` is still a README, so each workflow looks for its module's manifest
 first and reports why it stopped when there is not one. Nothing has to be edited when a

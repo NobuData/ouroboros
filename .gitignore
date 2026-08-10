@@ -58,6 +58,13 @@ venv/
 htmlcov/
 
 # ---------------------------------------------------------------------------
+# Workspace runner — Turborepo
+# ---------------------------------------------------------------------------
+# The local task cache and run logs. One at the root and one per package, both written
+# by `turbo run`; nothing in either is an input to anything.
+.turbo/
+
+# ---------------------------------------------------------------------------
 # Build & test output (all toolchains)
 # ---------------------------------------------------------------------------
 build/

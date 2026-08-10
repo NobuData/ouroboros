@@ -52,6 +52,10 @@ on:
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/$module.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "turbo.json"
+      - ".yarnrc.yml"
   push:
     branches: [main]
     paths:
@@ -59,6 +63,10 @@ on:
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/$module.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "turbo.json"
+      - ".yarnrc.yml"
   workflow_dispatch:
 
 permissions:
@@ -468,6 +476,16 @@ check_break 'a module workflow triggered by documentation is reported' \
 check_break 'a shared pipeline only one module watches is reported' \
   'node-module/action\.yml runs rest\.yml ui\.yml' \
   'sed -i "/actions\/node-module\/\*\*/d" "$root/.github/workflows/rest.yml"'
+
+# The workspace root, #13. A module that stops watching the lockfile it installs from
+# builds green against a resolution nobody asked for.
+check_break 'a module that stops watching the workspace lockfile is reported' \
+  'yarn\.lock runs rest\.yml ui\.yml' \
+  'sed -i "/^      - \"yarn.lock\"$/d" "$root/.github/workflows/ui.yml"'
+
+check_break 'a module that stops watching the task graph is reported' \
+  'watches turbo\.json on push' \
+  'sed -i "0,/^      - \"turbo.json\"$/!{/^      - \"turbo.json\"$/d}" "$root/.github/workflows/rest.yml"'
 
 check_break 'an unfiltered workflow added alongside is reported' \
   'runs no workflow' \

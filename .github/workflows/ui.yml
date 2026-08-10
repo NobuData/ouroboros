@@ -1,8 +1,14 @@
 name: ouroboros-ui · ci
 
 # Path-filtered per issue #11: this runs only when the product UI, the pipeline it
-# shares with ouroboros-rest, or this file itself changes. A pull request that touches
-# only another module never queues it.
+# shares with ouroboros-rest, the workspace this module resolves its dependencies
+# through, or this file itself changes. A pull request that touches only another module
+# never queues it.
+#
+# The four root files are here because #13 made this module a Yarn workspace: the
+# lockfile it installs from and the manifest that lockfile answers to now live at the
+# repository root, so a change to either can break this build without touching a single
+# file under ouroboros-ui/.
 
 on:
   pull_request:
@@ -12,6 +18,10 @@ on:
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "turbo.json"
+      - ".yarnrc.yml"
   push:
     branches: [main]
     paths:
@@ -19,6 +29,10 @@ on:
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"
+      - "package.json"
+      - "yarn.lock"
+      - "turbo.json"
+      - ".yarnrc.yml"
   workflow_dispatch:
 
 permissions:

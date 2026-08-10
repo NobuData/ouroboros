@@ -39,6 +39,15 @@ uv run pytest
 Those three, after `uv sync --locked`, are what `ci/engine` runs on every pull request
 touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
+`yarn dev` from the repo root starts this service alongside the rest of the stack,
+against a database that is already up and migrated
+([conventions § 1](../docs/CONVENTIONS.md#1-repository-shape)). The
+[`package.json`](package.json) beside `pyproject.toml` is what makes that possible and
+is nothing more: three scripts, each one line, each delegating to the `uv run` command
+above. **`pyproject.toml` is this module's manifest** — the dependencies, the version and
+the tool configuration are there, and the adapter deliberately carries no version of its
+own so there is one place to change it.
+
 `uv run dev` reloads on a change under `src/` and binds **127.0.0.1 only**, because a
 development server on every interface is reachable from whatever network the machine is
 on and this service is internal by design. Production runs uvicorn against the
