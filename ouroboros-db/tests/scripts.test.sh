@@ -69,15 +69,6 @@ answer_clean_dev() {
   status=$?
 }
 
-# check_absent_in_text TEXT NEEDLE DESCRIPTION — assert NEEDLE appears nowhere in TEXT.
-check_absent_in_text() {
-  if printf '%s\n' "$1" | grep -Fq -- "$2"; then
-    fail "$3"
-  else
-    pass "$3"
-  fi
-}
-
 printf '\nouroboros-db — the Flyway project\n\n'
 
 # ---------------------------------------------------------------------------
@@ -144,7 +135,10 @@ for name in migrate info validate; do
     "scripts/$name never loads the overlay"
   check_absent "$MODULE_DIR/scripts/$name" 'clean' "scripts/$name never runs clean"
 done
-check_absent "$REPO_ROOT/docker-compose.yml" 'flyway\.dev\.toml' \
+# Anchored past any `#`: the compose file explains why it does not load this overlay,
+# beside the seed overlay it does load (#23), and a mount or a -configFiles naming it
+# still fails here.
+check_absent "$REPO_ROOT/docker-compose.yml" '^[^#]*flyway\.dev\.toml' \
   'the compose stack never loads the overlay either'
 
 # Gate 2 — clean-dev is the one thing that does load it, and it loads only that.
@@ -202,7 +196,7 @@ check_matches "$out" 'run\.sh: clean on localhost:5432/ouroboros' 'and clean the
 
 run_script clean-dev --yes
 check_equals 0 "$status" '--yes is the deliberate way past the prompt'
-check_absent_in_text "$out" 'to confirm' 'and there is no prompt to answer'
+check_not_matches "$out" 'to confirm' 'and there is no prompt to answer'
 
 run_script clean-dev -h
 check_equals 0 "$status" '-h exits zero'

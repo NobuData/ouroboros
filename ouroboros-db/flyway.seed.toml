@@ -1,0 +1,32 @@
+# ouroboros-db — the overlay that turns the development seed on.
+#
+# Inert unless something names it: Flyway auto-loads `flyway.toml` from the working
+# directory and never this file, so it takes an explicit
+# `-configFiles=flyway.toml,flyway.seed.toml` to have any effect at all. Two things in
+# this repository pass that — the development compose stack at the repo root, and
+# `ouroboros-db/scripts/migrate --config flyway.seed.toml` typed on purpose.
+#
+# It holds one value, and holds it in a separate file for the same reason
+# flyway.dev.toml does: the safe configuration must be the one every other command
+# already reads. `scripts/migrate`, CI, and any migration run against a database that is
+# not a developer's own read flyway.toml alone, where `ouro_dev_seed` is `false`.
+#
+# Separate from flyway.dev.toml, rather than added to it, because the two answer
+# different questions and are wanted in different places. flyway.dev.toml re-enables
+# `clean`, which drops every object in the schema, and `scripts/clean-dev` is the only
+# thing that may load it — the compose stack must not, and both
+# scripts/verify-dev-env.sh and tests/scripts.test.sh assert that it does not. Folding
+# the seed into that file would have made `docker compose up` load it and given the
+# stack a `clean` it has no use for.
+#
+# Filed as issue #23.
+
+[flyway.placeholders]
+# Enables R__dev_seed.sql: the demo tenant `acme-robotics`, its domain, its three people
+# and their roles, and the `helios-firmware` repository — the content docs/mockups is
+# drawn around. Every statement in that migration ends `and ${ouro_dev_seed}`, so this
+# value is the difference between it inserting the demo tenant and it inserting nothing.
+#
+# A string rather than a bare `true`: Flyway placeholder values are text, and the text
+# is substituted into SQL, where `where … and true` is what it has to become.
+ouro_dev_seed = "true"

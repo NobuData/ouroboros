@@ -17,7 +17,9 @@
 -- migrations that must satisfy them).
 --
 -- Covers V001 (#20), V002 (#21) and V003 (#22). A migration that adds a rule adds its
--- assertion here in the same change.
+-- assertion here in the same change. What R__dev_seed.sql (#23) *puts* in a development
+-- database is seed.sql beside this file; what the schema refuses to let anything put
+-- there is here.
 
 \set ON_ERROR_STOP on
 
@@ -29,81 +31,31 @@
 
 begin;
 
+-- The assertion helpers, shared with seed.sql: must_hold, must_reject and
+-- must_use_index, created in pg_temp so they disappear with the session. See
+-- lib/assert.sql for what each one asserts and why it is not plpgsql's `assert`.
+\ir lib/assert.sql
+
 -- ---------------------------------------------------------------------------
--- Assertion helpers.
+-- A known-empty schema to build the fixtures in.
 --
--- In pg_temp so they disappear with the session and cannot be mistaken for schema.
--- Deliberately not plpgsql's `assert`, which is compiled out when plpgsql.check_asserts
--- is off — a check that can be silently disabled is not a check.
+-- Every assertion below either counts rows or names one by its natural key, and both
+-- only mean what they say if the tables start out empty. A development database is not:
+-- since #23, R__dev_seed.sql puts the demo tenant into every database the compose stack
+-- migrates — and it is drawn from the same mockups these fixtures are, so it holds the
+-- same slug, the same domain and the same email addresses.
+--
+-- Clearing is the fix rather than renaming the fixtures: a rename would leave the
+-- absolute counts ("`count(*) = 3 from users`") quietly measuring the seed as well, and
+-- would have to be done again the next time a seed grows into a name used here.
+--
+-- Nothing is lost. This is inside the transaction the end of the script rolls back, so
+-- every row deleted here is restored on the way out — which is what keeps this safe to
+-- run against a database somebody is using. Two deletes cover the schema: every other
+-- table cascades from `tenants` or from `users`.
 -- ---------------------------------------------------------------------------
-
--- Asserts a condition holds.
---   cond — the condition, already evaluated by the caller
---   what — description used in the failure message
-create function pg_temp.must_hold(cond boolean, what text)
-returns void language plpgsql as $$
-begin
-  if cond is not true then
-    raise exception 'FAILED: % (condition was %)', what, coalesce(cond::text, 'null');
-  end if;
-end;
-$$;
-
--- Asserts a statement is refused by a constraint.
---
--- Only class 23 (integrity constraint violation) counts as a pass: a statement that
--- fails with a syntax error or an undefined column would otherwise look like a working
--- constraint. The inner block is a savepoint, so a rejected statement does not abort the
--- surrounding transaction.
---
---   stmt     — SQL to execute, expected to be rejected
---   what     — description used in the failure message
---   expected — constraint name that must be the one to fire. Optional, and worth naming
---              wherever the assertion is the point of the migration rather than
---              incidental: without it a statement rejected by some *other* rule — a
---              not-null, a check on an unrelated column — reads as a pass, and the rule
---              actually under test could be missing entirely.
-create function pg_temp.must_reject(stmt text, what text, expected text default null)
-returns void language plpgsql as $$
-declare
-  fired text;
-begin
-  begin
-    execute stmt;
-  exception
-    when integrity_constraint_violation then
-      get stacked diagnostics fired = constraint_name;
-      if expected is not null and fired is distinct from expected then
-        raise exception 'FAILED: % (rejected by % rather than %)', what, coalesce(fired, '<unnamed>'), expected;
-      end if;
-      return;
-  end;
-  raise exception 'FAILED: % (statement was accepted)', what;
-end;
-$$;
-
--- Asserts a query's plan uses a named index.
---
--- Sequential scans are turned off by the caller for these checks: the fixture tables
--- hold a handful of rows, where a seq scan is genuinely cheaper and the planner is right
--- to prefer it. What is being asserted is that a usable index *exists* — that the
--- lookup is not condemned to a scan once the table is production-sized.
---
---   query — the SQL whose plan is inspected
---   idx   — index name expected to appear in the plan
-create function pg_temp.must_use_index(query text, idx text)
-returns void language plpgsql as $$
-declare
-  line text;
-begin
-  for line in execute 'explain ' || query loop
-    if line like '%' || idx || '%' then
-      return;
-    end if;
-  end loop;
-  raise exception 'FAILED: % did not use index %', query, idx;
-end;
-$$;
+delete from ouroboros.tenants;
+delete from ouroboros.users;
 
 -- ---------------------------------------------------------------------------
 -- Fixtures. Fixed uuids so an assertion can name a row without a lookup.

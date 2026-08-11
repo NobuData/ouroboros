@@ -101,6 +101,20 @@ check_matches() {
   fi
 }
 
+# check_not_matches TEXT PATTERN DESCRIPTION — assert TEXT does not match an extended
+# regex.
+#
+# The inverse of check_matches, and check_absent's counterpart for text that is a
+# command's output rather than a file: the cases where what a command did *not* print is
+# the assertion — a prompt that must not appear, a file it must not have reached for.
+check_not_matches() {
+  if printf '%s\n' "$1" | grep -Eq -- "$2"; then
+    fail "$3 (unexpected match for /$2/ in [$1])"
+  else
+    pass "$3"
+  fi
+}
+
 # check_run DESCRIPTION COMMAND [ARG...] — assert a command exits zero, output discarded.
 check_run() {
   description=$1

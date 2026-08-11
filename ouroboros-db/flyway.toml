@@ -56,3 +56,29 @@ validateMigrationNaming = true
 # by default: flyway.dev.toml is the only file that turns it back on, and
 # scripts/clean-dev is the only thing that loads flyway.dev.toml.
 cleanDisabled = true
+
+# Substitute `${name}` in a migration before it is applied. On by Flyway's own default
+# and stated here because one migration depends on it: with substitution off,
+# R__dev_seed.sql's `${ouro_dev_seed}` would reach PostgreSQL as literal text and the
+# migration would fail rather than quietly seed or quietly skip. Being explicit is what
+# keeps that a decision rather than a default somebody could flip without meeting this
+# comment.
+placeholderReplacement = true
+
+[flyway.placeholders]
+# Whether R__dev_seed.sql inserts anything — the demo tenant, its people, and the
+# `helios-firmware` repository the mockups are drawn around (issue #23).
+#
+# `false` here, which means off in every context by default. This is the file the
+# compose stack's production counterpart reads: `scripts/migrate`, CI, and every
+# hand-run migration. Each statement in that seed ends `and ${ouro_dev_seed}`, so with
+# this value the migration applies as a no-op and inserts nothing.
+#
+# flyway.seed.toml is the only file that sets it `true`, and the only things that load
+# flyway.seed.toml are the development compose stack and a deliberate
+# `scripts/migrate --config flyway.seed.toml`.
+#
+# It stays declared here even though it is only *used* by the seed: a placeholder with
+# no value anywhere fails the run, so deleting this line does not enable the seed — it
+# stops migrations working, loudly, which is the right way round for a guard.
+ouro_dev_seed = "false"

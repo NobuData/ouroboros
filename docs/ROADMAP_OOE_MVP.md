@@ -145,7 +145,6 @@ issue level.
 
 | Ref | Issue | Replaced by | Phase that delivers it |
 |-----|:-----:|-------------|:----------------------:|
-| `3.5` | `#23` Dev seed data | `B.4` (auth-aware seed data) | P2 |
 | `4.7` | `#33` GitHub OAuth sign-in & sessions | `A.1`–`A.4` (BetterAuth GitHub provider + DB sessions) | P2 |
 | `5.6` | `#44` Login & tenancy screen | `D.2`–`D.5` (mockup-01 fidelity, four issues) | P2 |
 
@@ -159,6 +158,17 @@ issue level.
 > decision nothing else in the repository has taken. Adopting BetterAuth is now a
 > fix-forward migration from the shipped schema rather than a choice `V002` makes on its
 > own — which is what `B.1`–`B.3` become if that decision is confirmed.
+
+> **`3.5` · `#23` Dev seed data was listed here and is not dropped — it shipped in P1,
+> as specified, in `R__dev_seed.sql`.**
+>
+> For the same reason: the tables it seeds are the ones `3.2`–`3.4` actually built, and
+> a seed written in BetterAuth shape would describe a schema nothing in the repository
+> has. It seeds the mockups' demo tenant `acme-robotics` behind a placeholder guard that
+> is `false` in every configuration but the development stack's, so a production run
+> applies the migration and inserts nothing. `B.4` is a rewrite of that one file if
+> BetterAuth is confirmed — the guard, the `5eed…` id convention and both test files
+> carry over unchanged.
 
 **Deferred out of P1 into P2 — implement once, in BetterAuth shape:**
 
