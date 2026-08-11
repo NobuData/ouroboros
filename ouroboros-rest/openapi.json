@@ -1,0 +1,108 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ouroboros-rest",
+    "version": "0.1.0",
+    "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
+    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed. Health probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), authentication\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations\nwritten here and code that answers them.",
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "contact": {
+      "name": "Ouroboros",
+      "url": "https://github.com/NobuData/ouroboros"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000",
+      "description": "`yarn dev`, which binds the loopback interface only — a development machine does\nnot answer to the network it is on. In a deployment the origin is whatever fronts\nthe service and the port comes from `PORT`; `4000` is the development default from\n`docs/CONVENTIONS.md` § 4's port map."
+    }
+  ],
+  "tags": [
+    {
+      "name": "service",
+      "description": "Identity and liveness — what answers before any contract does. The deeper probes a\ncontainer platform reads, `/health/live` and `/health/ready`, are\n[#29](https://github.com/NobuData/ouroboros/issues/29)."
+    }
+  ],
+  "paths": {
+    "/api/v1": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Heartbeat",
+        "description": "Report that the service is up, and which build is up.\n\nDeliberately the same three questions `ouroboros-engine`'s `/v0/status` answers,\nin the same order — *what is this*, *which build*, *how long has it been up* — so\nsomeone looking at both services is reading one shape rather than two. It opens\nno connection and reads no configuration: whether the service's *dependencies*\nare reachable is a readiness probe's question\n([#29](https://github.com/NobuData/ouroboros/issues/29)), not this one's.",
+        "operationId": "readHeartbeat",
+        "responses": {
+          "200": {
+            "description": "The service is answering, and this is the build that answered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Heartbeat"
+                },
+                "example": {
+                  "service": "ouroboros-rest",
+                  "version": "0.1.0",
+                  "status": "ok",
+                  "uptimeSeconds": 3.885
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Heartbeat": {
+        "type": "object",
+        "title": "Heartbeat",
+        "description": "The body of a `GET /api/v1` response.",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "version",
+          "status",
+          "uptimeSeconds"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "const": "ouroboros-rest",
+            "description": "This service's name, constant across deployments.",
+            "examples": [
+              "ouroboros-rest"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "description": "The running build, read from this module's `package.json` — the one place a\nmodule's version is written down (`docs/CONVENTIONS.md` § 8), and the same\nstring `info.version` above carries.",
+            "examples": [
+              "0.1.0"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "description": "Always `ok`. Reaching this handler at all is what the field reports; a client\nreads the status code, and this is for the human who runs the request by\nhand.",
+            "examples": [
+              "ok"
+            ]
+          },
+          "uptimeSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds since the service was constructed, to millisecond precision. Small\nand shrinking across polls means something is restarting the process — which\nis the one thing a heartbeat can tell you that a plain `200` cannot.",
+            "examples": [
+              3.885
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,3 +3,10 @@
 # directories, so the formatting gate and the fixer agree on what is source.
 dist/
 coverage/
+
+# Rendered from openapi.yaml by `yarn openapi`, and the suite asserts it is exactly what
+# that renderer writes (src/openapi/openapi.spec.ts). Prettier fills arrays to its print
+# width where JSON.stringify puts one element per line, so formatting this file would put
+# the two checks at odds — and the authoritative document, which Prettier *does* format,
+# is the YAML beside it.
+openapi.json

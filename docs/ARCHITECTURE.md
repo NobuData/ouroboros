@@ -115,7 +115,7 @@ it may call.
 
 What it must not do is as important as what it does: **no business rules, no direct data
 access, no second source of API types.** Its client is generated from the REST layer's
-OpenAPI document ([§5.1](#51-ui--rest--openapi-generated)), so a contract change is a
+OpenAPI document ([§5.1](#51-ui--rest--the-public-contract)), so a contract change is a
 compile error rather than a runtime surprise.
 
 ### 2.2 `ouroboros-rest` — the communications layer
@@ -126,7 +126,9 @@ URI versioning defaulting to v1, so a route is versioned by omission rather than
 remembering to be. What is up is the skeleton: `src/modules/app` answering a heartbeat
 that names the service and the build, `PORT` and `NODE_ENV` validated before a socket is
 bound, and shutdown hooks enabled ahead of the first provider that will need to drain
-something. Kysely over `pg` arrives with
+something. It also publishes the contract it is written against — Swagger UI at
+`/api/docs` and the committed document at `/api/openapi.json`, served verbatim rather
+than generated ([§5.1](#51-ui--rest--the-public-contract)). Kysely over `pg` arrives with
 [#30](https://github.com/NobuData/ouroboros/issues/30).
 
 It is the only module that talks to the database and the only module that talks to the
@@ -348,34 +350,46 @@ where the setting will be applied, so adopting it is a change in one place.
 
 ## 5. The API contracts
 
-Two contracts, and they run in opposite directions on purpose. The **public** one is
-generated from the code, because the client that consumes it is generated too and a
-hand-maintained type is a type that drifts. The **internal** one is written first and
-served verbatim, because it is a boundary two services have to agree on rather than a
-projection of whichever one happened to be edited last. Both are committed, and both have
-a check that fails when the code and the document disagree — which is the property that
-actually matters, not which of the two was typed first.
+Two contracts, and **both are written first and served verbatim**. A document generated
+from whichever service happened to be edited last is a report about code, not something
+two sides agreed on; it changes when a docstring does, it carries the titles a generator
+invents, and it cannot say anything the framework has no field for. So each service
+commits its specification, serves those exact bytes, and lets its own test suite fail when
+the code and the document disagree — which is the property that actually matters, not
+which of the two was typed first. Generation stays where it belongs: at the *consuming*
+end, where the UI's client is derived from the contract REST publishes.
 
-### 5.1 UI ↔ REST — OpenAPI generated
+### 5.1 UI ↔ REST — the public contract
 
-**Specified** ([#34](https://github.com/NobuData/ouroboros/issues/34),
-[#43](https://github.com/NobuData/ouroboros/issues/43)). This is roadmap decision **D4**:
-NestJS is the single source of truth for the API, and the UI's client is generated from
-what it publishes.
+**Running** ([#34](https://github.com/NobuData/ouroboros/issues/34) landed the
+specification and the checks around it; the typed client is
+[#43](https://github.com/NobuData/ouroboros/issues/43)). Roadmap decision **D4** stands
+where it counts — there is one source of truth for the API and the UI's client is
+generated from it — with the source being
+[`ouroboros-rest/openapi.yaml`](../ouroboros-rest/openapi.yaml) rather than the
+decorators, so the contract is a thing to agree on before the code exists.
 
 ```mermaid
 flowchart LR
-    DTO["NestJS DTOs<br/>+ @nestjs/swagger decorators"] --> DOC["OpenAPI document"]
-    DOC --> HUMAN["/api/docs<br/>(Swagger UI, non-prod)"]
-    DOC --> FILE["ouroboros-rest/openapi.json<br/>committed · CI fails on drift"]
-    FILE --> GEN["yarn api:sync in ouroboros-ui<br/>openapi-typescript + openapi-fetch"]
+    SPEC["ouroboros-rest/openapi.yaml<br/>authoritative · hand-written"] --> JSON["openapi.json<br/>rendered by yarn openapi · committed"]
+    JSON --> HUMAN["/api/docs · /api/openapi.json<br/>served verbatim"]
+    JSON --> GEN["yarn api:sync in ouroboros-ui<br/>openapi-typescript + openapi-fetch"]
     GEN --> CLIENT["Typed client<br/>cookie · X-Ouro-Tenant · ApiError"]
+    CODE["NestJS controllers"] -. "ci/rest fails on disagreement" .-> JSON
 ```
 
-Both ends of that chain are checked. The exported document is committed and a CI check
-fails when it drifts from the code; the generated client is committed and a CI check fails
-when it is stale. Renaming a field in a REST DTO therefore breaks the UI's typecheck after
-a sync — which is the entire point of generating it.
+Every link in that chain is checked. `yarn test` in `ouroboros-rest` fails when the two
+files have drifted apart, when the application serves a route the document does not
+describe *or* describes one it does not serve, when a response body carries a field the
+schema does not list, when `info.version` stops matching `package.json`, or when the
+document is not valid OpenAPI 3.1. The generated client is committed and a CI check fails
+when it is stale. Renaming a field therefore means editing the specification, which breaks
+the UI's typecheck after a sync — which is the entire point of generating it.
+
+`@nestjs/swagger` is still a dependency, and does two jobs: it renders Swagger UI over the
+committed document, and in the test suite it derives what the code serves so that answer
+can be compared against what the document promises. It is never asked to *build* the
+contract.
 
 The client wrapper adds what every call needs and no call should repeat: the base URL from
 `OURO_REST_URL`, credentials included so the session cookie travels, the `X-Ouro-Tenant`

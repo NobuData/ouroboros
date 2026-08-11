@@ -1,0 +1,131 @@
+# ouroboros-rest — the API specification, and the thing that is true.
+#
+# This file is authoritative. The service does not generate a document from its
+# decorators; it loads this one and serves it verbatim (src/openapi/specification.ts), so
+# what the UI's client is generated from and what the process answers with are the same
+# bytes.
+#
+# Edit this file, then run `yarn openapi` to re-render openapi.json beside it — that is
+# the copy the process reads and the copy openapi-typescript wants. `yarn test` refuses a
+# pair that has drifted apart, a version that disagrees with package.json, a route the
+# application serves that this document does not describe, and a response body whose
+# fields this document does not list (src/openapi/openapi.spec.ts).
+
+openapi: 3.1.0
+
+info:
+  title: ouroboros-rest
+  version: "0.1.0"
+  summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
+  description: |-
+    The **communications layer** of
+    [Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks
+    to. It owns authentication, sessions, tenant-context resolution, the tenancy API and
+    the gateway to `ouroboros-engine` — and it is the only module that reaches
+    `ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single
+    auditable place.
+
+    Every path sits under `/api/v1`. The version is in the URI because that is what a
+    generated client, an address bar and a log line can all carry without negotiation,
+    and a controller opts *out* of v1 rather than into it — so a route cannot be
+    published unversioned by omission.
+
+    What is described below is the whole of the surface today: the heartbeat the scaffold
+    ([#27](https://github.com/NobuData/ouroboros/issues/27)) landed. Health probes
+    ([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API
+    ([#31](https://github.com/NobuData/ouroboros/issues/31)), authentication
+    ([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway
+    ([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations
+    written here and code that answers them.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  contact:
+    name: Ouroboros
+    url: https://github.com/NobuData/ouroboros
+
+servers:
+  - url: http://localhost:4000
+    description: |-
+      `yarn dev`, which binds the loopback interface only — a development machine does
+      not answer to the network it is on. In a deployment the origin is whatever fronts
+      the service and the port comes from `PORT`; `4000` is the development default from
+      `docs/CONVENTIONS.md` § 4's port map.
+
+tags:
+  - name: service
+    description: |-
+      Identity and liveness — what answers before any contract does. The deeper probes a
+      container platform reads, `/health/live` and `/health/ready`, are
+      [#29](https://github.com/NobuData/ouroboros/issues/29).
+
+paths:
+  /api/v1:
+    get:
+      tags: [service]
+      summary: Heartbeat
+      description: |-
+        Report that the service is up, and which build is up.
+
+        Deliberately the same three questions `ouroboros-engine`'s `/v0/status` answers,
+        in the same order — *what is this*, *which build*, *how long has it been up* — so
+        someone looking at both services is reading one shape rather than two. It opens
+        no connection and reads no configuration: whether the service's *dependencies*
+        are reachable is a readiness probe's question
+        ([#29](https://github.com/NobuData/ouroboros/issues/29)), not this one's.
+      operationId: readHeartbeat
+      responses:
+        "200":
+          description: The service is answering, and this is the build that answered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Heartbeat"
+              example:
+                service: ouroboros-rest
+                version: "0.1.0"
+                status: ok
+                uptimeSeconds: 3.885
+
+components:
+  # No `Error` schema yet, and deliberately not one written ahead of the code: the shared
+  # error envelope — `{code, message, details}`, docs/ARCHITECTURE.md § 5.3 — arrives with
+  # the exception filter that produces it (#32), and every operation added after it
+  # documents the statuses it can answer with. Until then the only failures this surface
+  # can produce are Nest's own 404s for paths that are not here.
+  schemas:
+    Heartbeat:
+      type: object
+      title: Heartbeat
+      description: The body of a `GET /api/v1` response.
+      additionalProperties: false
+      required: [service, version, status, uptimeSeconds]
+      properties:
+        service:
+          type: string
+          const: ouroboros-rest
+          description: This service's name, constant across deployments.
+          examples: [ouroboros-rest]
+        version:
+          type: string
+          description: |-
+            The running build, read from this module's `package.json` — the one place a
+            module's version is written down (`docs/CONVENTIONS.md` § 8), and the same
+            string `info.version` above carries.
+          examples: ["0.1.0"]
+        status:
+          type: string
+          const: ok
+          description: |-
+            Always `ok`. Reaching this handler at all is what the field reports; a client
+            reads the status code, and this is for the human who runs the request by
+            hand.
+          examples: [ok]
+        uptimeSeconds:
+          type: number
+          minimum: 0
+          description: |-
+            Seconds since the service was constructed, to millisecond precision. Small
+            and shrinking across polls means something is restarting the process — which
+            is the one thing a heartbeat can tell you that a plain `200` cannot.
+          examples: [3.885]

@@ -8,6 +8,7 @@
     "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
+    "openapi": "node scripts/openapi.mjs",
     "lint": "eslint",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
@@ -18,6 +19,7 @@
     "@nestjs/common": "11.1.28",
     "@nestjs/core": "11.1.28",
     "@nestjs/platform-express": "11.1.28",
+    "@nestjs/swagger": "11.4.6",
     "reflect-metadata": "^0.2",
     "rxjs": "^7"
   },
@@ -26,10 +28,13 @@
     "@nestjs/cli": "^11",
     "@nestjs/schematics": "^11",
     "@nestjs/testing": "11.1.28",
+    "@readme/openapi-parser": "^7",
     "@types/express": "^5",
     "@types/jest": "^30",
     "@types/node": "^24",
     "@types/supertest": "^7",
+    "ajv": "^8",
+    "ajv-formats": "^3",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "eslint-plugin-prettier": "^5",
@@ -39,6 +44,7 @@
     "supertest": "^7",
     "ts-jest": "^29",
     "typescript": "^5",
-    "typescript-eslint": "^8"
+    "typescript-eslint": "^8",
+    "yaml": "^2"
   }
 }
