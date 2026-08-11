@@ -1,3 +1,4 @@
+import type { User } from "../db/schema";
 import { TenantsController } from "./tenants.controller";
 import type { TenantsService } from "./tenants.service";
 
@@ -15,6 +16,16 @@ import type { TenantsService } from "./tenants.service";
  */
 
 const TENANT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
+
+/** The signed-in person, as the global guard would have established them. */
+const USER: User = {
+  id: "5eed0003-0000-4000-8000-000000000001",
+  email: "ken@acme-robotics.dev",
+  display_name: "Ken Suenobu",
+  avatar_url: null,
+  created_at: new Date("2026-08-11T10:20:23.114Z"),
+  updated_at: new Date("2026-08-11T10:20:23.114Z"),
+};
 
 describe("the tenants controller", () => {
   let service: jest.Mocked<TenantsService>;
@@ -37,12 +48,12 @@ describe("the tenants controller", () => {
     expect(service.list).toHaveBeenCalledWith({ limit: 10, offset: 20 });
   });
 
-  it("passes a creation straight through", async () => {
+  it("passes a creation straight through, with the person who is making it", async () => {
     const body = { slug: "acme", displayName: "Acme, Inc." };
 
-    await controller.create(body);
+    await controller.create(USER, body);
 
-    expect(service.create).toHaveBeenCalledWith(body);
+    expect(service.create).toHaveBeenCalledWith(USER, body);
   });
 
   it("takes the tenant's id off the validated parameters", async () => {

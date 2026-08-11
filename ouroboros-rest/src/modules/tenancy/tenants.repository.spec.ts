@@ -20,6 +20,9 @@ const ROW = {
   updated_at: new Date("2026-08-11T10:20:23.114Z"),
 } satisfies Tenant;
 
+/** A person, for the scoped listing. */
+const USER = "5eed0003-0000-4000-8000-000000000001";
+
 describe("the tenants repository", () => {
   let database: RecordingDatabase;
   let tenants: TenantsRepository;
@@ -77,6 +80,59 @@ describe("the tenants repository", () => {
       database.answers({ rows: [{ total: "12" }] });
 
       expect(await tenants.count()).toBe(12);
+    });
+  });
+
+  describe("listing a person's tenants", () => {
+    it("joins the membership, which is what scopes it", async () => {
+      // The listing every caller actually gets. Unscoped, it would hand anybody with a
+      // session the name and handle of every customer on the installation.
+      await tenants.listForUser(USER, { limit: 25, offset: 0 });
+
+      expect(database.statements[0].sql).toContain('inner join "ouroboros"."tenant_members"');
+      expect(database.statements[0].sql).toContain(
+        'where "ouroboros"."tenant_members"."user_id" = $1',
+      );
+      expect(database.statements[0].parameters).toEqual([USER, 25, 0]);
+    });
+
+    it("selects the tenant's own columns, not the membership's", async () => {
+      await tenants.listForUser(USER, { limit: 25, offset: 0 });
+
+      expect(database.statements[0].sql).toContain('select "ouroboros"."tenants".*');
+    });
+
+    it("orders totally, so a row cannot appear on two pages", async () => {
+      await tenants.listForUser(USER, { limit: 25, offset: 0 });
+
+      expect(database.statements[0].sql).toContain(
+        'order by "ouroboros"."tenants"."created_at", "ouroboros"."tenants"."id"',
+      );
+    });
+
+    it("counts the same set", async () => {
+      database.answers({ rows: [{ total: "3" }] });
+
+      expect(await tenants.countForUser(USER)).toBe(3);
+      expect(database.statements[0].sql).toContain('inner join "ouroboros"."tenant_members"');
+      expect(database.statements[0].parameters).toEqual([USER]);
+    });
+  });
+
+  describe("finding one by slug", () => {
+    it("matches the stored column exactly", async () => {
+      // V001 admits only lower-case slugs, so a differently-cased value is a miss rather
+      // than a match — and a miss is a 404, which is the right answer either way.
+      await tenants.findBySlug("acme");
+
+      expect(database.statements[0].sql).toContain('where "slug" = $1');
+      expect(database.statements[0].parameters).toEqual(["acme"]);
+    });
+
+    it("returns the row when there is one", async () => {
+      database.answers({ rows: [ROW] });
+
+      expect(await tenants.findBySlug("acme")).toEqual(ROW);
     });
   });
 

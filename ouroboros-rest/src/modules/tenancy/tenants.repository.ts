@@ -76,6 +76,74 @@ export class TenantsRepository {
   }
 
   /**
+   * One page of the tenants a person belongs to, oldest first.
+   *
+   * The listing every caller actually gets: `GET /api/v1/tenants` answers with the
+   * workspaces the signed-in person is a member of, never with the installation's whole
+   * table ([#32](https://github.com/NobuData/ouroboros/issues/32)). A list that enumerated
+   * every tenant would be a larger existence leak than the `403` this issue replaced with a
+   * `404`, and it would be one request rather than a scan.
+   *
+   * @param userId - Whose tenants.
+   * @param window - Which rows to return.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns The rows for this window.
+   */
+  async listForUser(
+    userId: string,
+    window: PageWindow,
+    trx?: Transaction<Database>,
+  ): Promise<Tenant[]> {
+    return queryOn(this.database, trx)
+      .selectFrom("tenants")
+      .innerJoin("tenant_members", "tenant_members.tenant_id", "tenants.id")
+      .selectAll("tenants")
+      .where("tenant_members.user_id", "=", userId)
+      .orderBy("tenants.created_at")
+      .orderBy("tenants.id")
+      .limit(window.limit)
+      .offset(window.offset)
+      .execute();
+  }
+
+  /**
+   * How many tenants a person belongs to.
+   *
+   * @param userId - Whose tenants.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns The count, ignoring any window.
+   */
+  async countForUser(userId: string, trx?: Transaction<Database>): Promise<number> {
+    const { total } = await queryOn(this.database, trx)
+      .selectFrom("tenants")
+      .innerJoin("tenant_members", "tenant_members.tenant_id", "tenants.id")
+      .select((builder) => builder.fn.countAll<string>().as("total"))
+      .where("tenant_members.user_id", "=", userId)
+      .executeTakeFirstOrThrow();
+
+    return asCount(total);
+  }
+
+  /**
+   * Find one tenant by its handle.
+   *
+   * The `X-Ouro-Tenant` header accepts a slug as well as a uuid, because a slug is what a
+   * person types and what appears in a URL — see `tenant.resolver.ts`.
+   *
+   * @param slug - The handle, exactly as stored. V001 admits only lower-case, so a
+   *   differently-cased value is a miss rather than a match.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns The row, or `undefined`.
+   */
+  async findBySlug(slug: string, trx?: Transaction<Database>): Promise<Tenant | undefined> {
+    return queryOn(this.database, trx)
+      .selectFrom("tenants")
+      .selectAll()
+      .where("slug", "=", slug)
+      .executeTakeFirst();
+  }
+
+  /**
    * Find one tenant.
    *
    * @param id - Its id.

@@ -366,23 +366,35 @@ Authentication answers *who*; tenant context answers *on whose behalf*. Every re
 sign-in operates as a member of exactly one tenant, resolved centrally rather than
 per-controller:
 
-1. The active tenant comes from the `X-Ouro-Tenant` header (slug or uuid), falling back
-   to the user's sole membership when they belong to exactly one tenant.
+1. The active tenant comes from three sources, most specific first: the `{tenantId}` in the
+   path, the `X-Ouro-Tenant` header (slug or uuid), then the user's sole membership when
+   they belong to exactly one tenant. A path and a header naming *different* tenants are
+   refused (`422 tenant_mismatch`) rather than resolved by precedence, so a client holding
+   a stale workspace cannot quietly act on another one.
 2. Membership and role are looked up and attached to a request-scoped context
    (`AsyncLocalStorage`), so services read the current tenant without it being threaded
-   through every signature.
+   through every signature. The store is opened by middleware and filled in by a guard,
+   because `run()` needs something to wrap the request and middleware runs before the
+   principal exists.
 3. A tenant the principal is not a member of returns **404, not 403** — a 403 would
-   confirm that the tenant exists.
+   confirm that the tenant exists. The two answers are identical down to the message and
+   the details. Listing tenants is scoped to the caller for the same reason.
 
 Roles are `owner`, `admin`, `member`, `viewer`, checked by a guard at the route rather
 than by hand in service code, with owner-protection rules (the last owner of a tenant
-cannot be demoted or removed).
+cannot be demoted or removed). `owner` and `admin` may change a workspace; `member` and
+`viewer` may read it. A member whose role is too low is the **one** `403` this API answers,
+and it is safe there: by then the caller has proved the workspace is no secret from them.
+Creating a tenant makes the creator its owner in the same transaction, because the `404`
+rule would otherwise put a memberless workspace out of reach of the person who made it.
 
 Tenancy is enforced in the REST layer and, for the MVP, only there — which is exactly why
 [§8](#8-architectural-invariants) states it as an invariant. The defence in depth is
 PostgreSQL row-level security keyed on `current_setting('ouro.tenant_id')`
-([#25](https://github.com/NobuData/ouroboros/issues/25)); the tenant-context middleware is
-where the setting will be applied, so adopting it is a change in one place.
+([#25](https://github.com/NobuData/ouroboros/issues/25)); the tenant-context guard is where
+the setting will be applied, so adopting it is a change in one place — and the context being
+`AsyncLocalStorage` rather than a property on the request is what makes that possible at all,
+since a GUC has to be set on a connection nothing in the call chain is holding.
 
 ## 5. The API contracts
 

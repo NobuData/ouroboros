@@ -16,7 +16,7 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import type { Transaction } from "kysely";
+import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import type { Database, TenantRole, User } from "../db/schema";
@@ -108,6 +108,37 @@ export class MembersRepository {
       .where("tenant_members.tenant_id", "=", tenantId)
       .where("tenant_members.user_id", "=", userId)
       .executeTakeFirst();
+  }
+
+  /**
+   * The tenants a person belongs to, by id, up to a limit.
+   *
+   * The sole-membership fallback in `tenant.resolver.ts`, and nothing else: it asks for two
+   * rows and treats one as an answer. Ids only, and ordered, because the caller needs to
+   * know *whether there is exactly one* and *which* — and an unordered `limit 2` over a
+   * person in fifty workspaces would return a different pair between requests.
+   *
+   * @param userId - Whose memberships.
+   * @param limit - How many to read. The caller passes the smallest number that can answer
+   *   its question.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns The tenant ids, oldest membership first.
+   */
+  async tenantIdsFor(
+    userId: string,
+    limit: number,
+    trx?: Transaction<Database>,
+  ): Promise<string[]> {
+    const rows = await queryOn(this.database, trx)
+      .selectFrom("tenant_members")
+      .select("tenant_id")
+      .where("user_id", "=", userId)
+      .orderBy("invited_at")
+      .orderBy("tenant_id")
+      .limit(limit)
+      .execute();
+
+    return rows.map((row) => row.tenant_id);
   }
 
   /**
@@ -203,6 +234,41 @@ export class MembersRepository {
     await queryOn(this.database, trx)
       .insertInto("tenant_members")
       .values({ tenant_id: tenantId, user_id: userId, role })
+      .execute();
+  }
+
+  /**
+   * Record a membership that is already accepted.
+   *
+   * The counterpart to {@link invite}, and the difference is `joined_at`: an invitation is
+   * outstanding until the person accepts it, and somebody who has just *created* the
+   * workspace has plainly accepted. Used by exactly one caller — `tenants.service.ts`,
+   * making the creator its owner ([#32](https://github.com/NobuData/ouroboros/issues/32)) —
+   * because a workspace with no members is one the `404` rule puts out of reach of the
+   * person who made it.
+   *
+   * `joined_at` is `now()` rather than a `Date` this process made, and the reason is a check
+   * constraint: V002 declares `joined_at >= invited_at`, `invited_at` defaults to the
+   * server's `now()`, and `now()` in PostgreSQL is the *transaction's* start. A timestamp
+   * from this process's clock is therefore compared against a clock in another container —
+   * and when the application's runs a few milliseconds behind, the row is refused. Both
+   * columns come from one clock instead, so they are equal by construction.
+   *
+   * @param tenantId - The tenant.
+   * @param userId - The person.
+   * @param role - What they may do.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns When the row exists.
+   */
+  async join(
+    tenantId: string,
+    userId: string,
+    role: TenantRole,
+    trx?: Transaction<Database>,
+  ): Promise<void> {
+    await queryOn(this.database, trx)
+      .insertInto("tenant_members")
+      .values({ tenant_id: tenantId, user_id: userId, role, joined_at: sql<Date>`now()` })
       .execute();
   }
 

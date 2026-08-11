@@ -15,6 +15,7 @@ import { Body, Controller, Get, Param, Patch, Query, UseInterceptors } from "@ne
 
 import { ConstraintViolationInterceptor } from "./constraints";
 import { PageQuery, type Page } from "./pagination";
+import { ADMINISTRATORS, Roles } from "./roles.guard";
 import { ReposService } from "./repos.service";
 import type { RepoResource } from "./resources";
 import { OrgParams, RepoParams, UpdateRepoBody } from "./tenancy.dto";
@@ -43,6 +44,7 @@ export class ReposController {
    * @param body - `enabled`, and optionally the default branch.
    * @returns The repository after the change.
    */
+  @Roles(...ADMINISTRATORS)
   @Patch(":name")
   setEnabled(@Param() params: RepoParams, @Body() body: UpdateRepoBody): Promise<RepoResource> {
     return this.repos.setEnabled(params.tenantId, params.login, params.name, body);

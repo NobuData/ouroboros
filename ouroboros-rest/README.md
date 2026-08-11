@@ -5,24 +5,27 @@
 > [#28](https://github.com/NobuData/ouroboros/issues/28), the health probes with
 > [#29](https://github.com/NobuData/ouroboros/issues/29), the database access layer with
 > [#30](https://github.com/NobuData/ouroboros/issues/30), the tenancy API with
-> [#31](https://github.com/NobuData/ouroboros/issues/31) and GitHub sign-in with
-> [#33](https://github.com/NobuData/ouroboros/issues/33) (epic
+> [#31](https://github.com/NobuData/ouroboros/issues/31), GitHub sign-in with
+> [#33](https://github.com/NobuData/ouroboros/issues/33) and the tenant context with
+> [#32](https://github.com/NobuData/ouroboros/issues/32) (epic
 > [#4](https://github.com/NobuData/ouroboros/issues/4)). What runs today is a NestJS
 > application answering a heartbeat on `/api/v1`, publishing
 > [the specification it is written against](#the-api-specification), reading every setting
 > through [a typed, fail-fast configuration module](#configuration), reporting
 > [whether it is live and whether its dependencies are reachable](#health-and-readiness),
 > holding [a typed, pooled connection to the tenancy schema](#data-access), serving
-> [the first real API of the system](#the-tenancy-api) over it, and
-> [signing people in with GitHub](#signing-in) — with the lint, typecheck, test and build
-> pipeline `ci/rest` runs.
+> [the first real API of the system](#the-tenancy-api) over it,
+> [signing people in with GitHub](#signing-in) and
+> [scoping every request to one workspace](#the-tenant-context) — with the lint, typecheck,
+> test and build pipeline `ci/rest` runs.
 >
-> **Every route now requires a session** except sign-in, sign-out, the heartbeat and the
-> probes. What is still missing is the *tenant* context:
-> [#32](https://github.com/NobuData/ouroboros/issues/32) adds the `X-Ouro-Tenant` header,
-> the role guard, and the rule that a tenant a caller is not a member of answers `404`
-> rather than admitting it exists — so until it lands, any signed-in person can reach any
-> tenant and this build belongs on a development machine. The remaining feature modules
+> **Every route requires a session, and every route but three requires a workspace.** A
+> workspace you are not a member of answers `404` rather than `403`, and administering one
+> needs `owner` or `admin`. What is left in the epic is the engine gateway
+> ([#35](https://github.com/NobuData/ouroboros/issues/35)), the container
+> ([#36](https://github.com/NobuData/ouroboros/issues/36)), the Testcontainers harness
+> ([#37](https://github.com/NobuData/ouroboros/issues/37)) and the security baseline
+> ([#38](https://github.com/NobuData/ouroboros/issues/38)); the remaining feature modules
 > are listed under [Layout](#layout).
 
 ## Purpose
@@ -48,6 +51,7 @@ in a single, auditable place.
 | Requests        | `class-validator` DTOs behind a global pipe — transform, whitelist, refuse the undeclared ([#31](https://github.com/NobuData/ouroboros/issues/31))                         |
 | Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                  |
 | Auth            | GitHub OAuth over bare `fetch` — no passport; a signed `HttpOnly` session cookie and a global guard ([#33](https://github.com/NobuData/ouroboros/issues/33))               |
+| Tenancy         | A request-scoped tenant context over `AsyncLocalStorage`, a global guard and `@Roles(…)` ([#32](https://github.com/NobuData/ouroboros/issues/32))                          |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
 | Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
 | Lint            | ESLint flat config + Prettier                                                                                                                                              |
@@ -75,7 +79,7 @@ run.
 
 ```console
 $ curl http://localhost:4000/api/v1
-{"service":"ouroboros-rest","version":"0.6.0","status":"ok","uptimeSeconds":3.885}
+{"service":"ouroboros-rest","version":"0.7.0","status":"ok","uptimeSeconds":3.885}
 ```
 
 | Path                                                | Purpose                                                               |
@@ -87,7 +91,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/auth/github/callback`                  | Where GitHub returns; lands the session cookie                        |
 | `GET /api/v1/auth/me`                               | Who is signed in, their memberships, and a tenant suggestion          |
 | `POST /api/v1/auth/logout`                          | Sign out — removes the session cookie                                 |
-| `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list, create                            |
+| `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
 | `PATCH DELETE …/domains/{domainId}`                 | Set or clear the primary; give a domain up                            |
@@ -261,7 +265,7 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   OURO_GITHUB_CLIENT_SECRET=[redacted]
   OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.6.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.7.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -481,11 +485,10 @@ names stay the database's. [`resources.ts`](src/modules/tenancy/resources.ts) is
 place the two meet, which is also what stops a column added by a migration becoming part of
 the contract by accident.
 
-**These routes need a session** ([#33](https://github.com/NobuData/ouroboros/issues/33)),
-and they do not yet check *which tenant* the caller may act in. Role enforcement and the
-`404`-not-`403` rule are [#32](https://github.com/NobuData/ouroboros/issues/32)'s
-`RolesGuard` and tenant context; until that lands, any signed-in person can reach any
-tenant, and what is enforced is everything that does not depend on who is asking.
+**These routes need a session** ([#33](https://github.com/NobuData/ouroboros/issues/33))
+**and a workspace** ([#32](https://github.com/NobuData/ouroboros/issues/32)) — a workspace
+you are not a member of answers `404`, and the ten mutations above need `owner` or `admin`.
+See [The tenant context](#the-tenant-context).
 
 ## Signing in
 
@@ -569,6 +572,87 @@ guard uses refuses one anyway. The boot log prints `OURO_AUTH_DEV_USER=` with no
 after it, which is the line to check. A real session cookie still wins over it, so the
 OAuth flow stays exercisable on a machine that has it set.
 
+## The tenant context
+
+**Every request past sign-in operates as a member of one workspace**
+([#32](https://github.com/NobuData/ouroboros/issues/32)), and that is resolved once, in one
+place, rather than re-implemented per controller.
+
+```
+request ─▶ middleware ─▶ SessionGuard ─▶ TenantContextGuard ─▶ RolesGuard ─▶ handler
+           opens the      who is           which workspace,      may they
+           context        asking (#33)     and are they in it    do this
+```
+
+### Where the workspace comes from
+
+Three sources, most specific first:
+
+1. **The `{tenantId}` in the path**, on the routes that have one.
+2. **The `X-Ouro-Tenant` header** — a slug or a uuid. This is how a workspace switcher names
+   the active workspace on a route with no workspace in its path, which is every route the
+   epic adds after this one.
+3. **A sole membership.** Somebody who belongs to exactly one workspace is unambiguously
+   operating in it. Somebody who belongs to several is asked to say which, with a `422` and
+   `code: "tenant_required"`.
+
+A path and a header that name **different** workspaces are a `422` with
+`code: "tenant_mismatch"` rather than a silent preference for either — a client holding a
+stale workspace in a header would otherwise quietly act on another one.
+
+### What an outsider is told
+
+**Nothing.** A workspace that does not exist and a workspace you are not a member of are the
+same `404`, with the same code, the same message and the same `details`. A `403` would
+confirm that an identifier names something real, which is the whole of what somebody
+enumerating identifiers is trying to learn. `GET /api/v1/tenants` is scoped the same way: it
+lists the workspaces *you* belong to, never the installation's.
+
+The one `403` this API does answer is a member whose **role** is too low. By then the caller
+has already proved the workspace is no secret from them, and their role is the only thing
+left to tell them — `details.role` is what they hold and `details.required` is what would
+have been enough.
+
+| | `owner` | `admin` | `member` | `viewer` |
+|---|:---:|:---:|:---:|:---:|
+| Read a workspace, its domains, members, orgs and repos | ✓ | ✓ | ✓ | ✓ |
+| Rename it, suspend it, invite, enable a repository | ✓ | ✓ | | |
+
+A handler declares what it needs with `@Roles(...ADMINISTRATORS)`; one that declares nothing
+is open to every member, which is not the same laxity as `@Public()` — the tenant guard has
+already refused everybody else.
+
+### Three routes need no workspace
+
+`@TenantOptional()`, and all three are questions about the *person* rather than a workspace:
+`GET /api/v1/tenants` (which are mine), `POST /api/v1/tenants` (let me have one), and
+`GET /api/v1/auth/me` (who am I). Requiring a workspace first would be circular. Creating one
+makes you its `owner` in the same transaction, because a workspace with no members is one the
+`404` rule puts out of reach of the person who just made it.
+
+### Reaching it from a service
+
+```ts
+import { currentTenant, currentMember } from "./tenant.context";
+```
+
+The context is request-scoped through `AsyncLocalStorage`, so it survives an `await` and is
+readable at any call depth without being threaded through one — which is the issue's third
+acceptance criterion, and what
+[#25](https://github.com/NobuData/ouroboros/issues/25)'s `set_config('ouroboros.tenant_id', …)`
+will need, since a row-level-security GUC has to be set on a connection nothing in the call
+chain is holding.
+
+Two halves make it work, and neither can do the other's job. **Only middleware can open the
+store** — `AsyncLocalStorage.run` takes a callback, so something has to wrap the rest of the
+request — and **only a guard can fill it in**, because middleware runs *before* guards and
+there is no principal yet when it does.
+
+It is deliberately used in exactly one service today (`TenantsService.list`, to scope the
+listing to the caller). Ambient state is a dependency the compiler cannot see: repositories
+and services take their `tenantId` as a parameter, as they always did, and the ambient form
+is for the cases where threading a parameter is the problem rather than the solution.
+
 ## Layout
 
 ```
@@ -584,7 +668,7 @@ ouroboros-rest/
 │       ├── errors/         # the {code, message, details} envelope, filter, pipe
 │       ├── health/         # /health/live, /health/ready, the two probes
 │       ├── db/             # schema types, pool, Kysely instance, lifecycle
-│       ├── tenancy/        # tenants, domains, members, GitHub enablement · #31
+│       ├── tenancy/        # tenants, domains, members, enablement · #31 · context #32
 │       ├── auth/           # GitHub OAuth, sessions, the global guard     · #33
 │       └── engine/         # typed internal client                        · #35
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML
@@ -610,6 +694,14 @@ application — `tenancy/`'s included — authenticated unless its handler carri
 That polarity is deliberate: a controller added next year is protected because somebody
 wrote a controller, not because they remembered a decorator.
 
+`tenancy/` contributes the other two global guards and the one piece of middleware in the
+service, in that order: the middleware opens a request-scoped context, `TenantContextGuard`
+resolves the workspace into it, and `RolesGuard` checks what the caller may do there. They
+run after `auth/`'s guard because `AppModule` imports `AuthModule` first — and
+`tenancy.module.spec.ts` asserts the consequence of that ordering rather than the ordering
+itself, because the consequence is what matters: an unauthenticated caller must be a `401`
+before anything reaches a database.
+
 `errors/` is the one directory with no module of its own. It holds the envelope every
 failure is answered in, and the filter and pipe that produce it are registered on the
 *application* in `src/application.ts` rather than on a module, because they apply to routes
@@ -633,6 +725,7 @@ health [#29](https://github.com/NobuData/ouroboros/issues/29) ·
 data access [#30](https://github.com/NobuData/ouroboros/issues/30) ·
 tenancy API [#31](https://github.com/NobuData/ouroboros/issues/31) ·
 auth [#33](https://github.com/NobuData/ouroboros/issues/33) ·
+tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 full epic [#4](https://github.com/NobuData/ouroboros/issues/4).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
