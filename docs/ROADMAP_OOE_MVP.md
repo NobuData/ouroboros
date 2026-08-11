@@ -177,7 +177,7 @@ issue level.
 | `4.5` | `#31` Tenancy module & API | Reduced — members and invitations are served by the org plugin; this keeps domains + org/repo enablement (`C.4`) |
 | `4.6` | `#32` Tenant-context middleware | Resolves from the session's `activeOrganizationId`; `X-Ouro-Tenant` demoted to an override (`C.3`) |
 | `4.11` | `#37` Integration test harness | Extended so `C.5`'s auth-flow suites build on it |
-| `4.8` · `5.5` | `#34` · `#43` OpenAPI export & typed client | Auth routes use the BetterAuth client; the generated client covers everything else (`D.1`) |
+| `4.8` · `5.5` | `#34` · `#43` OpenAPI export & typed client | Auth routes use the BetterAuth client; the generated client covers everything else (`D.1`). **Both shipped in P1** — the generated client is `ouroboros-ui/app/api/`, and `D.1` reduces to pointing the auth calls at BetterAuth when `A.2` lands |
 | `5.7` | `#45` Dashboard placeholder | Re-pointed to land behind `D.5`'s guards |
 | `7.2` | `#56` End-to-end smoke test | Must sign in through the real BetterAuth flow, not a bypass |
 
