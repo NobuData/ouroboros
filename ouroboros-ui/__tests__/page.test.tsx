@@ -32,9 +32,10 @@ describe("the placeholder home page", () => {
     render(<Page />);
 
     const items = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toHaveLength(2);
-    expect(items.join(" ")).toContain("#42");
-    // The shell has landed, so the list no longer promises it.
-    expect(items.join(" ")).not.toContain("#41");
+    expect(items).toHaveLength(1);
+    expect(items.join(" ")).toContain("#45");
+    // The shell (#41) and the theme switcher (#42) have landed, so the list no longer
+    // promises either — this page is one issue away from being replaced outright.
+    expect(items.join(" ")).not.toMatch(/#41|#42/);
   });
 });

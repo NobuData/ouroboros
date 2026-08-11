@@ -17,11 +17,10 @@ export default function Page() {
         The application scaffold is up: App Router, TypeScript, and the lint, typecheck,
         test and build pipeline <code>ci/ui</code> runs. This page is a placeholder — it
         renders in Chakra Petch, IBM Plex Sans and IBM Plex Mono, which is how you can
-        tell the three faces loaded, and in whichever palette your system asks for until
-        you choose one. The chrome around it is the app shell.
+        tell the three faces loaded, and in whichever palette you ask for — the switcher
+        is in the header. The chrome around it is the app shell.
       </p>
       <ul className="placeholder__next">
-        <li>#42 — the visible light / dark / system switcher</li>
         <li>#45 — the dashboard, at this route</li>
       </ul>
     </main>

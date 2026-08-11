@@ -1617,7 +1617,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | 5.1 | #39 | 🟢 Done | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
 | 5.2 | #40 | 🟢 Done | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
 | 5.3 | #41 | 🟢 Done | ouroboros-ui: [5.3] App shell — header, sidebar navigation, content pane | The chrome every screen shares, per the shell specification | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
-| 5.4 | #42 | 🟡 Open | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
+| 5.4 | #42 | 🟢 Done | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
 | 5.5 | #43 | 🟡 Open | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
 | 5.6 | #44 | 🟡 Open | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
 | 5.7 | #45 | 🟡 Open | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
@@ -1719,7 +1719,23 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 
 ### Issue 5.4 — ouroboros-ui: [5.4] Theme toggle control
 
-> **GitHub issue:** #42 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #42 · **Status:** 🟢 Done · **Parent epic:** #5
+
+> **Shipped as written**, in the header slot 5.3 left for it:
+> [`app/shell/theme-toggle.tsx`](../ouroboros-ui/app/shell/theme-toggle.tsx), between the
+> needs-you pill and the settings gear. The icon is the *resolved* palette — a sun or a
+> moon — with an accent dot while the choice is *system*, because otherwise *light* and
+> *system resolving to light* would draw the same thing; the accessible name and tooltip
+> say it in words and name the next press. A screen reader is told through a visually
+> hidden `role="status"` region whose text is written by the click handler, so a page
+> load never announces the provider settling its own state.
+>
+> This does **not** discharge the profile-menu theme control that
+> [`DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md) § 1.1 also names, and which
+> the [MVP roadmap](ROADMAP_OOE_MVP.md) folds into `CP.3` (#645). That is a second
+> surface over the same `useTheme()`, not a replacement — the issue as filed asks for the
+> top-bar control, 5.3 reserved the slot for it, and the engine (2.4) was written against
+> a control that draws a sun or a moon.
 
 - **Problem Statement:** The theme engine (2.4) needs its visible, discoverable
   control.
@@ -2400,6 +2416,20 @@ while it does. Ten of the eleven navigation entries are labelled *soon* because 
 the eleven screens do not exist; each names the issue that will build it. That releases
 **#42** (which mounts its switcher in the header), **#45** and **#49**, and it is the
 frame CP.1–CP.5 deepen rather than replace.
+
+**#42** (the theme toggle) is **done**, which closes the loop #16, #17 and #41 opened:
+the palettes exist, the engine applies them, the shell holds a place for the control, and
+there is now a control. It is one button cycling light → dark → system, and it owns no
+theme state — the engine still does all of it, which is why the whole of this issue is a
+component, a class and a slot filled. Verified in a real browser rather than only in
+jsdom: a press swaps the palette with the attribute alone and never a reload, the choice
+is still in force after a hard reload, an explicit light beats a dark OS, *system* follows
+the OS live while resolving to the right icon, and Enter activates it — the three
+acceptance criteria, plus the keyboard the issue asks for. The one judgement recorded
+against the spec is the accent dot that separates *system* from the palette it resolves
+to, since the specified resolved-theme icon cannot distinguish them on its own. The
+profile menu's own theme control (CP.3, #645) is still to come and is a second surface
+over the same hook.
 
 **#19** (the Flyway project), **#50** (the FastAPI service) and **#27** (the NestJS
 service) have since landed the same way, each turning its own CI check on and moving its

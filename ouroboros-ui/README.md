@@ -3,13 +3,14 @@
 > **Status:** scaffolded ([#39](https://github.com/NobuData/ouroboros/issues/39), epic
 > [#5](https://github.com/NobuData/ouroboros/issues/5)), rendering from the design tokens
 > ([#40](https://github.com/NobuData/ouroboros/issues/40)), switching themes at runtime
-> ([#17](https://github.com/NobuData/ouroboros/issues/17)), and wrapped in the
+> ([#17](https://github.com/NobuData/ouroboros/issues/17)) from a
+> [visible control in the header](#theming)
+> ([#42](https://github.com/NobuData/ouroboros/issues/42)), and wrapped in the
 > [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders *inside* the
 > shell is still a placeholder: the dashboard
-> ([#45](https://github.com/NobuData/ouroboros/issues/45)) and the visible theme switcher
-> ([#42](https://github.com/NobuData/ouroboros/issues/42)) land on top of it.
+> ([#45](https://github.com/NobuData/ouroboros/issues/45)) lands on top of it.
 
 ## Purpose
 
@@ -212,12 +213,15 @@ Four things are worth knowing before adding a screen to it.
    so their rows render as labelled *soon* text — not links, not in the tab order, each
    naming the issue that will build it. Building one means flipping its `status` to
    `"live"` in the same pull request as the route.
-4. **What is a slot, not an omission.** The theme toggle
-   ([#42](https://github.com/NobuData/ouroboros/issues/42)) mounts in the header cluster;
-   the tenant chip (#77), the search pill and ⌘K palette (#79), and the real needs-you
-   count (#78) each have an issue. The account menu's interaction is built and its
-   contents are placeholders until sessions
-   ([#33](https://github.com/NobuData/ouroboros/issues/33)) and CP.3 (#645) fill them.
+4. **What is a slot, not an omission.** The header cluster holds the needs-you pill, the
+   [theme toggle](#theming) ([#42](https://github.com/NobuData/ouroboros/issues/42)), the
+   settings gear and the account menu. Of those the toggle is the only one that is
+   finished; the tenant chip (#77), the search pill and ⌘K palette (#79), and the real
+   needs-you count (#78) each have an issue. The account menu's interaction is built and
+   its contents are placeholders until sessions
+   ([#33](https://github.com/NobuData/ouroboros/issues/33)) and CP.3 (#645) fill them —
+   including the profile menu's own theme control, which the design system § 1.1 puts
+   there and which will drive this same `useTheme()`.
 
 Responsive collapse below 1024px is CSS, not state: the sidebar becomes a 64px icon rail
 and every name becomes its tooltip. The user-controlled collapse, its per-account
@@ -261,8 +265,10 @@ from, which is what makes the theme switch a redefinition rather than a restyle.
 Three states — `light`, `dark`, `system` — and *system* is the default. The engine is
 [`app/theme.ts`](app/theme.ts) (vocabulary, the two DOM operations, and the boot script)
 plus [`app/theme-provider.tsx`](app/theme-provider.tsx) (`ThemeProvider`, `useTheme()`).
-The visible switcher is [#42](https://github.com/NobuData/ouroboros/issues/42); this is
-what it will call.
+The visible switcher is
+[`app/shell/theme-toggle.tsx`](app/shell/theme-toggle.tsx)
+([#42](https://github.com/NobuData/ouroboros/issues/42)), in the header cluster; this is
+what it calls.
 
 ```tsx
 "use client";
@@ -306,6 +312,27 @@ attributes it renders from JSX.
 **`color-scheme` is not set here.** The sheet declares it in all three palette blocks, so
 native scrollbars, form controls and the browser's own canvas follow the theme for the
 same reason the palette does. There is no second place a theme is expressed.
+
+### The switcher
+
+One button in the header cluster, cycling **light → dark → system** and holding no state
+of its own: it reads `useTheme()` and calls `setTheme`, and everything above is what
+happens next. Two decisions in it are worth knowing.
+
+**The icon is the palette, not the preference.** A sun while light is rendering, a moon
+while dark is — the *resolved* value, which is what the issue asks for and what makes the
+control describe the product rather than a setting. Its cost is that *light* and *system
+resolving to light* draw the same sun, so the button carries an accent dot while the
+choice is *system* (`.theme-toggle--auto`). The accessible name and the tooltip carry the
+same fact in words — `Theme: system (dark). Switch to light.` — and both name what the
+next press does.
+
+**A screen reader hears about presses only.** The announcement is a visually hidden
+`role="status"` region beside the button, whose text is written by the click handler
+rather than derived from `theme`. Derived, it would also speak the correction the
+provider makes to its own state just after mount, so every page load would announce a
+change nobody made. The region is mounted empty from the start, because a live region
+added at the same moment as its text is not reliably read at all.
 
 ## Favicons and the web-app manifest
 
@@ -389,6 +416,8 @@ Scaffold [#39](https://github.com/NobuData/ouroboros/issues/39) ·
 favicons [#15](https://github.com/NobuData/ouroboros/issues/15) ·
 design tokens [#16](https://github.com/NobuData/ouroboros/issues/16) ·
 theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
+theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
+app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

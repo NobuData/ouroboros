@@ -189,7 +189,7 @@ issue level.
 | `3.4` | `#22` GitHub org & repo enablement | Same shape, FK re-pointed to `organization.id` (`B.3`) | P1 |
 | `4.4` | `#30` Database access layer | Blocker re-pointed from `3.3` to `3.2`; the Kysely pool is reused by BetterAuth's adapter | P1 |
 | `5.3` | `#41` App shell — top bar, navigation, footer | Re-scoped by `CP.1`/`CP.2` — build the frame minimally in P1; nav links move to the sidebar in P3 | P1 → P3 |
-| `5.4` | `#42` Theme toggle control | Absorbed into the P3 profile menu (`CP.3`) | P1 → P3 |
+| `5.4` | `#42` Theme toggle control | **Not deferred** — shipped in P1 as the top-bar control the issue specifies and `5.3` reserved a slot for; `CP.3`'s profile-menu entry is a second surface over the same `useTheme()`, not a replacement | P1 |
 | `4.12` | `#38` Security baseline hardening | Reduced by `E.4` — DB-backed sessions make the revocation work item obsolete | v2 |
 
 **Action at filing time:** post each amendment as a comment on the named GitHub

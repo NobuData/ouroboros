@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import AppLayout from "@/app/(app)/layout";
 import { AppShell, CONTENT_ID } from "@/app/shell/app-shell";
+
+import { renderThemed } from "../helpers/theme";
 
 /**
  * The shell as a whole: the three regions, and the page inside the one of them that
@@ -18,7 +20,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 
 describe("the app shell", () => {
   it("renders the three regions", () => {
-    render(
+    renderThemed(
       <AppShell>
         <p>page</p>
       </AppShell>,
@@ -30,7 +32,7 @@ describe("the app shell", () => {
   });
 
   it("renders the page inside the scrolling pane", () => {
-    render(
+    renderThemed(
       <AppShell>
         <p>page</p>
       </AppShell>,
@@ -41,7 +43,7 @@ describe("the app shell", () => {
   });
 
   it("offers the keyboard a way past the chrome", () => {
-    const { container } = render(
+    const { container } = renderThemed(
       <AppShell>
         <p>page</p>
       </AppShell>,
@@ -54,7 +56,7 @@ describe("the app shell", () => {
   });
 
   it("makes the pane a focus target without making it a tab stop", () => {
-    render(
+    renderThemed(
       <AppShell>
         <p>page</p>
       </AppShell>,
@@ -68,7 +70,7 @@ describe("the app shell", () => {
 
 describe("the (app) layout", () => {
   it("renders its segment inside the shell", () => {
-    render(
+    renderThemed(
       <AppLayout>
         <p>segment</p>
       </AppLayout>,
