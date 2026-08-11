@@ -187,6 +187,7 @@ scripts/verify-layout.sh          # module layout, READMEs, .editorconfig covera
 scripts/verify-github-config.sh   # label definitions, issue forms, PR template
 scripts/verify-dev-env.sh         # compose stack, .env.example, migration naming
 scripts/verify-ci.sh              # workflow status checks, path routing, toolchain pins
+scripts/verify-workspace.sh       # the workspace roster, the task graph, the cache boundaries
 scripts/verify-architecture.sh    # architecture doc sections, port map, env registry, links
 scripts/verify-brand.sh           # brand assets carry alpha, at the sizes BRAND.md publishes
 scripts/verify-favicons.sh        # favicon set, manifest and the documents that describe them
@@ -235,6 +236,7 @@ routing table, the Node and Python pins, and that every step waits for its scaff
 | [`docs/BRAND.md`](docs/BRAND.md) | The logo asset set, which treatment goes on which surface, clear space, minimum sizes |
 | [`docs/DESIGN_TOKENS.md`](docs/DESIGN_TOKENS.md) | The light and dark palettes as CSS custom properties, the type, spacing and shape scales, and the measured WCAG contrast for both |
 | [`docs/DESIGN_SYSTEM_APP_SHELL.md`](docs/DESIGN_SYSTEM_APP_SHELL.md) | The application shell specification |
+| [`docs/DECISION_WORKSPACE_TOOLING.md`](docs/DECISION_WORKSPACE_TOOLING.md) | Why the workspace runner is Turborepo and not Nx or plain scripts — what was measured, what it does not buy, and what would reopen the question |
 | [`docs/mockups/`](docs/mockups) | 22 designed screens plus the design-system stylesheet |
 | [`docs/ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md`](docs/ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md) | The plan this repository is executing |
 
