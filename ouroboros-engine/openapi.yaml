@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.2.0
+  version: 0.3.0
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -26,15 +26,27 @@ info:
     rather than trusting it — **every path but `/healthz` requires the key**, the
     comparison is constant time, and a request without one is refused before routing.
 
-    A rejection is therefore a bare `401 {"detail":"Unauthorized"}` whether the path
-    exists or not: status codes are how a surface gets mapped from outside, and an
-    unauthenticated caller cannot tell `/v0/status` from `/v0/anything-else`. Read the
-    `401` documented on each operation below as the answer to *anything* unauthenticated,
-    including paths this document does not list.
+    A rejection is therefore one constant body whether the path exists or not: status
+    codes are how a surface gets mapped from outside, and an unauthenticated caller cannot
+    tell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation
+    below as the answer to *anything* unauthenticated, including paths this document does
+    not list.
+
+    **Every error has one shape** — `{code, message, details}`, the same envelope
+    `ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure
+    crossing the gateway does not change form on the way out. `code` is stable and
+    machine-readable and is what a caller branches on; `message` is written for a person
+    and is a constant for anything `5xx`, because the real diagnosis names the inside of
+    this process and belongs in a log; `details` carries what is specific to the failure,
+    which for a `422` is one entry per field that was refused. That covers the answers no
+    route produced too — a path nothing claims, a method a path does not allow, a body
+    that could not be parsed.
 
     `/v0` is the versioned internal prefix. It is unstable by definition — it changes
     with the two services that share it, which deploy together — and a stable `/v1` is a
-    later promise, not this one.
+    later promise, not this one. A field may be added to a response and a route may be
+    added to the prefix; a field that disappears, changes type or changes meaning is a
+    `/v1` served alongside this one, not an edit to it.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -54,9 +66,11 @@ tags:
     description: Identity and liveness — what answers before any contract does.
   - name: v0
     description: |-
-      The versioned internal contract. `/v0/status` claims the path; the request and
-      error shapes the rest of it follows are
-      [#52](https://github.com/NobuData/ouroboros/issues/52).
+      The versioned internal contract — what `ouroboros-rest` calls, and the only surface
+      it mirrors in a typed client
+      ([#35](https://github.com/NobuData/ouroboros/issues/35)). `POST /v0/tasks/echo` is
+      the exemplar the rest of it is written to: a closed request body, a `422` in the
+      envelope when it does not validate, and the answering build named in the response.
 
 # Applies to every operation. `/healthz` opts out with an empty requirement of its own,
 # and it is the only operation that may — a container platform probes liveness before it
@@ -107,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.2.0
+                version: 0.3.0
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -133,10 +147,59 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.2.0
+                version: 0.3.0
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /v0/tasks/echo:
+    post:
+      tags: [v0]
+      summary: Echo a task back
+      description: |-
+        Accept a task and hand it straight back. The engine has no real work to do yet —
+        the task registry, the queue and the worker model are
+        [#54](https://github.com/NobuData/ouroboros/issues/54) — and this route exists to
+        settle, with one working round trip, what every later operation would otherwise
+        settle again: how a request body is described, how it is validated, what a
+        refusal looks like, and where the version of the answering build is reported.
+
+        **The request body is closed.** A property this document does not describe is
+        refused rather than dropped, so a caller that misspells `payload` is told so
+        instead of having the field silently ignored.
+
+        **The echo is the request.** What comes back under `echo` is the body as the
+        engine parsed it, so a caller sees what was actually understood rather than what
+        it believes it sent.
+      operationId: echoTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EchoRequest"
+            example:
+              task_kind: echo
+              payload:
+                note: hello from ouroboros-rest
+      responses:
+        "200":
+          description: The task, as received, and the build that received it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EchoResponse"
+              example:
+                accepted: true
+                echo:
+                  task_kind: echo
+                  payload:
+                    note: hello from ouroboros-rest
+                engine_version: 0.3.0
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
 
 components:
   securitySchemes:
@@ -157,12 +220,41 @@ components:
         names no path, echoes no header and offers no hint about what the key should look
         like. What an operator needs is in the engine's log instead, which stays inside
         the cluster.
+
+        `ouroboros-rest` never forwards this to a browser. A key its own deployment holds
+        wrongly is its problem and not the caller's, so it logs the mismatch and answers
+        `502` — never `401`, which would invite a browser to try signing in again against
+        a boundary it cannot reach at all.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
           example:
-            detail: Unauthorized
+            code: unauthenticated
+            message: Unauthorized.
+            details: {}
+
+    UnprocessableEntity:
+      description: |-
+        The request was understood and its content is not acceptable — a missing field, a
+        `task_kind` that is not a well-formed kind, a property the operation does not
+        declare. `details` carries one entry per field, keyed the way the caller wrote it,
+        so each message can be shown against the input that produced it.
+
+        `422` rather than `400`: the body parsed, so a caller can tell *I sent the wrong
+        value* from *I sent something that is not a request*. It is the status
+        `ouroboros-rest` answers its own validation failures with, and the code is the
+        same one.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: validation_failed
+            message: The request is not valid. See `details` for each field.
+            details:
+              task_kind:
+                - String should match pattern '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
 
   schemas:
     Liveness:
@@ -223,16 +315,94 @@ components:
             Small and shrinking across calls means something is restarting the container.
           examples: [1234.567]
 
+    EchoRequest:
+      type: object
+      title: EchoRequest
+      description: |-
+        The body of a `POST /v0/tasks/echo` request, and the shape that comes back under
+        `echo`. Closed: a property not listed here is refused rather than dropped.
+      additionalProperties: false
+      required: [task_kind, payload]
+      properties:
+        task_kind:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+          description: |-
+            Which kind of task this is, as a registry would name it. Lower-case, starting
+            with a letter, with single `.`, `_` or `-` separators — narrow on purpose,
+            because this is what a future handler is looked up by and it has to survive
+            being a dictionary key, a log field and a metric label without quoting.
+          examples: [echo]
+        payload:
+          type: object
+          description: |-
+            The task's own arguments. Open, because what a task takes is the task's
+            business; what the contract requires is that it is an object rather than a
+            string somebody has to parse twice.
+          examples: [{ note: hello from ouroboros-rest }]
+
+    EchoResponse:
+      type: object
+      title: EchoResponse
+      description: The body of a `POST /v0/tasks/echo` response.
+      additionalProperties: false
+      required: [accepted, echo, engine_version]
+      properties:
+        accepted:
+          type: boolean
+          const: true
+          description: |-
+            Always `true`. This route has exactly one success: a request that validates is
+            accepted, and one that does not is a `422` rather than a `200` carrying
+            `false`. A task that can be refused while being well-formed is
+            [#54](https://github.com/NobuData/ouroboros/issues/54)'s, and will say so on a
+            different route.
+          examples: [true]
+        echo:
+          $ref: "#/components/schemas/EchoRequest"
+          description: |-
+            The request, as received and after validation — so a caller sees what the
+            engine actually parsed rather than what it believes it sent.
+        engine_version:
+          type: string
+          description: |-
+            Installed version of the build that answered — the same string `GET /` and
+            `GET /v0/status` report. In the body rather than only on `/v0/status` because
+            the gateway logs a round trip it made, and the build that served it belongs in
+            that line without a second call.
+          examples: ["0.3.0"]
+
     Error:
       type: object
       title: Error
       description: |-
-        The shape every error in this service is reported in. `detail` is FastAPI's own
-        key, and matching it keeps one shape for a client to parse.
+        The shape every error in this service is reported in — the same envelope
+        `ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a
+        failure crossing the gateway does not change form on the way out.
       additionalProperties: false
-      required: [detail]
+      required: [code, message, details]
       properties:
-        detail:
+        code:
           type: string
-          description: A short, constant description of what was refused.
-          examples: [Unauthorized]
+          description: |-
+            Stable, machine-readable, and the thing a caller branches on. Derived from the
+            status rather than invented per call site, so a failure this service has never
+            answered with still carries an honest code.
+          examples: [validation_failed]
+        message:
+          type: string
+          description: |-
+            Written for a person. Never an exception's text and never a stack: anything
+            `5xx` carries one constant sentence, because the real diagnosis names the
+            inside of this process and belongs in a log an operator reads.
+          examples: [The request is not valid. See `details` for each field.]
+        details:
+          type: object
+          description: |-
+            Whatever is specific to this failure — for a `422`, one entry per field that
+            was refused, keyed the way the caller wrote it and carrying every message about
+            it. Empty rather than absent when there is none, so reading `details.task_kind`
+            never has to check `details` first.
+          examples: [{}]

@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
-    "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore a bare `401 {\"detail\":\"Unauthorized\"}` whether the path\nexists or not: status codes are how a surface gets mapped from outside, and an\nunauthenticated caller cannot tell `/v0/status` from `/v0/anything-else`. Read the\n`401` documented on each operation below as the answer to *anything* unauthenticated,\nincluding paths this document does not list.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one.",
+    "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -27,7 +27,7 @@
     },
     {
       "name": "v0",
-      "description": "The versioned internal contract. `/v0/status` claims the path; the request and\nerror shapes the rest of it follows are\n[#52](https://github.com/NobuData/ouroboros/issues/52)."
+      "description": "The versioned internal contract — what `ouroboros-rest` calls, and the only surface\nit mirrors in a typed client\n([#35](https://github.com/NobuData/ouroboros/issues/35)). `POST /v0/tasks/echo` is\nthe exemplar the rest of it is written to: a closed request body, a `422` in the\nenvelope when it does not validate, and the answering build named in the response."
     }
   ],
   "security": [
@@ -80,7 +80,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.2.0"
+                  "version": "0.3.0"
                 }
               }
             }
@@ -109,7 +109,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.2.0",
+                  "version": "0.3.0",
                   "uptime_seconds": 1234.567
                 }
               }
@@ -117,6 +117,60 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v0/tasks/echo": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Echo a task back",
+        "description": "Accept a task and hand it straight back. The engine has no real work to do yet —\nthe task registry, the queue and the worker model are\n[#54](https://github.com/NobuData/ouroboros/issues/54) — and this route exists to\nsettle, with one working round trip, what every later operation would otherwise\nsettle again: how a request body is described, how it is validated, what a\nrefusal looks like, and where the version of the answering build is reported.\n\n**The request body is closed.** A property this document does not describe is\nrefused rather than dropped, so a caller that misspells `payload` is told so\ninstead of having the field silently ignored.\n\n**The echo is the request.** What comes back under `echo` is the body as the\nengine parsed it, so a caller sees what was actually understood rather than what\nit believes it sent.",
+        "operationId": "echoTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EchoRequest"
+              },
+              "example": {
+                "task_kind": "echo",
+                "payload": {
+                  "note": "hello from ouroboros-rest"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The task, as received, and the build that received it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EchoResponse"
+                },
+                "example": {
+                  "accepted": true,
+                  "echo": {
+                    "task_kind": "echo",
+                    "payload": {
+                      "note": "hello from ouroboros-rest"
+                    }
+                  },
+                  "engine_version": "0.3.0"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           }
         }
       }
@@ -133,14 +187,35 @@
     },
     "responses": {
       "Unauthorized": {
-        "description": "The `X-Ouro-Internal-Key` header was missing or wrong. The body is constant: it\nnames no path, echoes no header and offers no hint about what the key should look\nlike. What an operator needs is in the engine's log instead, which stays inside\nthe cluster.",
+        "description": "The `X-Ouro-Internal-Key` header was missing or wrong. The body is constant: it\nnames no path, echoes no header and offers no hint about what the key should look\nlike. What an operator needs is in the engine's log instead, which stays inside\nthe cluster.\n\n`ouroboros-rest` never forwards this to a browser. A key its own deployment holds\nwrongly is its problem and not the caller's, so it logs the mismatch and answers\n`502` — never `401`, which would invite a browser to try signing in again against\na boundary it cannot reach at all.",
         "content": {
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Error"
             },
             "example": {
-              "detail": "Unauthorized"
+              "code": "unauthenticated",
+              "message": "Unauthorized.",
+              "details": {}
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "The request was understood and its content is not acceptable — a missing field, a\n`task_kind` that is not a well-formed kind, a property the operation does not\ndeclare. `details` carries one entry per field, keyed the way the caller wrote it,\nso each message can be shown against the input that produced it.\n\n`422` rather than `400`: the body parsed, so a caller can tell *I sent the wrong\nvalue* from *I sent something that is not a request*. It is the status\n`ouroboros-rest` answers its own validation failures with, and the code is the\nsame one.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "code": "validation_failed",
+              "message": "The request is not valid. See `details` for each field.",
+              "details": {
+                "task_kind": [
+                  "String should match pattern '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'"
+                ]
+              }
             }
           }
         }
@@ -229,20 +304,99 @@
           }
         }
       },
+      "EchoRequest": {
+        "type": "object",
+        "title": "EchoRequest",
+        "description": "The body of a `POST /v0/tasks/echo` request, and the shape that comes back under\n`echo`. Closed: a property not listed here is refused rather than dropped.",
+        "additionalProperties": false,
+        "required": [
+          "task_kind",
+          "payload"
+        ],
+        "properties": {
+          "task_kind": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+            "description": "Which kind of task this is, as a registry would name it. Lower-case, starting\nwith a letter, with single `.`, `_` or `-` separators — narrow on purpose,\nbecause this is what a future handler is looked up by and it has to survive\nbeing a dictionary key, a log field and a metric label without quoting.",
+            "examples": [
+              "echo"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "description": "The task's own arguments. Open, because what a task takes is the task's\nbusiness; what the contract requires is that it is an object rather than a\nstring somebody has to parse twice.",
+            "examples": [
+              {
+                "note": "hello from ouroboros-rest"
+              }
+            ]
+          }
+        }
+      },
+      "EchoResponse": {
+        "type": "object",
+        "title": "EchoResponse",
+        "description": "The body of a `POST /v0/tasks/echo` response.",
+        "additionalProperties": false,
+        "required": [
+          "accepted",
+          "echo",
+          "engine_version"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "const": true,
+            "description": "Always `true`. This route has exactly one success: a request that validates is\naccepted, and one that does not is a `422` rather than a `200` carrying\n`false`. A task that can be refused while being well-formed is\n[#54](https://github.com/NobuData/ouroboros/issues/54)'s, and will say so on a\ndifferent route.",
+            "examples": [
+              true
+            ]
+          },
+          "echo": {
+            "$ref": "#/components/schemas/EchoRequest",
+            "description": "The request, as received and after validation — so a caller sees what the\nengine actually parsed rather than what it believes it sent."
+          },
+          "engine_version": {
+            "type": "string",
+            "description": "Installed version of the build that answered — the same string `GET /` and\n`GET /v0/status` report. In the body rather than only on `/v0/status` because\nthe gateway logs a round trip it made, and the build that served it belongs in\nthat line without a second call.",
+            "examples": [
+              "0.3.0"
+            ]
+          }
+        }
+      },
       "Error": {
         "type": "object",
         "title": "Error",
-        "description": "The shape every error in this service is reported in. `detail` is FastAPI's own\nkey, and matching it keeps one shape for a client to parse.",
+        "description": "The shape every error in this service is reported in — the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a\nfailure crossing the gateway does not change form on the way out.",
         "additionalProperties": false,
         "required": [
-          "detail"
+          "code",
+          "message",
+          "details"
         ],
         "properties": {
-          "detail": {
+          "code": {
             "type": "string",
-            "description": "A short, constant description of what was refused.",
+            "description": "Stable, machine-readable, and the thing a caller branches on. Derived from the\nstatus rather than invented per call site, so a failure this service has never\nanswered with still carries an honest code.",
             "examples": [
-              "Unauthorized"
+              "validation_failed"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for a person. Never an exception's text and never a stack: anything\n`5xx` carries one constant sentence, because the real diagnosis names the\ninside of this process and belongs in a log an operator reads.",
+            "examples": [
+              "The request is not valid. See `details` for each field."
+            ]
+          },
+          "details": {
+            "type": "object",
+            "description": "Whatever is specific to this failure — for a `422`, one entry per field that\nwas refused, keyed the way the caller wrote it and carrying every message about\nit. Empty rather than absent when there is none, so reading `details.task_kind`\nnever has to check `details` first.",
+            "examples": [
+              {}
             ]
           }
         }

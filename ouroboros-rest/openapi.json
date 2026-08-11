@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.7.0",
+    "version": "0.8.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
-    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)) and sign-in\n([#33](https://github.com/NobuData/ouroboros/issues/33)). The engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) arrives as operations written\nhere and code that answers them.\n\n**Everything below requires a session** except the five operations that carry\n`security: []` — the two halves of sign-in, sign-out, and the three routes whose reader\nis not a browser at all. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, forged, or naming a person who no longer exists.\n\n**Every request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). It is named by the\n`{tenantId}` in the path, or by the `X-Ouro-Tenant` header on the operations that have\nnone, or inferred when the caller belongs to exactly one. A workspace the caller is not\na member of answers **`404`, never `403`** — a `403` would confirm that an identifier\nnames something real — and a member whose role is too low gets the one `403` this API\ndoes answer, because by then the workspace is no secret from them.",
+    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), sign-in\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the five operations that carry\n`security: []` — the two halves of sign-in, sign-out, and the three routes whose reader\nis not a browser at all. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, forged, or naming a person who no longer exists.\n\n**Every request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). It is named by the\n`{tenantId}` in the path, or by the `X-Ouro-Tenant` header on the operations that have\nnone, or inferred when the caller belongs to exactly one. A workspace the caller is not\na member of answers **`404`, never `403`** — a `403` would confirm that an identifier\nnames something real — and a member whose role is too low gets the one `403` this API\ndoes answer, because by then the workspace is no secret from them.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -33,6 +33,10 @@
     {
       "name": "auth",
       "description": "Signing in, and finding out who is signed in. Sign-in is GitHub's authorization code\nflow: a browser is navigated to `/api/v1/auth/github`, authorizes on github.com, and\nreturns to a callback that lands an `HttpOnly` session cookie.\n\n**Everything else in this document requires that cookie.** The three routes that do\nnot are the two halves of sign-in and sign-out — one has no session yet and the other\nis disposing of one that may already have expired — along with the heartbeat and the\ntwo probes, whose readers hold no session and could not be given one.\n\nThe session is a signed, stateless cookie: no server-side store, and so no revocation\nbefore it ages out. Signing out clears the browser's copy; a copy taken beforehand\nstays valid for the remainder of its seven days. That is the MVP trade, and the\nrevocable design is recorded with\n[#38](https://github.com/NobuData/ouroboros/issues/38)."
+    },
+    {
+      "name": "engine",
+      "description": "The gateway to `ouroboros-engine`, the Python backend that executes the work this\nservice brokers. It is internal — reachable from this service and from nothing else\n(`docs/ARCHITECTURE.md` § 10) — so everything a client learns about it, it learns\nthrough an operation here.\n\nThere is no proxy route and there will not be one. Each engine capability arrives as a\nnamed operation with its own contract in this document, because a route that forwarded\na path, a method and a body to an internal service would be that boundary written as a\nhole.\n\n**The engine failing is always a `502`.** Down, slow, unresolvable, holding a\nmismatched shared secret, or answering outside its own contract are one answer with\none code, naming no address. A mismatched secret in particular is never forwarded as a\n`401`: it is a deployment's mistake rather than a caller's, and telling a browser to\nsign in again for it would be telling it about a boundary it cannot reach."
     },
     {
       "name": "tenants",
@@ -310,6 +314,67 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/engine/status": {
+      "get": {
+        "tags": [
+          "engine"
+        ],
+        "summary": "Report the engine's health and version",
+        "description": "Whether `ouroboros-engine` is reachable, and which build answered.\n\nThe engine is internal — it is reachable from this service and from nothing else\n(`docs/ARCHITECTURE.md` § 10) — so this is how a signed-in person learns anything\nabout it at all. This service asks the engine `GET /v0/status` over the internal\nboundary, carrying a shared secret a browser never sees, and reports back the two\nfacts a caller can act on.\n\n**Every way that call can fail is one `502`.** An engine that is down, one that is\ntoo slow, one at an address that no longer resolves, one holding a different shared\nsecret, and one answering outside its own contract are indistinguishable here by\ndesign: the caller learns that the system cannot serve the request, and nothing it\ncould use to probe the inside of the network. In particular a shared-secret mismatch\nis **never** forwarded as a `401` — that is this deployment's mistake rather than the\ncaller's, and it is logged where an operator reads it.\n\nThis route is not a proxy. It is a named operation with its own contract that\nhappens to be answered by asking the engine one question, because a route that\nforwarded a path, a method and a body to an internal service would be the boundary\nabove written as a hole.",
+        "operationId": "readEngineStatus",
+        "responses": {
+          "200": {
+            "description": "The engine answered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineStatus"
+                },
+                "example": {
+                  "engine": "up",
+                  "version": "0.3.0"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. The engine's own credential has nothing to do with this answer; see\nthe `502` below.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`engine_unavailable` — the engine could not serve this request. `details` is\nempty and the message names no address: everything that would go in them — the\nstatus the engine answered, the code the socket failed with, the URL that was\ncalled — is in this service's log instead.\n\nA `502` rather than a `500`, because nothing in this service is broken and\nretrying is reasonable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "engine_unavailable",
+                  "message": "The engine is not available right now. Try again in a moment.",
+                  "details": {}
                 }
               }
             }
@@ -3297,6 +3362,33 @@
             "description": "The branch work is cut from. Left alone when omitted rather than cleared. The\nshape is an allow-list — letters, digits, dot, underscore, hyphen and slash, with\nno leading or trailing slash, no empty segment, no leading dot and no `..`\nanywhere — because the value is joined onto a filesystem path.",
             "examples": [
               "main"
+            ]
+          }
+        }
+      },
+      "EngineStatus": {
+        "type": "object",
+        "title": "EngineStatus",
+        "description": "The body of a `GET /api/v1/engine/status` response.",
+        "additionalProperties": false,
+        "required": [
+          "engine",
+          "version"
+        ],
+        "properties": {
+          "engine": {
+            "type": "string",
+            "const": "up",
+            "description": "Always `up`, and that is honest rather than redundant: every way the engine can\nfail to answer is a `502`, so a body that exists at all came from a reachable\nengine. It is a field rather than nothing so the shape can grow a second state —\n`degraded`, once there is something that could be degraded — without changing how\na client reads the first one.",
+            "examples": [
+              "up"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "description": "The engine build that answered, read from its package metadata. It is the\nengine's version and not this service's: the two are released independently\n(`docs/CONVENTIONS.md` § 8), and which pair is deployed together is exactly what\nthis route exists to tell you.",
+            "examples": [
+              "0.3.0"
             ]
           }
         }

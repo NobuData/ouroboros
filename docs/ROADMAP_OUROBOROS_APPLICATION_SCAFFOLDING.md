@@ -1065,7 +1065,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.6 | #32 | 🟢 Done | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.7 | #33 | 🟢 Done | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
-| 4.9 | #35 | 🟡 Open | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
+| 4.9 | #35 | 🟢 Done | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
 | 4.10 | #36 | 🟡 Open | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
 | 4.11 | #37 | 🟡 Open | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.12 | #38 | 🟡 Open | ouroboros-rest: [4.12] Security baseline hardening | Helmet, CORS policy, rate limiting, cookie hardening review | v2, rest | N (after 4.7) | N | M | ouroboros-rest |
@@ -1428,19 +1428,35 @@ openapi.yaml ─ yarn openapi ─▶ openapi.json ─┬─▶ /api/docs · /api
 
 ### Issue 4.9 — ouroboros-rest: [4.9] Engine gateway module
 
-> **GitHub issue:** #35 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #35 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** The UI must never talk to the Python backend directly; REST
   needs a typed internal client and a controlled pass-through, establishing the
   boundary pattern all future engine features follow.
-- **Solution/Scope:** `EngineModule`: internal HTTP client (base URL + shared-secret
-  header from config, timeouts, single retry on connect errors, error mapping to the
-  4.5 envelope); `GET /api/v1/engine/status` exposing engine health/version to
-  authenticated users; typed methods mirroring 6.3's contract (`status()`,
-  `echo(task)`). Circuit breaking noted as v2.
+- **Solution/Scope:** `EngineModule` — a typed client over bare `fetch` and one route.
+  `engine.contract.ts` mirrors 6.3's `/v0` in one readable file: routes, the header, and
+  schemas that **parse** rather than assert, so an engine answering outside its contract is a
+  502 at the boundary instead of an `undefined` in a handler — and a field the engine *added*
+  is ignored, because the compatibility rule allows one. The client adds the shared secret, a
+  five-second deadline (aborted, not raced) and **one retry taken only for a failure that
+  proves nothing was delivered** — `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`; deliberately not
+  `ECONNRESET`, because that connection may have delivered the request and a task the engine
+  already holds must not be sent twice. `GET /api/v1/engine/status` is authenticated and
+  `@TenantOptional()` — there is one engine behind every workspace — and it is a *named
+  operation*, not a proxy: a route forwarding a path, a method and a body to an internal
+  service would be the "engine is internal" invariant written as a hole. Error introspection
+  that the readiness probe had grown for itself moved to `errors/failure.ts` and is now shared
+  by both, along with the URL resolution, so probe and client cannot disagree about which
+  address they are talking to. Circuit breaking stays v2: with one retry and a bounded
+  deadline a caller waits at most one timeout, and a breaker's value is shedding load across
+  many concurrent callers.
 - **Acceptance Criteria:** Status roundtrip works in compose (7.1); engine-down maps to
   a clean 502 envelope with the engine unnamed-by-URL (no internal address leak);
-  shared-secret mismatch logged and surfaced as 502, never 401 to the client.
+  shared-secret mismatch logged and surfaced as 502, never 401 to the client. All three are
+  asserted: every failure mode is checked to answer `502 engine_unavailable`, the address,
+  hostname, port and secret are each checked to be absent from the envelope, and the
+  mismatch is checked to be logged by variable name — while the secret is checked never to
+  reach the log at all.
 - **Parallelism/Dependencies:** Needs 4.2, 6.3. Blocks 7.2 chain test.
 - **Technical Stack:** NestJS, undici/fetch.
 - **Epic:** 4
@@ -1817,7 +1833,7 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 6.1 | #50 | 🟢 Done | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
 | 6.2 | #51 | 🟢 Done | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
-| 6.3 | #52 | 🟡 Open | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
+| 6.3 | #52 | 🟢 Done | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
 | 6.4 | #53 | 🟡 Open | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
 | 6.5 | #54 | 🟡 Open | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | v2, engine | N (after 6.3) | N | L | ouroboros-engine |
 
@@ -1931,16 +1947,27 @@ src/ouroboros_engine/
 
 ### Issue 6.3 — ouroboros-engine: [6.3] Internal API contract v0
 
-> **GitHub issue:** #52 · **Status:** 🟡 Open · **Parent epic:** #6
+> **GitHub issue:** #52 · **Status:** 🟢 Done · **Parent epic:** #6
 
 - **Problem Statement:** REST↔engine needs a versioned contract with one working
   round-trip, establishing the pattern (schemas, versioning, error shape) before real
   engine features exist.
-- **Solution/Scope:** `/v0/` router: `POST /v0/tasks/echo` (pydantic request
-  `{task_kind, payload}` → response `{accepted, echo, engine_version}`) as the
-  contract exemplar; FastAPI's exported OpenAPI committed as
-  `ouroboros-engine/openapi.json` (CI drift check like 4.8); error shape mirroring the
-  REST envelope; contract documented in `docs/ARCHITECTURE.md`. 4.9's typed client
+- **Solution/Scope:** `POST /v0/tasks/echo` — pydantic request `{task_kind, payload}` →
+  `{accepted, echo, engine_version}` — as the contract exemplar, plus the two things it
+  exists to settle. The **request body is closed** (`extra="forbid"`, mirroring REST's
+  whitelist), so a misspelled field is refused rather than dropped and read as honoured;
+  and **every failure answers in the REST envelope** — `{code, message, details}`, with
+  `details` keyed by the field the caller wrote, the same codes for the same statuses, and
+  a `5xx` message that is a constant. Three handlers make that true of the answers no route
+  produced, because FastAPI's `{"detail": …}`, a validation error's `{"detail": [ … ]}` and
+  Starlette's plain-text 500 are otherwise three shapes behind one gateway; the `401` the
+  guard already sent was reshaped to match. A refusal never echoes the input FastAPI's own
+  422 carries back, because a task payload is whatever the caller put in it. The
+  versioning rule moved out of `status.py` into `api/v0.py` — added fields and added routes
+  inside `/v0`, a `/v1` for anything that disappears or changes meaning — and the spec was
+  already committed and drift-checked (6.2), so this extends it: the suite now also fails on
+  a documented body with no example, and sends each documented request example as a real
+  request. Contract documented in `docs/ARCHITECTURE.md` §§ 5.2–5.3. 4.9's typed client
   mirrors this.
 - **Acceptance Criteria:** Echo round-trip via REST gateway works in compose;
   validation errors return the documented shape; spec committed and drift-checked.

@@ -2,8 +2,10 @@
 
 > **Status:** scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50);
 > liveness, `/v0/status` and the internal-key guard landed with
-> [#51](https://github.com/NobuData/ouroboros/issues/51). The rest of the `/v0` contract
-> is [#52](https://github.com/NobuData/ouroboros/issues/52).
+> [#51](https://github.com/NobuData/ouroboros/issues/51); the versioned contract — the
+> echo round trip and the error envelope — with
+> [#52](https://github.com/NobuData/ouroboros/issues/52). The work it will eventually
+> broker is [#54](https://github.com/NobuData/ouroboros/issues/54).
 
 ## Purpose
 
@@ -78,6 +80,7 @@ uv run uvicorn ouroboros_engine.main:app --host 0.0.0.0 --port "${PORT:-8000}"
 | `GET /healthz` | no | `{"status":"ok"}` — liveness, for a container platform's probe |
 | `GET /` | yes | The service name and its installed version |
 | `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
+| `POST /v0/tasks/echo` | yes | The contract exemplar: `{task_kind, payload}` back as `{accepted, echo, engine_version}` |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
 ```console
@@ -85,10 +88,22 @@ $ curl -s localhost:8000/healthz && echo
 {"status":"ok"}
 
 $ curl -s localhost:8000/v0/status && echo
-{"detail":"Unauthorized"}
+{"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.2.0","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.3.0","uptime_seconds":42.5}
+
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+    -H 'content-type: application/json' \
+    -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
+    localhost:8000/v0/tasks/echo && echo
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.3.0"}
+
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+    -H 'content-type: application/json' \
+    -d '{"task_kind":"Echo","payload":{}}' \
+    localhost:8000/v0/tasks/echo && echo
+{"code":"validation_failed","message":"The request is not valid. See `details` for each field.","details":{"task_kind":["String should match pattern '^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'"]}}
 ```
 
 `/healthz` is deliberately shallow: it opens no connection and reads no configuration,
@@ -97,15 +112,36 @@ the dependencies reachable — is REST's probe
 ([#29](https://github.com/NobuData/ouroboros/issues/29)), which asks `/v0/status` with
 the key.
 
-Everything else is behind the guard, and a rejection is a bare
-`401 {"detail":"Unauthorized"}` whether the path exists or not — status codes are how a
-surface gets mapped from outside, so an unauthenticated caller cannot tell
-`/v0/status` from `/v0/anything-else`. The rejection is logged with the path and the
-method; the key that was offered never is, right or wrong.
+Everything else is behind the guard, and a rejection is one constant body whether the
+path exists or not — status codes are how a surface gets mapped from outside, so an
+unauthenticated caller cannot tell `/v0/status` from `/v0/anything-else`. The rejection
+is logged with the path and the method; the key that was offered never is, right or
+wrong. `ouroboros-rest` never forwards that `401` to a browser: a key its own deployment
+holds wrongly is its problem, so it logs the mismatch and answers `502`.
 
-`/v0` is the versioned internal prefix. `/v0/status` claims the path; the request and
-error shapes the rest of it follows are
-[#52](https://github.com/NobuData/ouroboros/issues/52).
+`/v0` is the versioned internal prefix, and it is unstable by definition — it changes
+with the two services that share it, which deploy together. A field may be added to a
+response and a route may be added to the prefix; a field that disappears, changes type or
+changes meaning is a `/v1` served alongside this one, not an edit to it. The rule is
+written down in [`api/v0.py`](src/ouroboros_engine/api/v0.py), which is where a router
+under the prefix reads it from rather than restating it.
+
+### Every error has one shape
+
+`{code, message, details}` — the same envelope `ouroboros-rest` answers a browser with
+([`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) § 5.3), so a failure crossing the
+gateway does not change form on the way out. `code` is stable and machine-readable and is
+what a caller branches on; `message` is written for a person; `details` carries what is
+specific to the failure, which for a `422` is one entry per field that was refused, keyed
+the way the caller wrote it.
+
+It covers the answers no route produced, too — a path nothing claims, a method a path does
+not allow, a body that could not be parsed, an exception nobody expected — so the gateway
+parses one shape rather than one per layer. Two rules hold for what it may say:
+**anything `5xx` carries one constant sentence**, because the real diagnosis names the
+inside of this process and belongs in a log; and **a refusal never echoes what was
+refused**, which is why FastAPI's own `422` (it returns the rejected input under
+`detail[].input`) is replaced rather than reshaped.
 
 ## The API specification
 
@@ -218,8 +254,11 @@ ouroboros-engine/
 │   ├── api/            # one module per router
 │   │   ├── health.py   #   GET /healthz — the one public path
 │   │   ├── root.py     #   GET /
-│   │   └── status.py   #   GET /v0/status; the rest of the contract is #52
+│   │   ├── status.py   #   GET /v0/status
+│   │   ├── tasks.py    #   POST /v0/tasks/echo — the contract exemplar
+│   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
+│   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
 │   │   ├── logging.py  #   JSON records at OURO_LOG_LEVEL
 │   │   ├── security.py #   the internal-key guard
 │   │   └── uptime.py   #   the stopwatch /v0/status reports from
@@ -257,6 +296,8 @@ Scaffold [#50](https://github.com/NobuData/ouroboros/issues/50) ·
 internal auth [#51](https://github.com/NobuData/ouroboros/issues/51) ·
 API contract [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#53](https://github.com/NobuData/ouroboros/issues/53) ·
+task execution [#54](https://github.com/NobuData/ouroboros/issues/54) ·
+the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

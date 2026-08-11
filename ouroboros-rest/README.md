@@ -19,14 +19,15 @@
 > [scoping every request to one workspace](#the-tenant-context) — with the lint, typecheck,
 > test and build pipeline `ci/rest` runs.
 >
-> **Every route requires a session, and every route but three requires a workspace.** A
+> **Every route requires a session, and every route but four requires a workspace.** A
 > workspace you are not a member of answers `404` rather than `403`, and administering one
-> needs `owner` or `admin`. What is left in the epic is the engine gateway
-> ([#35](https://github.com/NobuData/ouroboros/issues/35)), the container
-> ([#36](https://github.com/NobuData/ouroboros/issues/36)), the Testcontainers harness
-> ([#37](https://github.com/NobuData/ouroboros/issues/37)) and the security baseline
-> ([#38](https://github.com/NobuData/ouroboros/issues/38)); the remaining feature modules
-> are listed under [Layout](#layout).
+> needs `owner` or `admin`. The [engine gateway](#the-engine-gateway)
+> ([#35](https://github.com/NobuData/ouroboros/issues/35)) is in: one typed client, one
+> route, and every way the engine can fail answered as one `502`. What is left in the epic
+> is the container ([#36](https://github.com/NobuData/ouroboros/issues/36)), the
+> Testcontainers harness ([#37](https://github.com/NobuData/ouroboros/issues/37)) and the
+> security baseline ([#38](https://github.com/NobuData/ouroboros/issues/38)); the remaining
+> feature modules are listed under [Layout](#layout).
 
 ## Purpose
 
@@ -52,6 +53,7 @@ in a single, auditable place.
 | Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                  |
 | Auth            | GitHub OAuth over bare `fetch` — no passport; a signed `HttpOnly` session cookie and a global guard ([#33](https://github.com/NobuData/ouroboros/issues/33))               |
 | Tenancy         | A request-scoped tenant context over `AsyncLocalStorage`, a global guard and `@Roles(…)` ([#32](https://github.com/NobuData/ouroboros/issues/32))                          |
+| Engine gateway  | A typed client over bare `fetch` — shared secret, five-second deadline, one retry, zod-parsed answers, every failure a `502` ([#35](https://github.com/NobuData/ouroboros/issues/35)) |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
 | Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
 | Lint            | ESLint flat config + Prettier                                                                                                                                              |
@@ -653,6 +655,54 @@ listing to the caller). Ambient state is a dependency the compiler cannot see: r
 and services take their `tenantId` as a parameter, as they always did, and the ambient form
 is for the cases where threading a parameter is the problem rather than the solution.
 
+## The engine gateway
+
+The UI never talks to `ouroboros-engine`; it talks to this service, and this service talks
+to the engine ([#35](https://github.com/NobuData/ouroboros/issues/35)). One route publishes
+that today:
+
+```console
+$ curl -s -b ouro_session=… localhost:4000/api/v1/engine/status
+{"engine":"up","version":"0.3.0"}
+
+$ curl -s -b ouro_session=… localhost:4000/api/v1/engine/status   # with the engine stopped
+{"code":"engine_unavailable","message":"The engine is not available right now. Try again in a moment.","details":{}}
+```
+
+**It is a pass-through, not a proxy.** A route that forwarded a path, a method and a body to
+an internal service would be the "engine is internal" invariant
+([`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) § 10) written as a hole. So each engine
+capability arrives as a named operation with its own contract in `openapi.yaml`, and the
+next one is another entry beside this one.
+
+`EngineClient` is what those operations call, and it is the only place in the service that
+knows the engine exists. It mirrors the engine's `/v0` contract in `engine.contract.ts` —
+routes, request and response shapes — and four rules hold for every call it makes:
+
+- **The secret travels on `X-Ouro-Internal-Key`**, from `OURO_ENGINE_SHARED_SECRET`. It is
+  never logged, right or wrong.
+- **Every call is bounded** at five seconds, aborted rather than raced, so a slow engine
+  cannot hold a browser open indefinitely.
+- **One retry, and only when nothing was delivered** — `ECONNREFUSED`, `ENOTFOUND`,
+  `EAI_AGAIN`, which is what a pod being replaced looks like from here. A deadline is not
+  retried, an answer is never retried, and neither is `ECONNRESET`: that connection may have
+  delivered the request, and a task the engine has already accepted must not be sent twice.
+- **The answer is parsed, not asserted.** A response that is not the contract — an older
+  build, a proxy's error page, a field that changed type — is a `502` at the boundary rather
+  than an `undefined` several layers into a handler. A field the engine *added* is ignored,
+  because `/v0`'s compatibility rule allows one.
+
+**Every way that call can fail is one `502 engine_unavailable`.** Down, slow, unresolvable,
+holding a mismatched shared secret, or answering outside its own contract are indistinguishable
+to a caller by design, and the message names no address: `OURO_ENGINE_URL` is internal
+topology. A mismatched secret in particular is **never** forwarded as a `401` — that is this
+deployment's mistake rather than the caller's — and it is the one failure logged by name,
+because from the outside it looks exactly like an engine that is merely unwell.
+
+The readiness probe is a separate request and stays that way. It reads `GET /healthz`, which
+the engine serves without the key, and reports rather than answers — see
+[Health and readiness](#health-and-readiness).
+
 ## Layout
 
 ```
@@ -670,7 +720,7 @@ ouroboros-rest/
 │       ├── db/             # schema types, pool, Kysely instance, lifecycle
 │       ├── tenancy/        # tenants, domains, members, enablement · #31 · context #32
 │       ├── auth/           # GitHub OAuth, sessions, the global guard     · #33
-│       └── engine/         # typed internal client                        · #35
+│       └── engine/         # typed internal client + /engine/status       · #35
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML
 ├── openapi.yaml            # the API specification — authoritative, hand-written
 ├── openapi.json            # rendered from it; the copy the service loads
@@ -682,9 +732,9 @@ ouroboros-rest/
 └── tsconfig.build.json     # the same, minus the specs — what ships
 ```
 
-`engine/` is named above and does not exist yet; it arrives as one directory and one entry
-in `AppModule.forRoot`'s `imports`, which is what `health/`, `db/`, `tenancy/` and `auth/`
-each cost. `config/` is global, so a feature module reads configuration by injecting
+Each of those is one directory and one entry in `AppModule.forRoot`'s `imports`, which is
+the whole of what adding a module costs. `config/` is global, so a feature module reads
+configuration by injecting
 `AppConfigService` without importing anything; `db/` is deliberately not, so a module that
 queries says so by importing it — `tenancy/` and `auth/` both do.
 
@@ -726,6 +776,8 @@ data access [#30](https://github.com/NobuData/ouroboros/issues/30) ·
 tenancy API [#31](https://github.com/NobuData/ouroboros/issues/31) ·
 auth [#33](https://github.com/NobuData/ouroboros/issues/33) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
+engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
+the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 full epic [#4](https://github.com/NobuData/ouroboros/issues/4).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

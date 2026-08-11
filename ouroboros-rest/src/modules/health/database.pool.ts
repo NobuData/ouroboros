@@ -20,7 +20,8 @@ import { Pool, type PoolConfig } from "pg";
 
 import { SERVICE_NAME } from "../../version";
 import { AppConfigService } from "../config/config.service";
-import { PROBE_TIMEOUT_MS, describeForLog } from "./probe";
+import { describeForLog } from "../errors/failure";
+import { PROBE_TIMEOUT_MS } from "./probe";
 
 /**
  * The slice of a `pg.Pool` a connectivity probe uses.

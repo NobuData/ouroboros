@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from ouroboros_engine import __version__
-from ouroboros_engine.api.status import V0_PREFIX
+from ouroboros_engine.api.v0 import V0_PREFIX
 from ouroboros_engine.core.uptime import Uptime
 
 STATUS_PATH = f"{V0_PREFIX}/status"
@@ -53,8 +53,8 @@ def test_status_carries_exactly_the_documented_fields(client: TestClient) -> Non
     body = client.get(STATUS_PATH).json()
 
     assert set(body) == {"service", "version", "uptime_seconds"}, (
-        "ouroboros-rest codes against this shape; a field added here is a contract "
-        "change and belongs to #52"
+        "ouroboros-rest's typed client codes against this shape; adding a field is a "
+        "contract change, and removing one is a /v1 (ouroboros_engine.api.v0)"
     )
 
 

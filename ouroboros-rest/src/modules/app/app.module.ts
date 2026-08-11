@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
 import { DbModule } from "../db/db.module";
+import { EngineModule } from "../engine/engine.module";
 import { HealthModule } from "../health/health.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { AppController } from "./app.controller";
@@ -15,17 +16,18 @@ import { AppService } from "./app.service";
  * `src/modules/` is one directory per concern. `health`
  * ([#29](https://github.com/NobuData/ouroboros/issues/29)), `db`
  * ([#30](https://github.com/NobuData/ouroboros/issues/30)), `tenancy`
- * ([#31](https://github.com/NobuData/ouroboros/issues/31)) and `auth`
- * ([#33](https://github.com/NobuData/ouroboros/issues/33)) are in; the one the epic adds
- * next is already named: `engine`
- * ([#35](https://github.com/NobuData/ouroboros/issues/35)). Each arrives as a sibling
+ * ([#31](https://github.com/NobuData/ouroboros/issues/31)), `auth`
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33)) and now `engine`
+ * ([#35](https://github.com/NobuData/ouroboros/issues/35)) are in. Each arrives as a sibling
  * directory and one entry in the `imports` below, so what a module contributes is visible
  * in one line here rather than spread through the tree.
  *
  * `AuthModule` is imported before `TenancyModule` for a reason that is not alphabetical:
  * it registers the global session guard, and reading this list top to bottom should say
  * *authentication, then the routes it protects* rather than leave the reader to discover
- * the guard inside a module three lines further down.
+ * the guard inside a module three lines further down. `EngineModule` comes after both,
+ * which is the same thought once more: its one route is authenticated and tenant-optional,
+ * and it is a route only because both guards are already registered above it.
  *
  * `errors` is the exception to that shape and has no module: it holds the envelope every
  * failure is answered in, and the filter and pipe that produce it are registered on the
@@ -67,6 +69,7 @@ export class AppModule {
         HealthModule,
         AuthModule,
         TenancyModule,
+        EngineModule,
       ],
     };
   }

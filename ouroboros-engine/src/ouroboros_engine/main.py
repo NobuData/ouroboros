@@ -17,7 +17,8 @@ committed file this module loads rather than a document FastAPI derives from the
 
 from fastapi import FastAPI
 
-from ouroboros_engine.api import health, root, status
+from ouroboros_engine.api import health, root, status, tasks
+from ouroboros_engine.core.errors import register_error_handlers
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
@@ -102,9 +103,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         public_paths=_PUBLIC_PATHS,
     )
 
+    # Every failure answers in one shape, including the ones no route produced: a body
+    # pydantic refused, a path no router claims, an exception nobody expected. See
+    # `ouroboros_engine.core.errors` — the envelope is the same one ouroboros-rest sends,
+    # so a failure crossing the gateway does not change form on the way out.
+    register_error_handlers(app)
+
     app.include_router(health.router)
     app.include_router(root.router)
     app.include_router(status.router)
+    app.include_router(tasks.router)
     return app
 
 
