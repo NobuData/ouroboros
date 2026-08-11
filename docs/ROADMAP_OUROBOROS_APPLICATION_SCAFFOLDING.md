@@ -259,8 +259,9 @@ docker compose up
 > notice instead of failing; and `scripts/verify-ci.sh` with its tests, which proves the
 > routing table from the checkout — 106 checks, including that a change under
 > `ouroboros-ui/` queues `ci/ui` and nothing else. `ci/db` runs the data-tier contract
-> that needs no database; issue 3.6 (#24) adds the live `migrate` → `validate` →
-> `constraints.sql` pass to that same job.
+> that needs no database; issue 3.6 (#24) has since added the live `migrate` →
+> `validate` → `constraints.sql` pass to that same job, and its assertions to this
+> script — 136 checks now.
 
 - **Problem Statement:** Four modules with three toolchains in one repo; unfiltered CI
   would run everything on every PR — slow and noisy.
@@ -577,7 +578,7 @@ per-tenant GitHub org/repo enablement.
 | 3.3 | #21 | 🟢 Done | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
 | 3.4 | #22 | 🟢 Done | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
 | 3.5 | #23 | 🟢 Done | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
-| 3.6 | #24 | 🟡 Open | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
+| 3.6 | #24 | 🟢 Done | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
 | 3.7 | #25 | 🟡 Open | ouroboros-db: [3.7] Row-level security & least-privilege roles | RLS policies keyed on tenant; separate migration/app DB roles | v2, db | N (after 3.4) | N | L | ouroboros-db, ouroboros-rest |
 | 3.8 | #26 | 🟡 Open | ouroboros-db: [3.8] Audit log table & write path | Append-only `audit_events` per tenant (settings mockup: audit log) | v2, db | N (after 3.3) | N | M | ouroboros-db |
 
@@ -934,7 +935,53 @@ R__dev_seed.sql ─▶ acme-robotics ─┬─ domains: acme-robotics.dev
 
 ### Issue 3.6 — ouroboros-db: [3.6] Migration CI check
 
-> **GitHub issue:** #24 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #24 · **Status:** 🟢 Done · **Parent epic:** #3
+>
+> Delivered: the live pass in [`.github/workflows/db.yml`](../.github/workflows/db.yml),
+> added to the `ci/db` job 1.4 (#11) created for it. A `postgres:17-alpine` service
+> container is started empty for every run, `ouroboros-db/scripts/migrate` applies `V000`
+> through `R__dev_seed.sql` to it from scratch, `scripts/validate` reads the history back
+> for checksums and the naming rule, and
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) then asks the schema
+> to refuse the things it claims to refuse. A second database is migrated twice with
+> `flyway.seed.toml` and asserted by
+> [`tests/seed.sql`](../ouroboros-db/tests/seed.sql) — the first database has to go on
+> proving what a *production* migration does, which is apply the seed and insert nothing.
+>
+> **It runs the module's own commands, not a `flyway` invocation written into the
+> workflow.** CI reads `ouroboros-db/flyway.toml` through `-workingDirectory` exactly as
+> `docker compose up` and a hand-run `scripts/migrate` do, so there is no configuration
+> that only CI applies and none it can miss. The `.sql` suites are run by a `psql` from
+> the same pinned image, so the client tracks the server's major version rather than
+> whatever a runner image happens to ship.
+>
+> The image is pinned in three places — the service container, the `POSTGRES_IMAGE` the
+> assertion steps use (the `env` context is not available to a service definition, so the
+> string cannot simply be shared), and `docker-compose.yml`. `scripts/verify-ci.sh` fails
+> if any of the three drifts, because CI proving a PostgreSQL nobody develops against is
+> worth less than the minute it costs.
+>
+> Ten new mutation cases in `scripts/tests/verify-ci.test.sh` each remove one step of the
+> pass — the service container, the healthcheck's `-U`/`-d`, `migrate`, `validate`,
+> `constraints.sql`, the seed overlay, `seed.sql`, and each of the three pins — and each
+> turns the verifier red. A live pass that quietly stops running is the failure mode
+> worth testing for: the job still reports green, about the half a file read already
+> covered.
+>
+> **Demonstrably red, checked once and reverted**, against a throwaway PostgreSQL 17 —
+> all four ways a migration can be wrong: a migration whose SQL fails (`migrate` exits 1,
+> changes rolled back); an applied migration edited afterwards (`validate` exits 1,
+> "Migrations have failed validation"); a misnamed file (`validate` exits 1, "Invalid
+> versioned migration name format"); and a `V004` that drops
+> `tenant_members_role_valid`, which applies and validates cleanly and is caught only by
+> `constraints.sql` (exit 3, "FAILED: tenant_members.role rejects a value outside
+> owner|admin|member|viewer"). That last one is the case the whole behavioural half
+> exists for.
+>
+> The path filter 1.4 established already answers the third criterion: `ci/db` runs on
+> `ouroboros-db/**` plus the two files the data tier's contract spans
+> (`docker-compose.yml`, `.env.example`) and its own definition, and `verify-ci.sh`
+> proves the routing from the checkout.
 
 - **Problem Statement:** A migration that fails or drifts must be caught on the PR, not
   on a developer's machine.

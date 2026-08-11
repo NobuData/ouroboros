@@ -7,8 +7,9 @@
 # filters route a change to exactly the workflows that can be affected by it and to no
 # others; that the Node and Python versions are pinned in one place rather than per
 # workflow; that a module whose scaffold has not landed yet is skipped deliberately
-# instead of failing; and that each pipeline runs the verbs docs/CONVENTIONS.md § 3
-# promises for its toolchain.
+# instead of failing; that each pipeline runs the verbs docs/CONVENTIONS.md § 3 promises
+# for its toolchain; and that `ci/db` still carries the live migration pass (#24) against
+# the PostgreSQL the development stack pins.
 #
 # It reads files and starts nothing: no runner, no network, no GitHub. Whether a
 # workflow passes is what a pull request answers; what this answers is whether the right
@@ -304,6 +305,69 @@ done
 
 check_contains "$WORKFLOWS/db.yml" '^        run: scripts/verify-dev-env\.sh$' \
   'db.yml asserts the migration and data-tier contract'
+
+# ---------------------------------------------------------------------------
+# The database's live pass (#24)
+# ---------------------------------------------------------------------------
+
+# Everything else `ci/db` runs is a file read, and a file read cannot tell whether a
+# migration applies or whether the schema it leaves behind enforces what it claims. These
+# assert that the half which needs a running PostgreSQL is still wired in: a database is
+# started, the migrations are applied to it from empty, Flyway is asked to validate what
+# it wrote, and both `.sql` assertion suites are run against the result.
+#
+# What each of those steps *proves* is the suites' business; what this proves is that
+# they are still invoked, because a live pass silently dropped from the workflow looks
+# exactly like a data tier with nothing wrong with it.
+
+printf '\nDatabase live pass\n'
+
+DB_WORKFLOW="$WORKFLOWS/db.yml"
+
+check_contains "$DB_WORKFLOW" '^    services:$' 'db.yml starts a database to migrate'
+# The same gate the compose file uses, and named the same way: pg_isready probing as the
+# OS user reports ready while the database being created is still absent, so a run
+# without -U/-d races initdb rather than waiting for it.
+check_contains "$DB_WORKFLOW" 'pg_isready -U .* -d ' \
+  'db.yml waits on a healthcheck that names the role and database'
+
+# The commands a developer runs, so CI and a laptop apply the same checkout under the
+# same rules — both read ouroboros-db/flyway.toml through -workingDirectory.
+check_contains "$DB_WORKFLOW" '^        run: ouroboros-db/scripts/migrate$' \
+  'db.yml migrates a clean database'
+check_contains "$DB_WORKFLOW" '^        run: ouroboros-db/scripts/validate$' \
+  'db.yml validates what it applied'
+
+# `validate` compares checksums, so a unique index on the wrong columns or a cascade
+# left off passes it untouched. constraints.sql is what asks the schema to refuse things.
+check_contains "$DB_WORKFLOW" 'tests/constraints\.sql' \
+  'db.yml asserts what the schema enforces'
+
+# The seed's own leg. It needs the overlay, because ${ouro_dev_seed} is false in every
+# configuration but that one — which is the guard, and is also why this cannot simply be
+# asserted against the database above.
+check_contains "$DB_WORKFLOW" 'flyway\.seed\.toml' \
+  'db.yml migrates a second database with the dev-seed overlay'
+check_contains "$DB_WORKFLOW" 'tests/seed\.sql' \
+  'db.yml asserts what the seed put there'
+
+# PostgreSQL is pinned in three places that have to agree. The service container is one;
+# POSTGRES_IMAGE — the image the psql steps run the `.sql` suites from — is the second,
+# and it is a second place rather than the same one because the `env` context is not
+# available to a service definition; the development stack is the third, and the point
+# of the whole job is that a pull request proves what a developer will get.
+#
+# `head -n 1` throughout: the first match is the one that matters, and a file with none
+# yields the empty string, which fails the comparison with the reason printed.
+db_service_image=$(sed -n 's/^        image: \(postgres:[^ ]*\)$/\1/p' "$DB_WORKFLOW" 2>/dev/null | head -n 1)
+db_client_image=$(sed -n 's/^      POSTGRES_IMAGE: \(postgres:[^ ]*\)$/\1/p' "$DB_WORKFLOW" 2>/dev/null | head -n 1)
+compose_image=$(sed -n 's/^    image: \(postgres:[^ ]*\)$/\1/p' docker-compose.yml 2>/dev/null | head -n 1)
+
+check_matches "$compose_image" '^postgres:[0-9]' 'the compose stack pins a PostgreSQL version'
+check_equals "$compose_image" "$db_service_image" \
+  'db.yml migrates the PostgreSQL the development stack pins'
+check_equals "$compose_image" "$db_client_image" \
+  'db.yml runs the assertion suites from that same image'
 
 # ---------------------------------------------------------------------------
 # Documentation

@@ -395,14 +395,32 @@ definition. Four rules keep them interchangeable:
 4. **Actions are pinned to a release**, never to `@main`, and every workflow asks for no
    more than `contents: read`.
 
-`ci/db` today asserts what needs no database — migration naming, the pinned images and
-healthcheck gate, the Flyway project's own settings, credential hygiene, the environment
-template — and then runs the module's tooling tests
-([`ouroboros-db/tests`](../ouroboros-db/tests)), which exercise the migration runner and
-its `scripts/` wrappers against stubbed runners. The live pass (`flyway migrate` against
-a throwaway PostgreSQL, `validate`, `tests/constraints.sql`) is
-[#24](https://github.com/NobuData/ouroboros/issues/24), which adds its steps to that
-same job.
+`ci/db` runs in two halves, and the order is deliberate — the cheap half first, so a
+misnamed migration is reported before a database is waited on.
+
+**What needs no database** — migration naming, the pinned images and healthcheck gate,
+the Flyway project's own settings, credential hygiene, the environment template — then
+the module's tooling tests ([`ouroboros-db/tests`](../ouroboros-db/tests)), which
+exercise the migration runner and its `scripts/` wrappers against stubbed runners.
+Seconds, no daemon, no network.
+
+**The live pass** ([#24](https://github.com/NobuData/ouroboros/issues/24)): a
+`postgres:17-alpine` service container — the same image
+[`docker-compose.yml`](../docker-compose.yml) pins, so a pull request proves what a
+developer gets — migrated from empty by `ouroboros-db/scripts/migrate`, validated by
+`ouroboros-db/scripts/validate`, then asked what it actually enforces by
+[`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql). A second database is
+migrated twice with the dev-seed overlay and asserted by
+[`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which is both the seed's content
+check and its idempotency check — every assertion in it says *exactly one*.
+
+Two things about that pass are worth stating, because they are what make it worth
+running. It uses the module's own `scripts/` commands rather than a `flyway` invocation
+written into the workflow, so CI and a laptop apply the same checkout under the same
+rules — both read [`flyway.toml`](../ouroboros-db/flyway.toml). And `validate` compares
+checksums, not behaviour: a `unique` on the wrong columns, a cascade left off or a check
+that accepts what it should reject passes it untouched, which is why the `.sql` suites
+exist and why **a migration that adds a rule adds its assertion in the same change.**
 
 One consequence of filtering by path is worth stating: **a check that does not run does
 not report.** These four are advisory today. Marking one *required* in branch protection
@@ -417,7 +435,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-layout.sh`](../scripts/verify-layout.sh) | Module directories, README sections, root docs, `.editorconfig` coverage |
 | [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
 | [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule |
-| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold |
+| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold; `ci/db` still starts a database, migrates it, validates it and runs both `.sql` suites, against the PostgreSQL the development stack pins |
 | [`verify-workspace.sh`](../scripts/verify-workspace.sh) | The decisions in [`DECISION_WORKSPACE_TOOLING.md`](DECISION_WORKSPACE_TOOLING.md) still hold: the roster is these four modules with `ouroboros-web` outside it, one lockfile, both versions pinned exactly, every repo-level verb reaching a declared task and every task a verb, nothing Docker-facing cached, and every script that reads above its own package declaring it in that task's inputs |
 | [`verify-brand.sh`](../scripts/verify-brand.sh) | [`BRAND.md`](BRAND.md) and [`brand/`](brand) agree: every asset is a PNG with an alpha channel, at the size the document publishes, named and linked by it |
 | [`verify-tokens.sh`](../scripts/verify-tokens.sh) | [`design/tokens.css`](design/tokens.css) parses to exactly three palette blocks with no literal outside them, both dark blocks are identical, every colour is themed in both palettes, the dark palette still matches the mockups' sheet, the preview page carries no literal, and every contrast ratio [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) publishes is the recomputed one, at or above its minimum |

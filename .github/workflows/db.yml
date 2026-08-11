@@ -1,7 +1,7 @@
 name: ouroboros-db · ci
 
 # Path-filtered per issue #11. The filter is wider than `ouroboros-db/**` because the
-# check below asserts the whole data tier: the migrations, the compose stack that
+# checks below assert the whole data tier: the migrations, the compose stack that
 # applies them, and the environment template that configures both. A change to any of
 # the three can break it, so a change to any of the three has to run it.
 
@@ -34,6 +34,58 @@ jobs:
   ci:
     name: ci/db
     runs-on: ubuntu-latest
+
+    # The throwaway database the live pass migrates (#24). It is created empty for every
+    # run and thrown away with the runner, which is what makes "migrate from scratch"
+    # mean it: nothing here has ever seen a previous version of these migrations.
+    #
+    # Same image the development stack pins in docker-compose.yml, so what a pull
+    # request proves is what a developer gets. The pin is repeated rather than shared
+    # because the `env` context is not available to a service definition — the
+    # POSTGRES_IMAGE below carries the same string for the steps, and
+    # scripts/verify-ci.sh asserts all three agree.
+    #
+    # The healthcheck is the same one the compose file uses, and for the same reason:
+    # -U/-d are named explicitly because pg_isready otherwise probes as the OS user and
+    # reports ready while the database being created is still absent. GitHub gates the
+    # first step on it, so no step below races initdb.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ouroboros
+          POSTGRES_PASSWORD: ouroboros
+          POSTGRES_DB: ouroboros
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ouroboros -d ouroboros"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      # Where that service is reachable, in the OURO_* names ouroboros-db/run.sh and its
+      # scripts/ wrappers read (ouroboros-db/.env.example). They are the development
+      # defaults, written out anyway so this file says which database it migrates.
+      OURO_DB_HOST: localhost
+      OURO_DB_PORT: "5432"
+      OURO_DB_NAME: ouroboros
+      OURO_DB_USER: ouroboros
+      OURO_DB_PASSWORD: ouroboros
+      OURO_DB_SCHEMA: ouroboros
+      # psql's own name for that same password. A throwaway container on a throwaway
+      # runner holding the well-known development password is not a secret, and writing
+      # it here rather than in a GitHub secret keeps the workflow reproducible by hand.
+      PGPASSWORD: ouroboros
+      # The second database, migrated with the dev-seed overlay. See its step.
+      SEED_DB_NAME: ouroboros_seed
+      # The assertion files are plain SQL, so they need a psql — and this is the one
+      # image the job has already pulled. Taking it from here rather than from the
+      # runner's apt set means the client is pinned to the server's major version and
+      # the step cannot break because a runner image dropped a package.
+      POSTGRES_IMAGE: postgres:17-alpine
+
     steps:
       - uses: actions/checkout@v4
 
@@ -42,11 +94,9 @@ jobs:
       # healthcheck gate the stack depends on, credential hygiene, and that
       # .env.example still declares every variable anything in the repo reads.
       #
-      # It needs no Docker daemon and no network, so it is seconds rather than minutes.
-      # The live pass — postgres:17-alpine service container, `flyway migrate` against a
-      # clean database, `flyway validate`, then tests/constraints.sql — is issue #24,
-      # which adds its steps to this job once the baseline schema (#19–#22) exists to
-      # migrate. This workflow is the slot it lands in.
+      # It needs no Docker daemon and no network, so it is seconds rather than minutes,
+      # and it runs first: a misnamed migration is worth reporting before a database is
+      # waited on.
       - name: Migration & data-tier contract
         run: scripts/verify-dev-env.sh
 
@@ -56,3 +106,74 @@ jobs:
       # would have run instead of running it.
       - name: Module tooling tests
         run: scripts/run-tests.sh ouroboros-db/tests
+
+      # -----------------------------------------------------------------------------
+      # The live pass (#24) — everything above is a file read; everything below applies
+      # the migrations to a real PostgreSQL and asks it what it now enforces.
+      # -----------------------------------------------------------------------------
+
+      # `scripts/migrate` rather than a `flyway` command written out here, so CI applies
+      # migrations the same way a developer does: it reads ouroboros-db/flyway.toml
+      # through -workingDirectory exactly as the compose stack does, and with no `flyway`
+      # on the runner's PATH it picks the pinned flyway/flyway:11-alpine image by itself.
+      #
+      # This is the whole point of the job. A migration that does not apply, applies out
+      # of order, or contradicts one already applied fails here — on the pull request,
+      # against an empty database, rather than on the next developer's laptop where the
+      # schema has history in it.
+      - name: Migrate a clean database
+        run: ouroboros-db/scripts/migrate
+
+      # Checksums and the naming rule, read back from the history the step above wrote.
+      # It catches the one mistake `migrate` cannot: a versioned migration edited after
+      # it was applied. On this database that is impossible by construction, so what it
+      # really pins is the rule itself — `validate` is the command developers are told
+      # to trust, and a run in which it stops working is one nobody would notice.
+      - name: Validate the applied migrations
+        run: ouroboros-db/scripts/validate
+
+      # The behavioural half. `validate` compares checksums, so a `unique` on the wrong
+      # columns, a cascade left off or a check that accepts what it should reject passes
+      # it untouched; tests/constraints.sql creates fixtures, tries the things the
+      # schema is supposed to refuse, and raises on the first rule that does not hold.
+      # It runs in a transaction it rolls back, so it leaves the database as it found it.
+      - name: Assert what the schema enforces
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$OURO_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/constraints.sql
+
+      # The dev seed (#23) gets a database of its own, because the one above has to go
+      # on proving what a production migration does: apply R__dev_seed.sql and insert
+      # nothing, which is what ${ouro_dev_seed} being false in flyway.toml means. Only
+      # flyway.seed.toml flips it, and only something that names it loads it.
+      #
+      # Migrated twice on purpose. Every assertion in tests/seed.sql says *exactly one*,
+      # so a second pass before asserting is the idempotency criterion rather than a
+      # wasted minute: a seed that inserted its rows again would fail the step below.
+      - name: Seed a second database
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            "$POSTGRES_IMAGE" \
+            createdb -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" "$SEED_DB_NAME"
+          # Which database the migration lands in is the only thing that changes here;
+          # exported rather than set in a step `env:` so the name has one definition.
+          export OURO_DB_NAME="$SEED_DB_NAME"
+          ouroboros-db/scripts/migrate --config flyway.seed.toml
+          ouroboros-db/scripts/migrate --config flyway.seed.toml
+
+      # One assertion per seeded row: the demo tenant every mockup is drawn around is
+      # either there, exactly once, with the ids and addresses the documentation
+      # publishes, or this fails naming the row that moved.
+      - name: Assert what the seed put there
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/seed.sql

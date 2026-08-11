@@ -195,11 +195,68 @@ jobs:
   ci:
     name: ci/db
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ouroboros
+          POSTGRES_PASSWORD: ouroboros
+          POSTGRES_DB: ouroboros
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ouroboros -d ouroboros"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      OURO_DB_HOST: localhost
+      OURO_DB_PORT: "5432"
+      OURO_DB_NAME: ouroboros
+      OURO_DB_USER: ouroboros
+      OURO_DB_PASSWORD: ouroboros
+      OURO_DB_SCHEMA: ouroboros
+      PGPASSWORD: ouroboros
+      SEED_DB_NAME: ouroboros_seed
+      POSTGRES_IMAGE: postgres:17-alpine
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Migration & data-tier contract
         run: scripts/verify-dev-env.sh
+
+      - name: Migrate a clean database
+        run: ouroboros-db/scripts/migrate
+
+      - name: Validate the applied migrations
+        run: ouroboros-db/scripts/validate
+
+      - name: Assert what the schema enforces
+        run: |
+          docker run --rm --network=host "$POSTGRES_IMAGE" \
+            psql -v ON_ERROR_STOP=1 -f /tests/constraints.sql
+
+      - name: Seed a second database
+        run: ouroboros-db/scripts/migrate --config flyway.seed.toml
+
+      - name: Assert what the seed put there
+        run: |
+          docker run --rm --network=host "$POSTGRES_IMAGE" \
+            psql -v ON_ERROR_STOP=1 -f /tests/seed.sql
+YAML
+
+  # The development stack, present because ci/db's whole purpose is to migrate the
+  # PostgreSQL it pins — so the pin is cross-checked against this file rather than
+  # written down twice and trusted.
+  cat > "$fixture/docker-compose.yml" <<'YAML'
+name: ouroboros
+
+services:
+  db:
+    image: postgres:17-alpine
 YAML
 
   # The marketing site's own pipeline. It is in the fixture because the routing checks
@@ -572,6 +629,60 @@ check_break 'an engine install that may refresh the lockfile is reported' \
 check_break 'a database workflow that asserts nothing is reported' \
   'asserts the migration and data-tier contract' \
   'sed -i "s|run: scripts/verify-dev-env.sh|run: true|" "$root/.github/workflows/db.yml"'
+
+# ---------------------------------------------------------------------------
+# The database's live pass (#24)
+# ---------------------------------------------------------------------------
+
+# Each of these removes one step of the pass and asserts the run says which. A live pass
+# that quietly stops running is the failure mode worth testing for: the job still reports
+# green, and it is green about the half of the contract that a file read already covered.
+
+printf '\nLive migration pass violations\n'
+
+check_break 'a database workflow with no database is reported' \
+  'starts a database to migrate' \
+  'sed -i "/^    services:$/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a healthcheck that probes as the OS user is reported' \
+  'names the role and database' \
+  'sed -i "s|pg_isready -U ouroboros -d ouroboros|pg_isready|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never applies the migrations is reported' \
+  'migrates a clean database' \
+  'sed -i "s|^        run: ouroboros-db/scripts/migrate$|        run: true|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never validates what it applied is reported' \
+  'validates what it applied' \
+  'sed -i "s|^        run: ouroboros-db/scripts/validate$|        run: true|" "$root/.github/workflows/db.yml"'
+
+# The behavioural half. Dropping it leaves a job that proves the migrations *apply* and
+# says nothing about what the schema they leave behind refuses.
+check_break 'a pass that never asserts the constraints is reported' \
+  'asserts what the schema enforces' \
+  'sed -i "s|/tests/constraints.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+check_break 'a seeded leg migrated without the overlay is reported' \
+  'dev-seed overlay' \
+  'sed -i "s| --config flyway.seed.toml||" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never asserts the seed is reported' \
+  'what the seed put there' \
+  'sed -i "s|/tests/seed.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+# The pin, in all three places it has to agree. CI proving a PostgreSQL nobody develops
+# against is worth less than the minute it costs.
+check_break 'a service container drifting from the stack pin is reported' \
+  'migrates the PostgreSQL the development stack pins' \
+  'sed -i "s|^        image: postgres:17-alpine$|        image: postgres:16-alpine|" "$root/.github/workflows/db.yml"'
+
+check_break 'an assertion client drifting from the stack pin is reported' \
+  'from that same image' \
+  'sed -i "s|POSTGRES_IMAGE: postgres:17-alpine|POSTGRES_IMAGE: postgres:16-alpine|" "$root/.github/workflows/db.yml"'
+
+check_break 'a development stack that pins no PostgreSQL at all is reported' \
+  'the compose stack pins a PostgreSQL version' \
+  'sed -i "s|^    image: postgres:17-alpine$|    image: postgres|" "$root/docker-compose.yml"'
 
 # ---------------------------------------------------------------------------
 # Documentation
