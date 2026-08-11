@@ -6,12 +6,26 @@ name: ouroboros-rest · ci
 #
 # The four root files are here because #13 made this module a Yarn workspace — see
 # ui.yml, which carries the same set for the same reason.
+#
+# Three paths outside this module are here because of #37. The integration harness starts
+# a PostgreSQL and applies `ouroboros-db`'s Flyway project to it, so a migration is an
+# input to this module's tests as surely as its own source is: a column that moves has to
+# fail here, in the suite that compares the `Database` interface against a migrated
+# database, rather than in the next pull request that happens to touch a controller.
+# docker-compose.yml and run.sh are here for the drift check in the *unit* suite, which
+# fails when the harness's image pins or Flyway arguments stop matching the stack's.
 
 on:
   pull_request:
     branches: [main]
+    # Written out twice rather than shared with a YAML anchor: GitHub's workflow parser
+    # does not resolve aliases, so an anchor here would silently filter nothing.
     paths:
       - "ouroboros-rest/**"
+      - "ouroboros-db/migrations/**"
+      - "ouroboros-db/flyway.toml"
+      - "ouroboros-db/run.sh"
+      - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/rest.yml"
@@ -23,6 +37,10 @@ on:
     branches: [main]
     paths:
       - "ouroboros-rest/**"
+      - "ouroboros-db/migrations/**"
+      - "ouroboros-db/flyway.toml"
+      - "ouroboros-db/run.sh"
+      - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/rest.yml"
@@ -45,30 +63,20 @@ jobs:
     name: ci/rest
     runs-on: ubuntu-latest
 
-    # The throwaway database the integration suite runs against (#30). It is created empty
-    # for every run and thrown away with the runner, and the steps below migrate it with
-    # this checkout's Flyway migrations — so what `yarn test:integration` compares its
-    # `Database` interface against is the schema this commit describes, not one a developer
-    # happened to have.
+    # No service container, and no migration step, since #37. The integration harness
+    # starts `postgres:17-alpine` through Testcontainers and migrates it with the pinned
+    # `flyway/flyway:11-alpine` against this checkout's `ouroboros-db/flyway.toml` — the
+    # same two images and the same arguments the development stack uses, which the unit
+    # suite checks against docker-compose.yml on every run.
     #
-    # Same image and the same healthcheck the development stack pins in docker-compose.yml,
-    # for the reason ci/db pins it: what a pull request proves is what a developer gets.
-    # -U/-d are named explicitly because pg_isready otherwise probes as the OS user and
-    # reports ready while the database being created is still absent.
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: ouroboros
-          POSTGRES_PASSWORD: ouroboros
-          POSTGRES_DB: ouroboros
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ouroboros -d ouroboros"
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 30
+    # That is the issue's first acceptance criterion, *green locally and in CI without
+    # external setup*, and it is worth more than the two steps it removes: what a developer
+    # runs is now byte-for-byte what CI runs. A service container and a `migrate` step were
+    # a second way to arrange a database, described in this file and nowhere else, and a
+    # workflow that arranges its own world is a workflow that can drift from the one a
+    # developer reproduces by hand.
+    #
+    # Docker is what it needs, and a GitHub-hosted Ubuntu runner has it.
 
     steps:
       - uses: actions/checkout@v4
@@ -83,27 +91,18 @@ jobs:
           scaffolded-by: "#27"
 
       # -----------------------------------------------------------------------------
-      # The live pass (#30) — everything above runs against no database; everything below
-      # runs against a real one.
+      # The live pass (#30, on #37's harness) — everything above runs against no
+      # database; everything below runs against one this step starts for itself.
       # -----------------------------------------------------------------------------
-
-      # `ouroboros-db/scripts/migrate` rather than a `flyway` command written out here, so
-      # CI applies migrations the same way a developer does — through
-      # ouroboros-db/flyway.toml, with no `flyway` on PATH picking the pinned
-      # flyway/flyway:11-alpine image by itself. Its OURO_DB_* defaults are localhost:5432
-      # and the ouroboros role, which is exactly the service above, so it is run bare: the
-      # parameters have one definition rather than two that can disagree.
-      - name: Migrate the database the integration suite runs against
-        run: ouroboros-db/scripts/migrate
 
       # What a unit suite cannot answer: that a repository roundtrip works against a
       # migrated database, that the `Database` interface still names the columns Flyway
-      # created, and that shutting the application down really returns its connections.
+      # created, that the constraints map to the envelopes the contract promises, that the
+      # role guard is really on the routes that declare it, and that shutting the
+      # application down really returns its connections.
+      #
+      # OURO_DATABASE_URL is deliberately unset: with it, the harness would use whatever it
+      # named and start nothing. Reproduce this step by running the same command.
       - name: Integration suite
         working-directory: ouroboros-rest
-        env:
-          # The well-known development password against a throwaway database on a throwaway
-          # runner is not a secret, and keeping it out of GitHub secrets is what lets a
-          # developer reproduce this step by hand.
-          OURO_DATABASE_URL: postgresql://ouroboros:ouroboros@localhost:5432/ouroboros
         run: yarn test:integration

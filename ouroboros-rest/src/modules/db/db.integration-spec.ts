@@ -4,6 +4,7 @@ import type { TestingModule } from "@nestjs/testing";
 import { sql, type Transaction } from "kysely";
 import { Pool } from "pg";
 
+import { integrationDatabaseUrl } from "../../testing/integration.fixture";
 import { SERVICE_NAME } from "../../version";
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
@@ -26,15 +27,16 @@ import { SCHEMA_NAME, TABLE_COLUMNS, TABLE_NAMES, type Database, type Tenant } f
  * and that shutting the application down really returns the connections.
  *
  * ```bash
- * docker compose up -d                                     # the #10 data tier, migrated
- * OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros \
- *   yarn test:integration
+ * yarn test:integration
  * ```
  *
- * It writes to whatever database it is given. Every row it creates is named with
- * {@link TEST_PREFIX} and removed afterwards, so it is safe to point at the development
- * stack — which already carries the dev seed — and it touches nothing that was there
- * before it ran. Do not point it at anything else.
+ * Since [#37](https://github.com/NobuData/ouroboros/issues/37) the database comes from the
+ * harness — a `postgres:17-alpine` started for the run and migrated with `ouroboros-db`'s
+ * own Flyway project — so the command above needs nothing but Docker. It still writes to
+ * whatever database it is given: every row it creates is named with {@link TEST_PREFIX} and
+ * removed afterwards, so exporting `OURO_DATABASE_URL` to point it at the development
+ * stack — which already carries the dev seed — remains safe, and touches nothing that was
+ * there before it ran. Do not point it at anything else.
  */
 
 /**
@@ -45,14 +47,7 @@ import { SCHEMA_NAME, TABLE_COLUMNS, TABLE_NAMES, type Database, type Tenant } f
  * is the only check in the repository that can catch the types drifting from the
  * migrations.
  */
-const DATABASE_URL = process.env.OURO_DATABASE_URL;
-
-if (DATABASE_URL === undefined || DATABASE_URL === "") {
-  throw new Error(
-    "The integration suite needs a migrated database. Start one with `docker compose up -d` " +
-      "and run it with OURO_DATABASE_URL set — see the header of this file.",
-  );
-}
+const DATABASE_URL = integrationDatabaseUrl();
 
 /**
  * What every row this suite creates is named with.

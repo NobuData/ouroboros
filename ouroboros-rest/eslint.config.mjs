@@ -65,17 +65,20 @@ export default tseslint.config(
     // reaches for process.env directly gets an unvalidated string, skips the redaction
     // rules, and moves the failure from boot to the first request that needed the value.
     //
-    // Three kinds of file are exempt and all of them are boundaries rather than
+    // Four kinds of file are exempt and all of them are boundaries rather than
     // exceptions: src/main.ts is the process entry point, which is *where* the environment
     // is read, and its spec is what proves it reads the real one. The integration suites
     // (#30) are the third — they are handed a database by whoever runs them, exactly as
     // the process is handed one by its operator, and there is nothing typed to read it
-    // through before an application has been built around it.
+    // through before an application has been built around it. src/testing/ (#37) is the
+    // fourth, and it is the same boundary seen from the other side: it is the thing that
+    // *does* the handing, so `OURO_DATABASE_URL` is its output rather than its input.
     files: ["src/**/*.ts"],
     ignores: [
       "src/main.ts",
       "src/main.spec.ts",
       "src/modules/config/**/*.ts",
+      "src/testing/**/*.ts",
       "src/**/*.integration-spec.ts",
     ],
     rules: {

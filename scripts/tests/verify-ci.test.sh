@@ -40,7 +40,22 @@ make_fixture() {
     "$fixture/docs"
 
   # The two TypeScript modules run the same shared pipeline over different directories.
+  #
+  # ouroboros-rest watches the data tier as well, since issue #37: its integration harness
+  # starts a PostgreSQL and applies ouroboros-db's Flyway project to it, so a migration is
+  # one of that module's test inputs — and its unit suite compares the harness's image pins
+  # against docker-compose.yml. Held in a variable because the two workflows are otherwise
+  # identical, and the shared template is what makes that visible.
   for module in ui rest; do
+    data_tier=''
+    if [ "$module" = rest ]; then
+      data_tier='
+      - "ouroboros-db/migrations/**"
+      - "ouroboros-db/flyway.toml"
+      - "ouroboros-db/run.sh"
+      - "docker-compose.yml"'
+    fi
+
     cat > "$fixture/.github/workflows/$module.yml" <<YAML
 name: ouroboros-$module · ci
 
@@ -48,7 +63,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "ouroboros-$module/**"
+      - "ouroboros-$module/**"$data_tier
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/$module.yml"
@@ -59,7 +74,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "ouroboros-$module/**"
+      - "ouroboros-$module/**"$data_tier
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/$module.yml"
@@ -578,6 +593,17 @@ check_break 'a module workflow triggered by documentation is reported' \
 check_break 'a shared pipeline only one module watches is reported' \
   'node-module/action\.yml runs rest\.yml ui\.yml' \
   'sed -i "/actions\/node-module\/\*\*/d" "$root/.github/workflows/rest.yml"'
+
+# #37: ouroboros-rest's integration harness migrates with ouroboros-db's Flyway project,
+# so a module that stops watching it tests against a schema its own pull requests never
+# see change.
+check_break 'a rest workflow that stops watching the migrations is reported' \
+  'migrations/V001__tenants\.sql runs db\.yml rest\.yml' \
+  'sed -i "/ouroboros-db\/migrations\/\*\*/d" "$root/.github/workflows/rest.yml"'
+
+check_break 'a rest workflow that stops watching the image pins is reported' \
+  'docker-compose\.yml runs db\.yml rest\.yml' \
+  'sed -i "/^      - \"docker-compose.yml\"$/d" "$root/.github/workflows/rest.yml"'
 
 # The workspace root, #13. A module that stops watching the lockfile it installs from
 # builds green against a resolution nobody asked for.

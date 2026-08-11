@@ -1067,7 +1067,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
 | 4.9 | #35 | 🟢 Done | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
 | 4.10 | #36 | 🟢 Done | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
-| 4.11 | #37 | 🟡 Open | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
+| 4.11 | #37 | 🟢 Done | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.12 | #38 | 🟡 Open | ouroboros-rest: [4.12] Security baseline hardening | Helmet, CORS policy, rate limiting, cookie hardening review | v2, rest | N (after 4.7) | N | M | ouroboros-rest |
 
 ### Issue 4.1 — ouroboros-rest: [4.1] NestJS service scaffold
@@ -1530,7 +1530,45 @@ UI ─▶ /api/v1/engine/status ─▶ [auth guard] ─▶ EngineClient ──X-
 
 ### Issue 4.11 — ouroboros-rest: [4.11] Integration test harness
 
-> **GitHub issue:** #37 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #37 · **Status:** 🟢 Done · **Parent epic:** #4
+>
+> **Done.** `yarn test:integration` starts `postgres:17-alpine` through Testcontainers,
+> applies `ouroboros-db`'s Flyway project to it with the pinned `flyway/flyway:11-alpine`,
+> boots the application on a random port and throws the container away when the run ends.
+> **198 tests across five suites in under 20 seconds**, against the three minutes budgeted.
+> `ci/rest` runs the identical command: the service container and the `migrate` step are
+> gone, so what a pull request proves is what a developer runs.
+>
+> Migrations are applied *by Flyway*, over a private network, rather than by executing the
+> SQL files in order — a harness that read them would be a second implementation of the one
+> thing `ouroboros-db` owns, and would leave no `flyway_schema_history` behind. The project
+> is **copied** into the container rather than bind-mounted, which is the single departure
+> from `run.sh`: a bind mount is a path on the daemon's machine and silently mounts nothing
+> when `DOCKER_HOST` points elsewhere. `flyway.seed.toml` is deliberately not layered on — a
+> suite that began with rows it did not create is a suite whose counts mean nothing.
+>
+> Six fixtures under
+> [`src/testing/`](../ouroboros-rest/src/testing): the container, the two Jest global hooks
+> and the value they share, `ApiHarness` (the listening application, `signIn`, `join`,
+> `workspace`, `truncate`) and the small pieces the older suites now share instead of
+> triplicating. `migration.fixture.spec.ts` compares the harness's image pins and Flyway
+> arguments against `docker-compose.yml` and `run.sh` in the **unit** suite, so the
+> restatement cannot drift unnoticed; `rest.yml` gained the data-tier paths to match, and
+> `scripts/verify-ci.sh` records that widening as the third deliberate cross-module
+> exception.
+>
+> **`roles.integration-spec.ts` is the second acceptance criterion**: fifteen routes × six
+> callers — the four roles, a stranger, and a browser with no session — through the real
+> guards, with the expectations derived from `ADMINISTRATORS` and the row count checked
+> against the `@Roles()` sites the controllers actually declare. Both breakages were
+> demonstrated: deleting one `@Roles(...ADMINISTRATORS)` turns three tests red, and dropping
+> `tenant_domains_domain_key` from V001 turns the `domain_taken` mapping red.
+>
+> One safeguard the issue did not ask for and the change needed. Truncation empties `users`
+> and `tenants` wholesale, and the documented way to run these suites used to point at the
+> development stack — so `OURO_DATABASE_URL` alone no longer permits it. A container the run
+> started is disposable by definition; anything else needs
+> `OURO_TEST_DATABASE_DISPOSABLE=true`, and the refusal names the fix.
 
 - **Problem Statement:** Tenancy rules and constraint mapping (4.5/4.6/4.7) are
   exactly the logic unit mocks can't validate — they need tests against real

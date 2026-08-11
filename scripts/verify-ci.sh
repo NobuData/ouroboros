@@ -191,8 +191,15 @@ check_route ouroboros-ui/app/page.tsx 'ui.yml'
 check_route ouroboros-ui/README.md 'ui.yml'
 check_route ouroboros-rest/src/main.ts 'rest.yml'
 check_route ouroboros-engine/src/ouroboros_engine/api/health.py 'engine.yml'
-check_route ouroboros-db/migrations/V001__tenants.sql 'db.yml'
 check_route ouroboros-web/app/page.tsx 'docker-publish.yml'
+
+# The third deliberate exception, and the newest (#37). A migration is not confined to
+# ouroboros-db: ci/rest's integration harness starts a PostgreSQL, applies this Flyway
+# project to it, and compares the `Database` interface in ouroboros-rest against the schema
+# that comes out. A column that moves has to fail on the pull request that moves it rather
+# than on the next one that happens to touch a controller.
+check_route ouroboros-db/migrations/V001__tenants.sql 'db.yml rest.yml'
+check_route ouroboros-db/flyway.toml 'db.yml rest.yml'
 
 # Documentation and repo tooling affect no module's build, so they queue nothing.
 check_route docs/CONVENTIONS.md ''
@@ -216,7 +223,11 @@ for workspace_file in $WORKSPACE_FILES; do
 done
 
 # The data tier is one contract across three files, and ci/db asserts all of it.
-check_route docker-compose.yml 'db.yml'
+# docker-compose.yml reaches ci/rest as well, for the reason above: it is where the
+# PostgreSQL and Flyway images are pinned, and ouroboros-rest's unit suite fails when the
+# harness's copy of those pins stops matching (#37). .env.example does not — nothing in
+# ouroboros-rest reads it.
+check_route docker-compose.yml 'db.yml rest.yml'
 check_route .env.example 'db.yml'
 
 # ---------------------------------------------------------------------------
