@@ -204,6 +204,62 @@
   color: var(--ink-faint);
 }
 
+/* ---------- theme toggle ---------- */
+
+/*
+ * The switcher (#42). Its shape is .shell-icon-button's, so it sits in the cluster as
+ * one of a row rather than as a control of its own design; what belongs to it alone is
+ * the marker below, and the positioning context that marker is placed against.
+ */
+.theme-toggle {
+  position: relative;
+}
+
+/*
+ * The dot that separates *system* from an explicit choice.
+ *
+ * The icon inside the button is the palette actually rendering — a sun for light, a moon
+ * for dark — which is what the issue specifies, and which leaves *light* and *system
+ * resolving to light* drawing exactly the same thing. The accessible name and the
+ * tooltip distinguish them in words; this distinguishes them at a glance, because a
+ * control whose state is only legible on hover is not a discoverable one.
+ *
+ * The ring is --surface, the header's own ground, so the dot reads as separate from the
+ * button's hairline at every scale instead of merging with it.
+ */
+.theme-toggle--auto::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border: 1px solid var(--surface);
+  border-radius: var(--r-round);
+  background: var(--accent);
+}
+
+/*
+ * Off the screen, in the accessibility tree — where a live region has to be to announce
+ * anything, since a region that is `display: none` is not read and one that is visible
+ * is a line of text nobody asked for.
+ *
+ * The 1px box and the negative margin are the technique, not a length a reader's
+ * font-size preference should scale: this element is never seen, and growing it with the
+ * type scale would only make the thing it must not do — take up room — more likely.
+ */
+.shell-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---------- account menu ---------- */
 
 .shell-menu {

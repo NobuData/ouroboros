@@ -2,6 +2,7 @@ import { Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
 /**
@@ -10,12 +11,12 @@ import { UserMenu } from "./user-menu";
  * It carries **no navigation links** — navigation is the sidebar's job
  * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1, which supersedes the top-bar nav the
  * mockups were drawn with). A Server Component: nothing here needs the browser except
- * the account menu, which is its own Client Component.
+ * the theme toggle and the account menu, each its own Client Component.
  *
  * Three slots the specification puts in this bar are deliberately absent rather than
  * mocked up, because each has an issue that will fill it with something true: the
  * tenant chip (#77), the search pill and ⌘K palette (#79), and the live-loops pill with
- * real counts (#78). The theme toggle (#42) lands beside the gear below.
+ * real counts (#78).
  *
  * @returns The header row.
  */
@@ -43,7 +44,7 @@ export function ShellHeader() {
           Needs you <span className="shell-pill__count">—</span>
         </span>
 
-        {/* The theme toggle (#42) mounts here, between the pill and the gear. */}
+        <ThemeToggle />
 
         {/*
           aria-disabled, not disabled: the gear stays reachable by keyboard so its
