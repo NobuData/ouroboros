@@ -7,7 +7,12 @@
 > [`flyway.toml`](flyway.toml) — where every setting now lives, for the stack and for a
 > hand-run migration alike — the [`scripts/`](scripts) commands, and
 > [`tests/`](tests). The tenancy tables themselves start at `V001`
-> ([#20](https://github.com/NobuData/ouroboros/issues/20) onwards).
+> ([#20](https://github.com/NobuData/ouroboros/issues/20) onwards) — `V001` (tenants and
+> domains) and `V003` (GitHub enablement) have landed, and
+> [`tests/constraints.sql`](tests/constraints.sql) asserts what they enforce.
+> `V002` ([#21](https://github.com/NobuData/ouroboros/issues/21)) and the dev seed
+> ([#23](https://github.com/NobuData/ouroboros/issues/23)) are still to come; Flyway does
+> not require versions to be contiguous, so `V002`'s number stays reserved for it.
 
 ## Purpose
 
@@ -175,6 +180,24 @@ scripts/run-tests.sh                      # every suite in the repository
 `ci/db` runs it on every pull request that touches this directory, after
 [`scripts/verify-dev-env.sh`](../scripts/verify-dev-env.sh).
 
+[`tests/constraints.sql`](tests/constraints.sql) is the other half, and it is separate
+because it needs the one thing that suite deliberately does without: a database with the
+migrations applied. It asserts what the schema *enforces* — every uniqueness rule, check
+constraint, cascade, trigger and index the migrations claim — because `validate` compares
+checksums rather than behaviour, and a `unique` on the wrong columns passes it. Run it
+against a migrated database:
+
+```bash
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
+  -v ON_ERROR_STOP=1 -f ouroboros-db/tests/constraints.sql
+```
+
+It creates its own fixtures inside a transaction and rolls back, so it leaves no rows
+behind and is safe to repeat against a database that is already in use. A passing run
+prints one line; a failure names the rule and exits non-zero, which is what makes it a CI
+step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires it into `ci/db`. A
+migration that adds a rule adds its assertion here in the same change.
+
 ## Configuration
 
 Two files, because they answer two different questions.
@@ -245,24 +268,58 @@ ouroboros-db/
 ├── migrations/
 │   ├── V000__bootstrap.sql           # the schema itself
 │   ├── V001__tenants.sql             # tenants, tenant_domains — #20
-│   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21
+│   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21, pending
 │   ├── V003__github_enablement.sql   # github_orgs, github_repos — #22
-│   └── R__dev_seed.sql               # deterministic demo data, dev only — #23
+│   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, pending
 └── tests/
     ├── run.test.sh                   # the runner
     ├── scripts.test.sh               # the four commands and the project configuration
-    └── constraints.sql               # assertion queries run in CI — #24
+    └── constraints.sql               # what the schema enforces, asserted against a live database
 ```
 
-Everything below `V000` and beside `tests/constraints.sql` is named for the issue that
-lands it.
+Everything below `V000` is named for the issue that lands it; the two marked *pending*
+are the versions those issues will take. `tests/constraints.sql` is not — it grows with
+every migration that adds a rule, rather than belonging to one of them.
+
+## Schema
+
+What the applied migrations define. `ouroboros-rest` reads this through Kysely; nothing
+outside this module alters it.
+
+| Table | Since | Holds | Enforces |
+|---|---|---|---|
+| `tenants` | `V001` | The isolated customer workspace — the root every other table cascades from | Unique DNS-shaped `slug`; `status` limited to `active`, `suspended`, `deleted` |
+| `tenant_domains` | `V001` | Email domains that resolve a tenant at sign-in | Domain unique across *all* tenants and stored lower-cased; at most one `is_primary` per tenant |
+| `github_orgs` | `V003` | GitHub orgs a tenant has enabled | `login` unique *per tenant*, stored lower-cased; `enabled` defaults false |
+| `github_repos` | `V003` | Repos within an org | `name` unique per org, stored lower-cased; `enabled` defaults false |
+
+Three conventions run through all four, and are worth knowing before adding a fifth:
+
+1. **Case-folded on the way in, not at read time.** Domains, org logins and repo names
+   are stored lower-cased and held there by a check constraint. That is what lets one
+   plain unique btree be both the uniqueness rule and the case-insensitive lookup index —
+   query with `where domain = lower($1)` and it is an index scan. It needs no `citext`
+   extension, which a managed PostgreSQL may not grant the migration role rights to
+   create.
+2. **Enablement fails closed.** Both `enabled` flags default to `false`, and they are
+   independent: a repo is in scope only when its own flag *and* its org's are true, so
+   suspending an org preserves the per-repo choices underneath. These two tables bound
+   where Ouroboros may operate, so anything arriving by an undesigned path arrives off.
+3. **`updated_at` is one shared trigger.** `ouroboros.touch_updated_at()`, defined in
+   `V001` and attached by every table since, stamps from the server clock and overwrites
+   whatever the statement supplied. One function means the behaviour cannot drift between
+   tables.
+
+Deleting a tenant cascades the whole way down — domains, orgs, and the orgs' repos — so
+nothing is left naming a tenant that is gone. `status = 'deleted'` is the soft-delete
+marker that leaves the rows in place; a real `delete` is what cascades.
 
 ## Related issues
 
 Scaffold [#19](https://github.com/NobuData/ouroboros/issues/19) ·
-tenants & domains [#20](https://github.com/NobuData/ouroboros/issues/20) ·
+tenants & domains [#20](https://github.com/NobuData/ouroboros/issues/20) *(done)* ·
 users & membership [#21](https://github.com/NobuData/ouroboros/issues/21) ·
-GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) ·
+GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) *(done)* ·
 dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) ·
 migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3).

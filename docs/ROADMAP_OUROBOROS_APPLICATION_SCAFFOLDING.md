@@ -555,9 +555,9 @@ per-tenant GitHub org/repo enablement.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 3.1 | #19 | 🟢 Done | ouroboros-db: [3.1] Flyway project scaffold & migration conventions | Directory layout, config, naming rules, local runner scripts | mvp, db, infra | N (after 1.1) | Y | S | ouroboros-db |
-| 3.2 | #20 | 🟡 Open | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
+| 3.2 | #20 | 🟢 Done | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
 | 3.3 | #21 | 🟡 Open | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
-| 3.4 | #22 | 🟡 Open | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
+| 3.4 | #22 | 🟢 Done | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
 | 3.5 | #23 | 🟡 Open | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
 | 3.6 | #24 | 🟡 Open | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
 | 3.7 | #25 | 🟡 Open | ouroboros-db: [3.7] Row-level security & least-privilege roles | RLS policies keyed on tenant; separate migration/app DB roles | v2, db | N (after 3.4) | N | L | ouroboros-db, ouroboros-rest |
@@ -628,7 +628,35 @@ ouroboros-db/
 
 ### Issue 3.2 — ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains
 
-> **GitHub issue:** #20 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #20 · **Status:** 🟢 Done · **Parent epic:** #3
+>
+> Landed with 3.4 (#22), which could not be written without it: `V003`'s foreign key
+> needs `tenants` to exist, so the two migrations went in together rather than leaving a
+> chain on `main` that could not be applied.
+>
+> Delivered: [`V001__tenants.sql`](../ouroboros-db/migrations/V001__tenants.sql) —
+> `tenants` (uuid pk, DNS-shaped unique slug, `status` held to
+> `active|suspended|deleted` by a check constraint rather than an enum, so a later value
+> is one ordinary migration) and `tenant_domains` (cascading fk, globally unique domain,
+> `is_primary` limited to one per tenant by a partial unique index that still permits
+> zero, so a tenant mid-setup is representable).
+>
+> **Case-insensitive domain lookup is bought by storing the domain folded**, not by
+> `citext` and not by a functional index: `create extension` needs rights a managed
+> PostgreSQL does not always grant the migration role, and a functional index leaves the
+> stored value un-normalised so two rows can disagree about the case of the same domain.
+> A check constraint makes the folding a guarantee, which lets the plain unique btree be
+> both the uniqueness rule and the lookup index.
+>
+> `ouroboros.touch_updated_at()` is defined here and reused by 3.4 — one function, so
+> the semantics cannot drift between tables. It stamps from the server clock and
+> overwrites whatever the statement supplied.
+>
+> Verified against a live PostgreSQL 17, from an empty volume: `migrate` applies clean,
+> `validate` passes, a second `migrate` is a no-op, and
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) asserts every rule
+> above — including `explain` showing `Index Scan using tenant_domains_domain_key` for
+> `where domain = lower($1)`.
 
 - **Problem Statement:** Everything in Ouroboros is tenant-scoped ("each domain is an
   isolated tenant" — mockup 01); the tenant table is the root every other table hangs
@@ -703,7 +731,35 @@ erDiagram
 
 ### Issue 3.4 — ouroboros-db: [3.4] GitHub org & repo enablement
 
-> **GitHub issue:** #22 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #22 · **Status:** 🟢 Done · **Parent epic:** #3
+>
+> Delivered:
+> [`V003__github_enablement.sql`](../ouroboros-db/migrations/V003__github_enablement.sql)
+> — `github_orgs` (cascading tenant fk, login unique *per tenant* so two tenants may each
+> enable an org they both belong to, `enabled`, nullable `installed_at`) and
+> `github_repos` (cascading org fk, name unique per org, `enabled`, nullable
+> `default_branch`). Logins and names are stored folded, as V001's domains are, because
+> GitHub treats both case-insensitively and two rows for one org would be two answers to
+> a permission question. V002 (3.3) is untouched and its version number stays reserved.
+>
+> **Both `enabled` flags default to false.** A row's existence records that Ouroboros
+> knows about the org or repo; `enabled` records that someone turned it on. Anything
+> arriving by a path nobody has designed yet — an installation callback, a sync, a
+> restore — therefore arrives switched off. For the table that bounds what an autonomous
+> agent may touch, failing closed is the only safe default. The two flags are kept
+> independent so suspending an org preserves the per-repo choices underneath; scope is
+> their intersection.
+>
+> `github_repos` hangs off the org rather than carrying its own `tenant_id`: a second
+> copy of that fact could disagree with the org's and place a repo in a tenant its own
+> org does not belong to. The tenant is one join away, and the cascade reaches it.
+>
+> Verified against a live PostgreSQL 17: both acceptance criteria are assertions in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) — unique org per
+> tenant, unique repo per org, and `delete from tenants` removing orgs and repos while
+> leaving another tenant's rows alone. The harness was checked to go red by dropping
+> `github_repos_org_name_key` and by re-creating the tenant fk without `on delete
+> cascade`; both runs exited non-zero naming the broken rule.
 
 - **Problem Statement:** Mockup 01 step 2 enables specific GitHub orgs (and their
   repos) per tenant — the boundary of where Ouroboros may work.
