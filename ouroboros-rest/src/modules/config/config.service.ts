@@ -43,6 +43,16 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("databaseUrl");
   }
 
+  /** The origin a browser reaches this service at — `OURO_REST_URL`. */
+  get restUrl(): string {
+    return this.config.getOrThrow<string>("restUrl");
+  }
+
+  /** Where a browser is sent once signed in, or signed out — `OURO_UI_URL`. */
+  get uiUrl(): string {
+    return this.config.getOrThrow<string>("uiUrl");
+  }
+
   /** Base URL of `ouroboros-engine` — `OURO_ENGINE_URL`. */
   get engineUrl(): string {
     return this.config.getOrThrow<string>("engineUrl");
@@ -68,6 +78,18 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("githubClientSecret");
   }
 
+  /**
+   * The address the development bypass signs every request in as — `OURO_AUTH_DEV_USER`.
+   *
+   * `getOrThrow` is wrong for this one and `get` is right: it is the only field that is
+   * legitimately nothing, and `loadConfiguration` has already forced it to `null` in
+   * production. A reader must still refuse it there on its own — see
+   * {@link devUserEmail}, which is the accessor auth actually uses.
+   */
+  get authDevUser(): string | null {
+    return this.config.get<string | null>("authDevUser") ?? null;
+  }
+
   /** Browser origins allowed to call this API with credentials — `OURO_CORS_ORIGINS`. */
   get corsOrigins(): readonly string[] {
     return this.config.getOrThrow<readonly string[]>("corsOrigins");
@@ -83,6 +105,20 @@ export class AppConfigService {
    */
   get isProduction(): boolean {
     return this.nodeEnv === "production";
+  }
+
+  /**
+   * The address the development bypass may sign a request in as, or `null`.
+   *
+   * The second of the two independent checks the bypass is behind: `loadConfiguration`
+   * drops the variable in production, and this refuses it again from a configuration that
+   * somehow carries one. Two, because a single check being wrong is authentication turned
+   * off for a deployment — and because this is the accessor
+   * [#33](https://github.com/NobuData/ouroboros/issues/33)'s guard reads, so the refusal is
+   * beside the read rather than several files away from it.
+   */
+  get devUserEmail(): string | null {
+    return this.isProduction ? null : this.authDevUser;
   }
 
   /** Which interface to bind — see `listenHost` in `configuration.ts`. */
@@ -101,11 +137,14 @@ export class AppConfigService {
       port: this.port,
       nodeEnv: this.nodeEnv,
       databaseUrl: this.databaseUrl,
+      restUrl: this.restUrl,
+      uiUrl: this.uiUrl,
       engineUrl: this.engineUrl,
       engineSharedSecret: this.engineSharedSecret,
       sessionSecret: this.sessionSecret,
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
+      authDevUser: this.authDevUser,
       corsOrigins: this.corsOrigins,
     };
   }

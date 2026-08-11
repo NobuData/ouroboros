@@ -1,5 +1,5 @@
 import { MembersRepository, OWNER } from "./members.repository";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import type { MemberRow } from "./resources";
 
 /**
@@ -73,6 +73,53 @@ describe("the members repository", () => {
       await members.find(TENANT, USER);
 
       expect(database.statements[0].parameters).toEqual([TENANT, USER]);
+    });
+  });
+
+  describe("reading a person's memberships", () => {
+    it("asks for only as many as the caller needs to answer its question", async () => {
+      // Two is the smallest number that can tell "exactly one" from "more than one", and the
+      // sole-membership fallback asks exactly that. Reading them all would make somebody in
+      // fifty workspaces pay for a question the second row decides.
+      await members.tenantIdsFor(USER, 2);
+
+      expect(database.statements[0].sql).toContain('where "user_id" = $1');
+      expect(database.statements[0].sql).toContain("limit $2");
+      expect(database.statements[0].parameters).toEqual([USER, 2]);
+    });
+
+    it("orders them, so an unordered limit cannot return a different pair each time", async () => {
+      await members.tenantIdsFor(USER, 2);
+
+      expect(database.statements[0].sql).toContain('order by "invited_at", "tenant_id"');
+    });
+
+    it("returns ids and nothing else", async () => {
+      database.answers({ rows: [{ tenant_id: TENANT }] });
+
+      expect(await members.tenantIdsFor(USER, 2)).toEqual([TENANT]);
+    });
+  });
+
+  describe("recording a membership that is already accepted", () => {
+    it("lets the server's clock fill joined_at", async () => {
+      // V002 checks `joined_at >= invited_at`, and `invited_at` defaults to the server's
+      // `now()`. A timestamp from this process's clock would be compared against a clock in
+      // another container — and refused whenever ours ran a few milliseconds behind.
+      await members.join(TENANT, USER, "owner");
+
+      expect(database.statements[0].sql).toContain('insert into "ouroboros"."tenant_members"');
+      expect(database.statements[0].sql).toContain("now()");
+      expect(database.statements[0].parameters).toEqual([TENANT, USER, "owner"]);
+    });
+
+    it("is the counterpart of an invitation rather than a second copy of it", async () => {
+      await members.invite(TENANT, USER, "member");
+      await members.join(TENANT, USER, "owner");
+
+      // `invite` names no `joined_at` at all — the row is an invitation until it is accepted.
+      expect(database.statements[0].sql).not.toContain("joined_at");
+      expect(database.statements[1].sql).toContain("joined_at");
     });
   });
 

@@ -21,11 +21,14 @@
  *   * **`details` is always an object, never absent.** A client that reads
  *     `error.details.fields` should not have to check whether `details` exists first, and a
  *     schema that made it optional would let two services disagree about the empty case.
- *   * **A 5xx never carries its own message.** The three subclasses below are all 4xx —
- *     failures a client caused and can act on. Anything else reaching the filter is a
- *     failure the *service* had, and its message names a table, a column, a host or a role;
- *     it goes to the log, and the client gets a constant string. That is the same rule
- *     `src/modules/health/` applies to a `down` message, for the same reason.
+ *   * **No message a client reads was written by something else.** The 4xx subclasses
+ *     below are failures a client caused and can act on, and their messages are written
+ *     for whoever caused them. A failure the *service* had names a table, a column, a host
+ *     or a role; it goes to the log, and the client gets a constant string. That is the
+ *     same rule `src/modules/health/` applies to a `down` message, for the same reason.
+ *     {@link UpstreamError} is the one 5xx that carries a message, and it does not
+ *     contradict this: its text is a constant in this repository saying which dependency
+ *     failed, never a repetition of what that dependency said.
  */
 
 import { HttpException, HttpStatus } from "@nestjs/common";
@@ -53,10 +56,11 @@ export interface ErrorEnvelope {
 /**
  * An error this service raised on purpose, carrying the envelope a client will read.
  *
- * Subclass rather than construct: {@link NotFoundError}, {@link ConflictError} and
- * {@link InvalidRequestError} are the three statuses the tenancy API answers with, and
- * naming one at a call site is what makes the status readable there. A caller that needs a
- * fourth adds a subclass here rather than passing a number through a service.
+ * Subclass rather than construct: {@link UnauthenticatedError}, {@link ForbiddenError},
+ * {@link NotFoundError}, {@link ConflictError}, {@link InvalidRequestError} and
+ * {@link UpstreamError} are the statuses this API answers with, and naming one at a call
+ * site is what makes the status readable there. A caller that needs another adds a subclass
+ * here rather than passing a number through a service.
  */
 export class DomainError extends HttpException {
   /**
@@ -86,6 +90,60 @@ export class DomainError extends HttpException {
    */
   envelope(): ErrorEnvelope {
     return super.getResponse() as ErrorEnvelope;
+  }
+}
+
+/**
+ * `401` — this request carries no session, or one this service will not honour.
+ *
+ * The distinction from `403` is *who* is asking rather than *what* they asked for: a `401`
+ * says nobody is signed in and signing in may help, and it is what the global session
+ * guard answers ([#33](https://github.com/NobuData/ouroboros/issues/33)). A signed-in
+ * caller who may not do something gets `403` — or, when telling them the thing exists
+ * would itself be a leak, the `404` below
+ * ([#32](https://github.com/NobuData/ouroboros/issues/32)).
+ *
+ * Every way a session can fail — absent, forged, expired, signed with a rotated key,
+ * naming a user who has since been deleted — is this one answer with this one code. A
+ * client cannot act differently on any of them, and an API that distinguished them would
+ * be telling whoever is probing it which part of their forgery was right.
+ */
+export class UnauthenticatedError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.UNAUTHORIZED, code, message, details);
+  }
+}
+
+/**
+ * `502` — a service this one depends on failed, and the request cannot be answered without
+ * it.
+ *
+ * The one class here that is not the caller's fault. It exists because "GitHub refused the
+ * code exchange" is not a `500`: this service is working, the request was well-formed, and
+ * retrying is a reasonable thing for a client to do — which is exactly what `502` says and
+ * `500` does not. Its message names the dependency and nothing else: a body echoing what
+ * an upstream said would publish that upstream's error strings, which are not this API's
+ * contract and have carried tokens before now.
+ */
+export class UpstreamError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.BAD_GATEWAY, code, message, details);
+  }
+}
+
+/**
+ * `403` — the caller is who they say they are, and may not do this.
+ *
+ * Narrower than it looks, and the narrowness is the point. This API answers `403` only when
+ * the caller has *already* proved they can see the thing they are acting on — a member of a
+ * tenant whose role is too low ([#32](https://github.com/NobuData/ouroboros/issues/32)).
+ * Anywhere the caller's right to know a thing exists is itself in question, the answer is
+ * {@link NotFoundError}, because a `403` confirms that an identifier names something real
+ * and that is the whole of what somebody enumerating identifiers is trying to learn.
+ */
+export class ForbiddenError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.FORBIDDEN, code, message, details);
   }
 }
 

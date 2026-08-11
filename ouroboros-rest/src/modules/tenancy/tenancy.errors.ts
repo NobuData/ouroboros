@@ -11,7 +11,13 @@
  * table, a column, a constraint or an identifier the caller did not already send.
  */
 
-import { ConflictError, NotFoundError, type ErrorDetails } from "../errors/error.envelope";
+import {
+  ConflictError,
+  ForbiddenError,
+  InvalidRequestError,
+  NotFoundError,
+  type ErrorDetails,
+} from "../errors/error.envelope";
 
 /**
  * The codes, as one object.
@@ -21,8 +27,21 @@ import { ConflictError, NotFoundError, type ErrorDetails } from "../errors/error
  * a string, and the specification's copy is checked against these in `tenancy.errors.spec.ts`.
  */
 export const TENANCY_ERRORS = {
-  /** No tenant with that id — or, once #32 lands, none this caller may know about. */
+  /**
+   * No tenant with that id — *or* none this caller may know about.
+   *
+   * The two are deliberately one answer
+   * ([#32](https://github.com/NobuData/ouroboros/issues/32)). A `403` would confirm that an
+   * identifier names something real, which is the whole of what somebody enumerating
+   * identifiers is trying to learn.
+   */
   tenantNotFound: "tenant_not_found",
+  /** The request named no tenant and the caller belongs to none, or to more than one. */
+  tenantRequired: "tenant_required",
+  /** The path and the `X-Ouro-Tenant` header named different tenants. */
+  tenantMismatch: "tenant_mismatch",
+  /** The caller is a member, and their role does not permit this. */
+  forbidden: "forbidden",
   /** The slug is already another tenant's. `tenants_slug_key`. */
   slugTaken: "slug_taken",
   /** No such domain on this tenant. */
@@ -57,6 +76,61 @@ export type TenancyErrorCode = (typeof TENANCY_ERRORS)[keyof typeof TENANCY_ERRO
  */
 export function tenantNotFound(tenantId: string): NotFoundError {
   return new NotFoundError(TENANCY_ERRORS.tenantNotFound, "No such tenant.", { tenantId });
+}
+
+/**
+ * `422` — this request names no tenant, and one could not be inferred.
+ *
+ * Raised when the caller belongs to no tenant at all, or to several and said which in
+ * neither the path nor the header. It leaks nothing: the caller is being told to name
+ * something, not told anything about what exists.
+ *
+ * @returns The error to throw.
+ */
+export function tenantRequired(): InvalidRequestError {
+  return new InvalidRequestError(
+    TENANCY_ERRORS.tenantRequired,
+    "Name the workspace this request is for, in the X-Ouro-Tenant header.",
+  );
+}
+
+/**
+ * `422` — the path and the header disagree about which tenant this is.
+ *
+ * Refused rather than resolved by precedence. Silently preferring one would mean a client
+ * holding a stale workspace in a header could read and write another one for as long as
+ * nobody noticed — and both values came from the caller, so saying so leaks nothing.
+ *
+ * @param path - What the path named.
+ * @param header - What the header named.
+ * @returns The error to throw.
+ */
+export function tenantMismatch(path: string, header: string): InvalidRequestError {
+  return new InvalidRequestError(
+    TENANCY_ERRORS.tenantMismatch,
+    "This request names one workspace in its path and a different one in X-Ouro-Tenant.",
+    { path, header },
+  );
+}
+
+/**
+ * `403` — a member of this tenant, whose role does not permit this.
+ *
+ * The one place in this API where `403` is the right answer rather than `404`: the caller
+ * has already proved they are a member, so the tenant's existence is not a secret from
+ * them, and telling them their role is too low is the only answer they can act on.
+ *
+ * @param role - The role they hold. Echoed because a UI that greyed out the wrong button is
+ *   the likeliest cause of seeing this, and it needs to know what it got wrong.
+ * @param required - The roles that would have been enough.
+ * @returns The error to throw.
+ */
+export function forbidden(role: string, required: readonly string[]): ForbiddenError {
+  return new ForbiddenError(
+    TENANCY_ERRORS.forbidden,
+    "Your role in this workspace does not permit this.",
+    { role, required: [...required] },
+  );
 }
 
 /**

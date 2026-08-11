@@ -24,6 +24,7 @@ import {
 import { ConstraintViolationInterceptor } from "./constraints";
 import { DomainsService } from "./domains.service";
 import { PageQuery, type Page } from "./pagination";
+import { ADMINISTRATORS, Roles } from "./roles.guard";
 import type { DomainResource } from "./resources";
 import { CreateDomainBody, DomainParams, TenantParams, UpdateDomainBody } from "./tenancy.dto";
 
@@ -51,6 +52,7 @@ export class DomainsController {
    * @param body - The domain, and whether it becomes the primary.
    * @returns The domain as it was stored, with `201`.
    */
+  @Roles(...ADMINISTRATORS)
   @Post()
   add(@Param() params: TenantParams, @Body() body: CreateDomainBody): Promise<DomainResource> {
     return this.domains.add(params.tenantId, body);
@@ -63,6 +65,7 @@ export class DomainsController {
    * @param body - `isPrimary`.
    * @returns The domain after the change.
    */
+  @Roles(...ADMINISTRATORS)
   @Patch(":domainId")
   setPrimary(
     @Param() params: DomainParams,
@@ -80,6 +83,7 @@ export class DomainsController {
    * @param params - The tenant's id and the domain's.
    * @returns When it is gone.
    */
+  @Roles(...ADMINISTRATORS)
   @Delete(":domainId")
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param() params: DomainParams): Promise<void> {

@@ -1,4 +1,5 @@
-import { Module } from "@nestjs/common";
+import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 
 import { DbModule } from "../db/db.module";
 import { ConstraintViolationInterceptor } from "./constraints";
@@ -9,6 +10,10 @@ import { MembersController } from "./members.controller";
 import { MembersRepository } from "./members.repository";
 import { MembersService } from "./members.service";
 import { OrgsController } from "./orgs.controller";
+import { RolesGuard } from "./roles.guard";
+import { TenantContextGuard } from "./tenant.guard";
+import { TenantContextMiddleware } from "./tenant.middleware";
+import { TenantResolver } from "./tenant.resolver";
 import { OrgsRepository } from "./orgs.repository";
 import { OrgsService } from "./orgs.service";
 import { ReposController } from "./repos.controller";
@@ -43,12 +48,15 @@ import { TenantsService } from "./tenants.service";
  * `…/orgs/{login}/repos` and `…/orgs` take different parameters and a class cannot have two
  * shapes of them.
  *
- * **Nothing here is authenticated yet.** The issue is explicit that role enforcement arrives
- * with [#33](https://github.com/NobuData/ouroboros/issues/33)'s principal and
- * [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` — *controllers take
- * the authenticated principal from request context* once those land. What is enforced today
- * is everything that does not need to know who is asking: the shapes, the last-owner rule,
- * and every constraint the migrations declare.
+ * **These routes are authenticated, and this module says nothing about it.** The session
+ * guard [#33](https://github.com/NobuData/ouroboros/issues/33) registers is global — an
+ * `APP_GUARD` provider in `AuthModule` — so every controller here requires a session
+ * without importing anything, and a controller added later is protected because somebody
+ * wrote a controller. What is not enforced yet is *authorization*: the role a mutation
+ * needs, and the `404`-not-`403` rule for a tenant the caller cannot see, both of which are
+ * [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` and tenant context.
+ * Everything that does not need to know who is asking is enforced today: the shapes, the
+ * last-owner rule, and every constraint the migrations declare.
  */
 @Module({
   imports: [DbModule],
@@ -61,6 +69,12 @@ import { TenantsService } from "./tenants.service";
   ],
   providers: [
     ConstraintViolationInterceptor,
+    TenantResolver,
+    // Order matters, and it is the order of this list: the tenant has to be resolved before
+    // a role in it can be checked, and Nest runs global guards in the order they are
+    // registered. `tenancy.module.spec.ts` asserts the consequence rather than the order.
+    { provide: APP_GUARD, useClass: TenantContextGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     TenantsRepository,
     DomainsRepository,
     MembersRepository,
@@ -77,4 +91,19 @@ import { TenantsService } from "./tenants.service";
   // controller into these rules.
   exports: [TenantsService, MembersService],
 })
-export class TenancyModule {}
+export class TenancyModule implements NestModule {
+  /**
+   * Open a tenant context for every request.
+   *
+   * The middleware resolves nothing — see `tenant.middleware.ts` for why it cannot, and why
+   * it has to be middleware anyway. It is applied to *every* route, public ones included: a
+   * store nothing writes to costs one object, and it means `currentTenant()` is a question
+   * with an honest answer everywhere rather than one that throws on the routes somebody
+   * forgot to list.
+   *
+   * @param consumer - Nest's middleware builder.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantContextMiddleware).forRoutes({ path: "*path", method: RequestMethod.ALL });
+  }
+}

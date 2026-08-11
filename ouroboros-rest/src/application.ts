@@ -107,6 +107,13 @@ interface RawResponse {
  *     specification fails while the application is being constructed rather than on the
  *     first request for the document.
  *
+ * A seventh decision — **which browser origins may call this API with credentials** — is
+ * applied by {@link permitBrowserOrigins} rather than by {@link configureApplication},
+ * because it is the one that needs a value from the environment. A suite building its own
+ * application through `@nestjs/testing` calls it too when it is asserting about CORS, and
+ * otherwise does not: an origin policy changes nothing about a request Supertest makes
+ * over a socket with no `Origin` header.
+ *
  * The specification is served in every environment, deliberately. It describes only what
  * the service already answers, it holds no secret, and it is committed in a public
  * repository — while hiding it in production would mean production served a different
@@ -130,8 +137,48 @@ export async function createApplication(
 ): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule.forRoot(configuration), options);
   configureApplication(app);
+  permitBrowserOrigins(app, configuration.corsOrigins);
 
   return app;
+}
+
+/**
+ * Let the browser origins in `OURO_CORS_ORIGINS` call this API *with their cookies*.
+ *
+ * Two things make this necessary rather than a nicety, and both arrived with the session
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33)). `ouroboros-ui` is served from a
+ * different origin than this service — `:3000` and `:4000` in development, and two
+ * hostnames in a deployment — so every call it makes is cross-origin; and a cross-origin
+ * request only carries a cookie when the server says `Access-Control-Allow-Credentials`
+ * *and* names the origin exactly. Without this the OAuth flow still completes, because a
+ * redirect is a navigation rather than a fetch, and then `/auth/me` answers `401` to a
+ * browser that is holding a perfectly good session.
+ *
+ * The list is validated as *origins* — scheme, host, optional port, no path, no wildcard —
+ * in `src/modules/config/configuration.ts`, and never empty. A wildcard is not merely
+ * discouraged here: a credentialed request may not be answered with one at all, so `*`
+ * would produce a service that appears configured and refuses every call the UI makes.
+ *
+ * This is the CORS *policy*, not the security baseline. Helmet, rate limiting and the
+ * cookie hardening review are [#38](https://github.com/NobuData/ouroboros/issues/38); what
+ * is here is the minimum without which the session cannot be exercised by the client it
+ * exists for.
+ *
+ * @param app - The application to configure.
+ * @param origins - The validated origins, from `OURO_CORS_ORIGINS`.
+ */
+export function permitBrowserOrigins(app: INestApplication, origins: readonly string[]): void {
+  app.enableCors({
+    // Spread because Nest's option type asks for a mutable array; the configuration's own
+    // copy stays frozen, so nothing can widen the policy by mutating it from elsewhere.
+    origin: [...origins],
+    credentials: true,
+    // `X-Ouro-Tenant` is #32's, and is listed here because a header a browser is not told
+    // it may send is a preflight failure rather than a missing header — a failure that
+    // would land on that issue looking like its own bug.
+    allowedHeaders: ["Content-Type", "X-Ouro-Tenant"],
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+  });
 }
 
 /**

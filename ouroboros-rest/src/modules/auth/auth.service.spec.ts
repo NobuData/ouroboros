@@ -1,0 +1,503 @@
+import { AppConfigService } from "../config/config.service";
+import { testConfiguration } from "../config/configuration.fixture";
+import { recordingDatabase } from "../db/database.fixture";
+import type { Configuration } from "../config/configuration";
+import type { DomainError } from "../errors/error.envelope";
+import type { Tenant, User } from "../db/schema";
+import { AUTH_ERRORS } from "./auth.errors";
+import { AuthRepository, GITHUB_PROVIDER } from "./auth.repository";
+import type { MembershipRow } from "./auth.resources";
+import { AuthService, sessionTokenFrom } from "./auth.service";
+import type { GithubClient, GithubProfile } from "./github";
+import { issueHandshake, randomHandshakeValue } from "./oauth";
+import { issueSession, readSession, SESSION_COOKIE } from "./session";
+
+/**
+ * The rules of signing in.
+ *
+ * Three of them are the issue's acceptance criteria and are asserted by name: the state
+ * check that makes the callback CSRF-safe, the identity upsert that makes a repeat sign-in
+ * reuse a `users` row, and the development bypass that must be off in production. The rest
+ * is what the guard asks on every request.
+ */
+
+const SECRET = "dev-session-secret-change-me";
+const NOW = new Date("2026-08-11T10:20:23.114Z");
+const CALLBACK = "http://localhost:4000/api/v1/auth/github/callback";
+
+const USER = {
+  id: "5eed0003-0000-4000-8000-000000000001",
+  email: "ken@acme-robotics.dev",
+  display_name: "Ken Suenobu",
+  avatar_url: null,
+  created_at: NOW,
+  updated_at: NOW,
+} satisfies User;
+
+const PROFILE = {
+  externalId: "900000001",
+  login: "ksuenobu",
+  displayName: "Ken Suenobu",
+  email: "ken@acme-robotics.dev",
+  avatarUrl: "https://avatars.example/1",
+} satisfies GithubProfile;
+
+const TENANT = {
+  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+  slug: "acme",
+  display_name: "Acme, Inc.",
+  status: "active",
+  created_at: NOW,
+  updated_at: NOW,
+} satisfies Tenant;
+
+const MEMBERSHIP = {
+  tenant_id: TENANT.id,
+  slug: "acme",
+  display_name: "Acme, Inc.",
+  status: "active",
+  role: "owner",
+  invited_at: NOW,
+  joined_at: NOW,
+} satisfies MembershipRow;
+
+/**
+ * A configuration service over a validated configuration.
+ *
+ * @param overrides - Environment variables to change before validating.
+ * @returns The accessor, reading a real `Configuration` rather than a literal — so a spec
+ *   cannot assert against a shape the schema would never produce.
+ */
+function configFor(overrides: NodeJS.ProcessEnv = {}): AppConfigService {
+  const configuration = testConfiguration(overrides);
+
+  return new AppConfigService({
+    getOrThrow: (key: string) => configuration[key as keyof Configuration],
+    get: (key: string) => configuration[key as keyof Configuration],
+  } as never);
+}
+
+/** A repository whose every method is a mock. */
+function repositoryDouble(): jest.Mocked<AuthRepository> {
+  return {
+    findUserByIdentity: jest.fn().mockResolvedValue(undefined),
+    findUserByEmail: jest.fn().mockResolvedValue(undefined),
+    findUserById: jest.fn().mockResolvedValue(undefined),
+    createUser: jest.fn().mockResolvedValue(USER),
+    refreshProfile: jest.fn().mockResolvedValue(USER),
+    linkIdentity: jest.fn().mockResolvedValue(undefined),
+    listMemberships: jest.fn().mockResolvedValue([]),
+    findTenantByDomain: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<AuthRepository>;
+}
+
+/** A GitHub client that answers with {@link PROFILE}. */
+function githubDouble(): jest.Mocked<GithubClient> {
+  return {
+    exchangeCode: jest.fn().mockResolvedValue("gho_token"),
+    readProfile: jest.fn().mockResolvedValue(PROFILE),
+  } as unknown as jest.Mocked<GithubClient>;
+}
+
+/** Everything a test drives the service through. */
+interface Harness {
+  auth: AuthService;
+  repository: jest.Mocked<AuthRepository>;
+  github: jest.Mocked<GithubClient>;
+  statements: () => string[];
+}
+
+/**
+ * Build the service over doubles and a recording database.
+ *
+ * @param overrides - Environment variables to change.
+ * @returns The service and the doubles behind it.
+ */
+function harness(overrides: NodeJS.ProcessEnv = {}): Harness {
+  const database = recordingDatabase();
+  const repository = repositoryDouble();
+  const github = githubDouble();
+
+  return {
+    auth: new AuthService(configFor(overrides), database.service, repository, github, () => NOW),
+    repository,
+    github,
+    statements: database.sql,
+  };
+}
+
+/**
+ * The envelope code a rejection carries.
+ *
+ * @param work - The call expected to fail.
+ * @returns Its `code`.
+ * @throws {Error} If the call succeeded.
+ */
+async function codeOfRejection(work: Promise<unknown>): Promise<string> {
+  try {
+    await work;
+  } catch (error) {
+    return (error as DomainError).code;
+  }
+
+  throw new Error("the call was expected to fail and did not");
+}
+
+describe("starting a sign-in", () => {
+  it("sends the browser to GitHub with the state it just generated", () => {
+    const started = harness().auth.startSignIn(CALLBACK);
+    const state = new URL(started.authorizeUrl).searchParams.get("state");
+
+    expect(started.authorizeUrl).toContain("https://github.com/login/oauth/authorize");
+    expect(state).not.toBeNull();
+  });
+
+  it("remembers that state, and the verifier, in a signed handshake", () => {
+    const started = harness().auth.startSignIn(CALLBACK);
+    const state = new URL(started.authorizeUrl).searchParams.get("state");
+
+    // The cookie is the *only* place the state is kept. Comparing the callback's state
+    // against it is what an attacker composing a callback cannot pass.
+    expect(started.handshake).toContain(".");
+    expect(started.handshake).not.toContain(state as string);
+  });
+
+  it("starts a different handshake every time", () => {
+    const { auth } = harness();
+
+    expect(auth.startSignIn(CALLBACK).handshake).not.toBe(auth.startSignIn(CALLBACK).handshake);
+  });
+
+  it("sends the challenge and never the verifier", () => {
+    const started = harness().auth.startSignIn(CALLBACK);
+    const parameters = new URL(started.authorizeUrl).searchParams;
+
+    expect(parameters.get("code_challenge_method")).toBe("S256");
+    expect(parameters.get("code_challenge")).not.toBeNull();
+    expect(started.authorizeUrl).not.toContain("code_verifier");
+  });
+});
+
+describe("finishing a sign-in", () => {
+  /** A handshake cookie holding a known state and verifier. */
+  const handshake = (state: string, verifier = "the-verifier"): string =>
+    issueHandshake({ state, verifier }, SECRET, NOW);
+
+  it("issues a session for the person GitHub named", async () => {
+    const { auth, repository } = harness();
+    repository.findUserByIdentity.mockResolvedValue(USER);
+    repository.refreshProfile.mockResolvedValue(USER);
+
+    const token = await auth.completeSignIn("code", "s", handshake("s"), CALLBACK);
+
+    expect(readSession(token, { secret: SECRET, now: NOW })?.sub).toBe(USER.id);
+  });
+
+  it("presents the verifier the handshake committed to", async () => {
+    const { auth, github, repository } = harness();
+    repository.findUserByIdentity.mockResolvedValue(USER);
+
+    await auth.completeSignIn("code", "s", handshake("s", "v-123"), CALLBACK);
+
+    expect(github.exchangeCode).toHaveBeenCalledWith("code", "v-123", CALLBACK);
+  });
+
+  it("refuses a callback whose state does not match the cookie", async () => {
+    const { auth } = harness();
+
+    expect(
+      await codeOfRejection(auth.completeSignIn("code", "other", handshake("s"), CALLBACK)),
+    ).toBe(AUTH_ERRORS.handshakeInvalid);
+  });
+
+  it("refuses a callback with no handshake cookie at all", async () => {
+    const { auth } = harness();
+
+    expect(await codeOfRejection(auth.completeSignIn("code", "s", undefined, CALLBACK))).toBe(
+      AUTH_ERRORS.handshakeInvalid,
+    );
+  });
+
+  it("refuses a handshake signed with a different key", async () => {
+    const { auth } = harness();
+    const forged = issueHandshake({ state: "s", verifier: "v" }, "another-secret-entirely", NOW);
+
+    expect(await codeOfRejection(auth.completeSignIn("code", "s", forged, CALLBACK))).toBe(
+      AUTH_ERRORS.handshakeInvalid,
+    );
+  });
+
+  it("refuses a handshake the browser took too long to return", async () => {
+    const { auth } = harness();
+    const stale = issueHandshake(
+      { state: "s", verifier: "v" },
+      SECRET,
+      new Date(NOW.getTime() - 11 * 60 * 1000),
+    );
+
+    expect(await codeOfRejection(auth.completeSignIn("code", "s", stale, CALLBACK))).toBe(
+      AUTH_ERRORS.handshakeInvalid,
+    );
+  });
+
+  it("refuses a session cookie replayed as a handshake", async () => {
+    const { auth } = harness();
+    const session = issueSession(USER.id, SECRET, NOW);
+
+    expect(await codeOfRejection(auth.completeSignIn("code", "s", session, CALLBACK))).toBe(
+      AUTH_ERRORS.handshakeInvalid,
+    );
+  });
+
+  it("checks the state before spending anything on GitHub", async () => {
+    // A callback that did not come from a handshake this service started should cost one
+    // string comparison, not a round trip.
+    const { auth, github } = harness();
+
+    await auth.completeSignIn("code", "wrong", handshake("s"), CALLBACK).catch(() => undefined);
+
+    expect(github.exchangeCode).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolving a GitHub account to a person", () => {
+  it("reuses the same row when the identity is already known — the issue's third criterion", async () => {
+    const { auth, repository } = harness();
+    repository.findUserByIdentity.mockResolvedValue(USER);
+    repository.refreshProfile.mockResolvedValue(USER);
+
+    expect(await auth.resolveUser(PROFILE)).toEqual(USER);
+    expect(repository.createUser).not.toHaveBeenCalled();
+    expect(repository.linkIdentity).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the name and avatar of a returning person", async () => {
+    const { auth, repository } = harness();
+    repository.findUserByIdentity.mockResolvedValue(USER);
+
+    await auth.resolveUser({ ...PROFILE, displayName: "Ken S." });
+
+    expect(repository.refreshProfile).toHaveBeenCalledWith(
+      USER.id,
+      "Ken S.",
+      PROFILE.avatarUrl,
+      expect.anything(),
+    );
+  });
+
+  it("attaches the identity to the person an invitation created", async () => {
+    // The path that matters most: `MembersRepository.createUser` made a stub row so an
+    // invitation had something to point at, and this is where it becomes a real person —
+    // so they arrive already holding the membership rather than as a duplicate account.
+    const { auth, repository } = harness();
+    repository.findUserByIdentity.mockResolvedValue(undefined);
+    repository.findUserByEmail.mockResolvedValue(USER);
+
+    await auth.resolveUser(PROFILE);
+
+    expect(repository.createUser).not.toHaveBeenCalled();
+    expect(repository.linkIdentity).toHaveBeenCalledWith(
+      USER.id,
+      GITHUB_PROVIDER,
+      PROFILE.externalId,
+      expect.anything(),
+    );
+  });
+
+  it("creates the person and the identity when neither is known", async () => {
+    const { auth, repository } = harness();
+
+    await auth.resolveUser(PROFILE);
+
+    expect(repository.createUser).toHaveBeenCalledWith(
+      { email: PROFILE.email, display_name: PROFILE.displayName, avatar_url: PROFILE.avatarUrl },
+      expect.anything(),
+    );
+    expect(repository.linkIdentity).toHaveBeenCalledWith(
+      USER.id,
+      GITHUB_PROVIDER,
+      PROFILE.externalId,
+      expect.anything(),
+    );
+  });
+
+  it("writes both tables in one transaction", async () => {
+    // A process that died between them would leave a `users` row nobody can sign in as,
+    // reachable only by an address nothing in this flow looks up second.
+    const { auth, statements } = harness();
+
+    await auth.resolveUser(PROFILE);
+
+    expect(statements()[0]).toBe("begin");
+    expect(statements().at(-1)).toBe("commit");
+  });
+});
+
+describe("authenticating a request", () => {
+  it("answers with the person a valid session names", async () => {
+    const { auth, repository } = harness();
+    repository.findUserById.mockResolvedValue(USER);
+
+    const cookie = `${SESSION_COOKIE}=${issueSession(USER.id, SECRET, NOW)}`;
+
+    expect(await auth.authenticate(cookie)).toEqual({ user: USER });
+  });
+
+  it("reads the person from the database rather than from the cookie", async () => {
+    // Which is what makes a deleted account's outstanding session stop working: the
+    // signature is still perfectly good and there is no row behind it.
+    const { auth, repository } = harness();
+    repository.findUserById.mockResolvedValue(undefined);
+
+    const cookie = `${SESSION_COOKIE}=${issueSession(USER.id, SECRET, NOW)}`;
+
+    expect(await auth.authenticate(cookie)).toBeUndefined();
+    expect(repository.findUserById).toHaveBeenCalledWith(USER.id);
+  });
+
+  it.each([
+    ["no cookie header", undefined],
+    ["a header with no session cookie", "other=1"],
+    [
+      "a session signed with another key",
+      `${SESSION_COOKIE}=${issueSession("x", "other-secret-value", NOW)}`,
+    ],
+    [
+      "a session that has expired",
+      `${SESSION_COOKIE}=${issueSession("x", SECRET, new Date(NOW.getTime() - 8 * 24 * 60 * 60 * 1000))}`,
+    ],
+    [
+      "a handshake cookie in the session's place",
+      `${SESSION_COOKIE}=${issueHandshake({ state: "s", verifier: "v" }, SECRET, NOW)}`,
+    ],
+    ["a value that is not a token", `${SESSION_COOKIE}=nonsense`],
+  ])("answers with nobody for %s", async (_description, cookie) => {
+    const { auth, repository } = harness();
+    repository.findUserById.mockResolvedValue(USER);
+
+    expect(await auth.authenticate(cookie)).toBeUndefined();
+  });
+});
+
+describe("the development bypass", () => {
+  const BYPASS = { OURO_AUTH_DEV_USER: "ken@acme-robotics.dev" };
+
+  it("signs a request in as the named person when it is configured", async () => {
+    const { auth, repository } = harness(BYPASS);
+    repository.findUserByEmail.mockResolvedValue(USER);
+
+    expect(await auth.authenticate(undefined)).toEqual({ user: USER });
+  });
+
+  it("is off in production, whatever the environment said", async () => {
+    // The issue's acceptance criterion. `loadConfiguration` drops the variable in
+    // production and `AppConfigService.devUserEmail` refuses it again — two checks,
+    // because one of them being wrong is authentication turned off for a deployment.
+    const { auth, repository } = harness({ ...BYPASS, NODE_ENV: "production" });
+    repository.findUserByEmail.mockResolvedValue(USER);
+
+    expect(await auth.authenticate(undefined)).toBeUndefined();
+    expect(repository.findUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it("is off when the variable is unset, which is what the test fixture leaves it", async () => {
+    const { auth, repository } = harness();
+    repository.findUserByEmail.mockResolvedValue(USER);
+
+    expect(await auth.authenticate(undefined)).toBeUndefined();
+  });
+
+  it("grants nothing when the address names no user", async () => {
+    // A bypass that created accounts would be a bypass that writes to the database, and
+    // the row it wrote would outlive the machine it was convenient on.
+    const { auth, repository } = harness(BYPASS);
+    repository.findUserByEmail.mockResolvedValue(undefined);
+
+    expect(await auth.authenticate(undefined)).toBeUndefined();
+    expect(repository.createUser).not.toHaveBeenCalled();
+  });
+
+  it("loses to a real session, so the OAuth flow is still exercisable with it set", async () => {
+    const other: User = { ...USER, id: "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85" };
+    const { auth, repository } = harness(BYPASS);
+    repository.findUserById.mockResolvedValue(other);
+    repository.findUserByEmail.mockResolvedValue(USER);
+
+    const cookie = `${SESSION_COOKIE}=${issueSession(other.id, SECRET, NOW)}`;
+
+    expect(await auth.authenticate(cookie)).toEqual({ user: other });
+  });
+});
+
+describe("describing a session", () => {
+  it("carries the person and their memberships", async () => {
+    const { auth, repository } = harness();
+    repository.listMemberships.mockResolvedValue([MEMBERSHIP]);
+
+    const described = await auth.describe(USER);
+
+    expect(described.user.id).toBe(USER.id);
+    expect(described.memberships).toHaveLength(1);
+    expect(described.memberships[0].role).toBe("owner");
+  });
+
+  it("suggests the tenant an address's domain resolves to, for somebody who belongs nowhere", async () => {
+    const { auth, repository } = harness();
+    repository.findTenantByDomain.mockResolvedValue(TENANT);
+
+    const described = await auth.describe(USER);
+
+    expect(repository.findTenantByDomain).toHaveBeenCalledWith("acme-robotics.dev");
+    expect(described.tenantSuggestion).toEqual({
+      tenantId: TENANT.id,
+      slug: "acme",
+      displayName: "Acme, Inc.",
+    });
+  });
+
+  it("suggests nothing to somebody who is already a member", async () => {
+    const { auth, repository } = harness();
+    repository.listMemberships.mockResolvedValue([MEMBERSHIP]);
+    repository.findTenantByDomain.mockResolvedValue(TENANT);
+
+    expect((await auth.describe(USER)).tenantSuggestion).toBeNull();
+    expect(repository.findTenantByDomain).not.toHaveBeenCalled();
+  });
+
+  it("suggests nothing when no tenant claims the domain", async () => {
+    const { auth } = harness();
+
+    expect((await auth.describe(USER)).tenantSuggestion).toBeNull();
+  });
+
+  it("does not query for a domain an address cannot have", async () => {
+    // `tenant_domains.domain` is non-blank, so the query could not match — and asking
+    // anyway would be a round trip that cannot succeed.
+    const { auth, repository } = harness();
+
+    await auth.describe({ ...USER, email: "not-an-address" });
+
+    expect(repository.findTenantByDomain).not.toHaveBeenCalled();
+  });
+});
+
+describe("reading the session cookie out of a header", () => {
+  it("finds it among others", () => {
+    expect(sessionTokenFrom(`a=1; ${SESSION_COOKIE}=token; b=2`)).toBe("token");
+  });
+
+  it("answers with nothing when it is not there", () => {
+    expect(sessionTokenFrom("a=1")).toBeUndefined();
+    expect(sessionTokenFrom(undefined)).toBeUndefined();
+  });
+
+  it("keeps the dot that separates a token from its signature", () => {
+    const token = issueSession(USER.id, SECRET, NOW);
+
+    expect(sessionTokenFrom(`${SESSION_COOKIE}=${token}`)).toBe(token);
+  });
+
+  it("is what a handshake value would not survive being read as", () => {
+    expect(sessionTokenFrom(`ouro_oauth=${randomHandshakeValue()}`)).toBeUndefined();
+  });
+});

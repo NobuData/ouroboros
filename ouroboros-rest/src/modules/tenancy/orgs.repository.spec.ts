@@ -1,6 +1,6 @@
 import type { GithubOrg, GithubRepo } from "../db/schema";
 import { OrgsRepository } from "./orgs.repository";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 
 /**
  * The enablement statements — and the upsert that makes a `PATCH` able to create.

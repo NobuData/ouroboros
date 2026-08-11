@@ -57,11 +57,16 @@ describe("the development defaults", () => {
       port: DEFAULT_PORT,
       nodeEnv: "development",
       databaseUrl: "postgresql://ouroboros:ouroboros@localhost:5432/ouroboros",
+      restUrl: "http://localhost:4000",
+      uiUrl: "http://localhost:3000",
       engineUrl: "http://localhost:8000",
       engineSharedSecret: "dev-engine-shared-secret-change-me",
       sessionSecret: "dev-session-secret-change-me",
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
+      // The fixture leaves `OURO_AUTH_DEV_USER` out where `.env.example` sets it; see the
+      // fixture's header for why the suite must not be signed in by default.
+      authDevUser: null,
       corsOrigins: ["http://localhost:3000"],
     });
   });
@@ -102,6 +107,8 @@ describe("a missing variable", () => {
   // names it. PORT and NODE_ENV are excluded because they are the two with defaults.
   it.each([
     VARIABLES.databaseUrl,
+    VARIABLES.restUrl,
+    VARIABLES.uiUrl,
     VARIABLES.engineUrl,
     VARIABLES.engineSharedSecret,
     VARIABLES.sessionSecret,
@@ -124,8 +131,10 @@ describe("a missing variable", () => {
   it("is reported alongside every other problem, not one boot at a time", () => {
     const message = failureFor({ OURO_DATABASE_URL: "postgresql://user@host:5432/db" });
 
-    expect(message).toContain("invalid configuration (6 problems)");
+    expect(message).toContain("invalid configuration (8 problems)");
     for (const variable of [
+      VARIABLES.restUrl,
+      VARIABLES.uiUrl,
       VARIABLES.engineUrl,
       VARIABLES.engineSharedSecret,
       VARIABLES.sessionSecret,

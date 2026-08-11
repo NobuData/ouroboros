@@ -1,5 +1,6 @@
 import { Controller, Get } from "@nestjs/common";
 
+import { Public } from "../auth/public.decorator";
 import { AppService, type Heartbeat } from "./app.service";
 
 /**
@@ -17,9 +18,15 @@ export class AppController {
   /**
    * Answer the heartbeat.
    *
+   * `@Public()`, because this route says which build is answering and nothing else — and
+   * whatever polls it holds no session ([#33](https://github.com/NobuData/ouroboros/issues/33)).
+   * The version it reports is already published in `openapi.yaml`, which is served to
+   * anyone as well.
+   *
    * @returns The {@link Heartbeat} {@link AppService} assembled, serialised as JSON by
    *   Nest's default interceptor.
    */
+  @Public()
   @Get()
   heartbeat(): Heartbeat {
     return this.appService.heartbeat();
