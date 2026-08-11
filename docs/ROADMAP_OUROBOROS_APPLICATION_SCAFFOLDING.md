@@ -1618,7 +1618,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | 5.2 | #40 | 🟢 Done | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
 | 5.3 | #41 | 🟢 Done | ouroboros-ui: [5.3] App shell — header, sidebar navigation, content pane | The chrome every screen shares, per the shell specification | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.4 | #42 | 🟢 Done | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
-| 5.5 | #43 | 🟡 Open | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
+| 5.5 | #43 | 🟢 Done | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
 | 5.6 | #44 | 🟡 Open | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
 | 5.7 | #45 | 🟡 Open | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
 | 5.8 | #46 | 🟡 Open | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
@@ -1754,7 +1754,29 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 
 ### Issue 5.5 — ouroboros-ui: [5.5] Typed API client from OpenAPI
 
-> **GitHub issue:** #43 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #43 · **Status:** 🟢 Done · **Parent epic:** #5
+
+> **Shipped as written.** `openapi-typescript` generates
+> [`app/api/schema.d.ts`](../ouroboros-ui/app/api/schema.d.ts) from
+> [`ouroboros-rest/openapi.json`](../ouroboros-rest/openapi.json) — `yarn api:sync`, with
+> the output committed — and a thin `openapi-fetch` wrapper
+> ([`app/api/client.ts`](../ouroboros-ui/app/api/client.ts)) adds the four things every
+> call needs: the base URL from `OURO_REST_URL`, the `ouro_session` cookie, the
+> `X-Ouro-Tenant` header from the active-workspace store, and the error envelope parsed
+> into a typed `ApiError`. A `401` runs `redirect("/login")` before it throws.
+>
+> Two decisions are worth knowing. **The client is server-side**
+> ([`app/api/server.ts`](../ouroboros-ui/app/api/server.ts)): `OURO_REST_URL` carries no
+> `NEXT_PUBLIC_` prefix and the session cookie is `HttpOnly`, so the browser could
+> neither address the service nor authenticate to it — screens fetch in Server
+> Components and Client Components go through Server Actions. **The active workspace is a
+> cookie**, `ouro_tenant`, because the header is composed while a Server Component
+> renders and nothing there can read `localStorage`; 5.6 writes it with
+> `setActiveTenant()`.
+>
+> Staleness is what CI checks: `yarn api:check` is run by the suite, and
+> [`ui.yml`](../.github/workflows/ui.yml) now also watches `ouroboros-rest/openapi.json`,
+> so a pull request that renames a field there and nowhere else fails `ci/ui`.
 
 - **Problem Statement:** Hand-written fetch calls drift from the API; the committed
   spec (4.8) should generate the client (decision D4).

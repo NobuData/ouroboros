@@ -9,12 +9,19 @@ name: ouroboros-ui · ci
 # lockfile it installs from and the manifest that lockfile answers to now live at the
 # repository root, so a change to either can break this build without touching a single
 # file under ouroboros-ui/.
+#
+# ouroboros-rest/openapi.json is here because of #43. The UI's API client is *generated*
+# from that document and committed (`yarn api:sync` → app/api/schema.d.ts), so a pull
+# request that renames a field there and nowhere else must still run these checks: the
+# suite fails while the generated types are stale, and without this path it would never
+# be queued to say so.
 
 on:
   pull_request:
     branches: [main]
     paths:
       - "ouroboros-ui/**"
+      - "ouroboros-rest/openapi.json"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"
@@ -26,6 +33,7 @@ on:
     branches: [main]
     paths:
       - "ouroboros-ui/**"
+      - "ouroboros-rest/openapi.json"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
       - ".github/workflows/ui.yml"

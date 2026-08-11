@@ -418,8 +418,9 @@ end, where the UI's client is derived from the contract REST publishes.
 ### 5.1 UI ↔ REST — the public contract
 
 **Running** ([#34](https://github.com/NobuData/ouroboros/issues/34) landed the
-specification and the checks around it; the typed client is
-[#43](https://github.com/NobuData/ouroboros/issues/43)). Roadmap decision **D4** stands
+specification and the checks around it;
+[#43](https://github.com/NobuData/ouroboros/issues/43) the generated client the UI calls
+it through). Roadmap decision **D4** stands
 where it counts — there is one source of truth for the API and the UI's client is
 generated from it — with the source being
 [`ouroboros-rest/openapi.yaml`](../ouroboros-rest/openapi.yaml) rather than the
@@ -450,7 +451,13 @@ contract.
 The client wrapper adds what every call needs and no call should repeat: the base URL from
 `OURO_REST_URL`, credentials included so the session cookie travels, the `X-Ouro-Tenant`
 header from the active-tenant store, and parsing of the error envelope into a typed
-`ApiError` — with a 401 routing to the login screen.
+`ApiError` — with a 401 routing to the login screen. It lives in
+[`ouroboros-ui/app/api/`](../ouroboros-ui/app/api) and it runs **on the server**: the
+base URL carries no `NEXT_PUBLIC_` prefix and the session cookie is `HttpOnly`, so a
+browser could neither address the service nor authenticate to it. Screens fetch in Server
+Components; a Client Component that needs to write calls a Server Action. The active
+workspace is kept in an `HttpOnly` `ouro_tenant` cookie for the same reason — the header
+is composed while a Server Component renders, where `localStorage` does not exist.
 
 ### 5.2 REST ↔ engine — the internal contract
 

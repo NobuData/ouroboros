@@ -5,12 +5,15 @@
 > ([#40](https://github.com/NobuData/ouroboros/issues/40)), switching themes at runtime
 > ([#17](https://github.com/NobuData/ouroboros/issues/17)) from a
 > [visible control in the header](#theming)
-> ([#42](https://github.com/NobuData/ouroboros/issues/42)), and wrapped in the
-> [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)) —
+> ([#42](https://github.com/NobuData/ouroboros/issues/42)), wrapped in the
+> [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)), and
+> holding a [typed API client](#the-api-client) generated from the REST contract
+> ([#43](https://github.com/NobuData/ouroboros/issues/43)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders *inside* the
 > shell is still a placeholder: the dashboard
-> ([#45](https://github.com/NobuData/ouroboros/issues/45)) lands on top of it.
+> ([#45](https://github.com/NobuData/ouroboros/issues/45)) is the first screen to call
+> that client.
 
 ## Purpose
 
@@ -31,6 +34,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Language | TypeScript 5, `strict` |
 | Package manager | Yarn 4 via corepack (`nodeLinker: node-modules`) |
 | Runtime | Node 24 |
+| API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The API client](#the-api-client) |
 | Styling | CSS custom properties (design tokens), no CSS-in-JS |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
@@ -46,6 +50,9 @@ yarn lint
 yarn typecheck
 yarn test
 yarn build && yarn start
+
+yarn api:sync   # regenerate the API client from ouroboros-rest/openapi.json
+yarn api:check  # …or just report that it has drifted (what the suite runs)
 ```
 
 `lint`, `typecheck`, `test` and `build` are what `ci/ui` runs on every pull request
@@ -77,8 +84,14 @@ Copy the repo-root `.env.example` and never commit a populated `.env`.
 trailing slash trimmed — and throws naming the variable when it is not. It is a function
 rather than a module constant on purpose: a constant would be evaluated while
 `next build` prerenders, failing the build on a machine that has no reason to know the
-address of a service it is not calling. The typed API client
-([#43](https://github.com/NobuData/ouroboros/issues/43)) is its first caller.
+address of a service it is not calling. [The API client](#the-api-client) is its caller,
+and calls it lazily for the same reason.
+
+Two pieces of per-browser state belong to this module rather than to configuration: the
+[theme choice](#theming), in `localStorage` under `ouro-theme`, and the
+[active workspace](#the-api-client), in an `HttpOnly` `ouro_tenant` cookie. The session
+cookie, `ouro_session`, is `ouroboros-rest`'s — this module forwards it and never writes
+it.
 
 ## Container
 
@@ -153,10 +166,18 @@ ouroboros-ui/
 │   ├── theme.ts             # the theme engine: vocabulary, DOM ops, boot script
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
+│   ├── api/                 # the typed client for ouroboros-rest — server-side
+│   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
+│   │   ├── client.ts        #   the wrapper: cookie · X-Ouro-Tenant · ApiError
+│   │   ├── errors.ts        #   ApiError, and the envelope it is parsed from
+│   │   ├── tenant.ts        #   the active-workspace vocabulary
+│   │   ├── server.ts        #   api() — the wired client, and the workspace store
+│   │   └── tenants.ts       #   tenants.list() / tenants.read()
 │   ├── shell/               # the app shell: header, sidebar, content pane
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
+├── scripts/            # api-sync.mjs — the generator behind `yarn api:sync`
 ├── public/             # brand assets, favicons
 ├── Dockerfile          # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore   # …and the context that image is built from
@@ -173,6 +194,66 @@ for the sign-in frame (#44).
 Tests live in `__tests__/` rather than beside the code they cover, so that no file under
 `app/` can ever be mistaken for a route segment. `yarn test` runs them once and exits;
 `yarn test:watch` is the interactive form.
+
+## The API client
+
+This module talks to `ouroboros-rest` and to nothing else, through a client **generated
+from that service's contract** ([#43](https://github.com/NobuData/ouroboros/issues/43),
+decision D4 — [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md#51-ui--rest--the-public-contract)).
+Nothing here is hand-written against the API: `ouroboros-rest/openapi.yaml` is the
+contract, `yarn openapi` renders it to `openapi.json`, and `yarn api:sync` turns that into
+[`app/api/schema.d.ts`](app/api/schema.d.ts).
+
+```ts
+import { tenants } from "@/app/api/tenants";
+
+const page = await tenants.list({ limit: 10 });   // → TenantPage, typed end to end
+page.items[0].slug;                               // a compile error if the field is renamed
+```
+
+Under it, [`app/api/client.ts`](app/api/client.ts) adds the four things every call needs
+and no call should repeat:
+
+| | |
+|---|---|
+| **Base URL** | `OURO_REST_URL`, via [`app/env.ts`](app/env.ts) |
+| **Session** | the `ouro_session` cookie of the request being served, forwarded — and only that cookie |
+| **Workspace** | `X-Ouro-Tenant`, from the active-workspace store |
+| **Failure** | the contract's `{code, message, details}` envelope, parsed into a thrown `ApiError`; a `401` redirects to `/login` first |
+
+So a call has two outcomes rather than three: it resolves with the body the contract
+describes, or it rejects with an `ApiError` carrying the `code` to branch on. There is no
+`{data, error}` to unpack at the call site.
+
+**It runs on the server.** `OURO_REST_URL` carries no `NEXT_PUBLIC_` prefix and
+`ouro_session` is `HttpOnly`, so a browser could neither address the service nor
+authenticate to it; [`app/api/server.ts`](app/api/server.ts) imports `server-only`, which
+turns a Client Component that reaches for it into a build error rather than a runtime one.
+Screens therefore fetch in Server Components and pass data down, and a Client Component
+that needs to *write* calls a Server Action. The same fact decides where the active
+workspace lives: an `HttpOnly` `ouro_tenant` cookie, because the header is composed while a
+Server Component renders and nothing there can read `localStorage`. The login screen
+(#44) writes it with `setActiveTenant()`.
+
+Three properties are worth knowing before changing any of it.
+
+1. **The generated file is committed, and staleness fails CI.** `yarn api:check` is run by
+   the suite ([`__tests__/api/sync.test.ts`](__tests__/api/sync.test.ts)), and
+   [`ui.yml`](../.github/workflows/ui.yml) watches `ouroboros-rest/openapi.json` — so a
+   pull request that renames a field in the contract and nowhere else queues `ci/ui` and
+   fails it. Fixing it is `yarn api:sync` plus whatever the typecheck then reports, which
+   is the entire point of generating the client rather than writing it.
+2. **A resource file is a vocabulary, not a layer.**
+   [`app/api/tenants.ts`](app/api/tenants.ts) is one line per operation over the generated
+   client, and is the pattern for the resources that follow. Types come from the schema,
+   never from a hand-written interface — a facade that reshaped the contract would be a
+   second contract to keep in step with the first.
+3. **A value from a cookie is untrusted on its way into a header.** Both the workspace
+   reference and the session value are validated before they are composed
+   ([`app/api/tenant.ts`](app/api/tenant.ts)), because an edited cookie carrying a newline
+   is a header-injection attempt. An unreadable *workspace* cookie is treated as no choice
+   at all rather than as an error — a bad cookie must not be able to stop the application
+   rendering.
 
 ## App shell
 
@@ -437,6 +518,7 @@ design tokens [#16](https://github.com/NobuData/ouroboros/issues/16) ·
 theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
 theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
+typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
