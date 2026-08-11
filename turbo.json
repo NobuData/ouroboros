@@ -72,6 +72,22 @@
     "typecheck": {},
     "test": {
       "dependsOn": ["^build"]
+    },
+
+    // ouroboros-db is the one module whose suite is not run by anything inside it: its
+    // package script hands `ouroboros-db/tests` to the repo-root scripts/run-tests.sh,
+    // and the tests themselves source scripts/lib/checks.sh. A task's hash covers its own
+    // package and the global dependencies above, so without this the runner and the
+    // assertion harness could both change under a cached pass and the cached pass would
+    // still be replayed — a green that proves nothing about the code that produced it.
+    //
+    // $TURBO_DEFAULT$ keeps the package's own files in the hash; $TURBO_ROOT$ is how an
+    // input reaches above the package, which nothing else here needs to do. Repeating
+    // dependsOn is not redundant: a package-specific entry replaces the generic `test`
+    // configuration rather than extending it.
+    "ouroboros-db#test": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/**"]
     }
   }
 }

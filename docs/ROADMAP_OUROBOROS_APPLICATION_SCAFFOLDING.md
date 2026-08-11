@@ -145,7 +145,7 @@ Complexity scale matches the product's own effort chips: **XS · S · M · L**.
 | 1.3 | #10 | 🟢 Done | ouroboros: [1.3] Local dev environment (docker-compose: PostgreSQL + Flyway) | One-command local database with migrations applied | mvp, infra, db | Y | Y | S | repo root, ouroboros-db |
 | 1.4 | #11 | 🟢 Done | ouroboros: [1.4] CI pipelines per module (path-filtered) | Lint/test/build workflows that run only for touched modules | mvp, ci | Y | Y | M | .github |
 | 1.5 | #12 | 🟢 Done | ouroboros: [1.5] Architecture documentation | `docs/ARCHITECTURE.md`: diagram, port map, env-var conventions, module contracts | mvp, documentation | Y | Y | S | docs |
-| 1.6 | #13 | 🟡 Open | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
+| 1.6 | #13 | 🟢 Done | ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx) | Evaluate/adopt a workspace runner once module count justifies it | v2, infra | Y | N | M | repo root |
 
 ### Issue 1.1 — ouroboros: [1.1] Monorepo layout & module scaffolding conventions
 
@@ -318,7 +318,25 @@ PR paths ──┬─ ouroboros-ui/**     ─▶ ci/ui     (lint·type·test·bu
 
 ### Issue 1.6 — ouroboros: [1.6] Workspace tooling evaluation (Turborepo/Nx)
 
-> **GitHub issue:** #13 · **Status:** 🟡 Open · **Parent epic:** #1
+> **GitHub issue:** #13 · **Status:** 🟢 Done · **Parent epic:** #1
+>
+> Delivered: [`DECISION_WORKSPACE_TOOLING.md`](DECISION_WORKSPACE_TOOLING.md) — **Turborepo
+> 2.10.9 over Yarn 4 workspaces**, with the measurements it was decided on, the case
+> against Nx on a repository with two JavaScript packages, and the five conditions that
+> would reopen it. The two criteria the issue named turn out not to be a runner's job and
+> are recorded as such: a shared `tsconfig` is bought by workspaces rather than by either
+> tool, and the 4.8 → 5.5 handoff needs no graph edge because the spec is a committed
+> artefact rather than a build output.
+>
+> The evaluation found one real defect in the adopted configuration and fixed it:
+> `ouroboros-db#test` runs the repo-root `scripts/run-tests.sh`, which a task hash does
+> not cover, so the runner and the assertion harness could both change under a replayed
+> pass — verified by probe, fixed with a `$TURBO_ROOT$` input, re-verified.
+> [`verify-workspace.sh`](../scripts/verify-workspace.sh) (75 checks) now holds the whole
+> decision to the checkout, including that rule generally: a script that reads above its
+> own package declares it, or is not cached. `verify-ci.sh` already asserted the other
+> acceptance criterion — that the four workspace-root files route to `ci/ui` and `ci/rest`
+> and that a change confined to one module still runs only its own workflow.
 
 - **Problem Statement:** Independent modules mean duplicated scripts and no task-graph
   caching; at some scale a workspace runner pays for itself — adopting one now would
@@ -1906,7 +1924,12 @@ comments to post (executed by the App Shell roadmap's filing pass):
 Issues are filed, labeled, typed, and linked to their epic parents. **#8** (monorepo
 layout), **#9** (labels & templates), **#10** (local dev environment), **#11** (CI
 pipelines) and **#12** (architecture documentation) are **done**, which closes Phase 0
-for the MVP — only #13, the post-MVP workspace-tooling spike, remains in Epic 1. **#14**
+for the MVP. **#13**, the post-MVP workspace-tooling spike, is **done** too — taken early
+because the runner had already been wired in and an adopted tool with no written decision
+behind it is the thing the issue existed to prevent —
+so **Epic 1 is complete**: the answer is Turborepo, the reasoning and the conditions that
+would reopen it are in [`DECISION_WORKSPACE_TOOLING.md`](DECISION_WORKSPACE_TOOLING.md),
+and `verify-workspace.sh` fails the build when the repository stops matching it. **#14**
 (the brand asset set) is **done** as well, which unblocked the theming track: **#15**
 (favicons) has landed its files in `ouroboros-ui/public/` and now waits only on #39 for
 the Metadata API wiring, and **#16** (design tokens) is **done** — both palettes exist as
