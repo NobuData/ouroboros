@@ -9,6 +9,8 @@ import { SwaggerModule } from "@nestjs/swagger";
 
 import { AppModule } from "./modules/app/app.module";
 import type { Configuration } from "./modules/config/configuration";
+import { ErrorEnvelopeFilter } from "./modules/errors/error.filter";
+import { validationPipe } from "./modules/errors/validation";
 import { PROBE_PATHS } from "./modules/health/health.paths";
 import { document, specificationYaml } from "./openapi/specification";
 import { SERVICE_NAME } from "./version";
@@ -69,7 +71,7 @@ interface RawResponse {
 /**
  * Build the Nest application.
  *
- * Four decisions are applied here and nowhere else:
+ * Six decisions are applied here and nowhere else:
  *
  *   * **The global prefix.** Every route is under `/api`, which leaves the origin's root
  *     free for whatever fronts the service later — every route but the health probes,
@@ -85,6 +87,17 @@ interface RawResponse {
  *     own connection is the first thing that needs it (#29); the request pool (#30) and
  *     the engine client (#35) are next, and a pool that learns to drain only after
  *     something is already using it drains for the first time in production.
+ *   * **Validation, before every handler.** DTOs are `class-validator` classes and this is
+ *     the pipe that enforces them ([#31](https://github.com/NobuData/ouroboros/issues/31)).
+ *     It transforms — so a query string's `limit=10` arrives as the number the DTO declares
+ *     — and it *whitelists*: a property no DTO declares is refused rather than passed
+ *     through, which closes mass assignment for every route at once instead of per service.
+ *   * **The error envelope, for every failure.** `{code, message, details}`
+ *     (`docs/ARCHITECTURE.md` § 5.3) is what a client parses, and a filter is the only place
+ *     it can be made true of the answers *no* handler produced — Nest's `404` for an unknown
+ *     path, a body the parser rejected, a connection the database refused. The probes are
+ *     exempt by the same enumerated list that escapes the prefix above: their reader is a
+ *     healthcheck, not a browser, and their body is described in `openapi.yaml` as it is.
  *   * **The published specification.** `openapi.yaml` is the contract and this hands it
  *     out unchanged — Swagger UI at {@link DOCS_PATH} for a human, the document itself at
  *     {@link OPENAPI_JSON_PATH} and {@link OPENAPI_YAML_PATH} for a client generator.
@@ -122,7 +135,7 @@ export async function createApplication(
 }
 
 /**
- * Apply the four decisions above to an application that has already been built.
+ * Apply the six decisions above to an application that has already been built.
  *
  * Separate from {@link createApplication} for one reason: a suite that has to *replace* a
  * provider builds its application through `@nestjs/testing` rather than through
@@ -144,6 +157,11 @@ export function configureApplication(app: INestApplication): void {
   app.setGlobalPrefix(API_PREFIX, { exclude: [...PROBE_PATHS] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
   app.enableShutdownHooks();
+
+  app.useGlobalPipes(validationPipe());
+  // The same list, for the same reason: a probe answers to infrastructure, so the one body
+  // in this service that is not an envelope is the one the prefix already exempts.
+  app.useGlobalFilters(new ErrorEnvelopeFilter(PROBE_PATHS));
 
   publishSpecification(app);
 }

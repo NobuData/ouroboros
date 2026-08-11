@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
-    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed and the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)). The tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), authentication\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations\nwritten here and code that answers them.",
+    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)) and the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)). Authentication\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations\nwritten here and code that answers them.\n\n**Nothing below requires authentication yet**, and that is a statement about how far\nthe epic has got rather than a design. `#33` adds the session and the principal, `#32`\nthe tenant context and the role guard — after which a mutation names the role it needs\nand a tenant a caller cannot see answers `404` rather than admitting it exists. Until\nboth land, this build belongs on a development machine.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -24,6 +24,22 @@
     {
       "name": "service",
       "description": "Identity and liveness — what answers before any contract does: the heartbeat, and the\ntwo probes a container platform reads to decide whether to restart this process and\nwhether to send it traffic."
+    },
+    {
+      "name": "tenants",
+      "description": "Isolated customer workspaces — the root of everything else. A tenant has a slug that\nappears in URLs and command arguments, a display name, and a lifecycle: `active`,\n`suspended`, or the `deleted` that is a soft-delete marker rather than a removal.\n\nThere is deliberately no `DELETE`. A hard delete takes a tenant's domains, members,\norganisations and repositories with it — every foreign key in the schema cascades —\nand that is not an operation an HTTP verb should put one click away."
+    },
+    {
+      "name": "domains",
+      "description": "The email domains that resolve a tenant at sign-in. One tenant may present several;\nat most one of them is the primary the product displays back, and zero is legal for a\ntenant part-way through setting itself up.\n\nA domain is globally unique: it names exactly one tenant, so a second tenant claiming\nit is a `409` with `code: \"domain_taken\"`."
+    },
+    {
+      "name": "members",
+      "description": "Who belongs to a tenant, and what they may do there — `owner`, `admin`, `member` or\n`viewer`. A member is addressed by the *person's* id, because a membership is the\n`(tenant, person)` pair rather than a row with an identity of its own.\n\nOne rule here is enforced by this service rather than by the database, because it\nspans rows and must survive both a role change and a removal: **a tenant always keeps\nat least one owner.** Demoting or removing the last one is a `409` with\n`code: \"last_owner\"`."
+    },
+    {
+      "name": "github",
+      "description": "The GitHub organisations and repositories a tenant has enabled — the boundary of where\nOuroboros may operate. Both carry their own flag, and a repository is in scope only\nwhen **both** are true, so suspending an organisation preserves the per-repository\nchoices underneath it.\n\nBoth default to off. A row records that Ouroboros knows about the organisation or the\nrepository; the flag records that somebody deliberately turned it on."
     }
   ],
   "paths": {
@@ -45,9 +61,1367 @@
                 },
                 "example": {
                   "service": "ouroboros-rest",
-                  "version": "0.3.0",
+                  "version": "0.5.0",
                   "status": "ok",
                   "uptimeSeconds": 3.885
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants": {
+      "get": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "List tenants",
+        "description": "One page of tenants, oldest first.\n\nOrdered by creation time and then by id. The second term is not decoration: two\ntenants created in the same millisecond would otherwise be free to swap places\nbetween requests, and a paginated read could show one of them twice and the other\nnever.",
+        "operationId": "listTenants",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                      "slug": "acme",
+                      "displayName": "Acme, Inc.",
+                      "status": "active",
+                      "createdAt": "2026-08-11T10:20:23.114Z",
+                      "updatedAt": "2026-08-11T10:20:23.114Z"
+                    }
+                  ],
+                  "total": 1,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Create a tenant",
+        "description": "Create a tenant.\n\nThe slug is chosen rather than derived from the display name: it appears in paths\nand command arguments and is the thing a person types, and a generator that turned\n`Acme, Inc.` into `acme-inc` would be one more rule to keep in step with the\ndatabase's own.\n\nThe tenant is created with no domains, no members and no organisations. It is\n`active` from the moment it exists — the status is a lifecycle, not an approval.",
+        "operationId": "createTenant",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTenantRequest"
+              },
+              "example": {
+                "slug": "acme",
+                "displayName": "Acme, Inc."
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The tenant, as it was stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tenant"
+                },
+                "example": {
+                  "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "slug": "acme",
+                  "displayName": "Acme, Inc.",
+                  "status": "active",
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slug_taken` — another tenant already has that slug.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}": {
+      "get": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Read a tenant",
+        "description": "Read one tenant by its id.",
+        "operationId": "readTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tenant"
+                },
+                "example": {
+                  "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "slug": "acme",
+                  "displayName": "Acme, Inc.",
+                  "status": "active",
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "tenants"
+        ],
+        "summary": "Change a tenant",
+        "description": "Rename a tenant, re-slug it, or change its status. Every field is optional, and a\nbody naming none of them answers with the tenant unchanged — which is what `PATCH`\nmeans, and a friendlier answer than refusing a request that asked for nothing.\n\n`status: \"deleted\"` is the soft delete. The row and everything cascading from it\nsurvive, so it is one further `PATCH` away from being undone; there is no `DELETE`\nfor a tenant at all.",
+        "operationId": "updateTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTenantRequest"
+              },
+              "example": {
+                "displayName": "Acme Corporation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The tenant, after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tenant"
+                },
+                "example": {
+                  "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "slug": "acme",
+                  "displayName": "Acme Corporation",
+                  "status": "active",
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T11:02:44.900Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`slug_taken` — the new slug is another tenant's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/domains": {
+      "get": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "List a tenant's domains",
+        "description": "One page of this tenant's email domains, the primary first and then alphabetically —\nthe order a settings screen reads in, rather than whatever creation time produced.",
+        "operationId": "listDomains",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                      "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                      "domain": "acme.example",
+                      "isPrimary": true,
+                      "createdAt": "2026-08-11T10:20:23.114Z",
+                      "updatedAt": "2026-08-11T10:20:23.114Z"
+                    }
+                  ],
+                  "total": 1,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Claim a domain",
+        "description": "Claim an email domain for this tenant, optionally as the one the product displays\nback.\n\n`isPrimary: true` demotes whichever domain currently holds it, in the same\ntransaction — the database permits only one primary per tenant, and the two\nstatements are what make changing it possible at all.",
+        "operationId": "addDomain",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDomainRequest"
+              },
+              "example": {
+                "domain": "acme.example",
+                "isPrimary": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The domain, as it was stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                },
+                "example": {
+                  "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "domain": "acme.example",
+                  "isPrimary": true,
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`domain_taken` — the domain belongs to another tenant. A domain resolves exactly\none tenant at sign-in, so it is unique across the whole installation rather than\nwithin a tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "domain_taken",
+                  "message": "That domain belongs to another tenant.",
+                  "details": {}
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/domains/{domainId}": {
+      "patch": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Set or clear a domain's primary flag",
+        "description": "Promote this domain to the tenant's primary, or demote it.\n\nDemotion may leave the tenant with no primary at all, deliberately: zero is a legal\nstate, and refusing it would make \"replace the domain we display\" an operation with\nno order that works.",
+        "operationId": "setDomainPrimary",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/DomainId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDomainRequest"
+              },
+              "example": {
+                "isPrimary": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The domain, after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Domain"
+                },
+                "example": {
+                  "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "domain": "acme.example",
+                  "isPrimary": true,
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T11:31:02.005Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `domain_not_found` — which a domain belonging to a\n*different* tenant also answers, so the API does not confirm to whoever asked\nthat an identifier they guessed is real.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict` — this tenant's primary domain was changed by another request at the\nsame moment. Retrying is the honest response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "domains"
+        ],
+        "summary": "Give up a domain",
+        "description": "Remove a domain from this tenant. Removing the primary is permitted, for the same\nreason demoting it is.",
+        "operationId": "removeDomain",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/DomainId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Gone. No body: there is nothing to say about a row that no longer exists, and a\n`200` carrying the deleted resource invites a client to keep using it."
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `domain_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/members": {
+      "get": {
+        "tags": [
+          "members"
+        ],
+        "summary": "List a tenant's members",
+        "description": "One page of this tenant's members, by name, each row carrying the person's own\ndetails — this is the query mockup 17's member table renders.",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                      "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85",
+                      "email": "ada@acme.example",
+                      "displayName": "Ada Lovelace",
+                      "avatarUrl": "https://avatars.example/ada.png",
+                      "role": "owner",
+                      "invitedAt": "2026-08-11T10:20:23.114Z",
+                      "joinedAt": "2026-08-11T10:24:51.400Z"
+                    }
+                  ],
+                  "total": 1,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Invite somebody",
+        "description": "Invite a person to this tenant, by email address.\n\n**A stub, deliberately.** The membership is created with `joinedAt` null and nothing\nis sent: what turns an outstanding invitation into a joined member is the sign-in\n[#33](https://github.com/NobuData/ouroboros/issues/33) adds, which is the first\nthing that can honestly say somebody accepted.\n\nA person Ouroboros has never heard of is created here so the membership has\nsomething to point at. One that already exists is reused and their display name is\nleft alone — a person is one row across every tenant they belong to, and an inviter\ntyping a name into a form is not authority to rename them in the others.",
+        "operationId": "inviteMember",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteMemberRequest"
+              },
+              "example": {
+                "email": "grace@acme.example",
+                "role": "admin",
+                "displayName": "Grace Hopper"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The membership, as the member list shows it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                },
+                "example": {
+                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85",
+                  "email": "grace@acme.example",
+                  "displayName": "Grace Hopper",
+                  "avatarUrl": null,
+                  "role": "admin",
+                  "invitedAt": "2026-08-11T10:20:23.114Z",
+                  "joinedAt": null
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`member_exists` — that person already belongs to this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/members/{userId}": {
+      "patch": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Change a member's role",
+        "description": "Change what a member may do in this tenant.\n\nDemoting the tenant's last `owner` is refused — see the `409` below. Promoting\nsomebody *to* owner never is: it cannot reduce the number of owners.",
+        "operationId": "changeMemberRole",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRequest"
+              },
+              "example": {
+                "role": "admin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The membership, after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                },
+                "example": {
+                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85",
+                  "email": "grace@acme.example",
+                  "displayName": "Grace Hopper",
+                  "avatarUrl": null,
+                  "role": "admin",
+                  "invitedAt": "2026-08-11T10:20:23.114Z",
+                  "joinedAt": "2026-08-11T10:24:51.400Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `member_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`last_owner` — this would leave the tenant with nobody who can administer it.\nThe one rule in the tenancy schema the database deliberately does not enforce:\nit spans rows and has to survive both a role change and a removal, so this\nservice owns it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "last_owner",
+                  "message": "A tenant must keep at least one owner. Promote another member first.",
+                  "details": {
+                    "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "members"
+        ],
+        "summary": "Remove a member",
+        "description": "Remove somebody from this tenant. The person is not deleted — they may hold roles in\nother tenants, and one human is one row across all of them.",
+        "operationId": "removeMember",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "They are no longer a member."
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `member_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`last_owner` — they are the only owner this tenant has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/orgs": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "List a tenant's GitHub organisations",
+        "description": "One page of this tenant's GitHub organisations, by login — **including the disabled\nones**, because a settings screen has to render the switch that is off, and a list\nthat hid them would make turning one back on impossible through this API.",
+        "operationId": "listOrgs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                      "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                      "login": "nobudata",
+                      "enabled": true,
+                      "installedAt": null,
+                      "createdAt": "2026-08-11T10:20:23.114Z",
+                      "updatedAt": "2026-08-11T10:20:23.114Z"
+                    }
+                  ],
+                  "total": 1,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Record a GitHub organisation",
+        "description": "Record a GitHub organisation for this tenant, switched off unless the request asks\notherwise.\n\nEnablement is per tenant rather than global: two tenants may each enable an\norganisation they both belong to, and each holds its own flag and its own\ninstallation.",
+        "operationId": "addOrg",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrgRequest"
+              },
+              "example": {
+                "login": "nobudata",
+                "enabled": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The organisation, as it was stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Org"
+                },
+                "example": {
+                  "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "login": "nobudata",
+                  "enabled": true,
+                  "installedAt": null,
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no tenant has that id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`org_taken` — this tenant has already recorded that organisation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/orgs/{login}": {
+      "patch": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Enable or disable a GitHub organisation",
+        "description": "Turn an organisation on or off for this tenant.\n\nTurning it off suspends everything under it without discarding the per-repository\nchoices underneath — which is why there are two flags rather than one, and why this\ntouches only the organisation's.",
+        "operationId": "setOrgEnabled",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/OrgLogin"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgRequest"
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The organisation, after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Org"
+                },
+                "example": {
+                  "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+                  "login": "nobudata",
+                  "enabled": false,
+                  "installedAt": null,
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T12:05:19.732Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `org_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/orgs/{login}/repos": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "List an organisation's repositories",
+        "description": "One page of the repositories recorded under this organisation, by name, enabled or\nnot.\n\nA repository is in scope for Ouroboros only when its own `enabled` **and** its\norganisation's are both true. Neither this operation nor the one below applies that\nrule — they set the flags; whatever is about to act on a repository is what has to\nfind both of them true.",
+        "operationId": "listRepos",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/OrgLogin"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepoPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d",
+                      "orgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                      "name": "ouroboros",
+                      "enabled": true,
+                      "defaultBranch": "main",
+                      "createdAt": "2026-08-11T10:20:23.114Z",
+                      "updatedAt": "2026-08-11T10:20:23.114Z"
+                    }
+                  ],
+                  "total": 1,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `org_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenantId}/orgs/{login}/repos/{name}": {
+      "patch": {
+        "tags": [
+          "github"
+        ],
+        "summary": "Enable or disable a repository",
+        "description": "Turn a repository on or off — **and record it if this is the first Ouroboros has\nheard of it.**\n\nThere is no `POST` for a repository, and that is why this one creates. The GitHub App\ninstallation flow that would discover repositories is future product work, so nothing\nexists today to have created a row for a person to then switch on; making this an\nupsert keeps \"turn this repository on\" a single request either way, and doing it in\none statement keeps it correct when two people do it at once.\n\n`defaultBranch` is left alone when the request omits it rather than cleared: it is\ndiscovered from GitHub, and an enable/disable is not the thing that should forget it.",
+        "operationId": "setRepoEnabled",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/OrgLogin"
+          },
+          {
+            "$ref": "#/components/parameters/RepoName"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRepoRequest"
+              },
+              "example": {
+                "enabled": true,
+                "defaultBranch": "main"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The repository, after the change — created if it was not there before.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Repo"
+                },
+                "example": {
+                  "id": "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d",
+                  "orgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                  "name": "ouroboros",
+                  "enabled": true,
+                  "defaultBranch": "main",
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T12:11:38.220Z"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found`, or `org_not_found`. There is no `repo_not_found`: a\nrepository this API has never seen is one it creates, so the only thing that can\nbe missing is the organisation it would hang from.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict` — the repository was recorded by another request at the same moment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -160,7 +1534,967 @@
     }
   },
   "components": {
+    "parameters": {
+      "TenantId": {
+        "name": "tenantId",
+        "in": "path",
+        "required": true,
+        "description": "The tenant's id.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+      },
+      "DomainId": {
+        "name": "domainId",
+        "in": "path",
+        "required": true,
+        "description": "The domain's id. It must belong to the tenant in the path.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
+      },
+      "UserId": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "description": "The person's id. A membership is the `(tenant, person)` pair rather than a row with\nan identity of its own, so this is what addresses one.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85"
+      },
+      "OrgLogin": {
+        "name": "login",
+        "in": "path",
+        "required": true,
+        "description": "The organisation's GitHub login — the `NobuData` in github.com/NobuData, lower-cased.\nGitHub treats logins case-insensitively, so they are stored folded and one casing is\nthe only one that resolves.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "minLength": 1,
+          "maxLength": 39
+        },
+        "example": "nobudata"
+      },
+      "RepoName": {
+        "name": "name",
+        "in": "path",
+        "required": true,
+        "description": "The repository's name within its organisation, without the owner prefix — the\n`ouroboros` in NobuData/ouroboros, lower-cased.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-z0-9._-]+$",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "example": "ouroboros"
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "description": "How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a\nmillion is a client's way of asking this service to hold a table in memory, and the\nrequest that does it is indistinguishable from a mistake in a loop.",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        },
+        "example": 25
+      },
+      "Offset": {
+        "name": "offset",
+        "in": "query",
+        "required": false,
+        "description": "How many rows to skip.",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "example": 0
+      }
+    },
     "schemas": {
+      "Error": {
+        "type": "object",
+        "title": "Error",
+        "description": "The body of **every** error this API answers with, and the same shape\n`ouroboros-engine` uses behind it (`docs/ARCHITECTURE.md` § 5.3). A failure the\nframework produced — a path no route claims, a body the parser refused — carries it\ntoo, so a client has one thing to parse rather than one per layer.",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "details"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Stable, machine-readable, and the thing to branch on. Every code this API can\nanswer with is named in the description of the response that carries it.",
+            "examples": [
+              "domain_taken",
+              "tenant_not_found",
+              "last_owner",
+              "validation_failed"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for a person. It may name a value the caller sent and never names\nanything about the service's own internals — no driver text, no stack, no\nconstraint. A `500`'s message is a constant for exactly that reason.",
+            "examples": [
+              "That domain belongs to another tenant."
+            ]
+          },
+          "details": {
+            "type": "object",
+            "description": "Whatever is specific to this failure — the field messages of a `422`, keyed by\nfield path; the identifier a `404` was asked about; the constraint a generic\nconflict tripped. Always present, empty rather than absent when there is nothing\nto add, so a client reading `details.x` never has to check `details` first.",
+            "additionalProperties": true,
+            "examples": [
+              {
+                "slug": [
+                  "slug must be lower-case letters, digits and single hyphens"
+                ]
+              },
+              {}
+            ]
+          }
+        }
+      },
+      "Tenant": {
+        "type": "object",
+        "title": "Tenant",
+        "description": "An isolated customer workspace — the root of everything else in the API.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug",
+          "displayName",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable for the tenant's whole life. The slug is not; this is what to store.",
+            "examples": [
+              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "minLength": 2,
+            "maxLength": 63,
+            "description": "The URL- and CLI-safe handle, unique across the installation. DNS-label shaped,\nwhich keeps it usable if one is ever wanted as a subdomain.",
+            "examples": [
+              "acme"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "What a human reads. Free text; it carries no machine meaning.",
+            "examples": [
+              "Acme, Inc."
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "deleted"
+            ],
+            "description": "The lifecycle. `deleted` is a soft-delete marker: the row and everything\ncascading from it survive, so it is recoverable.",
+            "examples": [
+              "active"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Maintained by the database on every write; never accepted from a client.",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          }
+        }
+      },
+      "TenantPage": {
+        "type": "object",
+        "title": "TenantPage",
+        "description": "One page of tenants.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "The rows for this window, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/Tenant"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many rows there are in total, ignoring the window.",
+            "examples": [
+              1
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "The window that was applied — the default, when the request named none.",
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "Domain": {
+        "type": "object",
+        "title": "Domain",
+        "description": "An email domain that resolves a tenant at sign-in.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tenantId",
+          "domain",
+          "isPrimary",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
+            ]
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+            ]
+          },
+          "domain": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+            "maxLength": 253,
+            "description": "Lower-cased, and unique across the whole installation rather than within the\ntenant — a domain names exactly one tenant at sign-in.",
+            "examples": [
+              "acme.example"
+            ]
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "description": "The domain the product displays back. At most one per tenant, and zero is legal\nfor a tenant part-way through setting itself up.",
+            "examples": [
+              true
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          }
+        }
+      },
+      "DomainPage": {
+        "type": "object",
+        "title": "DomainPage",
+        "description": "One page of a tenant's domains, the primary first.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Domain"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "Member": {
+        "type": "object",
+        "title": "Member",
+        "description": "A person's membership of one tenant, with the person's own details alongside — one\nrow of a member table.\n\nFlattened rather than nested, and with no id of its own: the membership *is* the\n`(tenantId, userId)` pair, which is what a `PATCH` or a `DELETE` addresses.",
+        "additionalProperties": false,
+        "required": [
+          "tenantId",
+          "userId",
+          "email",
+          "displayName",
+          "avatarUrl",
+          "role",
+          "invitedAt",
+          "joinedAt"
+        ],
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+            ]
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 320,
+            "description": "Lower-cased and unique across the installation. How a person is recognised and\ncontacted — not how they authenticate.",
+            "examples": [
+              "ada@acme.example"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "What the member list prints. For somebody who has never signed in this is the\nname their inviter gave, or the local part of their address.",
+            "examples": [
+              "Ada Lovelace"
+            ]
+          },
+          "avatarUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 2048,
+            "description": "An `http(s)` URL, or `null` when none is known — which is every person who has\nnot signed in yet. A placeholder is the UI's decision, so none is invented here.",
+            "examples": [
+              "https://avatars.example/ada.png",
+              null
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "description": "What this person may do in this tenant.",
+            "examples": [
+              "owner"
+            ]
+          },
+          "invitedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the invitation was issued. Also when the membership came into being.",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          },
+          "joinedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was accepted, or `null` while it is outstanding — a real state the member\nlist renders, and what an invitation looks like until #33's sign-in exists.",
+            "examples": [
+              "2026-08-11T10:24:51.400Z",
+              null
+            ]
+          }
+        }
+      },
+      "MemberPage": {
+        "type": "object",
+        "title": "MemberPage",
+        "description": "One page of a tenant's members, by name.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Member"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "Org": {
+        "type": "object",
+        "title": "Org",
+        "description": "A GitHub organisation a tenant has recorded, enabled or not.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "tenantId",
+          "login",
+          "enabled",
+          "installedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f"
+            ]
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+            ]
+          },
+          "login": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "minLength": 1,
+            "maxLength": 39,
+            "description": "Lower-cased GitHub login, unique within the tenant.",
+            "examples": [
+              "nobudata"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether Ouroboros may operate in it. A row records that the organisation is\nknown; this records that somebody deliberately turned it on.",
+            "examples": [
+              true
+            ]
+          },
+          "installedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the GitHub App was installed. `null` on every row today — the installation\nflow is future product work, and a default would assert something that never\nhappened.",
+            "examples": [
+              null
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          }
+        }
+      },
+      "OrgPage": {
+        "type": "object",
+        "title": "OrgPage",
+        "description": "One page of a tenant's GitHub organisations, by login.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Org"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "Repo": {
+        "type": "object",
+        "title": "Repo",
+        "description": "A repository within an organisation. In scope for Ouroboros only when this `enabled`\nand its organisation's are **both** true.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "orgId",
+          "name",
+          "enabled",
+          "defaultBranch",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d"
+            ]
+          },
+          "orgId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The organisation it hangs from. The tenant is reachable through that, and a\nsecond copy of the fact here could disagree with it.",
+            "examples": [
+              "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9._-]+$",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Lower-cased, without the owner prefix. Unique within the organisation.",
+            "examples": [
+              "ouroboros"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Independent of the organisation's flag, so suspending one preserves this.",
+            "examples": [
+              true
+            ]
+          },
+          "defaultBranch": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255,
+            "description": "The branch work is cut from, or `null` until it has been discovered from GitHub.\nAn enable/disable that omits it leaves it alone rather than clearing it.",
+            "examples": [
+              "main",
+              null
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "examples": [
+              "2026-08-11T10:20:23.114Z"
+            ]
+          }
+        }
+      },
+      "RepoPage": {
+        "type": "object",
+        "title": "RepoPage",
+        "description": "One page of an organisation's repositories, by name.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Repo"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              1
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
+          }
+        }
+      },
+      "CreateTenantRequest": {
+        "type": "object",
+        "title": "CreateTenantRequest",
+        "description": "The body of `POST /api/v1/tenants`.\n\nRequest schemas are closed, as the response schemas are: a property this document\ndoes not list is refused rather than ignored, which is what closes mass assignment\nfor every route at once instead of per handler.",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "displayName"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "minLength": 2,
+            "maxLength": 63,
+            "examples": [
+              "acme"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "examples": [
+              "Acme, Inc."
+            ]
+          }
+        }
+      },
+      "UpdateTenantRequest": {
+        "type": "object",
+        "title": "UpdateTenantRequest",
+        "description": "The body of `PATCH /api/v1/tenants/{tenantId}`. Every field optional; a body naming\nnone of them is a no-op that answers with the tenant unchanged.",
+        "additionalProperties": false,
+        "properties": {
+          "slug": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "minLength": 2,
+            "maxLength": 63,
+            "examples": [
+              "acme"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "examples": [
+              "Acme Corporation"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "deleted"
+            ],
+            "examples": [
+              "suspended"
+            ]
+          }
+        }
+      },
+      "CreateDomainRequest": {
+        "type": "object",
+        "title": "CreateDomainRequest",
+        "description": "The body of `POST /api/v1/tenants/{tenantId}/domains`.",
+        "additionalProperties": false,
+        "required": [
+          "domain"
+        ],
+        "properties": {
+          "domain": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+            "maxLength": 253,
+            "description": "Lower-cased. An address with upper case in it is refused rather than folded —\nfolding would mean the value stored is not the value sent, which is the beginning\nof a client that cannot predict what a `GET` returns.",
+            "examples": [
+              "acme.example"
+            ]
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "default": false,
+            "description": "Make this the displayed domain, demoting whichever one holds it now.",
+            "examples": [
+              true
+            ]
+          }
+        }
+      },
+      "UpdateDomainRequest": {
+        "type": "object",
+        "title": "UpdateDomainRequest",
+        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/domains/{domainId}`. One field, because\nit is the only thing about a domain that can change: the domain itself is what the\nrow *is*, and renaming one is adding the new and removing the old.",
+        "additionalProperties": false,
+        "required": [
+          "isPrimary"
+        ],
+        "properties": {
+          "isPrimary": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          }
+        }
+      },
+      "InviteMemberRequest": {
+        "type": "object",
+        "title": "InviteMemberRequest",
+        "description": "The body of `POST /api/v1/tenants/{tenantId}/members`.",
+        "additionalProperties": false,
+        "required": [
+          "email",
+          "role"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 320,
+            "description": "Who to invite. Lower-cased before the lookup — the one value this API normalises\nrather than refuses, because an address is typed by a person into a form and\n`Ada@acme.example` is not a mistake worth an error message.",
+            "examples": [
+              "grace@acme.example"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "examples": [
+              "admin"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "What to call them if this is the first Ouroboros has heard of them. Ignored when\nthe person already exists — their own name is not an inviter's to overwrite.\nOmitted, the local part of the address is used.",
+            "examples": [
+              "Grace Hopper"
+            ]
+          }
+        }
+      },
+      "UpdateMemberRequest": {
+        "type": "object",
+        "title": "UpdateMemberRequest",
+        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/members/{userId}`.",
+        "additionalProperties": false,
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member",
+              "viewer"
+            ],
+            "examples": [
+              "admin"
+            ]
+          }
+        }
+      },
+      "CreateOrgRequest": {
+        "type": "object",
+        "title": "CreateOrgRequest",
+        "description": "The body of `POST /api/v1/tenants/{tenantId}/orgs`.",
+        "additionalProperties": false,
+        "required": [
+          "login"
+        ],
+        "properties": {
+          "login": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "minLength": 1,
+            "maxLength": 39,
+            "examples": [
+              "nobudata"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Off unless asked. Anything arriving by a path nobody has thought about yet\narrives switched off, which is the right posture for a flag whose whole job is to\nbound what an autonomous agent may touch.",
+            "examples": [
+              true
+            ]
+          }
+        }
+      },
+      "UpdateOrgRequest": {
+        "type": "object",
+        "title": "UpdateOrgRequest",
+        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/orgs/{login}`.",
+        "additionalProperties": false,
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "examples": [
+              false
+            ]
+          }
+        }
+      },
+      "UpdateRepoRequest": {
+        "type": "object",
+        "title": "UpdateRepoRequest",
+        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/orgs/{login}/repos/{name}`, which is\nalso how a repository is first recorded.",
+        "additionalProperties": false,
+        "required": [
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "defaultBranch": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "The branch work is cut from. Left alone when omitted rather than cleared. The\nshape is an allow-list — letters, digits, dot, underscore, hyphen and slash, with\nno leading or trailing slash, no empty segment, no leading dot and no `..`\nanywhere — because the value is joined onto a filesystem path.",
+            "examples": [
+              "main"
+            ]
+          }
+        }
+      },
       "Heartbeat": {
         "type": "object",
         "title": "Heartbeat",
