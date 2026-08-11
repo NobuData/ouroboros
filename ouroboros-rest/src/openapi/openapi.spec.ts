@@ -21,6 +21,7 @@ import {
 } from "../application";
 import { DEFAULT_PORT } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
+import { PROBE_PATHS } from "../modules/health/health.paths";
 import { SERVICE_NAME, serviceVersion } from "../version";
 import { JSON_FILENAME, YAML_FILENAME, document, specificationYaml } from "./specification";
 
@@ -109,21 +110,59 @@ function validatorFor(source: OpenAPIObject, ref: string) {
     validate(value) ? undefined : ajv.errorsText(validate.errors);
 }
 
+/** One JSON response body, as the document describes it. */
+interface DocumentedBody {
+  schema: { $ref: string };
+  example?: unknown;
+}
+
 /**
- * The `200` response body of an operation, as the document describes it.
+ * The JSON response bodies an operation documents, keyed by status code.
+ *
+ * Keyed by status rather than reaching for `200`, because an operation is allowed more than
+ * one honest answer: `/health/ready` answers `503` when a dependency is missing, which is
+ * the case in a suite that starts no database — so the assertions below check that whatever
+ * the service *did* answer is an answer the document describes, and validate the body
+ * against the schema documented for that status.
  *
  * @param operation - One operation from {@link operations}.
- * @returns Its JSON media-type object.
+ * @returns Its JSON media-type objects, by status code. Statuses documented without a JSON
+ *   body are absent.
  */
-function okBody(operation: Record<string, unknown>): {
-  schema: { $ref: string };
-  example: unknown;
-} {
-  const responses = operation.responses as Record<string, { content: Record<string, unknown> }>;
-  return responses["200"].content["application/json"] as {
-    schema: { $ref: string };
-    example: unknown;
-  };
+function jsonBodies(operation: Record<string, unknown>): Map<string, DocumentedBody> {
+  const responses = operation.responses as Record<
+    string,
+    { content?: Record<string, DocumentedBody> }
+  >;
+
+  const bodies = new Map<string, DocumentedBody>();
+  for (const [status, response] of Object.entries(responses)) {
+    const body = response.content?.["application/json"];
+    if (body !== undefined) {
+      bodies.set(status, body);
+    }
+  }
+
+  return bodies;
+}
+
+/**
+ * Every documented example in the document, as the pairs that address one.
+ *
+ * @returns One `[operation, status]` pair per documented JSON example.
+ */
+function documentedExamples(): [OperationKey, string][] {
+  const pairs: [OperationKey, string][] = [];
+
+  for (const [key, operation] of operations(document())) {
+    for (const [status, body] of jsonBodies(operation)) {
+      if (body.example !== undefined) {
+        pairs.push([key, status]);
+      }
+    }
+  }
+
+  return pairs;
 }
 
 describe("the specification as a document", () => {
@@ -169,12 +208,28 @@ describe("the specification as a document", () => {
     expect(server.url).toBe(`http://localhost:${DEFAULT_PORT}`);
   });
 
-  it("describes nothing outside the versioned base path", () => {
+  it("describes nothing outside the versioned base path but the probes", () => {
+    // The probes are the one exemption, and it is an enumerated one: they answer at the
+    // origin root because a `HEALTHCHECK` and an orchestrator's probe have no notion of an
+    // API version (see `src/modules/health/health.paths.ts`). Anything else that escaped
+    // `/api/v1` would be a route published outside the contract's versioning, which is what
+    // this check exists to refuse.
+    const exempt: readonly string[] = PROBE_PATHS;
     const paths = Object.keys(document().paths);
 
     expect(paths).not.toHaveLength(0);
-    for (const path of paths) {
+    for (const path of paths.filter((candidate) => !exempt.includes(candidate))) {
       expect(path.startsWith(API_BASE_PATH)).toBe(true);
+    }
+  });
+
+  it("describes every path that is exempt from the version", () => {
+    // The other half of the exemption: a probe path that stopped being described here would
+    // be a route the drift check no longer covers, which is how an exemption becomes a hole.
+    const paths = Object.keys(document().paths);
+
+    for (const path of PROBE_PATHS) {
+      expect(paths).toContain(path);
     }
   });
 });
@@ -213,32 +268,45 @@ describe("the document and the running application", () => {
     }
   });
 
-  it.each([...operations(document()).keys()])("answers %s", async (key) => {
-    const [method, path] = key.split(" ");
-
-    await request(server())[method.toLowerCase() as "get"](path).expect(200);
-  });
-
   it.each([...operations(document()).keys()])(
-    "sends %s a body its documented schema accepts",
+    "answers %s with a status it documents",
     async (key) => {
+      // Not `expect(200)`: this suite starts no database and no engine, so `/health/ready`
+      // answers the 503 it documents for exactly that case — and would answer 200 on a machine
+      // where `docker compose up` is running. Both are honest, and a check that insisted on one
+      // of them would be a check that depended on what happened to be listening.
       const [method, path] = key.split(" ");
-      const body = okBody(operations(document()).get(key)!);
-      const mismatch = validatorFor(document(), body.schema.$ref);
+      const documented = [...jsonBodies(operations(document()).get(key)!).keys()];
 
       const response = await request(server())[method.toLowerCase() as "get"](path);
 
-      // The schemas are `additionalProperties: false`, so this is also what catches a
-      // field the code returns and the document does not mention.
-      expect(mismatch(response.body)).toBeUndefined();
+      expect(documented).toContain(String(response.status));
     },
   );
 
   it.each([...operations(document()).keys()])(
-    "documents %s with an example the service could actually send",
-    (key) => {
+    "sends %s a body the schema documented for its answer accepts",
+    async (key) => {
+      const [method, path] = key.split(" ");
+      const bodies = jsonBodies(operations(document()).get(key)!);
+
+      const response = await request(server())[method.toLowerCase() as "get"](path);
+
+      const documented = bodies.get(String(response.status));
+      expect(documented).toBeDefined();
+
+      // The schemas are `additionalProperties: false`, so this is also what catches a
+      // field the code returns and the document does not mention.
+      const mismatch = validatorFor(document(), documented!.schema.$ref);
+      expect(mismatch(response.body)).toBeUndefined();
+    },
+  );
+
+  it.each(documentedExamples())(
+    "documents %s's %s with an example the service could actually send",
+    (key, status) => {
       // An example that no longer validates is a lie a reader copies into their client.
-      const body = okBody(operations(document()).get(key)!);
+      const body = jsonBodies(operations(document()).get(key)!).get(status)!;
       const mismatch = validatorFor(document(), body.schema.$ref);
 
       expect(mismatch(body.example)).toBeUndefined();

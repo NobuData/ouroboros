@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
-    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed. Health probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), authentication\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations\nwritten here and code that answers them.",
+    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed and the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)). The tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), authentication\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations\nwritten here and code that answers them.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -23,7 +23,7 @@
   "tags": [
     {
       "name": "service",
-      "description": "Identity and liveness — what answers before any contract does. The deeper probes a\ncontainer platform reads, `/health/live` and `/health/ready`, are\n[#29](https://github.com/NobuData/ouroboros/issues/29)."
+      "description": "Identity and liveness — what answers before any contract does: the heartbeat, and the\ntwo probes a container platform reads to decide whether to restart this process and\nwhether to send it traffic."
     }
   ],
   "paths": {
@@ -45,9 +45,112 @@
                 },
                 "example": {
                   "service": "ouroboros-rest",
-                  "version": "0.2.0",
+                  "version": "0.3.0",
                   "status": "ok",
                   "uptimeSeconds": 3.885
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Liveness probe",
+        "description": "Report that the process is up and serving.\n\nDeliberately shallow — it opens no connection, reads no configuration and calls\nnothing downstream, so it cannot fail for a reason that has nothing to do with\nwhether this process should be restarted. Reaching the handler at all is the answer;\nthe three empty sections in the body are the shape `/health/ready` fills in.\n\nIts reader restarts the container when this stops answering, which is why *no*\ndependency is consulted here: a liveness probe that failed because PostgreSQL was\ndown would restart every replica of a healthy service, repeatedly, while the\ndatabase was the thing that needed attention.",
+        "operationId": "readLiveness",
+        "responses": {
+          "200": {
+            "description": "The process is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                },
+                "example": {
+                  "status": "ok",
+                  "info": {},
+                  "error": {},
+                  "details": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Readiness probe",
+        "description": "Report whether this service's dependencies are reachable: PostgreSQL, asked\n`SELECT 1` on a connection of the probe's own, and `ouroboros-engine`, asked for the\none route it serves without the internal key — `GET /healthz`.\n\nBoth are asked concurrently and reported independently, so a body that says the\ndatabase is down still says whether the engine is up. Every wait is bounded at two\nseconds, so this answers whether or not a dependency does.\n\nA `down` message names what was attempted and classifies why it failed. It carries\nno host, no port, no role and no driver text: this route answers without\nauthentication, and the driver's own message — which is written for an operator and\nnames all three — goes to the service log instead.\n\nIts reader takes the process out of rotation, or holds a dependent container back,\nand putting it back costs nothing. That is why this one is allowed to fail because a\ndependency is missing, and `/health/live` is not.",
+        "operationId": "readReadiness",
+        "responses": {
+          "200": {
+            "description": "Every dependency answered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                },
+                "example": {
+                  "status": "ok",
+                  "info": {
+                    "database": {
+                      "status": "up"
+                    },
+                    "engine": {
+                      "status": "up"
+                    }
+                  },
+                  "error": {},
+                  "details": {
+                    "database": {
+                      "status": "up"
+                    },
+                    "engine": {
+                      "status": "up"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "At least one dependency did not answer. `error` names which, and `details` still\nreports the ones that did.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                },
+                "example": {
+                  "status": "error",
+                  "info": {
+                    "engine": {
+                      "status": "up"
+                    }
+                  },
+                  "error": {
+                    "database": {
+                      "status": "down",
+                      "message": "SELECT 1 failed (ECONNREFUSED)"
+                    }
+                  },
+                  "details": {
+                    "engine": {
+                      "status": "up"
+                    },
+                    "database": {
+                      "status": "down",
+                      "message": "SELECT 1 failed (ECONNREFUSED)"
+                    }
+                  }
                 }
               }
             }
@@ -99,6 +202,91 @@
             "description": "Seconds since the service was constructed, to millisecond precision. Small\nand shrinking across polls means something is restarting the process — which\nis the one thing a heartbeat can tell you that a plain `200` cannot.",
             "examples": [
               3.885
+            ]
+          }
+        }
+      },
+      "HealthReport": {
+        "type": "object",
+        "title": "HealthReport",
+        "description": "The body of both probes — one shape, so a reader parses one thing.\n\nIt is `@nestjs/terminus`'s report, and the three sections are the same dependencies\nseen three ways: `info` holds the ones that are up, `error` the ones that are down,\nand `details` holds all of them. All three are always present, and all three are\nempty for `/health/live`, which has no dependencies to report on.",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "info",
+          "error",
+          "details"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error",
+              "shutting_down"
+            ],
+            "description": "`ok` when every dependency answered, `error` when one did not — and\n`shutting_down` when the process has been told to stop, at which point it should\nneither be sent traffic nor be counted live.",
+            "examples": [
+              "ok"
+            ]
+          },
+          "info": {
+            "$ref": "#/components/schemas/DependencyStatuses",
+            "description": "The dependencies that answered."
+          },
+          "error": {
+            "$ref": "#/components/schemas/DependencyStatuses",
+            "description": "The dependencies that did not, each with a reason."
+          },
+          "details": {
+            "$ref": "#/components/schemas/DependencyStatuses",
+            "description": "Every dependency, whatever it reported."
+          }
+        }
+      },
+      "DependencyStatuses": {
+        "type": "object",
+        "title": "DependencyStatuses",
+        "description": "Dependencies, keyed by name. `/health/ready` reports two of them — `database` and\n`engine` — and the map is open because a dependency added later is a key added here\nrather than a new shape.",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/DependencyStatus"
+        },
+        "examples": [
+          {
+            "database": {
+              "status": "up"
+            },
+            "engine": {
+              "status": "up"
+            }
+          }
+        ]
+      },
+      "DependencyStatus": {
+        "type": "object",
+        "title": "DependencyStatus",
+        "description": "What one dependency reported when it was asked.",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "description": "Whether this dependency answered.",
+            "examples": [
+              "up"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Present when the status is `down`: what was attempted, and a classification of\nwhy it failed — `SELECT 1 failed (ECONNREFUSED)`, `GET /healthz responded 503`,\n`SELECT 1 timed out after 2000 ms`. Never a driver's own message; this route\nanswers without authentication, and a driver names the host, the port and the\nrole it could not reach with.",
+            "examples": [
+              "SELECT 1 failed (ECONNREFUSED)"
             ]
           }
         }

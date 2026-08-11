@@ -9,6 +9,7 @@ import { SwaggerModule } from "@nestjs/swagger";
 
 import { AppModule } from "./modules/app/app.module";
 import type { Configuration } from "./modules/config/configuration";
+import { PROBE_PATHS } from "./modules/health/health.paths";
 import { document, specificationYaml } from "./openapi/specification";
 import { SERVICE_NAME } from "./version";
 
@@ -71,16 +72,19 @@ interface RawResponse {
  * Four decisions are applied here and nowhere else:
  *
  *   * **The global prefix.** Every route is under `/api`, which leaves the origin's root
- *     free for whatever fronts the service later.
+ *     free for whatever fronts the service later — every route but the health probes,
+ *     which are excluded by name. A probe is read by infrastructure that has no notion of
+ *     an API version and is configured once, so it answers at the origin root; see
+ *     `src/modules/health/health.paths.ts`, which is where those paths are written down.
  *   * **URI versioning, defaulting to v1.** The version is in the path because that is
  *     what a generated client, a browser address bar and a log line can all carry
  *     without negotiation. Defaulting it means a controller opts *out* of v1 rather than
  *     into it, so a route can never be published unversioned by omission.
  *   * **Shutdown hooks.** Nest listens for `SIGTERM` and friends and runs every
- *     provider's `onApplicationShutdown` before the process ends. Nothing needs that
- *     yet; the database pool (#30) and the engine client (#35) will, and a pool that
- *     learns to drain only after something is already using it drains for the first time
- *     in production.
+ *     provider's `onApplicationShutdown` before the process ends. The readiness probe's
+ *     own connection is the first thing that needs it (#29); the request pool (#30) and
+ *     the engine client (#35) are next, and a pool that learns to drain only after
+ *     something is already using it drains for the first time in production.
  *   * **The published specification.** `openapi.yaml` is the contract and this hands it
  *     out unchanged — Swagger UI at {@link DOCS_PATH} for a human, the document itself at
  *     {@link OPENAPI_JSON_PATH} and {@link OPENAPI_YAML_PATH} for a client generator.
@@ -112,14 +116,36 @@ export async function createApplication(
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
   const app = await NestFactory.create(AppModule.forRoot(configuration), options);
+  configureApplication(app);
 
-  app.setGlobalPrefix(API_PREFIX);
+  return app;
+}
+
+/**
+ * Apply the four decisions above to an application that has already been built.
+ *
+ * Separate from {@link createApplication} for one reason: a suite that has to *replace* a
+ * provider builds its application through `@nestjs/testing` rather than through
+ * `NestFactory`, and without this it would have to restate the prefix, the versioning and
+ * the exclusions — so the surface it asserted against would be a copy of the real one that
+ * could drift from it. Overriding the database probe's connection to prove that
+ * `/health/ready` degrades to a 503 is exactly that case
+ * ([#29](https://github.com/NobuData/ouroboros/issues/29)).
+ *
+ * @param app - The application to configure. Not yet initialised; `init()` or `listen()`
+ *   comes after.
+ * @throws {SpecificationError} If the committed specification is missing or malformed —
+ *   see {@link publishSpecification}.
+ */
+export function configureApplication(app: INestApplication): void {
+  // The exclusion list is spread into a mutable array because Nest's option type asks for
+  // one; `PROBE_PATHS` stays readonly, so nothing can add a route to the set that escapes
+  // the prefix by mutating it from somewhere else.
+  app.setGlobalPrefix(API_PREFIX, { exclude: [...PROBE_PATHS] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
   app.enableShutdownHooks();
 
   publishSpecification(app);
-
-  return app;
 }
 
 /**
