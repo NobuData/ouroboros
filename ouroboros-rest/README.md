@@ -23,8 +23,10 @@
 > workspace you are not a member of answers `404` rather than `403`, and administering one
 > needs `owner` or `admin`. The [engine gateway](#the-engine-gateway)
 > ([#35](https://github.com/NobuData/ouroboros/issues/35)) is in: one typed client, one
-> route, and every way the engine can fail answered as one `502`. What is left in the epic
-> is the container ([#36](https://github.com/NobuData/ouroboros/issues/36)), the
+> route, and every way the engine can fail answered as one `502`. It
+> [ships as a container](#container)
+> ([#36](https://github.com/NobuData/ouroboros/issues/36)) — multi-stage, non-root, healthy
+> on `/health/live`, 226 MB against a 300 MB budget. What is left in the epic is the
 > Testcontainers harness ([#37](https://github.com/NobuData/ouroboros/issues/37)) and the
 > security baseline ([#38](https://github.com/NobuData/ouroboros/issues/38)); the remaining
 > feature modules are listed under [Layout](#layout).
@@ -57,7 +59,7 @@ in a single, auditable place.
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
 | Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
 | Lint            | ESLint flat config + Prettier                                                                                                                                              |
-| Container       | Multi-stage Dockerfile, non-root, `HEALTHCHECK` on `/health/live` ([#36](https://github.com/NobuData/ouroboros/issues/36))                                                 |
+| Container       | Multi-stage Dockerfile on `node:24-alpine`, production-only dependency tree, non-root, `HEALTHCHECK` on `/health/live` — see [Container](#container)                        |
 
 ## Run
 
@@ -76,8 +78,7 @@ yarn build && yarn start
 touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
 `yarn dev` is `nest start --watch`; `yarn start` runs the compiled `dist/main.js`, which
-is also what the container ([#36](https://github.com/NobuData/ouroboros/issues/36)) will
-run.
+is also what [the container](#container) runs.
 
 ```console
 $ curl http://localhost:4000/api/v1
@@ -703,6 +704,97 @@ The readiness probe is a separate request and stays that way. It reads `GET /hea
 the engine serves without the key, and reports rather than answers — see
 [Health and readiness](#health-and-readiness).
 
+## Container
+
+[`Dockerfile`](Dockerfile) is the production image
+([#36](https://github.com/NobuData/ouroboros/issues/36)) — `deps` → `build` → a runtime
+that carries no toolchain, per [conventions § 5](../docs/CONVENTIONS.md#5-containers).
+**Build it from the repository root, not from here:**
+
+```bash
+docker build -f ouroboros-rest/Dockerfile -t ouroboros-rest .      # from the repo root
+
+docker run --rm -p 4000:4000 --network ouroboros_default \
+  -e OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@db:5432/ouroboros \
+  -e OURO_REST_URL=http://localhost:4000 \
+  -e OURO_UI_URL=http://localhost:3000 \
+  -e OURO_ENGINE_URL=http://engine:8000 \
+  -e OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me \
+  -e OURO_SESSION_SECRET=dev-session-secret-change-me \
+  -e OURO_GITHUB_CLIENT_ID=dev-github-client-id \
+  -e OURO_GITHUB_CLIENT_SECRET=dev-github-client-secret \
+  -e OURO_CORS_ORIGINS=http://localhost:3000 \
+  ouroboros-rest
+```
+
+The context is the root because this module is a Yarn workspace: the lockfile it installs
+from, the Yarn version and `nodeLinker` all live there, so a context of `ouroboros-rest/`
+could not run an immutable install at all. **The ignore file is therefore named for the
+Dockerfile** — BuildKit reads `<dockerfile>.dockerignore` in preference to
+`<context>/.dockerignore`, so [`Dockerfile.dockerignore`](Dockerfile.dockerignore) is what
+governs this build, and an `ouroboros-rest/.dockerignore` would govern nothing while
+looking exactly like the file that does. It is an **allow-list**: `*`, then the root
+manifests, the sibling workspace manifests Yarn has to resolve before it installs
+anything, and this directory.
+
+**Two dependency trees come out of one lockfile.** Unlike `ouroboros-ui` there is no
+standalone output to lean on — `nest build` emits JavaScript and nothing else — so the
+runtime needs a real `node_modules` beside it, and it must not be the one the build used.
+The `deps` stage runs `yarn workspaces focus --production ouroboros-rest` *first*, copies
+the result aside, and only then installs the full tree the build compiles against. Both
+come from the same lockfile and the same cache, so nothing is resolved twice and neither
+tree is a subset produced by deleting directories out of the other. The `--immutable` on
+the second install is the guard: had the focused install rewritten `yarn.lock`, the build
+fails rather than shipping dependencies the repository never committed.
+
+| Property | Value |
+|---|---|
+| Base image | `node:24-alpine`, every stage |
+| User | `nestjs`, created in the runtime stage; nothing runs as root |
+| Port | 4000 (`PORT`), bound on `0.0.0.0` because `NODE_ENV=production` |
+| Healthcheck | BusyBox `wget` against `/health/live` every 30 s, after a 15 s grace |
+| Size | 64 MB to pull, 226 MB of layers unpacked — against a 300 MB budget |
+| Runtime config | every `OURO_*` variable, supplied per environment — never baked into a layer |
+
+On Docker's containerd snapshotter `docker images` reports a third number — 291 MB of
+*disk usage*, which is those same layers plus the per-file overhead of unpacking some
+thousands of small `node_modules` files. Every measure is inside the budget; that is the
+largest of the three. Getting there costs one `find`: TypeScript declarations and source
+maps are about 34 MB of the dependency tree and no running process reads either, so they
+are deleted from the production copy — and from that copy only, because the build stage
+type-checks against the full one.
+
+**Four files land in one directory, and that is a requirement rather than a convenience.**
+`dist/`, `package.json`, `openapi.json` and `openapi.yaml` are copied side by side because
+[`src/version.ts`](src/version.ts) resolves `../package.json` and
+[`src/openapi/specification.ts`](src/openapi/specification.ts) resolves `../../openapi.json`
+from `__dirname` — the `rootDir`/`outDir` pinning that makes those paths correct from both
+`src/` and `dist/`. `node_modules` sits one level above them, at `/app`, which is where the
+workspace hoists it.
+
+`NODE_ENV=production` is set in the image and is load-bearing twice: it is what makes
+`listenHost` bind every interface — a process bound to loopback inside a container is a
+process nothing can route to — and it is what strips `OURO_AUTH_DEV_USER` before the schema
+sees it, so an image started with an inherited development environment ignores the bypass
+rather than trusting it.
+
+No `OURO_*` variable is set anywhere in the image. Each is either an address that differs
+per environment or a secret; the configuration module names every missing one at boot and
+exits `2`, and a default in a layer would replace that line with a silent connection to the
+wrong host — or with a published image carrying a credential.
+
+[`src/container.spec.ts`](src/container.spec.ts) asserts every one of these properties that
+is decided in the repository, because `ci/rest` cannot run a `docker build`. It reads the
+probe path from `health.paths.ts` and the port from `configuration.ts` rather than restating
+them, so a probe that moves fails here instead of in production; and it fails when a new
+workspace gains a `package.json` and the `deps` stage has not been taught to copy it, which
+is exactly the change that would otherwise break this image from another module's pull
+request.
+
+The compose service that runs this image is
+[#55](https://github.com/NobuData/ouroboros/issues/55); the repo-root
+[`docker-compose.yml`](../docker-compose.yml) is the data tier until then.
+
 ## Layout
 
 ```
@@ -711,6 +803,7 @@ ouroboros-rest/
 │   ├── main.ts             # entry point: read the environment, listen, report
 │   ├── application.ts      # /api/v1 prefix, URI versioning, shutdown hooks, /api/docs
 │   ├── version.ts          # the running build, read from package.json
+│   ├── container.spec.ts   # the image, asserted from the files that define it  · #36
 │   ├── openapi/            # loads the committed spec — it is never generated
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
@@ -721,6 +814,8 @@ ouroboros-rest/
 │       ├── tenancy/        # tenants, domains, members, enablement · #31 · context #32
 │       ├── auth/           # GitHub OAuth, sessions, the global guard     · #33
 │       └── engine/         # typed internal client + /engine/status       · #35
+├── Dockerfile              # the production image — built from the *repo root*
+├── Dockerfile.dockerignore # …and the context that image is built from
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML
 ├── openapi.yaml            # the API specification — authoritative, hand-written
 ├── openapi.json            # rendered from it; the copy the service loads
@@ -778,6 +873,8 @@ auth [#33](https://github.com/NobuData/ouroboros/issues/33) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
+container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
+the compose stack that runs it [#55](https://github.com/NobuData/ouroboros/issues/55) ·
 full epic [#4](https://github.com/NobuData/ouroboros/issues/4).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

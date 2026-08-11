@@ -1,0 +1,60 @@
+# Build context for ouroboros-rest/Dockerfile.
+#
+# Named for the Dockerfile rather than the directory because that image builds from the
+# **repository root** (it is a Yarn workspace and the lockfile lives there). BuildKit
+# reads <dockerfile>.dockerignore ahead of <context>/.dockerignore, so this file governs
+# that build and no other — a root .dockerignore would silently apply to every image in
+# the repo, and an ouroboros-rest/.dockerignore would apply to nothing at all.
+#
+# It is an allow-list, as ouroboros-ui/Dockerfile.dockerignore is and for the same
+# reason. With the whole repository as the context, a deny-list quietly grows a hole
+# every time a directory is added at the root, and what leaks is not only size: docs/,
+# .git/ and four sibling modules have no business in this image. Starting from `*` means
+# a new path is excluded until someone says otherwise.
+
+# Nothing, unless named below.
+*
+
+# The workspace root: what Yarn resolves, installs and pins from.
+!package.json
+!yarn.lock
+!.yarnrc.yml
+
+# The sibling manifests. Yarn resolves every workspace before installing any of them, so
+# an absent manifest is a failed --immutable install, not a smaller context. They are
+# the manifests only — no sibling module's source enters this image.
+!ouroboros-db/package.json
+!ouroboros-engine/package.json
+!ouroboros-ui/package.json
+
+# This module.
+!ouroboros-rest
+
+# ...minus what is generated rather than written. None of it is portable between a laptop
+# and the image: node_modules is resolved for the host platform, dist is the output of a
+# previous build and the runtime stage takes its copy from the build stage instead, and
+# .turbo and coverage are a task runner's and a test run's bookkeeping.
+ouroboros-rest/node_modules
+ouroboros-rest/dist
+ouroboros-rest/coverage
+ouroboros-rest/.turbo
+ouroboros-rest/*.tsbuildinfo
+
+# ...and minus prose and the container definition itself, none of which any stage reads.
+# Excluding them is not about size — it is that editing a sentence in the README should
+# not invalidate the build cache and rebuild the service. The `*.spec.ts` suites are
+# deliberately *not* here: they cost nothing in the image, because tsconfig.build.json is
+# what decides that, and a second list of exclusions here would be a second place for the
+# same decision to be made differently.
+ouroboros-rest/README.md
+ouroboros-rest/Dockerfile
+ouroboros-rest/Dockerfile.dockerignore
+
+# ...and minus anything holding a real value. Nothing in the build reads an env file —
+# every OURO_* variable is supplied to the container at run time — so the only way one
+# could reach a layer is by accident. `**/` because the exclusion has to hold for every
+# directory the lines above let in, not just the root.
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
