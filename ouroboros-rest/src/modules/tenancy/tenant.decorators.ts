@@ -33,8 +33,8 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  * `@Public()` has and for the same reason: a route added later is scoped because somebody
  * wrote a controller, not because they remembered a decorator.
  *
- * There are exactly three kinds of exception, and all three are about the *person* rather
- * than a workspace:
+ * The exceptions are enumerated, and each one is a question a workspace is not part of the
+ * answer to:
  *
  *   * **`GET /api/v1/tenants`** — which workspaces this person belongs to. Asking them to
  *     name one first would be circular. The listing is scoped to them instead, so it is not
@@ -43,6 +43,12 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  *     yet has no tenant to be in.
  *   * **`GET /api/v1/auth/me`** — who is signed in. Its whole answer is the memberships a
  *     tenant would have had to be resolved from.
+ *   * **`GET /api/v1/engine/status`** — whether `ouroboros-engine` is reachable and which
+ *     build it is ([#35](https://github.com/NobuData/ouroboros/issues/35)). There is one
+ *     engine behind every workspace, so naming one changes nothing about the answer. It is
+ *     the first exception that is about the *installation* rather than the person, and it
+ *     is still an exception rather than a category: a route that reads or writes anything
+ *     belonging to a customer is scoped, whoever is asking.
  *
  * @returns The decorator. Applied to a class it covers every route in it; the guard reads
  *   the handler first.

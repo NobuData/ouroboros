@@ -17,7 +17,14 @@
  *     at most a symbolic error code, the indicators log the real error where only an
  *     operator can read it, and the body names the dependency — which is what the issue
  *     asks for and all a probe's reader can act on anyway.
+ *
+ * *Reading* a thrown thing — its code, its `cause`, its stack — is `errors/failure.ts`,
+ * which the engine gateway does too ([#35](https://github.com/NobuData/ouroboros/issues/35)).
+ * What stays here is the half that is about a probe: the deadline, and the rule about what
+ * may be said to a reader holding no session.
  */
+
+import { failureCode } from "../errors/failure";
 
 /**
  * How long either dependency probe waits before calling a dependency down.
@@ -84,43 +91,26 @@ export async function withTimeout<T>(
 const CODE_PATTERN = /^[A-Z0-9_]{1,32}$/;
 
 /**
- * The `code` a single value carries, if it carries one fit to publish.
- *
- * The pattern is the safeguard rather than the lookup: anything that is not a short
- * uppercase token is a message in disguise, and this returns nothing rather than
- * forwarding it.
- *
- * @param candidate - An error, or an error's `cause`.
- * @returns The code, or `undefined`.
- */
-function codeOf(candidate: unknown): string | undefined {
-  if (typeof candidate !== "object" || candidate === null || !("code" in candidate)) {
-    return undefined;
-  }
-
-  const { code } = candidate;
-  return typeof code === "string" && CODE_PATTERN.test(code) ? code : undefined;
-}
-
-/** The `cause` a value carries, if any — `fetch` puts the real failure there. */
-function causeOf(error: unknown): unknown {
-  return typeof error === "object" && error !== null && "cause" in error ? error.cause : undefined;
-}
-
-/**
- * The code a failure carries, looking through a wrapper.
+ * The code a failure carries, if it carries one fit to *publish*.
  *
  * `pg` reports `ECONNREFUSED` on a closed port and a five-character `SQLSTATE` such as
  * `28P01` on a rejected login; `fetch` wraps the same class of failure in a `TypeError`
- * and hangs the code on `cause`. Both are worth having in the probe's body — they are the
- * difference between "nothing is listening" and "something is listening and said no" —
- * and neither names a host, a port, a role or a secret.
+ * and hangs the code on `cause`, which is why the lookup is `errors/failure.ts`'s rather
+ * than this file's. Both are worth having in the probe's body — they are the difference
+ * between "nothing is listening" and "something is listening and said no" — and neither
+ * names a host, a port, a role or a secret.
+ *
+ * The pattern is the safeguard rather than the lookup, and it is the part that belongs
+ * here: this body answers an unauthenticated reader, so anything that is not a short
+ * uppercase token is a message in disguise and is dropped rather than forwarded.
  *
  * @param error - Whatever was caught.
  * @returns The code, or `undefined` when there is none fit to publish.
  */
-function failureCode(error: unknown): string | undefined {
-  return codeOf(error) ?? codeOf(causeOf(error));
+function publishableCode(error: unknown): string | undefined {
+  const code = failureCode(error);
+
+  return code !== undefined && CODE_PATTERN.test(code) ? code : undefined;
 }
 
 /**
@@ -157,40 +147,6 @@ export function describeFailure(error: unknown): string {
     return `timed out after ${PROBE_TIMEOUT_MS} ms`;
   }
 
-  const code = failureCode(error);
+  const code = publishableCode(error);
   return code === undefined ? "failed" : `failed (${code})`;
-}
-
-/** How many `cause` links {@link describeForLog} follows. See its notes on cycles. */
-const MAXIMUM_CAUSE_DEPTH = 3;
-
-/**
- * The same failure, as the service log is allowed to report it.
- *
- * The counterpart to {@link describeFailure}: an operator reading the log is the one
- * person entitled to the driver's own diagnosis, and without this the classified phrase
- * in the response body would be the *only* record of what went wrong.
- *
- * The `cause` chain is followed, because for `fetch` it is the whole diagnosis — a failed
- * request is a `TypeError` reading "fetch failed" whose cause is the `ECONNREFUSED` that
- * actually happened, and `Error.stack` does not include it. Following it is bounded at
- * {@link MAXIMUM_CAUSE_DEPTH} links: a cause chain is data from a library, and an error
- * whose cause is itself would otherwise turn a log line into a stack overflow.
- *
- * @param error - Whatever was caught.
- * @param depth - How many links have been followed. Callers leave this alone.
- * @returns The error's stack when it has one, its name and message when it does not, or the
- *   value itself rendered — because a `throw` is not obliged to throw an `Error` — followed
- *   by `caused by …` for each cause.
- */
-export function describeForLog(error: unknown, depth = 0): string {
-  const described =
-    error instanceof Error ? (error.stack ?? `${error.name}: ${error.message}`) : String(error);
-
-  const cause = causeOf(error);
-  if (cause === undefined || depth >= MAXIMUM_CAUSE_DEPTH) {
-    return described;
-  }
-
-  return `${described}\ncaused by ${describeForLog(cause, depth + 1)}`;
 }

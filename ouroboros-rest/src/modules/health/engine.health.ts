@@ -5,21 +5,26 @@
  * `GET /healthz`, which [#51](https://github.com/NobuData/ouroboros/issues/51) landed open
  * precisely so a probe can read it. So this probe carries **no secret** — there is nothing
  * for a misconfigured shared key to break here, and nothing for the request to leak. The
- * key belongs to the typed client that calls `/v0/*`
- * ([#35](https://github.com/NobuData/ouroboros/issues/35)).
+ * key belongs to the typed client that calls `/v0/*` — `engine/engine.client.ts`
+ * ([#35](https://github.com/NobuData/ouroboros/issues/35)), which this file shares its URL
+ * resolution with and nothing else.
  *
  * The request is a plain `fetch`. Node 24 has one, and a readiness probe is a single GET
  * with a deadline — `@nestjs/axios` and Terminus's own `HttpHealthIndicator` would add two
  * dependencies to this module for one request, and the interceptors, retries and base-URL
  * handling they exist for belong to the engine client rather than to a probe that must
- * answer within two seconds or not at all.
+ * answer within two seconds or not at all. It does not go *through* that client either: the
+ * client's job is to turn a failure into a `502` a client reads, and a probe's job is to
+ * report the failure rather than to answer one.
  */
 
 import { Injectable, Logger } from "@nestjs/common";
 import { HealthIndicatorService, type HealthIndicatorResult } from "@nestjs/terminus";
 
 import { AppConfigService } from "../config/config.service";
-import { PROBE_TIMEOUT_MS, describeFailure, describeForLog } from "./probe";
+import { engineRouteUrl } from "../engine/engine.contract";
+import { describeForLog } from "../errors/failure";
+import { PROBE_TIMEOUT_MS, describeFailure } from "./probe";
 
 /**
  * How this dependency is named in the response body — the counterpart of
@@ -33,19 +38,18 @@ export const ENGINE_HEALTH_ROUTE = "healthz";
 /**
  * Where to probe the engine, given its base URL.
  *
- * Resolved against a base with a trailing slash rather than concatenated, so a base URL
- * that carries a path — an engine behind a reverse proxy on `/engine`, which is a
- * deployment decision this service does not get to make — keeps it. `new URL("healthz",
- * "http://host/engine")` would drop the `/engine`; `new URL("healthz",
- * "http://host/engine/")` does not.
+ * The resolution itself is `engine/engine.contract.ts`'s, which is where every URL this
+ * service builds for the engine is built — including the ones that carry a path, because an
+ * engine behind a reverse proxy on `/engine` is a deployment decision this service does not
+ * get to make and a probe that resolved it differently from the client would probe a
+ * different service.
  *
  * @param baseUrl - `OURO_ENGINE_URL`, already validated as an absolute `http(s)` URL by
  *   the configuration schema.
  * @returns The absolute URL of the engine's liveness route.
  */
 export function engineHealthUrl(baseUrl: string): string {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  return new URL(ENGINE_HEALTH_ROUTE, base).toString();
+  return engineRouteUrl(baseUrl, ENGINE_HEALTH_ROUTE);
 }
 
 /** The engine half of the readiness probe. */

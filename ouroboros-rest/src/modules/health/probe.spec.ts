@@ -1,10 +1,4 @@
-import {
-  PROBE_TIMEOUT_MS,
-  ProbeTimeoutError,
-  describeFailure,
-  describeForLog,
-  withTimeout,
-} from "./probe";
+import { PROBE_TIMEOUT_MS, ProbeTimeoutError, describeFailure, withTimeout } from "./probe";
 import { connectionRefused, fetchRefused, fetchTimedOut } from "./probe.fixture";
 
 /**
@@ -115,46 +109,5 @@ describe("describeFailure", () => {
     expect(described).not.toContain("127.0.0.1");
     expect(described).not.toContain("5432");
     expect(described).not.toContain("fetch failed");
-  });
-});
-
-describe("describeForLog", () => {
-  it("keeps the stack, which is the whole point of a server-side record", () => {
-    const described = describeForLog(connectionRefused());
-
-    expect(described).toContain("connect ECONNREFUSED 127.0.0.1:5432");
-    expect(described.split("\n").length).toBeGreaterThan(1);
-  });
-
-  it("falls back to the name and the message when there is no stack", () => {
-    const stackless = new Error("no stack here");
-    stackless.stack = undefined;
-
-    expect(describeForLog(stackless)).toBe("Error: no stack here");
-  });
-
-  it("renders whatever was thrown, because a throw is not obliged to throw an Error", () => {
-    expect(describeForLog("just a string")).toBe("just a string");
-    expect(describeForLog(undefined)).toBe("undefined");
-  });
-
-  it("follows the cause, which is the only place `fetch` puts the real failure", () => {
-    // Without this the log for an unreachable engine reads "TypeError: fetch failed" and
-    // stops — the operator's half of the diagnosis is the cause, and `Error.stack` omits it.
-    const described = describeForLog(fetchRefused());
-
-    expect(described).toContain("fetch failed");
-    expect(described).toContain("caused by");
-    expect(described).toContain("connect ECONNREFUSED 127.0.0.1:5432");
-  });
-
-  it("stops following causes, so a cycle cannot become a stack overflow", () => {
-    const looping = new Error("round and round");
-    Object.assign(looping, { cause: looping });
-
-    // The assertion is that it returns at all. A cause chain is data from a library, and a
-    // library that hands back a cycle must not take the process with it.
-    expect(() => describeForLog(looping)).not.toThrow();
-    expect(describeForLog(looping).split("caused by").length - 1).toBe(3);
   });
 });
