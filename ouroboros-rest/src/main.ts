@@ -7,7 +7,13 @@ import "reflect-metadata";
 import { Logger, type INestApplication, type NestApplicationOptions } from "@nestjs/common";
 
 import { API_BASE_PATH, createApplication } from "./application";
-import { ConfigurationError, readListenHost, readPort } from "./env";
+import {
+  ConfigurationError,
+  listenHost,
+  loadConfiguration,
+  type Configuration,
+} from "./modules/config/configuration";
+import { describeConfiguration } from "./modules/config/redaction";
 import { SERVICE_NAME, serviceVersion } from "./version";
 
 /**
@@ -40,10 +46,10 @@ export interface MainLogger {
 export interface MainOptions {
   /** Environment to configure from. Defaults to the process environment. */
   env?: NodeJS.ProcessEnv;
-  /** Where the two lines of output go. Defaults to a Nest `Logger` named for the service. */
+  /** Where the output goes. Defaults to a Nest `Logger` named for the service. */
   logger?: MainLogger;
   /** How the application is started. Defaults to {@link bootstrap}. */
-  start?: (env: NodeJS.ProcessEnv) => Promise<StartedApplication>;
+  start?: (configuration: Configuration) => Promise<StartedApplication>;
 }
 
 /** Exit code used when the environment does not validate — matching `ouroboros-engine`. */
@@ -52,23 +58,22 @@ export const CONFIGURATION_EXIT_CODE = 2;
 /**
  * Build the application and start listening.
  *
- * The environment is read *before* the application is built, so a malformed `PORT` costs
- * nothing and reports immediately rather than after a module tree has been instantiated.
+ * It takes a `Configuration` rather than an environment, which is the type system saying
+ * what the ordering already was: the environment is validated *before* anything is built,
+ * so a malformed variable costs nothing and reports immediately rather than after a
+ * module tree has been instantiated — and there is no way to reach this function with an
+ * environment that was never checked.
  *
- * @param env - Environment to configure from, normally `process.env`.
+ * @param configuration - The validated configuration, from `loadConfiguration`.
  * @param options - Passed through to `createApplication`. The process passes nothing.
  * @returns The listening application, so the caller can ask it for its URL and close it.
- * @throws {ConfigurationError} If the environment does not validate — see `env.ts`.
  */
 export async function bootstrap(
-  env: NodeJS.ProcessEnv = process.env,
+  configuration: Configuration,
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
-  const port = readPort(env);
-  const host = readListenHost(env);
-
-  const app = await createApplication(options);
-  await app.listen(port, host);
+  const app = await createApplication(configuration, options);
+  await app.listen(configuration.port, listenHost(configuration.nodeEnv));
 
   return app;
 }
@@ -76,6 +81,11 @@ export async function bootstrap(
 /**
  * Start the service and report the outcome, translating a configuration mistake into an
  * exit code rather than a stack trace.
+ *
+ * The configuration is written to the log — redacted — *before* the socket is bound, so a
+ * process that then fails to bind has still said what it was configured with, which is
+ * usually the answer. `describeConfiguration` is the only renderer there is, and it
+ * redacts by construction; see `src/modules/config/redaction.ts`.
  *
  * @param options - See {@link MainOptions}; every field defaults to the real thing.
  * @returns `0` once the service is listening, or {@link CONFIGURATION_EXIT_CODE} when the
@@ -90,7 +100,10 @@ export async function main({
   start = bootstrap,
 }: MainOptions = {}): Promise<number> {
   try {
-    const app = await start(env);
+    const configuration = loadConfiguration(env);
+    logger.log(describeConfiguration(configuration));
+
+    const app = await start(configuration);
     logger.log(
       `${SERVICE_NAME} ${serviceVersion()} listening on ${await app.getUrl()}${API_BASE_PATH}`,
     );

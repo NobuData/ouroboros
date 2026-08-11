@@ -32,5 +32,7 @@ export default {
   restoreMocks: true,
 
   coverageDirectory: "coverage",
-  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.spec.ts"],
+  // Fixtures are test support, not application code: `tsconfig.build.json` leaves them
+  // out of what ships, so counting them as covered or uncovered says nothing.
+  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.spec.ts", "!src/**/*.fixture.ts"],
 };

@@ -1058,7 +1058,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 4.1 | #27 | 🟢 Done | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
-| 4.2 | #28 | 🟡 Open | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
+| 4.2 | #28 | 🟢 Done | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
 | 4.3 | #29 | 🟡 Open | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
 | 4.4 | #30 | 🟡 Open | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
 | 4.5 | #31 | 🟡 Open | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
@@ -1098,7 +1098,7 @@ src/
 
 ### Issue 4.2 — ouroboros-rest: [4.2] Typed configuration & env validation
 
-> **GitHub issue:** #28 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #28 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** Misconfigured services must fail at boot with a precise error,
   not at first request with a stack trace.
@@ -1113,10 +1113,19 @@ src/
 - **Parallelism/Dependencies:** Needs 4.1. Blocks 4.3, 4.4, 4.9.
 - **Technical Stack:** @nestjs/config, zod.
 - **Epic:** 4
+- **As built:** "cookie/CORS origins" became one variable, `OURO_CORS_ORIGINS` — a
+  comma-separated list of browser origins, which is both the CORS allow-list and the set
+  of origins the session cookie may travel to. The session cookie is host-only (§ 4.1 of
+  `ARCHITECTURE.md` gives it no `Domain`), so there was no second value to name. The
+  schema is keyed by variable name rather than by field name so the failure line names
+  what an operator has to fix, and validation happens in `main.ts` before
+  `NestFactory.create` — a schema evaluated while Nest is building its tree fails inside
+  the framework's error handling, which prints the stack trace this issue exists to
+  prevent. Exit code `2`, matching `ouroboros-engine`.
 
 ```
 boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─▶ modules
-                        └──fail──▶ exit(1): "OURO_DATABASE_URL: invalid url"
+                        └──fail──▶ exit(2): "OURO_DATABASE_URL: expected a PostgreSQL …"
 ```
 
 ### Issue 4.3 — ouroboros-rest: [4.3] Health & readiness endpoints

@@ -3,11 +3,22 @@ import { createServer } from "node:net";
 import { Logger } from "@nestjs/common";
 
 import { API_BASE_PATH } from "./application";
-import { ConfigurationError, LOOPBACK_HOST } from "./env";
+import {
+  ConfigurationError,
+  LOOPBACK_HOST,
+  loadConfiguration,
+  type Configuration,
+} from "./modules/config/configuration";
+import {
+  DEVELOPMENT_ENVIRONMENT,
+  testConfiguration,
+  testEnvironment,
+} from "./modules/config/configuration.fixture";
+import { REDACTED } from "./modules/config/redaction";
 import { CONFIGURATION_EXIT_CODE, bootstrap, main, runAsProgram } from "./main";
 import { SERVICE_NAME, serviceVersion } from "./version";
 
-/** A logger whose two calls can be asserted on. */
+/** A logger whose calls can be asserted on. */
 function testLogger(): { log: jest.Mock; error: jest.Mock } {
   return { log: jest.fn(), error: jest.fn() };
 }
@@ -39,9 +50,9 @@ async function freePort(): Promise<number> {
 }
 
 describe("bootstrap", () => {
-  it("listens on the port PORT names and serves the heartbeat over real HTTP", async () => {
+  it("listens on the port the configuration names and serves the heartbeat over HTTP", async () => {
     const port = await freePort();
-    const app = await bootstrap({ PORT: String(port) }, { logger: false });
+    const app = await bootstrap(testConfiguration({ PORT: String(port) }), { logger: false });
 
     try {
       expect(await app.getUrl()).toBe(`http://${LOOPBACK_HOST}:${port}`);
@@ -54,8 +65,11 @@ describe("bootstrap", () => {
     }
   });
 
-  it("refuses a malformed environment before it builds anything", async () => {
-    await expect(bootstrap({ PORT: "not-a-port" })).rejects.toBeInstanceOf(ConfigurationError);
+  // It takes a Configuration rather than an environment, and the only way to make one is
+  // loadConfiguration — so "was this validated?" is a question the compiler answers and
+  // this suite does not have to ask again.
+  it("cannot be reached with an environment that was never validated", () => {
+    expect(() => loadConfiguration({ PORT: "not-a-port" })).toThrow(ConfigurationError);
   });
 });
 
@@ -63,40 +77,72 @@ describe("bootstrap", () => {
  * A stand-in for a started application, so nothing binds a socket.
  *
  * @param url - What the fake application reports as its address.
- * @returns A `start` function recording the environment it was called with.
+ * @returns A `start` function recording the configuration it was called with.
  */
 const started = (url: string) =>
-  jest.fn((_env: NodeJS.ProcessEnv) => Promise.resolve({ getUrl: () => Promise.resolve(url) }));
+  jest.fn((_configuration: Configuration) =>
+    Promise.resolve({ getUrl: () => Promise.resolve(url) }),
+  );
 
 describe("main", () => {
   it("reports the service, the build and the address it can be reached at", async () => {
     const logger = testLogger();
 
-    const code = await main({ env: {}, logger, start: started("http://127.0.0.1:4000") });
+    const code = await main({
+      env: testEnvironment(),
+      logger,
+      start: started("http://127.0.0.1:4000"),
+    });
 
     expect(code).toBe(0);
-    expect(logger.log).toHaveBeenCalledTimes(1);
-    expect(logger.log).toHaveBeenCalledWith(
+    expect(logger.log).toHaveBeenLastCalledWith(
       `${SERVICE_NAME} ${serviceVersion()} listening on http://127.0.0.1:4000${API_BASE_PATH}`,
     );
     expect(logger.error).not.toHaveBeenCalled();
   });
 
+  it("writes the configuration to the log with the secrets redacted", async () => {
+    const logger = testLogger();
+
+    await main({
+      env: testEnvironment(),
+      logger,
+      start: started("http://127.0.0.1:4000"),
+    });
+
+    const [described] = logger.log.mock.calls[0] as [string];
+    expect(described).toContain("ouroboros-rest: configuration");
+    expect(described).toContain(`OURO_SESSION_SECRET=${REDACTED}`);
+    expect(described).not.toContain("dev-session-secret-change-me");
+  });
+
+  // Before, not after: a process that then fails to bind its port has still said what it
+  // was configured with, which is usually the answer.
+  it("writes it before the service is started", async () => {
+    const logger = testLogger();
+    const start = jest.fn((_configuration: Configuration) => {
+      expect(logger.log).toHaveBeenCalledTimes(1);
+      return Promise.resolve({ getUrl: () => Promise.resolve("http://127.0.0.1:4000") });
+    });
+
+    await main({ env: testEnvironment(), logger, start });
+
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("configures from the environment it was handed", async () => {
     const start = started("http://127.0.0.1:9999");
-    const env = { PORT: "9999" };
+    const env = testEnvironment({ PORT: "9999" });
 
     await main({ env, logger: testLogger(), start });
 
-    expect(start).toHaveBeenCalledWith(env);
+    expect(start).toHaveBeenCalledWith(loadConfiguration(env));
   });
 
-  it("exits non-zero naming the variable when the environment does not validate", async () => {
+  it("exits non-zero naming the variable when a value is malformed", async () => {
     const logger = testLogger();
 
-    // The real starter: readPort rejects the value before a module tree exists, so this
-    // exercises the whole path without anything binding a port.
-    const code = await main({ env: { PORT: "not-a-port" }, logger });
+    const code = await main({ env: testEnvironment({ PORT: "not-a-port" }), logger });
 
     expect(code).toBe(CONFIGURATION_EXIT_CODE);
     expect(CONFIGURATION_EXIT_CODE).toBe(2);
@@ -105,20 +151,40 @@ describe("main", () => {
     expect(logger.log).not.toHaveBeenCalled();
   });
 
+  it("exits non-zero naming the variable when one is missing", async () => {
+    const logger = testLogger();
+
+    const code = await main({ env: {}, logger });
+
+    expect(code).toBe(CONFIGURATION_EXIT_CODE);
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("OURO_DATABASE_URL:"));
+    expect(logger.log).not.toHaveBeenCalled();
+  });
+
   it("rethrows a failure that is not a misconfiguration", async () => {
     const logger = testLogger();
-    const start = jest.fn((_env: NodeJS.ProcessEnv) => Promise.reject(new Error("EADDRINUSE")));
+    const start = jest.fn((_configuration: Configuration) =>
+      Promise.reject(new Error("EADDRINUSE")),
+    );
 
-    await expect(main({ env: {}, logger, start })).rejects.toThrow("EADDRINUSE");
+    await expect(main({ env: testEnvironment(), logger, start })).rejects.toThrow("EADDRINUSE");
     expect(logger.error).not.toHaveBeenCalled();
   });
 
   it("reads the process environment when it is handed none", async () => {
     const start = started("http://127.0.0.1:4000");
+    Object.assign(process.env, DEVELOPMENT_ENVIRONMENT);
 
-    await main({ logger: testLogger(), start });
+    try {
+      const code = await main({ logger: testLogger(), start });
 
-    expect(start).toHaveBeenCalledWith(process.env);
+      expect(code).toBe(0);
+      expect(start).toHaveBeenCalledWith(loadConfiguration(process.env));
+    } finally {
+      for (const name of Object.keys(DEVELOPMENT_ENVIRONMENT)) {
+        delete process.env[name];
+      }
+    }
   });
 
   it("logs through a Nest logger named for the service when it is handed none", async () => {
@@ -126,7 +192,7 @@ describe("main", () => {
     // the default is, and a suite that prints its own fixtures is a suite nobody reads.
     const log = jest.spyOn(Logger.prototype, "log").mockImplementation(() => undefined);
 
-    await main({ env: {}, start: started("http://127.0.0.1:4000") });
+    await main({ env: testEnvironment(), start: started("http://127.0.0.1:4000") });
 
     expect(log).toHaveBeenCalledWith(expect.stringContaining(API_BASE_PATH));
   });
@@ -142,13 +208,17 @@ describe("runAsProgram", () => {
   });
 
   it("leaves the exit code alone when the service started", async () => {
-    await runAsProgram({ env: {}, logger: testLogger(), start: started("http://127.0.0.1:4000") });
+    await runAsProgram({
+      env: testEnvironment(),
+      logger: testLogger(),
+      start: started("http://127.0.0.1:4000"),
+    });
 
     expect(process.exitCode).toBe(original);
   });
 
   it("sets the exit code when the environment did not validate", async () => {
-    await runAsProgram({ env: { PORT: "not-a-port" }, logger: testLogger() });
+    await runAsProgram({ env: testEnvironment({ PORT: "not-a-port" }), logger: testLogger() });
 
     expect(process.exitCode).toBe(CONFIGURATION_EXIT_CODE);
   });

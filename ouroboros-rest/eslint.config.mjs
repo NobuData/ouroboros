@@ -59,6 +59,51 @@ export default tseslint.config(
   },
 
   {
+    // Issue #28's acceptance criterion, as a rule rather than as a review habit: every
+    // consumer reads configuration through the typed AppConfigService, and nothing
+    // outside src/modules/config/ names an environment variable at all. A module that
+    // reaches for process.env directly gets an unvalidated string, skips the redaction
+    // rules, and moves the failure from boot to the first request that needed the value.
+    //
+    // Two files are exempt and both are boundaries rather than exceptions: src/main.ts
+    // is the process entry point, which is *where* the environment is read, and its spec
+    // is what proves it reads the real one.
+    files: ["src/**/*.ts"],
+    ignores: ["src/main.ts", "src/main.spec.ts", "src/modules/config/**/*.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "process",
+          property: "env",
+          message:
+            "Read configuration through AppConfigService (src/modules/config). " +
+            "Only src/main.ts touches process.env — see issue #28.",
+        },
+      ],
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "node:process",
+              importNames: ["env"],
+              message:
+                "Read configuration through AppConfigService (src/modules/config) — issue #28.",
+            },
+            {
+              name: "process",
+              importNames: ["env"],
+              message:
+                "Read configuration through AppConfigService (src/modules/config) — issue #28.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  {
     // This file and jest.config.mjs are configuration, not application code: they are
     // outside `tsconfig.json`'s `include`, so the type-aware rules have no program to
     // read them against. They are still linted and still formatted — only the rules

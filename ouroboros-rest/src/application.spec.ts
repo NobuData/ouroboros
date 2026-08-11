@@ -5,6 +5,8 @@ import request from "supertest";
 
 import { API_BASE_PATH, API_PREFIX, API_VERSION, createApplication } from "./application";
 import type { Heartbeat } from "./modules/app/app.service";
+import { AppConfigService } from "./modules/config/config.service";
+import { testConfiguration } from "./modules/config/configuration.fixture";
 import { SERVICE_NAME, serviceVersion } from "./version";
 
 /**
@@ -16,7 +18,7 @@ import { SERVICE_NAME, serviceVersion } from "./version";
  * `main.ts` builds, and it changes nothing that is asserted below.
  */
 async function testApplication(): Promise<INestApplication> {
-  const app = await createApplication({ logger: false });
+  const app = await createApplication(testConfiguration(), { logger: false });
   await app.init();
   return app;
 }
@@ -74,6 +76,18 @@ describe("the application's HTTP surface", () => {
   it("accepts only GET on the heartbeat", async () => {
     await request(server()).post(API_BASE_PATH).expect(404);
     await request(server()).delete(API_BASE_PATH).expect(404);
+  });
+});
+
+describe("configuration", () => {
+  it("is registered on the application every feature module will read it from", async () => {
+    const app = await testApplication();
+
+    try {
+      expect(app.get(AppConfigService).all).toEqual(testConfiguration());
+    } finally {
+      await app.close();
+    }
   });
 });
 

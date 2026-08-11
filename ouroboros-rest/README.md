@@ -1,10 +1,12 @@
 # ouroboros-rest
 
 > **Status:** the service scaffold landed with
-> [#27](https://github.com/NobuData/ouroboros/issues/27) (epic
+> [#27](https://github.com/NobuData/ouroboros/issues/27) and validated configuration with
+> [#28](https://github.com/NobuData/ouroboros/issues/28) (epic
 > [#4](https://github.com/NobuData/ouroboros/issues/4)). What runs today is the skeleton —
 > a NestJS application answering a heartbeat on `/api/v1`, publishing
-> [the specification it is written against](#the-api-specification), with the lint,
+> [the specification it is written against](#the-api-specification), reading every setting
+> through [a typed, fail-fast configuration module](#configuration), with the lint,
 > typecheck, test and build pipeline `ci/rest` runs. The feature modules listed under
 > [Layout](#layout) are what land on it.
 
@@ -54,7 +56,7 @@ run. The heartbeat is the whole of the surface today:
 
 ```console
 $ curl http://localhost:4000/api/v1
-{"service":"ouroboros-rest","version":"0.1.0","status":"ok","uptimeSeconds":3.885}
+{"service":"ouroboros-rest","version":"0.2.0","status":"ok","uptimeSeconds":3.885}
 ```
 
 | Path | Purpose |
@@ -126,7 +128,8 @@ that it describes the routes that actually exist. `yarn test` is that guarantee,
   `additionalProperties: false`);
 - a documented example is not a body the service could actually send;
 - a documented path escapes `/api/v1`, or the published development origin stops matching
-  the port [`src/env.ts`](src/env.ts) defaults to;
+  the port [`src/modules/config/configuration.ts`](src/modules/config/configuration.ts)
+  defaults to;
 - the document is not valid OpenAPI 3.1.
 
 So adding a route is two edits — the controller and `openapi.yaml` — and forgetting the
@@ -139,30 +142,84 @@ development, which is the drift being spec-first exists to prevent.
 
 ## Configuration
 
-Development default port: **4000** (`PORT`). All service configuration is validated at
-boot; a missing or malformed variable exits non-zero naming the exact variable.
+Development default port: **4000** (`PORT`). Every variable below is validated by a zod
+schema at boot; a missing or malformed one exits `2` naming the exact variable, and the
+service never starts half-configured.
 
-| Variable | Purpose | Read today |
-|---|---|:---:|
-| `PORT` | HTTP listen port | yes |
-| `NODE_ENV` | `development` \| `production` \| `test` | yes |
-| `OURO_DATABASE_URL` | PostgreSQL connection string for `ouroboros-db` | [#28](https://github.com/NobuData/ouroboros/issues/28) |
-| `OURO_ENGINE_URL` | Base URL of `ouroboros-engine`, e.g. `http://localhost:8000` | [#28](https://github.com/NobuData/ouroboros/issues/28) |
-| `OURO_ENGINE_SHARED_SECRET` | Shared secret for the internal engine call | [#28](https://github.com/NobuData/ouroboros/issues/28) |
-| `OURO_SESSION_SECRET` | Signing key for the session cookie | [#28](https://github.com/NobuData/ouroboros/issues/28) |
-| `OURO_GITHUB_CLIENT_ID` / `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application | [#28](https://github.com/NobuData/ouroboros/issues/28) |
+| Variable | Purpose | Required | Rule |
+|---|---|:---:|---|
+| `PORT` | HTTP listen port | no — 4000 | a whole number, 1–65535 |
+| `NODE_ENV` | which environment this is | no — `development` | `development`, `test` or `production` |
+| `OURO_DATABASE_URL` | PostgreSQL connection string for `ouroboros-db` | yes | a `postgresql://` (or `postgres://`) URL with a host |
+| `OURO_ENGINE_URL` | Base URL of `ouroboros-engine` | yes | an absolute `http://` or `https://` URL |
+| `OURO_ENGINE_SHARED_SECRET` | Shared secret for the internal engine call | yes | at least 16 characters |
+| `OURO_SESSION_SECRET` | Signing key for the session cookie | yes | at least 16 characters |
+| `OURO_GITHUB_CLIENT_ID` | GitHub OAuth application, client id | yes | non-empty |
+| `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret | yes | non-empty |
+| `OURO_CORS_ORIGINS` | Browser origins allowed to call the API with credentials | yes | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 
 Every one of them is documented with a development default in the repo-root
-[`.env.example`](../.env.example). The scaffold reads the two unprefixed platform
-variables only, in [`src/env.ts`](src/env.ts), and validates them to the rule the rest
-will follow: `PORT` must be a whole number between 1 and 65535, and anything else names
-the variable and exits `2`. `NODE_ENV` decides which interface is bound — every interface
-in production, where the platform routes to the container; loopback everywhere else, so a
-development machine does not answer to the network it is on.
+[`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
+table and that template fall out of step. `PORT` and `NODE_ENV` are the documented
+unprefixed exceptions — container platforms set them, not Ouroboros
+([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)).
+`NODE_ENV` also decides which interface is bound: every interface in production, where the
+platform routes to the container; loopback everywhere else, so a development machine does
+not answer to the network it is on.
 
-The `OURO_*` variables arrive with the typed, zod-validated configuration module in
-[#28](https://github.com/NobuData/ouroboros/issues/28). Secrets are redacted from any
-configuration logging and never committed.
+**This service does not start on defaults alone.** Seven variables have no default,
+because a communications layer without a database, an engine, a signing key or a GitHub
+application could serve nothing — so it names what is missing and exits rather than
+starting into a wall of 500s. There is no dotenv loading, matching `ouroboros-engine`:
+what a container is started with is exactly what the service runs with. Export the
+template before running it directly:
+
+```console
+$ set -a && . ../.env && set +a && yarn dev     # or ../.env.example, unedited
+$ node dist/main.js                            # with nothing exported
+ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (7 problems)
+  OURO_DATABASE_URL: is required
+  OURO_ENGINE_URL: is required
+  …
+$ echo $?
+2
+```
+
+Three things about how this is implemented are worth knowing before adding a variable —
+all of it lives in [`src/modules/config/`](src/modules/config):
+
+- **The schema is keyed by variable name.** The whole value of a boot-time failure is the
+  line it prints, so the zod schema's keys are `OURO_DATABASE_URL`, not `databaseUrl`, and
+  the camel-case `Configuration` the application consumes is derived from it afterwards.
+- **Nothing reads `process.env`.** Consumers inject `AppConfigService` and ask for
+  `config.databaseUrl` — a `string`, not a `string | undefined`. `src/main.ts` is the one
+  file that touches the environment, and [`eslint.config.mjs`](eslint.config.mjs) makes
+  that a lint error everywhere else rather than a review habit.
+- **Secrets are redacted, by construction.** The service logs its configuration at boot,
+  and [`src/modules/config/redaction.ts`](src/modules/config/redaction.ts) is the only
+  renderer there is: the three secrets become `[redacted]`, and the connection string
+  keeps its host and database while its password is masked in place. Real `.env` files are
+  never committed.
+
+```console
+$ yarn start
+LOG [ouroboros-rest] ouroboros-rest: configuration
+  PORT=4000
+  NODE_ENV=development
+  OURO_DATABASE_URL=postgresql://ouroboros:***@localhost:5432/ouroboros
+  OURO_ENGINE_URL=http://localhost:8000
+  OURO_ENGINE_SHARED_SECRET=[redacted]
+  OURO_SESSION_SECRET=[redacted]
+  OURO_GITHUB_CLIENT_ID=dev-github-client-id
+  OURO_GITHUB_CLIENT_SECRET=[redacted]
+  OURO_CORS_ORIGINS=http://localhost:3000
+LOG [ouroboros-rest] ouroboros-rest 0.2.0 listening on http://127.0.0.1:4000/api/v1
+```
+
+Adding a variable is four edits: the schema and the `Configuration` field beside it, a
+getter on `AppConfigService`, the row in this table, and the documented default in
+`.env.example`. The compiler enforces the mapping between the first two, and
+`verify-dev-env.sh` enforces the last two.
 
 ## Layout
 
@@ -171,12 +228,11 @@ ouroboros-rest/
 ├── src/
 │   ├── main.ts             # entry point: read the environment, listen, report
 │   ├── application.ts      # /api/v1 prefix, URI versioning, shutdown hooks, /api/docs
-│   ├── env.ts              # PORT and NODE_ENV, validated (#28 takes the rest)
 │   ├── version.ts          # the running build, read from package.json
 │   ├── openapi/            # loads the committed spec — it is never generated
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
-│       ├── config/         # validated OURO_* config          · #28
+│       ├── config/         # the zod schema, the typed service, redaction
 │       ├── health/         # /health/live, /health/ready       · #29
 │       ├── db/             # Kysely instance + pool lifecycle  · #30
 │       ├── tenancy/        # tenants, domains, members         · #31
@@ -192,8 +248,10 @@ ouroboros-rest/
 └── tsconfig.build.json     # the same, minus the specs — what ships
 ```
 
-Everything below `src/modules/` after `app/` is named above and does not exist yet; each
-arrives as one directory and one entry in `AppModule`'s `imports`.
+Everything below `src/modules/` after `app/` and `config/` is named above and does not
+exist yet; each arrives as one directory and one entry in `AppModule`'s `imports`.
+`config/` is already global, so a feature module reads configuration by injecting
+`AppConfigService` without importing anything.
 
 Unit tests sit beside the code they cover as `*.spec.ts`, which is the Nest convention
 and what the CLI's schematics generate. They start nothing and need nothing — the
