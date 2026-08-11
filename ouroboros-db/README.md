@@ -16,7 +16,9 @@
 > [#24](https://github.com/NobuData/ouroboros/issues/24) turned all of that into a gate:
 > `ci/db` now starts a throwaway PostgreSQL on every pull request, migrates it from
 > empty, validates it, and runs both `.sql` suites against the result — see
-> [Continuous integration](#continuous-integration).
+> [Continuous integration](#continuous-integration). What that pass proves is now also
+> what ships: [`Dockerfile`](Dockerfile) is this module as a one-shot migration task, and
+> `publish/db` pushes it once `ci/db` is green on `main` — see [The image](#the-image).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -54,6 +56,7 @@ Flyway is the **sole owner of DDL**. No application module creates or alters tab
 | Schema | `ouroboros` |
 | Configuration | [`flyway.toml`](flyway.toml) — one file, read by every path |
 | CI | `flyway migrate` + `validate` against a throwaway PostgreSQL |
+| Image | [`Dockerfile`](Dockerfile) — the migrations as a one-shot task, published by `publish/db` |
 
 ## Run
 
@@ -326,6 +329,79 @@ Everything the live pass runs is runnable by hand against any PostgreSQL, which 
 failure is reproduced: start one, point the `OURO_*` variables at it, and run the same
 commands in the same order.
 
+A second job, `publish/db`, turns what that pass proved into [the image](#the-image). It
+`needs: ci`, which is why it lives in this workflow rather than one of its own — the
+image is the SQL the job above applied to a real database, validated and asserted
+against, so a red run publishes nothing. The build itself runs on every event and needs
+no credential, so a `Dockerfile` that stops building fails the pull request that broke
+it; only the login and the push are held back to a push on `main`. Two things about the
+artefact are checked before it is pushed, and neither needs a database: that it carries
+every migration in the checkout — the allow-list in `.dockerignore` is what could
+silently drop one — and that it still refuses to migrate a database nobody named.
+
+## The image
+
+Everything above assumes a checkout: `docker compose up` mounts this directory, and the
+`scripts/` commands read it from disk. A deployment has neither. [`Dockerfile`](Dockerfile)
+is this module in the form that needs no checkout — the migrations, `flyway.toml`, the
+seed overlay and [`docker-entrypoint.sh`](docker-entrypoint.sh), on the same
+`flyway/flyway:11-alpine` the compose stack and `run.sh` already use — and `publish/db`
+pushes it as `ouroboros-db:latest` and `ouroboros-db:<commit sha>`.
+
+**It is a task, not a service.** It applies what is pending and exits, and its exit
+status is the answer — which is what makes it a Kubernetes `Job`, a compose service with
+`restart: "no"`, or a step in a deploy script:
+
+```bash
+docker run --rm \
+  -e OURO_DB_HOST=db.internal \
+  -e OURO_DB_USER=ouroboros \
+  -e OURO_DB_PASSWORD="$PGPASSWORD" \
+  "$DOCKER_HOSTNAME"/ouroboros-db:latest            # migrate
+
+docker run --rm … "$DOCKER_HOSTNAME"/ouroboros-db:latest info       # or validate, repair, …
+```
+
+The parameters are the six this module already documents under
+[Configuration](#configuration) — `OURO_DB_HOST`, `OURO_DB_PORT`, `OURO_DB_NAME`,
+`OURO_DB_USER`, `OURO_DB_PASSWORD`, `OURO_DB_SCHEMA` — because a seventh that only the
+image understood would be a parameter no other way of migrating had. Four details are
+worth knowing before it goes near a production database:
+
+- **`OURO_DB_HOST` has no default.** `localhost` inside a container is the container, so
+  a default would turn a forgotten variable into a run that migrates nothing and reports
+  success. Missing, it exits `2` naming the variable.
+- **The password never reaches the command line.** The entrypoint sets Flyway's own
+  `FLYWAY_*` environment variables rather than `-user=`/`-password=` arguments, which
+  keeps the credential out of the container's process list and out of anything that logs
+  a command. Anything you *do* pass on the command line goes to Flyway untouched and
+  beats the environment, so `-url=… -user=… -password=… migrate` works with no
+  `OURO_*` variable at all.
+- **`clean` cannot be reached from it.** `flyway.toml` disables it and
+  [`flyway.dev.toml`](flyway.dev.toml), the one file that re-enables it, is deliberately
+  not in the image — so the command that drops every object in the schema is not
+  available to a caller who asks for it by name.
+- **The dev seed is inert unless it is named**, exactly as everywhere else. The overlay
+  is in the image; Flyway loads no overlay it is not handed, and `-configFiles` *replaces*
+  the auto-loaded file, so both have to be named to get a seeded database — which is how
+  a test fixture asks for one:
+
+  ```bash
+  docker run --rm … "$DOCKER_HOSTNAME"/ouroboros-db:latest \
+    -configFiles=/flyway/project/flyway.toml,/flyway/project/flyway.seed.toml migrate
+  ```
+
+Build it yourself with the module as the context — nothing here installs through the
+workspace lockfile, so unlike `ouroboros-ui` it needs nothing from the repository root:
+
+```bash
+docker build -t ouroboros-db ouroboros-db      # from the repo root
+```
+
+[`.dockerignore`](.dockerignore) is an allow-list: `*`, then the four paths the build
+copies. That is what keeps this module's real `.env` — and `run.sh`, `tests/` and the
+`clean` overlay — out of a published layer no matter what else lands in this directory.
+
 ## Configuration
 
 Two questions, and three files: one project configuration, and two overlays that are
@@ -402,6 +478,9 @@ ouroboros-db/
 ├── flyway.dev.toml                   # the overlay that re-enables clean — clean-dev only
 ├── flyway.seed.toml                  # the overlay that enables the dev seed — the stack, or --config
 ├── run.sh                            # apply migrations to a live database
+├── Dockerfile                        # the published migration image — a task, not a service
+├── docker-entrypoint.sh              # its front door: the OURO_ variables in, a connection out
+├── .dockerignore                     # the allow-list that governs that image's build context
 ├── .env.example                      # which database the commands migrate
 ├── package.json                      # workspace adapter — `yarn dev` reaches scripts/dev
 ├── scripts/

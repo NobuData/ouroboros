@@ -1,0 +1,19 @@
+# ouroboros-db — what the migration image's build context may contain.
+#
+# The context is this directory (see Dockerfile), so this is the file BuildKit reads for
+# it. An allow-list rather than a deny-list: `*` first, then the four paths the build
+# copies. A deny-list would have to be extended every time something is added here, and
+# the thing it would let through first is this module's `.env` — a real password, in a
+# layer, in a published image.
+#
+# Excluded by the `*` and worth naming for the reader: .env (credentials), tests/ (they
+# need a database and a shell, neither of which belongs in a migration task),
+# flyway.dev.toml (the overlay that re-enables `clean` — see the Dockerfile), run.sh and
+# scripts/ (a laptop's way of reaching Flyway; the image *is* Flyway) and README.md.
+
+*
+
+!migrations/
+!flyway.toml
+!flyway.seed.toml
+!docker-entrypoint.sh

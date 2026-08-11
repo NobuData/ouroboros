@@ -249,7 +249,49 @@ jobs:
         run: |
           docker run --rm --network=host "$POSTGRES_IMAGE" \
             psql -v ON_ERROR_STOP=1 -f /tests/seed.sql
+
+  publish:
+    name: publish/db
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-db
+          file: ouroboros-db/Dockerfile
+          push: false
+          load: true
+          tags: ouroboros-db:ci
+
+      - name: Log in to registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_HOSTNAME }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push the image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-db
+          file: ouroboros-db/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HOSTNAME }}/ouroboros-db:latest
+            ${{ secrets.DOCKER_HOSTNAME }}/ouroboros-db:${{ github.sha }}
 YAML
+
+  # The image that job publishes. Only its presence is this script's business — what is
+  # inside it is scripts/verify-dev-env.sh's, and the tests for that are its own suite.
+  mkdir -p "$fixture/ouroboros-db"
+  printf 'FROM flyway/flyway:11-alpine\n' > "$fixture/ouroboros-db/Dockerfile"
 
   # The development stack, present because ci/db's whole purpose is to migrate the
   # PostgreSQL it pins — so the pin is cross-checked against this file rather than
@@ -693,6 +735,71 @@ check_break 'connection parameters declared job-wide are reported' \
 check_break 'a development stack that pins no PostgreSQL at all is reported' \
   'the compose stack pins a PostgreSQL version' \
   'sed -i "s|^    image: postgres:17-alpine$|    image: postgres|" "$root/docker-compose.yml"'
+
+# ---------------------------------------------------------------------------
+# The database's published image
+# ---------------------------------------------------------------------------
+
+# The image is the module in the form something other than a laptop applies, so the two
+# things worth breaking are the order — nothing ships that ci/db has not proved — and the
+# rule that a pull request builds it without a credential. Everything else about the
+# image is scripts/verify-dev-env.sh'"'"'s subject and is broken in that suite.
+
+printf '\nDatabase image violations\n'
+
+check_break 'a module with no image to publish is reported' \
+  'an image to publish' \
+  'rm "$root/ouroboros-db/Dockerfile"'
+
+check_break 'a workflow that publishes nothing is reported' \
+  'db\.yml publishes it' \
+  'sed -i "s|^  publish:$|  x-publish:|" "$root/.github/workflows/db.yml"'
+
+check_break 'a publish job under another name is reported' \
+  'reports as publish/db' \
+  'sed -i "s|^    name: publish/db$|    name: images|" "$root/.github/workflows/db.yml"'
+
+# The one that matters most: without `needs: ci`, a tag moves for a schema whose
+# migrations were never applied to anything.
+check_break 'an image published without waiting for ci/db is reported' \
+  'until ci/db has passed' \
+  'sed -i "/^    needs: ci$/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a build of some other Dockerfile is reported' \
+  'builds that Dockerfile' \
+  'sed -i "s|file: ouroboros-db/Dockerfile|file: Dockerfile|" "$root/.github/workflows/db.yml"'
+
+check_break 'a build context of the whole repository is reported' \
+  'not from the repository root' \
+  'sed -i "s|^          context: ouroboros-db$|          context: .|" "$root/.github/workflows/db.yml"'
+
+# A fork'"'"'s pull request carries no secrets, so a credentialed step that runs on one
+# cannot succeed — and on any pull request it would move a tag nobody has merged.
+check_break 'a push that is not held back on a pull request is reported' \
+  'stop on a pull request' \
+  'sed -i "/^      - name: Push the image$/{n;/if:/d;}" "$root/.github/workflows/db.yml"'
+
+check_break 'a login that is not held back on a pull request is reported' \
+  'stop on a pull request' \
+  'sed -i "/^      - name: Log in to registry$/{n;/if:/d;}" "$root/.github/workflows/db.yml"'
+
+# The other half of that rule: the build itself must *not* be gated, or a broken
+# Dockerfile is a merge failure instead of a pull request failure.
+check_break 'an image never built on a pull request is reported' \
+  'on a pull request too' \
+  'sed -i "s|^          push: false$|          push: true|" "$root/.github/workflows/db.yml"'
+
+check_break 'an image published without an immutable tag is reported' \
+  'cannot move' \
+  'sed -i "/ouroboros-db:\${{ github.sha }}/d" "$root/.github/workflows/db.yml"'
+
+check_break 'an image tagged for a registry written into the workflow is reported' \
+  'not written into the workflow' \
+  'sed -i "s|\${{ secrets.DOCKER_HOSTNAME }}/ouroboros-db:latest|registry.example.com/ouroboros-db:latest|" "$root/.github/workflows/db.yml"'
+
+check_break 'a login to a registry written into the workflow is reported' \
+  'logs in to comes from a secret' \
+  'sed -i "s|^          registry: .*$|          registry: registry.example.com|" "$root/.github/workflows/db.yml"'
 
 # ---------------------------------------------------------------------------
 # Documentation

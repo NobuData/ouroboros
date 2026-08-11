@@ -59,6 +59,12 @@ FLYWAY_SEED_CONFIG=ouroboros-db/flyway.seed.toml
 DB_SCRIPTS=ouroboros-db/scripts
 PARSER="$SCRIPT_DIR/lib/parse-env-example.awk"
 
+# The published migration image — the module in the form a deployment applies.
+ENTRYPOINT_NAME=docker-entrypoint.sh
+DOCKERFILE=ouroboros-db/Dockerfile
+DOCKERIGNORE=ouroboros-db/.dockerignore
+ENTRYPOINT="ouroboros-db/$ENTRYPOINT_NAME"
+
 # Where the container sees the module. Both mounts and -workingDirectory name it, so the
 # relative locations inside flyway.toml resolve the same way on both sides.
 PROJECT=/flyway/project
@@ -261,6 +267,73 @@ check_contains ouroboros-db/run.sh 'flyway/flyway:11' 'run.sh pins the same Flyw
 # A password that comes from a variable opens with `"` or `$`, and the redaction branch
 # opens with `*`; anything alphanumeric is a credential someone typed in.
 check_absent ouroboros-db/run.sh '\-password=[[:alnum:]]' 'run.sh holds no literal password'
+
+# ---------------------------------------------------------------------------
+# Migration image
+# ---------------------------------------------------------------------------
+
+# The third way these migrations are applied: the published image, for an environment
+# where there is no checkout to mount. It is checked here rather than beside the CI
+# contract because what makes it safe is what makes the other two safe — the same pinned
+# Flyway, the same project directory, the overlays that stay inert, and no credential in
+# a file anybody can read. `ci/db` publishes it; that half is scripts/verify-ci.sh.
+printf '\nMigration image\n'
+check_exists "$DOCKERFILE" "$DOCKERFILE exists"
+# The third place Flyway is pinned, after the compose stack and run.sh. An image that
+# applied these migrations with a different Flyway than the one the pull request proved
+# them against would make ci/db prove something other than what ships.
+check_contains "$DOCKERFILE" '^FROM flyway/flyway:11' 'the image pins the same Flyway 11 image'
+# The same directory the other two runners use, so flyway.toml's relative
+# `filesystem:migrations` resolves to the migrations in all three.
+check_contains "$DOCKERFILE" "^COPY migrations/ $PROJECT/migrations/\$" 'the image carries the migrations'
+check_contains "$DOCKERFILE" "^COPY flyway\\.toml flyway\\.seed\\.toml $PROJECT/\$" \
+  'the image carries the project configuration and the seed overlay'
+check_contains "$DOCKERFILE" "$ENTRYPOINT_NAME" 'the image carries its entrypoint'
+check_contains "$DOCKERFILE" '^USER ' 'the image drops root'
+# `clean` drops every object in the schema and this is the image that gets pointed at a
+# real database. flyway.toml disables it; leaving the one overlay that re-enables it out
+# of the layer is what makes that undoable from inside the container. Anchored past any
+# `#`, as the compose check above is, so the Dockerfile may explain the absence while a
+# COPY that ended it still fails here.
+check_absent "$DOCKERFILE" '^[^#]*flyway\.dev\.toml' 'the image cannot reach the clean overlay'
+# A migrator is a task: it exits, and its exit status is the answer. A restart policy or
+# a healthcheck would be describing a service this is not.
+check_absent "$DOCKERFILE" '^HEALTHCHECK' 'the image declares no healthcheck: it is a task, not a service'
+# Anything an image needs to reach a database differs per deployment, and one of them is
+# a secret. They arrive in the environment at run time; a literal here would be baked
+# into a published layer.
+check_absent "$DOCKERFILE" '^(ENV|ARG) *OURO_' 'the image bakes in no connection parameter'
+check_absent "$DOCKERFILE" '\-password=' 'the image holds no literal password'
+
+check_executable "$ENTRYPOINT" "$ENTRYPOINT is executable"
+check_contains "$ENTRYPOINT" '\-workingDirectory=' 'the entrypoint reads flyway.toml, as the other runners do'
+# The parameters are the module's six, so one set of variables points every way of
+# migrating at a database. A seventh here would be one only the image understood.
+for name in $module_declared; do
+  check_contains "$ENTRYPOINT" "$name" "the entrypoint reads the $name the template declares"
+done
+# The password reaches Flyway in the environment, never in argv, where anything else in
+# the container's namespace could read it off the process list. What that forbids is a
+# -password= carrying a *value*, so the pattern is the opening quote or `$` of one:
+# naming the flag in a comment or in the message that says how to pass one yourself is
+# how a caller learns it exists.
+check_absent "$ENTRYPOINT" '^[^#]*\-password=["$]' \
+  'the entrypoint keeps the password out of the command line'
+# `localhost` inside a container is the container. A default host would turn a missing
+# variable into a run that reports success against nothing.
+check_contains "$ENTRYPOINT" 'OURO_DB_HOST:-\}' 'the entrypoint refuses to guess a host'
+
+# The build context is this module, so BuildKit reads a plain .dockerignore beside the
+# Dockerfile (docs/CONVENTIONS.md § 5). It is an allow-list — `*` and then what the build
+# copies — because a deny-list has to be extended for every file added here, and the
+# first thing it would let through is this module's real .env.
+check_exists "$DOCKERIGNORE" "$DOCKERIGNORE exists"
+check_contains "$DOCKERIGNORE" '^\*$' "$DOCKERIGNORE excludes the context before allowing anything"
+for allowed in 'migrations/' 'flyway\.toml' 'flyway\.seed\.toml' "$ENTRYPOINT_NAME"; do
+  check_contains "$DOCKERIGNORE" "^!$allowed\$" "$DOCKERIGNORE allows $(printf '%s' "$allowed" | tr -d '\\')"
+done
+check_absent "$DOCKERIGNORE" '^!\.env' "$DOCKERIGNORE never admits an .env to the build context"
+check_absent "$DOCKERIGNORE" '^!flyway\.dev\.toml$' "$DOCKERIGNORE never admits the clean overlay"
 
 # ---------------------------------------------------------------------------
 # Documentation

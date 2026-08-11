@@ -379,6 +379,62 @@ check_equals "$compose_image" "$db_client_image" \
   'db.yml runs the assertion suites from that same image'
 
 # ---------------------------------------------------------------------------
+# The database's published image
+# ---------------------------------------------------------------------------
+
+# ci/db proves these migrations apply; the publish job turns the ones that did into the
+# image a deployment runs. What matters is the order between the two — and that a pull
+# request still builds the image without needing a credential to do it, because a
+# Dockerfile that stopped building is worth reporting on the change that broke it.
+#
+# What the image *is* — the pinned Flyway, the project directory, the overlays that stay
+# inert, root dropped — is scripts/verify-dev-env.sh's half of this.
+
+printf '\nDatabase image\n'
+
+check_exists ouroboros-db/Dockerfile 'the module has an image to publish'
+check_contains "$DB_WORKFLOW" '^  publish:$' 'db.yml publishes it'
+check_contains "$DB_WORKFLOW" '^    name: publish/db$' 'the publish job reports as publish/db'
+# The gate. Without it a red ci/db still ships a tag, which is a schema nothing ran.
+check_contains "$DB_WORKFLOW" '^    needs: ci$' 'nothing is published until ci/db has passed'
+check_contains "$DB_WORKFLOW" '^          file: ouroboros-db/Dockerfile$' \
+  'db.yml builds that Dockerfile'
+# The module directory, so ouroboros-db/.dockerignore is the allow-list that governs the
+# context. A root context would take its ignores from a file this module does not own.
+check_contains "$DB_WORKFLOW" '^          context: ouroboros-db$' \
+  'db.yml builds it from the module, not from the repository root'
+
+# A push on a pull request is a tag moved by a change nobody has merged — and on a fork's
+# pull request there are no credentials to push with in the first place. Every step that
+# needs a secret carries the condition, and there are exactly as many conditions as there
+# are such steps: a step added later without one fails this rather than running.
+publish_secret_steps=$(sed -n '/^  publish:$/,$p' "$DB_WORKFLOW" 2>/dev/null |
+  grep -c 'secrets\.DOCKER_' || true)
+publish_guarded=$(sed -n '/^  publish:$/,$p' "$DB_WORKFLOW" 2>/dev/null |
+  grep -cF "if: github.event_name != 'pull_request'" || true)
+check_matches "$publish_secret_steps" '^[1-9]' 'the publish job authenticates to a registry'
+check_equals 2 "$publish_guarded" 'both of its credentialed steps stop on a pull request'
+# The build itself is not among them: it runs on every event, which is what makes a
+# broken Dockerfile a pull request failure rather than a merge failure.
+check_contains "$DB_WORKFLOW" '^          push: false$' 'db.yml builds the image on a pull request too'
+
+# `latest` is what a deployment tracking main pulls; the commit is what a rollback names.
+# The schema is versioned by its migrations rather than by a release number, so the sha
+# is the only tag that says exactly which migrations are inside.
+check_contains "$DB_WORKFLOW" '/ouroboros-db:latest$' 'the published image is tagged latest'
+check_contains "$DB_WORKFLOW" '/ouroboros-db:\$\{\{ github\.sha \}\}$' \
+  'and with the commit that built it, which is the tag that cannot move'
+# Which registry this goes to is the deployment's business, not the repository's, and a
+# hostname written down here is one that a fork of this repository would authenticate to
+# and publish to. Both ends of that are checked: what it logs in to, and what it tags —
+# the second anchored past any `#`, so the workflow may name an example registry while a
+# tag built from one still fails.
+check_absent "$DB_WORKFLOW" '^ *registry: *[^$[:space:]]' \
+  'the registry it logs in to comes from a secret'
+check_absent "$DB_WORKFLOW" '^[^#]*[a-z0-9-]+\.[a-z]{2,}/ouroboros-db' \
+  'the registry it pushes to is not written into the workflow'
+
+# ---------------------------------------------------------------------------
 # Documentation
 # ---------------------------------------------------------------------------
 

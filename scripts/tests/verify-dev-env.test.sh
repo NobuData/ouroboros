@@ -177,6 +177,43 @@ RUNNER
     > "$fixture/ouroboros-db/scripts/clean-dev"
   chmod +x "$fixture/ouroboros-db/scripts/"*
 
+  # The published migration image — the third way these migrations are applied,
+  # and the only one with no checkout behind it. Like the runner above, only what the
+  # verifier cross-checks is here: the Flyway pin it shares with the other two, the
+  # project directory all three use, and the guards that keep a credential and a `clean`
+  # out of a layer.
+  cat > "$fixture/ouroboros-db/Dockerfile" <<'IMAGE'
+FROM flyway/flyway:11-alpine
+
+COPY migrations/ /flyway/project/migrations/
+COPY flyway.toml flyway.seed.toml /flyway/project/
+COPY docker-entrypoint.sh /flyway/docker-entrypoint.sh
+
+USER nobody
+
+ENTRYPOINT ["/flyway/docker-entrypoint.sh"]
+CMD ["migrate"]
+IMAGE
+
+  cat > "$fixture/ouroboros-db/docker-entrypoint.sh" <<'ENTRY'
+#!/usr/bin/env sh
+set -eu
+: "${OURO_DB_PORT:-} ${OURO_DB_NAME:-} ${OURO_DB_USER:-}"
+: "${OURO_DB_PASSWORD:-} ${OURO_DB_SCHEMA:-}"
+[ -n "${OURO_DB_HOST:-}" ] || { printf 'set OURO_DB_HOST\n' >&2; exit 2; }
+exec flyway -workingDirectory=/flyway/project "$@"
+ENTRY
+  chmod +x "$fixture/ouroboros-db/docker-entrypoint.sh"
+
+  cat > "$fixture/ouroboros-db/.dockerignore" <<'IGNORE'
+*
+
+!migrations/
+!flyway.toml
+!flyway.seed.toml
+!docker-entrypoint.sh
+IGNORE
+
   cat > "$fixture/ouroboros-db/.env.example" <<'MODULEENV'
 # Where the database is.
 OURO_DB_HOST=localhost
@@ -480,6 +517,103 @@ check_break 'a module template missing a parameter is reported' \
 check_break 'a module template declaring what nothing reads is reported' \
   'run\.sh reads the OURO_DB_SCHEMA' \
   'sed -i "/OURO_DB_SCHEMA/d" "$root/ouroboros-db/run.sh"'
+
+# ---------------------------------------------------------------------------
+# Migration image
+# ---------------------------------------------------------------------------
+
+# The image is the one way these migrations are applied with nobody watching, so each of
+# these breaks one property that makes that safe: the Flyway it shares with the other two
+# runners, the project directory that decides which rules apply, the credential that must
+# not be in a layer, the root it must not run as, and the two files — the clean overlay
+# and this module's .env — that must not be inside it. Whether the workflow publishes it
+# at all is scripts/verify-ci.sh's half.
+
+printf '\nMigration image violations\n'
+
+check_break 'a missing image is reported' \
+  'ouroboros-db/Dockerfile exists' \
+  'rm "$root/ouroboros-db/Dockerfile"'
+
+check_break 'an image on a different Flyway is reported' \
+  'the image pins the same Flyway 11 image' \
+  'sed -i "s|flyway/flyway:11-alpine|flyway/flyway:10|" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'an image without the migrations is reported' \
+  'the image carries the migrations' \
+  'sed -i "/^COPY migrations/d" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'an image without the project configuration is reported' \
+  'carries the project configuration' \
+  'sed -i "/^COPY flyway.toml/d" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'an image running as root is reported' \
+  'the image drops root' \
+  'sed -i "/^USER /d" "$root/ouroboros-db/Dockerfile"'
+
+# The guard that makes `clean` unreachable from a published image: flyway.toml disables
+# it and the one overlay that re-enables it is not in the layer to be named.
+check_break 'an image carrying the clean overlay is reported' \
+  'cannot reach the clean overlay' \
+  'sed -i "s|^COPY flyway.toml.*$|&\nCOPY flyway.dev.toml /flyway/project/|" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'a connection parameter baked into the image is reported' \
+  'bakes in no connection parameter' \
+  'sed -i "s|^USER nobody$|ENV OURO_DB_HOST=db.internal\nUSER nobody|" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'a password baked into the image is reported' \
+  'the image holds no literal password' \
+  'sed -i "s|^CMD .*$|CMD ["'"'"'migrate'"'"'", "-password=hunter2"]|" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'an image that describes itself as a service is reported' \
+  'it is a task, not a service' \
+  'sed -i "s|^USER nobody$|HEALTHCHECK CMD true\nUSER nobody|" "$root/ouroboros-db/Dockerfile"'
+
+check_break 'a missing entrypoint is reported' \
+  'docker-entrypoint\.sh is executable' \
+  'rm "$root/ouroboros-db/docker-entrypoint.sh"'
+
+check_break 'an entrypoint that has drifted from the project is reported' \
+  'the entrypoint reads flyway\.toml' \
+  'sed -i "s|-workingDirectory=/flyway/project ||" "$root/ouroboros-db/docker-entrypoint.sh"'
+
+check_break 'an entrypoint that ignores a documented parameter is reported' \
+  'the entrypoint reads the OURO_DB_SCHEMA' \
+  'sed -i "/OURO_DB_SCHEMA/d" "$root/ouroboros-db/docker-entrypoint.sh"'
+
+# On the command line the password is readable from the process list by anything sharing
+# the container's namespace, and by whatever logged the command.
+check_break 'an entrypoint that passes the password as an argument is reported' \
+  'keeps the password out of the command line' \
+  'sed -i "s|exec flyway |exec flyway -password=\"\$OURO_DB_PASSWORD\" |" "$root/ouroboros-db/docker-entrypoint.sh"'
+
+# `localhost` inside a container is the container, so a default would turn "you forgot to
+# say which database" into a run that migrates nothing and reports success.
+check_break 'an entrypoint that defaults the host is reported' \
+  'refuses to guess a host' \
+  'sed -i "s|\${OURO_DB_HOST:-}|\$OURO_DB_HOST|g" "$root/ouroboros-db/docker-entrypoint.sh"'
+
+check_break 'a missing ignore file is reported' \
+  'ouroboros-db/\.dockerignore exists' \
+  'rm "$root/ouroboros-db/.dockerignore"'
+
+# A deny-list looks exactly like an allow-list until something is added to the module —
+# and the first thing it lets through is this developer's .env.
+check_break 'an ignore file that is a deny-list is reported' \
+  'excludes the context before allowing anything' \
+  'sed -i "s|^\*$|.env|" "$root/ouroboros-db/.dockerignore"'
+
+check_break 'an ignore file that drops the migrations is reported' \
+  '\.dockerignore allows migrations/' \
+  'sed -i "\|^!migrations/$|d" "$root/ouroboros-db/.dockerignore"'
+
+check_break 'an ignore file that admits an .env is reported' \
+  'never admits an \.env' \
+  'printf "!.env\\n" >> "$root/ouroboros-db/.dockerignore"'
+
+check_break 'an ignore file that admits the clean overlay is reported' \
+  'never admits the clean overlay' \
+  'printf "!flyway.dev.toml\\n" >> "$root/ouroboros-db/.dockerignore"'
 
 # A repeatable migration is legal under the same rule, so it must not be flagged.
 root="$work/repeatable"

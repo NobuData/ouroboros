@@ -150,6 +150,20 @@ still there for anything they do not cover. All of them read one configuration �
 [`ouroboros-db/flyway.toml`](ouroboros-db/flyway.toml), the same file the compose stack
 above applies its migrations with.
 
+Where there is no checkout to run those from — a deployment, a pipeline elsewhere —
+there is the published migration image, which carries the same migrations and the same
+configuration and takes the same `OURO_*` variables:
+
+```bash
+docker run --rm \
+  -e OURO_DB_HOST=db.internal -e OURO_DB_USER=ouroboros -e OURO_DB_PASSWORD=… \
+  "$DOCKER_HOSTNAME"/ouroboros-db:latest
+```
+
+It is a task, not a service: it applies what is pending and exits. `ci/db` builds it on
+every run and pushes it once the whole job is green on `main` — see
+[`ouroboros-db/README.md`](ouroboros-db/README.md#the-image).
+
 Every module also builds and runs on its own, which is how CI runs them and how you work
 on one in isolation — see its README for the specifics:
 
@@ -207,7 +221,7 @@ only the checks it can affect:
 | `ouroboros-ui/**` | `ci/ui` | `yarn install --immutable` → lint → typecheck → test → build |
 | `ouroboros-rest/**` | `ci/rest` | the same pipeline, against `ouroboros-rest` |
 | `ouroboros-engine/**` | `ci/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
-| `ouroboros-db/**` | `ci/db` | the migration and data-tier contract, then the module's tooling tests |
+| `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass; the migration image is built on every run and pushed once `ci/db` is green on `main` |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 | `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
 

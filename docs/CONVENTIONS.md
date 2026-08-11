@@ -236,6 +236,20 @@ This applies only to the modules that *install* through the root lockfile.
 `ouroboros-web` is not a workspace at all: all three build from their own directory with
 a plain `.dockerignore` beside the Dockerfile.
 
+**A task image answers to fewer of these rules, and says which.** Not every image is a
+service. [`ouroboros-db/Dockerfile`](../ouroboros-db/Dockerfile) is the migrations, the
+Flyway project configuration that applies them and the entrypoint that turns the module's
+`OURO_*` variables into a connection, on the `flyway/flyway:11-alpine` the rest of the
+repository already migrates with — it starts, applies what is pending, and exits. So it is a single stage (the
+artefact is the committed `.sql` files; there is no build to keep out of a runtime),
+installs nothing (its one dependency is the base image), and declares no `HEALTHCHECK`
+(its exit status is the answer, which is what makes it usable as a Kubernetes Job or a
+deploy step). It still drops root, still allow-lists its build context, and still carries
+no credential. A task image that departs from a rule above states which one and why, in
+the Dockerfile — and [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) asserts the
+parts it does keep, including that the overlay which re-enables `flyway clean` is not
+inside it.
+
 ### The local development stack
 
 The repo-root [`docker-compose.yml`](../docker-compose.yml) is the development data tier
@@ -360,6 +374,7 @@ ouroboros-ui/**     ─▶ ci/ui      lint · typecheck · test · build
 ouroboros-rest/**   ─▶ ci/rest    lint · typecheck · test · build
 ouroboros-engine/** ─▶ ci/engine  ruff · pytest
 ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
+                    ─▶ publish/db the migration image, pushed from main
 
 package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
@@ -414,7 +429,17 @@ migrated twice with the dev-seed overlay and asserted by
 [`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which is both the seed's content
 check and its idempotency check — every assertion in it says *exactly one*.
 
-Two things about that pass are worth stating, because they are what make it worth
+**The published artefact**: `db.yml` carries a second job, `publish/db`, which builds
+[`ouroboros-db/Dockerfile`](../ouroboros-db/Dockerfile) — the migration image (§ 5) — and
+pushes it as `ouroboros-db:latest` and `ouroboros-db:<sha>`. It `needs: ci`, which is the
+reason it lives in this workflow rather than one of its own: the image is the SQL the job
+above applied to a real PostgreSQL, validated and asserted against, so a red run
+publishes nothing. The build itself runs on every event and needs no credential, so a
+Dockerfile that stops building fails the pull request that broke it; only the login and
+the push are held back to a push on `main`, which is also what makes the job safe on a
+fork's pull request, where there are no secrets to push with.
+
+Two things about the live pass are worth stating, because they are what make it worth
 running. It uses the module's own `scripts/` commands rather than a `flyway` invocation
 written into the workflow, so CI and a laptop apply the same checkout under the same
 rules — both read [`flyway.toml`](../ouroboros-db/flyway.toml). And `validate` compares
@@ -434,8 +459,8 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 |---|---|
 | [`verify-layout.sh`](../scripts/verify-layout.sh) | Module directories, README sections, root docs, `.editorconfig` coverage |
 | [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
-| [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule |
-| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold; `ci/db` still starts a database, migrates it, validates it and runs both `.sql` suites, against the PostgreSQL the development stack pins |
+| [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule; the migration image pins the same Flyway, drops root, allow-lists its context and carries neither a credential nor the `clean` overlay |
+| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold; `ci/db` still starts a database, migrates it, validates it and runs both `.sql` suites, against the PostgreSQL the development stack pins; and that `publish/db` still builds the migration image on every event and pushes it only behind a green `ci/db` |
 | [`verify-workspace.sh`](../scripts/verify-workspace.sh) | The decisions in [`DECISION_WORKSPACE_TOOLING.md`](DECISION_WORKSPACE_TOOLING.md) still hold: the roster is these four modules with `ouroboros-web` outside it, one lockfile, both versions pinned exactly, every repo-level verb reaching a declared task and every task a verb, nothing Docker-facing cached, and every script that reads above its own package declaring it in that task's inputs |
 | [`verify-brand.sh`](../scripts/verify-brand.sh) | [`BRAND.md`](BRAND.md) and [`brand/`](brand) agree: every asset is a PNG with an alpha channel, at the size the document publishes, named and linked by it |
 | [`verify-tokens.sh`](../scripts/verify-tokens.sh) | [`design/tokens.css`](design/tokens.css) parses to exactly three palette blocks with no literal outside them, both dark blocks are identical, every colour is themed in both palettes, the dark palette still matches the mockups' sheet, the preview page carries no literal, and every contrast ratio [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) publishes is the recomputed one, at or above its minimum |
