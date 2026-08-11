@@ -18,9 +18,10 @@ def test_the_root_route_is_json(client: TestClient) -> None:
     assert response.headers["content-type"].startswith("application/json")
 
 
-def test_an_unknown_path_is_a_404(client: TestClient) -> None:
-    # Nothing else is served yet: /healthz arrives with #51 and /v0 with #52.
-    response = client.get("/healthz")
+def test_an_unknown_path_is_a_404_once_past_the_key(client: TestClient) -> None:
+    # Only for a caller that authenticated. Without the key it is a 401 like everything
+    # else, which is what stops the surface being mapped — tests/test_core_security.py.
+    response = client.get("/v0/nothing-is-served-here")
 
     assert response.status_code == 404
 

@@ -1,9 +1,9 @@
 # ouroboros-engine
 
-> **Status:** scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50) — the
-> service builds, serves and is tested. Liveness and the internal-key middleware are
-> [#51](https://github.com/NobuData/ouroboros/issues/51); the `/v0` contract is
-> [#52](https://github.com/NobuData/ouroboros/issues/52).
+> **Status:** scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50);
+> liveness, `/v0/status` and the internal-key guard landed with
+> [#51](https://github.com/NobuData/ouroboros/issues/51). The rest of the `/v0` contract
+> is [#52](https://github.com/NobuData/ouroboros/issues/52).
 
 ## Purpose
 
@@ -13,6 +13,11 @@ The **Python backend** — the service that executes the work `ouroboros-rest` b
 It is **internal only**. Nothing outside the cluster reaches it: every request arrives
 through `ouroboros-rest`, authenticated with a shared secret on the
 `X-Ouro-Internal-Key` header. The browser never calls it directly.
+
+That is a deployment claim, so the service enforces it itself rather than trusting it:
+**every path but `/healthz` requires the key**, the comparison is constant time, and a
+request without it is refused before routing — so a misrouted engine port answers a
+probe and nothing else.
 
 ## Stack
 
@@ -29,12 +34,19 @@ through `ouroboros-rest`, authenticated with a shared secret on the
 ## Run
 
 ```bash
-uv sync                 # create .venv and install from uv.lock
-uv run dev              # http://localhost:8000
+uv sync                                                # create .venv, install from uv.lock
+OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me uv run dev   # :8000
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest
 ```
+
+The shared secret is **mandatory** — without it the service would answer nothing but
+liveness, so it refuses to start rather than serve a wall of 401s. Any value works in
+development as long as `ouroboros-rest` is configured with the same one;
+[`.env.example`](../.env.example) documents the placeholder used above. Exporting it
+once (`export OURO_ENGINE_SHARED_SECRET=…`, or `set -a; . ../.env; set +a`) is what
+makes a bare `uv run dev` — and `yarn dev` from the repo root — work.
 
 Those three, after `uv sync --locked`, are what `ci/engine` runs on every pull request
 touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
@@ -57,17 +69,41 @@ application directly, without the reloader, and chooses its own host:
 uv run uvicorn ouroboros_engine.main:app --host 0.0.0.0 --port "${PORT:-8000}"
 ```
 
-What answers today is `GET /`, which names the service and its version — enough to
-confirm the process is up and which build it is:
+## The HTTP surface
 
-```bash
-curl -s localhost:8000 && echo
-# {"service":"ouroboros-engine","version":"0.1.0"}
+| Path | Key required | Answers |
+|---|:---:|---|
+| `GET /healthz` | no | `{"status":"ok"}` — liveness, for a container platform's probe |
+| `GET /` | yes | The service name and its installed version |
+| `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
+| `/openapi.json`, `/docs` | yes | The generated document. A map of the internal surface is not something a misrouted port should hand out |
+
+```console
+$ curl -s localhost:8000/healthz && echo
+{"status":"ok"}
+
+$ curl -s localhost:8000/v0/status && echo
+{"detail":"Unauthorized"}
+
+$ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
+{"service":"ouroboros-engine","version":"0.2.0","uptime_seconds":42.5}
 ```
 
-The generated OpenAPI document is at `/openapi.json`, with the interactive form at
-`/docs`. Neither is the contract `ouroboros-rest` codes against — that is the versioned
-one under `/v0` ([#52](https://github.com/NobuData/ouroboros/issues/52)).
+`/healthz` is deliberately shallow: it opens no connection and reads no configuration,
+so it cannot fail for a reason restarting the container will not fix. *Readiness* — are
+the dependencies reachable — is REST's probe
+([#29](https://github.com/NobuData/ouroboros/issues/29)), which asks `/v0/status` with
+the key.
+
+Everything else is behind the guard, and a rejection is a bare
+`401 {"detail":"Unauthorized"}` whether the path exists or not — status codes are how a
+surface gets mapped from outside, so an unauthenticated caller cannot tell
+`/v0/status` from `/v0/anything-else`. The rejection is logged with the path and the
+method; the key that was offered never is, right or wrong.
+
+`/v0` is the versioned internal prefix. `/v0/status` claims the path; the request and
+error shapes the rest of it follows are
+[#52](https://github.com/NobuData/ouroboros/issues/52).
 
 ## Configuration
 
@@ -76,7 +112,7 @@ Development default port: **8000** (`PORT`).
 | Variable | Purpose | Default |
 |---|---|---|
 | `PORT` | HTTP listen port (unprefixed by convention — see [conventions](../docs/CONVENTIONS.md)) | `8000` |
-| `OURO_ENGINE_SHARED_SECRET` | Expected value of `X-Ouro-Internal-Key`; compared in constant time | unset |
+| `OURO_ENGINE_SHARED_SECRET` | Expected value of `X-Ouro-Internal-Key`; compared in constant time | **required** |
 | `OURO_LOG_LEVEL` | Log verbosity — `debug`, `info`, `warning` or `error` | `info` |
 
 Values are read from the **process environment only**; there is no dotenv loading, so
@@ -98,19 +134,47 @@ $ echo $?
 
 Values are never echoed back in that report — one of these variables is a secret.
 
-`OURO_ENGINE_SHARED_SECRET` is read but not yet enforced: no route requires the key
-until [#51](https://github.com/NobuData/ouroboros/issues/51) adds the middleware. It must
-match the value `ouroboros-rest` is configured with. A mismatch is logged by the engine
-and surfaced to clients by REST as a `502`, never a `401` — the internal boundary is not
-something the caller can probe.
+`OURO_ENGINE_SHARED_SECRET` has no default and no fallback:
+
+```console
+$ uv run dev
+ouroboros-engine: invalid configuration (1 problem)
+  OURO_ENGINE_SHARED_SECRET: Field required
+$ echo $?
+2
+```
+
+It must match the value `ouroboros-rest` is configured with. A mismatch is logged by the
+engine and surfaced to clients by REST as a `502`, never a `401` — the internal boundary
+is not something the caller can probe.
+
+## Logging
+
+One JSON object per line, at `OURO_LOG_LEVEL`, on stderr. uvicorn's own records go
+through the same formatter, so a served process emits one format rather than two:
+
+```json
+{"timestamp": "2026-08-10T23:54:26.158925+00:00", "level": "WARNING", "logger": "ouroboros_engine.core.security", "message": "rejected an internal request without a valid key", "path": "/v0/status", "method": "GET", "key_present": false}
+```
+
+Whatever a call site passes as `extra` becomes a top-level key, so an event is
+filterable by `path` rather than by substring. Nothing is logged that was not passed
+explicitly — no environment, no headers, no bodies — because this process holds a
+credential and a logger that helpfully dumps context is how one reaches a log index.
 
 ## Layout
 
 ```
 ouroboros-engine/
 ├── src/ouroboros_engine/
-│   ├── api/            # one module per router — root.py; health #51, /v0 #52
-│   ├── core/           # process-wide concerns — logging.py; internal-key middleware #51
+│   ├── api/            # one module per router
+│   │   ├── health.py   #   GET /healthz — the one public path
+│   │   ├── root.py     #   GET /
+│   │   └── status.py   #   GET /v0/status; the rest of the contract is #52
+│   ├── core/           # process-wide concerns, not routes
+│   │   ├── logging.py  #   JSON records at OURO_LOG_LEVEL
+│   │   ├── security.py #   the internal-key guard
+│   │   └── uptime.py   #   the stopwatch /v0/status reports from
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   └── settings.py     # pydantic-settings, OURO_*
@@ -126,6 +190,11 @@ environment. `app` at module scope is what `ouroboros_engine.main:app` resolves 
 uvicorn, in development and in the container.
 
 Adding a router is a module under `api/` and one `include_router` line in `create_app`.
+**A route added that way is guarded by default**: the key check is middleware, installed
+before any router, so a new path requires the key without anything being remembered.
+Exempting one is an edit to `_PUBLIC_PATHS` in `main.py`, which is deliberately the only
+place a public path can be declared — and a test asserts liveness is still the only
+entry in it.
 There is no `Dockerfile` or `.dockerignore` yet; both land with
 [#53](https://github.com/NobuData/ouroboros/issues/53).
 

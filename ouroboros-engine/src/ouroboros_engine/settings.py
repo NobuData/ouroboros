@@ -45,9 +45,11 @@ class Settings(BaseSettings):
         log_level: Verbosity applied by :func:`ouroboros_engine.core.logging`. Read from
             ``OURO_LOG_LEVEL``.
         shared_secret: Expected value of the ``X-Ouro-Internal-Key`` header on internal
-            calls, read from ``OURO_ENGINE_SHARED_SECRET``. Unset here is legal and
-            means no route requires it yet; the middleware that consumes it — and makes
-            it mandatory — is #51.
+            calls, read from ``OURO_ENGINE_SHARED_SECRET``. Mandatory: every route but
+            liveness is behind
+            :class:`ouroboros_engine.core.security.InternalKeyMiddleware`, so a process
+            without a secret could serve nothing and refusing to start is the honest
+            outcome.
     """
 
     model_config = SettingsConfigDict(
@@ -61,8 +63,10 @@ class Settings(BaseSettings):
 
     port: int = Field(default=8000, ge=1, le=65535, validation_alias="PORT")
     log_level: LogLevel = Field(default="info", validation_alias="OURO_LOG_LEVEL")
-    shared_secret: str | None = Field(
-        default=None,
+    # No default: an engine that starts without a secret would answer nothing but
+    # /healthz, so the missing variable is named at boot rather than discovered as a
+    # wall of 401s at the first request REST makes.
+    shared_secret: str = Field(
         min_length=1,
         validation_alias="OURO_ENGINE_SHARED_SECRET",
     )

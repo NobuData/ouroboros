@@ -13,7 +13,6 @@ def test_defaults_match_the_documented_development_values() -> None:
 
     assert settings.port == 8000, "the port map in docs/CONVENTIONS.md § 4 says 8000"
     assert settings.log_level == "info", ".env.example documents OURO_LOG_LEVEL=info"
-    assert settings.shared_secret is None, "no route requires the key until #51"
 
 
 def test_every_field_is_isolated_by_the_fixture(
@@ -89,6 +88,19 @@ def test_an_empty_shared_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
         load_settings()
 
     assert "OURO_ENGINE_SHARED_SECRET" in str(failure.value)
+
+
+def test_a_missing_shared_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Mandatory since #51: with it unset, every route but /healthz would answer 401,
+    # so a process that started anyway would be a service that serves nothing.
+    monkeypatch.delenv("OURO_ENGINE_SHARED_SECRET")
+
+    with pytest.raises(SettingsError) as failure:
+        load_settings()
+
+    message = str(failure.value)
+    assert "OURO_ENGINE_SHARED_SECRET" in message
+    assert "required" in message.lower()
 
 
 def test_a_secret_is_never_echoed_by_a_failure_elsewhere(
