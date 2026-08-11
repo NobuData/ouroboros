@@ -261,7 +261,7 @@ docker compose up
 > `ouroboros-ui/` queues `ci/ui` and nothing else. `ci/db` runs the data-tier contract
 > that needs no database; issue 3.6 (#24) has since added the live `migrate` →
 > `validate` → `constraints.sql` pass to that same job, and its assertions to this
-> script — 136 checks now.
+> script — 137 checks now.
 
 - **Problem Statement:** Four modules with three toolchains in one repo; unfiltered CI
   would run everything on every PR — slow and noisy.
@@ -961,12 +961,22 @@ R__dev_seed.sql ─▶ acme-robotics ─┬─ domains: acme-robotics.dev
 > if any of the three drifts, because CI proving a PostgreSQL nobody develops against is
 > worth less than the minute it costs.
 >
-> Ten new mutation cases in `scripts/tests/verify-ci.test.sh` each remove one step of the
-> pass — the service container, the healthcheck's `-U`/`-d`, `migrate`, `validate`,
-> `constraints.sql`, the seed overlay, `seed.sql`, and each of the three pins — and each
-> turns the verifier red. A live pass that quietly stops running is the failure mode
-> worth testing for: the job still reports green, about the half a file read already
-> covered.
+> **The connection parameters are set by a step, not by a job-level `env:` block**, and
+> the first run of this workflow is why. `OURO_DB_*` present in the environment is the
+> last word in `run.sh`'s precedence — it beats `ouroboros-db/.env` — and the tooling
+> suite the same job runs two steps earlier is the suite that *tests* that precedence, by
+> writing `.env` files and asserting what Flyway would have been given. Declared job-wide
+> they pointed it at this workflow instead and it failed outright, on eight assertions.
+> Written into `$GITHUB_ENV` by a step they exist for the live pass and for nothing before
+> it, and `verify-ci.sh` now fails on an `OURO_*` key in job scope so the same mistake
+> cannot come back quietly.
+>
+> Eleven new mutation cases in `scripts/tests/verify-ci.test.sh` each break one part of
+> the pass — the service container, the healthcheck's `-U`/`-d`, `migrate`, `validate`,
+> `constraints.sql`, the seed overlay, `seed.sql`, each of the three pins, and the job
+> scope above — and each turns the verifier red. A live pass that quietly stops running is
+> the failure mode worth testing for: the job still reports green, about the half a file
+> read already covered.
 >
 > **Demonstrably red, checked once and reverted**, against a throwaway PostgreSQL 17 —
 > all four ways a migration can be wrong: a migration whose SQL fails (`migrate` exits 1,

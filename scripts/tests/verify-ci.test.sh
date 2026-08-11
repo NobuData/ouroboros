@@ -211,22 +211,25 @@ jobs:
           --health-timeout 3s
           --health-retries 30
 
-    env:
-      OURO_DB_HOST: localhost
-      OURO_DB_PORT: "5432"
-      OURO_DB_NAME: ouroboros
-      OURO_DB_USER: ouroboros
-      OURO_DB_PASSWORD: ouroboros
-      OURO_DB_SCHEMA: ouroboros
-      PGPASSWORD: ouroboros
-      SEED_DB_NAME: ouroboros_seed
-      POSTGRES_IMAGE: postgres:17-alpine
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Migration & data-tier contract
         run: scripts/verify-dev-env.sh
+
+      - name: Point the migration commands at that database
+        run: |
+          {
+            echo "OURO_DB_HOST=localhost"
+            echo "OURO_DB_PORT=5432"
+            echo "OURO_DB_NAME=ouroboros"
+            echo "OURO_DB_USER=ouroboros"
+            echo "OURO_DB_PASSWORD=ouroboros"
+            echo "OURO_DB_SCHEMA=ouroboros"
+            echo "PGPASSWORD=ouroboros"
+            echo "SEED_DB_NAME=ouroboros_seed"
+            echo "POSTGRES_IMAGE=postgres:17-alpine"
+          } >> "$GITHUB_ENV"
 
       - name: Migrate a clean database
         run: ouroboros-db/scripts/migrate
@@ -678,7 +681,14 @@ check_break 'a service container drifting from the stack pin is reported' \
 
 check_break 'an assertion client drifting from the stack pin is reported' \
   'from that same image' \
-  'sed -i "s|POSTGRES_IMAGE: postgres:17-alpine|POSTGRES_IMAGE: postgres:16-alpine|" "$root/.github/workflows/db.yml"'
+  'sed -i "s|POSTGRES_IMAGE=postgres:17-alpine|POSTGRES_IMAGE=postgres:16-alpine|" "$root/.github/workflows/db.yml"'
+
+# The regression that produced this check: OURO_DB_* in job scope is the last word in
+# run.sh'"'"'s precedence, so it silently redirects the tooling suite the same job runs two
+# steps earlier — which exists to test that precedence — at this workflow.
+check_break 'connection parameters declared job-wide are reported' \
+  'out of the tooling tests' \
+  'sed -i "s|^    steps:$|    env:\n      OURO_DB_HOST: localhost\n\n    steps:|" "$root/.github/workflows/db.yml"'
 
 check_break 'a development stack that pins no PostgreSQL at all is reported' \
   'the compose stack pins a PostgreSQL version' \

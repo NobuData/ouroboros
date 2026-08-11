@@ -64,28 +64,6 @@ jobs:
           --health-timeout 3s
           --health-retries 30
 
-    env:
-      # Where that service is reachable, in the OURO_* names ouroboros-db/run.sh and its
-      # scripts/ wrappers read (ouroboros-db/.env.example). They are the development
-      # defaults, written out anyway so this file says which database it migrates.
-      OURO_DB_HOST: localhost
-      OURO_DB_PORT: "5432"
-      OURO_DB_NAME: ouroboros
-      OURO_DB_USER: ouroboros
-      OURO_DB_PASSWORD: ouroboros
-      OURO_DB_SCHEMA: ouroboros
-      # psql's own name for that same password. A throwaway container on a throwaway
-      # runner holding the well-known development password is not a secret, and writing
-      # it here rather than in a GitHub secret keeps the workflow reproducible by hand.
-      PGPASSWORD: ouroboros
-      # The second database, migrated with the dev-seed overlay. See its step.
-      SEED_DB_NAME: ouroboros_seed
-      # The assertion files are plain SQL, so they need a psql — and this is the one
-      # image the job has already pulled. Taking it from here rather than from the
-      # runner's apt set means the client is pinned to the server's major version and
-      # the step cannot break because a runner image dropped a package.
-      POSTGRES_IMAGE: postgres:17-alpine
-
     steps:
       - uses: actions/checkout@v4
 
@@ -111,6 +89,42 @@ jobs:
       # The live pass (#24) — everything above is a file read; everything below applies
       # the migrations to a real PostgreSQL and asks it what it now enforces.
       # -----------------------------------------------------------------------------
+
+      # The parameters everything below talks to that service with, written into the
+      # environment here rather than declared in a job-level `env:` block.
+      #
+      # That is not a style choice. `OURO_DB_*` present in the environment deliberately
+      # beats ouroboros-db/.env — it is the last word in run.sh's precedence — and the
+      # tooling suite two steps up is the suite that *tests* that precedence, by writing
+      # .env files and asserting what Flyway would have been given. In job scope these
+      # would quietly make it assert this workflow instead, and it fails outright. Set
+      # here, they exist for the live pass and for nothing before it.
+      #
+      # They are also the development defaults run.sh falls back to on its own, so this
+      # block changes nothing about which database is migrated. It is written out so the
+      # workflow says which one that is.
+      - name: Point the migration commands at that database
+        run: |
+          {
+            echo "OURO_DB_HOST=localhost"
+            echo "OURO_DB_PORT=5432"
+            echo "OURO_DB_NAME=ouroboros"
+            echo "OURO_DB_USER=ouroboros"
+            echo "OURO_DB_PASSWORD=ouroboros"
+            echo "OURO_DB_SCHEMA=ouroboros"
+            # psql's own name for that same password. A throwaway container on a
+            # throwaway runner holding the well-known development password is not a
+            # secret, and keeping it out of GitHub secrets is what lets a developer
+            # reproduce this job by hand.
+            echo "PGPASSWORD=ouroboros"
+            # The second database, migrated with the dev-seed overlay. See its step.
+            echo "SEED_DB_NAME=ouroboros_seed"
+            # The assertion files are plain SQL, so they need a psql — and this is the
+            # one image the job has already pulled. Taking it from here rather than from
+            # the runner's apt set means the client is pinned to the server's major
+            # version and the step cannot break because a runner image dropped a package.
+            echo "POSTGRES_IMAGE=postgres:17-alpine"
+          } >> "$GITHUB_ENV"
 
       # `scripts/migrate` rather than a `flyway` command written out here, so CI applies
       # migrations the same way a developer does: it reads ouroboros-db/flyway.toml

@@ -351,6 +351,15 @@ check_contains "$DB_WORKFLOW" 'flyway\.seed\.toml' \
 check_contains "$DB_WORKFLOW" 'tests/seed\.sql' \
   'db.yml asserts what the seed put there'
 
+# The live pass's connection parameters must not be in job scope. OURO_DB_* present in
+# the environment is the last word in run.sh's precedence, and the module's tooling suite
+# — which db.yml runs before the live pass — is the suite that tests that precedence by
+# writing .env files and asserting what Flyway would have been given. Declared job-wide
+# they make it assert the workflow instead, and it fails. Six spaces is job scope; a step
+# that sets them for itself and everything after it is indented deeper than this.
+check_absent "$DB_WORKFLOW" '^      OURO_[A-Z0-9_]+:' \
+  'db.yml keeps the live pass out of the tooling tests scope'
+
 # PostgreSQL is pinned in three places that have to agree. The service container is one;
 # POSTGRES_IMAGE — the image the psql steps run the `.sql` suites from — is the second,
 # and it is a second place rather than the same one because the `env` context is not
@@ -360,7 +369,7 @@ check_contains "$DB_WORKFLOW" 'tests/seed\.sql' \
 # `head -n 1` throughout: the first match is the one that matters, and a file with none
 # yields the empty string, which fails the comparison with the reason printed.
 db_service_image=$(sed -n 's/^        image: \(postgres:[^ ]*\)$/\1/p' "$DB_WORKFLOW" 2>/dev/null | head -n 1)
-db_client_image=$(sed -n 's/^      POSTGRES_IMAGE: \(postgres:[^ ]*\)$/\1/p' "$DB_WORKFLOW" 2>/dev/null | head -n 1)
+db_client_image=$(sed -n 's/^ *echo "POSTGRES_IMAGE=\(postgres:[^"]*\)"$/\1/p' "$DB_WORKFLOW" 2>/dev/null | head -n 1)
 compose_image=$(sed -n 's/^    image: \(postgres:[^ ]*\)$/\1/p' docker-compose.yml 2>/dev/null | head -n 1)
 
 check_matches "$compose_image" '^postgres:[0-9]' 'the compose stack pins a PostgreSQL version'

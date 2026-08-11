@@ -316,6 +316,11 @@ Two details are the reason the job is worth its minute:
   `${ouro_dev_seed}` is `false` in `flyway.toml` — so the overlay is layered onto a
   second database instead. Migrating it twice before asserting is the idempotency
   criterion, since every assertion in `seed.sql` says *exactly one*.
+- **`OURO_*` enters the environment where the live pass begins**, not job-wide. Those
+  variables are the last word in `run.sh`'s precedence, and the tooling suite two steps
+  earlier is what tests that precedence — in job scope they point it at the workflow
+  instead of at the `.env` files it writes. `scripts/verify-ci.sh` fails on an `OURO_*`
+  key in job scope, so the mistake cannot come back quietly.
 
 Everything the live pass runs is runnable by hand against any PostgreSQL, which is how a
 failure is reproduced: start one, point the `OURO_*` variables at it, and run the same
