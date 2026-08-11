@@ -68,7 +68,20 @@ services:
   # `up` and a hand-run migration cannot apply the same checkout under different rules
   # (issue #19).
   #
-  # Both mounts are read-only, so a container can never rewrite the checkout, and only
+  # This stack is a developer's laptop and nothing else — it publishes a well-known
+  # password on loopback — so it is also the one place the development seed is turned
+  # on, by layering ouroboros-db/flyway.seed.toml over that project configuration
+  # (issue #23). That overlay sets one placeholder, `ouro_dev_seed`, which is `false`
+  # everywhere else; R__dev_seed.sql inserts nothing without it. -configFiles *replaces*
+  # the file Flyway would have auto-loaded rather than adding to it, which is why
+  # flyway.toml is named here as well.
+  #
+  # ouroboros-db/flyway.dev.toml — the overlay that re-enables `clean` — is deliberately
+  # not loaded here and must not be: dropping this schema is `docker compose down -v`,
+  # and scripts/clean-dev is the only thing in the repository allowed to reach for that
+  # file. scripts/verify-dev-env.sh asserts the distinction.
+  #
+  # Every mount is read-only, so a container can never rewrite the checkout, and only
   # what Flyway reads is mounted — the module's .env belongs to the developer.
   # ---------------------------------------------------------------------------
   flyway:
@@ -78,9 +91,11 @@ services:
         condition: service_healthy
     volumes:
       - ./ouroboros-db/flyway.toml:/flyway/project/flyway.toml:ro
+      - ./ouroboros-db/flyway.seed.toml:/flyway/project/flyway.seed.toml:ro
       - ./ouroboros-db/migrations:/flyway/project/migrations:ro
     command:
       - -workingDirectory=/flyway/project
+      - -configFiles=/flyway/project/flyway.toml,/flyway/project/flyway.seed.toml
       - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
       - -user=${OURO_DB_USER:-ouroboros}
       - -password=${OURO_DB_PASSWORD:-ouroboros}

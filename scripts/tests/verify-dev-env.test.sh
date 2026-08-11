@@ -60,9 +60,11 @@ services:
         condition: service_healthy
     volumes:
       - ./ouroboros-db/flyway.toml:/flyway/project/flyway.toml:ro
+      - ./ouroboros-db/flyway.seed.toml:/flyway/project/flyway.seed.toml:ro
       - ./ouroboros-db/migrations:/flyway/project/migrations:ro
     command:
       - -workingDirectory=/flyway/project
+      - -configFiles=/flyway/project/flyway.toml,/flyway/project/flyway.seed.toml
       - -url=jdbc:postgresql://db:5432/${OURO_DB_NAME:-ouroboros}
       - -user=${OURO_DB_USER:-ouroboros}
       - -password=${OURO_DB_PASSWORD:-ouroboros}
@@ -122,9 +124,10 @@ DOC
 
   printf 'select 1;\n' > "$fixture/ouroboros-db/migrations/V000__bootstrap.sql"
 
-  # The Flyway project: the settings the compose stack no longer spells out, and the
-  # overlay that is the only way to a `clean`. What Flyway makes of them is exercised by
-  # the module's own suite; here they only have to satisfy the contract.
+  # The Flyway project: the settings the compose stack no longer spells out, the overlay
+  # that is the only way to a `clean`, and the overlay that is the only way to seed data.
+  # What Flyway makes of them is exercised by the module's own suite; here they only have
+  # to satisfy the contract.
   cat > "$fixture/ouroboros-db/flyway.toml" <<'TOML'
 [environments.default]
 schemas = ["ouroboros"]
@@ -135,11 +138,20 @@ locations = ["filesystem:migrations"]
 createSchemas = true
 validateMigrationNaming = true
 cleanDisabled = true
+placeholderReplacement = true
+
+[flyway.placeholders]
+ouro_dev_seed = "false"
 TOML
 
   cat > "$fixture/ouroboros-db/flyway.dev.toml" <<'TOML'
 [flyway]
 cleanDisabled = false
+TOML
+
+  cat > "$fixture/ouroboros-db/flyway.seed.toml" <<'TOML'
+[flyway.placeholders]
+ouro_dev_seed = "true"
 TOML
 
   # Only what the verifier cross-checks — the project directory and image that must
@@ -394,6 +406,36 @@ check_break 'an overlay that no longer enables clean is reported' \
 check_break 'a clean-dev that does not load the overlay is reported' \
   'clean-dev is what does load it' \
   'printf "#!/usr/bin/env sh\nexec ../run.sh clean\n" > "$root/ouroboros-db/scripts/clean-dev"'
+
+# The dev seed's guard (#23). Each of these is a way the seed could start running
+# somewhere it must not, or stop running where the mockups need it to.
+check_break 'a missing dev-seed overlay is reported' \
+  'flyway\.seed\.toml exists' \
+  'rm "$root/ouroboros-db/flyway.seed.toml"'
+
+check_break 'a project that ships with the dev seed on is reported' \
+  'resolves the dev-seed guard to false' \
+  'sed -i "s|^ouro_dev_seed = \"false\"|ouro_dev_seed = \"true\"|" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'a project that stops substituting placeholders is reported' \
+  'substitutes placeholders' \
+  'sed -i "/^placeholderReplacement = true/d" "$root/ouroboros-db/flyway.toml"'
+
+check_break 'an overlay that no longer enables the seed is reported' \
+  'the seed overlay is what turns it on' \
+  'sed -i "s|^ouro_dev_seed = \"true\"|ouro_dev_seed = \"false\"|" "$root/ouroboros-db/flyway.seed.toml"'
+
+check_break 'a seed overlay that also re-enables clean is reported' \
+  'does not smuggle clean in alongside the seed' \
+  'printf "cleanDisabled = false\n" >> "$root/ouroboros-db/flyway.seed.toml"'
+
+check_break 'a stack that never loads the seed overlay is reported' \
+  'mounts the dev-seed overlay' \
+  'sed -i "\|flyway.seed.toml:/flyway/project|d" "$root/docker-compose.yml"'
+
+check_break 'a stack that replaces flyway.toml with the overlay is reported' \
+  'layers that overlay over flyway\.toml' \
+  'sed -i "s|^      - -configFiles=.*|      - -configFiles=/flyway/project/flyway.seed.toml|" "$root/docker-compose.yml"'
 
 printf '\nNamed command violations\n'
 

@@ -576,7 +576,7 @@ per-tenant GitHub org/repo enablement.
 | 3.2 | #20 | 🟢 Done | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
 | 3.3 | #21 | 🟢 Done | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
 | 3.4 | #22 | 🟢 Done | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
-| 3.5 | #23 | 🟡 Open | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
+| 3.5 | #23 | 🟢 Done | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
 | 3.6 | #24 | 🟡 Open | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
 | 3.7 | #25 | 🟡 Open | ouroboros-db: [3.7] Row-level security & least-privilege roles | RLS policies keyed on tenant; separate migration/app DB roles | v2, db | N (after 3.4) | N | L | ouroboros-db, ouroboros-rest |
 | 3.8 | #26 | 🟡 Open | ouroboros-db: [3.8] Audit log table & write path | Append-only `audit_events` per tenant (settings mockup: audit log) | v2, db | N (after 3.3) | N | M | ouroboros-db |
@@ -852,7 +852,66 @@ tenants 1─* github_orgs 1─* github_repos
 
 ### Issue 3.5 — ouroboros-db: [3.5] Dev seed data (repeatable migration)
 
-> **GitHub issue:** #23 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #23 · **Status:** 🟢 Done · **Parent epic:** #3
+>
+> Delivered:
+> [`R__dev_seed.sql`](../ouroboros-db/migrations/R__dev_seed.sql) — tenant
+> `acme-robotics` with the primary domain `acme-robotics.dev`, three people
+> (`ken@` owner, `maya@` admin, `jorge@` member) each with the GitHub identity they sign
+> in with, and the org `acme-robotics` holding the enabled repo `helios-firmware`. Ten
+> rows, ten literal `5eed…` uuids, so demo data is recognisable on sight in a log or a
+> URL and a test can name a row without looking it up.
+>
+> **The production guard is a placeholder, and the safe value is the default.** Every
+> statement ends `and ${ouro_dev_seed}`, which
+> [`flyway.toml`](../ouroboros-db/flyway.toml) resolves to `false` — the configuration
+> `scripts/migrate`, CI and every hand-run migration read, where the migration applies
+> and inserts nothing. [`flyway.seed.toml`](../ouroboros-db/flyway.seed.toml) is the one
+> file that sets it `true`; the compose stack loads it because a stack that publishes a
+> well-known password on loopback is a laptop by definition, and
+> `scripts/migrate --config flyway.seed.toml` is the deliberate way in for a database
+> the stack does not own. Deleting the placeholder from `flyway.toml` does not silently
+> enable the seed — Flyway refuses a migration whose placeholder has no value.
+>
+> **It is a second overlay rather than a line added to `flyway.dev.toml`.** That file
+> re-enables `clean`, which drops every object in the schema, and `scripts/clean-dev` is
+> the only thing allowed to load it; folding the seed in would have handed the compose
+> stack a `clean` it has no use for, and both `verify-dev-env.sh` and
+> `tests/scripts.test.sh` assert it does not have one.
+>
+> Idempotent by construction: literal ids and `on conflict do nothing` on every
+> statement. Child rows find their parent by slug or email rather than by naming an id
+> twice, so a database somebody has edited by hand gets a seed that re-creates what it
+> can instead of failing every subsequent `docker compose up`.
+>
+> Verified against a live PostgreSQL 17 from an empty volume: `docker compose up` seeds
+> all ten rows; a second `migrate` reports "no migration necessary" and a byte-for-byte
+> comparison of every seeded row, timestamps included, shows no change; re-applying the
+> seed body itself inserts 0 rows from all seven statements; and a separate database
+> migrated with `flyway.toml` alone records the migration and holds zero rows in all
+> seven tables.
+>
+> Tested by [`tests/seed.test.sh`](../ouroboros-db/tests/seed.test.sh) — 43 assertions,
+> no database needed, counting the guards and the `on conflict` clauses rather than
+> spot-checking them so that a statement added later without one fails — and by
+> [`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which asserts the seeded content
+> against a live database. Every assertion in it says *exactly one*, so running it after
+> two `migrate` passes is the idempotency criterion. Six new mutation cases in
+> `scripts/tests/verify-dev-env.test.sh` each break the guard a different way and each
+> turn the verifier red.
+>
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) now clears the two
+> root tables at the start of its transaction and rolls back as before: it is drawn from
+> the same mockups, so its fixtures collided with the seed's slug, domain and addresses,
+> and its absolute counts would otherwise have been measuring both. Its assertion
+> helpers moved to `tests/lib/assert.sql`, which `seed.sql` shares.
+>
+> **Note on the supersession ledger.** `docs/ROADMAP_OOE_MVP.md` listed this issue as
+> superseded by `B.4` (auth-aware seed data). It shipped as specified instead,
+> consistent with 3.2 (#20), 3.3 (#21) and 3.4 (#22): the tables it seeds are real, and
+> a seed in BetterAuth shape would have described a schema nothing in the repository
+> has. `B.4` is a rewrite of this file if BetterAuth is confirmed, and the guard,
+> the id convention and both test files carry over unchanged.
 
 - **Problem Statement:** Local dev and e2e smoke tests need known data — the mockups'
   demo tenant makes screens and tests deterministic.

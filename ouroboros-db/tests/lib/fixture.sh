@@ -50,8 +50,9 @@ STUB
 }
 
 # fixture_module ROOT — a disposable checkout: ROOT/ouroboros-db holding this module's
-# real scripts and configuration, and ROOT/scripts/lib holding the parser run.sh shares
-# with the rest of the repository.
+# real scripts and configuration — flyway.toml and both overlays, so a test can watch
+# which of them a command reaches for — and ROOT/scripts/lib holding the parser run.sh
+# shares with the rest of the repository.
 #
 # The scripts are the committed ones, so what is tested is what ships; only their
 # surroundings are synthetic. Anything a test writes — a .env, a misnamed migration —
@@ -60,7 +61,7 @@ fixture_module() {
   fixture_root=$1
   mkdir -p "$fixture_root/ouroboros-db/migrations" "$fixture_root/scripts/lib"
   cp "$MODULE_DIR/run.sh" "$MODULE_DIR/flyway.toml" "$MODULE_DIR/flyway.dev.toml" \
-    "$fixture_root/ouroboros-db/"
+    "$MODULE_DIR/flyway.seed.toml" "$fixture_root/ouroboros-db/"
   cp -R "$MODULE_DIR/scripts" "$fixture_root/ouroboros-db/scripts"
   cp "$REPO_ROOT/scripts/lib/parse-env-example.awk" "$fixture_root/scripts/lib/"
   printf 'select 1;\n' > "$fixture_root/ouroboros-db/migrations/V000__bootstrap.sql"

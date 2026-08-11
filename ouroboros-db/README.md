@@ -10,8 +10,9 @@
 > ([#20](https://github.com/NobuData/ouroboros/issues/20) onwards) — `V001` (tenants and
 > domains), `V002` (users, identities and membership) and `V003` (GitHub enablement) have
 > all landed, and [`tests/constraints.sql`](tests/constraints.sql) asserts what they
-> enforce. The dev seed ([#23](https://github.com/NobuData/ouroboros/issues/23)) is still
-> to come.
+> enforce. [#23](https://github.com/NobuData/ouroboros/issues/23) added the dev seed —
+> [`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql), the demo tenant every
+> mockup is drawn around, in a development database and nowhere else.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -79,8 +80,11 @@ docker compose down -v        # reset — drops the volume and all data
 
 `up` starts PostgreSQL, waits for its healthcheck, then runs `flyway migrate` and exits;
 the database stays up. It is safe to repeat — Flyway applies only what is pending, so a
-second `up` reports "no migration necessary". No `.env` file is needed: every value has
-a development default. Copy the repo-root `.env.example` to `.env` to change any of them.
+second `up` reports "no migration necessary". The stack is the one place the development
+seed is switched on, so what it leaves behind is a database with the demo tenant in it —
+see [The development seed](#the-development-seed). No `.env` file is needed: every value
+has a development default. Copy the repo-root `.env.example` to `.env` to change any of
+them.
 
 Confirm what was applied by reading Flyway's own history table:
 
@@ -149,6 +153,51 @@ ouroboros-db/scripts/clean-dev --yes    # no prompt — scripted resets and CI
 
 There is deliberately no `scripts/clean`.
 
+### The development seed
+
+`docker compose up` leaves a database with data in it: the demo tenant every screen in
+[`../docs/mockups`](../docs/mockups) is drawn around, so a UI has something to render and
+an e2e test has something to assert against by name.
+
+| Row | Value |
+|---|---|
+| Tenant | `acme-robotics` — *Acme Robotics*, active |
+| Domain | `acme-robotics.dev`, primary — the address domain mockup 01 resolves the tenant from |
+| People | `ken@acme-robotics.dev` (owner) · `maya@acme-robotics.dev` (admin) · `jorge@acme-robotics.dev` (member) |
+| Identities | one GitHub identity each, so the sign-in path has someone to resolve to |
+| Org | `acme-robotics`, enabled |
+| Repo | `helios-firmware`, enabled, default branch `main` |
+
+Every seeded row carries an id beginning `5eed` —
+`5eed0001-0000-4000-8000-000000000001` is the tenant — so demo data is recognisable on
+sight in a log or a URL, and a test can name a row without looking it up.
+[`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql) lists all ten.
+
+**It cannot run against anything but a development database.** Each statement in the
+seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
+[`flyway.toml`](flyway.toml) — the configuration `scripts/migrate`, CI and every
+hand-run migration read. With it false the migration still applies and inserts nothing.
+[`flyway.seed.toml`](flyway.seed.toml) is the one file that sets it `true`, the compose
+stack is the one thing that loads it by itself, and this is the deliberate way to reach
+it for a database the stack does not own:
+
+```bash
+ouroboros-db/scripts/migrate --config flyway.seed.toml
+```
+
+It is a repeatable migration and it is idempotent: the ids are literals and every
+statement ends `on conflict do nothing`, so applying it twice writes nothing the second
+time and leaves even the timestamps alone. Child rows find their parent by slug or by
+email rather than by id, so a database somebody has edited by hand gets a seed that
+re-creates what it can instead of failing.
+
+> One consequence of Flyway's rules is worth knowing: a repeatable migration's checksum
+> is taken of the file, *before* placeholders are substituted. A database that has
+> already recorded this migration un-seeded therefore does not pick the data up merely
+> by being migrated again with the overlay — reachable only by pointing both
+> configurations at the same database. `scripts/clean-dev` then a seeded `migrate` fixes
+> it, or `docker compose down -v && docker compose up` for the stack's own database.
+
 ### The runner underneath
 
 Each command is a name for one [`run.sh`](run.sh) invocation; use `run.sh` directly for
@@ -196,35 +245,62 @@ scripts/run-tests.sh                      # every suite in the repository
 `ci/db` runs it on every pull request that touches this directory, after
 [`scripts/verify-dev-env.sh`](../scripts/verify-dev-env.sh).
 
-[`tests/constraints.sql`](tests/constraints.sql) is the other half, and it is separate
-because it needs the one thing that suite deliberately does without: a database with the
-migrations applied. It asserts what the schema *enforces* — every uniqueness rule, check
-constraint, cascade, trigger and index the migrations claim — because `validate` compares
-checksums rather than behaviour, and a `unique` on the wrong columns passes it. Run it
-against a migrated database:
+The two `.sql` suites are the other half, and they are separate because they need the one
+thing the suite above deliberately does without: a database with the migrations applied.
+They share their assertion helpers through [`tests/lib/assert.sql`](tests/lib/assert.sql),
+as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh).
+
+[`tests/constraints.sql`](tests/constraints.sql) asserts what the schema *enforces* —
+every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
+— because `validate` compares checksums rather than behaviour, and a `unique` on the
+wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
+what `R__dev_seed.sql` actually put in a development database, one assertion per row.
+Run them against a migrated database:
 
 ```bash
 PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/constraints.sql
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
+  -v ON_ERROR_STOP=1 -f ouroboros-db/tests/seed.sql
 ```
 
-It creates its own fixtures inside a transaction and rolls back, so it leaves no rows
-behind and is safe to repeat against a database that is already in use. A passing run
-prints one line; a failure names the rule and exits non-zero, which is what makes it a CI
-step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires it into `ci/db`. A
-migration that adds a rule adds its assertion here in the same change.
+`constraints.sql` creates its own fixtures inside a transaction and rolls back, so it
+leaves no rows behind — including the seed's, which it clears and restores so its counts
+mean what they say. `seed.sql` writes nothing at all. Both are safe to repeat against a
+database that is already in use. `seed.sql` wants a database migrated *with* the seed
+enabled and fails on the first assertion against one that is not, which is the answer it
+should give; running it after two `migrate` passes is how "migrate twice changes nothing"
+is checked, since every assertion in it says *exactly one*.
+
+A passing run prints one line; a failure names the rule and exits non-zero, which is what
+makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
+into `ci/db`. A migration that adds a rule adds its assertion in the same change.
 
 ## Configuration
 
-Two files, because they answer two different questions.
+Two questions, and three files: one project configuration, and two overlays that are
+inert until something names them.
 
 **[`flyway.toml`](flyway.toml) — how migrations are applied.** Where they are, that the
-schema is created if absent, that a misnamed file fails the run, and that `clean` is
-off. Every path reads it: the compose stack, `run.sh`, and the `scripts/` commands are
-all pointed at this directory with `-workingDirectory`, so there is one place to change
-a rule and no way for `up` and a hand-run migration to disagree.
-[`flyway.dev.toml`](flyway.dev.toml) is a one-setting overlay that only `clean-dev`
-loads. Neither carries a url, a user or a password — those describe a machine, not a
+schema is created if absent, that a misnamed file fails the run, that `clean` is off,
+and that the dev seed inserts nothing. Every path reads it: the compose stack, `run.sh`,
+and the `scripts/` commands are all pointed at this directory with `-workingDirectory`,
+so there is one place to change a rule and no way for `up` and a hand-run migration to
+disagree.
+
+The overlays each hold one setting, and hold it separately so that the safe
+configuration is the one every command already reads. Flyway never loads either by
+itself; it takes an explicit `-configFiles`, which `run.sh --config FILE` is the way to
+pass:
+
+| Overlay | Sets | Loaded by |
+|---|---|---|
+| [`flyway.dev.toml`](flyway.dev.toml) | `cleanDisabled = false` | `scripts/clean-dev`, and nothing else |
+| [`flyway.seed.toml`](flyway.seed.toml) | `ouro_dev_seed = "true"` | the compose stack, and `scripts/migrate --config flyway.seed.toml` |
+
+They stay two files rather than one because they are wanted in different places: the
+compose stack needs the seed and must not be given a `clean` that drops the schema.
+None of the three carries a url, a user or a password — those describe a machine, not a
 project.
 
 **`.env` — which database.** Development default port: **5432**.
@@ -264,14 +340,18 @@ what `ci/db` covers today and what
    schema that other migrations depend on.
 4. **Naming:** `V###__snake_case_description.sql` / `R__snake_case_description.sql`.
    `validateMigrationNaming` fails the build on anything else.
-5. **Dev seed data never runs in production** — it is gated by the dev Flyway config.
+5. **Dev seed data never runs in production** — every statement in `R__dev_seed.sql`
+   ends `and ${ouro_dev_seed}`, which is `false` in `flyway.toml` and `true` only in
+   `flyway.seed.toml`. A seed statement without that guard is the one thing
+   `tests/seed.test.sh` counts.
 
 ## Layout
 
 ```
 ouroboros-db/
-├── flyway.toml                       # the project: locations, schema, naming, clean off
-├── flyway.dev.toml                   # the overlay that re-enables clean — dev only
+├── flyway.toml                       # the project: locations, schema, naming, clean off, seed off
+├── flyway.dev.toml                   # the overlay that re-enables clean — clean-dev only
+├── flyway.seed.toml                  # the overlay that enables the dev seed — the stack, or --config
 ├── run.sh                            # apply migrations to a live database
 ├── .env.example                      # which database the commands migrate
 ├── package.json                      # workspace adapter — `yarn dev` reaches scripts/dev
@@ -286,16 +366,21 @@ ouroboros-db/
 │   ├── V001__tenants.sql             # tenants, tenant_domains — #20
 │   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21
 │   ├── V003__github_enablement.sql   # github_orgs, github_repos — #22
-│   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, pending
+│   └── R__dev_seed.sql               # deterministic demo data, dev only — #23
 └── tests/
+    ├── lib/
+    │   ├── fixture.sh                # the synthetic module and stub runners the shell suites share
+    │   └── assert.sql                # the assertion helpers the live-database suites share
     ├── run.test.sh                   # the runner
     ├── scripts.test.sh               # the four commands and the project configuration
-    └── constraints.sql               # what the schema enforces, asserted against a live database
+    ├── seed.test.sh                  # the seed's guard, idempotency and determinism — #23
+    ├── constraints.sql               # what the schema enforces, asserted against a live database
+    └── seed.sql                      # what the seed put there, asserted against a live database
 ```
 
-Everything below `V000` is named for the issue that lands it; the one marked *pending* is
-the version that issue will take. `tests/constraints.sql` is not — it grows with every
-migration that adds a rule, rather than belonging to one of them.
+Everything below `V000` is named for the issue that lands it. `tests/constraints.sql` is
+not — it grows with every migration that adds a rule, rather than belonging to one of
+them.
 
 ## Schema
 
@@ -350,7 +435,7 @@ Scaffold [#19](https://github.com/NobuData/ouroboros/issues/19) ·
 tenants & domains [#20](https://github.com/NobuData/ouroboros/issues/20) *(done)* ·
 users & membership [#21](https://github.com/NobuData/ouroboros/issues/21) *(done)* ·
 GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) *(done)* ·
-dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) ·
+dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) *(done)* ·
 migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3).
 

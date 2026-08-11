@@ -55,6 +55,7 @@ ENV_EXAMPLE=.env.example
 MIGRATIONS=ouroboros-db/migrations
 FLYWAY_CONFIG=ouroboros-db/flyway.toml
 FLYWAY_DEV_CONFIG=ouroboros-db/flyway.dev.toml
+FLYWAY_SEED_CONFIG=ouroboros-db/flyway.seed.toml
 DB_SCRIPTS=ouroboros-db/scripts
 PARSER="$SCRIPT_DIR/lib/parse-env-example.awk"
 
@@ -98,6 +99,13 @@ check_contains "$COMPOSE" "^      - \\./$FLYWAY_CONFIG:$PROJECT/flyway\\.toml:ro
 check_contains "$COMPOSE" "^      - \\./$MIGRATIONS:$PROJECT/migrations:ro\$" 'flyway mounts the migrations read-only'
 check_contains "$COMPOSE" "^      - -workingDirectory=$PROJECT\$" 'flyway takes its settings from the module, not from this file'
 check_contains "$COMPOSE" '^      - migrate$' 'flyway runs migrate'
+# The stack is a laptop by definition, and it is the one place the dev seed is on (#23).
+# -configFiles replaces the file Flyway would have auto-loaded, so flyway.toml has to be
+# named alongside the overlay or the project's own rules go with it.
+check_contains "$COMPOSE" "^      - \\./$FLYWAY_SEED_CONFIG:$PROJECT/flyway\\.seed\\.toml:ro\$" \
+  'flyway mounts the dev-seed overlay read-only'
+check_contains "$COMPOSE" "^      - -configFiles=$PROJECT/flyway\\.toml,$PROJECT/flyway\\.seed\\.toml\$" \
+  'flyway layers that overlay over flyway.toml rather than replacing it'
 # Everything that is a rule rather than a connection moved into flyway.toml with #19.
 # Restating one here would put the stack back in a position to disagree with run.sh.
 check_absent "$COMPOSE" '^ *- -(locations|createSchemas|validateMigrationNaming|connectRetries)' \
@@ -200,8 +208,24 @@ check_absent "$FLYWAY_CONFIG" '^(url|user|password) = ' 'flyway.toml carries no 
 check_contains "$FLYWAY_CONFIG" '^cleanDisabled = true$' 'flyway.toml disables clean'
 check_exists "$FLYWAY_DEV_CONFIG" "$FLYWAY_DEV_CONFIG exists"
 check_contains "$FLYWAY_DEV_CONFIG" '^cleanDisabled = false$' 'the dev overlay is what re-enables it'
-check_absent "$COMPOSE" 'flyway\.dev\.toml' 'the stack never loads the dev overlay'
+# Anchored past any `#`, so the compose file may *explain* why it does not load this one
+# — which it does, next to the seed overlay it does load — while a mount or a
+# -configFiles naming it still fails here.
+check_absent "$COMPOSE" '^[^#]*flyway\.dev\.toml' 'the stack never loads the dev overlay'
 check_contains "$DB_SCRIPTS/clean-dev" 'flyway\.dev\.toml' 'clean-dev is what does load it'
+
+# The dev seed's guard, on the same pattern: off in the file everything reads, on in one
+# overlay, and loaded by the stack because the stack is a developer's laptop (#23). What
+# the seed itself must look like is ouroboros-db/tests/seed.test.sh.
+check_exists "$FLYWAY_SEED_CONFIG" "$FLYWAY_SEED_CONFIG exists"
+check_contains "$FLYWAY_CONFIG" '^ouro_dev_seed = "false"$' \
+  'flyway.toml resolves the dev-seed guard to false'
+check_contains "$FLYWAY_CONFIG" '^placeholderReplacement = true$' \
+  'flyway.toml substitutes placeholders, which is what makes that guard a guard'
+check_contains "$FLYWAY_SEED_CONFIG" '^ouro_dev_seed = "true"$' \
+  'the seed overlay is what turns it on'
+check_absent "$FLYWAY_SEED_CONFIG" '^cleanDisabled' \
+  'and it does not smuggle clean in alongside the seed'
 
 printf '\nNamed commands\n'
 for name in migrate info validate clean-dev; do
