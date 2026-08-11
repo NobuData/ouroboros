@@ -1065,7 +1065,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.6 | #32 | 🟢 Done | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.7 | #33 | 🟢 Done | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
-| 4.9 | #35 | 🟡 Open | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
+| 4.9 | #35 | 🟢 Done | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
 | 4.10 | #36 | 🟡 Open | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
 | 4.11 | #37 | 🟡 Open | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.12 | #38 | 🟡 Open | ouroboros-rest: [4.12] Security baseline hardening | Helmet, CORS policy, rate limiting, cookie hardening review | v2, rest | N (after 4.7) | N | M | ouroboros-rest |
@@ -1428,19 +1428,35 @@ openapi.yaml ─ yarn openapi ─▶ openapi.json ─┬─▶ /api/docs · /api
 
 ### Issue 4.9 — ouroboros-rest: [4.9] Engine gateway module
 
-> **GitHub issue:** #35 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #35 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** The UI must never talk to the Python backend directly; REST
   needs a typed internal client and a controlled pass-through, establishing the
   boundary pattern all future engine features follow.
-- **Solution/Scope:** `EngineModule`: internal HTTP client (base URL + shared-secret
-  header from config, timeouts, single retry on connect errors, error mapping to the
-  4.5 envelope); `GET /api/v1/engine/status` exposing engine health/version to
-  authenticated users; typed methods mirroring 6.3's contract (`status()`,
-  `echo(task)`). Circuit breaking noted as v2.
+- **Solution/Scope:** `EngineModule` — a typed client over bare `fetch` and one route.
+  `engine.contract.ts` mirrors 6.3's `/v0` in one readable file: routes, the header, and
+  schemas that **parse** rather than assert, so an engine answering outside its contract is a
+  502 at the boundary instead of an `undefined` in a handler — and a field the engine *added*
+  is ignored, because the compatibility rule allows one. The client adds the shared secret, a
+  five-second deadline (aborted, not raced) and **one retry taken only for a failure that
+  proves nothing was delivered** — `ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`; deliberately not
+  `ECONNRESET`, because that connection may have delivered the request and a task the engine
+  already holds must not be sent twice. `GET /api/v1/engine/status` is authenticated and
+  `@TenantOptional()` — there is one engine behind every workspace — and it is a *named
+  operation*, not a proxy: a route forwarding a path, a method and a body to an internal
+  service would be the "engine is internal" invariant written as a hole. Error introspection
+  that the readiness probe had grown for itself moved to `errors/failure.ts` and is now shared
+  by both, along with the URL resolution, so probe and client cannot disagree about which
+  address they are talking to. Circuit breaking stays v2: with one retry and a bounded
+  deadline a caller waits at most one timeout, and a breaker's value is shedding load across
+  many concurrent callers.
 - **Acceptance Criteria:** Status roundtrip works in compose (7.1); engine-down maps to
   a clean 502 envelope with the engine unnamed-by-URL (no internal address leak);
-  shared-secret mismatch logged and surfaced as 502, never 401 to the client.
+  shared-secret mismatch logged and surfaced as 502, never 401 to the client. All three are
+  asserted: every failure mode is checked to answer `502 engine_unavailable`, the address,
+  hostname, port and secret are each checked to be absent from the envelope, and the
+  mismatch is checked to be logged by variable name — while the secret is checked never to
+  reach the log at all.
 - **Parallelism/Dependencies:** Needs 4.2, 6.3. Blocks 7.2 chain test.
 - **Technical Stack:** NestJS, undici/fetch.
 - **Epic:** 4

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.7.0"
+  version: "0.8.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -54,10 +54,9 @@ info:
     What is described below is the whole of the surface today: the heartbeat the scaffold
     ([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes
     ([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API
-    ([#31](https://github.com/NobuData/ouroboros/issues/31)) and sign-in
-    ([#33](https://github.com/NobuData/ouroboros/issues/33)). The engine gateway
-    ([#35](https://github.com/NobuData/ouroboros/issues/35)) arrives as operations written
-    here and code that answers them.
+    ([#31](https://github.com/NobuData/ouroboros/issues/31)), sign-in
+    ([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway
+    ([#35](https://github.com/NobuData/ouroboros/issues/35)).
 
     **Everything below requires a session** except the five operations that carry
     `security: []` — the two halves of sign-in, sign-out, and the three routes whose reader
@@ -118,6 +117,24 @@ tags:
       stays valid for the remainder of its seven days. That is the MVP trade, and the
       revocable design is recorded with
       [#38](https://github.com/NobuData/ouroboros/issues/38).
+
+  - name: engine
+    description: |-
+      The gateway to `ouroboros-engine`, the Python backend that executes the work this
+      service brokers. It is internal — reachable from this service and from nothing else
+      (`docs/ARCHITECTURE.md` § 10) — so everything a client learns about it, it learns
+      through an operation here.
+
+      There is no proxy route and there will not be one. Each engine capability arrives as a
+      named operation with its own contract in this document, because a route that forwarded
+      a path, a method and a body to an internal service would be that boundary written as a
+      hole.
+
+      **The engine failing is always a `502`.** Down, slow, unresolvable, holding a
+      mismatched shared secret, or answering outside its own contract are one answer with
+      one code, naming no address. A mismatched secret in particular is never forwarded as a
+      `401`: it is a deployment's mistake rather than a caller's, and telling a browser to
+      sign in again for it would be telling it about a boundary it cannot reach.
 
   - name: tenants
     description: |-
@@ -458,6 +475,78 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/engine/status:
+    get:
+      tags: [engine]
+      summary: Report the engine's health and version
+      description: |-
+        Whether `ouroboros-engine` is reachable, and which build answered.
+
+        The engine is internal — it is reachable from this service and from nothing else
+        (`docs/ARCHITECTURE.md` § 10) — so this is how a signed-in person learns anything
+        about it at all. This service asks the engine `GET /v0/status` over the internal
+        boundary, carrying a shared secret a browser never sees, and reports back the two
+        facts a caller can act on.
+
+        **Every way that call can fail is one `502`.** An engine that is down, one that is
+        too slow, one at an address that no longer resolves, one holding a different shared
+        secret, and one answering outside its own contract are indistinguishable here by
+        design: the caller learns that the system cannot serve the request, and nothing it
+        could use to probe the inside of the network. In particular a shared-secret mismatch
+        is **never** forwarded as a `401` — that is this deployment's mistake rather than the
+        caller's, and it is logged where an operator reads it.
+
+        This route is not a proxy. It is a named operation with its own contract that
+        happens to be answered by asking the engine one question, because a route that
+        forwarded a path, a method and a body to an internal service would be the boundary
+        above written as a hole.
+      operationId: readEngineStatus
+      responses:
+        "200":
+          description: The engine answered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngineStatus"
+              example:
+                engine: up
+                version: 0.3.0
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. The engine's own credential has nothing to do with this answer; see
+            the `502` below.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately: the real diagnosis names a query, a host or a
+            role, and it goes to the service log where only an operator reads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `engine_unavailable` — the engine could not serve this request. `details` is
+            empty and the message names no address: everything that would go in them — the
+            status the engine answered, the code the socket failed with, the URL that was
+            called — is in this service's log instead.
+
+            A `502` rather than a `500`, because nothing in this service is broken and
+            retrying is reasonable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: engine_unavailable
+                message: The engine is not available right now. Try again in a moment.
+                details: {}
 
   /api/v1/tenants:
     get:
@@ -3014,6 +3103,32 @@ components:
             no leading or trailing slash, no empty segment, no leading dot and no `..`
             anywhere — because the value is joined onto a filesystem path.
           examples: [main]
+
+    EngineStatus:
+      type: object
+      title: EngineStatus
+      description: The body of a `GET /api/v1/engine/status` response.
+      additionalProperties: false
+      required: [engine, version]
+      properties:
+        engine:
+          type: string
+          const: up
+          description: |-
+            Always `up`, and that is honest rather than redundant: every way the engine can
+            fail to answer is a `502`, so a body that exists at all came from a reachable
+            engine. It is a field rather than nothing so the shape can grow a second state —
+            `degraded`, once there is something that could be degraded — without changing how
+            a client reads the first one.
+          examples: [up]
+        version:
+          type: string
+          description: |-
+            The engine build that answered, read from its package metadata. It is the
+            engine's version and not this service's: the two are released independently
+            (`docs/CONVENTIONS.md` § 8), and which pair is deployed together is exactly what
+            this route exists to tell you.
+          examples: ["0.3.0"]
 
     Heartbeat:
       type: object

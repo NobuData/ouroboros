@@ -279,7 +279,8 @@ reaches the third.
 
 ### 3.2 An engine call
 
-**Specified.** The UI never calls the engine; it calls REST, and REST calls the engine.
+**Running** ([#35](https://github.com/NobuData/ouroboros/issues/35)). The UI never calls the
+engine; it calls REST, and REST calls the engine.
 
 ```mermaid
 sequenceDiagram
@@ -302,7 +303,14 @@ The failure branch is a design decision, not an accident. An engine that is down
 engine that rejects the shared secret, and an engine at an address that no longer resolves
 all surface to the client as the same 502 — never as a 401, and never carrying the
 internal URL. The caller learns that the system cannot serve the request; it learns
-nothing it could use to probe the inside of the network. The detail goes to the logs.
+nothing it could use to probe the inside of the network. The detail goes to the logs, and
+the shared-secret mismatch is logged *by name* there, because from outside it is
+indistinguishable from an engine that is merely unwell while the fix is entirely different.
+
+The route is a named operation with its own contract rather than a proxy, and that is the
+same decision seen from the other side: a route that forwarded a path, a method and a body
+to an internal service would be [§8](#8-architectural-invariants)'s first invariant written
+as a hole. Each engine capability arrives as another operation beside this one.
 
 ## 4. Authentication, sessions and tenant context
 
@@ -446,12 +454,11 @@ header from the active-tenant store, and parsing of the error envelope into a ty
 
 ### 5.2 REST ↔ engine — the internal contract
 
-**Running on the engine's side** ([#51](https://github.com/NobuData/ouroboros/issues/51)
-landed liveness and status, [#52](https://github.com/NobuData/ouroboros/issues/52) the
-versioned contract and the error envelope;
-[#35](https://github.com/NobuData/ouroboros/issues/35) is the typed client that mirrors
-it). The engine publishes a versioned contract under `/v0/`, and REST mirrors it in a
-typed client:
+**Running** ([#51](https://github.com/NobuData/ouroboros/issues/51) landed liveness and
+status, [#52](https://github.com/NobuData/ouroboros/issues/52) the versioned contract and
+the error envelope, [#35](https://github.com/NobuData/ouroboros/issues/35) the typed client
+that mirrors it). The engine publishes a versioned contract under `/v0/`, and REST mirrors
+it in a typed client:
 
 | Route | Auth | Purpose | State |
 |---|---|---|---|
@@ -466,6 +473,15 @@ route may be added to the prefix, and a field that disappears, changes type or c
 meaning is a `/v1`. `OURO_ENGINE_SHARED_SECRET` must carry the same value on both sides;
 the engine compares it in constant time, and a mismatch is logged there and surfaced by
 REST as a 502 as described in [§3.2](#32-an-engine-call).
+
+REST's half of it is `src/modules/engine/`: the contract mirrored in one file, a client
+that adds the shared secret, a five-second deadline and a single retry — taken only for a
+failure that proves nothing was delivered, so a task the engine may already hold is never
+sent twice — and responses *parsed* rather than asserted, so an engine answering outside its
+own contract is a 502 at the boundary rather than an `undefined` inside a handler. A field
+the engine adds is ignored, because the compatibility rule above allows one. Circuit
+breaking is v2: with one retry and a bounded deadline a caller waits at most one timeout,
+and a breaker's value is in shedding that load across many concurrent callers.
 
 The echo route is what makes the contract a thing that runs rather than a thing that is
 described. It settles, with one round trip, what every later operation would otherwise

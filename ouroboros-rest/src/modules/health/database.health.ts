@@ -12,7 +12,8 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { HealthIndicatorService, type HealthIndicatorResult } from "@nestjs/terminus";
 
 import { DATABASE_PROBE_POOL, PROBE_STATEMENT, type ProbePool } from "./database.pool";
-import { describeFailure, describeForLog, withTimeout } from "./probe";
+import { describeForLog } from "../errors/failure";
+import { describeFailure, withTimeout } from "./probe";
 
 /**
  * How this dependency is named in the response body.
