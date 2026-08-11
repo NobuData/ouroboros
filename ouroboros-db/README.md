@@ -12,7 +12,11 @@
 > all landed, and [`tests/constraints.sql`](tests/constraints.sql) asserts what they
 > enforce. [#23](https://github.com/NobuData/ouroboros/issues/23) added the dev seed —
 > [`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql), the demo tenant every
-> mockup is drawn around, in a development database and nowhere else.
+> mockup is drawn around, in a development database and nowhere else. And
+> [#24](https://github.com/NobuData/ouroboros/issues/24) turned all of that into a gate:
+> `ci/db` now starts a throwaway PostgreSQL on every pull request, migrates it from
+> empty, validates it, and runs both `.sql` suites against the result — see
+> [Continuous integration](#continuous-integration).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -274,7 +278,53 @@ is checked, since every assertion in it says *exactly one*.
 
 A passing run prints one line; a failure names the rule and exits non-zero, which is what
 makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
-into `ci/db`. A migration that adds a rule adds its assertion in the same change.
+into `ci/db`, below. A migration that adds a rule adds its assertion in the same change.
+
+## Continuous integration
+
+[`ci/db`](../.github/workflows/db.yml) is what runs all of the above on a pull request
+that touches this directory, the compose file, `.env.example` or the workflow itself
+([#11](https://github.com/NobuData/ouroboros/issues/11) set the routing;
+[#24](https://github.com/NobuData/ouroboros/issues/24) added the live pass). It runs in
+two halves, cheap first — a misnamed migration is worth reporting before a database is
+waited on.
+
+| Step | What it proves | Needs a database |
+|---|---|---|
+| `scripts/verify-dev-env.sh` | Migration naming, the pinned images and healthcheck gate, `flyway.toml`'s settings, credential hygiene, `.env.example` coverage | no |
+| `scripts/run-tests.sh ouroboros-db/tests` | `run.sh` and the four commands, against stubbed runners | no |
+| `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
+| `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
+| `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
+| `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
+| `tests/seed.sql` | The demo tenant is there, exactly once, with the ids the documentation publishes | yes (that one) |
+
+The database is a `postgres:17-alpine` service container — **the same image
+[`../docker-compose.yml`](../docker-compose.yml) pins**, so what a pull request proves is
+what a developer gets; `scripts/verify-ci.sh` fails if the two ever drift apart. It is
+created empty for every run and thrown away with the runner, which is what makes
+"migrate from scratch" mean it.
+
+Two details are the reason the job is worth its minute:
+
+- **It runs the module's own commands**, not a `flyway` invocation written into the
+  workflow. CI reads [`flyway.toml`](flyway.toml) through `-workingDirectory` exactly as
+  `docker compose up` and a hand-run `scripts/migrate` do, so there is no configuration
+  that only CI applies and none it can miss.
+- **The seed gets a database of its own.** The first one has to go on proving what a
+  production migration does — apply `R__dev_seed.sql` and insert nothing, because
+  `${ouro_dev_seed}` is `false` in `flyway.toml` — so the overlay is layered onto a
+  second database instead. Migrating it twice before asserting is the idempotency
+  criterion, since every assertion in `seed.sql` says *exactly one*.
+- **`OURO_*` enters the environment where the live pass begins**, not job-wide. Those
+  variables are the last word in `run.sh`'s precedence, and the tooling suite two steps
+  earlier is what tests that precedence — in job scope they point it at the workflow
+  instead of at the `.env` files it writes. `scripts/verify-ci.sh` fails on an `OURO_*`
+  key in job scope, so the mistake cannot come back quietly.
+
+Everything the live pass runs is runnable by hand against any PostgreSQL, which is how a
+failure is reproduced: start one, point the `OURO_*` variables at it, and run the same
+commands in the same order.
 
 ## Configuration
 
@@ -327,11 +377,10 @@ git-ignored; the committed project is `flyway.toml` and its overlay.
 
 ## Migration rules
 
-These are non-negotiable. `ci/db` checks them on every pull request touching this
-directory, and Flyway's own `validateMigrationNaming` and `validate` enforce them again
-whenever the migrations are applied — see [conventions](../docs/CONVENTIONS.md#9-ci) for
-what `ci/db` covers today and what
-[#24](https://github.com/NobuData/ouroboros/issues/24) adds to it.
+These are non-negotiable. [`ci/db`](#continuous-integration) checks them on every pull
+request touching this directory — first by reading the files, then by applying them to a
+real PostgreSQL — and Flyway's own `validateMigrationNaming` and `validate` enforce them
+again whenever the migrations are applied.
 
 1. **Versioned migrations are immutable.** Once `V###__*.sql` has been applied
    anywhere, it is never edited — fix forward with a new version.
@@ -436,7 +485,7 @@ tenants & domains [#20](https://github.com/NobuData/ouroboros/issues/20) *(done)
 users & membership [#21](https://github.com/NobuData/ouroboros/issues/21) *(done)* ·
 GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) *(done)* ·
 dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) *(done)* ·
-migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) ·
+migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
