@@ -145,10 +145,20 @@ issue level.
 
 | Ref | Issue | Replaced by | Phase that delivers it |
 |-----|:-----:|-------------|:----------------------:|
-| `3.3` | `#21` Users, identities & tenant membership | `B.1` + `B.2` (BetterAuth `user`/`account`/`member` tables) | P2 |
 | `3.5` | `#23` Dev seed data | `B.4` (auth-aware seed data) | P2 |
 | `4.7` | `#33` GitHub OAuth sign-in & sessions | `A.1`–`A.4` (BetterAuth GitHub provider + DB sessions) | P2 |
 | `5.6` | `#44` Login & tenancy screen | `D.2`–`D.5` (mockup-01 fidelity, four issues) | P2 |
+
+> **`3.3` · `#21` Users, identities & tenant membership was listed here and is not
+> dropped — it shipped in P1, as specified, in `V002__users_membership.sql`.**
+>
+> The supersession assumed no scaffolding work had begun, which was true when this was
+> written and is no longer: `3.2` (#20) and `3.4` (#22) both landed in their original
+> shape, so `V001`'s `tenants` is a real table with real foreign keys pointing at it.
+> Building `V002` in BetterAuth shape would have left the schema half-migrated to a
+> decision nothing else in the repository has taken. Adopting BetterAuth is now a
+> fix-forward migration from the shipped schema rather than a choice `V002` makes on its
+> own — which is what `B.1`–`B.3` become if that decision is confirmed.
 
 **Deferred out of P1 into P2 — implement once, in BetterAuth shape:**
 

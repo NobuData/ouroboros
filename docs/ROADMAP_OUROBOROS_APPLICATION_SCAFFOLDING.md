@@ -574,7 +574,7 @@ per-tenant GitHub org/repo enablement.
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 3.1 | #19 | 🟢 Done | ouroboros-db: [3.1] Flyway project scaffold & migration conventions | Directory layout, config, naming rules, local runner scripts | mvp, db, infra | N (after 1.1) | Y | S | ouroboros-db |
 | 3.2 | #20 | 🟢 Done | ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains | `tenants`, `tenant_domains`, status lifecycle, uniqueness | mvp, db | N (after 3.1) | Y | M | ouroboros-db |
-| 3.3 | #21 | 🟡 Open | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
+| 3.3 | #21 | 🟢 Done | ouroboros-db: [3.3] Users, identities & tenant membership | `users`, `user_identities` (GitHub), `tenant_members` + roles | mvp, db | N (after 3.2) | Y | M | ouroboros-db |
 | 3.4 | #22 | 🟢 Done | ouroboros-db: [3.4] GitHub org & repo enablement | `github_orgs`, `github_repos` scoped per tenant | mvp, db | N (after 3.2) | Y | S | ouroboros-db |
 | 3.5 | #23 | 🟡 Open | ouroboros-db: [3.5] Dev seed data (repeatable migration) | Deterministic demo tenant/users/orgs for local dev & e2e | mvp, db | N (after 3.3, 3.4) | Y | XS | ouroboros-db |
 | 3.6 | #24 | 🟡 Open | ouroboros-db: [3.6] Migration CI check | PR job: flyway migrate + validate against throwaway PostgreSQL | mvp, db, ci | N (after 3.1, 1.4) | Y | S | ouroboros-db, .github |
@@ -712,7 +712,61 @@ erDiagram
 
 ### Issue 3.3 — ouroboros-db: [3.3] Users, identities & tenant membership
 
-> **GitHub issue:** #21 · **Status:** 🟡 Open · **Parent epic:** #3
+> **GitHub issue:** #21 · **Status:** 🟢 Done · **Parent epic:** #3
+>
+> Delivered:
+> [`V002__users_membership.sql`](../ouroboros-db/migrations/V002__users_membership.sql)
+> — `users` (global rather than tenant-scoped, unique folded email, `avatar_url`
+> restricted to `http(s)`), `user_identities` (cascading user fk, `provider` as
+> CHECK-constrained text, unique on `(provider, external_id)`) and `tenant_members`
+> (cascading fks to both sides, `role` as CHECK-constrained text, `invited_at` /
+> `joined_at`). It fills the version number V003 left reserved.
+>
+> **The three tables exist because sign-in involves three separable things.** `users` is
+> the human, and is global so that "the same person in two tenants" is a fact the schema
+> states rather than one two rows imply. `user_identities` is how that human proves who
+> they are, as a row rather than columns on `users`, so a second provider is a row and
+> not a migration — and so a person who links two GitHub accounts stays one person.
+> `tenant_members` is what they may do in one tenant, which is a property of the pairing
+> and belongs on neither of the other two.
+>
+> **No token, secret or credential is stored, and the absence is asserted rather than
+> trusted:** `tests/constraints.sql` reads `information_schema` and fails if a column
+> whose name looks like a credential ever appears on any of the three tables, which a
+> fixed list of expected columns would not catch. Live session handling stays
+> ouroboros-rest's concern (#33).
+>
+> `tenant_members` is keyed on the `(tenant_id, user_id)` pair rather than on a surrogate
+> uuid — the one table here that is. The pair *is* the row's identity, a surrogate would
+> need the same unique constraint beside it anyway, and making the pair the key is what
+> makes "a user cannot join a tenant twice" true by construction. It has no `created_at`
+> either: `invited_at` already records when the row came into being, and V003's lesson
+> about a second copy of one fact applies to timestamps too. `role` deliberately has
+> **no default** — V003's fail-closed default does not transfer, because a role has no
+> safe off position (the off position for membership is the absence of the row), so an
+> omitted role is an error rather than a quiet grant.
+>
+> Verified against a live PostgreSQL 17 from an empty volume: `migrate` applies
+> V000 → V003 in order, `validate` passes, a second `migrate` is a no-op, and
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) — 40 new assertions,
+> 81 in total — covers all three acceptance criteria. The harness was mutation-tested:
+> fourteen
+> deliberate breakages (each unique key and check dropped in turn, both cascades
+> re-created without `on delete cascade`, both new indexes dropped, the touch trigger
+> removed, a `github_access_token` column added, and a default given to `role`) each
+> made it exit non-zero naming the broken rule, and it returned green once restored.
+>
+> One rule is deliberately not enforced in SQL: that a tenant always retains at least one
+> `owner`. It spans rows and must survive both a role change and a delete, so it is a
+> trigger or an application invariant, and it belongs with the tenancy API (#31).
+>
+> **Note on the supersession ledgers.** `docs/ROADMAP_OOE_MVP.md` and
+> `docs/ROADMAP_LOGIN_PAGE_BETTERAUTH.md` list this issue as dropped in favour of
+> BetterAuth's `user`/`account`/`member` tables. It was built as specified instead,
+> consistent with 3.2 (#20) and 3.4 (#22), which those same ledgers amended and which
+> also landed in their original shape — `V001`'s `tenants` is a real table, so a `V002`
+> in BetterAuth shape would have left the schema half-migrated to a decision nothing else
+> has taken. If BetterAuth is adopted, it is a fix-forward migration from here.
 
 - **Problem Statement:** Sign-in is GitHub OAuth (mockup 01) and workspace settings
   (mockup 17) show members with roles — the schema must separate the human, their
