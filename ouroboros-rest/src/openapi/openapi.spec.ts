@@ -19,7 +19,8 @@ import {
   YAML_MEDIA_TYPE,
   createApplication,
 } from "../application";
-import { DEFAULT_PORT } from "../env";
+import { DEFAULT_PORT } from "../modules/config/configuration";
+import { testConfiguration } from "../modules/config/configuration.fixture";
 import { SERVICE_NAME, serviceVersion } from "../version";
 import { JSON_FILENAME, YAML_FILENAME, document, specificationYaml } from "./specification";
 
@@ -182,7 +183,7 @@ describe("the document and the running application", () => {
   let app: INestApplication;
 
   beforeEach(async () => {
-    app = await createApplication({ logger: false });
+    app = await createApplication(testConfiguration(), { logger: false });
     await app.init();
   });
 
@@ -249,7 +250,7 @@ describe("publishing the specification", () => {
   let app: INestApplication;
 
   beforeEach(async () => {
-    app = await createApplication({ logger: false });
+    app = await createApplication(testConfiguration(), { logger: false });
     await app.init();
   });
 

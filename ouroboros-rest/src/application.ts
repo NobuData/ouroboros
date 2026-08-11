@@ -8,6 +8,7 @@ import { NestFactory } from "@nestjs/core";
 import { SwaggerModule } from "@nestjs/swagger";
 
 import { AppModule } from "./modules/app/app.module";
+import type { Configuration } from "./modules/config/configuration";
 import { document, specificationYaml } from "./openapi/specification";
 import { SERVICE_NAME } from "./version";
 
@@ -94,6 +95,10 @@ interface RawResponse {
  * repository — while hiding it in production would mean production served a different
  * surface than development, which is the exact drift being spec-first exists to prevent.
  *
+ * @param configuration - The validated configuration, registered globally for every
+ *   feature module to read through `AppConfigService`. It is a parameter rather than
+ *   something this function reads for itself because the environment is validated before
+ *   an application exists — see `src/modules/config/config.module.ts`.
  * @param options - Passed straight to `NestFactory.create`. The process passes nothing;
  *   the seam exists so a test can silence the framework's boot logging, which is the one
  *   thing about a real application a suite has no use for.
@@ -103,9 +108,10 @@ interface RawResponse {
  *   see `src/openapi/specification.ts`.
  */
 export async function createApplication(
+  configuration: Configuration,
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, options);
+  const app = await NestFactory.create(AppModule.forRoot(configuration), options);
 
   app.setGlobalPrefix(API_PREFIX);
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });

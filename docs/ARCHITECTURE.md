@@ -124,8 +124,9 @@ compile error rather than a runtime surprise.
 TypeScript `strict`, port 4000, all routes under `/api/v1` — a global `/api` prefix and
 URI versioning defaulting to v1, so a route is versioned by omission rather than by
 remembering to be. What is up is the skeleton: `src/modules/app` answering a heartbeat
-that names the service and the build, `PORT` and `NODE_ENV` validated before a socket is
-bound, and shutdown hooks enabled ahead of the first provider that will need to drain
+that names the service and the build, every variable in the registry below validated
+before a socket is bound ([#28](https://github.com/NobuData/ouroboros/issues/28)), and
+shutdown hooks enabled ahead of the first provider that will need to drain
 something. It also publishes the contract it is written against — Swagger UI at
 `/api/docs` and the committed document at `/api/openapi.json`, served verbatim rather
 than generated ([§5.1](#51-ui--rest--the-public-contract)). Kysely over `pg` arrives with
@@ -135,7 +136,9 @@ It is the only module that talks to the database and the only module that talks 
 engine, and it owns everything that follows from that:
 
 - **Configuration** — every `OURO_*` variable validated by zod at boot, failing fast and
-  naming the offending variable ([#28](https://github.com/NobuData/ouroboros/issues/28)).
+  naming the offending variable; a typed accessor is the only way to read one, and
+  secrets are redacted from the summary it logs
+  ([#28](https://github.com/NobuData/ouroboros/issues/28), running).
 - **Health** — `/health/live` for the process, `/health/ready` for the process *and* its
   dependencies ([#29](https://github.com/NobuData/ouroboros/issues/29)).
 - **Data access** — a typed Kysely instance over a `pg` pool; repositories live with
@@ -484,6 +487,7 @@ checkout runs with:
 | `OURO_SESSION_SECRET` | `ouroboros-rest` | Signing key for the session cookie; rotating it invalidates every session | `dev-session-secret-change-me` |
 | `OURO_GITHUB_CLIENT_ID` | `ouroboros-rest` | GitHub OAuth application, client id | `dev-github-client-id` |
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
+| `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 
 The database variables appear twice on purpose: the six discrete parameters configure the

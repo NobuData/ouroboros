@@ -175,11 +175,19 @@ yarn install --immutable && yarn dev
 uv sync && OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me uv run dev
 ```
 
-`ouroboros-engine` is the one module that will not start on defaults alone: it is
-internal-only, every path but `/healthz` requires the shared secret, and a process
-without one could serve nothing — so it names the missing variable and exits rather than
-starting. Export it (`.env.example` carries the development value) and `yarn dev` runs
-the whole stack as before.
+Two modules will not start on defaults alone. `ouroboros-engine` is internal-only, every
+path but `/healthz` requires the shared secret, and a process without one could serve
+nothing. `ouroboros-rest` is the communications layer, and a boundary with no database, no
+engine, no signing key and no GitHub application is the same story
+([#28](https://github.com/NobuData/ouroboros/issues/28)) — so both name the missing
+variables and exit `2` rather than starting into a wall of failed requests. Export the
+template and `yarn dev` runs the whole stack as before:
+
+```bash
+cp .env.example .env          # already the development values; edit what you need
+set -a && . ./.env && set +a
+yarn dev
+```
 
 All four application modules are scaffolded — `ouroboros-ui`
 ([#39](https://github.com/NobuData/ouroboros/issues/39)), `ouroboros-rest`
