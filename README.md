@@ -30,8 +30,8 @@ modules, the boundaries between them, the request paths, and the `OURO_*` regist
 `ouroboros-web` is the public marketing site and is **not** part of the application
 stack — it ships and deploys on its own.
 
-The four application modules are scaffolded by their epics; today each directory holds
-the README that defines the contract its scaffold must satisfy.
+All four application modules are scaffolded and run; each README states what its module
+does today and what its epic still owes it.
 
 ## Architecture
 
