@@ -56,11 +56,11 @@ export interface ErrorEnvelope {
 /**
  * An error this service raised on purpose, carrying the envelope a client will read.
  *
- * Subclass rather than construct: {@link UnauthenticatedError}, {@link NotFoundError},
- * {@link ConflictError}, {@link InvalidRequestError} and {@link UpstreamError} are the
- * statuses this API answers with, and naming one at a call site is what makes the status
- * readable there. A caller that needs another adds a subclass here rather than passing a
- * number through a service.
+ * Subclass rather than construct: {@link UnauthenticatedError}, {@link ForbiddenError},
+ * {@link NotFoundError}, {@link ConflictError}, {@link InvalidRequestError} and
+ * {@link UpstreamError} are the statuses this API answers with, and naming one at a call
+ * site is what makes the status readable there. A caller that needs another adds a subclass
+ * here rather than passing a number through a service.
  */
 export class DomainError extends HttpException {
   /**
@@ -128,6 +128,22 @@ export class UnauthenticatedError extends DomainError {
 export class UpstreamError extends DomainError {
   constructor(code: string, message: string, details: ErrorDetails = {}) {
     super(HttpStatus.BAD_GATEWAY, code, message, details);
+  }
+}
+
+/**
+ * `403` — the caller is who they say they are, and may not do this.
+ *
+ * Narrower than it looks, and the narrowness is the point. This API answers `403` only when
+ * the caller has *already* proved they can see the thing they are acting on — a member of a
+ * tenant whose role is too low ([#32](https://github.com/NobuData/ouroboros/issues/32)).
+ * Anywhere the caller's right to know a thing exists is itself in question, the answer is
+ * {@link NotFoundError}, because a `403` confirms that an identifier names something real
+ * and that is the whole of what somebody enumerating identifiers is trying to learn.
+ */
+export class ForbiddenError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.FORBIDDEN, code, message, details);
   }
 }
 

@@ -27,6 +27,7 @@ import {
 import { ConstraintViolationInterceptor } from "./constraints";
 import { MembersService } from "./members.service";
 import { PageQuery, type Page } from "./pagination";
+import { ADMINISTRATORS, Roles } from "./roles.guard";
 import type { MemberResource } from "./resources";
 import { InviteMemberBody, MemberParams, TenantParams, UpdateMemberBody } from "./tenancy.dto";
 
@@ -58,6 +59,7 @@ export class MembersController {
    * @param body - Their address, the role, and a name to use if they are new.
    * @returns The membership, with `201`.
    */
+  @Roles(...ADMINISTRATORS)
   @Post()
   invite(@Param() params: TenantParams, @Body() body: InviteMemberBody): Promise<MemberResource> {
     return this.members.invite(params.tenantId, body);
@@ -70,6 +72,7 @@ export class MembersController {
    * @param body - The new role.
    * @returns The membership after the change.
    */
+  @Roles(...ADMINISTRATORS)
   @Patch(":userId")
   changeRole(
     @Param() params: MemberParams,
@@ -86,6 +89,7 @@ export class MembersController {
    * @param params - The tenant's id and the person's.
    * @returns When they are no longer a member.
    */
+  @Roles(...ADMINISTRATORS)
   @Delete(":userId")
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param() params: MemberParams): Promise<void> {

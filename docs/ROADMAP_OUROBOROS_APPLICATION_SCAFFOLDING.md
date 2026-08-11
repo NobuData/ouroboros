@@ -1062,7 +1062,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.3 | #29 | 🟢 Done | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
 | 4.4 | #30 | 🟢 Done | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
 | 4.5 | #31 | 🟢 Done | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
-| 4.6 | #32 | 🟡 Open | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
+| 4.6 | #32 | 🟢 Done | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.7 | #33 | 🟢 Done | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
 | 4.9 | #35 | 🟡 Open | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
@@ -1279,17 +1279,37 @@ Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀�
 
 ### Issue 4.6 — ouroboros-rest: [4.6] Tenant-context resolution middleware
 
-> **GitHub issue:** #32 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #32 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** Every request past sign-in operates *as a member of one
   tenant*; resolution and authorization of that context must be centralized, not
   re-implemented per controller.
-- **Solution/Scope:** Middleware + `TenantContext` (request-scoped via `AsyncLocalStorage`):
-  resolve active tenant from an `X-Ouro-Tenant` header (slug/uuid), falling back to the
-  session's user's sole membership when they belong to exactly one tenant; verify the
-  authenticated user's membership + role; expose `@CurrentTenant()` / `@CurrentMember()`
-  param decorators and a `RolesGuard`. 404-not-403 on tenants the user cannot see (no
-  existence leaks). Hook point where 3.7's GUC set will attach later.
+- **Solution/Scope:** A `TenantContext` over `AsyncLocalStorage`, opened by middleware and
+  filled in by a guard — and the split is forced rather than chosen: `run()` takes a
+  callback, so only middleware can wrap the rest of a request, and middleware runs *before*
+  guards, so only a guard can see 4.7's principal. The active tenant is resolved from three
+  sources, most specific first: the `{tenantId}` in the path, the `X-Ouro-Tenant` header
+  (slug or uuid), then a sole membership. The path source is what actually closes the leak —
+  without it a signed-in person could still read any workspace by id and the 404 rule would
+  apply to nothing — and a path and header naming *different* workspaces are refused
+  (`422 tenant_mismatch`) rather than resolved by precedence, so a stale header cannot
+  quietly act on another workspace. A workspace that does not exist and one the caller is
+  not a member of are the **same** 404: same code, same message, same details, asserted as
+  one equality. The only 403 is a member whose role is too low, and it is safe there because
+  by then the caller has proved the workspace is no secret from them. `@Roles(…)` on all ten
+  mutations, nothing on the reads (a `viewer` exists to be able to look), and both guards are
+  global — so the polarity matches 4.7's: a route is scoped unless it says `@TenantOptional()`.
+  Three routes do: listing your workspaces, creating one, and `/auth/me`, all three questions
+  about the *person* rather than a workspace. Two consequences of the 404 rule had to be
+  handled or the API would be incoherent: `GET /api/v1/tenants` is now scoped to the caller
+  (an unscoped listing is a larger leak than the 403 this replaced), and **creating a tenant
+  makes the creator its owner in the same transaction**, since a workspace with no members is
+  one nobody — its creator included — could ever reach again. `TenantsService.list` is the one
+  service that reads the context ambiently, which is the acceptance criterion demonstrated;
+  everything else still takes parameters. This is the hook point where 3.7's
+  `set_config('ouroboros.tenant_id', …)` will attach, and it is `AsyncLocalStorage` rather
+  than a property on the request for exactly that reason: a GUC has to be set on a connection
+  nothing in the call chain is holding. 106 new unit tests and 10 new integration tests.
 - **Acceptance Criteria:** Requests without membership get 404; role guard blocks
   member-level users from admin mutations; context available in services without
   passing parameters through.
@@ -1298,8 +1318,11 @@ Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀�
 - **Epic:** 4
 
 ```
-request ─▶ session → user ─▶ X-Ouro-Tenant → membership? ──yes─▶ TenantContext{tenant, role}
-                                             └────────no──▶ 404
+request ─▶ middleware ─▶ SessionGuard ─▶ TenantContextGuard ─▶ RolesGuard ─▶ handler
+           opens the     who is          {tenantId} · header    may they
+           context       asking (4.7)    · sole membership      do this
+                                              │
+                                    member? ──┴── no ─▶ 404 (never 403)
 ```
 
 ### Issue 4.7 — ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions

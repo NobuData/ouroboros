@@ -2,9 +2,9 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
-    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)) and sign-in\n([#33](https://github.com/NobuData/ouroboros/issues/33)). The engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) arrives as operations written\nhere and code that answers them.\n\n**Everything below requires a session** except the five operations that carry\n`security: []` — the two halves of sign-in, sign-out, and the three routes whose reader\nis not a browser at all. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, forged, or naming a person who no longer exists.\n\nWhat is **not** here yet is the tenant context:\n[#32](https://github.com/NobuData/ouroboros/issues/32) adds the `X-Ouro-Tenant` header,\nthe role guard, and the rule that a tenant a caller is not a member of answers `404`\nrather than admitting it exists. Until it lands, any signed-in person can reach any\ntenant, so this build still belongs on a development machine.",
+    "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)) and sign-in\n([#33](https://github.com/NobuData/ouroboros/issues/33)). The engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)) arrives as operations written\nhere and code that answers them.\n\n**Everything below requires a session** except the five operations that carry\n`security: []` — the two halves of sign-in, sign-out, and the three routes whose reader\nis not a browser at all. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, forged, or naming a person who no longer exists.\n\n**Every request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). It is named by the\n`{tenantId}` in the path, or by the `X-Ouro-Tenant` header on the operations that have\nnone, or inferred when the caller belongs to exactly one. A workspace the caller is not\na member of answers **`404`, never `403`** — a `403` would confirm that an identifier\nnames something real — and a member whose role is too low gets the one `403` this API\ndoes answer, because by then the workspace is no secret from them.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -36,7 +36,7 @@
     },
     {
       "name": "tenants",
-      "description": "Isolated customer workspaces — the root of everything else. A tenant has a slug that\nappears in URLs and command arguments, a display name, and a lifecycle: `active`,\n`suspended`, or the `deleted` that is a soft-delete marker rather than a removal.\n\nThere is deliberately no `DELETE`. A hard delete takes a tenant's domains, members,\norganisations and repositories with it — every foreign key in the schema cascades —\nand that is not an operation an HTTP verb should put one click away."
+      "description": "Isolated customer workspaces — the root of everything else. A tenant has a slug that\nappears in URLs and command arguments, a display name, and a lifecycle: `active`,\n`suspended`, or the `deleted` that is a soft-delete marker rather than a removal.\n\n**A workspace you are not a member of answers `404`, not `403`**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). A `403` would confirm that\nan identifier names something real, which is the whole of what somebody enumerating\nidentifiers is trying to learn — so \"no such workspace\" and \"not yours\" are one\nanswer. `GET /api/v1/tenants` is scoped the same way: it lists the workspaces *you*\nbelong to, never the installation's.\n\nCreating one makes you its `owner`, in the same transaction. Before the rule above\nthat was harmless; with it, a workspace with no members would be one nobody — its\ncreator included — could ever reach again.\n\nThere is deliberately no `DELETE`. A hard delete takes a tenant's domains, members,\norganisations and repositories with it — every foreign key in the schema cascades —\nand that is not an operation an HTTP verb should put one click away."
     },
     {
       "name": "domains",
@@ -44,7 +44,7 @@
     },
     {
       "name": "members",
-      "description": "Who belongs to a tenant, and what they may do there — `owner`, `admin`, `member` or\n`viewer`. A member is addressed by the *person's* id, because a membership is the\n`(tenant, person)` pair rather than a row with an identity of its own.\n\nOne rule here is enforced by this service rather than by the database, because it\nspans rows and must survive both a role change and a removal: **a tenant always keeps\nat least one owner.** Demoting or removing the last one is a `409` with\n`code: \"last_owner\"`."
+      "description": "Who belongs to a tenant, and what they may do there — `owner`, `admin`, `member` or\n`viewer`. A member is addressed by the *person's* id, because a membership is the\n`(tenant, person)` pair rather than a row with an identity of its own.\n\nOne rule here is enforced by this service rather than by the database, because it\nspans rows and must survive both a role change and a removal: **a tenant always keeps\nat least one owner.** Demoting or removing the last one is a `409` with\n`code: \"last_owner\"`.\n\nThe roles are also what every mutation in this document is checked against: `owner`\nand `admin` may change a workspace, `member` and `viewer` may read it. A member whose\nrole is too low gets a `403` with `code: \"forbidden\"` — the one place this API answers\n`403`, because by then the caller has already proved the workspace is no secret from\nthem."
     },
     {
       "name": "github",
@@ -71,7 +71,7 @@
                 },
                 "example": {
                   "service": "ouroboros-rest",
-                  "version": "0.6.0",
+                  "version": "0.7.0",
                   "status": "ok",
                   "uptimeSeconds": 3.885
                 }
@@ -322,8 +322,8 @@
         "tags": [
           "tenants"
         ],
-        "summary": "List tenants",
-        "description": "One page of tenants, oldest first.\n\nOrdered by creation time and then by id. The second term is not decoration: two\ntenants created in the same millisecond would otherwise be free to swap places\nbetween requests, and a paginated read could show one of them twice and the other\nnever.",
+        "summary": "List your workspaces",
+        "description": "One page of the workspaces the signed-in person belongs to, oldest first.\n\n**Scoped to the caller**, never the installation's whole table: a listing that\nenumerated every workspace would be a larger existence leak than the `403` this API\nanswers `404` to avoid, and it would be one request rather than a scan. Somebody who\nbelongs to none gets an empty page.\n\nIt is one of the three operations that need no active workspace, and the reason is\ncircularity: this is the question a workspace switcher asks *before* it can name\none.\n\nOrdered by creation time and then by id. The second term is not decoration: two\ntenants created in the same millisecond would otherwise be free to swap places\nbetween requests, and a paginated read could show one of them twice and the other\nnever.",
         "operationId": "listTenants",
         "parameters": [
           {
@@ -396,7 +396,7 @@
           "tenants"
         ],
         "summary": "Create a tenant",
-        "description": "Create a tenant.\n\nThe slug is chosen rather than derived from the display name: it appears in paths\nand command arguments and is the thing a person types, and a generator that turned\n`Acme, Inc.` into `acme-inc` would be one more rule to keep in step with the\ndatabase's own.\n\nThe tenant is created with no domains, no members and no organisations. It is\n`active` from the moment it exists — the status is a lifecycle, not an approval.",
+        "description": "Create a tenant.\n\nThe slug is chosen rather than derived from the display name: it appears in paths\nand command arguments and is the thing a person types, and a generator that turned\n`Acme, Inc.` into `acme-inc` would be one more rule to keep in step with the\ndatabase's own.\n\n**The caller becomes its `owner`**, in the same transaction. That is not a\nconvenience: a workspace with no members is one every route under it answers `404`\nto, including for the person who has just made it, so the two rows are written\ntogether or not at all.\n\nThe tenant is created with no domains and no organisations. It is `active` from the\nmoment it exists — the status is a lifecycle, not an approval. This operation needs\nno active workspace, because somebody creating their first belongs to none.",
         "operationId": "createTenant",
         "requestBody": {
           "required": true,
@@ -485,6 +485,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -527,7 +530,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -558,6 +561,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -602,6 +608,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found` — no tenant has that id.",
             "content": {
@@ -623,7 +639,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -662,6 +678,9 @@
           },
           {
             "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -711,7 +730,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -742,6 +761,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -787,6 +809,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found` — no tenant has that id.",
             "content": {
@@ -813,7 +845,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -849,6 +881,9 @@
           },
           {
             "$ref": "#/components/parameters/DomainId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -893,6 +928,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found`, or `domain_not_found` — which a domain belonging to a\n*different* tenant also answers, so the API does not confirm to whoever asked\nthat an identifier they guessed is real.",
             "content": {
@@ -914,7 +959,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -948,6 +993,9 @@
           },
           {
             "$ref": "#/components/parameters/DomainId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -956,6 +1004,16 @@
           },
           "401": {
             "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
             "content": {
               "application/json": {
                 "schema": {
@@ -975,7 +1033,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1014,6 +1072,9 @@
           },
           {
             "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -1065,7 +1126,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1096,6 +1157,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -1144,6 +1208,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found` — no tenant has that id.",
             "content": {
@@ -1165,7 +1239,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1201,6 +1275,9 @@
           },
           {
             "$ref": "#/components/parameters/UserId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -1247,6 +1324,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found`, or `member_not_found`.",
             "content": {
@@ -1275,7 +1362,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1309,6 +1396,9 @@
           },
           {
             "$ref": "#/components/parameters/UserId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -1317,6 +1407,16 @@
           },
           "401": {
             "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1346,7 +1446,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1385,6 +1485,9 @@
           },
           {
             "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -1435,7 +1538,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1466,6 +1569,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -1512,6 +1618,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found` — no tenant has that id.",
             "content": {
@@ -1533,7 +1649,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1569,6 +1685,9 @@
           },
           {
             "$ref": "#/components/parameters/OrgLogin"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -1614,6 +1733,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found`, or `org_not_found`.",
             "content": {
@@ -1625,7 +1754,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1667,6 +1796,9 @@
           },
           {
             "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "responses": {
@@ -1717,7 +1849,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1756,6 +1888,9 @@
           },
           {
             "$ref": "#/components/parameters/RepoName"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
           }
         ],
         "requestBody": {
@@ -1802,6 +1937,16 @@
               }
             }
           },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "`tenant_not_found`, or `org_not_found`. There is no `repo_not_found`: a\nrepository this API has never seen is one it creates, so the only thing that can\nbe missing is the organisation it would hang from.",
             "content": {
@@ -1823,7 +1968,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2019,6 +2164,27 @@
           "maxLength": 100
         },
         "example": "ouroboros"
+      },
+      "TenantHeader": {
+        "name": "X-Ouro-Tenant",
+        "in": "header",
+        "required": false,
+        "description": "The workspace this request is operating in — its slug or its uuid.\n\nOn the operations below it is **optional and redundant**: they already name a\nworkspace in their path, which is the more specific of the two, and a header that\nnames a *different* one is a `422` with `code: \"tenant_mismatch\"` rather than a\nsilent preference for either. It is accepted here so that one client can set it on\nevery request, and it is how the operations that have no workspace in their path —\neverything the epic adds after this one — say which workspace they mean.\n\nA caller who belongs to exactly one workspace may omit it everywhere; theirs is\ninferred. A caller who belongs to several, on an operation with no `{tenantId}`,\ngets a `422` with `code: \"tenant_required\"`.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 63
+        },
+        "examples": {
+          "slug": {
+            "summary": "By slug — what a person types",
+            "value": "acme"
+          },
+          "id": {
+            "summary": "By id",
+            "value": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+          }
+        }
       },
       "Limit": {
         "name": "limit",

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.6.0"
+  version: "0.7.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -65,11 +65,13 @@ info:
     `code: "unauthenticated"`, and that is one answer covering every way a session can fail:
     absent, expired, forged, or naming a person who no longer exists.
 
-    What is **not** here yet is the tenant context:
-    [#32](https://github.com/NobuData/ouroboros/issues/32) adds the `X-Ouro-Tenant` header,
-    the role guard, and the rule that a tenant a caller is not a member of answers `404`
-    rather than admitting it exists. Until it lands, any signed-in person can reach any
-    tenant, so this build still belongs on a development machine.
+    **Every request also operates in one workspace**
+    ([#32](https://github.com/NobuData/ouroboros/issues/32)). It is named by the
+    `{tenantId}` in the path, or by the `X-Ouro-Tenant` header on the operations that have
+    none, or inferred when the caller belongs to exactly one. A workspace the caller is not
+    a member of answers **`404`, never `403`** — a `403` would confirm that an identifier
+    names something real — and a member whose role is too low gets the one `403` this API
+    does answer, because by then the workspace is no secret from them.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -123,6 +125,17 @@ tags:
       appears in URLs and command arguments, a display name, and a lifecycle: `active`,
       `suspended`, or the `deleted` that is a soft-delete marker rather than a removal.
 
+      **A workspace you are not a member of answers `404`, not `403`**
+      ([#32](https://github.com/NobuData/ouroboros/issues/32)). A `403` would confirm that
+      an identifier names something real, which is the whole of what somebody enumerating
+      identifiers is trying to learn — so "no such workspace" and "not yours" are one
+      answer. `GET /api/v1/tenants` is scoped the same way: it lists the workspaces *you*
+      belong to, never the installation's.
+
+      Creating one makes you its `owner`, in the same transaction. Before the rule above
+      that was harmless; with it, a workspace with no members would be one nobody — its
+      creator included — could ever reach again.
+
       There is deliberately no `DELETE`. A hard delete takes a tenant's domains, members,
       organisations and repositories with it — every foreign key in the schema cascades —
       and that is not an operation an HTTP verb should put one click away.
@@ -146,6 +159,12 @@ tags:
       spans rows and must survive both a role change and a removal: **a tenant always keeps
       at least one owner.** Demoting or removing the last one is a `409` with
       `code: "last_owner"`.
+
+      The roles are also what every mutation in this document is checked against: `owner`
+      and `admin` may change a workspace, `member` and `viewer` may read it. A member whose
+      role is too low gets a `403` with `code: "forbidden"` — the one place this API answers
+      `403`, because by then the caller has already proved the workspace is no secret from
+      them.
 
   - name: github
     description: |-
@@ -182,7 +201,7 @@ paths:
                 $ref: "#/components/schemas/Heartbeat"
               example:
                 service: ouroboros-rest
-                version: "0.6.0"
+                version: "0.7.0"
                 status: ok
                 uptimeSeconds: 3.885
 
@@ -443,9 +462,18 @@ paths:
   /api/v1/tenants:
     get:
       tags: [tenants]
-      summary: List tenants
+      summary: List your workspaces
       description: |-
-        One page of tenants, oldest first.
+        One page of the workspaces the signed-in person belongs to, oldest first.
+
+        **Scoped to the caller**, never the installation's whole table: a listing that
+        enumerated every workspace would be a larger existence leak than the `403` this API
+        answers `404` to avoid, and it would be one request rather than a scan. Somebody who
+        belongs to none gets an empty page.
+
+        It is one of the three operations that need no active workspace, and the reason is
+        circularity: this is the question a workspace switcher asks *before* it can name
+        one.
 
         Ordered by creation time and then by id. The second term is not decoration: two
         tenants created in the same millisecond would otherwise be free to swap places
@@ -521,8 +549,14 @@ paths:
         `Acme, Inc.` into `acme-inc` would be one more rule to keep in step with the
         database's own.
 
-        The tenant is created with no domains, no members and no organisations. It is
-        `active` from the moment it exists — the status is a lifecycle, not an approval.
+        **The caller becomes its `owner`**, in the same transaction. That is not a
+        convenience: a workspace with no members is one every route under it answers `404`
+        to, including for the person who has just made it, so the two rows are written
+        together or not at all.
+
+        The tenant is created with no domains and no organisations. It is `active` from the
+        moment it exists — the status is a lifecycle, not an approval. This operation needs
+        no active workspace, because somebody creating their first belongs to none.
       operationId: createTenant
       requestBody:
         required: true
@@ -598,6 +632,7 @@ paths:
       operationId: readTenant
       parameters:
         - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
           description: The tenant.
@@ -640,6 +675,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -669,6 +708,7 @@ paths:
       operationId: updateTenant
       parameters:
         - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -716,6 +756,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -725,6 +780,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -752,6 +811,7 @@ paths:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
           description: The page.
@@ -798,6 +858,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -826,6 +890,7 @@ paths:
       operationId: addDomain
       parameters:
         - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -881,6 +946,21 @@ paths:
                 code: domain_taken
                 message: That domain belongs to another tenant.
                 details: {}
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -890,6 +970,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -919,6 +1003,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -971,6 +1056,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -980,6 +1080,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1005,6 +1109,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/DomainId"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "204":
           description: |-
@@ -1029,6 +1134,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1038,6 +1158,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1065,6 +1189,7 @@ paths:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
           description: The page.
@@ -1113,6 +1238,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1146,6 +1275,7 @@ paths:
       operationId: inviteMember
       parameters:
         - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -1197,6 +1327,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1206,6 +1351,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1234,6 +1383,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -1292,6 +1442,21 @@ paths:
                 message: A tenant must keep at least one owner. Promote another member first.
                 details:
                   userId: c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1301,6 +1466,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1326,6 +1495,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "204":
           description: They are no longer a member.
@@ -1354,6 +1524,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1363,6 +1548,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1391,6 +1580,7 @@ paths:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
           description: The page.
@@ -1438,6 +1628,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1466,6 +1660,7 @@ paths:
       operationId: addOrg
       parameters:
         - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -1515,6 +1710,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1524,6 +1734,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1553,6 +1767,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/OrgLogin"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -1595,6 +1810,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1604,6 +1834,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1637,6 +1871,7 @@ paths:
         - $ref: "#/components/parameters/OrgLogin"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/TenantHeader"
       responses:
         "200":
           description: The page.
@@ -1684,6 +1919,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1720,6 +1959,7 @@ paths:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/OrgLogin"
         - $ref: "#/components/parameters/RepoName"
+        - $ref: "#/components/parameters/TenantHeader"
       requestBody:
         required: true
         content:
@@ -1772,6 +2012,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -1781,6 +2036,10 @@ paths:
             Or `constraint_violated`, when the value was one this document's own rules admit
             and a `check` in the database does not. `details.constraint` names which. The two
             share a status because both mean the same thing to a client: the request was
+
+            Or `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different
+            workspaces — refused rather than resolved by precedence, so a client holding a
+            stale workspace in a header cannot quietly act on another one.
             understood, and a different value can succeed.
           content:
             application/json:
@@ -1974,6 +2233,35 @@ components:
         minLength: 1
         maxLength: 100
       example: ouroboros
+
+    TenantHeader:
+      name: X-Ouro-Tenant
+      in: header
+      required: false
+      description: |-
+        The workspace this request is operating in — its slug or its uuid.
+
+        On the operations below it is **optional and redundant**: they already name a
+        workspace in their path, which is the more specific of the two, and a header that
+        names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
+        silent preference for either. It is accepted here so that one client can set it on
+        every request, and it is how the operations that have no workspace in their path —
+        everything the epic adds after this one — say which workspace they mean.
+
+        A caller who belongs to exactly one workspace may omit it everywhere; theirs is
+        inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
+        gets a `422` with `code: "tenant_required"`.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 63
+      examples:
+        slug:
+          summary: By slug — what a person types
+          value: acme
+        id:
+          summary: By id
+          value: 9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10
 
     Limit:
       name: limit

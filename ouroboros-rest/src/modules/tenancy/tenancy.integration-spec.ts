@@ -147,6 +147,14 @@ function containing(text: string): string {
 describe("the tenancy API, for real", () => {
   let app: INestApplication;
   let session: string;
+  /**
+   * The suite's own user id.
+   *
+   * Needed since [#32](https://github.com/NobuData/ouroboros/issues/32): creating a
+   * workspace makes the creator its `owner`, so this suite is a member — and the owner — of
+   * every tenant it makes. The last-owner tests are about *this* person now.
+   */
+  let sessionUserId: string;
 
   beforeAll(async () => {
     app = await createApplication(testConfiguration({ OURO_DATABASE_URL: DATABASE_URL }), {
@@ -166,7 +174,8 @@ describe("the tenancy API, for real", () => {
         "on conflict (email) do update set display_name = excluded.display_name returning id",
       [SESSION_EMAIL, "Integration Suite"],
     );
-    session = sessionCookieFor(rows[0].id, testConfiguration().sessionSecret);
+    sessionUserId = rows[0].id;
+    session = sessionCookieFor(sessionUserId, testConfiguration().sessionSecret);
   });
 
   afterAll(async () => {
@@ -561,18 +570,35 @@ describe("the tenancy API, for real", () => {
 
     it("lists them with the person's details on each row", async () => {
       const tenant = await aTenant();
-      const owner = await invite(tenant.id, "owner");
+      const invited = await invite(tenant.id, "viewer");
 
-      expect(await listMembers(tenant.id)).toMatchObject({
-        items: [{ userId: owner.userId, email: owner.email, role: "owner" }],
-        total: 1,
-      });
+      const page = await listMembers(tenant.id);
+
+      // Two: the person who created the workspace, and the person they invited.
+      expect(page.total).toBe(2);
+      expect(page.items).toContainEqual(
+        expect.objectContaining({ userId: invited.userId, email: invited.email, role: "viewer" }),
+      );
+      expect(page.items).toContainEqual(
+        expect.objectContaining({ userId: sessionUserId, role: "owner" }),
+      );
+    });
+
+    it("makes the creator of a workspace its owner, joined rather than invited", async () => {
+      // Without it the workspace would have no members, and every route under it would
+      // answer 404 to everybody — the person who has just made it included (#32).
+      const tenant = await aTenant();
+
+      const page = await listMembers(tenant.id);
+
+      expect(page.total).toBe(1);
+      expect(page.items[0]).toMatchObject({ userId: sessionUserId, role: "owner" });
+      expect(page.items[0].joinedAt).not.toBeNull();
     });
 
     it("changes a role while another owner remains", async () => {
       const tenant = await aTenant();
       const first = await invite(tenant.id, "owner");
-      await invite(tenant.id, "owner");
 
       const changed = bodyOf<MemberResource>(
         await signedIn("patch", `${TENANTS}/${tenant.id}/members/${first.userId}`)
@@ -585,18 +611,17 @@ describe("the tenancy API, for real", () => {
 
     it("rejects demoting the last owner", async () => {
       // The acceptance criterion, and the rule V002 deliberately left to this service because
-      // it spans rows.
+      // it spans rows. The creator is the sole owner, so demoting them is the case.
       const tenant = await aTenant();
-      const owner = await invite(tenant.id, "owner");
       await invite(tenant.id, "admin");
 
       const failure = bodyOf<ErrorEnvelope>(
-        await signedIn("patch", `${TENANTS}/${tenant.id}/members/${owner.userId}`)
+        await signedIn("patch", `${TENANTS}/${tenant.id}/members/${sessionUserId}`)
           .send({ role: "admin" })
           .expect(409),
       );
 
-      expect(failure).toMatchObject({ code: "last_owner", details: { userId: owner.userId } });
+      expect(failure).toMatchObject({ code: "last_owner", details: { userId: sessionUserId } });
       // …and the demotion did not happen.
       const { items } = await listMembers(tenant.id);
       expect(items.filter((member) => member.role === "owner")).toHaveLength(1);
@@ -604,10 +629,9 @@ describe("the tenancy API, for real", () => {
 
     it("rejects removing the last owner", async () => {
       const tenant = await aTenant();
-      const owner = await invite(tenant.id, "owner");
 
       const failure = bodyOf<ErrorEnvelope>(
-        await signedIn("delete", `${TENANTS}/${tenant.id}/members/${owner.userId}`).expect(409),
+        await signedIn("delete", `${TENANTS}/${tenant.id}/members/${sessionUserId}`).expect(409),
       );
 
       expect(failure.code).toBe("last_owner");
@@ -615,21 +639,23 @@ describe("the tenancy API, for real", () => {
     });
 
     it("allows removing an owner once somebody else holds the role", async () => {
+      // The second owner is the one removed rather than the creator, and that is not
+      // squeamishness: since #32 a caller who removes their own membership can no longer
+      // read the workspace — every route under it answers 404 to a non-member — so the
+      // suite would be asserting from outside a room it had just locked.
       const tenant = await aTenant();
-      const first = await invite(tenant.id, "owner");
       const second = await invite(tenant.id, "admin");
 
       await signedIn("patch", `${TENANTS}/${tenant.id}/members/${second.userId}`)
         .send({ role: "owner" })
         .expect(200);
-      await signedIn("delete", `${TENANTS}/${tenant.id}/members/${first.userId}`).expect(204);
+      await signedIn("delete", `${TENANTS}/${tenant.id}/members/${second.userId}`).expect(204);
 
       expect(await listMembers(tenant.id)).toMatchObject({ total: 1 });
     });
 
     it("removes somebody who was never an owner", async () => {
       const tenant = await aTenant();
-      await invite(tenant.id, "owner");
       const viewer = await invite(tenant.id, "viewer");
 
       await signedIn("delete", `${TENANTS}/${tenant.id}/members/${viewer.userId}`).expect(204);
@@ -651,7 +677,6 @@ describe("the tenancy API, for real", () => {
 
     it("leaves the person behind when the membership goes", async () => {
       const tenant = await aTenant();
-      await invite(tenant.id, "owner");
       const viewer = await invite(tenant.id, "viewer");
 
       await signedIn("delete", `${TENANTS}/${tenant.id}/members/${viewer.userId}`).expect(204);
@@ -837,6 +862,165 @@ describe("the tenancy API, for real", () => {
         [tenant.id],
       );
       expect(Number(rows[0].count)).toBe(0);
+    });
+  });
+
+  describe("the tenant context", () => {
+    /**
+     * Somebody else, holding a role in a tenant, with a session of their own.
+     *
+     * Created directly rather than through the API because the API's own invite flow makes a
+     * stub `users` row with no identity — which is exactly right for an invitation and no use
+     * for signing in as them.
+     *
+     * @param tenantId - The tenant to be a member of, or `undefined` to belong nowhere.
+     * @param role - What they hold there.
+     * @returns Their id and the `Cookie` header a request from them carries.
+     */
+    async function anotherPerson(
+      tenantId: string | undefined,
+      role = "member",
+    ): Promise<{ id: string; cookie: string }> {
+      const { rows } = await admin.query<{ id: string }>(
+        "insert into ouroboros.users (email, display_name) values ($1, $2) returning id",
+        [uniqueEmail(), "Somebody Else"],
+      );
+
+      if (tenantId !== undefined) {
+        await admin.query(
+          "insert into ouroboros.tenant_members (tenant_id, user_id, role) values ($1, $2, $3)",
+          [tenantId, rows[0].id, role],
+        );
+      }
+
+      return {
+        id: rows[0].id,
+        cookie: sessionCookieFor(rows[0].id, testConfiguration().sessionSecret),
+      };
+    }
+
+    it("answers 404 for a workspace you are not a member of — the first acceptance criterion", async () => {
+      const tenant = await aTenant();
+      const stranger = await anotherPerson(undefined);
+
+      const failure = bodyOf<ErrorEnvelope>(
+        await request(server())
+          .get(`${TENANTS}/${tenant.id}`)
+          .set("Cookie", stranger.cookie)
+          .expect(404),
+      );
+
+      expect(failure.code).toBe("tenant_not_found");
+    });
+
+    it("answers a workspace that exists and one that does not identically", async () => {
+      // The whole of *no existence leaks*: a difference in the code, the message or the
+      // details is exactly what somebody enumerating identifiers is looking for.
+      const tenant = await aTenant();
+      const stranger = await anotherPerson(undefined);
+
+      const real = await request(server())
+        .get(`${TENANTS}/${tenant.id}`)
+        .set("Cookie", stranger.cookie)
+        .expect(404);
+      const invented = await request(server())
+        .get(`${TENANTS}/${ABSENT}`)
+        .set("Cookie", stranger.cookie)
+        .expect(404);
+
+      expect(bodyOf<ErrorEnvelope>(real).code).toBe(bodyOf<ErrorEnvelope>(invented).code);
+      expect(bodyOf<ErrorEnvelope>(real).message).toBe(bodyOf<ErrorEnvelope>(invented).message);
+    });
+
+    it("never answers 403 for a workspace you cannot see", async () => {
+      const tenant = await aTenant();
+      const stranger = await anotherPerson(undefined);
+
+      await request(server())
+        .patch(`${TENANTS}/${tenant.id}`)
+        .set("Cookie", stranger.cookie)
+        .send({ displayName: "Mine Now" })
+        .expect(404);
+    });
+
+    it("blocks a member-level user from an admin mutation — the second acceptance criterion", async () => {
+      const tenant = await aTenant();
+      const member = await anotherPerson(tenant.id, "member");
+
+      const failure = bodyOf<ErrorEnvelope>(
+        await request(server())
+          .post(`${TENANTS}/${tenant.id}/domains`)
+          .set("Cookie", member.cookie)
+          .send({ domain: `${uniqueName()}.example` })
+          .expect(403),
+      );
+
+      expect(failure).toMatchObject({
+        code: "forbidden",
+        details: { role: "member", required: ["owner", "admin"] },
+      });
+    });
+
+    it("lets that same member read what they may not change", async () => {
+      // A viewer is a role that exists to be able to look, and a member more so.
+      const tenant = await aTenant();
+      const member = await anotherPerson(tenant.id, "member");
+
+      await request(server())
+        .get(`${TENANTS}/${tenant.id}/domains`)
+        .set("Cookie", member.cookie)
+        .expect(200);
+    });
+
+    it("lets an admin do what a member may not", async () => {
+      const tenant = await aTenant();
+      const maintainer = await anotherPerson(tenant.id, "admin");
+
+      await request(server())
+        .post(`${TENANTS}/${tenant.id}/domains`)
+        .set("Cookie", maintainer.cookie)
+        .send({ domain: `${uniqueName()}.example` })
+        .expect(201);
+    });
+
+    it("lists only the workspaces you belong to", async () => {
+      // Which is also the proof that the context reaches a service without being threaded
+      // through one: `TenantsService.list` reads it from `AsyncLocalStorage`, and it can only
+      // be there if the middleware opened a store and the guard wrote to it.
+      const mine = await aTenant();
+      const stranger = await anotherPerson(undefined);
+
+      const theirs = bodyOf<Page<TenantResource>>(
+        await request(server()).get(TENANTS).set("Cookie", stranger.cookie).expect(200),
+      );
+
+      expect(theirs.items).toEqual([]);
+      expect(theirs.total).toBe(0);
+
+      const ours = bodyOf<Page<TenantResource>>(await signedIn("get", TENANTS).expect(200));
+      expect(ours.items.map((tenant) => tenant.id)).toContain(mine.id);
+    });
+
+    it("accepts a header that names the same workspace the path does, by slug", async () => {
+      const tenant = await aTenant();
+
+      await signedIn("get", `${TENANTS}/${tenant.id}`)
+        .set("X-Ouro-Tenant", tenant.slug)
+        .expect(200);
+    });
+
+    it("refuses a header that names a different workspace than the path", async () => {
+      const one = await aTenant();
+      const two = await aTenant();
+
+      const failure = bodyOf<ErrorEnvelope>(
+        await signedIn("get", `${TENANTS}/${one.id}`).set("X-Ouro-Tenant", two.slug).expect(422),
+      );
+
+      expect(failure).toMatchObject({
+        code: "tenant_mismatch",
+        details: { path: one.id, header: two.slug },
+      });
     });
   });
 

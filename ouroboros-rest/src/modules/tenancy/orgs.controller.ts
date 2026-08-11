@@ -12,6 +12,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query, UseInterceptors } fro
 import { ConstraintViolationInterceptor } from "./constraints";
 import { OrgsService } from "./orgs.service";
 import { PageQuery, type Page } from "./pagination";
+import { ADMINISTRATORS, Roles } from "./roles.guard";
 import type { OrgResource } from "./resources";
 import { CreateOrgBody, OrgParams, TenantParams, UpdateOrgBody } from "./tenancy.dto";
 
@@ -39,6 +40,7 @@ export class OrgsController {
    * @param body - The login, and whether it starts enabled. It does not, unless asked.
    * @returns The organisation as it was stored, with `201`.
    */
+  @Roles(...ADMINISTRATORS)
   @Post()
   add(@Param() params: TenantParams, @Body() body: CreateOrgBody): Promise<OrgResource> {
     return this.orgs.add(params.tenantId, body);
@@ -51,6 +53,7 @@ export class OrgsController {
    * @param body - `enabled`.
    * @returns The organisation after the change.
    */
+  @Roles(...ADMINISTRATORS)
   @Patch(":login")
   setEnabled(@Param() params: OrgParams, @Body() body: UpdateOrgBody): Promise<OrgResource> {
     return this.orgs.setEnabled(params.tenantId, params.login, body);

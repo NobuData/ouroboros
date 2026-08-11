@@ -16,6 +16,10 @@
  * route that answers *who is signed in*, so it is the one that must require being signed
  * in. Sign-in and sign-out cannot require a session — one has not got one yet and the
  * other is disposing of one that may already have expired.
+ *
+ * `GET me` is also `@TenantOptional()`, which is the other half of the same thought: it
+ * needs a *person* and cannot need a *workspace*, because the workspaces are what it
+ * answers with.
  */
 
 import { Controller, Get, HttpStatus, Post, Query, Req, Res } from "@nestjs/common";
@@ -29,6 +33,7 @@ import { GithubCallbackQuery } from "./auth.dto";
 import { expireCookie, parseCookies, serializeCookie } from "./cookies";
 import { SET_COOKIE, type AuthResponse } from "./http";
 import { callbackUrl, handshakeCookieAttributes, HANDSHAKE_COOKIE } from "./oauth";
+import { TenantOptional } from "../tenancy/tenant.decorators";
 import { CurrentUser, type PrincipalRequest } from "./principal";
 import { Public } from "./public.decorator";
 import { sessionCookieAttributes, SESSION_COOKIE } from "./session";
@@ -115,9 +120,15 @@ export class AuthController {
    * and — for somebody brand new — the tenant their email domain points at, before it can
    * render anything.
    *
+   * `@TenantOptional()` ([#32](https://github.com/NobuData/ouroboros/issues/32)), and it is
+   * the clearest case there is: this route's entire answer is the list of workspaces a
+   * tenant would have had to be resolved *from*. Requiring one first would make somebody
+   * with no memberships unable to discover that they have none.
+   *
    * @param user - The signed-in person, established by the global guard.
    * @returns Them, their memberships, and the tenant suggestion when there are none.
    */
+  @TenantOptional()
   @Get("me")
   read(@CurrentUser() user: User): Promise<SessionResource> {
     return this.auth.describe(user);

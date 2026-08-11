@@ -1,4 +1,5 @@
-import { Module } from "@nestjs/common";
+import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 
 import { DbModule } from "../db/db.module";
 import { ConstraintViolationInterceptor } from "./constraints";
@@ -9,6 +10,10 @@ import { MembersController } from "./members.controller";
 import { MembersRepository } from "./members.repository";
 import { MembersService } from "./members.service";
 import { OrgsController } from "./orgs.controller";
+import { RolesGuard } from "./roles.guard";
+import { TenantContextGuard } from "./tenant.guard";
+import { TenantContextMiddleware } from "./tenant.middleware";
+import { TenantResolver } from "./tenant.resolver";
 import { OrgsRepository } from "./orgs.repository";
 import { OrgsService } from "./orgs.service";
 import { ReposController } from "./repos.controller";
@@ -64,6 +69,12 @@ import { TenantsService } from "./tenants.service";
   ],
   providers: [
     ConstraintViolationInterceptor,
+    TenantResolver,
+    // Order matters, and it is the order of this list: the tenant has to be resolved before
+    // a role in it can be checked, and Nest runs global guards in the order they are
+    // registered. `tenancy.module.spec.ts` asserts the consequence rather than the order.
+    { provide: APP_GUARD, useClass: TenantContextGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
     TenantsRepository,
     DomainsRepository,
     MembersRepository,
@@ -80,4 +91,19 @@ import { TenantsService } from "./tenants.service";
   // controller into these rules.
   exports: [TenantsService, MembersService],
 })
-export class TenancyModule {}
+export class TenancyModule implements NestModule {
+  /**
+   * Open a tenant context for every request.
+   *
+   * The middleware resolves nothing — see `tenant.middleware.ts` for why it cannot, and why
+   * it has to be middleware anyway. It is applied to *every* route, public ones included: a
+   * store nothing writes to costs one object, and it means `currentTenant()` is a question
+   * with an honest answer everywhere rather than one that throws on the routes somebody
+   * forgot to list.
+   *
+   * @param consumer - Nest's middleware builder.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(TenantContextMiddleware).forRoutes({ path: "*path", method: RequestMethod.ALL });
+  }
+}
