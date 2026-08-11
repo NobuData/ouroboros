@@ -105,6 +105,70 @@ a {
 }
 
 /*
+ * ---------- the theme cross-fade ----------
+ *
+ * A palette swap redefines every colour in the product at once, so bare it lands between
+ * two paints: the whole screen changes in a single frame. These rules interpolate it
+ * instead.
+ *
+ * Four things about the shape of this, each deliberate:
+ *
+ * 1. **It is armed, not standing.** The transition applies only while `data-theme-fade`
+ *    is on <html>, which app/theme.ts puts there for the length of one swap. A standing
+ *    transition on every colour would also slow the things colour is used to *report* — a
+ *    status pill turning red, a stage going live, a row highlighting under the pointer —
+ *    and those have to land at once. The only window in which a colour change means "the
+ *    theme changed" is the one the engine opens.
+ *
+ * 2. **The properties are named, not `all`.** `all` would sweep up layout and transform,
+ *    so anything that happened to move during those milliseconds would slide instead. The
+ *    list is every property a token can reach: the paints, the box's own colours, and the
+ *    opacity the brand mark cross-fades on (shell.css).
+ *
+ * 3. **`<html>` itself is left out, and must stay out.** The selectors are descendants
+ *    only. The root's own `color` is the system `CanvasText`, which `color-scheme` flips
+ *    with the palette — and while an inherited property is transitioning on an ancestor,
+ *    Chrome restarts the same property's transition on every descendant, frame after
+ *    frame. Adding `:root[data-theme-fade]` to the list above is enough to make every
+ *    piece of text in the product finish its fade roughly twice as late as the surface
+ *    behind it, which reads as the ink arriving after the page. Nothing is lost by the
+ *    omission: <html> paints no background of its own (body's propagates to the canvas)
+ *    and its colour exists only to be inherited, which body overrides.
+ *
+ * 4. **Reduced motion turns it off here.** The engine stamps the attribute either way and
+ *    asks the OS nothing; this query is the single place the preference is honoured, so
+ *    a reader who has asked for less motion gets exactly the instant swap that was here
+ *    before.
+ *
+ * Two parts of a swap cannot be faded and do not pretend to be: `color-scheme` repaints
+ * native scrollbars and form controls at once, and the toggle's own sun/moon icon is
+ * replaced rather than tinted — a control should confirm a press immediately.
+ */
+
+:root {
+  /* Not a design token: motion is not in the sheet's vocabulary (docs/DESIGN_TOKENS.md),
+     and inventing one here would fork it. app/theme.ts holds THEME_FADE_MS to the same
+     number, and __tests__/styles.test.ts fails the build if the two drift apart. */
+  --theme-fade: 180ms;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-fade] *,
+  :root[data-theme-fade] *::before,
+  :root[data-theme-fade] *::after {
+    transition:
+      background-color var(--theme-fade) ease,
+      border-color var(--theme-fade) ease,
+      box-shadow var(--theme-fade) ease,
+      color var(--theme-fade) ease,
+      fill var(--theme-fade) ease,
+      opacity var(--theme-fade) ease,
+      outline-color var(--theme-fade) ease,
+      stroke var(--theme-fade) ease;
+  }
+}
+
+/*
  * The scaffold's placeholder page, now rendered inside the shell's content pane.
  * Replaced wholesale by the dashboard (#45); until then it exists so `yarn dev` renders
  * something that proves the three faces loaded and both palettes resolve.

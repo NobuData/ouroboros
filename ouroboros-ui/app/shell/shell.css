@@ -99,10 +99,21 @@
   text-decoration: none;
 }
 
-.shell-brand__mark {
+/*
+ * Both marks occupy one grid cell, so they are stacked rather than sequential and the
+ * header's flex row sees a single 30px box however many images are inside it.
+ */
+.shell-brand__marks {
+  display: grid;
   width: 1.875rem;
   height: 1.875rem;
   flex: none;
+}
+
+.shell-brand__mark {
+  grid-area: 1 / 1;
+  width: 1.875rem;
+  height: 1.875rem;
 }
 
 /*
@@ -110,26 +121,31 @@
  * runs. The three blocks mirror app/tokens.css exactly — light on the bare :root, the
  * explicit dark choice, then dark from the OS with an explicit light choice still
  * winning — because the mark follows the surface it sits on (docs/BRAND.md).
+ *
+ * Hidden by opacity rather than by `display`, which is what lets the pair cross-fade with
+ * the palette instead of snapping to the new mark halfway through the fade (globals.css).
+ * `display` cannot be interpolated; opacity on a stacked pair can, and neither mark can
+ * move the row because both are always laid out.
  */
 .shell-brand__mark--dark {
-  display: none;
+  opacity: 0;
 }
 
 :root[data-theme="dark"] .shell-brand__mark--light {
-  display: none;
+  opacity: 0;
 }
 
 :root[data-theme="dark"] .shell-brand__mark--dark {
-  display: block;
+  opacity: 1;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .shell-brand__mark--light {
-    display: none;
+    opacity: 0;
   }
 
   :root:not([data-theme="light"]) .shell-brand__mark--dark {
-    display: block;
+    opacity: 1;
   }
 }
 

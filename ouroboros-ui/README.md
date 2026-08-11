@@ -280,7 +280,7 @@ const { theme, resolved, setTheme } = useTheme();
 // setTheme → applies, persists, re-renders
 ```
 
-Four things make it work, and each is a decision worth knowing before changing any of it.
+Five things make it work, and each is a decision worth knowing before changing any of it.
 
 **Absence is `system`.** `data-theme` on `<html>` is `"light"`, `"dark"`, or **not
 there** — the contract
@@ -312,6 +312,25 @@ attributes it renders from JSX.
 **`color-scheme` is not set here.** The sheet declares it in all three palette blocks, so
 native scrollbars, form controls and the browser's own canvas follow the theme for the
 same reason the palette does. There is no second place a theme is expressed.
+
+**The swap is a cross-fade, and it is armed rather than standing.** A redefinition of
+every colour at once lands between two paints, so `setTheme` puts a second attribute —
+`data-theme-fade` — on `<html>` for the length of one change, and `globals.css` transitions
+the colour properties only while it is there. Standing, that transition would also slow the
+things colour is used to *report*: a status turning red, a stage going live. Three
+consequences follow. The duration lives in two places by necessity (CSS runs the fade, only
+JavaScript can end it) and `__tests__/styles.test.ts` fails the build if they drift. The
+rule reaches descendants only — `<html>`'s own colour is the system `CanvasText` that
+`color-scheme` flips, and while an ancestor transitions an inherited property Chrome
+restarts that property's transition on every descendant, which lands all the product's text
+about twice as late as the surface behind it. And `prefers-reduced-motion: reduce` gets the
+instant swap that was here before, decided in the stylesheet, because the engine does not
+ask the OS anything.
+
+An OS flip while the choice is *system* arms the fade too, but only best-effort: CSS
+repaints that one on its own, so whether it fades depends on the change reaching the
+listener before the frame that paints it. Losing that race costs nothing — the swap is
+simply instant.
 
 ### The switcher
 

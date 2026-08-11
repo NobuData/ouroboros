@@ -1,11 +1,15 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   DARK_MEDIA_QUERY,
   THEME_ATTRIBUTE,
   THEME_BOOTSTRAP,
+  THEME_FADE_ATTRIBUTE,
+  THEME_FADE_MS,
   THEME_STORAGE_KEY,
   type Theme,
+  beginThemeFade,
+  endThemeFade,
   parseTheme,
   readStoredTheme,
   resolveTheme,
@@ -18,6 +22,7 @@ import { hostileStorage, installMatchMedia, memoryStorage } from "./helpers/matc
 
 afterEach(() => {
   document.documentElement.removeAttribute(THEME_ATTRIBUTE);
+  document.documentElement.removeAttribute(THEME_FADE_ATTRIBUTE);
   window.localStorage.clear();
 });
 
@@ -171,6 +176,93 @@ describe("stampTheme", () => {
     stampTheme("dark");
 
     expect(document.documentElement.getAttribute(THEME_ATTRIBUTE)).toBe("dark");
+  });
+});
+
+describe("the cross-fade window", () => {
+  /** Whether a fade is currently armed on the element. */
+  const armed = (root: Element = document.documentElement) =>
+    root.hasAttribute(THEME_FADE_ATTRIBUTE);
+
+  afterEach(() => {
+    endThemeFade();
+    vi.useRealTimers();
+  });
+
+  it("arms the element the palette is selected on", () => {
+    vi.useFakeTimers();
+    const root = document.createElement("html");
+
+    beginThemeFade(root);
+
+    expect(armed(root)).toBe(true);
+  });
+
+  it("defaults to the document element, like every other operation here", () => {
+    vi.useFakeTimers();
+
+    beginThemeFade();
+
+    expect(armed()).toBe(true);
+  });
+
+  it("stays armed for the whole of the fade", () => {
+    vi.useFakeTimers();
+    beginThemeFade();
+
+    // Disarming on the tick the fade is due would cancel its last frames, because the
+    // fade starts at the next style recalculation rather than at this call — and a
+    // cancelled transition snaps to its end value.
+    vi.advanceTimersByTime(THEME_FADE_MS);
+
+    expect(armed()).toBe(true);
+  });
+
+  it("disarms once the fade is over, so nothing else animates", () => {
+    vi.useFakeTimers();
+    beginThemeFade();
+
+    vi.runAllTimers();
+
+    expect(armed()).toBe(false);
+  });
+
+  it("extends the window when a second change lands inside the first", () => {
+    vi.useFakeTimers();
+    beginThemeFade();
+
+    vi.advanceTimersByTime(THEME_FADE_MS);
+    beginThemeFade();
+    vi.advanceTimersByTime(THEME_FADE_MS);
+
+    // The first window's timer must not close the second one's fade: a reader pressing
+    // the toggle twice quickly would see the second swap cut off part-way.
+    expect(armed()).toBe(true);
+
+    vi.runAllTimers();
+    expect(armed()).toBe(false);
+  });
+
+  it("can be ended early, which is how the provider tears down", () => {
+    vi.useFakeTimers();
+    beginThemeFade();
+
+    endThemeFade();
+
+    expect(armed()).toBe(false);
+    // And the timer is gone with it — a pending one would strip the attribute off a
+    // document the provider that armed it no longer owns.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("arms nothing it could not disarm", () => {
+    const root = document.createElement("html");
+
+    // A view with no timers cannot take the attribute back off, and an attribute left on
+    // would put every colour change for the rest of the session behind a transition.
+    beginThemeFade(root, {} as Window);
+
+    expect(armed(root)).toBe(false);
   });
 });
 

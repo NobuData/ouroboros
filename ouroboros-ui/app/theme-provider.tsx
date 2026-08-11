@@ -14,6 +14,8 @@ import {
   DEFAULT_THEME,
   type ResolvedTheme,
   type Theme,
+  beginThemeFade,
+  endThemeFade,
   readStoredTheme,
   stampTheme,
   storeTheme,
@@ -53,6 +55,11 @@ const useIsomorphicLayoutEffect =
  * as React state, a setter that applies and persists a new one, and a `resolved` value
  * that stays true while the choice is *system* and the OS changes underneath it.
  *
+ * It is also where the cross-fade is armed, at both of the two moments a palette can
+ * change — a press of the switcher, and an OS flip while the choice is *system* — and
+ * nowhere else. `app/theme.ts` describes what arming does and `globals.css` decides
+ * whether it shows.
+ *
  * ### Why the initial state is not read from storage
  *
  * A lazy initialiser reading `localStorage` would make the first client render disagree
@@ -82,7 +89,16 @@ export function ThemeProvider({ children }: Readonly<{ children: React.ReactNode
     // it manages from JSX, dropping the one the script set; without this the page would
     // then render in the wrong palette, ignoring the value's own source of truth. It runs
     // in a layout effect so the repair lands before the browser paints.
+    //
+    // Bare, with no fade armed: on a load that needs the repair the palette is already
+    // wrong, and fading into the right one would turn a correction nobody should notice
+    // into an animation everybody does. The fade belongs to a change someone asked for.
     stampTheme(stored);
+
+    // Closing the window is the provider's, for the same reason opening it is: a timer
+    // that outlived this component would strip an attribute off a document it no longer
+    // owns.
+    return endThemeFade;
   }, []);
 
   useEffect(() => {
@@ -90,14 +106,29 @@ export function ThemeProvider({ children }: Readonly<{ children: React.ReactNode
     if (!query) return;
 
     const onChange = (event: MediaQueryListEvent) => {
+      // While the choice is system this event *is* the palette changing: the sheet's own
+      // media query has flipped and CSS repaints with no help from here. Arming is
+      // therefore best-effort, and deliberately so — it fades the swap only when the
+      // change is reported before the frame that repaints, which is the order the
+      // rendering steps specify but not the one a Chrome whose media state was changed
+      // from the outside was measured doing. When it loses that race the swap is instant,
+      // exactly as it was before the fade existed, and nothing is worse for having tried.
+      //
+      // Under an explicit choice nothing repaints at all, and arming would open a window
+      // over a change that is not happening.
+      if (theme === "system") beginThemeFade();
       setSystem(event.matches ? "dark" : "light");
     };
 
     query.addEventListener("change", onChange);
     return () => query.removeEventListener("change", onChange);
-  }, []);
+  }, [theme]);
 
   const setTheme = useCallback((next: Theme) => {
+    // Before the stamp. Either order works — a transition is chosen from the style an
+    // element ends up with, not the one it started in — but this is the order that reads
+    // as what it does: open the window, then change the palette inside it.
+    beginThemeFade();
     setThemeState(next);
     stampTheme(next);
     storeTheme(next);

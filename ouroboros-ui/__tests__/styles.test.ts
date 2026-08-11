@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { THEME_FADE_ATTRIBUTE, THEME_FADE_MS } from "@/app/theme";
+
 /**
  * The rule this module is held to: `app/tokens.css` is the only file in it that may
  * write a colour down. Everything else reads `var(--token)`, which is what makes a theme
@@ -113,6 +115,77 @@ describe("globals.css", () => {
       ["--f-mono", "--font-mono"],
     ]) {
       expect(source).toContain(`${token}: var(${face},`);
+    }
+  });
+});
+
+/**
+ * The CSS half of the theme cross-fade. The other half is `app/theme.ts`, which arms it;
+ * these are the four properties that make the pair a design rather than two features that
+ * happen to agree.
+ */
+describe("the theme cross-fade", () => {
+  const source = readFileSync(join(APP_DIR, "globals.css"), "utf8");
+  /** The sheet without its prose, so a rule cannot be found inside a comment. */
+  const code = source.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  /** Every rule that sets a transition, as `[selector, declarations]`. */
+  const transitions = [...code.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((rule) => rule[2].includes("transition"))
+    .map((rule) => [rule[1], rule[2]] as const);
+
+  it("lasts exactly as long as the window the engine holds open for it", () => {
+    // Two numbers, one duration: CSS runs the fade and only JavaScript can take the
+    // attribute off afterwards. Drift shortens the fade or leaves the page transitioning
+    // after it, and neither is visible in a unit test of either half alone.
+    expect(source).toContain(`--theme-fade: ${THEME_FADE_MS}ms`);
+    expect(transitions.flatMap((rule) => rule[1].match(/var\(--theme-fade\)/g) ?? [])).not
+      .toHaveLength(0);
+  });
+
+  it("applies only while a swap is armed", () => {
+    // A standing transition on every colour would also slow the ones colour is used to
+    // report — a status turning red, a stage going live — which have to land at once.
+    expect(transitions).not.toHaveLength(0);
+
+    for (const [selector] of transitions) {
+      for (const one of selector.split(",")) {
+        expect(one).toContain(`[${THEME_FADE_ATTRIBUTE}]`);
+      }
+    }
+  });
+
+  it("reaches descendants only, never the root element itself", () => {
+    // The root's own `color` is the system CanvasText, which `color-scheme` flips with the
+    // palette — and Chrome restarts an inherited property's transition on every descendant
+    // for as long as an ancestor is transitioning it. Include :root here and every piece of
+    // text in the product finishes about twice as late as the surface behind it.
+    for (const [selector] of transitions) {
+      for (const one of selector.split(",")) {
+        expect(one.trim()).toMatch(
+          new RegExp(`\\[${THEME_FADE_ATTRIBUTE}\\]\\s+\\S`),
+        );
+      }
+    }
+  });
+
+  it("names the properties it moves rather than transitioning all of them", () => {
+    // `all` would sweep up layout and transform, so anything that happened to move during
+    // the swap would slide instead of moving.
+    for (const [, declarations] of transitions) {
+      expect(declarations).not.toMatch(/transition:\s*all\b/);
+    }
+  });
+
+  it("is off for a reader who has asked for less motion", () => {
+    // The engine arms the attribute either way and asks the OS nothing, so this query is
+    // the only place the preference is honoured — and honouring it means exactly the
+    // instant swap that was there before the fade existed.
+    const guard = code.indexOf("@media (prefers-reduced-motion: no-preference)");
+
+    expect(guard).toBeGreaterThanOrEqual(0);
+    for (const [selector] of transitions) {
+      expect(code.indexOf(selector)).toBeGreaterThan(guard);
     }
   });
 });

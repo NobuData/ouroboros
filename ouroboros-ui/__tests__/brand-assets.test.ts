@@ -32,7 +32,8 @@ describe("the brand marks served by the UI", () => {
 
   it("keeps the light and dark marks the same size, so the header never moves", () => {
     // docs/BRAND.md states this property of the asset pair; the shell depends on it,
-    // because swapping treatments is a CSS `display` change with no layout behind it.
+    // because swapping treatments is a CSS opacity change over a stacked pair — both
+    // marks are laid out at all times, so a mismatch would size the box by the larger.
     const [light, dark] = COPIES.map(([copy]) => pngSize(readFileSync(join(UI, copy))));
 
     expect(light).toEqual(dark);

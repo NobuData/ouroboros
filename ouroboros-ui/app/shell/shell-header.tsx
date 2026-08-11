@@ -75,6 +75,10 @@ export function ShellHeader() {
  * JavaScript instead would pick after hydration — a visible swap of the logo on every
  * load, which is the same flash the theme bootstrap (#17) exists to avoid.
  *
+ * The two are stacked in one grid cell and the hidden one is transparent rather than
+ * `display: none`, so a theme change cross-fades the mark along with everything else it
+ * changes instead of snapping it mid-fade. Stacked, neither can move the row.
+ *
  * It is the **icon**, not the glyph `docs/BRAND.md` nominates for the app shell,
  * because the glyph stops reading below 96px wide and the header is 56px tall — a
  * case that document answers itself: under that width, use the icon. The pair is
@@ -86,7 +90,7 @@ function BrandMark() {
   const size = 30;
 
   return (
-    <>
+    <span className="shell-brand__marks">
       <Image
         className="shell-brand__mark shell-brand__mark--light"
         src="/brand/icon-light.png"
@@ -103,6 +107,6 @@ function BrandMark() {
         height={size}
         priority
       />
-    </>
+    </span>
   );
 }

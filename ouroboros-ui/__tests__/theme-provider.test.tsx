@@ -1,7 +1,12 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DARK_MEDIA_QUERY, THEME_ATTRIBUTE, THEME_STORAGE_KEY } from "@/app/theme";
+import {
+  DARK_MEDIA_QUERY,
+  THEME_ATTRIBUTE,
+  THEME_FADE_ATTRIBUTE,
+  THEME_STORAGE_KEY,
+} from "@/app/theme";
 import { ThemeProvider, useTheme } from "@/app/theme-provider";
 
 import { installMatchMedia, type MediaController } from "./helpers/match-media";
@@ -56,10 +61,14 @@ const reported = (field: "theme" | "resolved") => screen.getByTestId(field).text
 /** The attribute currently on `<html>`, or null when there is none. */
 const stamped = () => document.documentElement.getAttribute(THEME_ATTRIBUTE);
 
+/** Whether a cross-fade is armed on `<html>` right now. */
+const fading = () => document.documentElement.hasAttribute(THEME_FADE_ATTRIBUTE);
+
 afterEach(() => {
   media?.restore();
   media = undefined;
   document.documentElement.removeAttribute(THEME_ATTRIBUTE);
+  document.documentElement.removeAttribute(THEME_FADE_ATTRIBUTE);
   window.localStorage.clear();
 });
 
@@ -196,6 +205,63 @@ describe("tracking the OS", () => {
     // A listener that outlives its provider is a leak that only shows up after enough
     // navigations to be blamed on something else.
     expect(media?.listenerCount()).toBe(0);
+  });
+});
+
+describe("the cross-fade", () => {
+  it("is armed by a press, so the palette interpolates instead of cutting", async () => {
+    renderProbe({ stored: "light" });
+
+    await act(async () => {
+      screen.getByRole("button", { name: "dark" }).click();
+    });
+
+    expect(fading()).toBe(true);
+    // Armed alongside the palette, never instead of it: the swap is still one attribute.
+    expect(stamped()).toBe("dark");
+  });
+
+  it("is not armed on mount, where a fade would animate a correction nobody asked for", () => {
+    // The stored choice is re-stamped after hydration to repair what Strict Mode drops.
+    // Fading that would turn an invisible repair into a visible animation on every load.
+    renderProbe({ stored: "dark" });
+
+    expect(stamped()).toBe("dark");
+    expect(fading()).toBe(false);
+  });
+
+  it("is armed when the OS flips and the choice is system", () => {
+    renderProbe({ prefersDark: false });
+
+    act(() => media?.set(true));
+
+    // Nothing is stamped here — CSS repaints on its own — so arming is the only part of
+    // this swap JavaScript has any hand in.
+    expect(stamped()).toBeNull();
+    expect(fading()).toBe(true);
+  });
+
+  it("is not armed when the OS flips under an explicit choice", () => {
+    renderProbe({ prefersDark: false, stored: "light" });
+
+    act(() => media?.set(true));
+
+    // Nothing repaints: the explicit choice still wins. A window opened here would put
+    // an unrelated colour change behind a transition for no reason.
+    expect(fading()).toBe(false);
+  });
+
+  it("is closed by unmounting, so no timer outlives the provider", async () => {
+    const { unmount } = renderProbe();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "dark" }).click();
+    });
+    expect(fading()).toBe(true);
+
+    unmount();
+
+    expect(fading()).toBe(false);
   });
 });
 

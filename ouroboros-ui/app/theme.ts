@@ -1,10 +1,10 @@
 /**
- * The runtime theme engine's vocabulary and its two DOM operations.
+ * The runtime theme engine's vocabulary and its three DOM operations.
  *
- * Everything here is framework-free and synchronous, which is what lets the same
- * constants drive three different things that must not disagree: the inline `<head>`
- * script that stamps the theme before first paint, the React provider that owns the
- * choice afterwards, and the tests.
+ * Everything here is framework-free, which is what lets the same constants drive three
+ * different things that must not disagree: the inline `<head>` script that stamps the
+ * theme before first paint, the React provider that owns the choice afterwards, and the
+ * tests.
  *
  * ## The contract
  *
@@ -24,6 +24,24 @@
  * blocks, so native scrollbars, form controls and the browser's own canvas follow the
  * theme for the same reason the palette does. There is no second place a theme is
  * expressed.
+ *
+ * ## The cross-fade
+ *
+ * A palette swap is a redefinition of every colour in the product at once, and done bare
+ * it lands in a single frame: the whole screen changes between two paints. The fade below
+ * turns that into a short interpolation, and it is *armed* rather than always on —
+ * {@link beginThemeFade} puts a second attribute on `<html>` for the length of one swap
+ * and takes it off again.
+ *
+ * Armed, because the alternative is a standing `transition` on every colour in the
+ * product, which would also slow down the things colour is used to report: a status pill
+ * turning red, a run stage going live. Those must land immediately. The only window in
+ * which a colour change means "the theme changed" is the one this module opens.
+ *
+ * Whether the fade *runs* is not decided here. `globals.css` declares it inside
+ * `prefers-reduced-motion: no-preference`, so a reader who has asked for less motion gets
+ * the instant swap that was here before, and the attribute is simply inert — one place
+ * decides, the same way one place decides the palette.
  */
 
 /** The three states a theme choice can be in. `system` is the default. */
@@ -37,6 +55,29 @@ export const THEME_STORAGE_KEY = "ouro-theme";
 
 /** The attribute on `<html>` that selects a palette. Absent means *system*. */
 export const THEME_ATTRIBUTE = "data-theme";
+
+/** The attribute on `<html>` that arms the cross-fade. Present only while one runs. */
+export const THEME_FADE_ATTRIBUTE = "data-theme-fade";
+
+/**
+ * How long the cross-fade takes, in milliseconds.
+ *
+ * The number is CSS's to apply — `globals.css` gives `--theme-fade` the same one, and
+ * `__tests__/styles.test.ts` fails if the two ever differ. It is repeated here because
+ * the attribute has to come off once the fade is over, and only JavaScript can do that.
+ */
+export const THEME_FADE_MS = 180;
+
+/**
+ * The extra time the attribute stays on past the fade's own duration.
+ *
+ * The fade does not begin when {@link beginThemeFade} runs; it begins at the next style
+ * recalculation, up to a frame later. Removing the attribute exactly {@link THEME_FADE_MS}
+ * after arming would therefore cut the last frames off, and a cancelled transition snaps
+ * to its end value — a fade that finishes in a jump, which is the artefact the fade exists
+ * to remove. Three frames at 60Hz costs nothing and cannot.
+ */
+const FADE_GRACE_MS = 50;
 
 /** The media query that answers "is the OS set to dark?". */
 export const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
@@ -139,6 +180,67 @@ export function resolveTheme(
 export function stampTheme(theme: Theme, root: Element = document.documentElement): void {
   if (STAMPED.includes(theme)) root.setAttribute(THEME_ATTRIBUTE, theme);
   else root.removeAttribute(THEME_ATTRIBUTE);
+}
+
+/**
+ * The timer that will disarm the fade, when one is armed.
+ *
+ * Module scope, because there is one document and therefore one fade: a second swap
+ * arriving mid-fade must extend the window it is already in rather than open a second one
+ * that ends early and cuts the first short.
+ */
+let fading: number | undefined;
+
+/**
+ * Arm the cross-fade for the palette change about to happen.
+ *
+ * Call it *before* the change — before {@link stampTheme}, or in the `matchMedia`
+ * listener that sees the OS flip. Both orders in fact work, because a transition is
+ * chosen from the style the element ends up with rather than the one it started in, but
+ * arming first is the order that says what it means.
+ *
+ * The window closes on its own. Nothing needs to await it, and a caller that arms twice
+ * in quick succession gets one window that ends after the second swap, not two.
+ *
+ * @param root Element to arm. Defaults to `<html>`, where the palette is selected.
+ * @param view Window owning the timer. Defaults to the global `window`.
+ * @returns Nothing. A view that cannot set a timer cannot take the attribute off again,
+ *   and an attribute left on would put the rest of the session's colour changes behind a
+ *   transition — so the whole operation is skipped rather than half-done.
+ */
+export function beginThemeFade(
+  root: Element = document.documentElement,
+  view: Window | undefined = safeWindow(),
+): void {
+  if (typeof view?.setTimeout !== "function") return;
+
+  root.setAttribute(THEME_FADE_ATTRIBUTE, "");
+  view.clearTimeout(fading);
+  fading = view.setTimeout(() => {
+    fading = undefined;
+    root.removeAttribute(THEME_FADE_ATTRIBUTE);
+  }, THEME_FADE_MS + FADE_GRACE_MS);
+}
+
+/**
+ * End the window now, whether or not one is open.
+ *
+ * This is the teardown half: a timer that outlives the provider would strip an attribute
+ * off a document the provider no longer owns. It is not a way to interrupt a fade — doing
+ * that mid-swap snaps the colours to their final values, which is exactly what
+ * {@link FADE_GRACE_MS} exists to prevent.
+ *
+ * @param root Element to disarm. Defaults to `<html>`.
+ * @param view Window owning the timer. Defaults to the global `window`.
+ * @returns Nothing.
+ */
+export function endThemeFade(
+  root: Element = document.documentElement,
+  view: Window | undefined = safeWindow(),
+): void {
+  view?.clearTimeout(fading);
+  fading = undefined;
+  root.removeAttribute(THEME_FADE_ATTRIBUTE);
 }
 
 /**
