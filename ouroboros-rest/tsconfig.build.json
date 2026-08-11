@@ -5,6 +5,17 @@
   // fixtures they share — so the tests are still type-checked, they are simply not
   // shipped. A runtime image that carried them would carry `@nestjs/testing` and
   // `supertest` with them, and a set of development credentials besides.
+  //
+  // `*.integration-spec.ts` is listed separately because it is not matched by the pattern
+  // above: the integration suite is named so that `jest.config.mjs` cannot pick it up, and
+  // that same distinction has to be repeated here.
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "coverage", "**/*.spec.ts", "**/*.fixture.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "**/*.spec.ts",
+    "**/*.integration-spec.ts",
+    "**/*.fixture.ts"
+  ]
 }

@@ -44,10 +44,66 @@ jobs:
   ci:
     name: ci/rest
     runs-on: ubuntu-latest
+
+    # The throwaway database the integration suite runs against (#30). It is created empty
+    # for every run and thrown away with the runner, and the steps below migrate it with
+    # this checkout's Flyway migrations — so what `yarn test:integration` compares its
+    # `Database` interface against is the schema this commit describes, not one a developer
+    # happened to have.
+    #
+    # Same image and the same healthcheck the development stack pins in docker-compose.yml,
+    # for the reason ci/db pins it: what a pull request proves is what a developer gets.
+    # -U/-d are named explicitly because pg_isready otherwise probes as the OS user and
+    # reports ready while the database being created is still absent.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ouroboros
+          POSTGRES_PASSWORD: ouroboros
+          POSTGRES_DB: ouroboros
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ouroboros -d ouroboros"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
     steps:
       - uses: actions/checkout@v4
 
+      # Lint, typecheck, the unit suite and the build — none of which start anything. The
+      # acceptance criterion "typecheck fails on a query against a nonexistent column"
+      # (#30) is settled here, by the typecheck: `schema.spec.ts` states it as
+      # `@ts-expect-error`, which fails the compile when it stops being an error.
       - uses: ./.github/actions/node-module
         with:
           module: ouroboros-rest
           scaffolded-by: "#27"
+
+      # -----------------------------------------------------------------------------
+      # The live pass (#30) — everything above runs against no database; everything below
+      # runs against a real one.
+      # -----------------------------------------------------------------------------
+
+      # `ouroboros-db/scripts/migrate` rather than a `flyway` command written out here, so
+      # CI applies migrations the same way a developer does — through
+      # ouroboros-db/flyway.toml, with no `flyway` on PATH picking the pinned
+      # flyway/flyway:11-alpine image by itself. Its OURO_DB_* defaults are localhost:5432
+      # and the ouroboros role, which is exactly the service above, so it is run bare: the
+      # parameters have one definition rather than two that can disagree.
+      - name: Migrate the database the integration suite runs against
+        run: ouroboros-db/scripts/migrate
+
+      # What a unit suite cannot answer: that a repository roundtrip works against a
+      # migrated database, that the `Database` interface still names the columns Flyway
+      # created, and that shutting the application down really returns its connections.
+      - name: Integration suite
+        working-directory: ouroboros-rest
+        env:
+          # The well-known development password against a throwaway database on a throwaway
+          # runner is not a secret, and keeping it out of GitHub secrets is what lets a
+          # developer reproduce this step by hand.
+          OURO_DATABASE_URL: postgresql://ouroboros:ouroboros@localhost:5432/ouroboros
+        run: yarn test:integration
