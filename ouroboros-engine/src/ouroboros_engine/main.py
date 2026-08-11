@@ -10,30 +10,26 @@ Two entry points, one code path:
 
 Because ``app`` is built at import, a malformed environment stops the process while it
 is still starting rather than on the first request. That is the fail-fast rule from
-``docs/CONVENTIONS.md`` § 4.
+``docs/CONVENTIONS.md`` § 4 — and it now covers the API specification too, which is a
+committed file this module loads rather than a document FastAPI derives from the routes
+(:mod:`ouroboros_engine.openapi`).
 """
 
 from fastapi import FastAPI
 
-from ouroboros_engine import __version__
 from ouroboros_engine.api import health, root, status
 from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
+from ouroboros_engine.openapi import document
 from ouroboros_engine.settings import Settings, load_settings
 
-#: Shown on the generated OpenAPI document, which is the engine's own reference. The
-#: contract REST codes against is the versioned one under ``/v0`` (#52).
-_DESCRIPTION = (
-    "Internal backend for Ouroboros. Reachable only from ouroboros-rest; "
-    "never from a browser. Every path but /healthz requires the shared secret on the "
-    "X-Ouro-Internal-Key header."
-)
-
 #: The paths served without the internal key. Liveness only, and it is the route module
-#: that says so — see :mod:`ouroboros_engine.api.health`. The generated OpenAPI document
-#: is deliberately not in here: it is a map of the internal surface, and a misrouted
-#: port should not hand one out.
+#: that says so — see :mod:`ouroboros_engine.api.health`. The OpenAPI document is
+#: deliberately not in here: it is a map of the internal surface, and a misrouted port
+#: should not hand one out. ``openapi.yaml`` says the same thing in its own terms — every
+#: operation but this one carries the ``InternalKey`` requirement — and
+#: ``tests/test_openapi.py`` asserts the two agree.
 _PUBLIC_PATHS = (health.HEALTH_PATH,)
 
 
@@ -55,15 +51,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             environment is missing or malformed — which now includes
             ``OURO_ENGINE_SHARED_SECRET`` being unset, because without it every route
             but liveness would be unreachable.
+        ouroboros_engine.openapi.SpecificationError: If the committed API specification
+            is missing or malformed. It is what this application serves at
+            ``/openapi.json``, so an image built without it is broken at build time
+            rather than at the first request for the document.
     """
     resolved = load_settings() if settings is None else settings
     configure_logging(resolved.log_level)
 
+    # The specification is the source, and the application is described by it rather
+    # than the other way around: title, version and description are read off the
+    # document instead of being written a second time here, where they could disagree
+    # with it.
+    specification = document()
+    info = specification["info"]
+
     app = FastAPI(
-        title="ouroboros-engine",
-        description=_DESCRIPTION,
-        version=__version__,
+        title=info["title"],
+        description=info["description"],
+        version=info["version"],
     )
+
+    def committed_document() -> dict:
+        """Answer with the specification instead of one derived from the routes.
+
+        Returns:
+            The document :func:`ouroboros_engine.openapi.document` loaded, which is what
+            ``/openapi.json`` and ``/docs`` serve.
+        """
+        return specification
+
+    # Replacing the method rather than filling in `app.openapi_schema`: FastAPI caches a
+    # generated document there but re-generates it whenever the route set changes, so a
+    # schema assigned here would not survive the `include_router` calls below. Overriding
+    # the producer leaves nothing that can regenerate — what a caller gets is the
+    # committed file, unchanged, and no route can quietly rewrite the contract by
+    # acquiring a docstring. What keeps the code honest to the document is the test suite
+    # (tests/test_openapi.py), not the framework.
+    app.openapi = committed_document
+
     app.state.settings = resolved
     app.state.uptime = Uptime()
 

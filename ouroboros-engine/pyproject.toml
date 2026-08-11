@@ -22,8 +22,14 @@ dependencies = [
 # installs this project into its environment, so the console script below is what that
 # command resolves to. Production runs uvicorn against `ouroboros_engine.main:app`
 # directly, without the reloader; the container that does so is #53.
+#
+# `uv run openapi` re-renders openapi.json from the authoritative openapi.yaml beside it
+# (docs are spec-first — src/ouroboros_engine/openapi.py). `--check` reports drift
+# without writing, which is what a hook or a pipeline wants; `uv run pytest` asserts the
+# same thing, so CI already covers it.
 [project.scripts]
 dev = "ouroboros_engine.dev:main"
+openapi = "ouroboros_engine.openapi:main"
 
 [dependency-groups]
 # Installed by a plain `uv sync` (PEP 735 default group), which is what CI and a
@@ -33,7 +39,15 @@ dev = [
     # starlette 1.x warns that the httpx backend is deprecated, and this suite treats a
     # warning as a failure.
     "httpx2>=2.10.0",
+    # Asserts that openapi.yaml is a valid OpenAPI 3.1 document rather than merely valid
+    # YAML. The specification is written by hand and published to a catalogue, so the
+    # thing that would otherwise catch a malformed one is the upload.
+    "openapi-spec-validator>=0.7.2",
     "pytest>=9.1.1",
+    # Reads the authoritative openapi.yaml so `uv run openapi` can render the JSON the
+    # service loads. Development-only on purpose: the served application parses JSON
+    # with the standard library and never imports this.
+    "pyyaml>=6.0.3",
     "ruff>=0.16.2",
 ]
 
@@ -45,6 +59,15 @@ build-backend = "hatchling.build"
 # because pytest happened to start in this directory.
 [tool.hatch.build.targets.wheel]
 packages = ["src/ouroboros_engine"]
+
+# The API specification travels with the code. The service serves the committed document
+# rather than generating one (src/ouroboros_engine/openapi.py), so a wheel without these
+# two files is a service that cannot answer /openapi.json — they are put beside the
+# module, which is the first place its loader looks. Both are committed at the module
+# root, where a catalogue, a linter or a human expects to find them.
+[tool.hatch.build.targets.wheel.force-include]
+"openapi.yaml" = "ouroboros_engine/openapi.yaml"
+"openapi.json" = "ouroboros_engine/openapi.json"
 
 # ---------------------------------------------------------------------------
 # ruff — lint and format, the Python half of docs/CONVENTIONS.md § 6

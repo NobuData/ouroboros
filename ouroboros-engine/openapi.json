@@ -1,0 +1,252 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ouroboros-engine",
+    "version": "0.2.0",
+    "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
+    "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore a bare `401 {\"detail\":\"Unauthorized\"}` whether the path\nexists or not: status codes are how a surface gets mapped from outside, and an\nunauthenticated caller cannot tell `/v0/status` from `/v0/anything-else`. Read the\n`401` documented on each operation below as the answer to *anything* unauthenticated,\nincluding paths this document does not list.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one.",
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "contact": {
+      "name": "Ouroboros",
+      "url": "https://github.com/NobuData/ouroboros"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "`uv run dev`, which binds the loopback interface only. In a deployment the engine\nhas no public origin at all: it is addressed by its service name from inside the\ncluster, and the port comes from `PORT`."
+    }
+  ],
+  "tags": [
+    {
+      "name": "service",
+      "description": "Identity and liveness — what answers before any contract does."
+    },
+    {
+      "name": "v0",
+      "description": "The versioned internal contract. `/v0/status` claims the path; the request and\nerror shapes the rest of it follows are\n[#52](https://github.com/NobuData/ouroboros/issues/52)."
+    }
+  ],
+  "security": [
+    {
+      "InternalKey": []
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Liveness probe",
+        "description": "Report that the process is up and serving HTTP.\n\nDeliberately shallow: it opens no connection, reads no configuration and calls\nnothing downstream, so it cannot fail for a reason that restarting the container\nwill not fix. *Readiness* — whether the dependencies a request needs are\nreachable — is the REST layer's probe, which asks `/v0/status` with the key.",
+        "operationId": "readHealth",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is up.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Liveness"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Identify the service",
+        "description": "Report which service and which build is answering. Carries no state, reads no\nconfiguration, and says nothing about health — liveness is `/healthz`.",
+        "operationId": "readRoot",
+        "responses": {
+          "200": {
+            "description": "The service and its installed version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceIdentity"
+                },
+                "example": {
+                  "service": "ouroboros-engine",
+                  "version": "0.2.0"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v0/status": {
+      "get": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Report version and uptime",
+        "description": "Answer the two questions that come up when the engine is suspected: *which\nversion of it is this*, and *is this the same process as a minute ago*.\n\n`ouroboros-rest`'s readiness probe is the intended caller. A `401` here means the\ntwo sides hold different secrets, and REST reports that to a client as a `502` —\nnever a `401`, because the internal boundary is not something a browser gets to\nprobe.",
+        "operationId": "readStatus",
+        "responses": {
+          "200": {
+            "description": "The running build and how long it has been running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceStatus"
+                },
+                "example": {
+                  "service": "ouroboros-engine",
+                  "version": "0.2.0",
+                  "uptime_seconds": 1234.567
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "InternalKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Ouro-Internal-Key",
+        "description": "The shared secret both sides of the internal boundary hold: `ouroboros-engine`\nreads it from `OURO_ENGINE_SHARED_SECRET`, `ouroboros-rest` sends it. There is no\nother credential and no other scheme — no bearer token, no user identity. This\nis a service-to-service header, and it is generated per environment."
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "The `X-Ouro-Internal-Key` header was missing or wrong. The body is constant: it\nnames no path, echoes no header and offers no hint about what the key should look\nlike. What an operator needs is in the engine's log instead, which stays inside\nthe cluster.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "detail": "Unauthorized"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Liveness": {
+        "type": "object",
+        "title": "Liveness",
+        "description": "The body of a `GET /healthz` response.",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "description": "Always `ok`. A probe reads the status code; this is for the human who runs\nthe same request by hand.",
+            "examples": [
+              "ok"
+            ]
+          }
+        }
+      },
+      "ServiceIdentity": {
+        "type": "object",
+        "title": "ServiceIdentity",
+        "description": "The body of a `GET /` response.",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "version"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "const": "ouroboros-engine",
+            "description": "Distribution name of this service, constant across deployments.",
+            "examples": [
+              "ouroboros-engine"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "description": "Installed version, from package metadata.",
+            "examples": [
+              "0.2.0"
+            ]
+          }
+        }
+      },
+      "ServiceStatus": {
+        "type": "object",
+        "title": "ServiceStatus",
+        "description": "The body of a `GET /v0/status` response.",
+        "additionalProperties": false,
+        "required": [
+          "service",
+          "version",
+          "uptime_seconds"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "const": "ouroboros-engine",
+            "description": "Distribution name of this service, constant across deployments.",
+            "examples": [
+              "ouroboros-engine"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "description": "Installed version, read from package metadata — the same string `GET /`\nreports, so there is one source for \"which build is this\".",
+            "examples": [
+              "0.2.0"
+            ]
+          },
+          "uptime_seconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Seconds since this process built its application, rounded to milliseconds.\nSmall and shrinking across calls means something is restarting the container.",
+            "examples": [
+              1234.567
+            ]
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "title": "Error",
+        "description": "The shape every error in this service is reported in. `detail` is FastAPI's own\nkey, and matching it keeps one shape for a client to parse.",
+        "additionalProperties": false,
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string",
+            "description": "A short, constant description of what was refused.",
+            "examples": [
+              "Unauthorized"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

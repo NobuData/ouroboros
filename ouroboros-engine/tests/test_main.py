@@ -40,9 +40,10 @@ def test_the_application_carries_a_stopwatch_for_the_status_route() -> None:
 def test_every_route_the_engine_serves_is_registered() -> None:
     app = main.create_app(Settings(OURO_ENGINE_SHARED_SECRET="s3cret"))
 
-    # Read from the generated document rather than from app.routes: FastAPI wraps an
-    # included router in an object with no path of its own, and the document is the
-    # public answer to "what does this application serve".
+    # Read from the document rather than from app.routes: FastAPI wraps an included
+    # router in an object with no path of its own, and the document is the public answer
+    # to "what does this application serve". It is now the committed openapi.yaml rather
+    # than one FastAPI derives, so what holds the two together is tests/test_openapi.py.
     paths = set(app.openapi()["paths"])
 
     assert {"/", "/healthz", "/v0/status"} <= paths

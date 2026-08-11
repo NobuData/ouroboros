@@ -42,6 +42,46 @@ def test_the_dev_verb_resolves_to_something_callable() -> None:
     assert callable(entry_point)
 
 
+def test_the_openapi_verb_resolves_to_something_callable() -> None:
+    # `uv run openapi` re-renders openapi.json from the authoritative YAML; the README
+    # documents it and tests/test_openapi.py runs its --check mode.
+    target = _manifest()["project"]["scripts"]["openapi"]
+    module_name, _, attribute = target.partition(":")
+
+    entry_point = getattr(importlib.import_module(module_name), attribute)
+
+    assert callable(entry_point)
+
+
+def test_the_specification_is_packaged_beside_the_module() -> None:
+    # The service serves a committed file rather than a generated document, so a wheel
+    # without it is a service that cannot answer /openapi.json. Both files sit at the
+    # module root and are force-included next to the package, which is the first place
+    # ouroboros_engine.openapi looks.
+    included = _manifest()["tool"]["hatch"]["build"]["targets"]["wheel"][
+        "force-include"
+    ]
+
+    assert included == {
+        "openapi.yaml": "ouroboros_engine/openapi.yaml",
+        "openapi.json": "ouroboros_engine/openapi.json",
+    }
+
+
+def test_the_yaml_parser_is_a_development_dependency_only() -> None:
+    # The served application parses its document with the standard library; PyYAML is
+    # for `uv run openapi` and for the tests. A production dependency on it would mean
+    # the runtime had started reading the YAML.
+    manifest = _manifest()
+    runtime = " ".join(manifest["project"]["dependencies"]).lower()
+
+    assert "yaml" not in runtime
+    assert any(
+        requirement.lower().startswith("pyyaml")
+        for requirement in manifest["dependency-groups"]["dev"]
+    )
+
+
 def test_ruff_agrees_with_the_editorconfig_line_length() -> None:
     # .editorconfig is authoritative for width (docs/CONVENTIONS.md § 6); the formatter
     # has to agree with it rather than override it.

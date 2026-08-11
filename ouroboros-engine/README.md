@@ -27,6 +27,7 @@ probe and nothing else.
 | Framework | FastAPI + uvicorn |
 | Package manager | [uv](https://docs.astral.sh/uv/) (locked via `uv.lock`) |
 | Config | pydantic-settings, `OURO_*` validated at import |
+| API spec | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it |
 | Lint & format | ruff |
 | Tests | pytest + the FastAPI test client (httpx2) |
 | Container | Multi-stage `python:3.12-slim`, non-root, `HEALTHCHECK` on `/healthz` — [#53](https://github.com/NobuData/ouroboros/issues/53) |
@@ -36,6 +37,7 @@ probe and nothing else.
 ```bash
 uv sync                                                # create .venv, install from uv.lock
 OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me uv run dev   # :8000
+uv run openapi                                         # re-render openapi.json from openapi.yaml
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest
@@ -76,7 +78,7 @@ uv run uvicorn ouroboros_engine.main:app --host 0.0.0.0 --port "${PORT:-8000}"
 | `GET /healthz` | no | `{"status":"ok"}` — liveness, for a container platform's probe |
 | `GET /` | yes | The service name and its installed version |
 | `GET /v0/status` | yes | Version and uptime — what `ouroboros-rest`'s readiness probe reads |
-| `/openapi.json`, `/docs` | yes | The generated document. A map of the internal surface is not something a misrouted port should hand out |
+| `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
 ```console
 $ curl -s localhost:8000/healthz && echo
@@ -104,6 +106,52 @@ method; the key that was offered never is, right or wrong.
 `/v0` is the versioned internal prefix. `/v0/status` claims the path; the request and
 error shapes the rest of it follows are
 [#52](https://github.com/NobuData/ouroboros/issues/52).
+
+## The API specification
+
+**[`openapi.yaml`](openapi.yaml) is the specification, and the service serves it.** This
+module is spec-first: FastAPI does not derive a document from whatever routes it happens
+to have — the application loads the committed file and hands it back at `/openapi.json`
+unchanged. What a catalogue holds, what `/docs` renders and what the process answers with
+are the same bytes, so the document can carry things no framework has a field for (the
+`X-Ouro-Internal-Key` scheme, the `401` every guarded operation shares, prose written for
+a reader) and cannot be rewritten by a docstring nobody meant as a contract.
+
+Two files, one document, both committed at this directory's root — the paths to hand a
+catalogue, a linter or a diff tool:
+
+| File | What it is |
+|---|---|
+| [`openapi.yaml`](openapi.yaml) | **Authoritative.** The one to edit — comments, block text, no escaping |
+| [`openapi.json`](openapi.json) | Rendered from it by `uv run openapi`. What the process loads, and what a JSON-only tool wants |
+
+```bash
+uv run openapi           # re-render openapi.json from the YAML
+uv run openapi --check   # report drift without writing; exits non-zero
+```
+
+The JSON is committed rather than built on demand because the container serves it: both
+files are packaged beside the module, so an image carries the document it answers with.
+Reading the JSON at runtime is also why the served process needs no YAML parser — PyYAML
+is a development dependency, used by the renderer and the tests and by nothing that
+handles a request.
+
+Being spec-first costs the one thing a generated document gave away free: the guarantee
+that it describes the routes that actually exist. `uv run pytest` is that guarantee, and
+`ci/engine` runs it on every pull request. It fails when
+
+- the two files have drifted apart, or `openapi.json` was hand-edited;
+- `info.version` is not the version `pyproject.toml` declares;
+- the application serves a path or method the document does not describe — **or the
+  document promises one the application does not serve**;
+- a response model gained or lost a field the schema does not have;
+- `/healthz` is not exactly the set of operations exempt from the key, which is the same
+  claim `_PUBLIC_PATHS` in `main.py` makes;
+- a documented example is not a body the service could actually send;
+- the document is not valid OpenAPI 3.1.
+
+So adding a route is now two edits — the router module and `openapi.yaml` — and forgetting
+the second one is a red pipeline rather than a specification that quietly lies.
 
 ## Configuration
 
@@ -177,8 +225,11 @@ ouroboros-engine/
 │   │   └── uptime.py   #   the stopwatch /v0/status reports from
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
+│   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
 │   └── settings.py     # pydantic-settings, OURO_*
 ├── tests/              # pytest; conftest.py isolates the environment
+├── openapi.yaml        # the API specification — authoritative, hand-written
+├── openapi.json        # rendered from it; the copy the service loads
 ├── pyproject.toml      # deps, task names, ruff & pytest config
 └── uv.lock             # committed; CI installs with --locked
 ```
@@ -189,7 +240,9 @@ middleware reads configuration from the application rather than re-reading the
 environment. `app` at module scope is what `ouroboros_engine.main:app` resolves to for
 uvicorn, in development and in the container.
 
-Adding a router is a module under `api/` and one `include_router` line in `create_app`.
+Adding a router is a module under `api/`, one `include_router` line in `create_app`, and
+the operation written into `openapi.yaml` — the suite fails on a route that is served but
+not described, so the third step is not one anyone has to remember.
 **A route added that way is guarded by default**: the key check is middleware, installed
 before any router, so a new path requires the key without anything being remembered.
 Exempting one is an edit to `_PUBLIC_PATHS` in `main.py`, which is deliberately the only

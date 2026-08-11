@@ -156,7 +156,7 @@ import, and `GET /` naming the service and version — landed with
 The engine executes the work the REST layer brokers, and in time the autonomous loops the
 product is named for. It is **internal only**, and enforces that itself rather than
 trusting the network to: `/healthz` is open so a container platform can probe liveness,
-and **every other path** — `/v0/status`, `GET /`, the generated OpenAPI document, a path
+and **every other path** — `/v0/status`, `GET /`, the OpenAPI document, a path
 that does not exist — requires the shared secret on `X-Ouro-Internal-Key`, compared in
 constant time. The check is middleware, so it runs before routing and a request without
 the key gets a 401 that reveals nothing about whether the path exists.
@@ -342,8 +342,13 @@ where the setting will be applied, so adopting it is a change in one place.
 
 ## 5. The API contracts
 
-Two contracts, generated rather than written, because a hand-maintained type is a type
-that drifts.
+Two contracts, and they run in opposite directions on purpose. The **public** one is
+generated from the code, because the client that consumes it is generated too and a
+hand-maintained type is a type that drifts. The **internal** one is written first and
+served verbatim, because it is a boundary two services have to agree on rather than a
+projection of whichever one happened to be edited last. Both are committed, and both have
+a check that fails when the code and the document disagree — which is the property that
+actually matters, not which of the two was typed first.
 
 ### 5.1 UI ↔ REST — OpenAPI generated
 
@@ -376,8 +381,7 @@ header from the active-tenant store, and parsing of the error envelope into a ty
 **Partly running** ([#51](https://github.com/NobuData/ouroboros/issues/51) landed the
 first two routes; [#52](https://github.com/NobuData/ouroboros/issues/52) and
 [#35](https://github.com/NobuData/ouroboros/issues/35) are the rest). The engine
-publishes a versioned contract under `/v0/`, exports its own FastAPI-generated
-`openapi.json` for the same drift check, and REST mirrors it in a typed client:
+publishes a versioned contract under `/v0/`, and REST mirrors it in a typed client:
 
 | Route | Auth | Purpose | State |
 |---|---|---|---|
@@ -390,6 +394,18 @@ new prefix served alongside the old one rather than a flag day. `OURO_ENGINE_SHA
 must carry the same value on both sides; the engine compares it in constant time, and a
 mismatch is logged there and surfaced by REST as a 502 as described in
 [§3.2](#32-an-engine-call).
+
+**The engine is spec-first.**
+[`ouroboros-engine/openapi.yaml`](../ouroboros-engine/openapi.yaml) is the document, not a
+report about the code: FastAPI generates nothing, the application loads the committed file
+and serves it verbatim at `/openapi.json`, and
+[`openapi.json`](../ouroboros-engine/openapi.json) is rendered from the YAML by
+`uv run openapi` for the process and for whatever catalogues the contract. That direction
+suits a boundary between two services — the document is where the two agree, and it can
+state things FastAPI has no field for, like the `X-Ouro-Internal-Key` scheme and the `401`
+every guarded operation returns. The check that replaces generation is the engine's own
+test suite, which fails when the served routes, the response models, the version or the
+public-path set stop matching what the document claims.
 
 ### 5.3 The error envelope
 
