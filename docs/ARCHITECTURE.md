@@ -129,10 +129,16 @@ before a socket is bound ([#28](https://github.com/NobuData/ouroboros/issues/28)
 `/health/live` and `/health/ready` answering for the process and for its dependencies
 ([#29](https://github.com/NobuData/ouroboros/issues/29)), a typed Kysely instance over a
 `pg` pool whose `Database` interface mirrors V001–V003
-([#30](https://github.com/NobuData/ouroboros/issues/30)), and shutdown hooks draining every
-connection either of them holds. It also publishes the contract it is written against — Swagger UI at
+([#30](https://github.com/NobuData/ouroboros/issues/30)), the tenancy API over it
+([#31](https://github.com/NobuData/ouroboros/issues/31)), and shutdown hooks draining every
+connection any of them holds. It also publishes the contract it is written against — Swagger UI at
 `/api/docs` and the committed document at `/api/openapi.json`, served verbatim rather
 than generated ([§5.1](#51-ui--rest--the-public-contract)).
+
+**Nothing it serves is authenticated yet.** The session and the principal are
+[#33](https://github.com/NobuData/ouroboros/issues/33) and the tenant context and role guard
+are [#32](https://github.com/NobuData/ouroboros/issues/32); until both land the tenancy
+routes are open, which is a statement about how far the epic has got rather than a design.
 
 It is the only module that talks to the database and the only module that talks to the
 engine, and it owns everything that follows from that:
@@ -154,8 +160,16 @@ engine, and it owns everything that follows from that:
   and the integration suite fails if it drifts from a migrated database
   ([#30](https://github.com/NobuData/ouroboros/issues/30), running).
 - **Tenancy** — tenants, domains, members and GitHub org/repo enablement
-  ([#31](https://github.com/NobuData/ouroboros/issues/31)), plus the per-request tenant
-  context ([#32](https://github.com/NobuData/ouroboros/issues/32)).
+  ([#31](https://github.com/NobuData/ouroboros/issues/31), running), plus the per-request
+  tenant context ([#32](https://github.com/NobuData/ouroboros/issues/32)). Three layers:
+  controllers that name routes and request shapes, services that hold the rules and own the
+  transactions, repositories that issue statements and hold no rules. One rule lives here
+  rather than in the database because it spans rows and has to survive both a role change
+  and a delete — a tenant always keeps at least one owner — and it is enforced with
+  `select … for update` rather than a count, so two concurrent demotions cannot both pass.
+  Constraint violations are mapped into the error envelope below by a table keyed on the
+  migrations' own constraint names, and lists share one pagination convention
+  (`?limit=&offset=` → `{items, total, limit, offset}`).
 - **Auth** — the GitHub OAuth code flow and the session cookie
   ([#33](https://github.com/NobuData/ouroboros/issues/33)).
 - **The engine gateway** — a typed internal client and the one route that exposes engine
@@ -442,10 +456,11 @@ public-path set stop matching what the document claims.
 
 ### 5.3 The error envelope
 
+**Running in the REST layer** ([#31](https://github.com/NobuData/ouroboros/issues/31)).
 Every error a client sees has the same shape, from both services:
 
 ```json
-{ "code": "domain_taken", "message": "That domain belongs to another tenant", "details": {} }
+{ "code": "domain_taken", "message": "That domain belongs to another tenant.", "details": {} }
 ```
 
 `code` is stable and machine-readable, `message` is for a human, `details` carries
@@ -453,6 +468,18 @@ per-field validation output. Database constraint violations are mapped into it r
 leaking through — a duplicate domain is a `409` with `code: "domain_taken"`, not a
 PostgreSQL error string. The engine mirrors the shape so that a failure crossing the
 gateway does not change form on the way out.
+
+Three things make it true of *every* answer rather than of the ones a handler produced. A
+global filter catches what no handler threw — Nest's own `404` for a path nothing claims, a
+body the parser refused, a connection the database would not give — so a client parses one
+shape instead of one per layer. `details` is always an object, empty rather than absent,
+so reading `details.slug` never has to check `details` first. And a `5xx` never carries its
+own message: the diagnosis names a query, a host or a role, so it goes to the service log
+and the client gets a constant, exactly as a health probe's `down` message does.
+
+The one exemption is enumerated: `/health/live` and `/health/ready` answer in Terminus's
+report shape, because their reader is a container platform rather than a browser and that
+body is what `openapi.yaml` describes. It is the same list that escapes the `/api` prefix.
 
 ## 6. Configuration — the `OURO_*` registry
 

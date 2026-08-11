@@ -3,16 +3,23 @@
 > **Status:** the service scaffold landed with
 > [#27](https://github.com/NobuData/ouroboros/issues/27), validated configuration with
 > [#28](https://github.com/NobuData/ouroboros/issues/28), the health probes with
-> [#29](https://github.com/NobuData/ouroboros/issues/29) and the database access layer with
-> [#30](https://github.com/NobuData/ouroboros/issues/30) (epic
-> [#4](https://github.com/NobuData/ouroboros/issues/4)). What runs today is the skeleton —
-> a NestJS application answering a heartbeat on `/api/v1`, publishing
+> [#29](https://github.com/NobuData/ouroboros/issues/29), the database access layer with
+> [#30](https://github.com/NobuData/ouroboros/issues/30) and the tenancy API with
+> [#31](https://github.com/NobuData/ouroboros/issues/31) (epic
+> [#4](https://github.com/NobuData/ouroboros/issues/4)). What runs today is a NestJS
+> application answering a heartbeat on `/api/v1`, publishing
 > [the specification it is written against](#the-api-specification), reading every setting
 > through [a typed, fail-fast configuration module](#configuration), reporting
 > [whether it is live and whether its dependencies are reachable](#health-and-readiness),
-> holding [a typed, pooled connection to the tenancy schema](#data-access), with the lint,
-> typecheck, test and build pipeline `ci/rest` runs. The feature modules listed under
-> [Layout](#layout) are what land on it.
+> holding [a typed, pooled connection to the tenancy schema](#data-access) and serving
+> [the first real API of the system](#the-tenancy-api) over it, with the lint, typecheck,
+> test and build pipeline `ci/rest` runs.
+>
+> **Nothing is authenticated yet.** Sign-in and the session are
+> [#33](https://github.com/NobuData/ouroboros/issues/33) and the role guard is
+> [#32](https://github.com/NobuData/ouroboros/issues/32); until both land, the tenancy
+> routes are open and this build belongs on a development machine. The remaining feature
+> modules are listed under [Layout](#layout).
 
 ## Purpose
 
@@ -34,6 +41,7 @@ in a single, auditable place.
 | Runtime         | Node 24                                                                                                                                                                    |
 | Data access     | Kysely over `pg` — no ORM; Flyway owns the schema, and the `Database` interface mirrors the migrations ([#30](https://github.com/NobuData/ouroboros/issues/30))            |
 | Config          | `@nestjs/config` + zod validation, fail-fast at boot ([#28](https://github.com/NobuData/ouroboros/issues/28))                                                              |
+| Requests        | `class-validator` DTOs behind a global pipe — transform, whitelist, refuse the undeclared ([#31](https://github.com/NobuData/ouroboros/issues/31))                         |
 | Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                  |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
 | Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
@@ -58,21 +66,31 @@ touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
 
 `yarn dev` is `nest start --watch`; `yarn start` runs the compiled `dist/main.js`, which
 is also what the container ([#36](https://github.com/NobuData/ouroboros/issues/36)) will
-run. The heartbeat and the two probes are the whole of the surface today:
+run.
 
 ```console
 $ curl http://localhost:4000/api/v1
-{"service":"ouroboros-rest","version":"0.4.0","status":"ok","uptimeSeconds":3.885}
+{"service":"ouroboros-rest","version":"0.5.0","status":"ok","uptimeSeconds":3.885}
 ```
 
-| Path                | Purpose                                                               |
-| ------------------- | --------------------------------------------------------------------- |
-| `GET /api/v1`       | The heartbeat — service, build, uptime                                |
-| `GET /health/live`  | [Liveness](#health-and-readiness) — the process, and nothing else     |
-| `GET /health/ready` | [Readiness](#health-and-readiness) — the process and its dependencies |
-| `/api/docs`         | Swagger UI over the committed specification                           |
-| `/api/openapi.json` | The specification the process serves, for a client generator          |
-| `/api/openapi.yaml` | The authoritative file itself, comments and all                       |
+| Path                                                | Purpose                                                               |
+| --------------------------------------------------- | --------------------------------------------------------------------- |
+| `GET /api/v1`                                       | The heartbeat — service, build, uptime                                |
+| `GET /health/live`                                  | [Liveness](#health-and-readiness) — the process, and nothing else     |
+| `GET /health/ready`                                 | [Readiness](#health-and-readiness) — the process and its dependencies |
+| `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list, create                            |
+| `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
+| `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
+| `PATCH DELETE …/domains/{domainId}`                 | Set or clear the primary; give a domain up                            |
+| `GET POST /api/v1/tenants/{id}/members`             | Who belongs to it; invite somebody                                    |
+| `PATCH DELETE …/members/{userId}`                   | Change a role; remove a member                                        |
+| `GET POST /api/v1/tenants/{id}/orgs`                | The GitHub organisations it has recorded                              |
+| `PATCH …/orgs/{login}`                              | Enable or disable one                                                 |
+| `GET …/orgs/{login}/repos`                          | The repositories under it                                             |
+| `PATCH …/orgs/{login}/repos/{name}`                 | Enable or disable one, recording it if it is new                      |
+| `/api/docs`                                         | Swagger UI over the committed specification                           |
+| `/api/openapi.json`                                 | The specification the process serves, for a client generator          |
+| `/api/openapi.yaml`                                 | The authoritative file itself, comments and all                       |
 
 Formatting is not a separate check: Prettier runs as a lint rule, so `yarn lint` fails on
 a badly formatted file and `yarn format` is the fixer. `yarn test:watch` re-runs the unit
@@ -226,7 +244,7 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   OURO_GITHUB_CLIENT_ID=dev-github-client-id
   OURO_GITHUB_CLIENT_SECRET=[redacted]
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.3.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.5.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -384,6 +402,74 @@ reporting "the schema matches" having compared nothing. It writes only rows name
 safe to point it at. `ci/rest` runs it against a throwaway PostgreSQL migrated from this
 checkout.
 
+`tenancy.integration-spec.ts` joins it with the API's own CRUD, over Supertest against a
+real application: the constraint mapping and the last-owner rule are both claims about this
+service and `ouroboros-db` agreeing, and a mocked repository can be made to agree with
+anything.
+
+## The tenancy API
+
+**The first real API of the system** ([#31](https://github.com/NobuData/ouroboros/issues/31)),
+and the backbone the UI's login and settings screens consume: tenants, the email domains
+that resolve them at sign-in, their members, and the GitHub organisations and repositories
+they have enabled. Every route is in [`openapi.yaml`](openapi.yaml) with its request and
+response schemas; the table under [Run](#run) is the summary.
+
+```console
+$ curl -sX POST localhost:4000/api/v1/tenants \
+    -H 'content-type: application/json' -d '{"slug":"acme","displayName":"Acme, Inc."}'
+{"id":"9f1c0a5e-…","slug":"acme","displayName":"Acme, Inc.","status":"active",…}
+
+$ curl -sX POST localhost:4000/api/v1/tenants/9f1c0a5e-…/domains \
+    -H 'content-type: application/json' -d '{"domain":"acme.example","isPrimary":true}'
+{"id":"4d2a8b31-…","tenantId":"9f1c0a5e-…","domain":"acme.example","isPrimary":true,…}
+```
+
+Six things about it are decisions rather than defaults, and all six live in
+[`src/modules/tenancy/`](src/modules/tenancy):
+
+- **Three layers, one job each.** A controller names a route and the shapes a request may
+  take; a service holds the rules and owns the transactions; a repository issues statements
+  and holds no rules at all. That is why the specs read the way they do — the repository
+  specs assert *SQL* (`database.fixture.ts` compiles it without a server), because a
+  repository's only possible mistake is the query, and a missing `where tenant_id = $1` is
+  what tenancy isolation rests on.
+- **Every error is `{code, message, details}`** — `../docs/ARCHITECTURE.md` § 5.3, and true
+  of the failures no handler produced as well, because a filter registered in
+  `src/application.ts` is what makes it so. A constraint the database refused is mapped into
+  it rather than leaking through: a duplicate domain is `409 domain_taken`, never a
+  PostgreSQL error string. The mapping is a table keyed by the migrations' own constraint
+  names ([`constraints.ts`](src/modules/tenancy/constraints.ts)), applied by an interceptor,
+  so a constraint a future migration adds answers with a code the day it lands.
+- **Validation is a `422`, with one `details` entry per field.** DTOs are `class-validator`
+  classes that restate the `check` constraints V001–V003 declare, so a bad value is refused
+  before a connection is taken from the pool and the message names the field. Path
+  parameters go through the same pipe as bodies — a malformed uuid is the same envelope as
+  a malformed body, not a second failure mode for a client to handle.
+- **A property no DTO declares is refused**, not ignored. That closes mass assignment for
+  every route at once instead of per service.
+- **Lists are `?limit=&offset=` answering `{items, total, limit, offset}`** — the convention
+  in [`pagination.ts`](src/modules/tenancy/pagination.ts), with the window echoed back so a
+  client that sent neither can still compute the next page, and a ceiling on `limit` so one
+  request cannot ask this service to serialise a table.
+- **One rule is enforced here because the database cannot enforce it.** A tenant always
+  keeps at least one `owner`: it spans rows and has to survive both a role change and a
+  removal, so V002 left it to "the tenancy API that will be the only thing allowed to write
+  here". It is enforced with `select … for update` over the owner rows rather than with a
+  count, because two requests demoting two different owners would both pass a count and
+  leave a tenant nobody administers.
+
+The API's names are the API's — `displayName`, `isPrimary`, `createdAt` — and the rows'
+names stay the database's. [`resources.ts`](src/modules/tenancy/resources.ts) is the one
+place the two meet, which is also what stops a column added by a migration becoming part of
+the contract by accident.
+
+**Nothing here is authenticated.** The issue is explicit that role enforcement arrives with
+[#33](https://github.com/NobuData/ouroboros/issues/33)'s principal and
+[#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` — *controllers take
+the authenticated principal from request context* once those land. What is enforced today is
+everything that does not depend on who is asking.
+
 ## Layout
 
 ```
@@ -396,9 +482,10 @@ ouroboros-rest/
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
 │       ├── config/         # the zod schema, the typed service, redaction
+│       ├── errors/         # the {code, message, details} envelope, filter, pipe
 │       ├── health/         # /health/live, /health/ready, the two probes
 │       ├── db/             # schema types, pool, Kysely instance, lifecycle
-│       ├── tenancy/        # tenants, domains, members         · #31
+│       ├── tenancy/        # tenants, domains, members, GitHub enablement · #31
 │       ├── auth/           # GitHub OAuth, sessions, guards    · #33
 │       └── engine/         # typed internal client             · #35
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML
@@ -412,12 +499,16 @@ ouroboros-rest/
 └── tsconfig.build.json     # the same, minus the specs — what ships
 ```
 
-Everything below `src/modules/` after `app/`, `config/`, `health/` and `db/` is named above
-and does not exist yet; each arrives as one directory and one entry in
-`AppModule.forRoot`'s `imports`, which is what `health/` and `db/` cost. `config/` is
-already global, so a feature module reads configuration by injecting `AppConfigService`
-without importing anything; `db/` is deliberately not, so a module that queries says so by
-importing it.
+`auth/` and `engine/` are named above and do not exist yet; each arrives as one directory
+and one entry in `AppModule.forRoot`'s `imports`, which is what `health/`, `db/` and
+`tenancy/` cost. `config/` is already global, so a feature module reads configuration by
+injecting `AppConfigService` without importing anything; `db/` is deliberately not, so a
+module that queries says so by importing it — `tenancy/` is the first that does.
+
+`errors/` is the one directory with no module of its own. It holds the envelope every
+failure is answered in, and the filter and pipe that produce it are registered on the
+*application* in `src/application.ts` rather than on a module, because they apply to routes
+no module declared: a path nothing claims, a body the parser refused.
 
 Unit tests sit beside the code they cover as `*.spec.ts`, which is the Nest convention and
 what the CLI's schematics generate. They start nothing and need nothing. Tests that do need

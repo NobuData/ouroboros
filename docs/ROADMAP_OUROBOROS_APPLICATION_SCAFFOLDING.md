@@ -1061,7 +1061,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.2 | #28 | 🟢 Done | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
 | 4.3 | #29 | 🟢 Done | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
 | 4.4 | #30 | 🟢 Done | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
-| 4.5 | #31 | 🟡 Open | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
+| 4.5 | #31 | 🟢 Done | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.6 | #32 | 🟡 Open | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.7 | #33 | 🟡 Open | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
@@ -1214,7 +1214,7 @@ Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀�
 
 ### Issue 4.5 — ouroboros-rest: [4.5] Tenancy module & API
 
-> **GitHub issue:** #31 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #31 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** Tenancy data (Epic 3) needs its service and HTTP surface — the
   first real API of the system and the backbone the UI's login/settings screens
@@ -1235,14 +1235,46 @@ Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀�
 - **Parallelism/Dependencies:** Needs 4.4. Blocks 4.6, 4.8 (content), 5.5/5.6.
 - **Technical Stack:** NestJS, class-validator, Kysely.
 - **Epic:** 4
+- **As built:** seventeen operations across five controllers, each nested resource
+  addressed by what identifies it — a domain and a member by id, an organisation by its
+  GitHub login, a repository by its name within one. Three layers with one job each
+  (controller · service · repository), and the repositories' specs assert *SQL*, compiled
+  without a server, because a repository's only possible mistake is the query and a missing
+  `where tenant_id = $1` is what tenancy isolation rests on. Beyond the ticket in three
+  places, all three cheap: the **error envelope is global**, so Nest's own 404 for an
+  unclaimed path carries a `code` too — the probes are the one enumerated exemption, since
+  their reader is a container platform and their body is what `openapi.yaml` describes;
+  **validation answers 422 with one `details` entry per field** and refuses a property no
+  DTO declares, which closes mass assignment for every route at once; and the
+  constraint-violation table is applied by an **interceptor**, so a constraint a future
+  migration adds answers with a code and a status the day it lands rather than a 500 until
+  somebody notices. The last-owner rule is enforced with `select … for update` over the
+  owner rows rather than with a count — two requests demoting two different owners of a
+  two-owner tenant both pass a count, and the tenant ends up with none. The repository
+  `PATCH` is an upsert, deliberately: there is no discovery flow yet to have created the
+  row. No `DELETE` for a tenant, and none for an organisation: `status: "deleted"` is the
+  soft delete V001 describes, and disabling an organisation preserves the per-repository
+  choices that removing it would discard. 405 unit tests over the two new modules plus 43
+  integration tests against a migrated PostgreSQL, which is where both acceptance criteria
+  are actually checked.
 
 ```
-/api/v1/tenants                      GET POST
-/api/v1/tenants/:id                  GET PATCH
-/api/v1/tenants/:id/domains          GET POST DELETE   (+ set-primary)
-/api/v1/tenants/:id/members          GET POST PATCH DELETE
-/api/v1/tenants/:id/orgs             GET POST PATCH    (enable/disable)
-/api/v1/tenants/:id/orgs/:org/repos  GET PATCH
+/api/v1/tenants                                     GET POST
+/api/v1/tenants/{tenantId}                          GET PATCH
+/api/v1/tenants/{tenantId}/domains                  GET POST
+/api/v1/tenants/{tenantId}/domains/{domainId}       PATCH DELETE   (set-primary · remove)
+/api/v1/tenants/{tenantId}/members                  GET POST
+/api/v1/tenants/{tenantId}/members/{userId}         PATCH DELETE
+/api/v1/tenants/{tenantId}/orgs                     GET POST
+/api/v1/tenants/{tenantId}/orgs/{login}             PATCH          (enable/disable)
+/api/v1/tenants/{tenantId}/orgs/{login}/repos       GET
+/api/v1/tenants/{tenantId}/orgs/{login}/repos/{name} PATCH         (enable/disable · upsert)
+```
+
+```
+{code, message, details} ◀── filter ◀── domain errors · constraint table · validation pipe
+                                                ▲
+                                    ouroboros-db's own rules, mapped by name
 ```
 
 ### Issue 4.6 — ouroboros-rest: [4.6] Tenant-context resolution middleware

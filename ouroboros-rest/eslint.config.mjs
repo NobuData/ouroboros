@@ -112,6 +112,23 @@ export default tseslint.config(
   },
 
   {
+    // `unbound-method` is about a method that has been separated from its object and will
+    // therefore be called with the wrong `this`. In a spec, `expect(repository.list)` does
+    // exactly that separation and never calls anything — it hands Jest the mock so it can be
+    // asked what it was called with — so every occurrence in a test file is a false positive.
+    // This is the disable typescript-eslint's own documentation recommends for the case; the
+    // alternative is `eslint-plugin-jest`'s rule, which is the same exemption plus a
+    // dependency.
+    //
+    // Narrowed to the two suffixes that *are* tests, so a `this`-losing bug in application
+    // code is still an error.
+    files: ["**/*.spec.ts", "**/*.integration-spec.ts"],
+    rules: {
+      "@typescript-eslint/unbound-method": "off",
+    },
+  },
+
+  {
     // This file and jest.config.mjs are configuration, not application code: they are
     // outside `tsconfig.json`'s `include`, so the type-aware rules have no program to
     // read them against. They are still linted and still formatted — only the rules
