@@ -29,7 +29,7 @@ superseding is cheap — it is a body edit, not a rework):
 | Existing issue | Disposition under this roadmap |
 |---|---|
 | #33 `ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions` (hand-rolled OAuth + stateless cookie) | **Superseded** by Epic A (BetterAuth GitHub provider + DB-backed sessions). Close or retitle when A.1 lands. |
-| #21 `ouroboros-db: [3.3] Users, identities & tenant membership` | **Superseded** by B.1/B.2 — BetterAuth's `user`/`account` tables replace `users`/`user_identities`; membership moves to the organization plugin's `member` table. |
+| #21 `ouroboros-db: [3.3] Users, identities & tenant membership` | ~~Superseded by B.1/B.2~~ — **shipped as originally specified** (`V002__users_membership.sql`), for the same reason #20 and #22 did: the supersession assumed no scaffolding work had begun, and `V001`'s `tenants` is now a real table. B.1/B.2 become a fix-forward migration from `users`/`user_identities`/`tenant_members` if BetterAuth is confirmed. |
 | #20 `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains` | **Amended** by B.3 — `tenants` is replaced by the org plugin's `organization` table; `tenant_domains` survives as an extension table re-pointed at `organization.id`. |
 | #22 `ouroboros-db: [3.4] GitHub org & repo enablement` | **Amended** by B.3 — same shape, FK re-pointed to `organization.id`. |
 | #23 `ouroboros-db: [3.5] Dev seed data` | **Amended** by B.4 — seeds must create BetterAuth-shaped users/sessions/orgs. |

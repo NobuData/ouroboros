@@ -16,8 +16,8 @@
 -- CI step (issue #24 wires it into `ci/db`; the assertions themselves belong beside the
 -- migrations that must satisfy them).
 --
--- Covers V001 (#20) and V003 (#22). A migration that adds a rule adds its assertion
--- here in the same change.
+-- Covers V001 (#20), V002 (#21) and V003 (#22). A migration that adds a rule adds its
+-- assertion here in the same change.
 
 \set ON_ERROR_STOP on
 
@@ -116,6 +116,27 @@ insert into ouroboros.tenant_domains (tenant_id, domain, is_primary) values
   ('11111111-1111-1111-1111-111111111111', 'acme-robotics.dev', true),
   ('11111111-1111-1111-1111-111111111111', 'acme.example',      false);
 
+-- Three people, one of whom belongs to both tenants — the acceptance criterion about
+-- multiple tenancies is asserted against this pairing rather than a row made for it.
+-- `aaaa…` is a throwaway whose deletion is what the user-cascade assertions observe.
+insert into ouroboros.users (id, email, display_name, avatar_url) values
+  ('66666666-6666-6666-6666-666666666666', 'ken@acme-robotics.dev',   'Ken S',       'https://avatars.example/ken.png'),
+  ('77777777-7777-7777-7777-777777777777', 'maya@acme-robotics.dev',  'Maya Chen',   null),
+  ('88888888-8888-8888-8888-888888888888', 'jorge@globex.example',    'Jorge Reyes', null),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'temp@acme-robotics.dev',  'Temp Person', null);
+
+insert into ouroboros.user_identities (user_id, provider, external_id) values
+  ('66666666-6666-6666-6666-666666666666', 'github', '1001'),
+  ('77777777-7777-7777-7777-777777777777', 'github', '1002'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'github', '1003');
+
+insert into ouroboros.tenant_members (tenant_id, user_id, role, joined_at) values
+  ('11111111-1111-1111-1111-111111111111', '66666666-6666-6666-6666-666666666666', 'owner',  now()),
+  ('11111111-1111-1111-1111-111111111111', '77777777-7777-7777-7777-777777777777', 'admin',  null),
+  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'viewer', now()),
+  ('22222222-2222-2222-2222-222222222222', '66666666-6666-6666-6666-666666666666', 'viewer', now()),
+  ('22222222-2222-2222-2222-222222222222', '88888888-8888-8888-8888-888888888888', 'member', now());
+
 insert into ouroboros.github_orgs (id, tenant_id, login, enabled) values
   ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'acme-robotics', true),
   ('44444444-4444-4444-4444-444444444444', '22222222-2222-2222-2222-222222222222', 'globex-inc',    false);
@@ -195,6 +216,257 @@ select pg_temp.must_hold(
   (select updated_at = now() from ouroboros.tenants
    where id = '11111111-1111-1111-1111-111111111111'),
   'tenants.updated_at is stamped from the server clock by its touch trigger');
+
+-- ===========================================================================
+-- V002 — users, identities & tenant membership (#21)
+-- ===========================================================================
+
+-- --- users -----------------------------------------------------------------
+
+-- One address is one human: a second row carrying it would put one person twice into
+-- the member list, with two independent sets of roles.
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name)
+    values ('ken@acme-robotics.dev', 'Impostor')$$,
+  'users.email is unique across the installation', 'users_email_key');
+
+-- Folded on the way in, so the unique index above is the case-insensitive rule too.
+-- Unlike V001's domain and V003's login, the format check below cannot enforce this on
+-- its own — an address may contain almost any character — so the folding has a
+-- constraint of its own, and this asserts it is that one which fires.
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name)
+    values ('Ken@Acme-Robotics.dev', 'Ken Again')$$,
+  'users.email must be stored lower-cased', 'users_email_lowercase');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name) values ('not an address', 'Nobody')$$,
+  'users.email rejects a value that is not an address', 'users_email_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name) values ('blank@example.com', '   ')$$,
+  'users.display_name rejects blank text', 'users_display_name_present');
+
+-- avatar_url reaches the UI as an image source, so the shapes that matter are the ones
+-- that are not images.
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name, avatar_url)
+    values ('xss@example.com', 'Payload', 'javascript:alert(1)')$$,
+  'users.avatar_url rejects a non-http(s) scheme', 'users_avatar_url_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name, avatar_url)
+    values ('data@example.com', 'Payload', 'data:text/html;base64,PHNjcmlwdD4=')$$,
+  'users.avatar_url rejects a data: URL', 'users_avatar_url_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.users (email, display_name, avatar_url)
+    values ('space@example.com', 'Payload', 'https://avatars.example/a.png" onerror="x')$$,
+  'users.avatar_url rejects whitespace that could carry a second attribute',
+  'users_avatar_url_format');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.users
+   where email in ('ken@acme-robotics.dev', 'maya@acme-robotics.dev')
+     and (avatar_url is null or avatar_url like 'https://%')),
+  'users.avatar_url accepts an https URL and accepts null');
+
+-- --- user_identities -------------------------------------------------------
+
+-- Acceptance criterion: the same GitHub identity cannot attach to two users.
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_identities (user_id, provider, external_id)
+    values ('88888888-8888-8888-8888-888888888888', 'github', '1001')$$,
+  'the same GitHub identity cannot attach to two users',
+  'user_identities_provider_external_id_key');
+
+-- …nor twice to the same one.
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_identities (user_id, provider, external_id)
+    values ('66666666-6666-6666-6666-666666666666', 'github', '1001')$$,
+  'the same GitHub identity cannot be attached twice to one user',
+  'user_identities_provider_external_id_key');
+
+-- But one person may link two GitHub accounts: (user_id, provider) is deliberately not
+-- unique, and this is the assertion that would fail if someone made it so.
+insert into ouroboros.user_identities (user_id, provider, external_id)
+  values ('66666666-6666-6666-6666-666666666666', 'github', '2001');
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.user_identities
+   where user_id = '66666666-6666-6666-6666-666666666666'),
+  'one user may hold two identities from the same provider');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_identities (user_id, provider, external_id)
+    values ('88888888-8888-8888-8888-888888888888', 'gitlab', '1')$$,
+  'user_identities.provider rejects a provider outside the accepted set',
+  'user_identities_provider_valid');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_identities (user_id, provider, external_id)
+    values ('88888888-8888-8888-8888-888888888888', 'github', '10 04')$$,
+  'user_identities.external_id rejects whitespace', 'user_identities_external_id_format');
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_identities (user_id, provider, external_id)
+    values ('88888888-8888-8888-8888-888888888888', 'github', '')$$,
+  'user_identities.external_id rejects the empty string', 'user_identities_external_id_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_identities (user_id, provider, external_id)
+    values ('99999999-9999-9999-9999-999999999999', 'github', '9001')$$,
+  'user_identities.user_id references an existing user', 'user_identities_user_id_fkey');
+
+-- --- tenant_members --------------------------------------------------------
+
+-- Acceptance criterion: the same user cannot join a tenant twice. The pair is the
+-- primary key, so this is true by construction rather than by a droppable rule.
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_members (tenant_id, user_id, role)
+    values ('11111111-1111-1111-1111-111111111111',
+            '66666666-6666-6666-6666-666666666666', 'viewer')$$,
+  'the same user cannot join a tenant twice', 'tenant_members_pkey');
+
+-- Acceptance criterion: a user may belong to multiple tenants with different roles.
+select pg_temp.must_hold(
+  (select count(distinct role) = 2 and count(*) = 2 from ouroboros.tenant_members
+   where user_id = '66666666-6666-6666-6666-666666666666'),
+  'one user belongs to two tenants holding a different role in each');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_members (tenant_id, user_id, role)
+    values ('22222222-2222-2222-2222-222222222222',
+            '77777777-7777-7777-7777-777777777777', 'maintainer')$$,
+  'tenant_members.role rejects a value outside owner|admin|member|viewer',
+  'tenant_members_role_valid');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from (values ('owner'), ('admin'), ('member'), ('viewer')) as v(r)
+   where exists (select 1 where v.r in ('owner', 'admin', 'member', 'viewer'))),
+  'the four documented roles are the accepted set');
+
+-- The role has no default: omitting it is a not-null violation, not a silent grant.
+-- Left unpinned because PostgreSQL raises a not-null violation with no constraint name
+-- to match against — the class (23, integrity constraint) is what must_reject checks.
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_members (tenant_id, user_id)
+    values ('22222222-2222-2222-2222-222222222222',
+            '77777777-7777-7777-7777-777777777777')$$,
+  'tenant_members.role has no default — an omitted role is refused');
+
+-- An outstanding invitation is a real state the member list renders.
+select pg_temp.must_hold(
+  (select joined_at is null from ouroboros.tenant_members
+   where tenant_id = '11111111-1111-1111-1111-111111111111'
+     and user_id = '77777777-7777-7777-7777-777777777777'),
+  'a membership with joined_at null represents an outstanding invitation');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_members (tenant_id, user_id, role, invited_at, joined_at)
+    values ('22222222-2222-2222-2222-222222222222',
+            '77777777-7777-7777-7777-777777777777', 'member',
+            now(), now() - interval '1 day')$$,
+  'tenant_members rejects an acceptance that precedes the invitation',
+  'tenant_members_joined_after_invited');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_members (tenant_id, user_id, role)
+    values ('99999999-9999-9999-9999-999999999999',
+            '66666666-6666-6666-6666-666666666666', 'member')$$,
+  'tenant_members.tenant_id references an existing tenant', 'tenant_members_tenant_id_fkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_members (tenant_id, user_id, role)
+    values ('22222222-2222-2222-2222-222222222222',
+            '99999999-9999-9999-9999-999999999999', 'member')$$,
+  'tenant_members.user_id references an existing user', 'tenant_members_user_id_fkey');
+
+-- --- no credentials, asserted rather than trusted ---------------------------
+--
+-- Acceptance criterion: no OAuth tokens are stored in this schema. Read from the
+-- catalogue so the check keeps holding against a column added later, which a fixed list
+-- of expected columns would not — a new `github_access_token` would simply not be
+-- mentioned by it.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+   where table_schema = 'ouroboros'
+     and table_name in ('users', 'user_identities', 'tenant_members')
+     and column_name ~ '(token|secret|credential|password|passwd|_key$)'),
+  'V002 stores no token, secret or credential column');
+
+-- --- indexes ---------------------------------------------------------------
+--
+-- The four reads that happen on every sign-in and on every member list. As in V001,
+-- what is asserted is that a usable index exists, not that the planner prefers it at
+-- fixture size.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.users where email = lower('Ken@Acme-Robotics.dev')$$,
+  'users_email_key');
+select pg_temp.must_use_index(
+  $$select user_id from ouroboros.user_identities
+    where provider = 'github' and external_id = '1001'$$,
+  'user_identities_provider_external_id_key');
+select pg_temp.must_use_index(
+  $$select id from ouroboros.user_identities
+    where user_id = '66666666-6666-6666-6666-666666666666'$$,
+  'user_identities_user_id_idx');
+select pg_temp.must_use_index(
+  $$select role from ouroboros.tenant_members
+    where tenant_id = '11111111-1111-1111-1111-111111111111'$$,
+  'tenant_members_pkey');
+select pg_temp.must_use_index(
+  $$select tenant_id from ouroboros.tenant_members
+    where user_id = '66666666-6666-6666-6666-666666666666'$$,
+  'tenant_members_user_id_idx');
+set local enable_seqscan = on;
+
+-- --- triggers --------------------------------------------------------------
+--
+-- All three tables share V001's function, so all three are checked. Backdated first,
+-- for the reason the V001 block gives.
+update ouroboros.users set updated_at = '2000-01-01T00:00:00Z'
+  where id = '66666666-6666-6666-6666-666666666666';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.users
+   where id = '66666666-6666-6666-6666-666666666666'),
+  'users.updated_at is stamped by its touch trigger');
+
+update ouroboros.user_identities set updated_at = '2000-01-01T00:00:00Z'
+  where provider = 'github' and external_id = '1001';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.user_identities
+   where provider = 'github' and external_id = '1001'),
+  'user_identities.updated_at is stamped by its touch trigger');
+
+update ouroboros.tenant_members set updated_at = '2000-01-01T00:00:00Z'
+  where tenant_id = '11111111-1111-1111-1111-111111111111'
+    and user_id = '66666666-6666-6666-6666-666666666666';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.tenant_members
+   where tenant_id = '11111111-1111-1111-1111-111111111111'
+     and user_id = '66666666-6666-6666-6666-666666666666'),
+  'tenant_members.updated_at is stamped by its touch trigger');
+
+-- --- deleting a person ------------------------------------------------------
+--
+-- Both of the user's dependents go with them. The identity cascade is load-bearing
+-- rather than tidy: an orphaned row would hold its (provider, external_id) pair against
+-- the unique key, and that GitHub account could never sign in again.
+delete from ouroboros.users where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.user_identities
+   where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'deleting a user cascades to their user_identities');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tenant_members
+   where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'deleting a user cascades to their tenant_members');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.tenants
+   where id = '11111111-1111-1111-1111-111111111111'),
+  'deleting a user does not delete the tenants they belonged to');
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tenant_members
+   where tenant_id = '11111111-1111-1111-1111-111111111111'),
+  'deleting one member leaves the tenant''s other memberships alone');
 
 -- ===========================================================================
 -- V003 — GitHub org & repo enablement (#22)
@@ -363,6 +635,20 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.tenant_domains
    where tenant_id = '11111111-1111-1111-1111-111111111111'),
   'deleting a tenant cascades to its tenant_domains');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tenant_members
+   where tenant_id = '11111111-1111-1111-1111-111111111111'),
+  'deleting a tenant cascades to its tenant_members');
+
+-- …but not to the people. A membership is a pairing; removing the workspace removes the
+-- pairing, and the human survives to hold their roles in whatever tenants remain.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.users),
+  'deleting a tenant does not delete its members');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.tenant_members
+   where user_id = '66666666-6666-6666-6666-666666666666'),
+  'a user in two tenants keeps their membership of the tenant that remains');
 
 -- The other tenant is untouched — the cascade is scoped, not a table sweep.
 select pg_temp.must_hold(

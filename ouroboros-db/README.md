@@ -8,11 +8,27 @@
 > hand-run migration alike — the [`scripts/`](scripts) commands, and
 > [`tests/`](tests). The tenancy tables themselves start at `V001`
 > ([#20](https://github.com/NobuData/ouroboros/issues/20) onwards) — `V001` (tenants and
-> domains) and `V003` (GitHub enablement) have landed, and
-> [`tests/constraints.sql`](tests/constraints.sql) asserts what they enforce.
-> `V002` ([#21](https://github.com/NobuData/ouroboros/issues/21)) and the dev seed
-> ([#23](https://github.com/NobuData/ouroboros/issues/23)) are still to come; Flyway does
-> not require versions to be contiguous, so `V002`'s number stays reserved for it.
+> domains), `V002` (users, identities and membership) and `V003` (GitHub enablement) have
+> all landed, and [`tests/constraints.sql`](tests/constraints.sql) asserts what they
+> enforce. The dev seed ([#23](https://github.com/NobuData/ouroboros/issues/23)) is still
+> to come.
+
+> **If you have a database from before `V002` landed, reset it.** `V002` filled a version
+> number `V003` had already passed, so a database carrying `V003` sees a pending
+> migration *below* its current version — which `validate` rejects, and `migrate`
+> therefore refuses before applying anything:
+>
+> ```
+> ERROR: Validate failed: Migrations have failed validation
+> Detected resolved migration not applied to database: 002.
+> ```
+>
+> `docker compose down -v && docker compose up` from the repo root, or
+> `ouroboros-db/scripts/clean-dev` followed by `ouroboros-db/scripts/migrate` for a
+> database the stack does not own. Nothing is lost that a dev seed will not put back.
+> `outOfOrder` stays off in [`flyway.toml`](flyway.toml) rather than being loosened for
+> one gap that cannot recur — every version through `V003` is now taken, and a database
+> created from empty applies them in order and never meets this.
 
 ## Purpose
 
@@ -268,7 +284,7 @@ ouroboros-db/
 ├── migrations/
 │   ├── V000__bootstrap.sql           # the schema itself
 │   ├── V001__tenants.sql             # tenants, tenant_domains — #20
-│   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21, pending
+│   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21
 │   ├── V003__github_enablement.sql   # github_orgs, github_repos — #22
 │   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, pending
 └── tests/
@@ -277,9 +293,9 @@ ouroboros-db/
     └── constraints.sql               # what the schema enforces, asserted against a live database
 ```
 
-Everything below `V000` is named for the issue that lands it; the two marked *pending*
-are the versions those issues will take. `tests/constraints.sql` is not — it grows with
-every migration that adds a rule, rather than belonging to one of them.
+Everything below `V000` is named for the issue that lands it; the one marked *pending* is
+the version that issue will take. `tests/constraints.sql` is not — it grows with every
+migration that adds a rule, rather than belonging to one of them.
 
 ## Schema
 
@@ -290,17 +306,21 @@ outside this module alters it.
 |---|---|---|---|
 | `tenants` | `V001` | The isolated customer workspace — the root every other table cascades from | Unique DNS-shaped `slug`; `status` limited to `active`, `suspended`, `deleted` |
 | `tenant_domains` | `V001` | Email domains that resolve a tenant at sign-in | Domain unique across *all* tenants and stored lower-cased; at most one `is_primary` per tenant |
+| `users` | `V002` | A person — global, not tenant-scoped, so one human holds roles in several tenants | `email` unique across the installation and stored lower-cased; `avatar_url` restricted to `http(s)` |
+| `user_identities` | `V002` | External accounts a person signs in with — GitHub today | `(provider, external_id)` unique, so one identity attaches to one user; `provider` CHECK-constrained. **Holds no token, secret or credential** |
+| `tenant_members` | `V002` | A person's role in one tenant — mockup 17's member list | `(tenant_id, user_id)` is the primary key, so a user cannot join a tenant twice; `role` CHECK-constrained to `owner\|admin\|member\|viewer`, with no default |
 | `github_orgs` | `V003` | GitHub orgs a tenant has enabled | `login` unique *per tenant*, stored lower-cased; `enabled` defaults false |
 | `github_repos` | `V003` | Repos within an org | `name` unique per org, stored lower-cased; `enabled` defaults false |
 
-Three conventions run through all four, and are worth knowing before adding a fifth:
+Four conventions run through these, and are worth knowing before adding a seventh:
 
-1. **Case-folded on the way in, not at read time.** Domains, org logins and repo names
-   are stored lower-cased and held there by a check constraint. That is what lets one
-   plain unique btree be both the uniqueness rule and the case-insensitive lookup index —
-   query with `where domain = lower($1)` and it is an index scan. It needs no `citext`
-   extension, which a managed PostgreSQL may not grant the migration role rights to
-   create.
+1. **Case-folded on the way in, not at read time.** Domains, user emails, org logins and
+   repo names are stored lower-cased and held there by a check constraint. That is what
+   lets one plain unique btree be both the uniqueness rule and the case-insensitive
+   lookup index — query with `where domain = lower($1)` and it is an index scan. It needs
+   no `citext` extension, which a managed PostgreSQL may not grant the migration role
+   rights to create. `users.email` needs its own `= lower(email)` constraint to enforce
+   this; the other three get it free, because their format patterns admit no upper case.
 2. **Enablement fails closed.** Both `enabled` flags default to `false`, and they are
    independent: a repo is in scope only when its own flag *and* its org's are true, so
    suspending an org preserves the per-repo choices underneath. These two tables bound
@@ -309,16 +329,26 @@ Three conventions run through all four, and are worth knowing before adding a fi
    `V001` and attached by every table since, stamps from the server clock and overwrites
    whatever the statement supplied. One function means the behaviour cannot drift between
    tables.
+4. **No credential is stored in this schema.** `user_identities` records *which* external
+   account a person proved control of, never a token, refresh token or secret. Obtaining
+   a live GitHub session, encrypting it and revoking it is `ouroboros-rest`'s concern
+   ([#33](https://github.com/NobuData/ouroboros/issues/33)); a credential here would split
+   that responsibility across two modules and make every `select *` over the tenancy
+   schema a secret-bearing query. `tests/constraints.sql` asserts the absence by reading
+   `information_schema`, so a column added later is caught rather than merely discouraged.
 
-Deleting a tenant cascades the whole way down — domains, orgs, and the orgs' repos — so
-nothing is left naming a tenant that is gone. `status = 'deleted'` is the soft-delete
-marker that leaves the rows in place; a real `delete` is what cascades.
+Deleting a tenant cascades the whole way down — domains, memberships, orgs, and the orgs'
+repos — so nothing is left naming a tenant that is gone. It stops at the people: deleting
+a tenant removes the *memberships*, not the `users` rows, since a person may hold roles in
+tenants that remain. Deleting a user is the cascade in the other direction, and takes
+their identities and memberships with them. `status = 'deleted'` is the soft-delete marker
+that leaves the rows in place; a real `delete` is what cascades.
 
 ## Related issues
 
 Scaffold [#19](https://github.com/NobuData/ouroboros/issues/19) ·
 tenants & domains [#20](https://github.com/NobuData/ouroboros/issues/20) *(done)* ·
-users & membership [#21](https://github.com/NobuData/ouroboros/issues/21) ·
+users & membership [#21](https://github.com/NobuData/ouroboros/issues/21) *(done)* ·
 GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) *(done)* ·
 dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) ·
 migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) ·
