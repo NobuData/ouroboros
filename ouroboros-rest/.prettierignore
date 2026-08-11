@@ -1,0 +1,5 @@
+# Generated output. `yarn format` rewrites whatever it is pointed at, and rewriting a
+# build artefact only makes the next build's diff noisy. ESLint ignores the same two
+# directories, so the formatting gate and the fixer agree on what is source.
+dist/
+coverage/

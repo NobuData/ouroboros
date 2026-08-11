@@ -1,0 +1,9 @@
+{
+  // What `yarn build` compiles: the application, without its tests.
+  //
+  // It is the same configuration `yarn typecheck` uses, minus the spec files — so the
+  // tests are still type-checked, they are simply not shipped. A runtime image that
+  // carried them would carry `@nestjs/testing` and `supertest` with them.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "coverage", "**/*.spec.ts"]
+}

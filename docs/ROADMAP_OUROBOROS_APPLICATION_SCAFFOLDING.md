@@ -1057,7 +1057,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 4.1 | #27 | 🟡 Open | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
+| 4.1 | #27 | 🟢 Done | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
 | 4.2 | #28 | 🟡 Open | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
 | 4.3 | #29 | 🟡 Open | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
 | 4.4 | #30 | 🟡 Open | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
@@ -1072,7 +1072,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 
 ### Issue 4.1 — ouroboros-rest: [4.1] NestJS service scaffold
 
-> **GitHub issue:** #27 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #27 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** The communications layer needs its skeleton: a NestJS app with
   the project's toolchain conventions, ready for feature modules.
@@ -2128,13 +2128,17 @@ in both themes, an explicit choice beats a contrary OS, and every case produces 
 console. The visible switcher, **#42**, is now unblocked, and Epic 2's MVP work is
 complete bar #15's Metadata API wiring.
 
-**#19** (the Flyway project) and **#50** (the FastAPI service) have since landed the same
-way, each turning its own CI check on and moving its section of
-[`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same pull
-request. That leaves **#27** as the last module scaffold. Epic 6 has since continued into
-**#51**, which closed the engine's boundary — liveness open, everything else behind the
-shared secret — and so unblocks #52, #53 and the engine leg of #29; the Phase 1 tracks
-still run concurrently. The MVP is complete when **#56** (end-to-end
+**#19** (the Flyway project), **#50** (the FastAPI service) and **#27** (the NestJS
+service) have since landed the same way, each turning its own CI check on and moving its
+section of [`ARCHITECTURE.md`](ARCHITECTURE.md) from *specified* to *running* in the same
+pull request. **All four module scaffolds are now in**, so no epic is waiting on a
+directory to exist any more. #27 puts the communications layer on `/api/v1` — global
+prefix, URI versioning defaulting to v1, shutdown hooks, and `PORT`/`NODE_ENV` validated
+before a socket is bound — which releases the whole of Epic 4, starting with **#28**
+(the typed `OURO_*` configuration every other 4.x issue reads through). Epic 6 has since
+continued into **#51**, which closed the engine's boundary — liveness open, everything
+else behind the shared secret — and so unblocks #52, #53 and the engine leg of #29; the
+Phase 1 tracks still run concurrently. The MVP is complete when **#56** (end-to-end
 smoke test) is green.
 
 **#47** (the UI image) is **done** and is the first module to ship as a container: a
