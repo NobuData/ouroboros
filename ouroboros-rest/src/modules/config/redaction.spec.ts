@@ -73,6 +73,32 @@ describe("redactedEnvironment", () => {
 
     expect(redacted[VARIABLES.corsOrigins]).toBe(origins);
   });
+
+  it("prints an unset variable with nothing after the equals sign", () => {
+    // Which is how an env file spells "not set". `undefined` or `null` printed literally
+    // would read as a value somebody had configured.
+    expect(redactedEnvironment(testConfiguration())[VARIABLES.authDevUser]).toBe("");
+  });
+
+  it("prints the development bypass rather than redacting it", () => {
+    // This line is the acceptance criterion an operator reads: the bypass is off when it is
+    // empty and on when it names somebody. Redacting it would make both print the same.
+    const redacted = redactedEnvironment(
+      testConfiguration({ OURO_AUTH_DEV_USER: "ken@acme-robotics.dev" }),
+    );
+
+    expect(redacted[VARIABLES.authDevUser]).toBe("ken@acme-robotics.dev");
+  });
+
+  it("prints it empty in production even when the environment set it", () => {
+    // `loadConfiguration` drops the variable there, so there is nothing to print — which is
+    // what makes "provably off in a production build" something a boot log states.
+    const redacted = redactedEnvironment(
+      testConfiguration({ OURO_AUTH_DEV_USER: "ken@acme-robotics.dev", NODE_ENV: "production" }),
+    );
+
+    expect(redacted[VARIABLES.authDevUser]).toBe("");
+  });
 });
 
 describe("redactDatabaseUrl", () => {

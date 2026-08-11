@@ -10,6 +10,14 @@
  * validating, every suite that builds an application fails — so a clean checkout that
  * cannot start is caught here rather than by the developer who copied the template.
  *
+ * **One deliberate divergence.** `.env.example` sets `OURO_AUTH_DEV_USER` so that a fresh
+ * checkout is signed in against the development seed without a GitHub OAuth application
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33)); this fixture leaves it unset.
+ * A suite whose every request arrived pre-authenticated could not assert that a route is
+ * protected — the one thing about authentication most worth asserting — and it would go on
+ * passing if the guard were removed. A spec that wants the bypass asks for it by name:
+ * `testConfiguration({ OURO_AUTH_DEV_USER: "…" })`.
+ *
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs, so
  * nothing under `dist/` carries these strings.
  */
@@ -24,6 +32,8 @@ import { loadConfiguration, type Configuration } from "./configuration";
  */
 export const DEVELOPMENT_ENVIRONMENT: Readonly<Record<string, string>> = Object.freeze({
   OURO_DATABASE_URL: "postgresql://ouroboros:ouroboros@localhost:5432/ouroboros",
+  OURO_REST_URL: "http://localhost:4000",
+  OURO_UI_URL: "http://localhost:3000",
   OURO_ENGINE_URL: "http://localhost:8000",
   OURO_ENGINE_SHARED_SECRET: "dev-engine-shared-secret-change-me",
   OURO_SESSION_SECRET: "dev-session-secret-change-me",

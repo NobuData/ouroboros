@@ -12,12 +12,15 @@
  *   * **`@UseInterceptors(ConstraintViolationInterceptor)`** on every tenancy controller.
  *     It maps a constraint the database refused into the envelope — the issue's worked
  *     example, `409 domain_taken` — including constraints no service anticipated.
- *   * **Nothing about authorization.** Role enforcement arrives with
- *     [#33](https://github.com/NobuData/ouroboros/issues/33)'s principal and
- *     [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard`, and the issue
- *     says so: *controllers take the authenticated principal from request context* once
- *     that lands. Until it does these routes are open, which is why nothing but a
- *     development stack should be running this build.
+ *   * **Nothing about authentication, and that is not an omission.** These routes need a
+ *     session, and no line here says so: the guard
+ *     [#33](https://github.com/NobuData/ouroboros/issues/33) registers is global, so a
+ *     controller is protected unless it carries `@Public()`. What is still missing is
+ *     *authorization* — the role a mutation needs, and the rule that a tenant a caller is
+ *     not a member of answers `404` — which is
+ *     [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` and tenant
+ *     context. Until that lands any signed-in person can reach any tenant, which is why
+ *     nothing but a development stack should be running this build.
  */
 
 import { Body, Controller, Get, Param, Patch, Post, Query, UseInterceptors } from "@nestjs/common";

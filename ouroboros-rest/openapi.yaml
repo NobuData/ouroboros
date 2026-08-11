@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.5.0"
+  version: "0.6.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -53,17 +53,23 @@ info:
 
     What is described below is the whole of the surface today: the heartbeat the scaffold
     ([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes
-    ([#29](https://github.com/NobuData/ouroboros/issues/29)) and the tenancy API
-    ([#31](https://github.com/NobuData/ouroboros/issues/31)). Authentication
-    ([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway
-    ([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations
-    written here and code that answers them.
+    ([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API
+    ([#31](https://github.com/NobuData/ouroboros/issues/31)) and sign-in
+    ([#33](https://github.com/NobuData/ouroboros/issues/33)). The engine gateway
+    ([#35](https://github.com/NobuData/ouroboros/issues/35)) arrives as operations written
+    here and code that answers them.
 
-    **Nothing below requires authentication yet**, and that is a statement about how far
-    the epic has got rather than a design. `#33` adds the session and the principal, `#32`
-    the tenant context and the role guard — after which a mutation names the role it needs
-    and a tenant a caller cannot see answers `404` rather than admitting it exists. Until
-    both land, this build belongs on a development machine.
+    **Everything below requires a session** except the five operations that carry
+    `security: []` — the two halves of sign-in, sign-out, and the three routes whose reader
+    is not a browser at all. A request without one is a `401` with
+    `code: "unauthenticated"`, and that is one answer covering every way a session can fail:
+    absent, expired, forged, or naming a person who no longer exists.
+
+    What is **not** here yet is the tenant context:
+    [#32](https://github.com/NobuData/ouroboros/issues/32) adds the `X-Ouro-Tenant` header,
+    the role guard, and the rule that a tenant a caller is not a member of answers `404`
+    rather than admitting it exists. Until it lands, any signed-in person can reach any
+    tenant, so this build still belongs on a development machine.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -79,12 +85,37 @@ servers:
       the service and the port comes from `PORT`; `4000` is the development default from
       `docs/CONVENTIONS.md` § 4's port map.
 
+# Applied to every operation, so a route is unauthenticated only where it says
+# `security: []` — the same polarity the code has, where the session guard is global and a
+# handler opts out with `@Public()`. A contract that listed the *protected* routes instead
+# would be one forgotten line away from publishing a tenancy endpoint as open, and the
+# forgetting would be silent in both places at once.
+security:
+  - ouroSession: []
+
 tags:
   - name: service
     description: |-
       Identity and liveness — what answers before any contract does: the heartbeat, and the
       two probes a container platform reads to decide whether to restart this process and
       whether to send it traffic.
+
+  - name: auth
+    description: |-
+      Signing in, and finding out who is signed in. Sign-in is GitHub's authorization code
+      flow: a browser is navigated to `/api/v1/auth/github`, authorizes on github.com, and
+      returns to a callback that lands an `HttpOnly` session cookie.
+
+      **Everything else in this document requires that cookie.** The three routes that do
+      not are the two halves of sign-in and sign-out — one has no session yet and the other
+      is disposing of one that may already have expired — along with the heartbeat and the
+      two probes, whose readers hold no session and could not be given one.
+
+      The session is a signed, stateless cookie: no server-side store, and so no revocation
+      before it ages out. Signing out clears the browser's copy; a copy taken beforehand
+      stays valid for the remainder of its seven days. That is the MVP trade, and the
+      revocable design is recorded with
+      [#38](https://github.com/NobuData/ouroboros/issues/38).
 
   - name: tenants
     description: |-
@@ -141,6 +172,7 @@ paths:
         are reachable is a readiness probe's question
         ([#29](https://github.com/NobuData/ouroboros/issues/29)), not this one's.
       operationId: readHeartbeat
+      security: []
       responses:
         "200":
           description: The service is answering, and this is the build that answered.
@@ -150,9 +182,263 @@ paths:
                 $ref: "#/components/schemas/Heartbeat"
               example:
                 service: ouroboros-rest
-                version: "0.5.0"
+                version: "0.6.0"
                 status: ok
                 uptimeSeconds: 3.885
+
+  /api/v1/auth/github:
+    get:
+      tags: [auth]
+      summary: Begin sign-in with GitHub
+      description: |-
+        Send the browser to GitHub to authorize, and remember the trip.
+
+        This is a **navigation, not a call**. A person clicks "Continue with GitHub" and
+        their browser follows a `302` to github.com, where they see a consent screen; a
+        `fetch` from script would follow the redirect into a page it cannot render and land
+        nobody anywhere. `ouroboros-ui` links to it.
+
+        The redirect carries the client id, the scopes (`read:user` and `user:email`, and
+        nothing else), an opaque `state` and a PKCE `code_challenge`. The `state` and the
+        matching verifier are kept in a short-lived signed `HttpOnly` cookie —
+        `ouro_oauth`, ten minutes, scoped to `/api/v1/auth` — and comparing the returned
+        `state` against that cookie is what makes the callback safe from being fabricated.
+      operationId: startGithubSignIn
+      security: []
+      responses:
+        "302":
+          description: |-
+            Go and authorize. `Location` is on github.com and `Set-Cookie` carries the
+            handshake this service will check on the way back. There is no body.
+          headers:
+            Location:
+              description: The GitHub authorization URL, with the state and PKCE challenge.
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              description: |-
+                `ouro_oauth`, `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/auth`, ten minutes,
+                and `Secure` outside development.
+              schema:
+                type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately: the real diagnosis names a query, a host or a
+            role, and it goes to the service log where only an operator reads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/github/callback:
+    get:
+      tags: [auth]
+      summary: Finish sign-in with GitHub
+      description: |-
+        Where GitHub returns the browser. Verifies the handshake, exchanges the code for a
+        token, reads the account's profile and verified primary address, resolves the
+        person, and lands the session cookie before redirecting to `OURO_UI_URL`.
+
+        **This URL is registered against the OAuth application**; it is not something a
+        client composes. It is described here because this document describes everything
+        the service serves.
+
+        Resolving the person has three outcomes, and the middle one is why a sign-in can
+        arrive already holding a membership: the GitHub identity is already known and the
+        same user row is reused; or the identity is new and the *address* is one an
+        invitation was sent to, in which case the identity is attached to that existing
+        row; or neither is known and a person is created. The access token is used for
+        those two reads and then dropped — `ouroboros.user_identities` holds no credential,
+        and the schema's own tests fail if a column that looks like one ever appears.
+      operationId: completeGithubSignIn
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: The authorization code GitHub issued. Opaque, and redeemable once.
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9._~-]+$
+            minLength: 1
+            maxLength: 512
+        - name: state
+          in: query
+          required: true
+          description: |-
+            The value this service generated before the browser left, echoed back
+            unchanged. Compared against the `ouro_oauth` cookie; a mismatch is a `401`.
+          schema:
+            type: string
+            pattern: ^[A-Za-z0-9._~-]+$
+            minLength: 1
+            maxLength: 512
+      responses:
+        "302":
+          description: |-
+            Signed in. `Location` is `OURO_UI_URL` and `Set-Cookie` carries two headers: the
+            session, and the removal of the spent handshake. There is no body.
+          headers:
+            Location:
+              description: "`OURO_UI_URL` — where a signed-in browser lands."
+              schema:
+                type: string
+                format: uri
+            Set-Cookie:
+              description: |-
+                `ouro_session`, `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and
+                `Secure` outside development — plus the expiry of `ouro_oauth`.
+              schema:
+                type: string
+        "401":
+          description: |-
+            `oauth_handshake_invalid` — this callback does not match a handshake this
+            service started. The cookie was absent, expired, forged, or carries a different
+            `state` than the query string.
+
+            All four are one answer on purpose. A callback an attacker composed cannot
+            carry the cookie, and telling them which part was missing is telling them what
+            to fix.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `code` or `state` was missing, too long, or not an opaque
+            URL-safe value. `details` carries one entry per parameter, keyed by its name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `github_unavailable` — GitHub refused the exchange or did not answer inside ten
+            seconds. Or `github_email_unavailable`, when the account authenticated and
+            offered no *verified* address: an address is how a person invited to a tenant
+            before their first sign-in is recognised as that person, and accepting an
+            unverified one would let somebody else's address decide which account they land
+            on.
+
+            A `502` rather than a `500`, because nothing in this service is broken and
+            retrying is reasonable. Nothing GitHub said is repeated in the body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately: the real diagnosis names a query, a host or a
+            role, and it goes to the service log where only an operator reads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: Read the current session
+      description: |-
+        Who is signed in, which workspaces they belong to, and — for somebody who belongs
+        to none yet — the tenant their email domain points at.
+
+        One call rather than three, because it is what `ouroboros-ui`'s shell needs before
+        it can render anything: the person for the profile menu, the memberships for the
+        workspace switcher, and the suggestion for a first-run screen.
+
+        The person is read from the database on every request rather than from the cookie,
+        which is why a deleted account's outstanding session stops working immediately.
+      operationId: readSession
+      responses:
+        "200":
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+              example:
+                user:
+                  id: 5eed0003-0000-4000-8000-000000000001
+                  email: ken@acme-robotics.dev
+                  displayName: Ken Suenobu
+                  avatarUrl: null
+                  createdAt: "2026-08-11T10:20:23.114Z"
+                  updatedAt: "2026-08-11T10:20:23.114Z"
+                memberships:
+                  - tenantId: 9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10
+                    slug: acme
+                    displayName: Acme, Inc.
+                    status: active
+                    role: owner
+                    invitedAt: "2026-08-11T10:20:23.114Z"
+                    joinedAt: "2026-08-11T10:20:23.114Z"
+                tenantSuggestion: null
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately: the real diagnosis names a query, a host or a
+            role, and it goes to the service log where only an operator reads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Sign out
+      description: |-
+        Remove the session cookie from the browser.
+
+        Idempotent, and reachable without a session: requiring one would mean an *expired*
+        cookie could never be cleared, because the request to remove it would be refused
+        for carrying exactly the thing it was trying to remove. It answers `204` either
+        way.
+
+        A `POST` rather than a `GET`, because it changes state — a `GET` that signs you out
+        is a link, an image tag or a prefetch away from signing you out.
+
+        What it ends is the *browser's* copy. The session is a stateless signed cookie, so
+        a copy taken beforehand stays valid until it ages out; revocation is recorded with
+        the security baseline, [#38](https://github.com/NobuData/ouroboros/issues/38).
+      operationId: signOut
+      security: []
+      responses:
+        "204":
+          description: |-
+            Signed out. `Set-Cookie` removes `ouro_session`. There is no body — there is
+            nothing to say.
+          headers:
+            Set-Cookie:
+              description: "`ouro_session`, emptied, with `Max-Age=0`."
+              schema:
+                type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately: the real diagnosis names a query, a host or a
+            role, and it goes to the service log where only an operator reads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/tenants:
     get:
@@ -187,6 +473,19 @@ paths:
                 total: 1
                 limit: 25
                 offset: 0
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           description: |-
             `validation_failed` — a path parameter, a query parameter or a field of the body
@@ -248,6 +547,19 @@ paths:
                 status: active
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T10:20:23.114Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "409":
           description: "`slug_taken` — another tenant already has that slug."
           content:
@@ -300,6 +612,19 @@ paths:
                 status: active
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T10:20:23.114Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -366,6 +691,19 @@ paths:
                 status: active
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T11:02:44.900Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -432,6 +770,19 @@ paths:
                 total: 1
                 limit: 25
                 offset: 0
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -498,6 +849,19 @@ paths:
                 isPrimary: true
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T10:20:23.114Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -577,6 +941,19 @@ paths:
                 isPrimary: true
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T11:31:02.005Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: |-
             `tenant_not_found`, or `domain_not_found` — which a domain belonging to a
@@ -633,6 +1010,19 @@ paths:
           description: |-
             Gone. No body: there is nothing to say about a row that no longer exists, and a
             `200` carrying the deleted resource invites a client to keep using it.
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found`, or `domain_not_found`."
           content:
@@ -695,6 +1085,19 @@ paths:
                 total: 1
                 limit: 25
                 offset: 0
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -769,6 +1172,19 @@ paths:
                 role: admin
                 invitedAt: "2026-08-11T10:20:23.114Z"
                 joinedAt: null
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -842,6 +1258,19 @@ paths:
                 role: admin
                 invitedAt: "2026-08-11T10:20:23.114Z"
                 joinedAt: "2026-08-11T10:24:51.400Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found`, or `member_not_found`."
           content:
@@ -900,6 +1329,19 @@ paths:
       responses:
         "204":
           description: They are no longer a member.
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found`, or `member_not_found`."
           content:
@@ -968,6 +1410,19 @@ paths:
                 total: 1
                 limit: 25
                 offset: 0
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -1035,6 +1490,19 @@ paths:
                 installedAt: null
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T10:20:23.114Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found` — no tenant has that id."
           content:
@@ -1108,6 +1576,19 @@ paths:
                 installedAt: null
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T12:05:19.732Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found`, or `org_not_found`."
           content:
@@ -1175,6 +1656,19 @@ paths:
                 total: 1
                 limit: 25
                 offset: 0
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: "`tenant_not_found`, or `org_not_found`."
           content:
@@ -1250,6 +1744,19 @@ paths:
                 defaultBranch: main
                 createdAt: "2026-08-11T10:20:23.114Z"
                 updatedAt: "2026-08-11T12:11:38.220Z"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Sign in at `/api/v1/auth/github`.
+
+            Every way a session can fail is this one answer: absent, expired, signed with a
+            rotated key, forged, or naming a person who has since been deleted. A client
+            cannot act differently on any of them, and distinguishing them would tell
+            whoever is probing which part of their forgery was right.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           description: |-
             `tenant_not_found`, or `org_not_found`. There is no `repo_not_found`: a
@@ -1306,6 +1813,7 @@ paths:
         down would restart every replica of a healthy service, repeatedly, while the
         database was the thing that needed attention.
       operationId: readLiveness
+      security: []
       responses:
         "200":
           description: The process is up.
@@ -1341,6 +1849,7 @@ paths:
         and putting it back costs nothing. That is why this one is allowed to fail because a
         dependency is missing, and `/health/live` is not.
       operationId: readReadiness
+      security: []
       responses:
         "200":
           description: Every dependency answered.
@@ -1380,6 +1889,27 @@ paths:
                     message: SELECT 1 failed (ECONNREFUSED)
 
 components:
+  # How a caller is recognised. One scheme, because there is one: the cookie the sign-in
+  # flow lands.
+  securitySchemes:
+    ouroSession:
+      type: apiKey
+      in: cookie
+      name: ouro_session
+      description: |-
+        The session cookie, issued by `/api/v1/auth/github/callback` and removed by
+        `/api/v1/auth/logout`. `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and
+        `Secure` outside development.
+
+        It is a signed value carrying a user id and an issue time — not a bearer token to
+        be minted or pasted. `apiKey`/`cookie` is OpenAPI's nearest description of a cookie
+        credential; it does not mean a client may compose one.
+
+        A browser sends it automatically. A cross-origin caller must also ask for it —
+        `credentials: "include"` in `fetch` — and its origin must be listed in
+        `OURO_CORS_ORIGINS`, because a credentialed cross-origin request may not be
+        answered with a wildcard.
+
   # Every path parameter and the two query parameters the pagination convention defines.
   # Referenced rather than repeated: `tenantId` appears on fifteen operations, and fifteen
   # copies of a description is fifteen places for one of them to say something else.
@@ -1507,6 +2037,151 @@ components:
           examples:
             - slug: ["slug must be lower-case letters, digits and single hyphens"]
             - {}
+
+    Session:
+      type: object
+      title: Session
+      description: |-
+        Who is signed in, and everything the application shell needs before it can render:
+        the person, the workspaces they may switch between, and — only when there are none —
+        the workspace their email domain points at.
+      additionalProperties: false
+      required: [user, memberships, tenantSuggestion]
+      properties:
+        user:
+          $ref: "#/components/schemas/SessionUser"
+        memberships:
+          type: array
+          description: |-
+            Every tenant this person belongs to, by the tenant's name and then its id.
+            Empty for somebody who has signed in and been invited nowhere.
+          items:
+            $ref: "#/components/schemas/Membership"
+        tenantSuggestion:
+          description: |-
+            A workspace worth asking to join, or `null`.
+
+            Non-null only when `memberships` is empty *and* the domain of this person's
+            address is one some tenant has registered. It grants nothing: matching a domain
+            is not membership, and the tenant is named so a first-run screen can say "your
+            organisation is already here, ask an owner to add you" rather than dropping a
+            new signee into an empty product.
+          oneOf:
+            - $ref: "#/components/schemas/TenantSuggestion"
+            - type: "null"
+
+    SessionUser:
+      type: object
+      title: SessionUser
+      description: |-
+        The signed-in person. Global rather than tenant-scoped: one human is one row however
+        many workspaces they belong to.
+      additionalProperties: false
+      required: [id, email, displayName, avatarUrl, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          examples: [5eed0003-0000-4000-8000-000000000001]
+        email:
+          type: string
+          format: email
+          description: |-
+            Lower-cased and unique. How a person is recognised — including as the recipient
+            of an invitation sent before they ever signed in — and not how they
+            authenticate.
+          examples: [ken@acme-robotics.dev]
+        displayName:
+          type: string
+          minLength: 1
+          description: |-
+            Their name on GitHub, or their login when they have set none. Refreshed on every
+            sign-in.
+          examples: [Ken Suenobu]
+        avatarUrl:
+          description: |-
+            The avatar GitHub hosts, or `null` when none is known — which is what makes the
+            UI draw a monogram instead.
+          oneOf:
+            - type: string
+              format: uri
+            - type: "null"
+        createdAt:
+          type: string
+          format: date-time
+          examples: ["2026-08-11T10:20:23.114Z"]
+        updatedAt:
+          type: string
+          format: date-time
+          examples: ["2026-08-11T10:20:23.114Z"]
+
+    Membership:
+      type: object
+      title: Membership
+      description: |-
+        One workspace the signed-in person belongs to, and the role they hold there.
+        Flattened rather than nested, because it is one row of a workspace switcher.
+      additionalProperties: false
+      required: [tenantId, slug, displayName, status, role, invitedAt, joinedAt]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+          examples: [9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10]
+        slug:
+          type: string
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          examples: [acme]
+        displayName:
+          type: string
+          examples: ["Acme, Inc."]
+        status:
+          type: string
+          enum: [active, suspended, deleted]
+          description: The tenant's lifecycle, so a switcher can render a suspended one as such.
+          examples: [active]
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+          description: What this person may do in this tenant.
+          examples: [owner]
+        invitedAt:
+          type: string
+          format: date-time
+          description: When the invitation was issued; also when the membership came into being.
+          examples: ["2026-08-11T10:20:23.114Z"]
+        joinedAt:
+          description: |-
+            When it was accepted, or `null` while the invitation is outstanding. Null is
+            preserved rather than defaulted: "not joined yet" and "joined at the epoch" are
+            different facts.
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+
+    TenantSuggestion:
+      type: object
+      title: TenantSuggestion
+      description: |-
+        A tenant whose registered email domain matches the signed-in person's address.
+        Deliberately thin — an id, a handle and a name — because it is shown to somebody who
+        is *not* a member, so the tenant's lifecycle and timestamps are none of their
+        business.
+      additionalProperties: false
+      required: [tenantId, slug, displayName]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+          examples: [9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10]
+        slug:
+          type: string
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          examples: [acme]
+        displayName:
+          type: string
+          examples: ["Acme, Inc."]
 
     Tenant:
       type: object

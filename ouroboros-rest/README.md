@@ -4,22 +4,26 @@
 > [#27](https://github.com/NobuData/ouroboros/issues/27), validated configuration with
 > [#28](https://github.com/NobuData/ouroboros/issues/28), the health probes with
 > [#29](https://github.com/NobuData/ouroboros/issues/29), the database access layer with
-> [#30](https://github.com/NobuData/ouroboros/issues/30) and the tenancy API with
-> [#31](https://github.com/NobuData/ouroboros/issues/31) (epic
+> [#30](https://github.com/NobuData/ouroboros/issues/30), the tenancy API with
+> [#31](https://github.com/NobuData/ouroboros/issues/31) and GitHub sign-in with
+> [#33](https://github.com/NobuData/ouroboros/issues/33) (epic
 > [#4](https://github.com/NobuData/ouroboros/issues/4)). What runs today is a NestJS
 > application answering a heartbeat on `/api/v1`, publishing
 > [the specification it is written against](#the-api-specification), reading every setting
 > through [a typed, fail-fast configuration module](#configuration), reporting
 > [whether it is live and whether its dependencies are reachable](#health-and-readiness),
-> holding [a typed, pooled connection to the tenancy schema](#data-access) and serving
-> [the first real API of the system](#the-tenancy-api) over it, with the lint, typecheck,
-> test and build pipeline `ci/rest` runs.
+> holding [a typed, pooled connection to the tenancy schema](#data-access), serving
+> [the first real API of the system](#the-tenancy-api) over it, and
+> [signing people in with GitHub](#signing-in) — with the lint, typecheck, test and build
+> pipeline `ci/rest` runs.
 >
-> **Nothing is authenticated yet.** Sign-in and the session are
-> [#33](https://github.com/NobuData/ouroboros/issues/33) and the role guard is
-> [#32](https://github.com/NobuData/ouroboros/issues/32); until both land, the tenancy
-> routes are open and this build belongs on a development machine. The remaining feature
-> modules are listed under [Layout](#layout).
+> **Every route now requires a session** except sign-in, sign-out, the heartbeat and the
+> probes. What is still missing is the *tenant* context:
+> [#32](https://github.com/NobuData/ouroboros/issues/32) adds the `X-Ouro-Tenant` header,
+> the role guard, and the rule that a tenant a caller is not a member of answers `404`
+> rather than admitting it exists — so until it lands, any signed-in person can reach any
+> tenant and this build belongs on a development machine. The remaining feature modules
+> are listed under [Layout](#layout).
 
 ## Purpose
 
@@ -43,6 +47,7 @@ in a single, auditable place.
 | Config          | `@nestjs/config` + zod validation, fail-fast at boot ([#28](https://github.com/NobuData/ouroboros/issues/28))                                                              |
 | Requests        | `class-validator` DTOs behind a global pipe — transform, whitelist, refuse the undeclared ([#31](https://github.com/NobuData/ouroboros/issues/31))                         |
 | Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                  |
+| Auth            | GitHub OAuth over bare `fetch` — no passport; a signed `HttpOnly` session cookie and a global guard ([#33](https://github.com/NobuData/ouroboros/issues/33))               |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
 | Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
 | Lint            | ESLint flat config + Prettier                                                                                                                                              |
@@ -70,7 +75,7 @@ run.
 
 ```console
 $ curl http://localhost:4000/api/v1
-{"service":"ouroboros-rest","version":"0.5.0","status":"ok","uptimeSeconds":3.885}
+{"service":"ouroboros-rest","version":"0.6.0","status":"ok","uptimeSeconds":3.885}
 ```
 
 | Path                                                | Purpose                                                               |
@@ -78,6 +83,10 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1`                                       | The heartbeat — service, build, uptime                                |
 | `GET /health/live`                                  | [Liveness](#health-and-readiness) — the process, and nothing else     |
 | `GET /health/ready`                                 | [Readiness](#health-and-readiness) — the process and its dependencies |
+| `GET /api/v1/auth/github`                           | [Sign in](#signing-in) — redirect to GitHub to authorize              |
+| `GET /api/v1/auth/github/callback`                  | Where GitHub returns; lands the session cookie                        |
+| `GET /api/v1/auth/me`                               | Who is signed in, their memberships, and a tenant suggestion          |
+| `POST /api/v1/auth/logout`                          | Sign out — removes the session cookie                                 |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list, create                            |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
@@ -182,11 +191,14 @@ service never starts half-configured.
 | `PORT`                      | HTTP listen port                                         |     no — 4000      | a whole number, 1–65535                                                     |
 | `NODE_ENV`                  | which environment this is                                | no — `development` | `development`, `test` or `production`                                       |
 | `OURO_DATABASE_URL`         | PostgreSQL connection string for `ouroboros-db`          |        yes         | a `postgresql://` (or `postgres://`) URL with a host                        |
+| `OURO_REST_URL`             | This service's own browser origin — the OAuth callback   |        yes         | an origin — scheme, host, optional port; no path, no wildcard               |
+| `OURO_UI_URL`               | Where a browser lands after signing in or out            |        yes         | an origin, as above                                                         |
 | `OURO_ENGINE_URL`           | Base URL of `ouroboros-engine`                           |        yes         | an absolute `http://` or `https://` URL                                     |
 | `OURO_ENGINE_SHARED_SECRET` | Shared secret for the internal engine call               |        yes         | at least 16 characters                                                      |
 | `OURO_SESSION_SECRET`       | Signing key for the session cookie                       |        yes         | at least 16 characters                                                      |
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
+| `OURO_AUTH_DEV_USER`        | [Development sign-in bypass](#the-development-bypass)    |         no         | an email address of a row in `ouroboros.users`; ignored in production        |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 
 Every one of them is documented with a development default in the repo-root
@@ -198,7 +210,7 @@ unprefixed exceptions — container platforms set them, not Ouroboros
 platform routes to the container; loopback everywhere else, so a development machine does
 not answer to the network it is on.
 
-**This service does not start on defaults alone.** Seven variables have no default,
+**This service does not start on defaults alone.** Nine variables have no default,
 because a communications layer without a database, an engine, a signing key or a GitHub
 application could serve nothing — so it names what is missing and exits rather than
 starting into a wall of 500s. There is no dotenv loading, matching `ouroboros-engine`:
@@ -208,7 +220,7 @@ template before running it directly:
 ```console
 $ set -a && . ../.env && set +a && yarn dev     # or ../.env.example, unedited
 $ node dist/main.js                            # with nothing exported
-ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (7 problems)
+ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (9 problems)
   OURO_DATABASE_URL: is required
   OURO_ENGINE_URL: is required
   …
@@ -229,7 +241,9 @@ all of it lives in [`src/modules/config/`](src/modules/config):
 - **Secrets are redacted, by construction.** The service logs its configuration at boot,
   and [`src/modules/config/redaction.ts`](src/modules/config/redaction.ts) is the only
   renderer there is: the three secrets become `[redacted]`, and the connection string
-  keeps its host and database while its password is masked in place. Real `.env` files are
+  keeps its host and database while its password is masked in place. `OURO_AUTH_DEV_USER`
+  is deliberately *not* redacted — printing it is how an operator confirms the development
+  bypass is off, and a redacted line would look the same either way. Real `.env` files are
   never committed.
 
 ```console
@@ -238,13 +252,16 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   PORT=4000
   NODE_ENV=development
   OURO_DATABASE_URL=postgresql://ouroboros:***@localhost:5432/ouroboros
+  OURO_REST_URL=http://localhost:4000
+  OURO_UI_URL=http://localhost:3000
   OURO_ENGINE_URL=http://localhost:8000
   OURO_ENGINE_SHARED_SECRET=[redacted]
   OURO_SESSION_SECRET=[redacted]
   OURO_GITHUB_CLIENT_ID=dev-github-client-id
   OURO_GITHUB_CLIENT_SECRET=[redacted]
+  OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.5.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.6.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -464,11 +481,93 @@ names stay the database's. [`resources.ts`](src/modules/tenancy/resources.ts) is
 place the two meet, which is also what stops a column added by a migration becoming part of
 the contract by accident.
 
-**Nothing here is authenticated.** The issue is explicit that role enforcement arrives with
-[#33](https://github.com/NobuData/ouroboros/issues/33)'s principal and
-[#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` — *controllers take
-the authenticated principal from request context* once those land. What is enforced today is
-everything that does not depend on who is asking.
+**These routes need a session** ([#33](https://github.com/NobuData/ouroboros/issues/33)),
+and they do not yet check *which tenant* the caller may act in. Role enforcement and the
+`404`-not-`403` rule are [#32](https://github.com/NobuData/ouroboros/issues/32)'s
+`RolesGuard` and tenant context; until that lands, any signed-in person can reach any
+tenant, and what is enforced is everything that does not depend on who is asking.
+
+## Signing in
+
+**GitHub's authorization code flow, and a signed cookie**
+([#33](https://github.com/NobuData/ouroboros/issues/33)). Four routes, all under
+`/api/v1/auth`:
+
+| Route                              | What it does                                                       |
+| ---------------------------------- | ------------------------------------------------------------------ |
+| `GET  /api/v1/auth/github`         | `302` to github.com, carrying state and a PKCE challenge           |
+| `GET  /api/v1/auth/github/callback`| Verifies the handshake, exchanges the code, lands the session      |
+| `GET  /api/v1/auth/me`             | The person, their memberships, and a tenant suggestion             |
+| `POST /api/v1/auth/logout`         | `204`, and a `Set-Cookie` that removes the session                 |
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant R as ouroboros-rest
+    participant G as github.com
+    B->>R: GET /api/v1/auth/github
+    R->>B: 302 · Set-Cookie ouro_oauth {state, verifier}
+    B->>G: authorize (state, code_challenge)
+    G->>B: 302 …/auth/github/callback?code&state
+    B->>R: callback + ouro_oauth
+    R->>R: state matches?
+    R->>G: exchange code + code_verifier → profile, verified email
+    R->>R: upsert users / user_identities
+    R->>B: 302 OURO_UI_URL · Set-Cookie ouro_session
+```
+
+Five decisions are worth knowing:
+
+- **The `state` cookie is the CSRF defence.** The value this service generated is kept in
+  a signed, `HttpOnly`, ten-minute cookie scoped to `/api/v1/auth`, and the callback is
+  honoured only when the `state` in the query string matches it. An attacker can put
+  anything in a URL and nothing in that cookie. PKCE rides along beside it: the verifier
+  never leaves the cookie, so an intercepted `code` is worth nothing without it.
+- **The session is stateless.** `ouro_session` carries a user id and an issue time, signed
+  with `OURO_SESSION_SECRET` — no session table, nothing to evict. What that costs is
+  revocation: signing out clears the browser's copy, and a copy taken beforehand stays
+  valid for the remainder of its **seven days**. Rotating the secret ends every session at
+  once. The revocable design is recorded with
+  [#38](https://github.com/NobuData/ouroboros/issues/38).
+- **The cookie is an id, not a copy of the person.** The `users` row is read on every
+  request, so a renamed person is renamed immediately and a deleted one loses access
+  immediately — where a cookie carrying a name would be a cache with no invalidation.
+- **Signing in can *become* somebody who was invited.** Three outcomes: a known GitHub
+  identity reuses its `users` row; an unknown identity whose verified address already
+  exists attaches to that row — which is how somebody invited to a tenant before their
+  first sign-in arrives already holding the membership; and a new person is created. All
+  of it in one transaction.
+- **The address must be verified.** `ouroboros.users.email` is unique and is what an
+  invitation was addressed to, so an account offering no verified address is a `502` with
+  `github_email_unavailable` rather than a guess.
+
+`user_identities` holds **no token and no secret**: the access token is used for the two
+profile reads and dropped. `ouroboros-db/tests/constraints.sql` fails if a column whose
+name looks like a credential ever appears on that table.
+
+### Signing in for real
+
+Register a GitHub OAuth application with the callback URL
+`http://localhost:4000/api/v1/auth/github/callback`, put its credentials in `.env`,
+comment out `OURO_AUTH_DEV_USER`, then:
+
+1. **Browse to** `http://localhost:4000/api/v1/auth/github` — GitHub's consent screen.
+2. **Authorize**; the browser returns to the callback and lands on `OURO_UI_URL`.
+3. **Browse to** `http://localhost:4000/api/v1/auth/me` — the user, created or matched.
+
+### The development bypass
+
+`OURO_AUTH_DEV_USER` treats every request as coming from the person with that address, so
+local work needs no GitHub OAuth application at all. The address must name a real
+`ouroboros.users` row — the development seed
+([#23](https://github.com/NobuData/ouroboros/issues/23)) creates
+`ken@acme-robotics.dev` — and one nobody has grants nothing rather than creating anybody.
+
+It is **off in production**, twice over: `loadConfiguration` drops the variable when
+`NODE_ENV=production`, so there is no value for anything to read, and the accessor the
+guard uses refuses one anyway. The boot log prints `OURO_AUTH_DEV_USER=` with nothing
+after it, which is the line to check. A real session cookie still wins over it, so the
+OAuth flow stays exercisable on a machine that has it set.
 
 ## Layout
 
@@ -486,8 +585,8 @@ ouroboros-rest/
 │       ├── health/         # /health/live, /health/ready, the two probes
 │       ├── db/             # schema types, pool, Kysely instance, lifecycle
 │       ├── tenancy/        # tenants, domains, members, GitHub enablement · #31
-│       ├── auth/           # GitHub OAuth, sessions, guards    · #33
-│       └── engine/         # typed internal client             · #35
+│       ├── auth/           # GitHub OAuth, sessions, the global guard     · #33
+│       └── engine/         # typed internal client                        · #35
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML
 ├── openapi.yaml            # the API specification — authoritative, hand-written
 ├── openapi.json            # rendered from it; the copy the service loads
@@ -499,11 +598,17 @@ ouroboros-rest/
 └── tsconfig.build.json     # the same, minus the specs — what ships
 ```
 
-`auth/` and `engine/` are named above and do not exist yet; each arrives as one directory
-and one entry in `AppModule.forRoot`'s `imports`, which is what `health/`, `db/` and
-`tenancy/` cost. `config/` is already global, so a feature module reads configuration by
-injecting `AppConfigService` without importing anything; `db/` is deliberately not, so a
-module that queries says so by importing it — `tenancy/` is the first that does.
+`engine/` is named above and does not exist yet; it arrives as one directory and one entry
+in `AppModule.forRoot`'s `imports`, which is what `health/`, `db/`, `tenancy/` and `auth/`
+each cost. `config/` is global, so a feature module reads configuration by injecting
+`AppConfigService` without importing anything; `db/` is deliberately not, so a module that
+queries says so by importing it — `tenancy/` and `auth/` both do.
+
+`auth/` contributes one thing beyond its own routes: the **global session guard**. It is
+registered there as an `APP_GUARD` provider, which is what makes every route in the
+application — `tenancy/`'s included — authenticated unless its handler carries `@Public()`.
+That polarity is deliberate: a controller added next year is protected because somebody
+wrote a controller, not because they remembered a decorator.
 
 `errors/` is the one directory with no module of its own. It holds the envelope every
 failure is answered in, and the filter and pipe that produce it are registered on the

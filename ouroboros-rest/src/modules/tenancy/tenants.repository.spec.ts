@@ -1,5 +1,5 @@
 import type { Tenant } from "../db/schema";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import { TenantsRepository } from "./tenants.repository";
 
 /**

@@ -87,6 +87,24 @@ export interface Configuration {
   readonly nodeEnv: NodeEnvironment;
   /** PostgreSQL connection string for `ouroboros-db`. From `OURO_DATABASE_URL`. */
   readonly databaseUrl: string;
+  /**
+   * The origin a *browser* reaches this service at. From `OURO_REST_URL`.
+   *
+   * Read for one thing: the `redirect_uri` the GitHub OAuth handshake carries
+   * ([#33](https://github.com/NobuData/ouroboros/issues/33)), which has to be the URL
+   * GitHub has registered against the application rather than whatever `Host` header a
+   * request happened to arrive with — a value an attacker controls, and the one input that
+   * could send an authorization code somewhere else.
+   */
+  readonly restUrl: string;
+  /**
+   * Where a browser is sent once it is signed in, or signed out. From `OURO_UI_URL`.
+   *
+   * `ouroboros-ui`'s origin. The OAuth callback is a redirect a browser follows rather
+   * than a fetch a script made, so it has to end somewhere a person can see, and this
+   * service serves no pages.
+   */
+  readonly uiUrl: string;
   /** Base URL of `ouroboros-engine`. From `OURO_ENGINE_URL`. */
   readonly engineUrl: string;
   /** Value sent as `X-Ouro-Internal-Key`. From `OURO_ENGINE_SHARED_SECRET`. */
@@ -97,6 +115,18 @@ export interface Configuration {
   readonly githubClientId: string;
   /** GitHub OAuth application, client secret. From `OURO_GITHUB_CLIENT_SECRET`. */
   readonly githubClientSecret: string;
+  /**
+   * The address every request is treated as signed in by, for local work without a GitHub
+   * OAuth application. From `OURO_AUTH_DEV_USER`; `null` when unset.
+   *
+   * **Always `null` in production, whatever the environment says.** See
+   * {@link loadConfiguration}: the variable is dropped rather than validated when
+   * `NODE_ENV=production`, so a deployment that inherited a development `.env` cannot be
+   * talked into trusting it. The guard that reads it refuses again on the same grounds
+   * ([#33](https://github.com/NobuData/ouroboros/issues/33)) — two independent checks,
+   * because one of them being wrong is authentication turned off.
+   */
+  readonly authDevUser: string | null;
   /**
    * Browser origins allowed to call this API with credentials — the origins the session
    * cookie is permitted to travel to. From `OURO_CORS_ORIGINS`, which is a comma-separated
@@ -116,11 +146,14 @@ export const VARIABLES = {
   port: "PORT",
   nodeEnv: "NODE_ENV",
   databaseUrl: "OURO_DATABASE_URL",
+  restUrl: "OURO_REST_URL",
+  uiUrl: "OURO_UI_URL",
   engineUrl: "OURO_ENGINE_URL",
   engineSharedSecret: "OURO_ENGINE_SHARED_SECRET",
   sessionSecret: "OURO_SESSION_SECRET",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
+  authDevUser: "OURO_AUTH_DEV_USER",
   corsOrigins: "OURO_CORS_ORIGINS",
 } as const satisfies Record<keyof Configuration, string>;
 
@@ -205,6 +238,14 @@ const environmentSchema = z.object({
       "expected a PostgreSQL connection string, such as postgresql://user:password@host:5432/database",
     ),
 
+  OURO_REST_URL: z
+    .string({ error: "is required" })
+    .refine(isOrigin, "expected this service's own browser origin, such as http://localhost:4000"),
+
+  OURO_UI_URL: z
+    .string({ error: "is required" })
+    .refine(isOrigin, "expected ouroboros-ui's browser origin, such as http://localhost:3000"),
+
   OURO_ENGINE_URL: z
     .string({ error: "is required" })
     .refine(
@@ -217,6 +258,18 @@ const environmentSchema = z.object({
 
   OURO_GITHUB_CLIENT_ID: z.string({ error: "is required" }),
   OURO_GITHUB_CLIENT_SECRET: z.string({ error: "is required" }),
+
+  // Optional, and the only variable here that is. Unset is the normal case: it is read
+  // only by the development bypass, and `withoutProductionDevBypass` has already removed
+  // it when this schema runs in production — so what is validated here is a value somebody
+  // deliberately set on a machine where it can have an effect.
+  OURO_AUTH_DEV_USER: z
+    .string()
+    .refine(
+      (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      "expected the email address of a user in the database, such as ken@acme-robotics.dev",
+    )
+    .optional(),
 
   OURO_CORS_ORIGINS: z
     .string({ error: "is required" })
@@ -259,6 +312,40 @@ function withoutBlanks(env: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 /**
+ * Remove the development bypass when this is production.
+ *
+ * The issue asks for a bypass that is *provably* off in a production build, and this is
+ * the proof: in production the variable never reaches the schema, so there is no value
+ * for {@link Configuration.authDevUser} to be, and no code path — however it is later
+ * reached — that can be handed one. A deployment that inherited a development `.env` gets
+ * a service that ignores it rather than one that trusts it.
+ *
+ * It is removed rather than rejected deliberately. Refusing to boot would turn a stale
+ * line in an inherited environment into an outage, and the *safe* reading of "this is set
+ * and must not be honoured" is to not honour it. The boot log says so out loud:
+ * `redaction.ts` prints `OURO_AUTH_DEV_USER=` with nothing after it, which is what an
+ * operator checking the acceptance criterion reads.
+ *
+ * `NODE_ENV` is compared as a raw string rather than after validation, because this runs
+ * before the schema does. An unrecognised value fails validation a moment later and never
+ * reaches a running service, so the only two outcomes are "production, and stripped" and
+ * "not a service that starts".
+ *
+ * @param env - The environment, already stripped of blanks.
+ * @returns The same variables, minus the bypass when `NODE_ENV` is `production`.
+ */
+function withoutProductionDevBypass(env: Record<string, string>): Record<string, string> {
+  if (env.NODE_ENV !== "production") {
+    return env;
+  }
+
+  const permitted = { ...env };
+  delete permitted[VARIABLES.authDevUser];
+
+  return permitted;
+}
+
+/**
  * Render a validation failure as advice about environment variables.
  *
  * zod reports the key it was parsing, and every key in {@link environmentSchema} is an
@@ -297,7 +384,7 @@ function describeFailure(error: z.ZodError): string {
  *   every offending variable and the reason, one per line.
  */
 export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
-  const result = environmentSchema.safeParse(withoutBlanks(env));
+  const result = environmentSchema.safeParse(withoutProductionDevBypass(withoutBlanks(env)));
   if (!result.success) {
     throw new ConfigurationError(describeFailure(result.error));
   }
@@ -307,11 +394,17 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     port: values.PORT,
     nodeEnv: values.NODE_ENV,
     databaseUrl: values.OURO_DATABASE_URL,
+    restUrl: values.OURO_REST_URL,
+    uiUrl: values.OURO_UI_URL,
     engineUrl: values.OURO_ENGINE_URL,
     engineSharedSecret: values.OURO_ENGINE_SHARED_SECRET,
     sessionSecret: values.OURO_SESSION_SECRET,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
+    // `?? null` rather than left undefined: an optional property and a property that is
+    // explicitly nothing read the same at a call site and serialise differently, and this
+    // one is read by a guard where "absent" and "empty" must not be two states.
+    authDevUser: values.OURO_AUTH_DEV_USER ?? null,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
   });
 }

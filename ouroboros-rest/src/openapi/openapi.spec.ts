@@ -147,6 +147,25 @@ function jsonBodies(operation: Record<string, unknown>): Map<string, DocumentedB
 }
 
 /**
+ * Every status an operation documents, whether or not it carries a body.
+ *
+ * Wider than {@link jsonBodies}, and the difference is the point. Most of this API answers
+ * in JSON, and for those two the sets are the same; sign-in
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33)) is where they come apart. Its
+ * two halves answer `302` — a redirect a browser follows, whose payload is a `Location` and
+ * a `Set-Cookie` — and signing out answers `204`, which has nothing to say. Both are
+ * described here with headers and no `content`, because that is what they really are, and
+ * a document that invented a body for them to keep a check simple would be describing
+ * something the service does not send.
+ *
+ * @param operation - One operation from {@link operations}.
+ * @returns Its documented status codes, as strings.
+ */
+function documentedStatuses(operation: Record<string, unknown>): string[] {
+  return Object.keys(operation.responses as Record<string, unknown>);
+}
+
+/**
  * Every documented example in the document, as the pairs that address one.
  *
  * @returns One `[operation, status]` pair per documented JSON example.
@@ -276,7 +295,7 @@ describe("the document and the running application", () => {
       // where `docker compose up` is running. Both are honest, and a check that insisted on one
       // of them would be a check that depended on what happened to be listening.
       const [method, path] = key.split(" ");
-      const documented = [...jsonBodies(operations(document()).get(key)!).keys()];
+      const documented = documentedStatuses(operations(document()).get(key)!);
 
       const response = await request(server())[method.toLowerCase() as "get"](path);
 
@@ -288,16 +307,25 @@ describe("the document and the running application", () => {
     "sends %s a body the schema documented for its answer accepts",
     async (key) => {
       const [method, path] = key.split(" ");
-      const bodies = jsonBodies(operations(document()).get(key)!);
+      const operation = operations(document()).get(key)!;
 
       const response = await request(server())[method.toLowerCase() as "get"](path);
 
-      const documented = bodies.get(String(response.status));
-      expect(documented).toBeDefined();
+      const documented = jsonBodies(operation).get(String(response.status));
+
+      if (documented === undefined) {
+        // The document describes this status with headers and no `content` — a redirect or
+        // a `204`. The assertion is then the mirror image: the service must send no body
+        // either. A route that started answering with one would be a route whose contract
+        // says the opposite, which is the same drift this suite exists to catch.
+        expect(documentedStatuses(operation)).toContain(String(response.status));
+        expect(response.body).toEqual({});
+        return;
+      }
 
       // The schemas are `additionalProperties: false`, so this is also what catches a
       // field the code returns and the document does not mention.
-      const mismatch = validatorFor(document(), documented!.schema.$ref);
+      const mismatch = validatorFor(document(), documented.schema.$ref);
       expect(mismatch(response.body)).toBeUndefined();
     },
   );

@@ -1,5 +1,5 @@
 import type { Tenant, User } from "../db/schema";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import type { MembersRepository } from "./members.repository";
 import { MembersService } from "./members.service";
 import type { MemberRow } from "./resources";

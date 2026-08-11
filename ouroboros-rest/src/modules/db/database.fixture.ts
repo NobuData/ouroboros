@@ -15,10 +15,17 @@
  *   * **the SQL**, which is where a missing `where tenant_id = $1` shows up; and
  *   * **the mapping**, which is what the repository does with the rows that come back.
  *
- * The integration suite still runs every one of these statements against a migrated
- * PostgreSQL (`tenancy.integration-spec.ts`), because a statement that compiles is not a
- * statement the server accepts. The two answer different questions: this one is about what
- * was asked, and that one is about whether the answer was right.
+ * The integration suites still run every one of these statements against a migrated
+ * PostgreSQL (`tenancy.integration-spec.ts`, `auth.integration-spec.ts`), because a
+ * statement that compiles is not a statement the server accepts. The two answer different
+ * questions: this one is about what was asked, and that one is about whether the answer was
+ * right.
+ *
+ * It lives beside `db.service.ts` rather than with the module that first needed it. It is a
+ * stand-in for `DatabaseService`, and it acquired a second consumer the moment
+ * [#33](https://github.com/NobuData/ouroboros/issues/33)'s repository arrived — at which
+ * point leaving it under `tenancy/` would have meant `auth`'s specs importing a fixture from
+ * a module they deliberately do not depend on.
  *
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs.
  */
@@ -36,8 +43,8 @@ import {
   type Transaction,
 } from "kysely";
 
-import type { DatabaseService } from "../db/db.service";
-import { SCHEMA_NAME, type Database } from "../db/schema";
+import type { DatabaseService } from "./db.service";
+import { SCHEMA_NAME, type Database } from "./schema";
 
 /** One statement, as the compiler produced it. */
 export interface RecordedStatement {

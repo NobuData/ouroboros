@@ -348,8 +348,17 @@ The MVP session is a stateless signed cookie, which is honest about its trade-of
 is no server-side record to delete, so revocation before expiry is a v2 concern tracked
 with the security hardening pass
 ([#38](https://github.com/NobuData/ouroboros/issues/38)) and documented here when it
-lands. Local development without GitHub credentials uses a dev-mode bypass that is hard
-disabled when `NODE_ENV=production`.
+lands. Local development without GitHub credentials uses a dev-mode bypass
+(`OURO_AUTH_DEV_USER`) that is hard disabled when `NODE_ENV=production` — the variable is
+dropped before the environment is validated, so there is no value for any later code path
+to read, and the accessor the guard uses refuses one anyway.
+
+The guard is registered globally, so **every route requires a session unless it opts out**
+with `@Public()`: the heartbeat, the two probes, and the three sign-in routes are the whole
+of the exception list. A request without one is a `401` with `code: "unauthenticated"` —
+one answer for every way a session can fail, because a client cannot act differently on
+any of them and distinguishing them would tell whoever is probing which part of their
+forgery was right.
 
 ### 4.2 Resolving the tenant
 
@@ -518,12 +527,14 @@ checkout runs with:
 | `OURO_DB_PASSWORD` | compose, `run.sh` | Password for that role — local development only | `ouroboros` |
 | `OURO_DB_SCHEMA` | compose, `run.sh` | Schema Flyway owns and migrates | `ouroboros` |
 | `OURO_DATABASE_URL` | `ouroboros-rest` | Connection string for the Kysely pool | `postgresql://ouroboros:ouroboros@localhost:5432/ouroboros` |
-| `OURO_REST_URL` | `ouroboros-ui` | Base URL of the communications layer — the only service address the UI knows | `http://localhost:4000` |
+| `OURO_REST_URL` | `ouroboros-ui`, `ouroboros-rest` | Base URL of the communications layer — the only service address the UI knows, and the origin `ouroboros-rest` builds its OAuth `redirect_uri` from rather than trusting a `Host` header | `http://localhost:4000` |
+| `OURO_UI_URL` | `ouroboros-rest` | Where a browser lands after signing in or out; the OAuth callback is a navigation, and this service serves no pages | `http://localhost:3000` |
 | `OURO_ENGINE_URL` | `ouroboros-rest` | Base URL of the engine; never exposed to a browser | `http://localhost:8000` |
 | `OURO_ENGINE_SHARED_SECRET` | `ouroboros-rest`, `ouroboros-engine` | Value of `X-Ouro-Internal-Key`; compared in constant time. Both sides must match | `dev-engine-shared-secret-change-me` |
 | `OURO_SESSION_SECRET` | `ouroboros-rest` | Signing key for the session cookie; rotating it invalidates every session | `dev-session-secret-change-me` |
 | `OURO_GITHUB_CLIENT_ID` | `ouroboros-rest` | GitHub OAuth application, client id | `dev-github-client-id` |
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
+| `OURO_AUTH_DEV_USER` | `ouroboros-rest` | Development sign-in bypass: every request is treated as coming from this address, which must name a `ouroboros.users` row. Dropped before validation when `NODE_ENV=production` | `ken@acme-robotics.dev` |
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 

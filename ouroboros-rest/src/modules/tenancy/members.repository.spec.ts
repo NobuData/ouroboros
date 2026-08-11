@@ -1,5 +1,5 @@
 import { MembersRepository, OWNER } from "./members.repository";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import type { MemberRow } from "./resources";
 
 /**

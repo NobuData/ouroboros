@@ -1,5 +1,5 @@
 import type { Tenant, TenantDomain } from "../db/schema";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import type { DomainsRepository } from "./domains.repository";
 import { DomainsService } from "./domains.service";
 import { TENANCY_ERRORS } from "./tenancy.errors";

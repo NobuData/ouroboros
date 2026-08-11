@@ -1,6 +1,6 @@
 import type { TenantDomain } from "../db/schema";
 import { DomainsRepository } from "./domains.repository";
-import { recordingDatabase, type RecordingDatabase } from "./database.fixture";
+import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 
 /**
  * The domain statements, and the two properties they have to have.

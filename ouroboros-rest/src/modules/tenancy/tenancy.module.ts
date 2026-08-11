@@ -43,12 +43,15 @@ import { TenantsService } from "./tenants.service";
  * `…/orgs/{login}/repos` and `…/orgs` take different parameters and a class cannot have two
  * shapes of them.
  *
- * **Nothing here is authenticated yet.** The issue is explicit that role enforcement arrives
- * with [#33](https://github.com/NobuData/ouroboros/issues/33)'s principal and
- * [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` — *controllers take
- * the authenticated principal from request context* once those land. What is enforced today
- * is everything that does not need to know who is asking: the shapes, the last-owner rule,
- * and every constraint the migrations declare.
+ * **These routes are authenticated, and this module says nothing about it.** The session
+ * guard [#33](https://github.com/NobuData/ouroboros/issues/33) registers is global — an
+ * `APP_GUARD` provider in `AuthModule` — so every controller here requires a session
+ * without importing anything, and a controller added later is protected because somebody
+ * wrote a controller. What is not enforced yet is *authorization*: the role a mutation
+ * needs, and the `404`-not-`403` rule for a tenant the caller cannot see, both of which are
+ * [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` and tenant context.
+ * Everything that does not need to know who is asking is enforced today: the shapes, the
+ * last-owner rule, and every constraint the migrations declare.
  */
 @Module({
   imports: [DbModule],

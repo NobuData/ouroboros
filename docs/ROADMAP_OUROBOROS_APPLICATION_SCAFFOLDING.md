@@ -1063,7 +1063,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.4 | #30 | 🟢 Done | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
 | 4.5 | #31 | 🟢 Done | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.6 | #32 | 🟡 Open | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
-| 4.7 | #33 | 🟡 Open | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
+| 4.7 | #33 | 🟢 Done | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
 | 4.9 | #35 | 🟡 Open | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
 | 4.10 | #36 | 🟡 Open | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
@@ -1304,21 +1304,40 @@ request ─▶ session → user ─▶ X-Ouro-Tenant → membership? ──yes�
 
 ### Issue 4.7 — ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions
 
-> **GitHub issue:** #33 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #33 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** The product signs in with GitHub (mockup 01); the scaffold
   needs the real OAuth code flow, identity persistence, and a session mechanism the UI
   can rely on.
-- **Solution/Scope:** `AuthModule`: `GET /auth/github` (state + PKCE) →
-  `GET /auth/github/callback` → exchange code → fetch GitHub profile + primary email →
-  upsert `users`/`user_identities` (3.3) → issue **httpOnly signed session cookie**
-  (`SameSite=Lax`, `Secure` outside dev); `GET /auth/me` (user + memberships);
-  `POST /auth/logout`. Session store: stateless signed cookie for MVP (session payload
-  = user id + issue time; revocation strategy documented as v2 alongside 4.12).
-  Auth guard applied globally with `@Public()` opt-outs (health, docs, auth routes).
-  Tenant *resolution* stays in 4.6; email-domain → tenant suggestion at first login
-  recorded for 5.6 to render. Dev-mode bypass (`OURO_AUTH_DEV_USER`) for local work
-  without GitHub credentials, hard-disabled when `NODE_ENV=production`.
+- **Solution/Scope:** `AuthModule` on `/api/v1/auth`: `github` redirects to GitHub with
+  an opaque `state` and a PKCE `S256` challenge, both kept in a signed `HttpOnly`
+  ten-minute `ouro_oauth` cookie scoped to the auth routes; `github/callback` compares the
+  returned `state` against that cookie *before* spending anything on GitHub, exchanges the
+  code, reads the profile and the **verified** primary address, resolves the person, and
+  lands `ouro_session` (`HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, `Secure` outside
+  development) while clearing the spent handshake; `me` answers the user, their
+  memberships and — only when they have none — the tenant their email domain resolves to,
+  which is 5.6's first-run screen; `logout` answers `204` and removes the cookie, and is
+  public so an *expired* session can still be cleared. The session is a stateless signed
+  cookie carrying a user id and an issue time, and the `users` row is read on every
+  request, so a renamed person is renamed at once and a deleted one loses access at once;
+  revocation before expiry is recorded with 4.12. Resolving a GitHub account has three
+  outcomes in one transaction — a known identity reuses its row, an unknown identity whose
+  verified address already exists **attaches to that row**, which is how somebody invited
+  before their first sign-in arrives already holding the membership, and otherwise a
+  person is created. `user_identities` holds no token: the access token is used for the
+  two profile reads and dropped. The guard is registered globally as an `APP_GUARD`, so
+  **every route is authenticated unless it carries `@Public()`** — the heartbeat, the two
+  probes and the three sign-in routes are the whole of the exception list, and 4.5's
+  routes are protected without `TenancyModule` knowing this module exists. Tenant
+  *resolution* stays in 4.6. Credentialed CORS for `OURO_CORS_ORIGINS` is enabled here
+  because the session cannot otherwise be used by the client it exists for; helmet, rate
+  limiting and the hardening review remain 4.12. The dev-mode bypass
+  (`OURO_AUTH_DEV_USER`) is off in production twice over — the variable is dropped before
+  validation when `NODE_ENV=production`, and the accessor the guard reads refuses one
+  anyway — and it loses to a real session, so the OAuth flow stays exercisable with it
+  set. 249 unit tests over the new module plus 19 integration tests that walk the whole
+  browser flow against a migrated PostgreSQL with only github.com replaced.
 - **Acceptance Criteria:**
   - Full browser flow against a real GitHub OAuth app lands a session; `/auth/me`
     returns the seeded-or-created user with memberships.

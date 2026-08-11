@@ -91,6 +91,61 @@ describe("configuration", () => {
   });
 });
 
+describe("the browser origins that may call with credentials", () => {
+  let app: INestApplication;
+
+  beforeEach(async () => {
+    app = await testApplication();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  const server = (): Server => app.getHttpServer() as Server;
+
+  it("answers a listed origin with itself and permission to send cookies", async () => {
+    // Without both headers the browser drops the response, and the session the OAuth flow
+    // just landed is a cookie `ouroboros-ui` can never use.
+    const response = await request(server())
+      .get(API_BASE_PATH)
+      .set("Origin", "http://localhost:3000")
+      .expect(200);
+
+    expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
+    expect(response.headers["access-control-allow-credentials"]).toBe("true");
+  });
+
+  it("never answers with a wildcard, which a credentialed request may not use", async () => {
+    const response = await request(server())
+      .get(API_BASE_PATH)
+      .set("Origin", "http://localhost:3000");
+
+    expect(response.headers["access-control-allow-origin"]).not.toBe("*");
+  });
+
+  it("does not permit an origin that is not configured", async () => {
+    const response = await request(server())
+      .get(API_BASE_PATH)
+      .set("Origin", "https://not-configured.example");
+
+    expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+  });
+
+  it("tells a preflight that the tenant header is allowed", async () => {
+    // `X-Ouro-Tenant` is #32's. A header a browser is not told it may send is a preflight
+    // failure rather than a missing header — a failure that would land on that issue
+    // looking like its own bug.
+    const response = await request(server())
+      .options(API_BASE_PATH)
+      .set("Origin", "http://localhost:3000")
+      .set("Access-Control-Request-Method", "GET")
+      .set("Access-Control-Request-Headers", "x-ouro-tenant");
+
+    expect(response.headers["access-control-allow-headers"]).toContain("X-Ouro-Tenant");
+  });
+});
+
 describe("shutdown hooks", () => {
   it("are enabled, so providers get to close what they opened", async () => {
     // Measured as a delta: this process is a test runner with listeners of its own, and

@@ -1,6 +1,7 @@
 import { Controller, Get, VERSION_NEUTRAL } from "@nestjs/common";
 import { HealthCheck, HealthCheckService, type HealthCheckResult } from "@nestjs/terminus";
 
+import { Public } from "../auth/public.decorator";
 import { DatabaseHealthIndicator } from "./database.health";
 import { EngineHealthIndicator } from "./engine.health";
 import { HEALTH_PATH, LIVE_ROUTE, READY_ROUTE } from "./health.paths";
@@ -24,7 +25,15 @@ import { HEALTH_PATH, LIVE_ROUTE, READY_ROUTE } from "./health.paths";
  *
  * Both are `VERSION_NEUTRAL` and both sit at the origin root; see `health.paths.ts` for
  * why, and `src/application.ts` for the exclusion that puts them there.
+ *
+ * Both are `@Public()` too, and for the third time the same reason: their reader is a
+ * container platform, which holds no session and could not be given one
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33)). A probe behind authentication
+ * is a probe that reports the service unhealthy the moment authentication is what is
+ * broken. Nothing they answer with is worth protecting — see `probe.ts`, which is where a
+ * driver's message is already kept out of a body that answers to strangers.
  */
+@Public()
 @Controller({ path: HEALTH_PATH, version: VERSION_NEUTRAL })
 export class HealthController {
   /**

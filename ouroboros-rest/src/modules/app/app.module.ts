@@ -1,5 +1,6 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 
+import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
 import { DbModule } from "../db/db.module";
@@ -13,12 +14,18 @@ import { AppService } from "./app.service";
  *
  * `src/modules/` is one directory per concern. `health`
  * ([#29](https://github.com/NobuData/ouroboros/issues/29)), `db`
- * ([#30](https://github.com/NobuData/ouroboros/issues/30)) and `tenancy`
- * ([#31](https://github.com/NobuData/ouroboros/issues/31)) are in; the ones the epic adds
- * next are already named: `auth` ([#33](https://github.com/NobuData/ouroboros/issues/33))
- * and `engine` ([#35](https://github.com/NobuData/ouroboros/issues/35)). Each arrives as a
- * sibling directory and one entry in the `imports` below, so what a module contributes is
- * visible in one line here rather than spread through the tree.
+ * ([#30](https://github.com/NobuData/ouroboros/issues/30)), `tenancy`
+ * ([#31](https://github.com/NobuData/ouroboros/issues/31)) and `auth`
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33)) are in; the one the epic adds
+ * next is already named: `engine`
+ * ([#35](https://github.com/NobuData/ouroboros/issues/35)). Each arrives as a sibling
+ * directory and one entry in the `imports` below, so what a module contributes is visible
+ * in one line here rather than spread through the tree.
+ *
+ * `AuthModule` is imported before `TenancyModule` for a reason that is not alphabetical:
+ * it registers the global session guard, and reading this list top to bottom should say
+ * *authentication, then the routes it protects* rather than leave the reader to discover
+ * the guard inside a module three lines further down.
  *
  * `errors` is the exception to that shape and has no module: it holds the envelope every
  * failure is answered in, and the filter and pipe that produce it are registered on the
@@ -54,7 +61,13 @@ export class AppModule {
   static forRoot(configuration: Configuration): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigurationModule.forRoot(configuration), DbModule, HealthModule, TenancyModule],
+      imports: [
+        ConfigurationModule.forRoot(configuration),
+        DbModule,
+        HealthModule,
+        AuthModule,
+        TenancyModule,
+      ],
     };
   }
 }
