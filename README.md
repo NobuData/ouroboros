@@ -30,8 +30,8 @@ modules, the boundaries between them, the request paths, and the `OURO_*` regist
 `ouroboros-web` is the public marketing site and is **not** part of the application
 stack — it ships and deploys on its own.
 
-The four application modules are scaffolded by their epics; today each directory holds
-the README that defines the contract its scaffold must satisfy.
+All four application modules are scaffolded and run; each README states what its module
+does today and what its epic still owes it.
 
 ## Architecture
 
@@ -99,7 +99,7 @@ into one terminal:
 | | |
 |---|---|
 | `ouroboros-ui` | http://localhost:3000 |
-| `ouroboros-rest` | http://localhost:4000 — once [#27](https://github.com/NobuData/ouroboros/issues/27) lands |
+| `ouroboros-rest` | http://localhost:4000/api/v1 |
 | `ouroboros-engine` | http://127.0.0.1:8000 |
 | `ouroboros-db` | `postgresql://ouroboros:ouroboros@localhost:5432/ouroboros` |
 
@@ -181,11 +181,12 @@ without one could serve nothing — so it names the missing variable and exits r
 starting. Export it (`.env.example` carries the development value) and `yarn dev` runs
 the whole stack as before.
 
-`ouroboros-web`, `ouroboros-ui` ([#39](https://github.com/NobuData/ouroboros/issues/39))
-and `ouroboros-engine` ([#50](https://github.com/NobuData/ouroboros/issues/50)) are
-scaffolded; `ouroboros-rest` becomes live when
-[#27](https://github.com/NobuData/ouroboros/issues/27) lands. The full-stack compose file
-that adds those services to this one is
+All four application modules are scaffolded — `ouroboros-ui`
+([#39](https://github.com/NobuData/ouroboros/issues/39)), `ouroboros-rest`
+([#27](https://github.com/NobuData/ouroboros/issues/27)), `ouroboros-engine`
+([#50](https://github.com/NobuData/ouroboros/issues/50)) and `ouroboros-db`
+([#19](https://github.com/NobuData/ouroboros/issues/19)) — alongside `ouroboros-web`. The
+full-stack compose file that adds those services to this one is
 [#55](https://github.com/NobuData/ouroboros/issues/55).
 
 Environment variables are prefixed `OURO_` (except `PORT` and platform standards), are
@@ -233,10 +234,11 @@ Each module's checks run that module's own verbs from inside its own directory, 
 through `turbo run`. That is deliberate: a break in the task graph must never be what
 makes a module's checks pass.
 
-`ouroboros-rest` is still a README, so each workflow looks for its module's manifest
-first and reports why it stopped when there is not one. Nothing has to be edited when a
-scaffold lands — the pull request that adds a `package.json` or a `pyproject.toml` is the
-one that turns that module's checks on, as this one did for `ci/engine`.
+Each workflow looks for its module's manifest first and reports why it stopped when there
+is not one. Nothing has to be edited when a scaffold lands — the pull request that adds a
+`package.json` or a `pyproject.toml` is the one that turns that module's checks on, as
+[#27](https://github.com/NobuData/ouroboros/issues/27) did for `ci/rest`, the last of the
+four to switch on.
 
 `scripts/verify-ci.sh` asserts all of the above from the checkout: the check names, the
 routing table, the Node and Python pins, and that every step waits for its scaffold.

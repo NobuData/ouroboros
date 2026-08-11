@@ -1,0 +1,44 @@
+{
+  "name": "ouroboros-rest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The communications layer — the only boundary between the browser and everything behind it. NestJS 11 on Node 24; a Yarn workspace resolving through the repository-root lockfile.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "lint": "eslint",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.28",
+    "@nestjs/core": "11.1.28",
+    "@nestjs/platform-express": "11.1.28",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@nestjs/cli": "^11",
+    "@nestjs/schematics": "^11",
+    "@nestjs/testing": "11.1.28",
+    "@types/express": "^5",
+    "@types/jest": "^30",
+    "@types/node": "^24",
+    "@types/supertest": "^7",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10",
+    "eslint-plugin-prettier": "^5",
+    "globals": "^17",
+    "jest": "^30",
+    "prettier": "^3",
+    "supertest": "^7",
+    "ts-jest": "^29",
+    "typescript": "^5",
+    "typescript-eslint": "^8"
+  }
+}

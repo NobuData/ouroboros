@@ -209,9 +209,12 @@ runner's job at all. Recording that is half the point of the exercise.
 Bought by **workspaces**, not by the runner. Neither tool shares a `tsconfig.json` by
 existing: the mechanism is a base config the modules `extends`, either at the root or as
 an internal package, and it is available identically under Turborepo, under Nx, and under
-plain Yarn workspaces. It is not set up today because there is one TypeScript module with
-a `tsconfig.json`; the second is [#27](https://github.com/NobuData/ouroboros/issues/27),
-and a shared base is worth extracting when there is something to share it *with*.
+plain Yarn workspaces. It was not set up when this was written because there was one
+TypeScript module with a `tsconfig.json`;
+[#27](https://github.com/NobuData/ouroboros/issues/27) has since landed the second, and
+the two share little — one is a Next.js bundler configuration, the other a decorator-aware
+CommonJS one — so there is still nothing a base config would carry that is worth the
+indirection. This stays open until there is.
 
 ### The generated-client handoff
 

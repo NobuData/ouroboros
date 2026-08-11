@@ -22,9 +22,9 @@
 # The sibling manifests. Yarn resolves every workspace before installing any of them, so
 # an absent manifest is a failed --immutable install, not a smaller context. They are
 # the manifests only — no sibling module's source enters this image.
-# ouroboros-rest joins them when it is scaffolded (#27).
 !ouroboros-db/package.json
 !ouroboros-engine/package.json
+!ouroboros-rest/package.json
 
 # This module.
 !ouroboros-ui

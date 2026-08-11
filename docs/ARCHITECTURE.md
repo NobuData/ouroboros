@@ -30,7 +30,7 @@ describing:
 | Module | State | Landing in |
 |---|---|---|
 | [`ouroboros-db`](../ouroboros-db) | **Running** — migrations apply against a live PostgreSQL | Complete: the Flyway project landed with [#19](https://github.com/NobuData/ouroboros/issues/19) |
-| [`ouroboros-rest`](../ouroboros-rest) | Specified | [#27](https://github.com/NobuData/ouroboros/issues/27) → epic [#4](https://github.com/NobuData/ouroboros/issues/4) |
+| [`ouroboros-rest`](../ouroboros-rest) | **Running** — the NestJS application serves a heartbeat on `/api/v1` | Scaffolded by [#27](https://github.com/NobuData/ouroboros/issues/27) → epic [#4](https://github.com/NobuData/ouroboros/issues/4) |
 | [`ouroboros-ui`](../ouroboros-ui) | **Running** — the App Router skeleton builds and serves | Scaffolded by [#39](https://github.com/NobuData/ouroboros/issues/39) → epic [#5](https://github.com/NobuData/ouroboros/issues/5) |
 | [`ouroboros-engine`](../ouroboros-engine) | **Running** — the FastAPI service serves liveness and a key-guarded `/v0` | Scaffolded by [#50](https://github.com/NobuData/ouroboros/issues/50), guarded by [#51](https://github.com/NobuData/ouroboros/issues/51) → epic [#6](https://github.com/NobuData/ouroboros/issues/6) |
 | [`ouroboros-web`](../ouroboros-web) | **Running** — the marketing site, outside the application stack | — |
@@ -120,8 +120,14 @@ compile error rather than a runtime surprise.
 
 ### 2.2 `ouroboros-rest` — the communications layer
 
-**Specified** ([#27](https://github.com/NobuData/ouroboros/issues/27)). NestJS 11,
-TypeScript, Kysely over `pg`, port 4000, all routes under `/api/v1`.
+**Running** ([#27](https://github.com/NobuData/ouroboros/issues/27)). NestJS 11,
+TypeScript `strict`, port 4000, all routes under `/api/v1` — a global `/api` prefix and
+URI versioning defaulting to v1, so a route is versioned by omission rather than by
+remembering to be. What is up is the skeleton: `src/modules/app` answering a heartbeat
+that names the service and the build, `PORT` and `NODE_ENV` validated before a socket is
+bound, and shutdown hooks enabled ahead of the first provider that will need to drain
+something. Kysely over `pg` arrives with
+[#30](https://github.com/NobuData/ouroboros/issues/30).
 
 It is the only module that talks to the database and the only module that talks to the
 engine, and it owns everything that follows from that:
