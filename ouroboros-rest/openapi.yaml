@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.2.0"
+  version: "0.3.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -30,9 +30,17 @@ info:
     and a controller opts *out* of v1 rather than into it — so a route cannot be
     published unversioned by omission.
 
+    Two paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.
+    They are read by infrastructure with no notion of an API version — a container's
+    `HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is
+    configured once and must keep working when a version is added or retired, which is the
+    same reason `ouroboros-engine`'s liveness route is `/healthz` rather than
+    `/v0/healthz`. They are described here anyway, because this document describes
+    everything the service serves.
+
     What is described below is the whole of the surface today: the heartbeat the scaffold
-    ([#27](https://github.com/NobuData/ouroboros/issues/27)) landed. Health probes
-    ([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API
+    ([#27](https://github.com/NobuData/ouroboros/issues/27)) landed and the probes
+    ([#29](https://github.com/NobuData/ouroboros/issues/29)). The tenancy API
     ([#31](https://github.com/NobuData/ouroboros/issues/31)), authentication
     ([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway
     ([#35](https://github.com/NobuData/ouroboros/issues/35)) each arrive as operations
@@ -55,9 +63,9 @@ servers:
 tags:
   - name: service
     description: |-
-      Identity and liveness — what answers before any contract does. The deeper probes a
-      container platform reads, `/health/live` and `/health/ready`, are
-      [#29](https://github.com/NobuData/ouroboros/issues/29).
+      Identity and liveness — what answers before any contract does: the heartbeat, and the
+      two probes a container platform reads to decide whether to restart this process and
+      whether to send it traffic.
 
 paths:
   /api/v1:
@@ -83,9 +91,99 @@ paths:
                 $ref: "#/components/schemas/Heartbeat"
               example:
                 service: ouroboros-rest
-                version: "0.2.0"
+                version: "0.3.0"
                 status: ok
                 uptimeSeconds: 3.885
+
+  /health/live:
+    get:
+      tags: [service]
+      summary: Liveness probe
+      description: |-
+        Report that the process is up and serving.
+
+        Deliberately shallow — it opens no connection, reads no configuration and calls
+        nothing downstream, so it cannot fail for a reason that has nothing to do with
+        whether this process should be restarted. Reaching the handler at all is the answer;
+        the three empty sections in the body are the shape `/health/ready` fills in.
+
+        Its reader restarts the container when this stops answering, which is why *no*
+        dependency is consulted here: a liveness probe that failed because PostgreSQL was
+        down would restart every replica of a healthy service, repeatedly, while the
+        database was the thing that needed attention.
+      operationId: readLiveness
+      responses:
+        "200":
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+              example:
+                status: ok
+                info: {}
+                error: {}
+                details: {}
+
+  /health/ready:
+    get:
+      tags: [service]
+      summary: Readiness probe
+      description: |-
+        Report whether this service's dependencies are reachable: PostgreSQL, asked
+        `SELECT 1` on a connection of the probe's own, and `ouroboros-engine`, asked for the
+        one route it serves without the internal key — `GET /healthz`.
+
+        Both are asked concurrently and reported independently, so a body that says the
+        database is down still says whether the engine is up. Every wait is bounded at two
+        seconds, so this answers whether or not a dependency does.
+
+        A `down` message names what was attempted and classifies why it failed. It carries
+        no host, no port, no role and no driver text: this route answers without
+        authentication, and the driver's own message — which is written for an operator and
+        names all three — goes to the service log instead.
+
+        Its reader takes the process out of rotation, or holds a dependent container back,
+        and putting it back costs nothing. That is why this one is allowed to fail because a
+        dependency is missing, and `/health/live` is not.
+      operationId: readReadiness
+      responses:
+        "200":
+          description: Every dependency answered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+              example:
+                status: ok
+                info:
+                  database: { status: up }
+                  engine: { status: up }
+                error: {}
+                details:
+                  database: { status: up }
+                  engine: { status: up }
+        "503":
+          description: |-
+            At least one dependency did not answer. `error` names which, and `details` still
+            reports the ones that did.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+              example:
+                status: error
+                info:
+                  engine: { status: up }
+                error:
+                  database:
+                    status: down
+                    message: SELECT 1 failed (ECONNREFUSED)
+                details:
+                  engine: { status: up }
+                  database:
+                    status: down
+                    message: SELECT 1 failed (ECONNREFUSED)
 
 components:
   # No `Error` schema yet, and deliberately not one written ahead of the code: the shared
@@ -129,3 +227,69 @@ components:
             and shrinking across polls means something is restarting the process — which
             is the one thing a heartbeat can tell you that a plain `200` cannot.
           examples: [3.885]
+
+    HealthReport:
+      type: object
+      title: HealthReport
+      description: |-
+        The body of both probes — one shape, so a reader parses one thing.
+
+        It is `@nestjs/terminus`'s report, and the three sections are the same dependencies
+        seen three ways: `info` holds the ones that are up, `error` the ones that are down,
+        and `details` holds all of them. All three are always present, and all three are
+        empty for `/health/live`, which has no dependencies to report on.
+      additionalProperties: false
+      required: [status, info, error, details]
+      properties:
+        status:
+          type: string
+          enum: [ok, error, shutting_down]
+          description: |-
+            `ok` when every dependency answered, `error` when one did not — and
+            `shutting_down` when the process has been told to stop, at which point it should
+            neither be sent traffic nor be counted live.
+          examples: [ok]
+        info:
+          $ref: "#/components/schemas/DependencyStatuses"
+          description: The dependencies that answered.
+        error:
+          $ref: "#/components/schemas/DependencyStatuses"
+          description: The dependencies that did not, each with a reason.
+        details:
+          $ref: "#/components/schemas/DependencyStatuses"
+          description: Every dependency, whatever it reported.
+
+    DependencyStatuses:
+      type: object
+      title: DependencyStatuses
+      description: |-
+        Dependencies, keyed by name. `/health/ready` reports two of them — `database` and
+        `engine` — and the map is open because a dependency added later is a key added here
+        rather than a new shape.
+      additionalProperties:
+        $ref: "#/components/schemas/DependencyStatus"
+      examples:
+        - database: { status: up }
+          engine: { status: up }
+
+    DependencyStatus:
+      type: object
+      title: DependencyStatus
+      description: What one dependency reported when it was asked.
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [up, down]
+          description: Whether this dependency answered.
+          examples: [up]
+        message:
+          type: string
+          description: |-
+            Present when the status is `down`: what was attempted, and a classification of
+            why it failed — `SELECT 1 failed (ECONNREFUSED)`, `GET /healthz responded 503`,
+            `SELECT 1 timed out after 2000 ms`. Never a driver's own message; this route
+            answers without authentication, and a driver names the host, the port and the
+            role it could not reach with.
+          examples: [SELECT 1 failed (ECONNREFUSED)]

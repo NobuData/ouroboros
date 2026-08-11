@@ -125,9 +125,10 @@ TypeScript `strict`, port 4000, all routes under `/api/v1` — a global `/api` p
 URI versioning defaulting to v1, so a route is versioned by omission rather than by
 remembering to be. What is up is the skeleton: `src/modules/app` answering a heartbeat
 that names the service and the build, every variable in the registry below validated
-before a socket is bound ([#28](https://github.com/NobuData/ouroboros/issues/28)), and
-shutdown hooks enabled ahead of the first provider that will need to drain
-something. It also publishes the contract it is written against — Swagger UI at
+before a socket is bound ([#28](https://github.com/NobuData/ouroboros/issues/28)),
+`/health/live` and `/health/ready` answering for the process and for its dependencies
+([#29](https://github.com/NobuData/ouroboros/issues/29)), and shutdown hooks draining the
+first connection anything holds. It also publishes the contract it is written against — Swagger UI at
 `/api/docs` and the committed document at `/api/openapi.json`, served verbatim rather
 than generated ([§5.1](#51-ui--rest--the-public-contract)). Kysely over `pg` arrives with
 [#30](https://github.com/NobuData/ouroboros/issues/30).
@@ -140,7 +141,11 @@ engine, and it owns everything that follows from that:
   secrets are redacted from the summary it logs
   ([#28](https://github.com/NobuData/ouroboros/issues/28), running).
 - **Health** — `/health/live` for the process, `/health/ready` for the process *and* its
-  dependencies ([#29](https://github.com/NobuData/ouroboros/issues/29)).
+  dependencies: `SELECT 1` and the engine's open `/healthz`, each bounded at two seconds and
+  reported independently, degrading to a `503` that names the one that failed. Both sit at
+  the origin root rather than under `/api/v1`, because a `HEALTHCHECK` and an orchestrator's
+  probe are configured once and have no notion of an API version
+  ([#29](https://github.com/NobuData/ouroboros/issues/29), running).
 - **Data access** — a typed Kysely instance over a `pg` pool; repositories live with
   their feature module ([#30](https://github.com/NobuData/ouroboros/issues/30)).
 - **Tenancy** — tenants, domains, members and GitHub org/repo enablement

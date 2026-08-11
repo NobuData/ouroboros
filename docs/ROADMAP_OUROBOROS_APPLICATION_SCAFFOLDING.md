@@ -1059,7 +1059,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 4.1 | #27 | 🟢 Done | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
 | 4.2 | #28 | 🟢 Done | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
-| 4.3 | #29 | 🟡 Open | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
+| 4.3 | #29 | 🟢 Done | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
 | 4.4 | #30 | 🟡 Open | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
 | 4.5 | #31 | 🟡 Open | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.6 | #32 | 🟡 Open | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
@@ -1130,7 +1130,7 @@ boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─�
 
 ### Issue 4.3 — ouroboros-rest: [4.3] Health & readiness endpoints
 
-> **GitHub issue:** #29 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #29 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** Compose, CI, and (later) orchestrators need to distinguish
   "process up" from "dependencies reachable."
@@ -1144,10 +1144,29 @@ boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─�
   until then). Blocks 4.10, 7.1.
 - **Technical Stack:** @nestjs/terminus.
 - **Epic:** 4
+- **As built:** 6.2 had already landed, so **nothing is stubbed** — the engine probe asks
+  the real `GET /healthz`, which is the one route the engine serves without
+  `X-Ouro-Internal-Key`, so the probe carries no secret. Both probes answer at the **origin
+  root**, outside `/api/v1` and outside `/api`: a probe is read by infrastructure that is
+  configured once and has no notion of an API version, so `/api/v1/health/live` would tie a
+  container's own liveness to the lifetime of `v1`. They are still described in
+  `openapi.yaml` — the drift check allows exactly the two paths `health.paths.ts` enumerates
+  outside the versioned surface, and requires them to stay described. The body is Terminus's
+  own `{status, info, error, details}` rather than the sketch's `{status: up}`, so both
+  probes answer in one shape and per-dependency `up`/`down` lives under `details`. A `down`
+  message names what was attempted and classifies why — `SELECT 1 failed (ECONNREFUSED)`,
+  `GET /healthz responded 503` — and never carries the driver's own text, because this route
+  answers without authentication and a driver names the host, the port and the role; the
+  real diagnosis goes to the service log. Deadlines are belt and braces: the pool bounds
+  connecting, reading and the server's statement, the engine request is *aborted* by
+  `AbortSignal.timeout()`, and the probe races its own two-second deadline over both. The
+  probe's `pg` pool holds one connection and is bound through a token, so 4.4 adopts the
+  service pool by rebinding one provider.
 
 ```
-/health/live  ─▶ 200 {status: up}
-/health/ready ─▶ { database: up|down, engine: up|down } ─▶ 200 | 503
+/health/live  ─▶ 200 {status: ok, info: {}, error: {}, details: {}}
+/health/ready ─▶ SELECT 1 ∥ GET /healthz ─▶ 200 {info: {database, engine}}
+                                         └▶ 503 {error: {database: "SELECT 1 failed (…)"}}
 ```
 
 ### Issue 4.4 — ouroboros-rest: [4.4] Database access layer (Kysely)
