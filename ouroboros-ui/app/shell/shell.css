@@ -1,0 +1,391 @@
+/*
+ * The application shell (#41) — header, sidebar, content pane.
+ *
+ * The specification is docs/DESIGN_SYSTEM_APP_SHELL.md § 1, which supersedes the
+ * top-bar navigation the mockups were drawn with: brand upper-left, session controls
+ * upper-right, navigation in a left sidebar, and the content pane as the only thing
+ * that scrolls.
+ *
+ * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated
+ * in docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every
+ * length that should follow the reader's font-size preference is rem — either a spacing
+ * or radius token, or a rem literal where the design names a pixel size (the header's
+ * 56px, the sidebar's 240px). Media-query widths are the exception: `rem` there is
+ * measured against the browser's initial font size, not the root's, so the breakpoints
+ * stay where the specification puts them at every font scale.
+ */
+
+/* ---------- the frame ---------- */
+
+/*
+ * Rows: header, then everything else. Columns: sidebar, then the pane.
+ *
+ * `height: 100%` against the locked <html>/<body> in globals.css is what contains the
+ * scroll: the grid is exactly the viewport, so only a cell that asks to scroll does.
+ * The pane below is the one that asks.
+ */
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  grid-template-columns: auto 1fr;
+  height: 100%;
+  overflow: hidden;
+}
+
+/*
+ * The sole vertical scroll container (§ 1.3). `scrollbar-gutter: stable` reserves the
+ * scrollbar's width whether or not a page needs one, so navigating between a short
+ * page and a long one does not shift the layout sideways.
+ *
+ * Nothing here scrolls horizontally: wide content (tables, diffs, timelines) carries
+ * its own overflow-x wrapper, which is the contract CP.4 turns into a primitive.
+ */
+.app-shell__pane {
+  grid-column: 2;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  background: var(--ground);
+}
+
+/* The measure every page is laid out against (§ 2): 1440px, centred in the pane. */
+.app-shell__measure {
+  max-width: 90rem;
+  margin: 0 auto;
+}
+
+/*
+ * The first thing the keyboard reaches, and invisible until it does. Off-canvas rather
+ * than `display: none`, because a hidden element is not focusable and a skip link that
+ * cannot be focused is not a skip link.
+ */
+.shell-skip {
+  position: absolute;
+  z-index: 70;
+  left: var(--sp-4);
+  top: calc(var(--sp-4) * -20);
+  padding: var(--sp-4) var(--sp-7);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: var(--t-sm);
+  text-decoration: none;
+}
+
+.shell-skip:focus-visible {
+  top: var(--sp-4);
+}
+
+/* ---------- header ---------- */
+
+.shell-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  height: 3.5rem;
+  padding: 0 var(--sp-7);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  flex: none;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.shell-brand__mark {
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: none;
+}
+
+/*
+ * One mark per ground, chosen in CSS so the right one is painted before any JavaScript
+ * runs. The three blocks mirror app/tokens.css exactly — light on the bare :root, the
+ * explicit dark choice, then dark from the OS with an explicit light choice still
+ * winning — because the mark follows the surface it sits on (docs/BRAND.md).
+ */
+.shell-brand__mark--dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .shell-brand__mark--light {
+  display: none;
+}
+
+:root[data-theme="dark"] .shell-brand__mark--dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .shell-brand__mark--light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .shell-brand__mark--dark {
+    display: block;
+  }
+}
+
+.shell-brand__wordmark {
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 700;
+  letter-spacing: var(--tr-wider);
+}
+
+.shell-brand__wordmark-accent {
+  color: var(--accent);
+}
+
+.shell-header__cluster {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.shell-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.shell-pill__count {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+}
+
+.shell-icon-button,
+.shell-avatar {
+  display: grid;
+  place-items: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-round);
+  background: var(--surface);
+  color: var(--ink-mut);
+  cursor: pointer;
+}
+
+.shell-icon-button:hover:not([aria-disabled="true"]) {
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
+
+.shell-avatar {
+  border-color: var(--line-strong);
+  background: var(--accent-panel);
+  color: var(--accent-panel-ink);
+}
+
+/* A control that cannot act says so, and says why in its accessible name. */
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+.shell-icon-button[aria-disabled="true"] {
+  color: var(--ink-faint);
+}
+
+/* ---------- account menu ---------- */
+
+.shell-menu {
+  position: relative;
+  display: flex;
+}
+
+/*
+ * No drop shadow: the token sheet publishes no shadow, and a shadow drawn from an
+ * opaque surface token is a block, not a shadow. The hairline and the raised surface
+ * separate the panel from the pane on their own.
+ */
+.shell-menu__panel {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + var(--sp-4));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 16rem;
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.shell-menu__identity {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.shell-menu__note {
+  display: block;
+  margin-top: var(--sp-3);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.shell-menu__item {
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+
+.shell-menu__item[aria-disabled="true"] {
+  color: var(--ink-faint);
+}
+
+.shell-menu__item:hover:not([aria-disabled="true"]) {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+/* ---------- sidebar ---------- */
+
+.shell-nav {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  width: 15rem;
+  padding: var(--sp-6) var(--sp-5);
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.shell-nav__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shell-nav__group--foot {
+  margin-top: auto;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.shell-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-4) var(--sp-6);
+  border-radius: var(--r-md);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.shell-nav__item:hover {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+/*
+ * The active entry, in the treatment docs/DESIGN_TOKENS.md reserves for live things:
+ * accent ink on the accent tint, an inset accent bar down its leading edge, and the
+ * glow. The measured pair (--accent on --accent-tint over --surface) clears WCAG AA in
+ * both palettes.
+ */
+.shell-nav__item--active,
+a.shell-nav__item--active:hover {
+  color: var(--accent);
+  background: var(--accent-tint);
+  box-shadow:
+    inset 2px 0 0 var(--accent),
+    0 0 0.75rem 0 var(--accent-glow);
+}
+
+.shell-nav__item--soon {
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.shell-nav__icon {
+  flex: none;
+}
+
+/* The chip that makes "not built yet" visible rather than leaving a dead row. */
+.shell-nav__soon {
+  margin-left: auto;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* ---------- responsive collapse ---------- */
+
+/*
+ * Below 1024px the sidebar is an icon rail and the names become tooltips — the width
+ * the mockups' own rail rule uses, at the width the specification names. It is CSS
+ * rather than state so it holds before hydration and without JavaScript; the
+ * user-controlled collapse, its persistence, and the overlay drawer below 768px are
+ * CP.2 — issue 644, written here without its hash: three hex digits behind one is a
+ * colour literal to the check in __tests__/styles.test.ts, and that check is right to
+ * be blunt about it.
+ */
+@media (max-width: 64rem) {
+  .shell-nav {
+    width: 4rem;
+    padding-inline: var(--sp-4);
+  }
+
+  .shell-nav__item {
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .shell-nav__label,
+  .shell-nav__soon {
+    display: none;
+  }
+}
+
+/* The narrowest phones: the pill is the first thing to go, so the brand and the
+   session controls keep their room. */
+@media (max-width: 48rem) {
+  .shell-pill {
+    display: none;
+  }
+
+  .shell-header {
+    padding-inline: var(--sp-5);
+  }
+}

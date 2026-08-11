@@ -2,13 +2,14 @@
 
 > **Status:** scaffolded ([#39](https://github.com/NobuData/ouroboros/issues/39), epic
 > [#5](https://github.com/NobuData/ouroboros/issues/5)), rendering from the design tokens
-> ([#40](https://github.com/NobuData/ouroboros/issues/40)), and switching themes at
-> runtime ([#17](https://github.com/NobuData/ouroboros/issues/17)) — `yarn dev` runs,
-> `ci/ui` is live, and it [ships as a container](#container)
-> ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders is still a
-> placeholder: the visible theme switcher
-> ([#42](https://github.com/NobuData/ouroboros/issues/42)) and the app shell
-> ([#41](https://github.com/NobuData/ouroboros/issues/41)) land on top of it.
+> ([#40](https://github.com/NobuData/ouroboros/issues/40)), switching themes at runtime
+> ([#17](https://github.com/NobuData/ouroboros/issues/17)), and wrapped in the
+> [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)) —
+> `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
+> ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders *inside* the
+> shell is still a placeholder: the dashboard
+> ([#45](https://github.com/NobuData/ouroboros/issues/45)) and the visible theme switcher
+> ([#42](https://github.com/NobuData/ouroboros/issues/42)) land on top of it.
 
 ## Purpose
 
@@ -151,7 +152,8 @@ ouroboros-ui/
 │   ├── theme.ts             # the theme engine: vocabulary, DOM ops, boot script
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
-│   ├── (app)/               # signed-in screens — shell #41 → dashboard #45
+│   ├── shell/               # the app shell: header, sidebar, content pane
+│   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
 ├── public/             # brand assets, favicons
@@ -163,12 +165,63 @@ ouroboros-ui/
 ```
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
-contribute nothing to the URL, so the dashboard is `/` rather than `/app`. Both hold a
-pass-through layout today — the chrome that belongs in them is #41 and #44.
+contribute nothing to the URL, so the dashboard is `/` rather than `/app`. `(app)` renders
+its screens inside the [app shell](#app-shell); `(auth)` is still a pass-through, waiting
+for the sign-in frame (#44).
 
 Tests live in `__tests__/` rather than beside the code they cover, so that no file under
 `app/` can ever be mistaken for a route segment. `yarn test` runs them once and exits;
 `yarn test:watch` is the interactive form.
+
+## App shell
+
+Every signed-in screen renders inside the shell
+([#41](https://github.com/NobuData/ouroboros/issues/41)), specified in
+[`../docs/DESIGN_SYSTEM_APP_SHELL.md`](../docs/DESIGN_SYSTEM_APP_SHELL.md) § 1 — which
+supersedes the top-bar navigation the mockups were drawn with.
+
+```
+┌──────────────────────────────────────────────────┐
+│ ◎ OUROBOROS            [Needs you —] [⚙] [KS ▾]  │  header — no nav links
+├───────────────┬──────────────────────────────────┤
+│ ▦ Dashboard   │                                  │
+│ ◉ Issues soon │   {page}                       ░ │  ← the only scrollbar
+│ …             │                                ░ │
+│ ───────────   │                                  │
+│ ▣ Needs You   │                                  │
+│ ⚙ Settings    │                                  │
+└───────────────┴──────────────────────────────────┘
+```
+
+Four things are worth knowing before adding a screen to it.
+
+1. **The pane is the only scroll container.** `html` and `body` are locked in
+   `globals.css`; [`app/shell/app-shell.tsx`](app/shell/app-shell.tsx) is a grid of
+   exactly the viewport, and the content pane owns `overflow-y`. So a page never sets
+   `position: fixed` to keep something visible, and wide content (tables, diffs,
+   timelines) scrolls sideways **inside its own `overflow-x` wrapper** — one page without
+   that wrapper is all it takes to start the pane scrolling sideways. A screen rendered
+   *outside* the shell inherits the lock and owns its own scroll container.
+2. **Navigation is data.** [`app/shell/nav.ts`](app/shell/nav.ts) is the list the sidebar
+   renders and the rule that decides which entry a URL belongs to: `/` matches only `/`,
+   and every other entry owns its route and everything under it, so `/models/routing`
+   keeps **Models** highlighted. CP.2 ([#644](https://github.com/NobuData/ouroboros/issues/644))
+   replaces the list with a registry modules write into; the shape of an entry is already
+   the shape of a registration.
+3. **An entry links only to a route that exists.** Ten of the eleven screens are unbuilt,
+   so their rows render as labelled *soon* text — not links, not in the tab order, each
+   naming the issue that will build it. Building one means flipping its `status` to
+   `"live"` in the same pull request as the route.
+4. **What is a slot, not an omission.** The theme toggle
+   ([#42](https://github.com/NobuData/ouroboros/issues/42)) mounts in the header cluster;
+   the tenant chip (#77), the search pill and ⌘K palette (#79), and the real needs-you
+   count (#78) each have an issue. The account menu's interaction is built and its
+   contents are placeholders until sessions
+   ([#33](https://github.com/NobuData/ouroboros/issues/33)) and CP.3 (#645) fill them.
+
+Responsive collapse below 1024px is CSS, not state: the sidebar becomes a 64px icon rail
+and every name becomes its tooltip. The user-controlled collapse, its per-account
+persistence, and the overlay drawer below 768px are CP.2.
 
 ## Design tokens
 
