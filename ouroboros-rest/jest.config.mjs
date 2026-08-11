@@ -2,9 +2,11 @@
  * Jest for ouroboros-rest — the unit suite `yarn test` and `ci/rest` run.
  *
  * Specs live beside the code they cover as `*.spec.ts`, which is the Nest convention
- * and the one the CLI's schematics generate into. The integration suite — Supertest
- * against a Testcontainers-backed database — is #37 and lands its own project; this one
- * starts nothing, needs nothing, and is expected to stay fast enough to run on save.
+ * and the one the CLI's schematics generate into. The integration suite is
+ * `*.integration-spec.ts` under `jest.integration.config.mjs` (#30) — deliberately a name
+ * the `testMatch` below does not match, so a test that needs a database can never be
+ * picked up by the suite that starts none. This one starts nothing, needs nothing, and is
+ * expected to stay fast enough to run on save.
  *
  * @type {import("jest").Config}
  */
@@ -32,7 +34,13 @@ export default {
   restoreMocks: true,
 
   coverageDirectory: "coverage",
-  // Fixtures are test support, not application code: `tsconfig.build.json` leaves them
-  // out of what ships, so counting them as covered or uncovered says nothing.
-  collectCoverageFrom: ["src/**/*.ts", "!src/**/*.spec.ts", "!src/**/*.fixture.ts"],
+  // Fixtures and the integration suites are test support, not application code:
+  // `tsconfig.build.json` leaves them out of what ships, so counting them as covered or
+  // uncovered says nothing.
+  collectCoverageFrom: [
+    "src/**/*.ts",
+    "!src/**/*.spec.ts",
+    "!src/**/*.integration-spec.ts",
+    "!src/**/*.fixture.ts",
+  ],
 };

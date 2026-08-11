@@ -1060,7 +1060,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.1 | #27 | 🟢 Done | ouroboros-rest: [4.1] NestJS service scaffold | Nest 11 app skeleton, strict TS, lint/test toolchain, module layout | mvp, rest | N (after 1.1) | Y | S | ouroboros-rest |
 | 4.2 | #28 | 🟢 Done | ouroboros-rest: [4.2] Typed configuration & env validation | Fail-fast validated `OURO_*` config module | mvp, rest | N (after 4.1) | Y | S | ouroboros-rest |
 | 4.3 | #29 | 🟢 Done | ouroboros-rest: [4.3] Health & readiness endpoints | `/health/live` + `/health/ready` incl. DB and engine probes | mvp, rest | N (after 4.2) | Y | S | ouroboros-rest |
-| 4.4 | #30 | 🟡 Open | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
+| 4.4 | #30 | 🟢 Done | ouroboros-rest: [4.4] Database access layer (Kysely) | Typed query layer over pg pool, schema types mirroring Flyway | mvp, rest, db | N (after 4.2, 3.3) | Y | M | ouroboros-rest |
 | 4.5 | #31 | 🟡 Open | ouroboros-rest: [4.5] Tenancy module & API | CRUD for tenants/domains/members/org-enablement | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.6 | #32 | 🟡 Open | ouroboros-rest: [4.6] Tenant-context resolution middleware | Resolve tenant per request; scoped request context | mvp, rest | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.7 | #33 | 🟡 Open | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
@@ -1171,7 +1171,7 @@ boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─�
 
 ### Issue 4.4 — ouroboros-rest: [4.4] Database access layer (Kysely)
 
-> **GitHub issue:** #30 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #30 · **Status:** 🟢 Done · **Parent epic:** #4
 
 - **Problem Statement:** REST needs typed, pooled access to the Flyway-owned schema
   without an ORM trying to own migrations (decision D3).
@@ -1186,10 +1186,30 @@ boot ─▶ load env ─▶ zod parse ──ok──▶ typed ConfigService ─�
 - **Parallelism/Dependencies:** Needs 4.2 and schema 3.2–3.4. Blocks 4.5, 4.7.
 - **Technical Stack:** Kysely, pg, kysely-codegen (dev-time).
 - **Epic:** 4
+- **As built:** The `Database` interface is **hand-maintained**, which the ticket permits as
+  the alternative to `kysely-codegen` — a generator cannot carry the union types the
+  `CHECK (x in (…))` constraints deserve, nor the trigger-owned `updated_at` that is
+  readable and un-writeable, and it is only as good as the last time somebody remembered to
+  run it. What replaces it is a **drift check in two halves**: `schema.ts` restates its
+  column names as values, `schema.spec.ts` fails to *compile* if that list and the
+  interfaces disagree, and the integration suite fails if that list and a **migrated
+  database** disagree — so a migration that adds a column is caught by CI rather than by a
+  reviewer. No `kysely-codegen` dependency is installed. Beyond the ticket's scope in two
+  places, both cheap: every generated statement is schema-qualified by `WithSchemaPlugin`
+  (and the connection carries a matching `search_path`, for raw `sql`), so the service does
+  not depend on a search path it did not set; and the query log **never carries a
+  parameter** — Kysely parameterises everything, and the parameter list is the part holding
+  an email address or a tenant's identifiers. `DbModule` is deliberately *not* global where
+  configuration is: only some modules touch the database, so an `imports` list is the answer
+  to "who can reach the tenancy schema". The readiness probe (4.3) keeps its own
+  one-connection pool rather than adopting this one — sharing would make the probe the first
+  thing to fail when the request pool was merely *busy*, reporting a load problem as a
+  dependency outage. `ci/rest` gained a live pass: a throwaway PostgreSQL, migrated with
+  `ouroboros-db/scripts/migrate`, that `yarn test:integration` runs against.
 
 ```
 Flyway (owns DDL) ─▶ PostgreSQL ◀─ pg pool ◀─ Kysely<Database> ◀─ feature repositories
-                        ▲ types mirror migrations (codegen from dev db)
+                        ▲ types mirror migrations, and two checks say they still do
 ```
 
 ### Issue 4.5 — ouroboros-rest: [4.5] Tenancy module & API

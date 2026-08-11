@@ -2,15 +2,17 @@
 
 > **Status:** the service scaffold landed with
 > [#27](https://github.com/NobuData/ouroboros/issues/27), validated configuration with
-> [#28](https://github.com/NobuData/ouroboros/issues/28) and the health probes with
-> [#29](https://github.com/NobuData/ouroboros/issues/29) (epic
+> [#28](https://github.com/NobuData/ouroboros/issues/28), the health probes with
+> [#29](https://github.com/NobuData/ouroboros/issues/29) and the database access layer with
+> [#30](https://github.com/NobuData/ouroboros/issues/30) (epic
 > [#4](https://github.com/NobuData/ouroboros/issues/4)). What runs today is the skeleton —
 > a NestJS application answering a heartbeat on `/api/v1`, publishing
 > [the specification it is written against](#the-api-specification), reading every setting
 > through [a typed, fail-fast configuration module](#configuration), reporting
 > [whether it is live and whether its dependencies are reachable](#health-and-readiness),
-> with the lint, typecheck, test and build pipeline `ci/rest` runs. The feature modules
-> listed under [Layout](#layout) are what land on it.
+> holding [a typed, pooled connection to the tenancy schema](#data-access), with the lint,
+> typecheck, test and build pipeline `ci/rest` runs. The feature modules listed under
+> [Layout](#layout) are what land on it.
 
 ## Purpose
 
@@ -24,29 +26,30 @@ in a single, auditable place.
 
 ## Stack
 
-| Concern         | Choice                                                                                                                                                                            |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Framework       | NestJS 11                                                                                                                                                                         |
-| Language        | TypeScript 5, `strict`                                                                                                                                                            |
-| Package manager | Yarn 4 via corepack (`nodeLinker: node-modules`)                                                                                                                                  |
-| Runtime         | Node 24                                                                                                                                                                           |
-| Data access     | Kysely over `pg` — no ORM; Flyway owns the schema ([#30](https://github.com/NobuData/ouroboros/issues/30)). `pg` itself is already here: the readiness probe's `SELECT 1` uses it |
-| Config          | `@nestjs/config` + zod validation, fail-fast at boot ([#28](https://github.com/NobuData/ouroboros/issues/28))                                                                     |
-| Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                         |
-| API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`             |
-| Tests           | Jest (unit) + Supertest & Testcontainers (integration, [#37](https://github.com/NobuData/ouroboros/issues/37))                                                                    |
-| Lint            | ESLint flat config + Prettier                                                                                                                                                     |
-| Container       | Multi-stage Dockerfile, non-root, `HEALTHCHECK` on `/health/live` ([#36](https://github.com/NobuData/ouroboros/issues/36))                                                        |
+| Concern         | Choice                                                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Framework       | NestJS 11                                                                                                                                                                  |
+| Language        | TypeScript 5, `strict`                                                                                                                                                     |
+| Package manager | Yarn 4 via corepack (`nodeLinker: node-modules`)                                                                                                                           |
+| Runtime         | Node 24                                                                                                                                                                    |
+| Data access     | Kysely over `pg` — no ORM; Flyway owns the schema, and the `Database` interface mirrors the migrations ([#30](https://github.com/NobuData/ouroboros/issues/30))            |
+| Config          | `@nestjs/config` + zod validation, fail-fast at boot ([#28](https://github.com/NobuData/ouroboros/issues/28))                                                              |
+| Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                  |
+| API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
+| Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
+| Lint            | ESLint flat config + Prettier                                                                                                                                              |
+| Container       | Multi-stage Dockerfile, non-root, `HEALTHCHECK` on `/health/live` ([#36](https://github.com/NobuData/ouroboros/issues/36))                                                 |
 
 ## Run
 
 ```bash
-yarn install    # immutable install from the committed lockfile
-yarn dev        # http://localhost:4000/api/v1
-yarn openapi    # re-render openapi.json from openapi.yaml
+yarn install           # immutable install from the committed lockfile
+yarn dev               # http://localhost:4000/api/v1
+yarn openapi           # re-render openapi.json from openapi.yaml
 yarn lint
 yarn typecheck
 yarn test
+yarn test:integration  # needs a migrated database — see Data access
 yarn build && yarn start
 ```
 
@@ -59,7 +62,7 @@ run. The heartbeat and the two probes are the whole of the surface today:
 
 ```console
 $ curl http://localhost:4000/api/v1
-{"service":"ouroboros-rest","version":"0.3.0","status":"ok","uptimeSeconds":3.885}
+{"service":"ouroboros-rest","version":"0.4.0","status":"ok","uptimeSeconds":3.885}
 ```
 
 | Path                | Purpose                                                               |
@@ -73,7 +76,8 @@ $ curl http://localhost:4000/api/v1
 
 Formatting is not a separate check: Prettier runs as a lint rule, so `yarn lint` fails on
 a badly formatted file and `yarn format` is the fixer. `yarn test:watch` re-runs the unit
-suite on save.
+suite on save. `yarn test:integration` is the one command that needs a database; see
+[Data access](#data-access).
 
 This directory is a **Yarn workspace**
 ([#13](https://github.com/NobuData/ouroboros/issues/13)): its `package.json` carries no
@@ -290,9 +294,95 @@ Five things about them are deliberate, and all five live in
 
 The engine probe asks `GET /healthz`, the one route `ouroboros-engine` serves without
 `X-Ouro-Internal-Key` ([#51](https://github.com/NobuData/ouroboros/issues/51)) — so it
-carries no secret at all. The database probe is a one-connection `pg` pool of its own,
-which [#30](https://github.com/NobuData/ouroboros/issues/30) replaces with the service's
-pool by rebinding one provider.
+carries no secret at all. The database probe keeps a one-connection `pg` pool of its own,
+deliberately separate from the request pool below: a probe sharing that pool would be the
+first thing to fail when it was merely _busy_, which reports a load problem as a dependency
+outage — and readiness is the signal an orchestrator reads to decide whether to keep
+sending traffic. Two pools, two questions.
+
+## Data access
+
+**Kysely over `pg`, and no ORM** — decision **D3** in
+[`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). `ouroboros-db`'s Flyway migrations own
+every table, index, constraint and trigger; this module writes no DDL, and
+[`src/modules/db/schema.ts`](src/modules/db/schema.ts) _mirrors_ V001–V003 so a query can be
+type-checked.
+
+```ts
+@Injectable()
+export class TenantsRepository {
+  constructor(private readonly database: DatabaseService) {}
+
+  async findBySlug(slug: string): Promise<Tenant | undefined> {
+    return this.database.db
+      .selectFrom("tenants") // → from "ouroboros"."tenants"
+      .selectAll()
+      .where("slug", "=", slug) // → where "slug" = $1
+      .executeTakeFirst();
+  }
+}
+```
+
+Six things about it are deliberate, and all six live in
+[`src/modules/db/`](src/modules/db):
+
+- **`DbModule` provides one thing: the connection.** Repositories live with their feature
+  module — tenancy's with `TenancyModule` ([#31](https://github.com/NobuData/ouroboros/issues/31)),
+  auth's with `AuthModule` ([#33](https://github.com/NobuData/ouroboros/issues/33)) — and
+  each of those imports `DbModule` and injects `DatabaseService`. A `db/` that also held the
+  queries would become the place every feature's SQL accumulated.
+- **It is not global, where configuration is.** Every module needs configuration; only some
+  touch the database, so an `imports` list is the answer to "who can reach the tenancy
+  schema".
+- **The types mirror the migrations, and something checks that they still do.**
+  `TABLE_COLUMNS` restates the same column names as values: `schema.spec.ts` fails to
+  compile if that list and the interfaces drift apart, and the integration suite fails if
+  the list and a **migrated database** drift apart. Column names are the database's —
+  `display_name`, not `displayName` — because a name that differs between the migration and
+  the type is a mapping nobody can grep for.
+- **Every statement is schema-qualified.** Kysely's `WithSchemaPlugin` rewrites the query
+  tree, so the service does not depend on a `search_path` it did not set; the connection
+  sets one anyway, for the raw `sql` fragments the plugin cannot see.
+- **Nothing about a query is unbounded.** Ten connections at most, and a deadline on getting
+  one, on waiting for rows, and on the server running the statement — see
+  [`pool.ts`](src/modules/db/pool.ts) for what each is chosen against.
+- **The log never carries a parameter.** Kysely parameterises everything, and the parameter
+  list is the part holding an email address, a display name, a tenant's identifiers. A slow
+  query in development is logged with its SQL and its duration; a failed query is logged in
+  every environment; neither is ever logged with its values.
+
+Transactions are one call, and the `trx` it hands out has the same typed surface — so a
+repository method takes either and does not need to know which it was given:
+
+```ts
+await this.database.transaction(async (trx) => {
+  const tenant = await tenants.create(slug, name, trx);
+  await domains.add(tenant.id, domain, trx);
+}); // commits, or rolls back everything if the callback throws
+```
+
+The pool drains on shutdown: `src/application.ts` enables Nest's shutdown hooks, so
+`SIGTERM` runs `DatabaseService.onApplicationShutdown` and the process does not exit until
+the connections are back. In `pg_stat_activity` they are named `ouroboros-rest`, which is
+what tells them apart from the readiness probe's `ouroboros-rest health probe`.
+
+### Running the integration suite
+
+`yarn test` starts nothing and needs nothing. The checks that are only true of a _migrated_
+database live in `*.integration-spec.ts` and run separately:
+
+```bash
+docker compose up -d      # from the repo root — PostgreSQL, migrated by Flyway
+cd ouroboros-rest
+OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros \
+  yarn test:integration
+```
+
+There is no default and no skip: a suite that passed when it was given no database would be
+reporting "the schema matches" having compared nothing. It writes only rows named
+`ouro-it-*` and removes them afterwards, so the development stack — dev seed and all — is
+safe to point it at. `ci/rest` runs it against a throwaway PostgreSQL migrated from this
+checkout.
 
 ## Layout
 
@@ -307,7 +397,7 @@ ouroboros-rest/
 │       ├── app/            # heartbeat — controller, service, root module
 │       ├── config/         # the zod schema, the typed service, redaction
 │       ├── health/         # /health/live, /health/ready, the two probes
-│       ├── db/             # Kysely instance + pool lifecycle  · #30
+│       ├── db/             # schema types, pool, Kysely instance, lifecycle
 │       ├── tenancy/        # tenants, domains, members         · #31
 │       ├── auth/           # GitHub OAuth, sessions, guards    · #33
 │       └── engine/         # typed internal client             · #35
@@ -315,24 +405,28 @@ ouroboros-rest/
 ├── openapi.yaml            # the API specification — authoritative, hand-written
 ├── openapi.json            # rendered from it; the copy the service loads
 ├── eslint.config.mjs       # flat config; Prettier runs as a lint rule
-├── jest.config.mjs         # unit suite — src/**/*.spec.ts
+├── jest.config.mjs         # unit suite — src/**/*.spec.ts, starts nothing
+├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, needs a database
 ├── nest-cli.json
 ├── tsconfig.json           # strict; what typecheck, ts-jest and the linter read
 └── tsconfig.build.json     # the same, minus the specs — what ships
 ```
 
-Everything below `src/modules/` after `app/`, `config/` and `health/` is named above and
-does not exist yet; each arrives as one directory and one entry in `AppModule.forRoot`'s
-`imports`, which is what `health/` cost. `config/` is already global, so a feature module
-reads configuration by injecting `AppConfigService` without importing anything.
+Everything below `src/modules/` after `app/`, `config/`, `health/` and `db/` is named above
+and does not exist yet; each arrives as one directory and one entry in
+`AppModule.forRoot`'s `imports`, which is what `health/` and `db/` cost. `config/` is
+already global, so a feature module reads configuration by injecting `AppConfigService`
+without importing anything; `db/` is deliberately not, so a module that queries says so by
+importing it.
 
-Unit tests sit beside the code they cover as `*.spec.ts`, which is the Nest convention
-and what the CLI's schematics generate. They start nothing and need nothing — the
-integration suite that wants a database is
-[#37](https://github.com/NobuData/ouroboros/issues/37). The health suite proves that
-readiness degrades by handing the probe a connection that refuses rather than by stopping a
-database: `*.fixture.ts` beside the code is where a dependency that answers, one that
-refuses and one that never comes back are defined.
+Unit tests sit beside the code they cover as `*.spec.ts`, which is the Nest convention and
+what the CLI's schematics generate. They start nothing and need nothing. Tests that do need
+a database are `*.integration-spec.ts` — a name `jest.config.mjs` does not match, so the
+fast suite can never pick one up — and the harness that will run them without a compose
+stack, on Testcontainers, is [#37](https://github.com/NobuData/ouroboros/issues/37). The
+health suite proves that readiness degrades by handing the probe a connection that refuses
+rather than by stopping a database: `*.fixture.ts` beside the code is where a dependency
+that answers, one that refuses and one that never comes back are defined.
 
 ## Related issues
 

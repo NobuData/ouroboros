@@ -127,11 +127,12 @@ remembering to be. What is up is the skeleton: `src/modules/app` answering a hea
 that names the service and the build, every variable in the registry below validated
 before a socket is bound ([#28](https://github.com/NobuData/ouroboros/issues/28)),
 `/health/live` and `/health/ready` answering for the process and for its dependencies
-([#29](https://github.com/NobuData/ouroboros/issues/29)), and shutdown hooks draining the
-first connection anything holds. It also publishes the contract it is written against — Swagger UI at
+([#29](https://github.com/NobuData/ouroboros/issues/29)), a typed Kysely instance over a
+`pg` pool whose `Database` interface mirrors V001–V003
+([#30](https://github.com/NobuData/ouroboros/issues/30)), and shutdown hooks draining every
+connection either of them holds. It also publishes the contract it is written against — Swagger UI at
 `/api/docs` and the committed document at `/api/openapi.json`, served verbatim rather
-than generated ([§5.1](#51-ui--rest--the-public-contract)). Kysely over `pg` arrives with
-[#30](https://github.com/NobuData/ouroboros/issues/30).
+than generated ([§5.1](#51-ui--rest--the-public-contract)).
 
 It is the only module that talks to the database and the only module that talks to the
 engine, and it owns everything that follows from that:
@@ -146,8 +147,12 @@ engine, and it owns everything that follows from that:
   the origin root rather than under `/api/v1`, because a `HEALTHCHECK` and an orchestrator's
   probe are configured once and have no notion of an API version
   ([#29](https://github.com/NobuData/ouroboros/issues/29), running).
-- **Data access** — a typed Kysely instance over a `pg` pool; repositories live with
-  their feature module ([#30](https://github.com/NobuData/ouroboros/issues/30)).
+- **Data access** — a typed Kysely instance over a bounded `pg` pool, schema-qualified to
+  the schema Flyway owns; repositories live with their feature module, and `DbModule`
+  provides only the connection. The `Database` interface mirrors the migrations, and two
+  checks keep it honest: the column list fails to compile if it drifts from the interfaces,
+  and the integration suite fails if it drifts from a migrated database
+  ([#30](https://github.com/NobuData/ouroboros/issues/30), running).
 - **Tenancy** — tenants, domains, members and GitHub org/repo enablement
   ([#31](https://github.com/NobuData/ouroboros/issues/31)), plus the per-request tenant
   context ([#32](https://github.com/NobuData/ouroboros/issues/32)).

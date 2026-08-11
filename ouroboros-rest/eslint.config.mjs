@@ -65,11 +65,19 @@ export default tseslint.config(
     // reaches for process.env directly gets an unvalidated string, skips the redaction
     // rules, and moves the failure from boot to the first request that needed the value.
     //
-    // Two files are exempt and both are boundaries rather than exceptions: src/main.ts
-    // is the process entry point, which is *where* the environment is read, and its spec
-    // is what proves it reads the real one.
+    // Three kinds of file are exempt and all of them are boundaries rather than
+    // exceptions: src/main.ts is the process entry point, which is *where* the environment
+    // is read, and its spec is what proves it reads the real one. The integration suites
+    // (#30) are the third — they are handed a database by whoever runs them, exactly as
+    // the process is handed one by its operator, and there is nothing typed to read it
+    // through before an application has been built around it.
     files: ["src/**/*.ts"],
-    ignores: ["src/main.ts", "src/main.spec.ts", "src/modules/config/**/*.ts"],
+    ignores: [
+      "src/main.ts",
+      "src/main.spec.ts",
+      "src/modules/config/**/*.ts",
+      "src/**/*.integration-spec.ts",
+    ],
     rules: {
       "no-restricted-properties": [
         "error",
