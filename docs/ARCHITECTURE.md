@@ -586,6 +586,7 @@ checkout runs with:
 | `OURO_AUTH_DEV_USER` | `ouroboros-rest` | Development sign-in bypass: every request is treated as coming from this address, which must name a `ouroboros.users` row. Dropped before validation when `NODE_ENV=production` | `ken@acme-robotics.dev` |
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
+| `OURO_TEST_DATABASE_DISPOSABLE` | `ouroboros-rest` tests | Whether `yarn test:integration` may empty the database between tests. The harness normally starts a throwaway PostgreSQL, which is disposable by definition; this is consulted only when `OURO_DATABASE_URL` points the suite at somebody else's, where truncation would take the development seed with it | `false` |
 
 The database variables appear twice on purpose: the six discrete parameters configure the
 containers and the migration runner, while `OURO_DATABASE_URL` is what an application

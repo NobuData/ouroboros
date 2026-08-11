@@ -26,10 +26,13 @@
 > route, and every way the engine can fail answered as one `502`. It
 > [ships as a container](#container)
 > ([#36](https://github.com/NobuData/ouroboros/issues/36)) — multi-stage, non-root, healthy
-> on `/health/live`, 226 MB against a 300 MB budget. What is left in the epic is the
-> Testcontainers harness ([#37](https://github.com/NobuData/ouroboros/issues/37)) and the
-> security baseline ([#38](https://github.com/NobuData/ouroboros/issues/38)); the remaining
-> feature modules are listed under [Layout](#layout).
+> on `/health/live`, 226 MB against a 300 MB budget. The
+> [integration harness](#running-the-integration-suite)
+> ([#37](https://github.com/NobuData/ouroboros/issues/37)) is in: `yarn test:integration`
+> starts its own migrated PostgreSQL, so the suite that proves the constraint mapping and
+> the role matrix needs nothing but Docker. What is left in the epic is the security
+> baseline ([#38](https://github.com/NobuData/ouroboros/issues/38)); the remaining feature
+> modules are listed under [Layout](#layout).
 
 ## Purpose
 
@@ -57,7 +60,7 @@ in a single, auditable place.
 | Tenancy         | A request-scoped tenant context over `AsyncLocalStorage`, a global guard and `@Roles(…)` ([#32](https://github.com/NobuData/ouroboros/issues/32))                          |
 | Engine gateway  | A typed client over bare `fetch` — shared secret, five-second deadline, one retry, zod-parsed answers, every failure a `502` ([#35](https://github.com/NobuData/ouroboros/issues/35)) |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
-| Tests           | Jest (unit) + a database-backed integration suite (`yarn test:integration`); Supertest & Testcontainers follow with [#37](https://github.com/NobuData/ouroboros/issues/37) |
+| Tests           | Jest (unit), plus a Supertest suite over a PostgreSQL the run starts for itself — Testcontainers, migrated by Flyway ([#37](https://github.com/NobuData/ouroboros/issues/37))  |
 | Lint            | ESLint flat config + Prettier                                                                                                                                              |
 | Container       | Multi-stage Dockerfile on `node:24-alpine`, production-only dependency tree, non-root, `HEALTHCHECK` on `/health/live` — see [Container](#container)                        |
 
@@ -70,7 +73,7 @@ yarn openapi           # re-render openapi.json from openapi.yaml
 yarn lint
 yarn typecheck
 yarn test
-yarn test:integration  # needs a migrated database — see Data access
+yarn test:integration  # starts a PostgreSQL of its own — needs Docker
 yarn build && yarn start
 ```
 
@@ -110,8 +113,8 @@ $ curl http://localhost:4000/api/v1
 
 Formatting is not a separate check: Prettier runs as a lint rule, so `yarn lint` fails on
 a badly formatted file and `yarn format` is the fixer. `yarn test:watch` re-runs the unit
-suite on save. `yarn test:integration` is the one command that needs a database; see
-[Data access](#data-access).
+suite on save. `yarn test:integration` is the one command that needs a database, and it
+starts one; see [Running the integration suite](#running-the-integration-suite).
 
 This directory is a **Yarn workspace**
 ([#13](https://github.com/NobuData/ouroboros/issues/13)): its `package.json` carries no
@@ -411,7 +414,24 @@ what tells them apart from the readiness probe's `ouroboros-rest health probe`.
 ### Running the integration suite
 
 `yarn test` starts nothing and needs nothing. The checks that are only true of a _migrated_
-database live in `*.integration-spec.ts` and run separately:
+database live in `*.integration-spec.ts` and run separately —
+[#37](https://github.com/NobuData/ouroboros/issues/37):
+
+```bash
+yarn test:integration     # Docker is the only prerequisite
+```
+
+The run starts `postgres:17-alpine` through Testcontainers, applies `ouroboros-db`'s Flyway
+project to it with the pinned `flyway/flyway:11-alpine`, boots the application on a random
+port, and throws the container away when it ends. `ci/rest` runs the same command with no
+setup around it, so what a pull request proves is what you just ran.
+
+There is no default and no skip: a suite that passed when it was given no database would be
+reporting "the schema matches" having compared nothing.
+
+**Pointing it at a database of your own.** Export `OURO_DATABASE_URL` and nothing is
+started — useful when you want to inspect what a failing suite left behind, or when the
+compose stack is already up:
 
 ```bash
 docker compose up -d      # from the repo root — PostgreSQL, migrated by Flyway
@@ -420,16 +440,27 @@ OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros \
   yarn test:integration
 ```
 
-There is no default and no skip: a suite that passed when it was given no database would be
-reporting "the schema matches" having compared nothing. It writes only rows named
-`ouro-it-*` and removes them afterwards, so the development stack — dev seed and all — is
-safe to point it at. `ci/rest` runs it against a throwaway PostgreSQL migrated from this
-checkout.
+The suites that clean up after themselves write only rows named `ouro-it-*` and remove them
+afterwards, so this is safe. The ones built on the harness **empty every table between
+tests**, which would take the dev seed with it, so they refuse a database the run did not
+start and say so. Add `OURO_TEST_DATABASE_DISPOSABLE=true` when the database you supplied
+is genuinely throwaway.
 
-`tenancy.integration-spec.ts` joins it with the API's own CRUD, over Supertest against a
-real application: the constraint mapping and the last-owner rule are both claims about this
-service and `ouroboros-db` agreeing, and a mocked repository can be made to agree with
-anything.
+What runs:
+
+| Suite                          | What only a real database can answer                                          |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `db.integration-spec.ts`       | the `Database` interface names the columns Flyway created; the pool drains     |
+| `tenancy.integration-spec.ts`  | CRUD end to end, constraint → envelope mapping, the last-owner rule            |
+| `auth.integration-spec.ts`     | the OAuth flow lands a session; a repeat sign-in reuses the same user row      |
+| `roles.integration-spec.ts`    | the role matrix — 15 routes × 6 callers, through the guards that are really on |
+| `harness.integration-spec.ts`  | the harness itself: the image, the migrations, the port, the truncation        |
+
+`roles.integration-spec.ts` is the one that answers #37's second criterion. `RolesGuard`'s
+unit spec proves the guard refuses a role that is not in its list — with metadata the test
+wrote. It cannot prove the metadata is *there*: delete `@Roles(...ADMINISTRATORS)` from a
+controller and every unit spec still passes, because none of them go through the router that
+reads it. The matrix does, for every route, as every role.
 
 ## The tenancy API
 
@@ -805,6 +836,7 @@ ouroboros-rest/
 │   ├── version.ts          # the running build, read from package.json
 │   ├── container.spec.ts   # the image, asserted from the files that define it  · #36
 │   ├── openapi/            # loads the committed spec — it is never generated
+│   ├── testing/            # the integration harness: container, app, sessions · #37
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
 │       ├── config/         # the zod schema, the typed service, redaction
@@ -821,7 +853,7 @@ ouroboros-rest/
 ├── openapi.json            # rendered from it; the copy the service loads
 ├── eslint.config.mjs       # flat config; Prettier runs as a lint rule
 ├── jest.config.mjs         # unit suite — src/**/*.spec.ts, starts nothing
-├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, needs a database
+├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, on a container it starts
 ├── nest-cli.json
 ├── tsconfig.json           # strict; what typecheck, ts-jest and the linter read
 └── tsconfig.build.json     # the same, minus the specs — what ships
@@ -855,11 +887,41 @@ no module declared: a path nothing claims, a body the parser refused.
 Unit tests sit beside the code they cover as `*.spec.ts`, which is the Nest convention and
 what the CLI's schematics generate. They start nothing and need nothing. Tests that do need
 a database are `*.integration-spec.ts` — a name `jest.config.mjs` does not match, so the
-fast suite can never pick one up — and the harness that will run them without a compose
-stack, on Testcontainers, is [#37](https://github.com/NobuData/ouroboros/issues/37). The
-health suite proves that readiness degrades by handing the probe a connection that refuses
-rather than by stopping a database: `*.fixture.ts` beside the code is where a dependency
-that answers, one that refuses and one that never comes back are defined.
+fast suite can never pick one up. The health suite proves that readiness degrades by handing
+the probe a connection that refuses rather than by stopping a database: `*.fixture.ts` beside
+the code is where a dependency that answers, one that refuses and one that never comes back
+are defined.
+
+`src/testing/` is the exception to *beside the code it covers*, because what it covers is
+the run rather than a module ([#37](https://github.com/NobuData/ouroboros/issues/37)). Six
+files, each of them a `*.fixture.ts` and therefore excluded from the build alongside the
+specs:
+
+| File                          | What it is                                                       |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `migration.fixture.ts`        | which images, which Flyway project, which command — and its spec compares all of it with `docker-compose.yml` |
+| `postgres.fixture.ts`         | starts `postgres:17-alpine` and migrates it over a private network |
+| `global.setup.fixture.ts`     | Jest's `globalSetup`: start one database for the run, publish it as `OURO_DATABASE_URL` |
+| `global.teardown.fixture.ts`  | …and stop it, green or red                                        |
+| `global.state.fixture.ts`     | the one value the two hooks share, which cannot be a module variable |
+| `harness.fixture.ts`          | `ApiHarness` — the application on a random port, sessions, roles, truncation |
+| `integration.fixture.ts`      | the small shared pieces: the database guard, typed bodies, unique names |
+
+`ApiHarness` is what a suite uses:
+
+```ts
+const api = await ApiHarness.start();
+const owner = await api.signIn();
+const tenant = await api.workspace(owner);
+
+await api.as(owner)("get", `/api/v1/tenants/${tenant.id}`).expect(200);
+```
+
+The session it mints is a real one — `issueSession`, signed with the secret the application
+under test was configured with — so a suite using it exercises the global guard rather than
+avoiding it. `api.sql` is a connection outside the application, for the arrangements the API
+will not make: there is no route that creates a `viewer`, and a fixture that went through one
+would make the arrangement part of what is being asserted.
 
 ## Related issues
 
@@ -874,6 +936,8 @@ tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
+integration harness [#37](https://github.com/NobuData/ouroboros/issues/37) ·
+the Flyway project it migrates with [#19](https://github.com/NobuData/ouroboros/issues/19) ·
 the compose stack that runs it [#55](https://github.com/NobuData/ouroboros/issues/55) ·
 full epic [#4](https://github.com/NobuData/ouroboros/issues/4).
 

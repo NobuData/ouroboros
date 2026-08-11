@@ -1,6 +1,6 @@
 {
   "name": "ouroboros-rest",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "The communications layer — the only boundary between the browser and everything behind it. NestJS 11 on Node 24; a Yarn workspace resolving through the repository-root lockfile.",
   "license": "Apache-2.0",
@@ -37,6 +37,7 @@
     "@nestjs/schematics": "^11",
     "@nestjs/testing": "11.1.28",
     "@readme/openapi-parser": "^7",
+    "@testcontainers/postgresql": "^12",
     "@types/express": "^5",
     "@types/jest": "^30",
     "@types/node": "^24",
@@ -51,6 +52,7 @@
     "jest": "^30",
     "prettier": "^3",
     "supertest": "^7",
+    "testcontainers": "^12",
     "ts-jest": "^29",
     "typescript": "^5",
     "typescript-eslint": "^8",

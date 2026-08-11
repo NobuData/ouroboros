@@ -6,6 +6,7 @@ import { Pool } from "pg";
 import request from "supertest";
 
 import { configureApplication } from "../../application";
+import { bodyOf, integrationDatabaseUrl } from "../../testing/integration.fixture";
 import { AppModule } from "../app/app.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
@@ -36,24 +37,16 @@ import { SESSION_COOKIE } from "./session";
  * cover is github.com's own behaviour, which is why the criterion says *against a real
  * GitHub OAuth app* and the README says how to do that by hand.
  *
- * It takes a database the way `tenancy.integration-spec.ts` does:
+ * It takes a database the way `tenancy.integration-spec.ts` does — from the
+ * [#37](https://github.com/NobuData/ouroboros/issues/37) harness, which starts one:
  *
  * ```bash
- * docker compose up -d
- * OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros \
- *   yarn test:integration
+ * yarn test:integration
  * ```
  */
 
 /** The database this suite runs against. No default and no skip; see the tenancy suite. */
-const DATABASE_URL = process.env.OURO_DATABASE_URL;
-
-if (DATABASE_URL === undefined || DATABASE_URL === "") {
-  throw new Error(
-    "The integration suite needs a migrated database. Start one with `docker compose up -d` " +
-      "and run it with OURO_DATABASE_URL set — see the header of this file.",
-  );
-}
+const DATABASE_URL = integrationDatabaseUrl();
 
 /** What every row this suite creates is named with, so the cleanup can find it. */
 const TEST_PREFIX = "ouro-auth-it";
@@ -72,16 +65,6 @@ const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
 /** The auth routes' base path. */
 const AUTH = "/api/v1/auth";
-
-/**
- * A response's body, typed as the resource the contract says that operation answers with.
- *
- * @param response - What Supertest returned.
- * @returns Its body, typed.
- */
-function bodyOf<T>(response: request.Response): T {
-  return response.body as T;
-}
 
 /**
  * One named cookie's value out of a `Set-Cookie` list.

@@ -5,6 +5,14 @@ import { Pool } from "pg";
 import request from "supertest";
 
 import { createApplication } from "../../application";
+import {
+  bodyOf,
+  containing,
+  integrationDatabaseUrl,
+  matching,
+  uniqueEmail,
+  uniqueName,
+} from "../../testing/integration.fixture";
 import { sessionCookieFor } from "../auth/session.fixture";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
@@ -32,18 +40,22 @@ import type {
  * the same shape from the other side: it is enforced with `select … for update`, and a lock
  * has no behaviour at all without a server to take it on.
  *
- * #37 is the harness that will run this on Testcontainers, with a database it starts itself.
- * Until then it takes one the way `db.integration-spec.ts` does:
+ * #37 is the harness that runs it on Testcontainers, with a database it starts itself, so
+ * the whole of what this suite needs is Docker:
  *
  * ```bash
- * docker compose up -d                                     # the #10 data tier, migrated
- * OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros \
- *   yarn test:integration
+ * yarn test:integration
  * ```
  *
+ * It predates the harness and still arranges its own world — its own connection, its own
+ * session, its own prefix-scoped cleanup. That is deliberate rather than left over:
+ * `roles.integration-spec.ts` is what the harness's fixtures are demonstrated by, and having
+ * one suite that reaches for the database directly is what would catch a harness whose
+ * `truncate` or `signIn` had quietly stopped doing what it says.
+ *
  * Every row it creates is named with {@link TEST_PREFIX} and removed afterwards, so it is
- * safe to point at the development stack and it touches nothing that was there before it
- * ran. Do not point it at anything else.
+ * safe to point at the development stack with `OURO_DATABASE_URL` and it touches nothing
+ * that was there before it ran. Do not point it at anything else.
  */
 
 /**
@@ -53,14 +65,7 @@ import type {
  * passes when it was given no database reports "the constraints are mapped" having mapped
  * nothing.
  */
-const DATABASE_URL = process.env.OURO_DATABASE_URL;
-
-if (DATABASE_URL === undefined || DATABASE_URL === "") {
-  throw new Error(
-    "The integration suite needs a migrated database. Start one with `docker compose up -d` " +
-      "and run it with OURO_DATABASE_URL set — see the header of this file.",
-  );
-}
+const DATABASE_URL = integrationDatabaseUrl();
 
 /**
  * What every row this suite creates is named with.
@@ -88,61 +93,11 @@ const ABSENT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 /** A connection of this suite's own, for the cleanup the application must not do. */
 const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
-/** A name no other run of this suite will produce. */
-function uniqueName(): string {
-  return `${TEST_PREFIX}-${Math.random().toString(36).slice(2, 10)}`;
-}
+/** A name no other run of this suite will produce, inside this suite's namespace. */
+const aName = (): string => uniqueName(TEST_PREFIX);
 
 /** An address inside this suite's namespace, so the cleanup can find it. */
-function uniqueEmail(): string {
-  return `${uniqueName()}@example.test`;
-}
-
-/**
- * A response's body, as the type `openapi.yaml` says that operation answers with.
- *
- * Supertest types `body` as `any`, which is honest — it has no idea what was asked for — and
- * unusable: every field read off it would be unchecked. Naming the type here means a spec
- * that reads `page.items[0].isPrimary` is checked against the resource this module actually
- * returns, and the drift check in `src/openapi/openapi.spec.ts` is what keeps *that* type and
- * the published contract in step.
- *
- * @param response - What Supertest returned.
- * @returns Its body, typed.
- */
-function bodyOf<T>(response: request.Response): T {
-  return response.body as T;
-}
-
-/**
- * A matcher for a value the database chose, typed as the field it stands in for.
- *
- * Jest's asymmetric matchers are typed `any`, so dropping one into an object literal makes
- * the whole literal unchecked — which defeats the point of {@link bodyOf} naming the type in
- * the first place. Naming them here is what keeps `toEqual` exhaustive *and* typed: an
- * expectation that lists every field is how a column added to a resource without being
- * documented gets caught.
- *
- * @param pattern - What the value has to look like.
- * @returns The matcher, as the string the field is.
- */
-function matching(pattern: RegExp): string {
-  const matcher: unknown = expect.stringMatching(pattern);
-
-  return matcher as string;
-}
-
-/**
- * A matcher for a message that has to mention something.
- *
- * @param text - What it has to contain.
- * @returns The matcher, as the string the field is.
- */
-function containing(text: string): string {
-  const matcher: unknown = expect.stringContaining(text);
-
-  return matcher as string;
-}
+const anAddress = (): string => uniqueEmail(TEST_PREFIX);
 
 describe("the tenancy API, for real", () => {
   let app: INestApplication;
@@ -219,14 +174,14 @@ describe("the tenancy API, for real", () => {
   async function aTenant(): Promise<TenantResource> {
     return bodyOf<TenantResource>(
       await signedIn("post", TENANTS)
-        .send({ slug: uniqueName(), displayName: "Integration Suite" })
+        .send({ slug: aName(), displayName: "Integration Suite" })
         .expect(201),
     );
   }
 
   describe("tenants", () => {
     it("creates one, and gives back what the database stored", async () => {
-      const slug = uniqueName();
+      const slug = aName();
 
       const tenant = bodyOf<TenantResource>(
         await signedIn("post", TENANTS)
@@ -489,7 +444,7 @@ describe("the tenancy API, for real", () => {
     async function invite(
       tenantId: string,
       role: string,
-      email = uniqueEmail(),
+      email = anAddress(),
     ): Promise<MemberResource> {
       return bodyOf<MemberResource>(
         await signedIn("post", `${TENANTS}/${tenantId}/members`).send({ email, role }).expect(201),
@@ -510,7 +465,7 @@ describe("the tenancy API, for real", () => {
 
     it("creates the person and the membership, with the invitation outstanding", async () => {
       const tenant = await aTenant();
-      const email = uniqueEmail();
+      const email = anAddress();
 
       const member = bodyOf<MemberResource>(
         await signedIn("post", `${TENANTS}/${tenant.id}/members`)
@@ -536,7 +491,7 @@ describe("the tenancy API, for real", () => {
       // they belong to.
       const first = await aTenant();
       const second = await aTenant();
-      const email = uniqueEmail();
+      const email = anAddress();
 
       const one = await invite(first.id, "owner", email.toUpperCase());
       const two = await invite(second.id, "viewer", email);
@@ -548,7 +503,7 @@ describe("the tenancy API, for real", () => {
 
     it("names somebody after their address when the invitation did not", async () => {
       const tenant = await aTenant();
-      const email = uniqueEmail();
+      const email = anAddress();
 
       const member = await invite(tenant.id, "member", email);
 
@@ -696,7 +651,7 @@ describe("the tenancy API, for real", () => {
      * @returns The stored organisation.
      */
     async function addOrg(tenantId: string, enabled?: boolean): Promise<OrgResource> {
-      const login = uniqueName();
+      const login = aName();
 
       return bodyOf<OrgResource>(
         await signedIn("post", `${TENANTS}/${tenantId}/orgs`)
@@ -763,7 +718,7 @@ describe("the tenancy API, for real", () => {
       const tenant = await aTenant();
 
       const failure = bodyOf<ErrorEnvelope>(
-        await signedIn("patch", `${TENANTS}/${tenant.id}/orgs/${uniqueName()}`)
+        await signedIn("patch", `${TENANTS}/${tenant.id}/orgs/${aName()}`)
           .send({ enabled: true })
           .expect(404),
       );
@@ -830,7 +785,7 @@ describe("the tenancy API, for real", () => {
       const tenant = await aTenant();
 
       const failure = bodyOf<ErrorEnvelope>(
-        await signedIn("patch", `${TENANTS}/${tenant.id}/orgs/${uniqueName()}/repos/ouroboros`)
+        await signedIn("patch", `${TENANTS}/${tenant.id}/orgs/${aName()}/repos/ouroboros`)
           .send({ enabled: true })
           .expect(404),
       );
@@ -845,7 +800,7 @@ describe("the tenancy API, for real", () => {
       // cascade is what makes the soft delete the right default, and what this suite's own
       // cleanup relies on.
       const tenant = await aTenant();
-      const login = uniqueName();
+      const login = aName();
       await signedIn("post", `${TENANTS}/${tenant.id}/domains`)
         .send({ domain: `${tenant.slug}.example` })
         .expect(201);
@@ -883,7 +838,7 @@ describe("the tenancy API, for real", () => {
     ): Promise<{ id: string; cookie: string }> {
       const { rows } = await admin.query<{ id: string }>(
         "insert into ouroboros.users (email, display_name) values ($1, $2) returning id",
-        [uniqueEmail(), "Somebody Else"],
+        [anAddress(), "Somebody Else"],
       );
 
       if (tenantId !== undefined) {
@@ -951,7 +906,7 @@ describe("the tenancy API, for real", () => {
         await request(server())
           .post(`${TENANTS}/${tenant.id}/domains`)
           .set("Cookie", member.cookie)
-          .send({ domain: `${uniqueName()}.example` })
+          .send({ domain: `${aName()}.example` })
           .expect(403),
       );
 
@@ -979,7 +934,7 @@ describe("the tenancy API, for real", () => {
       await request(server())
         .post(`${TENANTS}/${tenant.id}/domains`)
         .set("Cookie", maintainer.cookie)
-        .send({ domain: `${uniqueName()}.example` })
+        .send({ domain: `${aName()}.example` })
         .expect(201);
     });
 
@@ -1051,7 +1006,7 @@ describe("the tenancy API, for real", () => {
     it("refuses a property no DTO declares", async () => {
       const failure = bodyOf<ErrorEnvelope>(
         await signedIn("post", TENANTS)
-          .send({ slug: uniqueName(), displayName: "Integration Suite", status: "active" })
+          .send({ slug: aName(), displayName: "Integration Suite", status: "active" })
           .expect(422),
       );
 
