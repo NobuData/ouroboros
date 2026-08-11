@@ -41,11 +41,24 @@ html {
   /* The font-scale preference (DESIGN_SYSTEM_APP_SHELL.md § 4) moves this percentage.
      Every length below is rem or a token, so one change here rescales every surface. */
   font-size: 100%;
+  height: 100%;
 }
 
+/*
+ * The document does not scroll — the app shell's content pane does, and it is the only
+ * thing in the product that does (DESIGN_SYSTEM_APP_SHELL.md § 1.3, decision S2). The
+ * lock lives here rather than on the shell because it is a property of the page: two
+ * scrollbars, or a shell that slides under a stray tall element, are both possible only
+ * if the document can scroll at all.
+ *
+ * The consequence for a screen rendered *outside* the shell — sign-in (#44), the
+ * onboarding wizard — is that it owns its own scroll container. That is spelled out in
+ * app/(auth)/layout.tsx, which is where such a screen lands.
+ */
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
   background: var(--ground);
   color: var(--ink);
   font-family: var(--f-ui);
@@ -92,9 +105,9 @@ a {
 }
 
 /*
- * The scaffold's placeholder page. Replaced wholesale by the app shell (#41) and the
- * dashboard (#45); it exists so `yarn dev` renders something that proves the three
- * faces loaded and both palettes resolve.
+ * The scaffold's placeholder page, now rendered inside the shell's content pane.
+ * Replaced wholesale by the dashboard (#45); until then it exists so `yarn dev` renders
+ * something that proves the three faces loaded and both palettes resolve.
  */
 
 .placeholder {

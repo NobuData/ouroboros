@@ -13,6 +13,8 @@ describe("the placeholder home page", () => {
   });
 
   it("is a main landmark, so the shell (#41) has something to wrap", () => {
+    // The shell contributes header, navigation and the content pane; `main` is the
+    // page's own landmark inside that pane.
     render(<Page />);
 
     expect(screen.getByRole("main")).toBeInTheDocument();
@@ -30,7 +32,9 @@ describe("the placeholder home page", () => {
     render(<Page />);
 
     const items = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(2);
     expect(items.join(" ")).toContain("#42");
+    // The shell has landed, so the list no longer promises it.
+    expect(items.join(" ")).not.toContain("#41");
   });
 });

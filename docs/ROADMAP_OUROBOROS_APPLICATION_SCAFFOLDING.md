@@ -1616,7 +1616,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 5.1 | #39 | 🟢 Done | ouroboros-ui: [5.1] Next.js application scaffold | App Router + TS + yarn skeleton with fonts and lint/test toolchain | mvp, ui | N (after 1.1) | Y | S | ouroboros-ui |
 | 5.2 | #40 | 🟢 Done | ouroboros-ui: [5.2] Global styles — tokens & typography | Import 2.3 tokens; Chakra Petch / IBM Plex via next/font | mvp, ui, design | N (after 2.3, 5.1) | Y | S | ouroboros-ui |
-| 5.3 | #41 | 🟡 Open | ouroboros-ui: [5.3] App shell — top bar, navigation, footer | The chrome every screen shares, per the mockups | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
+| 5.3 | #41 | 🟢 Done | ouroboros-ui: [5.3] App shell — header, sidebar navigation, content pane | The chrome every screen shares, per the shell specification | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.4 | #42 | 🟡 Open | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
 | 5.5 | #43 | 🟡 Open | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
 | 5.6 | #44 | 🟡 Open | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
@@ -1674,7 +1674,22 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 
 ### Issue 5.3 — ouroboros-ui: [5.3] App shell — top bar, navigation, footer
 
-> **GitHub issue:** #41 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #41 · **Status:** 🟢 Done · **Parent epic:** #5
+
+> **Delivered against the re-scope**, not against the paragraph and sketch below: the
+> [UI/UX Shell Compliance](#uiux-shell-compliance-addendum-2026-08-09) addendum replaced
+> the top-bar navigation with the three-region frame of
+> [`DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md) § 1. What shipped is a
+> header carrying the brand and the session controls and **no navigation links**, a left
+> sidebar of eleven icon-and-name entries that collapses to an icon rail below 1024px,
+> and a content pane that is the only scrolling element in the product. The mock-note
+> footer is dropped, as that addendum directs. Every destination except the dashboard is
+> a screen nobody has built yet, so those entries render labelled *soon* rather than as
+> links to a 404 — #49 and each screen's own roadmap issue turn them into links. The
+> slots left for other issues are the theme toggle (5.4), the tenant chip (#77), the
+> search pill (#79), the real needs-you count (#78), and the profile menu's contents
+> (CP.3, #645); the registry behind the sidebar, its persisted collapse control and the
+> overlay drawer below 768px are CP.2 (#644).
 
 - **Problem Statement:** All 21 mockup screens share one chrome (top bar with glyph +
   nav + status pills, footer with prev/next); the shell is the highest-leverage single
@@ -2373,6 +2388,18 @@ hard loads: `data-theme` and the palette are already correct at the first animat
 in both themes, an explicit choice beats a contrary OS, and every case produces an empty
 console. The visible switcher, **#42**, is now unblocked, and Epic 2's MVP work is
 complete bar #15's Metadata API wiring.
+
+**#41** (the app shell) is **done** on top of those three, and is the first issue in this
+roadmap delivered against its re-scope rather than its original text: header, left
+sidebar, content pane, no footer. The property worth recording is the one the
+specification cares most about and the one easiest to lose later — `html` and `body` are
+locked in `globals.css`, the shell is a grid of exactly the viewport, and the pane is the
+only element that scrolls. Measured against 5,000px of content in both palettes: the
+document does not scroll, the pane does, and the header and sidebar do not move a pixel
+while it does. Ten of the eleven navigation entries are labelled *soon* because ten of
+the eleven screens do not exist; each names the issue that will build it. That releases
+**#42** (which mounts its switcher in the header), **#45** and **#49**, and it is the
+frame CP.1–CP.5 deepen rather than replace.
 
 **#19** (the Flyway project), **#50** (the FastAPI service) and **#27** (the NestJS
 service) have since landed the same way, each turning its own CI check on and moving its
