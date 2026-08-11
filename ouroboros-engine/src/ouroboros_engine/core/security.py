@@ -14,7 +14,7 @@ Three properties are deliberate:
 * **The comparison is constant time** (:func:`hmac.compare_digest`), and a missing
   header takes the same path as a wrong one, so neither the presence of the header nor
   the length of the prefix that matched is readable from how long the answer took.
-* **The rejection says nothing.** One word of English, no header echo, no path, no hint
+* **The rejection says nothing.** One constant body, no header echo, no path, no hint
   about what the key should look like. What an operator needs is in the log line
   instead, which stays inside the cluster.
 
@@ -30,15 +30,25 @@ from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ouroboros_engine.core.errors import code_for_status, envelope
+
 #: The header ``ouroboros-rest`` sends the shared secret on. Named in ``.env.example``
 #: beside ``OURO_ENGINE_SHARED_SECRET`` and in ``docs/ARCHITECTURE.md`` § 2.3; both
 #: sides of the call have to agree on it, so it is written down once, here.
 INTERNAL_KEY_HEADER = "X-Ouro-Internal-Key"
 
-#: The body of every rejection. Constant, so it cannot vary with the request that
-#: earned it: no path, no header name, no "did you mean". FastAPI's own errors use
-#: ``detail``, and matching that keeps one shape for a client to parse.
-UNAUTHORIZED_BODY = {"detail": "Unauthorized"}
+#: What a rejection is called and what it says. Terse on purpose: the code is the part a
+#: caller acts on, and the message is written for the person reading a gateway's log
+#: rather than for whoever sent the request.
+UNAUTHORIZED_CODE = code_for_status(401)
+UNAUTHORIZED_MESSAGE = "Unauthorized."
+
+#: The body of every rejection. Constant, so it cannot vary with the request that earned
+#: it: no path, no header name, no "did you mean". Its shape is the error envelope every
+#: other failure in this service carries (:mod:`ouroboros_engine.core.errors`), so the
+#: gateway parses one shape whether a request was refused at the boundary or inside a
+#: route — ``docs/ARCHITECTURE.md`` § 5.3.
+UNAUTHORIZED_BODY = envelope(UNAUTHORIZED_CODE, UNAUTHORIZED_MESSAGE)
 
 _logger = logging.getLogger(__name__)
 

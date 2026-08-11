@@ -446,22 +446,33 @@ header from the active-tenant store, and parsing of the error envelope into a ty
 
 ### 5.2 REST ↔ engine — the internal contract
 
-**Partly running** ([#51](https://github.com/NobuData/ouroboros/issues/51) landed the
-first two routes; [#52](https://github.com/NobuData/ouroboros/issues/52) and
-[#35](https://github.com/NobuData/ouroboros/issues/35) are the rest). The engine
-publishes a versioned contract under `/v0/`, and REST mirrors it in a typed client:
+**Running on the engine's side** ([#51](https://github.com/NobuData/ouroboros/issues/51)
+landed liveness and status, [#52](https://github.com/NobuData/ouroboros/issues/52) the
+versioned contract and the error envelope;
+[#35](https://github.com/NobuData/ouroboros/issues/35) is the typed client that mirrors
+it). The engine publishes a versioned contract under `/v0/`, and REST mirrors it in a
+typed client:
 
 | Route | Auth | Purpose | State |
 |---|---|---|---|
 | `GET /healthz` | open | Liveness, for the container healthcheck and REST's readiness probe | **Running** (#51) |
 | `GET /v0/status` | `X-Ouro-Internal-Key` | Version and uptime | **Running** (#51) |
-| `POST /v0/tasks/echo` | `X-Ouro-Internal-Key` | The contract exemplar: `{task_kind, payload}` → `{accepted, echo, engine_version}` | Specified (#52) |
+| `POST /v0/tasks/echo` | `X-Ouro-Internal-Key` | The contract exemplar: `{task_kind, payload}` → `{accepted, echo, engine_version}` | **Running** (#52) |
 
 The version lives in the path (`/v0`), so a breaking change to the internal contract is a
-new prefix served alongside the old one rather than a flag day. `OURO_ENGINE_SHARED_SECRET`
-must carry the same value on both sides; the engine compares it in constant time, and a
-mismatch is logged there and surfaced by REST as a 502 as described in
-[§3.2](#32-an-engine-call).
+new prefix served alongside the old one rather than a flag day. What that means in
+practice is written into the contract itself: a field may be added to a response and a
+route may be added to the prefix, and a field that disappears, changes type or changes
+meaning is a `/v1`. `OURO_ENGINE_SHARED_SECRET` must carry the same value on both sides;
+the engine compares it in constant time, and a mismatch is logged there and surfaced by
+REST as a 502 as described in [§3.2](#32-an-engine-call).
+
+The echo route is what makes the contract a thing that runs rather than a thing that is
+described. It settles, with one round trip, what every later operation would otherwise
+settle again — a closed request body, a `422` in the envelope naming each field that was
+refused, and the answering build named in the response — and it is the leg the end-to-end
+smoke test drives through the gateway
+([#56](https://github.com/NobuData/ouroboros/issues/56)).
 
 **The engine is spec-first.**
 [`ouroboros-engine/openapi.yaml`](../ouroboros-engine/openapi.yaml) is the document, not a
@@ -477,7 +488,8 @@ public-path set stop matching what the document claims.
 
 ### 5.3 The error envelope
 
-**Running in the REST layer** ([#31](https://github.com/NobuData/ouroboros/issues/31)).
+**Running in both services** ([#31](https://github.com/NobuData/ouroboros/issues/31) in
+the REST layer, [#52](https://github.com/NobuData/ouroboros/issues/52) in the engine).
 Every error a client sees has the same shape, from both services:
 
 ```json
@@ -488,15 +500,24 @@ Every error a client sees has the same shape, from both services:
 per-field validation output. Database constraint violations are mapped into it rather than
 leaking through — a duplicate domain is a `409` with `code: "domain_taken"`, not a
 PostgreSQL error string. The engine mirrors the shape so that a failure crossing the
-gateway does not change form on the way out.
+gateway does not change form on the way out: same three keys, same codes for the same
+statuses, and `details` keyed by the field the caller wrote — `{"task_kind": [...]}` from
+a refused `POST /v0/tasks/echo`.
 
 Three things make it true of *every* answer rather than of the ones a handler produced. A
 global filter catches what no handler threw — Nest's own `404` for a path nothing claims, a
 body the parser refused, a connection the database would not give — so a client parses one
-shape instead of one per layer. `details` is always an object, empty rather than absent,
-so reading `details.slug` never has to check `details` first. And a `5xx` never carries its
-own message: the diagnosis names a query, a host or a role, so it goes to the service log
-and the client gets a constant, exactly as a health probe's `down` message does.
+shape instead of one per layer; the engine registers three handlers of its own for the same
+reason, because FastAPI's `{"detail": …}`, a validation error's `{"detail": [ … ]}` and
+Starlette's plain-text `Internal Server Error` are otherwise three shapes behind one
+gateway. `details` is always an object, empty rather than absent, so reading `details.slug`
+never has to check `details` first. And a `5xx` never carries its own message: the diagnosis
+names a query, a host or a role, so it goes to the service log and the client gets a
+constant, exactly as a health probe's `down` message does.
+
+A refusal also never echoes what was refused. FastAPI returns the rejected input inside its
+own `422`, and a task payload is whatever a caller put in it — so the engine replaces that
+body rather than reshaping it, and the value stays inside the process that rejected it.
 
 The one exemption is enumerated: `/health/live` and `/health/ready` answer in Terminus's
 report shape, because their reader is a container platform rather than a browser and that

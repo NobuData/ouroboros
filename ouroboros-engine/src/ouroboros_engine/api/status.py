@@ -3,9 +3,10 @@
 The first route under the versioned internal prefix, and the first one behind
 :class:`ouroboros_engine.core.security.InternalKeyMiddleware`. It answers the two
 questions that come up when the engine is suspected: *which version of it is this*, and
-*is this the same process as a minute ago*. The contract the rest of ``/v0`` is built
-to — request and error shapes, the compatibility rule for the prefix — is #52; this
-module only claims the path.
+*is this the same process as a minute ago*. The prefix it claims and the compatibility
+rule that governs it are :mod:`ouroboros_engine.api.v0`; the request and error shapes the
+rest of the contract follows are :mod:`ouroboros_engine.api.tasks` and
+:mod:`ouroboros_engine.core.errors`.
 
 ``ouroboros-rest``'s readiness probe (#29) is the intended caller: it forwards the key,
 and a ``200`` here is what lets it report the engine leg of its own readiness. A
@@ -18,13 +19,9 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from ouroboros_engine import __version__
+from ouroboros_engine.api.v0 import V0_PREFIX, V0_TAG
 
-#: The versioned prefix every internal route lives under. ``/v0`` is unstable by
-#: definition — it changes with the two services that share it, which deploy together —
-#: and a stable ``/v1`` is a later promise, not this one.
-V0_PREFIX = "/v0"
-
-router = APIRouter(prefix=V0_PREFIX, tags=["v0"])
+router = APIRouter(prefix=V0_PREFIX, tags=[V0_TAG])
 
 
 class ServiceStatus(BaseModel):

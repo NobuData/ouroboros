@@ -23,6 +23,8 @@ from ouroboros_engine import __version__, openapi
 from ouroboros_engine.api.health import HEALTH_PATH, Liveness
 from ouroboros_engine.api.root import ServiceIdentity
 from ouroboros_engine.api.status import ServiceStatus
+from ouroboros_engine.api.tasks import EchoRequest, EchoResponse
+from ouroboros_engine.core.errors import ErrorEnvelope
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER, UNAUTHORIZED_BODY
 from ouroboros_engine.main import _PUBLIC_PATHS, create_app
 from ouroboros_engine.settings import Settings
@@ -31,13 +33,17 @@ from ouroboros_engine.settings import Settings
 #: file rather than the working directory, like every other path in the suite.
 _MODULE_ROOT = Path(__file__).resolve().parent.parent
 
-#: Every response model the service returns, under the name the document gives it. A
-#: model added without a schema beside it fails the exhaustiveness check below rather
-#: than being described by nothing.
+#: Every model the service puts on the wire, under the name the document gives it —
+#: response bodies, the request body ``POST /v0/tasks/echo`` reads, and the envelope every
+#: failure is answered in. A model added without a schema beside it fails the
+#: exhaustiveness check below rather than being described by nothing.
 _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "Liveness": Liveness,
     "ServiceIdentity": ServiceIdentity,
     "ServiceStatus": ServiceStatus,
+    "EchoRequest": EchoRequest,
+    "EchoResponse": EchoResponse,
+    "Error": ErrorEnvelope,
 }
 
 
@@ -94,6 +100,59 @@ def _served(app: FastAPI) -> dict[tuple[str, str], dict]:
     """
     generated = get_openapi(title=app.title, version=app.version, routes=app.routes)
     return _operations(generated)
+
+
+def _documented_request(operation: dict) -> dict | None:
+    """The body an operation documents an example of.
+
+    Args:
+        operation: One operation from :func:`_operations`.
+
+    Returns:
+        The ``requestBody`` example, ready to be sent as JSON, or ``None`` for an
+        operation that reads no body — which is what a GET wants passed for one.
+    """
+    body = operation.get("requestBody")
+    return None if body is None else body["content"]["application/json"]["example"]
+
+
+def _documented_bodies(document: dict) -> list[tuple[str, dict]]:
+    """Every JSON body the document describes, wherever it is written.
+
+    Three places hold one, and all three are worth checking: an operation's request body,
+    a response written inline on an operation, and a response shared under
+    ``components/responses`` — which is where the ``401`` and the ``422`` live, because
+    every guarded operation answers with the same two.
+
+    Args:
+        document: A parsed OpenAPI document.
+
+    Returns:
+        One ``(label, media type object)`` per body. The label names where it was found,
+        so a failure points at the block to edit.
+    """
+    found: list[tuple[str, dict]] = []
+
+    def collect(label: str, content: dict) -> None:
+        body = content.get("application/json")
+        if body is not None:
+            found.append((label, body))
+
+    for (path, method), operation in _operations(document).items():
+        request_body = operation.get("requestBody")
+        if request_body is not None:
+            collect(f"{method} {path} request", request_body["content"])
+
+        for status, response in operation["responses"].items():
+            # A response that is a `$ref` carries no content of its own; it is checked
+            # once, below, at the component it points to.
+            if "content" in response:
+                collect(f"{method} {path} {status}", response["content"])
+
+    for name, response in document["components"]["responses"].items():
+        collect(f"components/responses/{name}", response["content"])
+
+    return found
 
 
 @pytest.fixture
@@ -203,8 +262,11 @@ def test_the_document_describes_nothing_the_application_does_not_serve(
 def test_each_documented_operation_is_reachable(
     client: TestClient, document: dict
 ) -> None:
-    for path, method in _operations(document):
-        response = client.request(method, path)
+    # The documented request body is what is sent, so this is two assertions in one: the
+    # operation answers, and the example beside it is a body the service really accepts
+    # rather than one that was plausible when it was written.
+    for (path, method), operation in _operations(document).items():
+        response = client.request(method, path, json=_documented_request(operation))
 
         assert response.status_code == 200, f"{method} {path} answered {response}"
 
@@ -284,14 +346,12 @@ def test_an_unauthenticated_request_gets_the_documented_body(
 # ---------------------------------------------------------------------------
 
 
-def test_every_response_model_is_described_by_a_schema(document: dict) -> None:
-    # Error has no model of its own — it is the shape FastAPI's own HTTPException and
-    # the guard both send — so it is expected in the document and not in the mapping.
-    described = set(document["components"]["schemas"]) - {"Error"}
+def test_every_model_on_the_wire_is_described_by_a_schema(document: dict) -> None:
+    described = set(document["components"]["schemas"])
 
     assert described == set(_DOCUMENTED_MODELS), (
-        "a response model without a schema is an undocumented body; a schema without a "
-        "model is one the service cannot produce"
+        "a model without a schema is an undocumented body; a schema without a model is "
+        "one the service cannot produce"
     )
 
 
@@ -316,18 +376,22 @@ def test_every_documented_example_is_a_body_the_service_could_send(
     document: dict,
 ) -> None:
     # An example that no longer validates is a lie a reader copies into their client.
-    schemas = {
-        f"#/components/schemas/{name}": model
-        for name, model in _DOCUMENTED_MODELS.items()
-    }
+    bodies = _documented_bodies(document)
 
-    checked = 0
-    for (path, method), operation in _operations(document).items():
-        body = operation["responses"]["200"]["content"]["application/json"]
-        model = schemas.get(body["schema"]["$ref"])
-        assert model is not None, f"{method} {path} refers to an unknown schema"
+    assert bodies, "the loop below would pass vacuously with no bodies"
+    for label, body in bodies:
+        model = _DOCUMENTED_MODELS.get(
+            body["schema"]["$ref"].removeprefix("#/components/schemas/")
+        )
+        assert model is not None, f"{label} refers to a schema no model produces"
 
         model.model_validate(body["example"])
-        checked += 1
 
-    assert checked == len(_operations(document))
+
+def test_every_body_the_document_describes_carries_an_example(document: dict) -> None:
+    # The check above is only as complete as the set of examples there are, and it reads
+    # `body["example"]` — so this is what makes a body documented without one a named
+    # failure rather than a KeyError, and what stops a new operation from being added
+    # with no example for a reader to copy.
+    for label, body in _documented_bodies(document):
+        assert "example" in body, f"{label} carries no example"

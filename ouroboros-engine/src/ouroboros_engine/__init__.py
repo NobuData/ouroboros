@@ -4,8 +4,10 @@ The package is deliberately thin at this point: an application factory
 (:mod:`ouroboros_engine.main`), validated configuration
 (:mod:`ouroboros_engine.settings`), the routers under :mod:`ouroboros_engine.api`, and
 the process-wide concerns under :mod:`ouroboros_engine.core` — among them the guard that
-puts every route but liveness behind the internal shared secret. The rest of the ``/v0``
-contract lands in #52.
+puts every route but liveness behind the internal shared secret, and the error envelope
+every failure is answered in. The versioned contract ``ouroboros-rest`` calls is ``/v0``
+(:mod:`ouroboros_engine.api.v0`); the work it will eventually broker — a task registry,
+a queue and a worker model — is #54.
 
 Attributes:
     __version__: The installed distribution's version, taken from package metadata so

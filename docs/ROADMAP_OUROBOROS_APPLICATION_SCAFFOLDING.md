@@ -1817,7 +1817,7 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | 6.1 | #50 | 🟢 Done | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
 | 6.2 | #51 | 🟢 Done | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
-| 6.3 | #52 | 🟡 Open | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
+| 6.3 | #52 | 🟢 Done | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
 | 6.4 | #53 | 🟡 Open | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
 | 6.5 | #54 | 🟡 Open | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | v2, engine | N (after 6.3) | N | L | ouroboros-engine |
 
@@ -1931,16 +1931,27 @@ src/ouroboros_engine/
 
 ### Issue 6.3 — ouroboros-engine: [6.3] Internal API contract v0
 
-> **GitHub issue:** #52 · **Status:** 🟡 Open · **Parent epic:** #6
+> **GitHub issue:** #52 · **Status:** 🟢 Done · **Parent epic:** #6
 
 - **Problem Statement:** REST↔engine needs a versioned contract with one working
   round-trip, establishing the pattern (schemas, versioning, error shape) before real
   engine features exist.
-- **Solution/Scope:** `/v0/` router: `POST /v0/tasks/echo` (pydantic request
-  `{task_kind, payload}` → response `{accepted, echo, engine_version}`) as the
-  contract exemplar; FastAPI's exported OpenAPI committed as
-  `ouroboros-engine/openapi.json` (CI drift check like 4.8); error shape mirroring the
-  REST envelope; contract documented in `docs/ARCHITECTURE.md`. 4.9's typed client
+- **Solution/Scope:** `POST /v0/tasks/echo` — pydantic request `{task_kind, payload}` →
+  `{accepted, echo, engine_version}` — as the contract exemplar, plus the two things it
+  exists to settle. The **request body is closed** (`extra="forbid"`, mirroring REST's
+  whitelist), so a misspelled field is refused rather than dropped and read as honoured;
+  and **every failure answers in the REST envelope** — `{code, message, details}`, with
+  `details` keyed by the field the caller wrote, the same codes for the same statuses, and
+  a `5xx` message that is a constant. Three handlers make that true of the answers no route
+  produced, because FastAPI's `{"detail": …}`, a validation error's `{"detail": [ … ]}` and
+  Starlette's plain-text 500 are otherwise three shapes behind one gateway; the `401` the
+  guard already sent was reshaped to match. A refusal never echoes the input FastAPI's own
+  422 carries back, because a task payload is whatever the caller put in it. The
+  versioning rule moved out of `status.py` into `api/v0.py` — added fields and added routes
+  inside `/v0`, a `/v1` for anything that disappears or changes meaning — and the spec was
+  already committed and drift-checked (6.2), so this extends it: the suite now also fails on
+  a documented body with no example, and sends each documented request example as a real
+  request. Contract documented in `docs/ARCHITECTURE.md` §§ 5.2–5.3. 4.9's typed client
   mirrors this.
 - **Acceptance Criteria:** Echo round-trip via REST gateway works in compose;
   validation errors return the documented shape; spec committed and drift-checked.
