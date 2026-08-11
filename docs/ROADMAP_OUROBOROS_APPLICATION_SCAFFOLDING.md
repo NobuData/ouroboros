@@ -1066,7 +1066,7 @@ request ─▶ REST resolves tenant ─▶ SET ouro.tenant_id = '…'
 | 4.7 | #33 | 🟢 Done | ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions | OAuth code flow, user/identity upsert, cookie sessions, guards | mvp, rest | N (after 4.4) | Y | L | ouroboros-rest |
 | 4.8 | #34 | 🟢 Done | ouroboros-rest: [4.8] OpenAPI documentation & spec export | Authoritative `openapi.yaml` served verbatim; Swagger at `/api/docs`; spec artifact for client gen | mvp, rest | N (after 4.5) | Y | S | ouroboros-rest |
 | 4.9 | #35 | 🟢 Done | ouroboros-rest: [4.9] Engine gateway module | Typed internal client + proxy route to ouroboros-engine | mvp, rest, engine | N (after 4.2, 6.3) | Y | M | ouroboros-rest |
-| 4.10 | #36 | 🟡 Open | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
+| 4.10 | #36 | 🟢 Done | ouroboros-rest: [4.10] Dockerfile & container build | Multi-stage production image | mvp, rest, infra | N (after 4.3) | Y | S | ouroboros-rest |
 | 4.11 | #37 | 🟡 Open | ouroboros-rest: [4.11] Integration test harness | Supertest + Testcontainers-backed API tests | mvp, rest, ci | N (after 4.5) | Y | M | ouroboros-rest |
 | 4.12 | #38 | 🟡 Open | ouroboros-rest: [4.12] Security baseline hardening | Helmet, CORS policy, rate limiting, cookie hardening review | v2, rest | N (after 4.7) | N | M | ouroboros-rest |
 
@@ -1468,7 +1468,50 @@ UI ─▶ /api/v1/engine/status ─▶ [auth guard] ─▶ EngineClient ──X-
 
 ### Issue 4.10 — ouroboros-rest: [4.10] Dockerfile & container build
 
-> **GitHub issue:** #36 · **Status:** 🟡 Open · **Parent epic:** #4
+> **GitHub issue:** #36 · **Status:** 🟢 Done · **Parent epic:** #4
+>
+> Delivered: [`ouroboros-rest/Dockerfile`](../ouroboros-rest/Dockerfile) — `deps` →
+> `build` → a runtime carrying no toolchain, on `node:24-alpine`, running as a created
+> `nestjs` user, with a `HEALTHCHECK` on `/health/live` through the BusyBox `wget` the
+> base image already has. The image is **64 MB to pull and 226 MB of layers unpacked**
+> against the 300 MB budgeted — 291 MB of disk usage on the containerd snapshotter, the
+> largest of the three measures and still inside it. Built and run against the compose
+> network it boots in under a second, answers `/health/live` with a 200, reports Docker
+> `healthy`, and degrades `/health/ready` to a 503 naming `engine` while reporting
+> `database` up — which is #29's contract seen from inside a container.
+>
+> **Two dependency trees out of one lockfile** is the decision this image adds to the
+> pattern #47 established, and the one a module with no bundler inherits. There is no
+> standalone output here: `nest build` emits JavaScript, so the runtime needs a real
+> `node_modules`, and it must not be the tree the build compiled against. The `deps`
+> stage runs `yarn workspaces focus --production ouroboros-rest` first, copies the result
+> aside, and only then installs the full tree — same lockfile, same cache, nothing
+> resolved twice, and neither tree a subset produced by deleting directories out of the
+> other. `--immutable` on the second install is what fails the build if the focused one
+> had rewritten `yarn.lock`. Deleting `*.d.ts` and `*.map` from the production copy alone
+> is worth 34 MB; the build stage type-checks against the full tree, where a missing
+> declaration is a failed compile rather than a smaller image. Written down in
+> [`CONVENTIONS.md § 5`](CONVENTIONS.md#5-containers).
+>
+> The build context is the repository root and the ignore file is
+> [`Dockerfile.dockerignore`](../ouroboros-rest/Dockerfile.dockerignore), both inherited
+> from #47. Four files land in one directory because the service resolves them from
+> `__dirname`: `dist/`, `package.json` (version.ts reads `../package.json`),
+> `openapi.json` and `openapi.yaml` (specification.ts reads `../../`). `NODE_ENV=production`
+> is set in the image and is load-bearing twice — it binds every interface, and it strips
+> `OURO_AUTH_DEV_USER` before the schema sees it. No `OURO_*` variable is baked into any
+> layer: a missing one is named at boot and exits 2, verified.
+>
+> The roadmap text below says `node:22-alpine`; it predates #13, which moved the
+> workspace to Node 24, and installing under 22 would contradict `engines.node`.
+>
+> **40 tests** ([`src/container.spec.ts`](../ouroboros-rest/src/container.spec.ts)) assert
+> every property of the image decided in the repository, because `ci/rest` cannot run a
+> `docker build`; 19 deliberate breakages were each shown to turn them red. The probe path
+> comes from `health.paths.ts` and the port from `configuration.ts` rather than being
+> restated, so a probe that moves fails there; and one test fails when a new workspace
+> gains a `package.json` and the `deps` stage has not been taught to copy it — the way
+> this image would otherwise be broken by another module's pull request.
 
 - **Problem Statement:** Compose integration (7.1) and future publishing need a small,
   reproducible production image.
@@ -2312,8 +2355,11 @@ pull against a 300 MB budget. It settles two things every workspace image after 
 a build context at the **repository root**, because that is where the lockfile an
 immutable install needs lives, and an allow-list ignore file named for the Dockerfile,
 because that is the only name BuildKit reads when the context is not the module. Both are
-written down in [`CONVENTIONS.md § 5`](CONVENTIONS.md#5-containers) for **#36**, the
-other workspace image, to follow — **#53** is a `uv` project and builds from its own
-directory. **#55** (full-stack compose) is what runs it.
+written down in [`CONVENTIONS.md § 5`](CONVENTIONS.md#5-containers), and **#36** — the
+other workspace image — has since followed both: it is **done**, non-root, healthy on
+`/health/live`, 226 MB unpacked. It adds one rule of its own for every module with no
+bundler behind it, the production-only dependency tree built beside the full one out of
+the same lockfile, recorded in the same section. **#53** is a `uv` project and builds
+from its own directory. **#55** (full-stack compose) is what runs them.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

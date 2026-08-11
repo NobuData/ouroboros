@@ -236,6 +236,27 @@ This applies only to the modules that *install* through the root lockfile.
 `ouroboros-web` is not a workspace at all: all three build from their own directory with
 a plain `.dockerignore` beside the Dockerfile.
 
+**A runtime with no bundler ships two dependency trees out of one lockfile.** A Next.js
+module has a standalone output to lean on; anything else — `ouroboros-rest`
+([#36](https://github.com/NobuData/ouroboros/issues/36)) is the first — needs a real
+`node_modules` in the runtime, and it must not be the tree the build compiled against. So
+the `deps` stage runs `yarn workspaces focus --production <module>` **first**, copies the
+result aside, and only then installs the full tree:
+
+```dockerfile
+RUN yarn workspaces focus --production ouroboros-rest \
+    && cp -R node_modules /production \
+    && yarn install --immutable
+```
+
+In that order both trees come from the same lockfile and the same cache — nothing is
+resolved twice, and neither tree is a subset produced by deleting directories out of the
+other. The `--immutable` on the second install is the guard that a focused install did not
+rewrite `yarn.lock`. Trimming the production copy of files no running process reads —
+`*.d.ts`, `*.map` — is worth about a third of the 300 MB budget, and belongs to that copy
+alone: the build stage type-checks against the full tree, where a missing declaration is a
+failed compile rather than a smaller image.
+
 **A task image answers to fewer of these rules, and says which.** Not every image is a
 service. [`ouroboros-db/Dockerfile`](../ouroboros-db/Dockerfile) is the migrations, the
 Flyway project configuration that applies them and the entrypoint that turns the module's
