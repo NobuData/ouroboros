@@ -113,8 +113,9 @@ describe("the Dockerfile", () => {
   it("copies a manifest for every workspace that has one", () => {
     // The drift guard that matters most here. Yarn resolves the whole workspace set
     // before installing any of it, so a workspace whose manifest is missing from the
-    // context fails `--immutable`. When ouroboros-rest is scaffolded (#27) this fails
-    // until its COPY is added, which is the reminder the deps stage cannot give itself.
+    // context fails `--immutable`. It is what caught #27: scaffolding ouroboros-rest
+    // failed this until its COPY was added, which is the reminder the deps stage cannot
+    // give itself, and it will catch the next module the same way.
     const root = JSON.parse(
       readFileSync(join(REPO_ROOT, "package.json"), "utf8"),
     ) as { workspaces: string[] };

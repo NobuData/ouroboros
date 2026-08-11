@@ -25,14 +25,16 @@
 # Only the manifests and the lockfile, so this layer is rebuilt when dependencies
 # change and reused when application code changes. Every workspace manifest has to be
 # here: Yarn resolves the whole workspace set before it installs any of it, and
-# --immutable fails if a missing one would have rewritten the lockfile. ouroboros-rest
-# has no manifest yet (#27); it is added here in the pull request that scaffolds it.
+# --immutable fails if a missing one would have rewritten the lockfile. That is all four
+# of them since #27 scaffolded ouroboros-rest, and __tests__/container.test.ts is what
+# holds this list to the workspace roster the next time one is added.
 FROM node:24-alpine AS deps
 WORKDIR /app
 RUN corepack enable
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY ouroboros-db/package.json ./ouroboros-db/
 COPY ouroboros-engine/package.json ./ouroboros-engine/
+COPY ouroboros-rest/package.json ./ouroboros-rest/
 COPY ouroboros-ui/package.json ./ouroboros-ui/
 RUN yarn install --immutable
 
@@ -49,6 +51,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY ouroboros-db/package.json ./ouroboros-db/
 COPY ouroboros-engine/package.json ./ouroboros-engine/
+COPY ouroboros-rest/package.json ./ouroboros-rest/
 COPY ouroboros-ui ./ouroboros-ui
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN yarn workspace ouroboros-ui run build
