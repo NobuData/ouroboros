@@ -282,6 +282,25 @@ rewrite `yarn.lock`. Trimming the production copy of files no running process re
 alone: the build stage type-checks against the full tree, where a missing declaration is a
 failed compile rather than a smaller image.
 
+**A Python module installs its project rather than copying its sources.**
+[`ouroboros-engine`](../ouroboros-engine/Dockerfile)
+([#53](https://github.com/NobuData/ouroboros/issues/53)) is the first, and what its
+stages hand along is one directory — the virtual environment. `deps` runs `uv sync
+--locked --no-dev --no-install-project`, so the expensive layer is keyed on
+`pyproject.toml` and `uv.lock` alone; `build` re-runs the same sync with the sources
+present and `--no-editable`, which adds the project to that environment as a real
+install. `--locked` is this toolchain's `--immutable`.
+
+The `--no-editable` is the part worth writing down. An editable install is a link back to
+`src/`, which the runtime stage does not copy — but more than that, three things a Python
+service usually documents are only true of an *installed* one: a version read from
+distribution metadata, a data file the wheel force-includes travelling beside its package,
+and a settings module that finds no `.env` above itself and is therefore configured by the
+process environment alone. Copying `src/` into an image leaves all three subtly untrue.
+Every stage must also share one base image and one environment path: `uv` writes absolute
+shebangs, so a venv copied to a different path, or onto a different interpreter, is a set
+of entry points pointing at nothing.
+
 **A task image answers to fewer of these rules, and says which.** Not every image is a
 service. [`ouroboros-db/Dockerfile`](../ouroboros-db/Dockerfile) is the migrations, the
 Flyway project configuration that applies them and the entrypoint that turns the module's

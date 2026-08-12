@@ -4,7 +4,8 @@
 > liveness, `/v0/status` and the internal-key guard landed with
 > [#51](https://github.com/NobuData/ouroboros/issues/51); the versioned contract — the
 > echo round trip and the error envelope — with
-> [#52](https://github.com/NobuData/ouroboros/issues/52). The work it will eventually
+> [#52](https://github.com/NobuData/ouroboros/issues/52). It ships as a container since
+> [#53](https://github.com/NobuData/ouroboros/issues/53). The work it will eventually
 > broker is [#54](https://github.com/NobuData/ouroboros/issues/54).
 
 ## Purpose
@@ -73,6 +74,8 @@ application directly, without the reloader, and chooses its own host:
 uv run uvicorn ouroboros_engine.main:app --host 0.0.0.0 --port "${PORT:-8000}"
 ```
 
+That is the command the image runs, minus the `uv` — see [Container](#container).
+
 ## The HTTP surface
 
 | Path | Key required | Answers |
@@ -91,13 +94,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.3.1","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.4.0","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.3.1"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.4.0"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -269,6 +272,86 @@ filterable by `path` rather than by substring. Nothing is logged that was not pa
 explicitly — no environment, no headers, no bodies — because this process holds a
 credential and a logger that helpfully dumps context is how one reaches a log index.
 
+## Container
+
+[`Dockerfile`](Dockerfile) is the production image
+([#53](https://github.com/NobuData/ouroboros/issues/53)) — `deps` → `build` → a runtime
+that carries no toolchain, per [conventions § 5](../docs/CONVENTIONS.md#5-containers).
+**Build it from this directory**, unlike the two Yarn workspaces:
+
+```bash
+docker build -t ouroboros-engine ouroboros-engine          # from the repo root
+
+docker run --rm -p 8000:8000 \
+  -e OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me \
+  ouroboros-engine
+```
+
+The context is this directory because nothing here installs through the root lockfile:
+`package.json` beside `pyproject.toml` is a workspace adapter over a `uv` project, and
+every file the build reads is committed in this module. So the ignore file is a plain
+[`.dockerignore`](.dockerignore) — with the context set here, that is the one BuildKit
+reads — and it is an **allow-list**: `*`, then the manifest, the lockfile, `src/`, the
+declared readme and the two specification files. Nothing else enters the context, `.env`
+and `tests/` included.
+
+| Property | Value |
+|---|---|
+| Base image | `python:3.12-slim`, every stage |
+| User | `engine`, created in the runtime stage; nothing runs as root |
+| Port | 8000 (`PORT`), bound on `0.0.0.0` — a container bound to loopback is unreachable |
+| Healthcheck | the venv's own `python` against `/healthz` every 30 s, after a 10 s grace |
+| Size | 55 MB to pull, 233 MB of layers unpacked — against a 250 MB budget |
+| Runtime config | every `OURO_*` variable, supplied per environment — never baked into a layer |
+
+**What moves between stages is one directory:** `/app/.venv`, holding the locked
+dependencies and this project installed into it. `deps` runs `uv sync --locked --no-dev
+--no-install-project`, so the expensive half is keyed on `pyproject.toml` and `uv.lock`
+alone and editing a route does not re-resolve the tree; `build` re-runs the same sync
+with the sources present and `--no-editable`, which adds just this project. `--locked` is
+the `yarn install --immutable` of this toolchain and the same flag `ci/engine` installs
+with: a lockfile that has drifted from the manifest fails the build rather than being
+refreshed into an image whose dependencies the repository never committed.
+
+**The project is installed, not copied**, and three documented behaviours depend on it.
+`__version__` reads installed distribution metadata and refuses to import without it;
+`openapi.json` is force-included beside the package by the wheel build, which is the
+first path [`openapi.py`](src/ouroboros_engine/openapi.py) looks in, so the container
+serves the committed document rather than hunting for a checkout; and `_ENV_FILES` in
+[`settings.py`](src/ouroboros_engine/settings.py) is empty for a non-editable install,
+because there is no `src` directory above the package to find an `.env` beside. **A
+container is configured by the environment it was started with and by nothing else** —
+by construction, not only because the ignore file keeps `.env` out.
+
+The venv is copied in as root and the process runs as `engine`, so the service cannot
+rewrite its own dependencies. It never needs to: `UV_COMPILE_BYTECODE` compiles
+everything at build time, and the engine writes no cache, no bytecode and no uploads.
+
+The healthcheck is the interpreter that is already in the image — `python:3.12-slim`
+carries neither `curl` nor `wget`, and installing one would mean an apt layer and a
+second HTTP client in an image whose only job is to answer through the first. It probes
+**liveness only**: `/healthz` is the one path the internal-key guard lets through, so the
+check holds no secret, and a Docker healthcheck is read by restart policies and by
+compose's `condition: service_healthy` — pointing it at anything under `/v0` would
+restart a healthy container over a dependency's problem. It expands `$PORT` at run time,
+so it follows the port the container was actually given.
+
+`OURO_ENGINE_SHARED_SECRET` is set **nowhere** in the image. It is the key every route
+but liveness is checked against; a default in a layer would be a published image carrying
+the credential that unlocks it. Started without it, the process names the variable and
+exits before binding a port, which is the behaviour a baked default would replace.
+
+[`tests/test_container.py`](tests/test_container.py) asserts every one of these
+properties that is decided in the repository, because `ci/engine` cannot run a
+`docker build`. It reads the probe path from `api/health.py`, the port from
+`settings.py`, and the files the build has to copy from `pyproject.toml`'s own packaging
+table — so a probe that moves, a port that changes or a newly force-included file fails
+*here* rather than in a container that is already running.
+
+The compose service that runs this image is
+[#55](https://github.com/NobuData/ouroboros/issues/55); until then the repo-root
+[`docker-compose.yml`](../docker-compose.yml) is the data tier only.
+
 ## Layout
 
 ```
@@ -292,6 +375,8 @@ ouroboros-engine/
 ├── tests/              # pytest; conftest.py isolates the environment
 ├── openapi.yaml        # the API specification — authoritative, hand-written
 ├── openapi.json        # rendered from it; the copy the service loads
+├── Dockerfile          # the production image; the context is this directory
+├── .dockerignore       # allow-list — only what the build reads
 ├── pyproject.toml      # deps, task names, ruff & pytest config
 └── uv.lock             # committed; CI installs with --locked
 ```
@@ -310,8 +395,9 @@ before any router, so a new path requires the key without anything being remembe
 Exempting one is an edit to `_PUBLIC_PATHS` in `main.py`, which is deliberately the only
 place a public path can be declared — and a test asserts liveness is still the only
 entry in it.
-There is no `Dockerfile` or `.dockerignore` yet; both land with
-[#53](https://github.com/NobuData/ouroboros/issues/53).
+`Dockerfile` and `.dockerignore` are the production image — see [Container](#container)
+above. They are read by `docker build` and by
+[`tests/test_container.py`](tests/test_container.py), and by nothing else in this module.
 
 ## Related issues
 
