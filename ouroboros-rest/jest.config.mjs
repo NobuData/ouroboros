@@ -27,14 +27,39 @@ export default {
     "^.+\\.mjs$": "<rootDir>/jest.esm-transform.cjs",
   },
 
-  // ...and the .mjs rule above reaches exactly one file, because node_modules is not
-  // transformed by default. `@thallesp/nestjs-better-auth` is the exception: it is what
-  // mounts BetterAuth (#701), it is published as ES modules only, and what it contributes
-  // is middleware ordering — so a stand-in for it would be a second implementation of the
-  // thing under test. See `jest.esm-transform.cjs`, which is where that trade is written
-  // down. The default pattern is restated because setting this replaces it.
+  // ...and the .mjs rule above reaches only what is named below, because node_modules is
+  // not transformed by default. Two things are named, for the same reason and at very
+  // different sizes.
+  //
+  // `@thallesp/nestjs-better-auth` is what mounts BetterAuth (#701), it is published as ES
+  // modules only, and what it contributes is middleware ordering — so a stand-in for it
+  // would be a second implementation of the thing under test. See `jest.esm-transform.cjs`,
+  // which is where that trade is written down.
+  //
+  // BetterAuth's **access-control modules** are the second, added by
+  // [#704](https://github.com/NobuData/ouroboros/issues/704), and the argument is the same
+  // one at a smaller scale. That issue's third acceptance criterion is that the custom
+  // `viewer` role is *asserted, not assumed* — and a `viewer` minted by a stand-in
+  // `createAccessControl` would only prove the stand-in returns what it was given. These
+  // two modules are a few dozen lines whose only dependency is an error class, so
+  // converting them costs about a second and lets `organization.roles.spec.ts` ask the
+  // library itself what a viewer may do. `better-auth/node_modules/` and `better-call/` are
+  // named because that error class lives under them; nothing else of the library is
+  // reachable from here — the plugin proper pulls in `better-auth/api` and is *not*
+  // converted, which is why `organization()` is called in `auth.factory.ts` alone.
+  //
+  // The default pattern is restated because setting this replaces it.
   transformIgnorePatterns: [
-    "/node_modules/(?!@thallesp/nestjs-better-auth/)",
+    "/node_modules/(?!" +
+      [
+        "@thallesp/nestjs-better-auth/",
+        "better-auth/dist/plugins/access/",
+        "better-auth/dist/plugins/organization/access/",
+        "better-auth/node_modules/",
+        "@better-auth/core/dist/",
+        "better-call/",
+      ].join("|") +
+      ")",
     "\\.pnp\\.[^\\\\/]+$",
   ],
 
@@ -42,11 +67,13 @@ export default {
   // ES-module dependencies of their own, against a stand-in of about a hundred lines that
   // reads the request stream the way the library does. That is the seam #701 ends at: the
   // Nest integration above is real, and what BetterAuth's routes *do* is #702's and #703's
-  // to prove. Three specifiers because the integration reaches for two subpaths of the
-  // same library; the fixture exports all of them.
+  // to prove. Four specifiers because the running code reaches for three subpaths of the
+  // same library; the fixture exports all of them. `better-auth/plugins` is #704's — it is
+  // where `organization()` comes from, and it is the entry point that would drag the whole
+  // library in.
   moduleNameMapper: {
     "^better-auth$": "<rootDir>/src/auth/better-auth.fixture.ts",
-    "^better-auth/(node|api)$": "<rootDir>/src/auth/better-auth.fixture.ts",
+    "^better-auth/(node|api|plugins)$": "<rootDir>/src/auth/better-auth.fixture.ts",
   },
 
   // Nest reads the decorator metadata the compiler emits through the reflect-metadata

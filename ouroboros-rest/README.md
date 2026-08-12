@@ -545,24 +545,30 @@ See [The tenant context](#the-tenant-context).
 
 ## BetterAuth
 
-**The library is installed, configured and mounted; no provider is wired to it yet**
-([#700](https://github.com/NobuData/ouroboros/issues/700),
-[#701](https://github.com/NobuData/ouroboros/issues/701)). `/api/auth/*` answers —
-`GET /api/auth/ok` returns `{"ok": true}` against a running service — but what signs a
-person in today is still the hand-rolled flow described under
-[Signing in](#signing-in). [#702](https://github.com/NobuData/ouroboros/issues/702) moves
-GitHub onto BetterAuth and [#703](https://github.com/NobuData/ouroboros/issues/703)
-replaces the cookie session; this section is the foundation both stand on.
+**The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
+answers ([#700](https://github.com/NobuData/ouroboros/issues/700),
+[#701](https://github.com/NobuData/ouroboros/issues/701)); GitHub signs people in
+([#702](https://github.com/NobuData/ouroboros/issues/702)); a session is a row, so signing
+out revokes ([#703](https://github.com/NobuData/ouroboros/issues/703)); and tenancy —
+organizations, membership, roles, and the active-organization pointer — is the organization
+plugin ([#704](https://github.com/NobuData/ouroboros/issues/704), see
+[Tenancy](#tenancy-the-organization-plugin)). What is still missing is a way in **without
+github.com**, which is [#705](https://github.com/NobuData/ouroboros/issues/705).
 
-[`src/auth/`](src/auth) is five files, and the split is about *who can load what*:
+[`src/auth/`](src/auth) is ten files, and the split is about *who can load what*:
 
-| File               | What it is                                                                    |
-| ------------------ | ----------------------------------------------------------------------------- |
-| `auth.options.ts`  | the options object — every decision, and no dependency: it imports the library's *types* only |
-| `auth.factory.ts`  | `createAuth(dependencies)` — the one place `better-auth` is a value rather than a type |
-| `auth.config.ts`   | a standalone instance built from the environment, for `@better-auth/cli`       |
-| `auth.module.ts`   | the Nest wiring — the one file here that imports `@nestjs/*`                    |
-| `auth.routes.ts`   | the [route map](#the-route-map), and the paths the global prefix excludes       |
+| File                      | What it is                                                             |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `auth.options.ts`         | the options object — every decision, and no dependency: it imports the library's *types* only |
+| `auth.factory.ts`         | `createAuth(dependencies)` — the one place `better-auth` is a value rather than a type |
+| `auth.config.ts`          | a standalone instance built from the environment, for `@better-auth/cli` |
+| `auth.module.ts`          | the Nest wiring — the one file here that imports `@nestjs/*`            |
+| `auth.routes.ts`          | the [route map](#the-route-map), and the paths the global prefix excludes |
+| `github.provider.ts`      | the GitHub OAuth application, and the account-linking policy behind it   |
+| `session.options.ts`      | how long a session lasts, and what the cookie cache costs                |
+| `organization.roles.ts`   | who may do what inside an organization — including the custom `viewer`  |
+| `organization.plugin.ts`  | the [organization plugin's](#tenancy-the-organization-plugin) options    |
+| `active.organization.ts`  | where a session starts out acting, and the personal organization it starts in |
 
 Two constraints shape the first three. The library is **ES-module-only** and this service
 compiles to CommonJS, because Nest's dependency injection needs the decorator metadata that
@@ -573,6 +579,16 @@ configuration has to be loadable **with no Nest process at all**, because that i
 [#706](https://github.com/NobuData/ouroboros/issues/706) generates the schema — which is
 why `auth.module.ts` is a separate file rather than a section of `auth.config.ts`: the CLI
 must never reach an injector.
+
+`organization.roles.ts` is the **one deliberate exception** to the first rule, added by
+[#704](https://github.com/NobuData/ouroboros/issues/704). It imports
+`better-auth/plugins/access` and `better-auth/plugins/organization/access` as values, and
+`jest.config.mjs` converts those two rather than replacing them: they are a few dozen lines
+whose only dependency is an error class, and that issue's acceptance criterion is that the
+custom `viewer` role is **asserted, not assumed** — which a stand-in `createAccessControl`
+could not do, since it would only prove the stand-in returns what it was given. The plugin
+proper is a different matter: `organization()` reaches `better-auth/api` and pulls in the
+whole library, so it is called in `auth.factory.ts` alone.
 
 **One pool, not two.** `authOptions` takes a `pg.Pool` and puts *that object* into
 BetterAuth's `database` — decision **A2** of
@@ -600,18 +616,77 @@ keeping.
 | `GET /api/auth/ok`                | the library answering for itself — no database, no session            |
 | `GET /api/auth/error`             | where a failed flow is redirected, with the reason in the query string |
 
+…and, since [#704](https://github.com/NobuData/ouroboros/issues/704), the organization
+plugin's — mockup 01 Step 2 and mockup 17, as routes:
+
+| Route                                          | What it is for                                                  |
+| ---------------------------------------------- | --------------------------------------------------------------- |
+| `GET  /api/auth/organization/list`             | the caller's organizations and the role held in each             |
+| `POST /api/auth/organization/create`           | make one; the caller becomes its `owner`                         |
+| `POST /api/auth/organization/set-active`       | **choose where the loop runs** — writes `session."activeOrganizationId"` |
+| `GET  /api/auth/organization/get-full-organization` | one organization with its members and pending invitations   |
+| `POST /api/auth/organization/invite-member`    | write an `invitation` row — **no email**; that is [#724](https://github.com/NobuData/ouroboros/issues/724) |
+| `POST /api/auth/organization/update-member-role` | change what somebody may do                                    |
+
 The same table is [`src/auth/auth.routes.ts`](src/auth/auth.routes.ts), as data, because
 [#711](https://github.com/NobuData/ouroboros/issues/711) publishes these paths and
-`ouroboros-ui`'s BetterAuth client calls them.
-
-Only `ok` and `error` do anything useful today: no provider is configured, so
-`sign-in/social` answers `PROVIDER_NOT_FOUND` and `get-session` answers `null`. **A route
-that answers is nevertheless the acceptance criterion of #701** — the handler is mounted,
-it escapes the global prefix, and it reads the raw request. #702, #703 and #705 are what
-fill it in, and each adds its own rows to that file.
+`ouroboros-ui`'s BetterAuth client calls them. It is **not the whole of what the plugin
+serves** — leaving, rejecting an invitation, deleting an organization and a dozen more are
+mounted too — only the ones the product uses today.
 
 `GET /api/auth/ok` is not a health probe. It says nothing about this service's
 dependencies; [`/health/ready`](#health-and-readiness) stays the only readiness there is.
+
+### Tenancy: the organization plugin
+
+Roadmap decision **A5**: organizations, membership, roles and the pointer saying which
+organization a request is acting in all come from BetterAuth's organization plugin, rather
+than from the `tenants`/`tenant_members` tables
+[#20](https://github.com/NobuData/ouroboros/issues/20) and
+[#21](https://github.com/NobuData/ouroboros/issues/21) built.
+[#708](https://github.com/NobuData/ouroboros/issues/708) migrates those rows across and
+drops them; `V005` ([#707](https://github.com/NobuData/ouroboros/issues/707)) is the schema
+underneath.
+
+**Four roles, and one of them is ours.** The plugin ships `owner`, `admin` and `member`;
+`viewer` is defined in [`organization.roles.ts`](src/auth/organization.roles.ts) as a custom
+access-control role holding **no permission over any resource**. That word is not new — the
+`tenant_members.role` check has allowed it since #21, and mockup 17 lists a Viewer beside
+the other three — so defining it here is what makes #708 a rename rather than a re-think.
+`V005` deliberately leaves `member.role` un-CHECK-constrained, which puts the vocabulary
+here, where it is decided:
+
+```console
+$ npx jest src/auth/organization.roles.spec.ts
+ ✓ is refused permission to add a member
+ ✓ is stricter than the plugin's own member role, which may read role definitions
+ ✓ lets only an owner delete the organization
+```
+
+**The tenant is server state.** `session."activeOrganizationId"` is written by
+`setActiveOrganization` and by the sign-in hook below, and by nothing a client can send —
+which is the difference between this and #32's `X-Ouro-Tenant` header, demoted to an
+override by [#713](https://github.com/NobuData/ouroboros/issues/713).
+
+**A personal organization, made at sign-in.**
+[`active.organization.ts`](src/auth/active.organization.ts) hangs off
+`databaseHooks.session.create.before`: it looks up the caller's memberships, and if they
+have none it makes them an organization of their own — named after them, flagged
+`{"personal": true}` in `metadata`, which is the `personal` pill mockup 01 Step 2 renders.
+The new session is then stamped with it, as part of the `insert` rather than an `update`
+after the fact.
+
+Hanging it off **session** creation rather than **user** creation is the one decision worth
+knowing about. `V004`'s back-fill already wrote a `"user"` row for everybody who used
+Ouroboros before BetterAuth, so a hook on user creation would never fire for any of them —
+they would sign in, find no organization, and need a second one-shot back-fill to fix.
+Evaluated at every sign-in, the rule is self-healing and costs one indexed lookup for
+anybody who already belongs somewhere.
+
+`organization.metadata` is **JSON held as text** — the plugin stringifies on write and
+parses on read — so that hook stringifies too. `V005`'s
+`check ("metadata" is null or "metadata" is json)` is what catches the mistake if anything
+ever stops.
 
 ### Nest parses no request body
 
@@ -1085,6 +1160,7 @@ ouroboros-rest/
 │   ├── openapi/            # loads the committed spec — it is never generated
 │   ├── testing/            # the integration harness: container, app, sessions · #37
 │   ├── auth/               # BetterAuth: options, factory, CLI config, mount · #700 #701
+│   │                       #   provider #702 · sessions #703 · organizations #704
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
 │       ├── config/         # the zod schema, the typed service, redaction
@@ -1185,6 +1261,7 @@ BetterAuth installation & configuration [#700](https://github.com/NobuData/ourob
 BetterAuth mounted in NestJS [#701](https://github.com/NobuData/ouroboros/issues/701) ·
 GitHub social provider [#702](https://github.com/NobuData/ouroboros/issues/702) ·
 database-backed sessions & the global guard [#703](https://github.com/NobuData/ouroboros/issues/703) ·
+organization plugin adoption [#704](https://github.com/NobuData/ouroboros/issues/704) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·

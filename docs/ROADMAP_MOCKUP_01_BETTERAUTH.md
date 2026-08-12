@@ -263,9 +263,48 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > rows) and **A.6 · #705** (a sign-in a script can perform). Every leg that needs no session
 > still runs. Its issue section below is kept as the record of what was asked for.
 
+> **A.5 · #704 has shipped and has left the table below.** Tenancy is the organization
+> plugin (decision **A5**), registered in `src/auth/auth.factory.ts` from options three new
+> modules decide:
+> [`organization.roles.ts`](../ouroboros-rest/src/auth/organization.roles.ts) (the role
+> model), [`organization.plugin.ts`](../ouroboros-rest/src/auth/organization.plugin.ts)
+> (the plugin's options and #725's audit seam) and
+> [`active.organization.ts`](../ouroboros-rest/src/auth/active.organization.ts) (the tenant
+> pointer, and the personal organization).
+>
+> **`viewer` is a real access-control role, and the suite asks the library rather than
+> assuming** — which is the acceptance criterion that shaped the test architecture.
+> `jest.config.mjs` now *converts* `better-auth/plugins/access` and
+> `better-auth/plugins/organization/access` instead of replacing them: they are a few dozen
+> lines whose only dependency is an error class, so `organization.roles.spec.ts` can assert
+> that a viewer is refused `member: ["create"]` by the same code path the running service
+> takes. The plugin proper still reaches `better-auth/api` and is still replaced, which is
+> why `organization()` is called in `auth.factory.ts` alone and `auth.options.ts` keeps its
+> "no `better-auth` value" rule.
+>
+> **The personal organization hangs off session creation, not user creation**, and that is a
+> deliberate departure from this issue's wording. `V004`'s back-fill already wrote a
+> `"user"` row for everybody who used Ouroboros before BetterAuth, so a `user.create.after`
+> hook would never fire for any of them — they would sign in, find no organization, and need
+> a second one-shot back-fill. Evaluated at every sign-in the rule is self-healing, costs one
+> indexed lookup for anybody who already belongs somewhere, and still means "first sign-in
+> creates a personal organization" for a new person. It also covers **B.3 · #708**'s migrated
+> members for free: they arrive holding memberships, so nothing is created for them.
+>
+> One rule was added that the issue did not ask for and the mockup requires:
+> `beforeCreateOrganization` **strips a client-supplied `metadata.personal`**. The plugin's
+> create route accepts arbitrary metadata, and that flag is what mockup 01 Step 2 renders as
+> the `personal` pill — without the strip, anybody could create a shared workspace wearing
+> it. The same hook is #725's seam, which is why the two share it.
+>
+> The route map grew the six routes the product actually uses; the plugin mounts more than
+> thirty, and listing only these is what keeps `auth.routes.ts` a record of what the service
+> *does*. Invitations are written but **not delivered** — **E.3 · #724** is the email, and
+> there is no `expired` status to wait for: expiry is `expiresAt`, evaluated at accept time.
+> Its issue section below is kept as the record of what was asked for.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.5 · #704 | ouroboros-rest: [A.5] Organization plugin adoption (tenancy backbone) | Org/member/invitation APIs, roles, `activeOrganizationId`, hooks | mvp, auth, rest | N (after A.4, B.2) | Y | L | ouroboros-rest |
 | A.6 · #705 | ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`) | Local/e2e auth without GitHub, hard-off in production, bypass deleted | mvp, auth, rest | N (after A.4) | Y | **M** ⬆ | ouroboros-rest |
 
 ### Issue A.1 (#700) — ouroboros-rest: [A.1] BetterAuth installation & configuration module
@@ -441,6 +480,10 @@ sign-out ─▶ DELETE session row  (revocation is immediate)
 ```
 
 ### Issue A.5 (#704) — ouroboros-rest: [A.5] Organization plugin adoption (tenancy backbone)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, and
+`ouroboros-rest/README.md` § Tenancy: the organization plugin for how it is used.
 
 - **Problem Statement:** Mockup 01 Step 2 ("Choose where the loop runs") and mockup 17
   (members/roles) need organizations, membership, roles, and an active-org pointer —
@@ -1384,8 +1427,8 @@ Ordered checklist (⊕ = parallelizable within its phase):
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
    it against a seeded copy; it is the one step in this roadmap that cannot be
    reverted by redeploying the previous build.)*
-3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ *(both shipped)* →
-   { A.5 #704 ⊕ A.6 #705 }
+3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ ⊕ ~~A.5 #704~~ *(all shipped)*
+   → A.6 #705
    *(**A.6 is now the urgent one.** A.4 deleted the `OURO_AUTH_DEV_USER` bypass along with
    the guard that read it, so signing in locally means a real GitHub OAuth application and
    the e2e suite's login legs are parked. A.6's development email/password sign-in is what
@@ -1500,11 +1543,12 @@ row, the library's guard is what every route sits behind, and signing out revoke
 What is not yet true is that anybody can sign in **without github.com**. A.4 deleted the
 `OURO_AUTH_DEV_USER` bypass with the guard that read it, which is why #705 is next: it is
 what returns local development and the e2e gate to a working sign-in, and #709 is what gives
-the seeded people a BetterAuth identity to sign in as. #707 (B.2) **has since landed** —
-`organization`, `member`, `invitation` and the session's tenant pointer exist, so #704 (A.5)
-is unblocked and **#708 (B.3) is the next database step**, and the riskiest one in the
-roadmap. #718 (D.3) makes the login page's button work, and #720 (D.5) re-points the UI's
-own gate, which still forwards #33's cookie.
+the seeded people a BetterAuth identity to sign in as. #707 (B.2) and #704 (A.5) **have
+since landed** — `organization`, `member`, `invitation` and the session's tenant pointer
+exist, the plugin is enabled with a `viewer` role asserted against the library, and a first
+sign-in yields a personal organization. **#708 (B.3) is the next database step**, and the
+riskiest one in the roadmap. #718 (D.3) makes the login page's button work, and #720 (D.5)
+re-points the UI's own gate, which still forwards #33's cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

@@ -3,9 +3,15 @@
  *
  * `better-auth` is published as ES modules and this suite runs on Jest's CommonJS
  * runtime, so every spec that builds the application would fail to parse the library
- * before it asserted anything. `jest.config.mjs` maps the three specifiers the running
- * code reaches for — `better-auth`, `better-auth/node`, `better-auth/api` — at this one
- * module, which is why it exports a function for each of them rather than one thing.
+ * before it asserted anything. `jest.config.mjs` maps the four specifiers the running
+ * code reaches for — `better-auth`, `better-auth/node`, `better-auth/api` and, since
+ * [#704](https://github.com/NobuData/ouroboros/issues/704), `better-auth/plugins` — at this
+ * one module, which is why it exports a function for each of them rather than one thing.
+ *
+ * **Not every subpath is replaced.** `better-auth/plugins/access` and
+ * `better-auth/plugins/organization/access` are *converted* and loaded for real — they are
+ * small, and #704's role model has to be assertable against the library rather than against
+ * this file. See `jest.config.mjs`'s `transformIgnorePatterns` for where that line is drawn.
  *
  * **What it is not is a mock of the code under test.** The Nest integration
  * (`@thallesp/nestjs-better-auth`) is loaded for real — `jest.esm-transform.cjs` converts
@@ -217,6 +223,35 @@ export function fromNodeHeaders(headers: IncomingHttpHeaders): Headers {
   }
 
   return converted;
+}
+
+/** A plugin, as much of one as anything here reads: an id and the options it was built from. */
+export interface StubbedPlugin {
+  /** The plugin's id — `"organization"`, which is what the library keys it by. */
+  readonly id: string;
+  /** The options it was given. What `auth.factory.spec.ts` asserts about. */
+  readonly options: unknown;
+}
+
+/**
+ * Stand in for `better-auth/plugins`' `organization`.
+ *
+ * The real one builds some forty endpoints, a schema and an access-control layer, and it
+ * reaches `better-auth/api` to do it — which is the whole library, and the reason this
+ * subpath is replaced rather than converted like the two access-control modules beside it.
+ *
+ * What a spec can usefully assert here is *which options this service decided on*, and that
+ * is preserved exactly. The options themselves are asserted directly, without this file, in
+ * `organization.plugin.spec.ts`; that the real plugin accepts them is proven where Jest
+ * cannot reach, by `@better-auth/cli generate` building a genuine instance from
+ * `auth.config.ts` with this plugin registered — which is how `V005` was generated
+ * ([#707](https://github.com/NobuData/ouroboros/issues/707)).
+ *
+ * @param options - Whatever `organizationOptions()` produced.
+ * @returns A plugin-shaped object carrying them.
+ */
+export function organization(options: unknown): StubbedPlugin {
+  return { id: "organization", options };
 }
 
 /**
