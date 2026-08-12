@@ -15,7 +15,7 @@ import { sessionUser } from "../helpers/login";
  * cannot act, and the opposite of quietly dropping it.
  */
 
-const SIGN_IN = "http://rest.test:4000/api/v1/auth/github";
+const SIGN_IN = "http://rest.test:4000/api/auth/sign-in/social";
 
 describe("<SignInCard>, signed out", () => {
   it("offers GitHub sign-in as a link to the service's own route", () => {

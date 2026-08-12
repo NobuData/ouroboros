@@ -6,9 +6,9 @@ import { epochSeconds, readToken, signToken, TOKEN_SEPARATOR, type Issued } from
  * The signature, and every way a token can fail to be one.
  *
  * This is the file where a mistake is worth the most to an attacker: everything above it —
- * the session, the OAuth handshake — is a payload wrapped in whatever this promises. So the
- * suite is written as a list of forgeries rather than as a round trip, and the round trip
- * is one test at the top.
+ * the session cookie, and #33's OAuth handshake until #702 deleted it — is a payload
+ * wrapped in whatever this promises. So the suite is written as a list of forgeries rather
+ * than as a round trip, and the round trip is one test at the top.
  */
 
 const SECRET = "a-development-signing-secret";

@@ -1,7 +1,8 @@
 import { API_PREFIX, API_VERSION } from "../application";
 import { PROBE_PATHS } from "../modules/health/health.paths";
 import { AUTH_BASE_PATH } from "./auth.options";
-import { AUTH_PREFIX_EXCLUSIONS, AUTH_ROUTES } from "./auth.routes";
+import { AUTH_PREFIX_EXCLUSIONS, AUTH_ROUTES, GITHUB_CALLBACK_PATH } from "./auth.routes";
+import { GITHUB_PROVIDER_ID } from "./github.provider";
 
 /**
  * The route map, held to the shape the rest of the service assumes of it.
@@ -55,6 +56,29 @@ describe("the route map", () => {
     const paths = AUTH_ROUTES.map((route) => `${route.methods.join(",")} ${route.path}`);
 
     expect(new Set(paths).size).toBe(paths.length);
+  });
+});
+
+describe("the GitHub callback", () => {
+  it("is the URL an OAuth App is registered against", () => {
+    // Three places have to carry this string and only one of them is code: github.com's
+    // application settings for development and for production, the README, and here. A
+    // difference of one character is a sign-in that fails at the last hop.
+    expect(GITHUB_CALLBACK_PATH).toBe("/api/auth/callback/github");
+  });
+
+  it("is composed from the provider id, so the callback and account.providerId agree", () => {
+    // The same string is `account.providerId` — the column #706's back-fill wrote
+    // `user_identities.provider` into. Typing it twice is how a rename becomes a sign-in
+    // that creates a second person instead of finding the first.
+    expect(GITHUB_CALLBACK_PATH).toBe(`${AUTH_BASE_PATH}/callback/${GITHUB_PROVIDER_ID}`);
+  });
+
+  it("is an instance of the parameterised route the map documents", () => {
+    const documented = AUTH_ROUTES.find((route) => route.path === `${AUTH_BASE_PATH}/callback/:id`);
+
+    expect(documented).toBeDefined();
+    expect(GITHUB_CALLBACK_PATH.startsWith(`${AUTH_BASE_PATH}/callback/`)).toBe(true);
   });
 });
 

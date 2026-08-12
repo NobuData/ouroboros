@@ -1,20 +1,25 @@
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import type { Tenant, User } from "../db/schema";
-import { AuthRepository, GITHUB_PROVIDER } from "./auth.repository";
+import { AuthRepository } from "./auth.repository";
 import type { MembershipRow } from "./auth.resources";
 
 /**
- * The statements sign-in issues, read rather than mocked.
+ * The statements this module issues, read rather than mocked.
  *
  * `database.fixture.ts` explains why a repository is checked at this level: a mocked method
  * proves the repository was *called*, and the only mistake a repository can make is the
- * query. Two of these matter more than the rest — the identity lookup is what makes a
- * repeat sign-in reuse a row instead of creating a second person, and the address lookup is
- * what attaches an invitation to the person who accepts it.
+ * query.
+ *
+ * **Four of them were sign-in's and are gone.**
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) deleted `findUserByIdentity`,
+ * `createUser`, `refreshProfile` and `linkIdentity` along with the flow that called them —
+ * BetterAuth writes `"user"` and `account` through its own adapter now — so the suites that
+ * covered them were deleted rather than skipped. What replaced the identity lookup is the
+ * `account(providerId, accountId)` unique index and #706's back-fill into it, asserted in
+ * `ouroboros-db/tests/constraints.sql`.
  */
 
 const USER_ID = "5eed0003-0000-4000-8000-000000000001";
-const EXTERNAL_ID = "900000001";
 const EMAIL = "ken@acme-robotics.dev";
 
 const USER = {
@@ -54,44 +59,22 @@ describe("the auth repository", () => {
     repository = new AuthRepository(database.service);
   });
 
-  describe("finding a person by their external account", () => {
-    it("keys on the provider and the immutable id, never the login", async () => {
-      // A GitHub login can be changed at any time; the numeric id cannot. Keying on the
-      // login would make a rename look like a new person.
-      await repository.findUserByIdentity(GITHUB_PROVIDER, EXTERNAL_ID);
-
-      expect(database.statements[0].sql).toContain(
-        'where "ouroboros"."user_identities"."provider" = $1',
-      );
-      expect(database.statements[0].sql).toContain(
-        'and "ouroboros"."user_identities"."external_id" = $2',
-      );
-      expect(database.statements[0].parameters).toEqual([GITHUB_PROVIDER, EXTERNAL_ID]);
-    });
-
-    it("joins the person, so one statement answers the whole question", async () => {
-      await repository.findUserByIdentity(GITHUB_PROVIDER, EXTERNAL_ID);
-
-      expect(database.statements[0].sql).toContain('inner join "ouroboros"."users"');
-    });
-
-    it("returns the person when there is one", async () => {
-      database.answers({ rows: [USER] });
-
-      expect(await repository.findUserByIdentity(GITHUB_PROVIDER, EXTERNAL_ID)).toEqual(USER);
-    });
-
-    it("returns nothing when this account has never signed in here", async () => {
-      expect(await repository.findUserByIdentity(GITHUB_PROVIDER, EXTERNAL_ID)).toBeUndefined();
-    });
-  });
-
   describe("finding a person by address", () => {
     it("matches the stored column exactly, which is why the caller folds the address", async () => {
       await repository.findUserByEmail(EMAIL);
 
       expect(database.statements[0].sql).toContain('where "email" = $1');
       expect(database.statements[0].parameters).toEqual([EMAIL]);
+    });
+
+    it("returns the person when there is one", async () => {
+      database.answers({ rows: [USER] });
+
+      expect(await repository.findUserByEmail(EMAIL)).toEqual(USER);
+    });
+
+    it("returns nothing when no user holds that address", async () => {
+      expect(await repository.findUserByEmail(EMAIL)).toBeUndefined();
     });
   });
 
@@ -102,57 +85,15 @@ describe("the auth repository", () => {
       expect(database.statements[0].sql).toContain('where "id" = $1');
       expect(database.statements[0].parameters).toEqual([USER_ID]);
     });
-  });
 
-  describe("creating a person", () => {
-    it("writes what it was given and returns the stored row", async () => {
+    it("returns the person when the row is still there", async () => {
       database.answers({ rows: [USER] });
 
-      const created = await repository.createUser({
-        email: EMAIL,
-        display_name: "Ken Suenobu",
-        avatar_url: null,
-      });
-
-      expect(database.statements[0].sql).toContain('insert into "ouroboros"."users"');
-      expect(database.statements[0].parameters).toEqual([EMAIL, "Ken Suenobu", null]);
-      expect(created).toEqual(USER);
-    });
-  });
-
-  describe("refreshing a profile", () => {
-    it("writes the name and the avatar", async () => {
-      database.answers({ rows: [USER] });
-
-      await repository.refreshProfile(USER_ID, "Ken S.", "https://avatars.example/1");
-
-      expect(database.statements[0].sql).toContain('update "ouroboros"."users"');
-      expect(database.statements[0].parameters).toEqual([
-        "Ken S.",
-        "https://avatars.example/1",
-        USER_ID,
-      ]);
+      expect(await repository.findUserById(USER_ID)).toEqual(USER);
     });
 
-    it("does not touch the address", async () => {
-      // `users_email_key` is unique and is what an outstanding invitation was addressed to.
-      // Rewriting it on every sign-in would let a GitHub-side change collide with another
-      // row, or quietly detach somebody from the invitation that created theirs.
-      database.answers({ rows: [USER] });
-
-      await repository.refreshProfile(USER_ID, "Ken S.", null);
-
-      expect(database.statements[0].sql).not.toContain('"email"');
-    });
-  });
-
-  describe("linking an identity", () => {
-    it("records the account and nothing that could be a credential", async () => {
-      await repository.linkIdentity(USER_ID, GITHUB_PROVIDER, EXTERNAL_ID);
-
-      expect(database.statements[0].sql).toContain('insert into "ouroboros"."user_identities"');
-      expect(database.statements[0].sql).toContain('"user_id", "provider", "external_id"');
-      expect(database.statements[0].parameters).toEqual([USER_ID, GITHUB_PROVIDER, EXTERNAL_ID]);
+    it("returns nothing once the row is gone, which is what ends a deleted user's session", async () => {
+      expect(await repository.findUserById(USER_ID)).toBeUndefined();
     });
   });
 
@@ -216,14 +157,15 @@ describe("the auth repository", () => {
       // on the pool instead: it takes its own connection, commits on its own, and is not
       // undone by a rollback. Every method here forwards the transaction for that reason.
       await database.service.transaction(async (trx) => {
-        await repository.findUserByIdentity(GITHUB_PROVIDER, EXTERNAL_ID, trx);
+        await repository.findUserById(USER_ID, trx);
         await repository.findUserByEmail(EMAIL, trx);
-        await repository.linkIdentity(USER_ID, GITHUB_PROVIDER, EXTERNAL_ID, trx);
+        await repository.listMemberships(USER_ID, trx);
+        await repository.findTenantByDomain("acme-robotics.dev", trx);
       });
 
       expect(database.sql()[0]).toBe("begin");
       expect(database.sql().at(-1)).toBe("commit");
-      expect(database.statements).toHaveLength(5);
+      expect(database.statements).toHaveLength(6);
     });
   });
 });

@@ -1,19 +1,25 @@
 /**
- * Every statement sign-in issues — against `users`, `user_identities`, and the two tables a
- * session's answer joins for context.
+ * Every statement this module issues — against `users`, and the two tables a session's
+ * answer joins for context.
  *
  * The repository holds statements and no rules, which is the layering
  * [#30](https://github.com/NobuData/ouroboros/issues/30) set and
- * [#31](https://github.com/NobuData/ouroboros/issues/31) followed. Where a person *comes
- * from* — a GitHub identity, an invitation somebody sent them, or nowhere yet — is decided
- * in `auth.service.ts`; this file only knows how to look each of those up and write the
- * row.
+ * [#31](https://github.com/NobuData/ouroboros/issues/31) followed.
+ *
+ * **It no longer writes anything.** #33's sign-in wrote `users` and `user_identities`
+ * through this file — `findUserByIdentity`, `createUser`, `refreshProfile` and
+ * `linkIdentity` — and [#702](https://github.com/NobuData/ouroboros/issues/702) deleted all
+ * four along with the flow that called them. BetterAuth owns the identity model now, and
+ * writes `"user"` and `account` through its own adapter over the same pool
+ * (`src/auth/auth.options.ts`). What is left here are four reads, and the two that survive
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) are the two that answer
+ * `GET /api/v1/auth/me`.
  *
  * It overlaps `MembersRepository` in exactly one place, deliberately: both can find a user
  * by address. Tenancy needs it to attach an invitation to a person who may not exist yet;
- * auth needs it to find the person that invitation created. Sharing one repository between
- * the two modules would mean `TenancyModule` and `AuthModule` reaching into each other for
- * a two-line select, and the seam that buys is worth less than the one it costs — see
+ * auth needs it for the development bypass. Sharing one repository between the two modules
+ * would mean `TenancyModule` and `AuthModule` reaching into each other for a two-line
+ * select, and the seam that buys is worth less than the one it costs — see
  * `auth.module.ts`, which imports `DbModule` and not `TenancyModule`.
  */
 
@@ -22,11 +28,8 @@ import type { Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import { queryOn } from "../tenancy/queries";
-import type { Database, IdentityProvider, NewUser, Tenant, User } from "../db/schema";
+import type { Database, Tenant, User } from "../db/schema";
 import type { MembershipRow } from "./auth.resources";
-
-/** The provider every identity this module writes carries. */
-export const GITHUB_PROVIDER: IdentityProvider = "github";
 
 /** The columns a membership listing selects, in the order the join returns them. */
 const MEMBERSHIP_COLUMNS = [
@@ -44,36 +47,13 @@ export class AuthRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * Find the person behind an external account.
-   *
-   * The only lookup that answers "have I seen this GitHub account before", and so the one
-   * that makes a repeat sign-in reuse a `users` row rather than create a second one.
-   * Keyed on `(provider, external_id)` — V002's unique index — rather than on the login,
-   * which a person may change at any time.
-   *
-   * @param provider - Which external system. `github` today; the column is a union type
-   *   because V002 uses a check constraint rather than an enum, so a second provider is an
-   *   ordinary migration.
-   * @param externalId - The provider's immutable id for the account.
-   * @param trx - The transaction to run in, if there is one.
-   * @returns The person, or `undefined` when this account has never signed in here.
-   */
-  async findUserByIdentity(
-    provider: IdentityProvider,
-    externalId: string,
-    trx?: Transaction<Database>,
-  ): Promise<User | undefined> {
-    return queryOn(this.database, trx)
-      .selectFrom("user_identities")
-      .innerJoin("users", "users.id", "user_identities.user_id")
-      .selectAll("users")
-      .where("user_identities.provider", "=", provider)
-      .where("user_identities.external_id", "=", externalId)
-      .executeTakeFirst();
-  }
-
-  /**
    * Find a person by their address.
+   *
+   * Read by the development bypass, which is the only caller left: #33's sign-in used this
+   * to attach an arriving GitHub identity to a stub row an invitation had created, and
+   * BetterAuth's account linking is what does that now
+   * (`src/auth/github.provider.ts`). It goes with the bypass in
+   * [#705](https://github.com/NobuData/ouroboros/issues/705).
    *
    * @param email - The address, already lower-cased. `users_email_key` indexes the stored
    *   column, so a differently-cased address would silently miss.
@@ -106,79 +86,6 @@ export class AuthRepository {
       .selectAll()
       .where("id", "=", id)
       .executeTakeFirst();
-  }
-
-  /**
-   * Create a person.
-   *
-   * @param values - Their address, name and avatar. The address must already be
-   *   lower-cased; V002 stores it folded and this repository does not fold it for a caller,
-   *   because a repository that quietly rewrote a value would hide the one place the rule
-   *   belongs.
-   * @param trx - The transaction to run in, if there is one.
-   * @returns The stored row.
-   */
-  async createUser(values: NewUser, trx?: Transaction<Database>): Promise<User> {
-    return queryOn(this.database, trx)
-      .insertInto("users")
-      .values(values)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-  }
-
-  /**
-   * Refresh what GitHub knows about a person.
-   *
-   * Their name and avatar only. The address is deliberately not updated here: it is
-   * `users_email_key`-unique and is what an outstanding invitation was addressed to, so
-   * changing it on every sign-in would let a GitHub-side address change collide with
-   * another row — or silently detach somebody from an invitation. Reconciling a changed
-   * primary address is a settings-screen decision with a person in the loop, not a side
-   * effect of signing in.
-   *
-   * @param id - Whose row.
-   * @param displayName - What GitHub calls them now.
-   * @param avatarUrl - Their avatar, or `null`.
-   * @param trx - The transaction to run in, if there is one.
-   * @returns The row after the change.
-   */
-  async refreshProfile(
-    id: string,
-    displayName: string,
-    avatarUrl: string | null,
-    trx?: Transaction<Database>,
-  ): Promise<User> {
-    return queryOn(this.database, trx)
-      .updateTable("users")
-      .set({ display_name: displayName, avatar_url: avatarUrl })
-      .where("id", "=", id)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-  }
-
-  /**
-   * Record that a person controls an external account.
-   *
-   * Holds no token and no secret, and none may be added:
-   * `ouroboros-db/tests/constraints.sql` reads `information_schema` and fails if a column
-   * whose name looks like a credential ever appears on this table.
-   *
-   * @param userId - The person.
-   * @param provider - Which external system.
-   * @param externalId - The provider's immutable id.
-   * @param trx - The transaction to run in, if there is one.
-   * @returns When the row exists.
-   */
-  async linkIdentity(
-    userId: string,
-    provider: IdentityProvider,
-    externalId: string,
-    trx?: Transaction<Database>,
-  ): Promise<void> {
-    await queryOn(this.database, trx)
-      .insertInto("user_identities")
-      .values({ user_id: userId, provider, external_id: externalId })
-      .execute();
   }
 
   /**

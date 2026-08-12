@@ -9,17 +9,15 @@
  * reference resolves to, and who may change a workspace — is `app/api/membership.ts`,
  * which is framework-free so that both this and the screens can read the same rules.
  *
- * Sign-in itself is **not** a call, which is why {@link githubSignInUrl} returns a URL
- * rather than doing anything: the contract says so in as many words
- * (`ouroboros-rest/openapi.yaml` § `startGithubSignIn`), because a `fetch` would follow a
- * `302` to github.com into a page it cannot render and land nobody anywhere. The login
- * screen renders it as a link and the browser navigates.
+ * Sign-in itself is **not** a call through this client, which is why
+ * {@link githubSignInUrl} returns a URL rather than doing anything: a `fetch` would follow
+ * a redirect to github.com into a page it cannot render and land nobody anywhere.
  *
  * Server-side only, by way of `app/api/server.ts` — see that file for why.
  */
 
 import { type ApiClient, unwrap } from "@/app/api/client";
-import type { components, paths } from "@/app/api/schema";
+import type { components } from "@/app/api/schema";
 import { api } from "@/app/api/server";
 import { restUrl } from "@/app/env";
 
@@ -33,12 +31,17 @@ export type SessionUser = components["schemas"]["SessionUser"];
 export type TenantSuggestion = components["schemas"]["TenantSuggestion"];
 
 /**
- * Where a browser is sent to begin signing in with GitHub.
+ * Where signing in with GitHub begins.
  *
- * Typed as a path the contract describes — a rename in `openapi.yaml` is a failed
- * typecheck here after `yarn api:sync` rather than a link that 404s in a browser.
+ * **BetterAuth's**, since [#702](https://github.com/NobuData/ouroboros/issues/702) retired
+ * the hand-rolled flow `GET /api/v1/auth/github` served. It is deliberately *not* typed
+ * against `keyof paths`, as its predecessor was: the library serves its own routes on the
+ * HTTP adapter ahead of Nest's router, so they are not in `openapi.yaml` and cannot be
+ * until [#711](https://github.com/NobuData/ouroboros/issues/711) publishes them. The
+ * generated types stop being able to check this string in the meantime, and pretending
+ * otherwise by pointing the annotation at some other path would be worse than saying so.
  */
-const GITHUB_SIGN_IN_PATH: keyof paths = "/api/v1/auth/github";
+const GITHUB_SIGN_IN_PATH = "/api/auth/sign-in/social";
 
 /**
  * The absolute URL of "Continue with GitHub".
@@ -49,6 +52,16 @@ const GITHUB_SIGN_IN_PATH: keyof paths = "/api/v1/auth/github";
  * can resolve. `OURO_REST_URL` still carries no `NEXT_PUBLIC_` prefix and is still absent
  * from the client bundle — nothing in the browser can *compose* a call to the service,
  * which is the property that mattered.
+ *
+ * **It is not yet a working link, and that is #702's known cost.** BetterAuth begins a
+ * social sign-in with a `POST` carrying `{ provider: "github" }` and answers with the
+ * github.com URL for the caller to follow — so a person clicking an anchor at this address
+ * gets a `404` rather than a consent screen.
+ * [#718](https://github.com/NobuData/ouroboros/issues/718) is the issue that replaces the
+ * anchor with `authClient.signIn.social`, and it is the reason this function still exists
+ * rather than having been deleted with the route: the login screen, its props and its
+ * suites are all built around a URL, and re-pointing all of that is #718's work rather than
+ * something to do halfway here.
  *
  * @returns The sign-in URL, absolute.
  * @throws {Error} From {@link restUrl}, when `OURO_REST_URL` is unset or unusable.

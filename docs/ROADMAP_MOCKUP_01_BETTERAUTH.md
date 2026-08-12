@@ -192,10 +192,44 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > configured, so `sign-in/social` answers `PROVIDER_NOT_FOUND` and `get-session` answers
 > `null` — **A.3** and **A.4** are what fill the mounted surface in, and both are now
 > unblocked.
+>
+> **A.3 · #702 has shipped and has left the table below.** BetterAuth's GitHub provider is
+> configured in [`src/auth/github.provider.ts`](../ouroboros-rest/src/auth/github.provider.ts),
+> which is where the four decisions a library cannot make for a service are argued: the
+> scopes are `read:user` and `user:email` with `disableDefaultScope` on, so the list is this
+> service's rather than a default a library upgrade could widen; `mapProfileToUser` writes
+> the name, falling back to the login, and the avatar, because `"user"."name"` is `not null`
+> and the library's default would write `""`; and account linking is on but trusts no
+> provider *by name*, so a link is authorised by GitHub having **verified** the address —
+> the rule #33 enforced by hand — while `requireLocalEmailVerified` is off, because an
+> invited stub (#31) has never had the chance to verify anything. The OAuth App's callback
+> is `${BETTER_AUTH_URL}/api/auth/callback/github`, composed from the provider id in
+> `auth.routes.ts` so it cannot disagree with `account.providerId`.
+>
+> **And #33's flow is gone**, not flagged off. `oauth.ts`, `github.ts` and their specs are
+> deleted; `auth.service.ts` lost `startSignIn`, `completeSignIn` and `resolveUser`;
+> `auth.repository.ts` lost `findUserByIdentity`, `createUser`, `refreshProfile` and
+> `linkIdentity`; three error codes and their `openapi.yaml` entries went with them. The
+> **contract question the issue asked to be decided here** was decided *remove*, not
+> *forward*: `GET /api/v1/auth/github{,/callback}` answer `404`, asserted as behaviour, because
+> BetterAuth begins a social sign-in with a `POST` answering a URL and there is no honest
+> `302` to forward with. Every superseded spec was deleted rather than skipped, and what
+> each covered moved somewhere it can still be checked — the provider's values to
+> `github.provider.spec.ts`, the identity model to `ouroboros-db/tests/constraints.sql`, and
+> "a person who signed in under #33 is the same person" to `auth.integration-spec.ts`, which
+> seeds a pre-migration `user_identities` row, runs V004's back-fill and asserts the pair
+> `findOAuthUser` reads resolves to the same id.
+>
+> Two things it deliberately did **not** do. The full browser flow against a real GitHub
+> OAuth app stays a manual check — the library is ES-module-only and both Jest runners
+> substitute it, so a suite asserting a sign-in would be asserting against a stand-in;
+> **C.5 · #715** owns the automated one. And **the login page's GitHub button does not work
+> until D.3 · #718** re-points it at `signIn.social`. That gap is the deliberate cost of not
+> keeping two sign-in paths alive at once. Its issue section below is kept as the record of
+> what was asked for.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.3 · #702 | ouroboros-rest: [A.3] GitHub social provider (retiring the hand-rolled OAuth) | Provider wiring + back-fill `user_identities`→`account` + delete #33's OAuth files | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.4 · #703 | ouroboros-rest: [A.4] Session strategy & global auth guard (retiring the stateless cookie) | DB sessions + cookie cache, swap the live guard, port every `@Public()` exemption | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.5 · #704 | ouroboros-rest: [A.5] Organization plugin adoption (tenancy backbone) | Org/member/invitation APIs, roles, `activeOrganizationId`, hooks | mvp, auth, rest | N (after A.4, B.2) | Y | L | ouroboros-rest |
 | A.6 · #705 | ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`) | Local/e2e auth without GitHub, hard-off in production, bypass deleted | mvp, auth, rest | N (after A.4) | Y | **M** ⬆ | ouroboros-rest |
@@ -270,6 +304,10 @@ Nest bootstrap ── bodyParser:false ──▶ [AuthModule(@thallesp)] ─▶ 
 ```
 
 ### Issue A.3 (#702) — ouroboros-rest: [A.3] GitHub social provider (retiring the hand-rolled OAuth)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, and
+`ouroboros-rest/README.md` § Signing in for how it is used.
 
 - **Problem Statement:** Mockup 01's primary action is **Continue with GitHub**
   ([`docs/mockups/01-login.html`](mockups/01-login.html), Step 1 card). A working
@@ -1273,10 +1311,12 @@ Ordered checklist (⊕ = parallelizable within its phase):
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
    it against a seeded copy; it is the one step in this roadmap that cannot be
    reverted by redeploying the previous build.)*
-3. **Phase 2 — Auth capability:** { A.3 #702 ⊕ A.4 #703 } → { A.5 #704 ⊕ A.6 #705 }
-   *(A.3 and A.4 each **delete** shipped files — see their scopes. Land them close
-   together: between them the service has BetterAuth sign-in with a hand-rolled
-   session, which is a state no test covers.)*
+3. **Phase 2 — Auth capability:** ~~A.3 #702~~ *(shipped)* → A.4 #703 → { A.5 #704 ⊕ A.6 #705 }
+   *(**A.4 is now urgent rather than merely next.** A.3 has landed, so the service is in
+   the state its sequencing warning describes: BetterAuth signs people in and #33's
+   stateless cookie is still what the guard reads, so a completed sign-in does not yet
+   satisfy it. A.4 closes that, and it deletes `session.ts`, `signing.ts`, `cookies.ts`
+   and `public.decorator.ts` on the way through.)*
 4. **Phase 3 — REST services:** { C.1 #711 ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
    *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
    creates.)*
@@ -1377,12 +1417,13 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here:** #700 (A.1), #701 (A.2) and #706 (B.1) **have landed** — BetterAuth is
-configured, its handler answers at `/api/auth/*`, and its four core tables exist with the
-shipped identities back-filled into them. That unblocks the whole of Phase 2: #702 (A.3)
-and #703 (A.4) needed the schema as well as the mount, and both may now proceed — close
-together, for the reason their sequencing note gives. #707 (B.2) is the next database
-step.
+**Start here: #703 (A.4).** #700 (A.1), #701 (A.2), #706 (B.1) and #702 (A.3) **have
+landed** — BetterAuth is configured, its handler answers at `/api/auth/*`, its four core
+tables exist with the shipped identities back-filled into them, and its GitHub provider
+signs people in. What is *not* yet true is that the service remembers them: #33's stateless
+cookie is still what the guard reads, and #702's own sequencing warning named this state.
+#703 is what ends it. #707 (B.2) is the next database step and #718 (D.3) is what makes the
+login page's button work again.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

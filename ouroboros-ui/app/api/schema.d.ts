@@ -29,71 +29,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/github": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Begin sign-in with GitHub
-         * @description Send the browser to GitHub to authorize, and remember the trip.
-         *
-         *     This is a **navigation, not a call**. A person clicks "Continue with GitHub" and
-         *     their browser follows a `302` to github.com, where they see a consent screen; a
-         *     `fetch` from script would follow the redirect into a page it cannot render and land
-         *     nobody anywhere. `ouroboros-ui` links to it.
-         *
-         *     The redirect carries the client id, the scopes (`read:user` and `user:email`, and
-         *     nothing else), an opaque `state` and a PKCE `code_challenge`. The `state` and the
-         *     matching verifier are kept in a short-lived signed `HttpOnly` cookie —
-         *     `ouro_oauth`, ten minutes, scoped to `/api/v1/auth` — and comparing the returned
-         *     `state` against that cookie is what makes the callback safe from being fabricated.
-         */
-        get: operations["startGithubSignIn"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/github/callback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Finish sign-in with GitHub
-         * @description Where GitHub returns the browser. Verifies the handshake, exchanges the code for a
-         *     token, reads the account's profile and verified primary address, resolves the
-         *     person, and lands the session cookie before redirecting to `OURO_UI_URL`.
-         *
-         *     **This URL is registered against the OAuth application**; it is not something a
-         *     client composes. It is described here because this document describes everything
-         *     the service serves.
-         *
-         *     Resolving the person has three outcomes, and the middle one is why a sign-in can
-         *     arrive already holding a membership: the GitHub identity is already known and the
-         *     same user row is reused; or the identity is new and the *address* is one an
-         *     invitation was sent to, in which case the identity is attached to that existing
-         *     row; or neither is known and a person is created. The access token is used for
-         *     those two reads and then dropped — `ouroboros.user_identities` holds no credential,
-         *     and the schema's own tests fail if a column that looks like one ever appears.
-         */
-        get: operations["completeGithubSignIn"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/auth/me": {
         parameters: {
             query?: never;
@@ -1394,144 +1329,6 @@ export interface operations {
             };
         };
     };
-    startGithubSignIn: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /**
-             * @description Go and authorize. `Location` is on github.com and `Set-Cookie` carries the
-             *     handshake this service will check on the way back. There is no body.
-             */
-            302: {
-                headers: {
-                    /** @description The GitHub authorization URL, with the state and PKCE challenge. */
-                    Location?: string;
-                    /**
-                     * @description `ouro_oauth`, `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/auth`, ten minutes,
-                     *     and `Secure` outside development.
-                     */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /**
-             * @description `internal_error` — the service itself failed. The message is a constant and
-             *     `details` is empty, deliberately: the real diagnosis names a query, a host or a
-             *     role, and it goes to the service log where only an operator reads it.
-             */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    completeGithubSignIn: {
-        parameters: {
-            query: {
-                /** @description The authorization code GitHub issued. Opaque, and redeemable once. */
-                code: string;
-                /**
-                 * @description The value this service generated before the browser left, echoed back
-                 *     unchanged. Compared against the `ouro_oauth` cookie; a mismatch is a `401`.
-                 */
-                state: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /**
-             * @description Signed in. `Location` is `OURO_UI_URL` and `Set-Cookie` carries two headers: the
-             *     session, and the removal of the spent handshake. There is no body.
-             */
-            302: {
-                headers: {
-                    /** @description `OURO_UI_URL` — where a signed-in browser lands. */
-                    Location?: string;
-                    /**
-                     * @description `ouro_session`, `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and
-                     *     `Secure` outside development — plus the expiry of `ouro_oauth`.
-                     */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /**
-             * @description `oauth_handshake_invalid` — this callback does not match a handshake this
-             *     service started. The cookie was absent, expired, forged, or carries a different
-             *     `state` than the query string.
-             *
-             *     All four are one answer on purpose. A callback an attacker composed cannot
-             *     carry the cookie, and telling them which part was missing is telling them what
-             *     to fix.
-             */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description `validation_failed` — `code` or `state` was missing, too long, or not an opaque
-             *     URL-safe value. `details` carries one entry per parameter, keyed by its name.
-             */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description `internal_error` — the service itself failed. The message is a constant and
-             *     `details` is empty, deliberately: the real diagnosis names a query, a host or a
-             *     role, and it goes to the service log where only an operator reads it.
-             */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /**
-             * @description `github_unavailable` — GitHub refused the exchange or did not answer inside ten
-             *     seconds. Or `github_email_unavailable`, when the account authenticated and
-             *     offered no *verified* address: an address is how a person invited to a tenant
-             *     before their first sign-in is recognised as that person, and accepting an
-             *     unverified one would let somebody else's address decide which account they land
-             *     on.
-             *
-             *     A `502` rather than a `500`, because nothing in this service is broken and
-             *     retrying is reasonable. Nothing GitHub said is repeated in the body.
-             */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     readSession: {
         parameters: {
             query?: never;
@@ -1576,7 +1373,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -1768,7 +1565,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -1856,7 +1653,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -1965,7 +1762,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2087,7 +1884,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2248,7 +2045,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2371,7 +2168,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2519,7 +2316,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2665,7 +2462,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2835,7 +2632,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -2961,7 +2758,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -3096,7 +2893,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -3254,7 +3051,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -3430,7 +3227,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -3554,7 +3351,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -3712,7 +3509,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -3872,7 +3669,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client
@@ -4009,7 +3806,7 @@ export interface operations {
             };
             /**
              * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in at `/api/v1/auth/github`.
+             *     not honour. Sign in through `/api/auth/sign-in/social`.
              *
              *     Every way a session can fail is this one answer: absent, expired, signed with a
              *     rotated key, forged, or naming a person who has since been deleted. A client

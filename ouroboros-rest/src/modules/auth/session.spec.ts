@@ -1,5 +1,4 @@
 import { serializeCookie } from "./cookies";
-import { isHandshakePayload, issueHandshake } from "./oauth";
 import {
   isSessionPayload,
   issueSession,
@@ -8,7 +7,7 @@ import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
 } from "./session";
-import { epochSeconds } from "./signing";
+import { epochSeconds, signToken } from "./signing";
 
 /**
  * The session cookie: what it carries, how long it lasts, and what it is set with.
@@ -22,6 +21,20 @@ import { epochSeconds } from "./signing";
 const SECRET = "a-development-signing-secret";
 const USER = "5eed0003-0000-4000-8000-000000000001";
 const NOW = new Date("2026-08-11T10:20:23.114Z");
+
+/**
+ * A token of a different shape, signed with the same key.
+ *
+ * It was the OAuth handshake cookie until
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) deleted `oauth.ts`, and the
+ * property it exercises outlives it: `OURO_SESSION_SECRET` signs whatever is handed to
+ * `signToken`, so a valid signature says only that *this service* wrote the value — never
+ * what it wrote it for. `isSessionPayload` is the second half of that check, and it is what
+ * stops a token minted for one purpose from being spent as another.
+ */
+function otherShapedToken(now: Date): string {
+  return signToken({ state: "s", verifier: "v", iat: epochSeconds(now) }, SECRET);
+}
 
 describe("a session token", () => {
   it("names the user and when it was issued, and nothing else", () => {
@@ -59,10 +72,8 @@ describe("a session token", () => {
     expect(readSession(undefined, { secret: SECRET, now: NOW })).toBeUndefined();
   });
 
-  it("does not accept a handshake cookie, which is signed with the same key", () => {
-    const handshake = issueHandshake({ state: "s", verifier: "v" }, SECRET, NOW);
-
-    expect(readSession(handshake, { secret: SECRET, now: NOW })).toBeUndefined();
+  it("does not accept a token of another shape signed with the same key", () => {
+    expect(readSession(otherShapedToken(NOW), { secret: SECRET, now: NOW })).toBeUndefined();
   });
 });
 
@@ -72,19 +83,21 @@ describe("recognising a session payload", () => {
     ["one with an empty subject", { sub: "", iat: 1 }, false],
     ["one with no subject", { iat: 1 }, false],
     ["one whose subject is not a string", { sub: 7, iat: 1 }, false],
-    ["a handshake", { state: "s", verifier: "v", iat: 1 }, false],
+    ["a payload of another shape", { state: "s", verifier: "v", iat: 1 }, false],
   ])("says %s is %s", (_description, payload, expected) => {
     expect(isSessionPayload(payload as never)).toBe(expected);
   });
 
-  it("is the mirror of the handshake's own check, so neither accepts the other", () => {
-    const session = { sub: USER, iat: 1 };
-    const handshake = { state: "s", verifier: "v", iat: 1 };
+  it("is what a valid signature is not, so a token minted elsewhere cannot be spent here", () => {
+    // The signature says this service wrote the value; only the shape check says what it
+    // wrote it *for*. That mattered while `oauth.ts` signed handshakes with the same key,
+    // and it matters again the moment a second purpose is given to
+    // `OURO_SESSION_SECRET` — so it is asserted rather than left to the absence of one.
+    const wrongShape = otherShapedToken(NOW);
 
-    expect(isSessionPayload(session)).toBe(true);
-    expect(isHandshakePayload(session as never)).toBe(false);
-    expect(isSessionPayload(handshake as never)).toBe(false);
-    expect(isHandshakePayload(handshake)).toBe(true);
+    expect(() => signToken({ sub: USER, iat: epochSeconds(NOW) }, SECRET)).not.toThrow();
+    expect(readSession(wrongShape, { secret: SECRET, now: NOW })).toBeUndefined();
+    expect(isSessionPayload({ state: "s", verifier: "v", iat: 1 } as never)).toBe(false);
   });
 });
 
