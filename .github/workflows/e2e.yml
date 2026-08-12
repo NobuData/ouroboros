@@ -1,0 +1,158 @@
+name: ouroboros · e2e
+
+# The end-to-end smoke suite — issue #56, the MVP exit gate.
+#
+# ## Why this workflow has no path filter
+#
+# Every other workflow in this directory is path-filtered so a pull request runs only the
+# checks it can affect (#11, docs/CONVENTIONS.md § 9). This one is not filtered because it
+# is not triggered by a pull request at all: it runs **nightly and on demand**, which is
+# what the issue asks for and what the shape of the job requires.
+#
+# The reason is cost, and it is worth stating rather than assuming. This job builds three
+# images from the checkout, brings up a five-service compose stack, migrates a database,
+# applies the development seed and drives a browser through it. That is minutes of runner
+# time for a change that the module pipelines have usually already judged — and it is a
+# job that touches *every* module, so a path filter honest enough to catch what could
+# break it would match almost every pull request in the repository.
+#
+# It also keeps `scripts/verify-ci.sh` telling the truth. That script asserts a change
+# routes to exactly the workflows that can be affected by it; a `pull_request` trigger here
+# would make every one of those assertions wrong, and the fix would be to weaken them.
+#
+# `workflow_dispatch` is how a person runs it against a branch before merging — which is
+# the moment it is actually worth paying for.
+#
+# ## Two jobs, and the second one is the interesting one
+#
+# `e2e` is the suite: green from a cold compose stack, under ten minutes.
+#
+# `e2e/failure-modes` is the issue's second acceptance criterion — each leg must *fail*
+# when its service is stopped. It runs after, on its own stack, because a green suite
+# cannot distinguish a working system from a suite that asserts nothing, and only breaking
+# the system on purpose can. It is separate so its runtime is not charged against the
+# ten-minute budget the suite enforces on itself.
+
+on:
+  schedule:
+    # 03:17 UTC. An odd minute on purpose: the top of an hour is when every scheduled job
+    # on the platform queues at once, and a nightly gate that reports late is a nightly
+    # gate nobody reads with their coffee.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      failure-modes:
+        description: Also verify each leg fails when its service is stopped
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  # Not cancel-in-progress: unlike the module pipelines, a run of this workflow leaves a
+  # Docker daemon holding a five-service stack, and a cancelled run is a stack nothing
+  # tears down. Queueing behind the one in flight costs a few minutes and cannot leak.
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: e2e/smoke
+    runs-on: ubuntu-latest
+    # A ceiling on the whole job, above the suite's own ten-minute budget: the difference
+    # is the image build, which is a Docker measurement rather than a test one and is what
+    # a cold runner spends most of its time on.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
+      # The suite is not a workspace — it keeps its own lockfile, as ouroboros-web does,
+      # so that `yarn test` at the root never needs Docker. See tests/e2e/README.md.
+      - name: Install the suite
+        working-directory: tests/e2e
+        run: yarn install --immutable
+
+      - name: Check the suite itself
+        working-directory: tests/e2e
+        run: |
+          yarn lint
+          yarn typecheck
+
+      - name: Install the browser
+        working-directory: tests/e2e
+        run: yarn browsers
+
+      # scripts/run.sh owns what "run the e2e suite" means, so this workflow and a
+      # developer's laptop cannot drift into two slightly different definitions of it.
+      - name: Run the suite against a cold stack
+        working-directory: tests/e2e
+        run: scripts/run.sh --keep
+
+      # `if: always()` so a failure is diagnosable: the trace and the screenshots are the
+      # whole diagnosis for a job nobody was watching.
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: What each service reported
+        if: failure()
+        run: |
+          docker compose --profile full ps
+          docker compose --profile full logs --tail 200
+
+      - name: Tear the stack down
+        if: always()
+        run: docker compose --profile full down -v --remove-orphans
+
+  failure-modes:
+    name: e2e/failure-modes
+    runs-on: ubuntu-latest
+    needs: e2e
+    # Nightly always, and on demand only when asked: it is the slowest job in the
+    # repository and its answer changes only when a leg's assertions do.
+    if: github.event_name == 'schedule' || inputs.failure-modes
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install the suite
+        working-directory: tests/e2e
+        run: yarn install --immutable
+
+      - name: Install the browser
+        working-directory: tests/e2e
+        run: yarn browsers
+
+      - name: Verify each leg fails when its service is stopped
+        working-directory: tests/e2e
+        run: scripts/verify-failure-modes.sh --up
+
+      - name: Tear the stack down
+        if: always()
+        run: docker compose --profile full down -v --remove-orphans

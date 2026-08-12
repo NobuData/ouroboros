@@ -152,16 +152,22 @@ yarn install    # every workspace, from one lockfile
 yarn dev        # PostgreSQL, migrated · engine · rest · UI — in order, in one terminal
 ```
 
-### Three limits, on purpose
+### Four limits, on purpose
 
 1. **`ouroboros-web` is not a workspace.** The marketing site deploys on its own pipeline
    and wants the same port 3000 the product UI does. It keeps its own lockfile and its own
    `.yarnrc.yml`, `yarn dev` never starts it, and `yarn dev:web` does.
-2. **CI does not go through turbo.** Each module's workflow runs that module's verbs from
+2. **`tests/e2e` is not a workspace.** The same shape of reason: the smoke suite
+   ([#56](https://github.com/NobuData/ouroboros/issues/56)) runs on its own pipeline,
+   nightly and on demand, against the compose stack. In the roster it would be in the task
+   graph, and `turbo run test` would pick it up — which would make `yarn test` at the root
+   require a Docker daemon and five healthy containers. It keeps its own lockfile and
+   `.yarnrc.yml`, and `yarn e2e` runs it.
+3. **CI does not go through turbo.** Each module's workflow runs that module's verbs from
    inside that module's directory, the way a developer does. A break in the task graph
    must never be the thing that makes a module's checks pass — and a cache hit must never
    be what makes them green.
-3. **The non-JavaScript modules get adapters, not ports.** `ouroboros-engine` and
+4. **The non-JavaScript modules get adapters, not ports.** `ouroboros-engine` and
    `ouroboros-db` carry a `package.json` whose scripts are one line each — `uv run dev`,
    `./run.sh`. `pyproject.toml` and `flyway.toml` remain those modules' real manifests,
    and neither adapter carries a version, so [§ 8](CONVENTIONS.md#8-versioning) still has

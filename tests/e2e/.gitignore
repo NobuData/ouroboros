@@ -1,0 +1,24 @@
+# Artefacts only this directory produces.
+#
+# The repo-root .gitignore's `.yarn/*` rule carries a slash, so git anchors it to the root
+# and it does not reach a nested project's own Yarn state. This directory is its own Yarn
+# project (see .yarnrc.yml), so it repeats the rule for itself — exactly as
+# ouroboros-web/.gitignore does, and for the same reason.
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Playwright's own output.
+
+# The HTML report, the JSON summary, and the traces/screenshots a failure retains.
+playwright-report/
+test-results/
+blob-report/
+
+# Written by `playwright install`; the browsers themselves live outside the repo.
+.playwright/

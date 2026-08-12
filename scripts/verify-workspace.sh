@@ -3,7 +3,7 @@
 # verify-workspace.sh — assert the workspace-runner decision taken in issue #13.
 #
 # docs/DECISION_WORKSPACE_TOOLING.md is the write-up that issue asked for: Turborepo over
-# Yarn 4 workspaces, with three limits on it and one cache boundary that is not obvious.
+# Yarn 4 workspaces, with four limits on it and one cache boundary that is not obvious.
 # A decision doc goes stale the moment the repository stops matching it, so this asserts
 # the parts of it a checkout can prove — that the roster of workspaces is the one the
 # document names, that ouroboros-web is still outside it, that every repo-level verb
@@ -188,6 +188,22 @@ check_exists ouroboros-web/.yarnrc.yml 'ouroboros-web keeps its own Yarn configu
 # `yarn dev` must not start it: it wants the same port 3000 the product UI does.
 check_matches "$(json_value package.json scripts 'dev:web')" 'ouroboros-web' \
   'ouroboros-web has its own start verb'
+
+printf '\ntests/e2e stays outside\n'
+# Limit 2 of the decision, and the one with teeth: the smoke suite (#56) runs against a
+# five-service compose stack. In the roster it would be in the task graph, so `turbo run
+# test` would pick it up and `yarn test` at the root would need a Docker daemon to pass —
+# which would make the repository's most-run verb the one nobody can run offline.
+if printf '%s\n' "$workspaces" | grep -qw 'tests/e2e'; then
+  fail 'tests/e2e is not a workspace (it is listed in the roster)'
+else
+  pass 'tests/e2e is not a workspace'
+fi
+check_exists tests/e2e/yarn.lock 'tests/e2e keeps its own lockfile'
+check_exists tests/e2e/.yarnrc.yml 'tests/e2e keeps its own Yarn configuration'
+# It is reachable, though: a suite nothing at the root can run is a suite nobody runs.
+check_matches "$(json_value package.json scripts 'e2e')" 'tests/e2e' \
+  'tests/e2e has its own root verb'
 
 # ---------------------------------------------------------------------------
 # The task graph

@@ -30,10 +30,11 @@ trap 'rm -rf "$work"' EXIT HUP INT TERM
 #
 # Four modules, of which one (rest) is deliberately unscaffolded, mirroring this
 # repository: the roster names it, the gate finds no package.json, and that is a pass
-# rather than a failure. ouroboros-web sits beside them with its own lockfile.
+# rather than a failure. ouroboros-web and tests/e2e sit beside them, each with its own
+# lockfile — the two directories the decision deliberately keeps out of the roster.
 make_fixture() {
   fixture=$1
-  mkdir -p "$fixture/docs" "$fixture/scripts" "$fixture/ouroboros-web"
+  mkdir -p "$fixture/docs" "$fixture/scripts" "$fixture/ouroboros-web" "$fixture/tests/e2e"
   for module in ouroboros-db ouroboros-engine ouroboros-rest ouroboros-ui; do
     mkdir -p "$fixture/$module"
   done
@@ -50,7 +51,8 @@ make_fixture() {
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "e2e": "cd tests/e2e && scripts/run.sh"
   },
   "devDependencies": { "turbo": "2.10.9" }
 }
@@ -116,6 +118,9 @@ JSON
 
   printf '# marketing site lockfile\n' > "$fixture/ouroboros-web/yarn.lock"
   printf 'nodeLinker: node-modules\n' > "$fixture/ouroboros-web/.yarnrc.yml"
+
+  printf '# e2e suite lockfile\n' > "$fixture/tests/e2e/yarn.lock"
+  printf 'nodeLinker: node-modules\n' > "$fixture/tests/e2e/.yarnrc.yml"
 
   # The decision document, with the sections and the two inbound links the script asks
   # for. Its own links have to resolve, so it references only files the fixture has.
@@ -241,6 +246,10 @@ check_broken 'a module missing from the roster fails' \
 check_broken 'the marketing site joining the roster fails' \
   'ouroboros-web is not a workspace' \
   "sed -i 's/\"ouroboros-ui\"/\"ouroboros-ui\", \"ouroboros-web\"/' package.json"
+# The one that would put a Docker daemon on the critical path of `yarn test` (#56).
+check_broken 'the e2e suite joining the roster fails' \
+  'tests/e2e is not a workspace' \
+  "sed -i 's|\"ouroboros-ui\"|\"ouroboros-ui\", \"tests/e2e\"|' package.json"
 check_broken 'a workspace root that is publishable fails' \
   'the workspace root is private' \
   "sed -i 's/\"private\": true/\"private\": false/' package.json"
@@ -264,6 +273,12 @@ check_broken 'a workspace named for something other than its directory fails' \
 check_broken 'the marketing site losing its own lockfile fails' \
   'ouroboros-web keeps its own lockfile' \
   'rm ouroboros-web/yarn.lock'
+check_broken 'the e2e suite losing its own lockfile fails' \
+  'tests/e2e keeps its own lockfile' \
+  'rm tests/e2e/yarn.lock'
+check_broken 'the e2e suite with no root verb fails' \
+  'tests/e2e has its own root verb' \
+  "sed -i 's|cd tests/e2e && scripts/run.sh|echo nothing|' package.json"
 
 # ---------------------------------------------------------------------------
 # The task graph

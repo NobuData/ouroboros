@@ -23,6 +23,7 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "e2e": "cd tests/e2e && yarn install --immutable && scripts/run.sh",
     "verify": "scripts/run-tests.sh"
   },
   "devDependencies": {

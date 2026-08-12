@@ -22,6 +22,7 @@ ouroboros/
 ├── ouroboros-engine/  # Python/FastAPI backend        · epic #6
 ├── ouroboros-db/      # Flyway migrations             · epic #3
 ├── scripts/           # repo-level tooling
+├── tests/e2e/         # the end-to-end smoke suite       · issue #56
 ├── package.json       # the Yarn workspace and the repo-level verbs
 ├── turbo.json         # the task graph between the modules
 └── yarn.lock          # one resolution for every workspace
@@ -49,15 +50,21 @@ migrations, and only then brings up `ouroboros-rest` and `ouroboros-engine` and
 paragraph of a README nobody re-reads. `yarn build`, `yarn lint`, `yarn typecheck` and
 `yarn test` run their verb across every module that has one.
 
-Three limits on it are deliberate:
+Four limits on it are deliberate:
 
 1. **`ouroboros-web` is not a workspace.** It is the marketing site, it deploys on its
    own pipeline, and it wants the same port 3000 the product UI does, so it keeps its own
    lockfile and its own `.yarnrc.yml` and `yarn dev` never starts it. `yarn dev:web` does.
-2. **CI does not go through turbo.** Each module's workflow runs that module's verbs from
+2. **`tests/e2e` is not a workspace either**, for a reason of the same kind: it also runs
+   on its own pipeline — nightly and on demand, against the compose stack — so it keeps
+   its own lockfile and `.yarnrc.yml` too. Listing it in the roster would put it in the
+   task graph, and `yarn test` at the root would then need a Docker daemon and five
+   running containers to pass. `yarn e2e` is how it is run
+   ([#56](https://github.com/NobuData/ouroboros/issues/56)).
+3. **CI does not go through turbo.** Each module's workflow runs that module's verbs from
    inside that module's directory, the way a developer does. A break in the task graph
    must not be the thing that makes a module's checks pass (§ 9).
-3. **The non-JavaScript modules are adapters, not ports.** `ouroboros-engine` and
+4. **The non-JavaScript modules are adapters, not ports.** `ouroboros-engine` and
    `ouroboros-db` carry a `package.json` whose scripts are one line each — `uv run dev`,
    `scripts/dev` — so the graph can reach them. `pyproject.toml` and `flyway.toml` remain
    those modules' real manifests, and neither adapter carries a version, so § 8 still has
@@ -532,6 +539,19 @@ rules — both read [`flyway.toml`](../ouroboros-db/flyway.toml). And `validate`
 checksums, not behaviour: a `unique` on the wrong columns, a cascade left off or a check
 that accepts what it should reject passes it untouched, which is why the `.sql` suites
 exist and why **a migration that adds a rule adds its assertion in the same change.**
+
+**One workflow is deliberately outside all of this.**
+[`e2e.yml`](../.github/workflows/e2e.yml) runs the end-to-end smoke suite
+([#56](https://github.com/NobuData/ouroboros/issues/56)) on a nightly `schedule` and on
+`workflow_dispatch`, and on no pull request — so it declares no path filter and appears in
+none of the routing above. Two reasons, and both are about honesty rather than
+convenience. It is the one job that touches every module at once — three image builds, a
+five-service compose stack, a migrated and seeded database, a browser — so a filter honest
+enough to catch what could break it would match nearly every pull request in the
+repository. And a `pull_request` trigger would falsify every `check_route` assertion in
+`verify-ci.sh`, whose whole subject is that a change runs *exactly* the workflows it can
+affect. It runs from [`tests/e2e/scripts/run.sh`](../tests/e2e/scripts/run.sh), the same
+command a developer runs, for the reason rule 2 above gives.
 
 One consequence of filtering by path is worth stating: **a check that does not run does
 not report.** These four are advisory today. Marking one *required* in branch protection
