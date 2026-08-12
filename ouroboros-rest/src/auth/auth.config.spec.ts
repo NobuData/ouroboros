@@ -18,8 +18,14 @@ import { poolOptions } from "../modules/db/pool";
  * is the issue that runs it.
  */
 
+// Both exports from one factory, because `jest.config.mjs` maps `better-auth` and
+// `better-auth/plugins` at the same fixture module: `jest.mock` registers against the
+// resolved path, so a second factory would replace this one rather than sit beside it.
+// `organization` is here because `auth.config.ts` builds a real instance through
+// `createAuth`, which registers the plugin ([#704](https://github.com/NobuData/ouroboros/issues/704)).
 jest.mock("better-auth", () => ({
   betterAuth: jest.fn((options: unknown) => ({ options })),
+  organization: jest.fn((options: unknown) => ({ id: "organization", options })),
 }));
 jest.mock("pg");
 

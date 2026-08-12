@@ -1,9 +1,11 @@
 import { betterAuth } from "better-auth";
+import { organization } from "better-auth/plugins";
 import { Pool } from "pg";
 
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { createAuth } from "./auth.factory";
 import { authOptions } from "./auth.options";
+import { organizationOptions } from "./organization.plugin";
 
 /**
  * That the library is handed the options this service decided on, and nothing else.
@@ -24,13 +26,21 @@ import { authOptions } from "./auth.options";
  * two halves.
  */
 
+// One factory for both specifiers, and it has to be one. `jest.config.mjs` maps
+// `better-auth` and `better-auth/plugins` at the same fixture module, so `jest.mock`
+// registers against the same resolved path for either name — two factories would mean the
+// second silently replacing the first, and whichever export it omitted would be undefined
+// at the point `createAuth` reaches for it.
 jest.mock("better-auth", () => ({
   betterAuth: jest.fn((options: unknown) => ({ options, handler: jest.fn() })),
+  organization: jest.fn((options: unknown) => ({ id: "organization", options })),
 }));
 jest.mock("pg");
 
 /** The stand-in, typed so its calls can be read. */
 const betterAuthMock = jest.mocked(betterAuth);
+/** The plugin factory, typed the same way. */
+const organizationMock = jest.mocked(organization);
 
 describe("createAuth", () => {
   it("builds the instance from this service's options", () => {
@@ -39,7 +49,54 @@ describe("createAuth", () => {
     createAuth(dependencies);
 
     expect(betterAuthMock).toHaveBeenCalledTimes(1);
-    expect(betterAuthMock).toHaveBeenCalledWith(authOptions(dependencies));
+
+    // Every option except the plugin list, which is this file's own addition and is
+    // asserted below. Separated rather than compared whole so that an option added to
+    // `authOptions` still has to appear here — the property #700 established.
+    const { plugins, ...rest } = betterAuthMock.mock.calls[0]?.[0] ?? {};
+
+    expect(rest).toEqual(authOptions(dependencies));
+    expect(plugins).toEqual([organizationMock.mock.results[0]?.value]);
+  });
+
+  describe("the organization plugin (#704)", () => {
+    it("is registered, and is the only plugin", () => {
+      // Tenancy is the plugin's (decision A5). A second plugin appearing here without an
+      // issue behind it is a route surface nobody designed — #722's SSO is the next one,
+      // and it is v2.
+      createAuth({ configuration: testConfiguration(), pool: new Pool() });
+
+      const registered = betterAuthMock.mock.calls[0]?.[0]?.plugins;
+
+      expect(registered).toHaveLength(1);
+      expect(registered?.[0]).toMatchObject({ id: "organization" });
+    });
+
+    it("is built from the options `organization.plugin.ts` decides, and nothing else", () => {
+      // The roles, the creator's role and the hooks are asserted where they are decided.
+      // What is fixed here is that this factory adds no policy of its own on the way past —
+      // a `roles:` written inline here would be a second place tenancy could be configured.
+      //
+      // The access control and the role table are compared by **identity**, which is the
+      // strongest form the claim takes and is the one the plugin needs: it resolves a role
+      // out of `roles` and authorizes against `ac`, so an equivalent-but-separate instance
+      // would authorize nothing with no error to say why.
+      createAuth({ configuration: testConfiguration(), pool: new Pool() });
+
+      const expected = organizationOptions();
+      const passed = organizationMock.mock.calls[0]?.[0] as ReturnType<typeof organizationOptions>;
+
+      expect(organizationMock).toHaveBeenCalledTimes(1);
+      expect(passed.ac).toBe(expected.ac);
+      expect(passed.roles).toBe(expected.roles);
+      expect(passed.creatorRole).toBe(expected.creatorRole);
+      // The hooks are closures over an optional audit sink, so they are equal in everything
+      // but identity; that both are registered, and what they do, is
+      // `organization.plugin.spec.ts`.
+      expect(Object.keys(passed.organizationHooks ?? {}).sort()).toEqual(
+        Object.keys(expected.organizationHooks ?? {}).sort(),
+      );
+    });
   });
 
   it("shares the pool it was given rather than opening one", () => {

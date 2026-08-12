@@ -5,6 +5,7 @@ import { ConfigurationModule } from "../modules/config/config.module";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
+import { activeOrganizationHooks, stampActiveOrganization } from "./active.organization";
 import { AUTH_APP_NAME, AUTH_BASE_PATH, authOptions } from "./auth.options";
 import { ACCOUNT_LINKING, githubProvider, GITHUB_PROVIDER_ID } from "./github.provider";
 import { sessionOptions } from "./session.options";
@@ -103,8 +104,13 @@ describe("authOptions", () => {
   // #700 was the foundation and the issues after it each own one of the options below.
   // Listing the whole surface is how that stays true: an option added here — rather than in
   // the issue that owns it, with the migration and the tests that go with it — fails this
-  // test. #702 added the two it owns, `socialProviders` and `account`, and #703 the one it
-  // owns, `session`; #704 and #705 are still to come.
+  // test. #702 added the two it owns, `socialProviders` and `account`, #703 the one it
+  // owns, `session`, and #704 the one it owns, `databaseHooks`; #705 is still to come.
+  //
+  // **`plugins` is deliberately not here.** #704's organization plugin is registered in
+  // `auth.factory.ts`, because `organization()` is a value from `better-auth` and this
+  // module names none — see this file's header and `auth.factory.spec.ts`, which asserts
+  // the other half.
   it("configures nothing the issues after it own", () => {
     const options = authOptions({ configuration: testConfiguration(), pool: fakePool() });
 
@@ -114,12 +120,24 @@ describe("authOptions", () => {
       "basePath",
       "baseURL",
       "database",
+      "databaseHooks",
       "secret",
       "session",
       "socialProviders",
       "telemetry",
       "trustedOrigins",
     ]);
+  });
+
+  it("carries the active-organization hook #704 owns", () => {
+    // What the hook *does* is `active.organization.spec.ts`. What is asserted here is that
+    // it reaches the library at all — without it, every session row would be written with a
+    // null `activeOrganizationId`, mockup 01 Step 2 would open on nothing selected, and the
+    // tenant pointer decision A5 rests on would be a column nothing ever fills in.
+    const { databaseHooks } = authOptions({ configuration: testConfiguration(), pool: fakePool() });
+
+    expect(databaseHooks).toEqual(activeOrganizationHooks());
+    expect(databaseHooks?.session?.create?.before).toBe(stampActiveOrganization);
   });
 
   it("carries the session strategy #703 owns", () => {

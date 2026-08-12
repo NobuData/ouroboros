@@ -59,9 +59,16 @@ describe("the options handed to the library", () => {
     // `authOptions` is where every decision lives (#700). Comparing against it rather than
     // against a literal is what stops this module from becoming a second place a policy
     // can be set — a provider added here and not there would show up as a difference.
-    expect(instanceOf(options.auth).options).toEqual(
-      authOptions({ configuration: config.all, pool }),
-    );
+    //
+    // `plugins` is `createAuth`'s addition rather than `authOptions`', so it is asserted
+    // beside rather than inside: the organization plugin's own hooks are closures built per
+    // call (`organization.plugin.ts` takes an optional audit sink), and two of them are
+    // equal in every way except the identity `toEqual` compares functions by.
+    const { plugins, ...rest } = instanceOf(options.auth).options;
+
+    expect(rest).toEqual(authOptions({ configuration: config.all, pool }));
+    expect(plugins).toHaveLength(1);
+    expect(plugins?.[0]).toMatchObject({ id: "organization" });
   });
 
   it("shares the pool it was given rather than opening one", () => {
