@@ -65,7 +65,7 @@ export default tseslint.config(
     // reaches for process.env directly gets an unvalidated string, skips the redaction
     // rules, and moves the failure from boot to the first request that needed the value.
     //
-    // Four kinds of file are exempt and all of them are boundaries rather than
+    // Five kinds of file are exempt and all of them are boundaries rather than
     // exceptions: src/main.ts is the process entry point, which is *where* the environment
     // is read, and its spec is what proves it reads the real one. The integration suites
     // (#30) are the third — they are handed a database by whoever runs them, exactly as
@@ -73,10 +73,18 @@ export default tseslint.config(
     // through before an application has been built around it. src/testing/ (#37) is the
     // fourth, and it is the same boundary seen from the other side: it is the thing that
     // *does* the handing, so `OURO_DATABASE_URL` is its output rather than its input.
+    //
+    // The fifth is src/auth/auth.config.ts (#700), and it is the first one for the same
+    // reason src/main.ts is: it is a *second* process entry point. `@better-auth/cli` runs
+    // it with no application anywhere, so there is no AppConfigService to read through —
+    // it validates the environment itself, through the same `loadConfiguration` main.ts
+    // uses, and hands the result to the same factory the application does.
     files: ["src/**/*.ts"],
     ignores: [
       "src/main.ts",
       "src/main.spec.ts",
+      "src/auth/auth.config.ts",
+      "src/auth/auth.config.spec.ts",
       "src/modules/config/**/*.ts",
       "src/testing/**/*.ts",
       "src/**/*.integration-spec.ts",

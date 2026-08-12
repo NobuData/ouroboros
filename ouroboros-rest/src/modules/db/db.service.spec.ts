@@ -87,6 +87,19 @@ describe("DatabaseService", () => {
     expect(PoolMock).toHaveBeenCalledWith(poolOptions(DEVELOPMENT_URL));
   });
 
+  // The pool is readable so that a library which brings its own query layer does not also
+  // bring its own connections: BetterAuth's Kysely adapter is handed this object
+  // ([#700](https://github.com/NobuData/ouroboros/issues/700)). What is asserted is
+  // identity and count — the pool a caller can reach is the one this provider built, and
+  // there is exactly one of them. `src/auth/auth.options.spec.ts` asserts the other half,
+  // that the adapter's options carry this very object.
+  it("exposes the one pool it built", async () => {
+    const database = await databaseService();
+
+    expect(PoolMock).toHaveBeenCalledTimes(1);
+    expect(database.pool).toBe(PoolMock.mock.instances[0]);
+  });
+
   it("exposes a query builder", async () => {
     const database = await databaseService();
 

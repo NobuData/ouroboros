@@ -63,6 +63,16 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("engineSharedSecret");
   }
 
+  /** BetterAuth's signing and encryption key — `BETTER_AUTH_SECRET`. */
+  get betterAuthSecret(): string {
+    return this.config.getOrThrow<string>("betterAuthSecret");
+  }
+
+  /** The origin BetterAuth builds its own URLs from — `BETTER_AUTH_URL`. */
+  get betterAuthUrl(): string {
+    return this.config.getOrThrow<string>("betterAuthUrl");
+  }
+
   /** Signing key for the session cookie — `OURO_SESSION_SECRET`. */
   get sessionSecret(): string {
     return this.config.getOrThrow<string>("sessionSecret");
@@ -141,6 +151,8 @@ export class AppConfigService {
       uiUrl: this.uiUrl,
       engineUrl: this.engineUrl,
       engineSharedSecret: this.engineSharedSecret,
+      betterAuthSecret: this.betterAuthSecret,
+      betterAuthUrl: this.betterAuthUrl,
       sessionSecret: this.sessionSecret,
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,

@@ -163,7 +163,7 @@ instead of being silently refreshed.
 
 ## 4. Configuration & environment variables
 
-Two rules, no exceptions:
+Two rules, and one enumerated exception:
 
 1. **`PORT` is unprefixed.** Every service reads its listen port from `PORT`, because
    that is what container platforms set. Standard platform variables (`NODE_ENV`,
@@ -172,6 +172,17 @@ Two rules, no exceptions:
    `OURO_ENGINE_URL`, `OURO_SESSION_SECRET`, and so on. The prefix makes it obvious at a
    glance which variables belong to this system, and lets a container inherit unrelated
    environment without collision.
+3. **A library's own canonical variable keeps its own name.** Today that is exactly two:
+   `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`, which BetterAuth reads for itself, its CLI
+   reads when it generates the auth schema, and its documentation names on every page
+   ([#700](https://github.com/NobuData/ouroboros/issues/700), roadmap decision **A9**).
+   Renaming them would buy consistency at the price of a setting nobody can look up, and
+   of a library that quietly reads a *second*, unset variable of its own beside ours.
+
+   This is an exception to rule 2, not a loosening of it: a variable qualifies only when
+   the software that reads it is not ours and already names it. Anything Ouroboros itself
+   reads is `OURO_`-prefixed, and the list above is the whole of the exception —
+   `ouroboros-rest`'s configuration schema asserts it in `configuration.spec.ts`.
 
 Configuration is **validated at boot and fails fast** — zod in the NestJS layer,
 pydantic-settings in the engine. A missing or malformed variable exits non-zero naming
@@ -203,7 +214,8 @@ environment filter; neither reads the file. That is precisely why the services r
 themselves.
 
 Real `.env` files are never committed; the repo-root [`.env.example`](../.env.example)
-documents every `OURO_*` variable with its development default and is the file that is.
+documents every `OURO_*` variable — and the two exceptions above — with its development
+default, and is the file that is.
 A module may add its own `.env.example` for the variables only its tooling reads — as
 [`ouroboros-db`](../ouroboros-db/.env.example) does for the database `run.sh` migrates —
 but the root file stays the complete list, and the module's is a subset of it. The more

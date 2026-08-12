@@ -105,6 +105,8 @@ services:
       OURO_UI_URL: http://localhost:3000
       OURO_ENGINE_URL: http://engine:8000
       OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-better-auth-secret-change-me}
+      BETTER_AUTH_URL: http://localhost:4000
       OURO_SESSION_SECRET: ${OURO_SESSION_SECRET:-dev-session-secret-change-me}
       OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID:-dev-github-client-id}
       OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET:-dev-github-client-secret}
@@ -159,6 +161,9 @@ OURO_DB_PORT=5432
 OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros
 # The key on the internal call.
 OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me
+# BetterAuth's own two, which keep the library's names rather than the OURO_ prefix.
+BETTER_AUTH_SECRET=dev-better-auth-secret-change-me
+BETTER_AUTH_URL=http://localhost:4000
 # The session cookie's signing key.
 OURO_SESSION_SECRET=dev-session-secret-change-me
 # The GitHub OAuth application.
@@ -535,8 +540,14 @@ check_break 'an engine reading a shared secret rest does not is reported' \
 printf '\nCredential violations\n'
 
 check_break 'a literal session secret is reported' \
-  'no literal OURO_\* credential' \
+  'no literal credential' \
   'sed -i "s|OURO_SESSION_SECRET: .*|OURO_SESSION_SECRET: hunter2hunter2hunter2|" "$root/docker-compose.yml"'
+
+# The same rule, on the one credential in the stack that carries no OURO_ prefix — the
+# case a check anchored to that prefix would have missed (issue #700).
+check_break 'a literal BetterAuth secret is reported' \
+  'no literal credential' \
+  'sed -i "s|BETTER_AUTH_SECRET: .*|BETTER_AUTH_SECRET: hunter2hunter2hunter2|" "$root/docker-compose.yml"'
 
 check_break 'a literal PostgreSQL password is reported' \
   'no literal POSTGRES_\* credential' \

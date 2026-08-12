@@ -19,8 +19,9 @@
 #
 # Validated per entry:
 #   * names unique, and shaped [A-Z][A-Z0-9_]*;
-#   * names carry the OURO_ prefix unless they are a platform standard (docs/
-#     CONVENTIONS.md § 4) — the prefix rule is the one this file exists to demonstrate;
+#   * names carry the OURO_ prefix unless they are a platform standard or one of the two
+#     BetterAuth reads for itself (docs/CONVENTIONS.md § 4) — the prefix rule is the one
+#     this file exists to demonstrate, and its exceptions are a list rather than a pattern;
 #   * values non-empty, so a copied template runs without further editing;
 #   * every entry documented — its blank-line-delimited block opens with a comment
 #     carrying actual prose, not just a section rule.
@@ -43,8 +44,13 @@ BEGIN {
     # 1 validates the committed template, 0 reads a working copy of it.
     if (template == "") template = 1
     # Unprefixed names the conventions allow: the port every container platform sets,
-    # plus the standard runtime and Compose variables. Anything else must be OURO_*.
-    split("PORT NODE_ENV HOSTNAME COMPOSE_PROJECT_NAME COMPOSE_FILE", allowed, " ")
+    # plus the standard runtime and Compose variables — and, since issue #700, the two
+    # BetterAuth reads for itself (docs/CONVENTIONS.md § 4, rule 3). The library's names
+    # are enumerated rather than admitted as a `BETTER_AUTH_*` pattern, so that a third
+    # one arrives through a decision rather than through a prefix nobody is watching.
+    # Anything else must be OURO_*.
+    split("PORT NODE_ENV HOSTNAME COMPOSE_PROJECT_NAME COMPOSE_FILE" \
+          " BETTER_AUTH_SECRET BETTER_AUTH_URL", allowed, " ")
     for (i in allowed) unprefixed[allowed[i]] = 1
 
     entries = 0

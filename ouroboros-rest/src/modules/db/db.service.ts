@@ -45,8 +45,22 @@ export class DatabaseService implements OnApplicationShutdown {
   /** Where a dropped idle connection and a failed query are reported. Named per Nest. */
   private readonly logger = new Logger(DatabaseService.name);
 
-  /** The connection pool. Constructed here; `pg` connects on the first query. */
-  private readonly pool: Pool;
+  /**
+   * The connection pool. Constructed here; `pg` connects on the first query.
+   *
+   * Readable, and readable for exactly one caller: a library that brings its own query
+   * layer and must not bring its own *connections*. BetterAuth is that library
+   * ([#700](https://github.com/NobuData/ouroboros/issues/700)) — its Kysely adapter is
+   * handed this pool, so the auth tables and the tenancy tables are read over the same
+   * ten connections, drained by the same {@link end}, and counted once against
+   * PostgreSQL's `max_connections`.
+   *
+   * It is **not** a way to issue SQL. The typed builder is the interface, for the reason
+   * this class's own header gives: `pool.query(text)` is the one call in this service that
+   * would let an interpolated value reach PostgreSQL as syntax. A repository that reaches
+   * for this instead of {@link db} is a repository doing something the review should stop.
+   */
+  readonly pool: Pool;
 
   /**
    * The typed query builder — the whole public surface of this module.

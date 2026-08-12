@@ -325,12 +325,18 @@ describe("the Dockerfile", () => {
     // configuration module names each missing one at boot and exits 2; a default in a
     // layer would replace that line with a silent connection to the wrong host, or with a
     // published image carrying a credential.
+    //
+    // BETTER_AUTH_* is checked beside it rather than left to the prefix: they are the two
+    // variables the conventions let keep a library's own name
+    // ([#700](https://github.com/NobuData/ouroboros/issues/700)), and one of them is the
+    // key every session is signed with — which is exactly the value a published layer must
+    // not carry.
     const settings = [...INSTRUCTIONS.matchAll(/^(?:ENV\s+|\s+)([A-Z][A-Z0-9_]*)=/gm)].map(
       (match) => match[1],
     );
 
     expect(settings).not.toHaveLength(0);
-    for (const name of settings) expect(name).not.toMatch(/^OURO_/);
+    for (const name of settings) expect(name).not.toMatch(/^(OURO_|BETTER_AUTH_)/);
   });
 });
 

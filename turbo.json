@@ -30,10 +30,17 @@
   // without this file being edited. `PORT` is the documented unprefixed exception, and
   // the two DOCKER_* variables are how a rootless or remote daemon is addressed —
   // without them `ouroboros-db#dev` cannot reach Docker at all.
+  //
+  // `BETTER_AUTH_*` is the second glob, and the second documented exception to the prefix
+  // (§ 4, and roadmap decision A9 for issue #700): they are the library's own canonical
+  // names, which its CLI and its documentation both use. Without this entry `yarn dev`
+  // would filter them out of ouroboros-rest's environment, and the service would exit 2
+  // naming a variable the developer had set.
   "globalEnv": [
     "NODE_ENV",
     "PORT",
     "OURO_*",
+    "BETTER_AUTH_*",
     "DOCKER_HOST",
     "DOCKER_CONTEXT",
     "NEXT_TELEMETRY_DISABLED"

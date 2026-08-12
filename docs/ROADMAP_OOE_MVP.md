@@ -358,7 +358,7 @@ which appear earlier in this document.
 
 ## P2 — Identity, Tenancy & the Login Page
 
-> **27 issues** · 80 complexity points · order **#31–#59**, less `57` and `58` · 8 dependency waves
+> **26 issues** · 77 complexity points · order **#32–#59**, less `57` and `58` · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_LOGIN_PAGE_BETTERAUTH.md` (Epics A–D) + the deferred scaffolding tail
 
 **Goal.** Install BetterAuth inside `ouroboros-rest`, land the auth and organization schema through Flyway, reconcile the tenancy extension tables onto `organization.id`, and build mockup 01 as a working login page — GitHub OAuth, domain discovery, org/repo enablement, active-organization sessions.
@@ -367,9 +367,28 @@ which appear earlier in this document.
 
 **Done when.** Mockup 01 renders pixel-faithfully in both themes; **Continue with GitHub** completes a real OAuth flow creating a DB-backed session; Step 2 lists the user's organizations and toggles repo enablement; **Enter mission control →** lands on the dashboard placeholder; REST resolves tenant context from the session; the e2e smoke test signs in for real.
 
-⚠️ **The 22 BetterAuth issues in this phase are not yet filed on GitHub** — this roadmap is the only one whose tables carry no issue numbers. File Epics A–E before this phase starts, and post the supersession amendments to `#20`–`#23`, `#31`–`#33`, `#37`, `#43`, `#44` at filing time.
+⚠️ **The BetterAuth issues in this phase are filed as `#695`–`#710`** — see
+[`ROADMAP_MOCKUP_01_BETTERAUTH.md`](ROADMAP_MOCKUP_01_BETTERAUTH.md), which carries the
+numbers. The tables below still say *new* where they were written before filing; the
+supersession amendments to `#20`–`#23`, `#31`–`#33`, `#37`, `#43`, `#44` are recorded in
+that roadmap's "Existing issues affected" section.
 
 **Parallel:** the `A`/`B` chain is serial by nature (library → schema → provider → sessions → org plugin); `D.2` (brand panel) and the deferred `4.8`/`5.5` OpenAPI-client work run alongside it from the start.
+
+> **`A.1` · `#700` BetterAuth installation & configuration shipped, and row `31` has left
+> the table below** — which is why its order numbers now open at `32`.
+>
+> `better-auth` is installed in `ouroboros-rest`; [`src/auth/`](../ouroboros-rest/src/auth)
+> holds the options, the factory and the CLI-loadable config;`BETTER_AUTH_SECRET` and
+> `BETTER_AUTH_URL` are in the `#28` zod schema, both `.env.example` files, the compose
+> stack and `turbo.json`'s `globalEnv`, and the secret is redacted from the boot log. The
+> adapter is handed `DatabaseService`'s own `pg` pool, so the service still opens exactly
+> one.
+>
+> Nothing is mounted — `/api/auth/*` arrives with `A.2` (`#701`). What it unblocks
+> immediately is `B.1` (`#706`): `npx @better-auth/cli generate --config
+> src/auth/auth.config.ts` now emits the four core tables for `V004`, with no Nest process
+> involved.
 
 > **`7.2` · `#56` End-to-end smoke test shipped, and row `58` has left the table below** —
 > which is why its order numbers step from `56` to `59`.
@@ -401,7 +420,6 @@ which appear earlier in this document.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 31 | **A.1** | *new* | BetterAuth installation & configuration module | ouroboros-rest | M | 4.1, 4.2 |
 | 32 | **D.2** | *new* | Login route & split-layout brand panel | ouroboros-ui | M | 2.1, 5.2 |
 | 33 | **4.5** | #31 | Tenancy module & API | ouroboros-rest | L | 4.4 |
 | 34 | **A.2** | *new* | Mount BetterAuth handler in NestJS | ouroboros-rest | S | A.1 |

@@ -12,6 +12,7 @@ import {
 /** An environment carrying a recognisable secret in every place one can hide. */
 const PLANTED = {
   OURO_ENGINE_SHARED_SECRET: "engine-secret-that-must-not-leak",
+  BETTER_AUTH_SECRET: "better-auth-secret-that-must-not-leak",
   OURO_SESSION_SECRET: "session-secret-that-must-not-leak",
   OURO_GITHUB_CLIENT_SECRET: "github-secret-that-must-not-leak",
   OURO_DATABASE_URL:
@@ -21,11 +22,12 @@ const PLANTED = {
 /**
  * The substrings none of the output may contain.
  *
- * Three of them are whole values from {@link PLANTED}; the fourth is the password buried
+ * Four of them are whole values from {@link PLANTED}; the fifth is the password buried
  * inside the connection string, which is the only *part* of a value that has to disappear.
  */
 const MUST_NOT_LEAK = [
   "engine-secret-that-must-not-leak",
+  "better-auth-secret-that-must-not-leak",
   "session-secret-that-must-not-leak",
   "github-secret-that-must-not-leak",
   "database-password-that-must-not-leak",
@@ -58,13 +60,30 @@ describe("redactedEnvironment", () => {
 
   // Publishing the client id costs nothing — it is in the OAuth redirect every browser
   // follows — and hiding it would cost the one field that says which app is configured.
+  // `BETTER_AUTH_URL` is there for the same reason: it is the address a browser is sent
+  // to, and it is the one line that says whether BetterAuth agrees with `OURO_REST_URL`
+  // about where this service lives (#700).
   it("leaves the public values readable", () => {
     const redacted = redactedEnvironment(testConfiguration());
 
     expect(redacted[VARIABLES.githubClientId]).toBe("dev-github-client-id");
     expect(redacted[VARIABLES.engineUrl]).toBe("http://localhost:8000");
+    expect(redacted[VARIABLES.betterAuthUrl]).toBe("http://localhost:4000");
     expect(redacted.PORT).toBe("4000");
     expect(redacted.NODE_ENV).toBe("development");
+  });
+
+  // The `it.each` above iterates the classification, so it cannot notice a variable
+  // *leaving* it — one fewer case is still a green run. This names the set instead, which
+  // is what makes dropping `BETTER_AUTH_SECRET` from it a failing test rather than a
+  // quieter suite. Written against `VARIABLES` so a rename moves both at once.
+  it("classifies exactly the four values that must never be printed", () => {
+    expect([...SECRET_VARIABLES]).toEqual([
+      VARIABLES.engineSharedSecret,
+      VARIABLES.betterAuthSecret,
+      VARIABLES.sessionSecret,
+      VARIABLES.githubClientSecret,
+    ]);
   });
 
   it("writes the origin list back the way it was set", () => {

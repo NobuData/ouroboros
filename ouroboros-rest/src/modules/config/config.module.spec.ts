@@ -41,6 +41,8 @@ describe("AppConfigService", () => {
     expect(config.uiUrl).toBe("http://localhost:3000");
     expect(config.engineUrl).toBe("http://localhost:8000");
     expect(config.engineSharedSecret).toBe("dev-engine-shared-secret-change-me");
+    expect(config.betterAuthSecret).toBe("dev-better-auth-secret-change-me");
+    expect(config.betterAuthUrl).toBe("http://localhost:4000");
     expect(config.sessionSecret).toBe("dev-session-secret-change-me");
     expect(config.githubClientId).toBe("dev-github-client-id");
     expect(config.githubClientSecret).toBe("dev-github-client-secret");
@@ -56,6 +58,8 @@ describe("AppConfigService", () => {
 
     expect(described).toContain(`OURO_SESSION_SECRET=${REDACTED}`);
     expect(described).not.toContain("dev-session-secret-change-me");
+    expect(described).toContain(`BETTER_AUTH_SECRET=${REDACTED}`);
+    expect(described).not.toContain("dev-better-auth-secret-change-me");
   });
 
   describe("the derived answers", () => {

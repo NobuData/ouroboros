@@ -36,6 +36,8 @@ export const DEVELOPMENT_ENVIRONMENT: Readonly<Record<string, string>> = Object.
   OURO_UI_URL: "http://localhost:3000",
   OURO_ENGINE_URL: "http://localhost:8000",
   OURO_ENGINE_SHARED_SECRET: "dev-engine-shared-secret-change-me",
+  BETTER_AUTH_SECRET: "dev-better-auth-secret-change-me",
+  BETTER_AUTH_URL: "http://localhost:4000",
   OURO_SESSION_SECRET: "dev-session-secret-change-me",
   OURO_GITHUB_CLIENT_ID: "dev-github-client-id",
   OURO_GITHUB_CLIENT_SECRET: "dev-github-client-secret",

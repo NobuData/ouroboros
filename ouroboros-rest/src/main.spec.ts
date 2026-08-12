@@ -115,6 +115,10 @@ describe("main", () => {
     expect(described).toContain("ouroboros-rest: configuration");
     expect(described).toContain(`OURO_SESSION_SECRET=${REDACTED}`);
     expect(described).not.toContain("dev-session-secret-change-me");
+    // BetterAuth signs every session with this one (#700), so the boot log is the first
+    // place it could have leaked and the last place it may appear.
+    expect(described).toContain(`BETTER_AUTH_SECRET=${REDACTED}`);
+    expect(described).not.toContain("dev-better-auth-secret-change-me");
   });
 
   // Before, not after: a process that then fails to bind its port has still said what it
@@ -159,6 +163,25 @@ describe("main", () => {
 
     expect(code).toBe(CONFIGURATION_EXIT_CODE);
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining("OURO_DATABASE_URL:"));
+    expect(logger.log).not.toHaveBeenCalled();
+  });
+
+  // [#700](https://github.com/NobuData/ouroboros/issues/700)'s first acceptance criterion,
+  // in the words the issue uses. It is asserted separately from the general case above
+  // because BetterAuth reads `BETTER_AUTH_SECRET` from the environment for itself when it
+  // is handed nothing — so the failure this rules out is not a crash, it is a service that
+  // starts happily and signs sessions with a key nobody chose.
+  it("exits non-zero naming BETTER_AUTH_SECRET when that is what is missing", async () => {
+    const logger = testLogger();
+    const env = testEnvironment();
+    delete env.BETTER_AUTH_SECRET;
+
+    const code = await main({ env, logger });
+
+    expect(code).toBe(CONFIGURATION_EXIT_CODE);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("BETTER_AUTH_SECRET: is required"),
+    );
     expect(logger.log).not.toHaveBeenCalled();
   });
 
