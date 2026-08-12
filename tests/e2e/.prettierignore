@@ -1,0 +1,5 @@
+# Generated output. Formatting a report only makes the next run's diff noisy, and ESLint
+# ignores the same directories — the gate and the fixer agree on what is source.
+playwright-report/
+test-results/
+blob-report/

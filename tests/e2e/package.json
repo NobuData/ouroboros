@@ -1,0 +1,32 @@
+{
+  "name": "ouroboros-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The end-to-end smoke suite — the MVP exit gate. Playwright over the docker-compose stack, run nightly and on demand rather than in the module pipelines.",
+  "license": "Apache-2.0",
+  "packageManager": "yarn@4.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "e2e": "playwright test",
+    "stack": "scripts/run.sh",
+    "failure-modes": "scripts/verify-failure-modes.sh",
+    "browsers": "playwright install --with-deps chromium",
+    "lint": "eslint",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@playwright/test": "^1.62",
+    "@types/node": "^24",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10",
+    "eslint-plugin-prettier": "^5",
+    "globals": "^17",
+    "prettier": "^3",
+    "typescript": "^5",
+    "typescript-eslint": "^8"
+  }
+}

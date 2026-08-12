@@ -1,0 +1,39 @@
+{
+  // TypeScript for the e2e suite — docs/CONVENTIONS.md § 3 and § 6.
+  //
+  // Playwright compiles each spec itself, with esbuild and its own defaults; this file is
+  // what `yarn typecheck` and the type-aware ESLint rules read, so the editor, the linter
+  // and CI all report the same thing about a file the runner will happily transpile
+  // regardless. There is no `outDir` because nothing here is built: the suite is run, not
+  // shipped, and it is the one directory in the repository with no Dockerfile.
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    // Strict, matching ouroboros-rest: a suite that is the release gate has no business
+    // being typed more loosely than the code it gates.
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  // Only this directory's own files are roots. `support/session.ts` imports two files from
+  // ouroboros-rest — so the cookie this suite mints is signed by the same code that
+  // verifies it — and TypeScript pulls those in by following the import, which is exactly
+  // what is wanted: they are checked as dependencies of the importer. Naming their
+  // directory here instead would drag in that module's spec files and its Nest decorators,
+  // neither of which this program has the types or the compiler options for.
+  "include": ["*.ts", "specs/**/*.ts", "support/**/*.ts"],
+  "exclude": ["node_modules", "playwright-report", "test-results"]
+}

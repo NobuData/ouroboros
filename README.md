@@ -71,6 +71,7 @@ ouroboros/
 ├── ouroboros-engine/  # Python/FastAPI backend
 ├── ouroboros-db/      # Flyway migrations
 ├── scripts/           # repo-level tooling
+├── tests/e2e/         # the end-to-end smoke suite — the MVP exit gate
 ├── .github/           # labels, issue forms, PR template, workflows
 ├── package.json       # the Yarn workspace and the repo-level verbs
 ├── turbo.json         # the task graph — what `yarn dev` starts, and in what order
@@ -263,6 +264,7 @@ Repository structure and GitHub configuration can be checked at any time, and th
 repo-level tooling has its own tests:
 
 ```bash
+yarn e2e                          # the end-to-end smoke suite, against a cold stack
 scripts/verify-layout.sh          # module layout, READMEs, .editorconfig coverage
 scripts/verify-github-config.sh   # label definitions, issue forms, PR template
 scripts/verify-dev-env.sh         # compose stack, .env.example, migration naming
@@ -294,6 +296,15 @@ only the checks it can affect:
 A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
 TypeScript modules share queues both of the modules that run it, and so does a change to
 the workspace root they install from.
+
+One workflow is not in that table and is deliberately not path-filtered:
+[`e2e.yml`](.github/workflows/e2e.yml) runs the end-to-end smoke suite
+([#56](https://github.com/NobuData/ouroboros/issues/56)) **nightly and on demand**, never
+on a pull request. It builds three images, brings the compose stack up cold, migrates and
+seeds a database and drives a browser through it — minutes of runner time, for a job that
+touches every module, so a filter honest enough to catch what could break it would match
+almost every pull request there is. Run it against a branch with **Run workflow**, or
+locally with `yarn e2e`.
 
 Each module's checks run that module's own verbs from inside its own directory, not
 through `turbo run`. That is deliberate: a break in the task graph must never be what

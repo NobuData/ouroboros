@@ -213,7 +213,7 @@ issue level.
 | `4.11` | `#37` Integration test harness | Extended so `C.5`'s auth-flow suites build on it |
 | `4.8` · `5.5` | `#34` · `#43` OpenAPI export & typed client | Auth routes use the BetterAuth client; the generated client covers everything else (`D.1`). **Both shipped in P1** — the generated client is `ouroboros-ui/app/api/`, and `D.1` reduces to pointing the auth calls at BetterAuth when `A.2` lands |
 | `5.7` | `#45` Dashboard placeholder | Re-pointed to land behind `D.5`'s guards |
-| `7.2` | `#56` End-to-end smoke test | Must sign in through the real BetterAuth flow, not a bypass |
+| `7.2` | `#56` End-to-end smoke test | Must sign in through the real BetterAuth flow, not a bypass. **Shipped ahead of `D.5`** — see the P2 note; the browser legs mint a session with `ouroboros-rest`'s own `issueSession`, which is a signed credential the guard checks in full rather than a bypass, and re-pointing it at BetterAuth is one function |
 
 **Amended in place** (build as written, with the noted change):
 
@@ -358,7 +358,7 @@ which appear earlier in this document.
 
 ## P2 — Identity, Tenancy & the Login Page
 
-> **28 issues** · 83 complexity points · order **#31–#59**, less `57` · 8 dependency waves
+> **27 issues** · 80 complexity points · order **#31–#59**, less `57` and `58` · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_LOGIN_PAGE_BETTERAUTH.md` (Epics A–D) + the deferred scaffolding tail
 
 **Goal.** Install BetterAuth inside `ouroboros-rest`, land the auth and organization schema through Flyway, reconcile the tenancy extension tables onto `organization.id`, and build mockup 01 as a working login page — GitHub OAuth, domain discovery, org/repo enablement, active-organization sessions.
@@ -370,6 +370,34 @@ which appear earlier in this document.
 ⚠️ **The 22 BetterAuth issues in this phase are not yet filed on GitHub** — this roadmap is the only one whose tables carry no issue numbers. File Epics A–E before this phase starts, and post the supersession amendments to `#20`–`#23`, `#31`–`#33`, `#37`, `#43`, `#44` at filing time.
 
 **Parallel:** the `A`/`B` chain is serial by nature (library → schema → provider → sessions → org plugin); `D.2` (brand panel) and the deferred `4.8`/`5.5` OpenAPI-client work run alongside it from the start.
+
+> **`7.2` · `#56` End-to-end smoke test shipped, and row `58` has left the table below** —
+> which is why its order numbers step from `56` to `59`.
+>
+> It was built ahead of its blocker. `D.5` is unfiled, as all 22 BetterAuth issues in this
+> phase still are, and the four legs that do not need a session — the UI's title, favicon
+> and theme toggle; the tenant CRUD roundtrip; the engine through the REST gateway; the two
+> health probes — were already gated by work that had landed (`7.1` `#55`, `5.7` `#45`,
+> `4.9` `#35`, `3.5` `#23`). Waiting would have left the MVP with no exit gate at all
+> through the whole of P2.
+>
+> The suite is [`tests/e2e/`](../tests/e2e), a Playwright project that is deliberately
+> **not** a workspace — see [`CONVENTIONS.md` § 1](CONVENTIONS.md#1-repository-shape),
+> limit 2. It runs nightly and on `workflow_dispatch`, never on a pull request, and
+> enforces its own ten-minute budget. `tests/e2e/scripts/verify-failure-modes.sh` is the
+> issue's second acceptance criterion as a script: it stops each service in turn and
+> requires the matching leg to go red with a message that names the layer.
+>
+> **Two deviations, both recorded on the issue.** The dashboard leg signs in by minting a
+> session with `ouroboros-rest`'s own `issueSession`, because the amendment below — *the
+> real BetterAuth flow, not a bypass* — has no flow to use yet, and the compose stack's
+> production image strips the `OURO_AUTH_DEV_USER` bypass the issue body assumed. It is a
+> credential rather than a bypass: the guard verifies the signature, the age and the user
+> row exactly as it does for a person, and the suite proves it by refusing a forged and an
+> expired token first. Re-pointing it when `D.5` lands is one function, and no spec moves.
+> And the chain leg asserts through `GET /api/v1/engine/status` rather than an echo route,
+> because `ouroboros-rest` publishes no echo pass-through and adding public API surface to
+> satisfy a test's wording would be the test deciding the contract.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
@@ -399,7 +427,6 @@ which appear earlier in this document.
 | 54 | **D.3** | *new* | Step 1 card — GitHub sign-in & SSO domain form | ouroboros-ui | M | C.2, D.1, D.2 |
 | 55 | **D.5** | *new* | Auth route guards & session-aware redirects | ouroboros-ui | S | D.1 |
 | 56 | **D.6** | *new* | Signed-in session UI in the app shell | ouroboros-ui | S | 5.3, D.1 |
-| 58 | **7.2** | #56 | End-to-end smoke test | repo root, .github | M | 7.1, D.5 |
 | 59 | **D.4** | *new* | Step 2 card — tenancy & org enablement | ouroboros-ui | L | C.4, D.3 |
 
 ## P3 — The Application Shell
