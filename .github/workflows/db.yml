@@ -119,6 +119,8 @@ jobs:
             echo "PGPASSWORD=ouroboros"
             # The second database, migrated with the dev-seed overlay. See its step.
             echo "SEED_DB_NAME=ouroboros_seed"
+            # The third, which rehearses #708's cut-over from a populated V005 state.
+            echo "REHEARSAL_DB_NAME=ouroboros_rehearsal"
             # The assertion files are plain SQL, so they need a psql — and this is the
             # one image the job has already pulled. Taking it from here rather than from
             # the runner's apt set means the client is pinned to the server's major
@@ -191,6 +193,55 @@ jobs:
             "$POSTGRES_IMAGE" \
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/seed.sql
+
+      # The rehearsal (#708). V006 drops populated tables, so the two passes above —
+      # both of which migrate V000 → V006 in one sweep over an empty database — never
+      # see what it does to *rows*. This one does: a third database is migrated to V005
+      # only, populated with the pre-migration seed's rows (plus the states the seed
+      # never contained — a suspended tenant, a viewer, an un-accepted invitation), and
+      # only then migrated the ordinary way, so V006 meets data. rehearsal/post.sql then
+      # asserts every domain, org and repo still resolves to the same logical tenant —
+      # spot values, not exit codes.
+      #
+      # The V005 state is built from the *versioned* migrations only, via a -locations
+      # override onto a copied subset. -target=005 would not do: Flyway applies
+      # repeatable migrations regardless of target, and R__dev_seed.sql now names
+      # columns that only exist after V006 — it would fail to parse against a V005
+      # schema even as a guarded no-op. The copies keep their names and bytes, so the
+      # final ordinary migrate revalidates them against the same checksums.
+      - name: Rehearse the V006 cut-over against a populated V005 database
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            "$POSTGRES_IMAGE" \
+            createdb -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" "$REHEARSAL_DB_NAME"
+          export OURO_DB_NAME="$REHEARSAL_DB_NAME"
+
+          # Inside migrations/, because that is the one directory run.sh mounts into the
+          # Flyway container — deliberately, so nothing else on the host is visible to
+          # it. The subdirectory exists only for this first migrate: it is removed
+          # before the ordinary one below, which scans migrations/ recursively and
+          # would otherwise find every version twice.
+          mkdir ouroboros-db/migrations/rehearsal-v005
+          cp ouroboros-db/migrations/V00[0-5]__*.sql ouroboros-db/migrations/rehearsal-v005/
+          ouroboros-db/scripts/migrate -locations=filesystem:migrations/rehearsal-v005
+          rm -r ouroboros-db/migrations/rehearsal-v005
+
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$REHEARSAL_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/rehearsal/pre.sql
+
+          ouroboros-db/scripts/migrate
+
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$REHEARSAL_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/rehearsal/post.sql
 
   # ---------------------------------------------------------------------------
   # The published artefact — ouroboros-db/Dockerfile, which is this module in the
