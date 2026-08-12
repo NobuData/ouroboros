@@ -2716,6 +2716,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@thallesp/nestjs-better-auth@npm:^2.7.0":
+  version: 2.7.0
+  resolution: "@thallesp/nestjs-better-auth@npm:2.7.0"
+  peerDependencies:
+    "@nestjs/common": ^11.1.6
+    "@nestjs/core": ^11.1.6
+    "@nestjs/graphql": ^13.1.0
+    "@nestjs/websockets": ^11.1.6
+    better-auth: ">=1.5.0 <2.0.0"
+    express: ^5.1.0
+    graphql: ^16.11.0
+    qs: ^6.14.0
+    typescript: ^5.9.2 || ^6.0.0
+  peerDependenciesMeta:
+    "@nestjs/graphql":
+      optional: true
+    "@nestjs/websockets":
+      optional: true
+    express:
+      optional: true
+    graphql:
+      optional: true
+    qs:
+      optional: true
+  checksum: 10c0/1e227fa44eefca6a1c8120fa00f87d642c9343b07c62de4e2ac2244a28135052f1d948d366a11ba98539cb4f4c8c111cf63f09e796af059cdbb419349ca90453
+  languageName: node
+  linkType: hard
+
 "@tokenizer/inflate@npm:^0.4.1":
   version: 0.4.1
   resolution: "@tokenizer/inflate@npm:0.4.1"
@@ -9159,6 +9187,7 @@ __metadata:
     "@nestjs/testing": "npm:11.1.28"
     "@readme/openapi-parser": "npm:^7"
     "@testcontainers/postgresql": "npm:^12"
+    "@thallesp/nestjs-better-auth": "npm:^2.7.0"
     "@types/express": "npm:^5"
     "@types/jest": "npm:^30"
     "@types/node": "npm:^24"

@@ -7,6 +7,7 @@ import {
 import { NestFactory } from "@nestjs/core";
 import { SwaggerModule } from "@nestjs/swagger";
 
+import { AUTH_PREFIX_EXCLUSIONS } from "./auth/auth.routes";
 import { AppModule } from "./modules/app/app.module";
 import type { Configuration } from "./modules/config/configuration";
 import { ErrorEnvelopeFilter } from "./modules/errors/error.filter";
@@ -74,10 +75,13 @@ interface RawResponse {
  * Six decisions are applied here and nowhere else:
  *
  *   * **The global prefix.** Every route is under `/api`, which leaves the origin's root
- *     free for whatever fronts the service later — every route but the health probes,
- *     which are excluded by name. A probe is read by infrastructure that has no notion of
- *     an API version and is configured once, so it answers at the origin root; see
- *     `src/modules/health/health.paths.ts`, which is where those paths are written down.
+ *     free for whatever fronts the service later — every route but the health probes and
+ *     BetterAuth's, which are excluded by name. A probe is read by infrastructure that has
+ *     no notion of an API version and is configured once, so it answers at the origin
+ *     root; see `src/modules/health/health.paths.ts`, which is where those paths are
+ *     written down. BetterAuth's are excluded because the library serves them itself, one
+ *     level up at `/api/auth`, where its own versions live rather than this service's; see
+ *     `src/auth/auth.routes.ts`.
  *   * **URI versioning, defaulting to v1.** The version is in the path because that is
  *     what a generated client, a browser address bar and a log line can all carry
  *     without negotiation. Defaulting it means a controller opts *out* of v1 rather than
@@ -114,6 +118,9 @@ interface RawResponse {
  * otherwise does not: an origin policy changes nothing about a request Supertest makes
  * over a socket with no `Origin` header.
  *
+ * An eighth — **that Nest parses no body at all** — is {@link applicationOptions}, because
+ * it has to be decided before the application exists rather than applied to one that does.
+ *
  * The specification is served in every environment, deliberately. It describes only what
  * the service already answers, it holds no secret, and it is committed in a public
  * repository — while hiding it in production would mean production served a different
@@ -123,9 +130,10 @@ interface RawResponse {
  *   feature module to read through `AppConfigService`. It is a parameter rather than
  *   something this function reads for itself because the environment is validated before
  *   an application exists — see `src/modules/config/config.module.ts`.
- * @param options - Passed straight to `NestFactory.create`. The process passes nothing;
- *   the seam exists so a test can silence the framework's boot logging, which is the one
- *   thing about a real application a suite has no use for.
+ * @param options - Merged into {@link applicationOptions} and passed to
+ *   `NestFactory.create`. The process passes nothing; the seam exists so a test can
+ *   silence the framework's boot logging, which is the one thing about a real application
+ *   a suite has no use for.
  * @returns An initialised-on-demand application. The caller decides whether to
  *   `listen()` (the process) or `init()` (a test).
  * @throws {SpecificationError} If the committed `openapi.json` is missing or malformed —
@@ -135,11 +143,46 @@ export async function createApplication(
   configuration: Configuration,
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule.forRoot(configuration), options);
+  const app = await NestFactory.create(
+    AppModule.forRoot(configuration),
+    applicationOptions(options),
+  );
   configureApplication(app);
   permitBrowserOrigins(app, configuration.corsOrigins);
 
   return app;
+}
+
+/**
+ * The options every application this service builds is created with.
+ *
+ * One of them, and it is not negotiable: **Nest parses no request body.**
+ * BetterAuth serves its own routes and reads the raw request stream, so a body Nest had
+ * already parsed into an object would reach the library as nothing at all — and the
+ * failure that produces looks like a bad signature or a malformed payload rather than
+ * like a bootstrap setting, which is why this is stated here once instead of being
+ * remembered at each call site
+ * ([#701](https://github.com/NobuData/ouroboros/issues/701)).
+ *
+ * **Every other route still parses JSON**, and by the same mechanism rather than by luck:
+ * `@thallesp/nestjs-better-auth` re-adds `express.json()` and `express.urlencoded()` as
+ * middleware for every path that is *not* under `/api/auth` — see `src/auth/auth.module.ts`.
+ * That indirection is the regression surface this issue was written around, so it is
+ * asserted across the service's real endpoints in `application.spec.ts` rather than
+ * assumed from a library's README.
+ *
+ * A consequence worth knowing before reaching for it: `NestApplicationOptions.rawBody` no
+ * longer does anything, because it is implemented *by* the parser that is now off. A route
+ * that needs the unparsed bytes — a webhook signature, say — asks the library's module for
+ * them instead, through its `bodyParser.rawBody` option.
+ *
+ * @param options - What the caller wants. Anything it says about the body parser is
+ *   discarded: an application that parsed bodies globally would not serve
+ *   `/api/auth/*` correctly, so there is no caller for whom the answer differs.
+ * @returns The caller's options with the body parser switched off.
+ */
+export function applicationOptions(options?: NestApplicationOptions): NestApplicationOptions {
+  return { ...options, bodyParser: false };
 }
 
 /**
@@ -199,9 +242,16 @@ export function permitBrowserOrigins(app: INestApplication, origins: readonly st
  */
 export function configureApplication(app: INestApplication): void {
   // The exclusion list is spread into a mutable array because Nest's option type asks for
-  // one; `PROBE_PATHS` stays readonly, so nothing can add a route to the set that escapes
-  // the prefix by mutating it from somewhere else.
-  app.setGlobalPrefix(API_PREFIX, { exclude: [...PROBE_PATHS] });
+  // one; `PROBE_PATHS` and `AUTH_PREFIX_EXCLUSIONS` stay readonly, so nothing can add a
+  // route to the set that escapes the prefix by mutating it from somewhere else.
+  //
+  // BetterAuth's paths are in it because this call *replaces* the exclusions rather than
+  // adding to them, and `@thallesp/nestjs-better-auth` has already added its own from a
+  // constructor that ran during `NestFactory.create` — see `src/auth/auth.routes.ts`.
+  // Restating them here is what survives; leaving it to the library would put the
+  // difference between an excluded path and a swallowed one in the order two lines happen
+  // to execute.
+  app.setGlobalPrefix(API_PREFIX, { exclude: [...PROBE_PATHS, ...AUTH_PREFIX_EXCLUSIONS] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
   app.enableShutdownHooks();
 

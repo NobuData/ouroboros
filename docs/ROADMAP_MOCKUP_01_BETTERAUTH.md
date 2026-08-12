@@ -171,11 +171,30 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > Two things it deliberately did **not** do. `OURO_SESSION_SECRET` is still there, because
 > the hand-rolled signer it belongs to is still there until **A.4**; and no provider,
 > plugin or session strategy is configured, which `auth.options.spec.ts` pins by asserting
-> the whole option surface. **A.2** is the next one, and it is unblocked.
+> the whole option surface.
+>
+> **A.2 · #701 has shipped and has left the table below.**
+> `@thallesp/nestjs-better-auth` is a dependency of `ouroboros-rest`;
+> `src/auth/auth.module.ts` imports its `AuthModule` with the A.1 instance and
+> `src/auth/auth.routes.ts` holds the route map for **C.1 · #711** to publish.
+> `/api/auth/ok` answers `{"ok": true}` on a running service, outside the `/api/v1`
+> prefix and outside URI versioning. The application is created with Nest's body parser
+> **off** (`applicationOptions` in `src/application.ts`) and the library re-adds
+> `express.json()`/`express.urlencoded()` for every path that is not an auth path — the
+> regression that creates is asserted over every operation in `openapi.yaml` that takes a
+> request body, and the integration suite's 198 tests exercise the real controllers
+> against a real database. Two of the library's defaults are off and both are **A.4's** to
+> turn back on: its global `AuthGuard` (this service still runs #33's `SessionGuard`) and
+> its CORS policy (`permitBrowserOrigins` already answers that question over the same
+> origin list). Its issue section below is kept as the record of what was asked for.
+>
+> One thing it deliberately did **not** do: no provider, plugin or session strategy was
+> configured, so `sign-in/social` answers `PROVIDER_NOT_FOUND` and `get-session` answers
+> `null` — **A.3** and **A.4** are what fill the mounted surface in, and both are now
+> unblocked.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.2 · #701 | ouroboros-rest: [A.2] Mount BetterAuth handler in NestJS | `@thallesp/nestjs-better-auth`, raw-body bootstrap, `/api/auth/*` | mvp, auth, rest | N (after A.1) | Y | S | ouroboros-rest |
 | A.3 · #702 | ouroboros-rest: [A.3] GitHub social provider (retiring the hand-rolled OAuth) | Provider wiring + back-fill `user_identities`→`account` + delete #33's OAuth files | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.4 · #703 | ouroboros-rest: [A.4] Session strategy & global auth guard (retiring the stateless cookie) | DB sessions + cookie cache, swap the live guard, port every `@Public()` exemption | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.5 · #704 | ouroboros-rest: [A.5] Organization plugin adoption (tenancy backbone) | Org/member/invitation APIs, roles, `activeOrganizationId`, hooks | mvp, auth, rest | N (after A.4, B.2) | Y | L | ouroboros-rest |
@@ -223,6 +242,10 @@ src/auth/
 ```
 
 ### Issue A.2 (#701) — ouroboros-rest: [A.2] Mount BetterAuth handler in NestJS
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, and
+`ouroboros-rest/README.md` § BetterAuth for the route map and the body-parser change.
 
 - **Problem Statement:** BetterAuth serves its own route surface; Nest must hand it the
   raw request stream at `/api/auth/*` without the global prefix, body parser, or
@@ -1208,7 +1231,7 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ *(shipped)* → { A.2 #701 ⊕ (B.1 #706 → B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 }) }
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ *(both shipped)* → (B.1 #706 → B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
    *(**B.3 is the cutover.** It drops `tenants`, `tenant_members`, `users` and
    `user_identities` — every consumer of those tables must already be migrated or
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
@@ -1318,9 +1341,10 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here:** #700 (A.1) **has landed**, so #701 (A.2) and #706 (B.1) are both
-unblocked and can run side by side — the mount and the schema. Everything else is still
-blocked behind those two.
+**Start here:** #700 (A.1) and #701 (A.2) **have landed** — BetterAuth is configured and
+its handler answers at `/api/auth/*`. #706 (B.1) is the only unblocked issue left in
+Phase 1, and it is what unblocks the rest: #702 (A.3) and #703 (A.4) both need the schema
+as well as the mount.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

@@ -4,7 +4,12 @@ import { Logger, type INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 
-import { API_BASE_PATH, API_PREFIX, configureApplication } from "../../application";
+import {
+  API_BASE_PATH,
+  API_PREFIX,
+  applicationOptions,
+  configureApplication,
+} from "../../application";
 import { AppModule } from "../app/app.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { DATABASE_KEY } from "./database.health";
@@ -57,7 +62,7 @@ async function applicationWith(pool: ProbePool): Promise<INestApplication> {
     .useValue(pool)
     .compile();
 
-  const app = moduleRef.createNestApplication({ logger: false });
+  const app = moduleRef.createNestApplication(applicationOptions({ logger: false }));
   configureApplication(app);
   await app.init();
 

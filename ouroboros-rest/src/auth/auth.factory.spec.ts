@@ -11,7 +11,11 @@ import { authOptions } from "./auth.options";
  * `better-auth` is replaced by the factory below rather than loaded, and the substitution
  * is not a convenience: the library is ES-module-only and this runner is CommonJS, so a
  * spec that imported it for real would fail to parse it. Passing a *factory* to
- * `jest.mock` is what keeps Jest from resolving the real file at all.
+ * `jest.mock` is what keeps Jest from resolving the real file at all. (Since
+ * [#701](https://github.com/NobuData/ouroboros/issues/701) the whole suite maps
+ * `better-auth` at `better-auth.fixture.ts` for the same reason — see `jest.config.mjs`.
+ * The factory below is what governs *here*, and is kept because this spec is about which
+ * options reach the library rather than about what it does with them.)
  *
  * What that costs is exactly one claim — that `betterAuth()` accepts these options — and
  * it is bought back outside Jest: `@better-auth/cli generate` loads `auth.config.ts`,

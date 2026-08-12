@@ -1,5 +1,6 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 
+import { BetterAuthModule } from "../../auth/auth.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
@@ -28,6 +29,18 @@ import { AppService } from "./app.service";
  * the guard inside a module three lines further down. `EngineModule` comes after both,
  * which is the same thought once more: its one route is authenticated and tenant-optional,
  * and it is a route only because both guards are already registered above it.
+ *
+ * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
+ * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
+ * It declares no controller and protects nothing: it mounts a handler on the HTTP adapter
+ * at `/api/auth/*` and re-adds the body parsers `src/application.ts` switched off for
+ * everything else. Both are middleware, both apply to routes no module below has declared
+ * yet, and Nest registers middleware in the order the modules are listed — so first is
+ * where a body parser every other module's routes depend on belongs. It sits *beside*
+ * `AuthModule` rather than replacing it for now: the sign-in that works today is still
+ * #33's, and [#702](https://github.com/NobuData/ouroboros/issues/702) and
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) are what move people over and
+ * delete it.
  *
  * `errors` is the exception to that shape and has no module: it holds the envelope every
  * failure is answered in, and the filter and pipe that produce it are registered on the
@@ -65,6 +78,7 @@ export class AppModule {
       module: AppModule,
       imports: [
         ConfigurationModule.forRoot(configuration),
+        BetterAuthModule,
         DbModule,
         HealthModule,
         AuthModule,
