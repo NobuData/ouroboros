@@ -118,6 +118,57 @@ export const AUTH_ROUTES: readonly AuthRoute[] = [
     path: `${AUTH_BASE_PATH}/error`,
     purpose: "Where a failed flow is redirected, with the reason in the query string.",
   },
+  {
+    methods: ["GET"],
+    path: `${AUTH_BASE_PATH}/organization/list`,
+    purpose:
+      "The caller's organizations, with the role they hold in each — mockup 01 Step 2's " +
+      "list, and mockup 17's. `metadata.personal` is what renders the `personal` pill " +
+      "(#704). It answers from the session, so there is no id to pass and no way to ask " +
+      "about somebody else's memberships.",
+  },
+  {
+    methods: ["POST"],
+    path: `${AUTH_BASE_PATH}/organization/create`,
+    purpose:
+      "Create one. The caller becomes its `owner` — the one role nobody else can grant. A " +
+      "`personal` flag in the request's `metadata` is stripped before the row is written; " +
+      "see `stripPersonalFlag` in `organization.plugin.ts` for why that matters on the one " +
+      "screen whose job is to say where somebody's work is going (#704).",
+  },
+  {
+    methods: ["POST"],
+    path: `${AUTH_BASE_PATH}/organization/set-active`,
+    purpose:
+      "Choose where the loop runs — mockup 01 Step 2's **Enter mission control →**. It " +
+      '**writes `session."activeOrganizationId"`**, which is what makes the tenant server ' +
+      "state rather than a header a client asserts (decision A5). #713 is what teaches this " +
+      "service's own middleware to read it.",
+  },
+  {
+    methods: ["GET"],
+    path: `${AUTH_BASE_PATH}/organization/get-full-organization`,
+    purpose:
+      "One organization with its members and pending invitations — mockup 17's members & " +
+      "roles table. Defaults to the session's active organization when no id is given.",
+  },
+  {
+    methods: ["POST"],
+    path: `${AUTH_BASE_PATH}/organization/invite-member`,
+    purpose:
+      "Invite somebody by address, at a role. Writes an `invitation` row and nothing else " +
+      "in MVP — **no email is sent**; #724 is the delivery, and `expiresAt` is already on " +
+      "the row waiting for it (#707). Requires `invitation: create`, which owner and admin " +
+      "hold and member and viewer do not.",
+  },
+  {
+    methods: ["POST"],
+    path: `${AUTH_BASE_PATH}/organization/update-member-role`,
+    purpose:
+      "Change what somebody may do. The route #715 verifies a member-level caller is " +
+      "refused on — `member: update` is an owner/admin permission, and `viewer` holds none " +
+      "of the four resources at all (`organization.roles.ts`).",
+  },
 ];
 
 /**

@@ -13,7 +13,11 @@
 > enforce. `V004` ([#706](https://github.com/NobuData/ouroboros/issues/706)) adds
 > BetterAuth's four core tables and back-fills them from `V002` — see
 > [The two generations of user table](#the-two-generations-of-user-table), and note that
-> `"user"` is quoted everywhere because it is a reserved word. [#23](https://github.com/NobuData/ouroboros/issues/23) added the dev seed —
+> `"user"` is quoted everywhere because it is a reserved word. `V005`
+> ([#707](https://github.com/NobuData/ouroboros/issues/707)) adds the organization
+> plugin's `organization`, `member` and `invitation`, and the column that makes tenancy
+> server state — see [The tenant pointer](#the-tenant-pointer).
+> [#23](https://github.com/NobuData/ouroboros/issues/23) added the dev seed —
 > [`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql), the demo tenant every
 > mockup is drawn around, in a development database and nowhere else. And
 > [#24](https://github.com/NobuData/ouroboros/issues/24) turned all of that into a gate:
@@ -498,6 +502,7 @@ ouroboros-db/
 │   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21
 │   ├── V003__github_enablement.sql   # github_orgs, github_repos — #22
 │   ├── V004__betterauth_core.sql     # "user", session, account, verification — #706
+│   ├── V005__betterauth_organization.sql # organization, member, invitation — #707
 │   └── R__dev_seed.sql               # deterministic demo data, dev only — #23
 └── tests/
     ├── lib/
@@ -532,6 +537,14 @@ outside this module alters it.
 | `session` | `V004` | One row per live sign-in, which is what makes sign-out revoke rather than forget | `token` unique; `userId` cascades from `"user"` |
 | `account` | `V004` | How a person proves who they are: a provider, or a password | `(providerId, accountId)` unique, so one GitHub account is one person. **The one table here that holds credentials** |
 | `verification` | `V004` | Short-lived one-time values — email verification, password reset | Unused until [#705](https://github.com/NobuData/ouroboros/issues/705) |
+| `organization` | `V005` | The workspace, as BetterAuth's organization plugin holds it — the successor to `tenants` | `slug` unique across the installation; `metadata` must be JSON, and carries the `personal` flag mockup 01 renders as a pill |
+| `member` | `V005` | A person's role in one organization — the successor to `tenant_members` | `(organizationId, userId)` unique, so a person joins an organization once; cascades from both sides |
+| `invitation` | `V005` | Somebody asked to join who has not joined yet | `expiresAt` required — expiry is a timestamp, not a status. Written at the API level in MVP; [#724](https://github.com/NobuData/ouroboros/issues/724) delivers the email |
+
+`V005` also adds one column to an existing table: **`session."activeOrganizationId"`**, the
+tenant pointer. It is a nullable foreign key to `organization` with `on delete set null`,
+and both halves of that are deliberate — see
+[The tenant pointer](#the-tenant-pointer) below.
 
 ### The two generations of user table
 
@@ -575,7 +588,35 @@ still governs `V001`–`V003`. Flyway remains the only thing that issues DDL (de
 **A3**): BetterAuth ships a `migrate` command that would create these tables itself, it is
 never run, and `scripts/verify-dev-env.sh` asserts that nothing in the repository wires it
 up. The SQL in `V004` is a hand-port of `@better-auth/cli generate` — see
-`ouroboros-rest/README.md` § Generating the auth schema for the command.
+`ouroboros-rest/README.md` § Generating the auth schema for the command. `V005`
+([#707](https://github.com/NobuData/ouroboros/issues/707)) is the same hand-port for the
+organization plugin, and re-running `generate` against a database carrying it prints
+*"Your schema is already up to date"* — which is how the port was checked rather than
+trusted.
+
+### The tenant pointer
+
+`V005` adds `session."activeOrganizationId"`, and it is the column that changes how the
+service behaves rather than merely what it stores. Before it, the tenant a request acted in
+was a **header the client asserted** — `X-Ouro-Tenant`, which
+[#32](https://github.com/NobuData/ouroboros/issues/32) shipped and
+[#713](https://github.com/NobuData/ouroboros/issues/713) demotes to an override. After it,
+the tenant is a column on the session row, which only the server writes: the plugin's
+`setActiveOrganization` is the one way it changes. That is roadmap decision **A5**.
+
+Three properties, all asserted in `tests/constraints.sql`:
+
+- **Nullable**, because a session exists from the moment somebody signs in — which is
+  before they have chosen anything in mockup 01 Step 2. Null means *signed in, acting
+  nowhere*.
+- **A foreign key**, which the library does not emit: it clears the pointer in application
+  code instead. Written into the schema, no session can point at an organization that does
+  not exist — including after a delete issued by a migration, a support script or `psql`
+  rather than by the plugin.
+- **`on delete set null`, never `cascade`.** This is the one worth getting right: a cascade
+  here would delete the *session rows*, so deleting an organization would sign out everybody
+  who happened to be acting in it. Nulling the pointer leaves them signed in with a choice
+  to make.
 
 Four conventions run through the tenancy tables, and are worth knowing before adding
 another:
@@ -626,6 +667,7 @@ GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) *(done)
 dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) *(done)* ·
 migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) *(done)* ·
 BetterAuth core schema [#706](https://github.com/NobuData/ouroboros/issues/706) *(done)* ·
+organization schema [#707](https://github.com/NobuData/ouroboros/issues/707) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
 

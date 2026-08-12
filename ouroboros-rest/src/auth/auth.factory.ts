@@ -20,8 +20,10 @@
  */
 
 import { betterAuth } from "better-auth";
+import { organization } from "better-auth/plugins";
 
 import { authOptions, type AuthDependencies } from "./auth.options";
+import { organizationOptions } from "./organization.plugin";
 
 /**
  * A configured BetterAuth instance.
@@ -46,5 +48,16 @@ export type Auth = ReturnType<typeof createAuth>;
  * @returns The instance: its handler, its `api`, and the options it was built from.
  */
 export function createAuth(dependencies: AuthDependencies) {
-  return betterAuth(authOptions(dependencies));
+  return betterAuth({
+    ...authOptions(dependencies),
+
+    // The plugin list, here rather than in `auth.options.ts`, and the reason is the same
+    // one this whole file exists for: `organization()` is a *value* from `better-auth`, and
+    // `auth.options.ts` is loadable by a CommonJS test runner precisely because it names no
+    // such value. Every decision inside the plugin — the roles, the creator's role, the
+    // hooks — is in `organization.plugin.ts`, which is plain data and is asserted there.
+    // What is here is the one line that turns those options into a plugin
+    // ([#704](https://github.com/NobuData/ouroboros/issues/704)).
+    plugins: [organization(organizationOptions())],
+  });
 }

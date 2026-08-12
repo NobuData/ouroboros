@@ -42,15 +42,29 @@ export default {
   // The same three settings as `jest.config.mjs`, for the same reason and with the same
   // explanations: these suites build the real application through `createApplication`
   // (`src/testing/harness.fixture.ts`), so they load everything the process loads —
-  // including the ES-module library #701 mounts. A real database does not make Jest's
-  // CommonJS runtime able to parse an ES module.
+  // including the ES-module library #701 mounts, and — since
+  // [#704](https://github.com/NobuData/ouroboros/issues/704) — the two access-control
+  // modules `organization.roles.ts` builds the role model with. A real database does not
+  // make Jest's CommonJS runtime able to parse an ES module. See `jest.config.mjs` for the
+  // argument behind each entry; they are kept identical on purpose, because a suite that
+  // resolved a module differently from the one beside it would be proving something about
+  // its own configuration.
   transformIgnorePatterns: [
-    "/node_modules/(?!@thallesp/nestjs-better-auth/)",
+    "/node_modules/(?!" +
+      [
+        "@thallesp/nestjs-better-auth/",
+        "better-auth/dist/plugins/access/",
+        "better-auth/dist/plugins/organization/access/",
+        "better-auth/node_modules/",
+        "@better-auth/core/dist/",
+        "better-call/",
+      ].join("|") +
+      ")",
     "\\.pnp\\.[^\\\\/]+$",
   ],
   moduleNameMapper: {
     "^better-auth$": "<rootDir>/src/auth/better-auth.fixture.ts",
-    "^better-auth/(node|api)$": "<rootDir>/src/auth/better-auth.fixture.ts",
+    "^better-auth/(node|api|plugins)$": "<rootDir>/src/auth/better-auth.fixture.ts",
   },
 
   setupFiles: ["reflect-metadata"],

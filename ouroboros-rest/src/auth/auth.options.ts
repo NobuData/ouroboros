@@ -29,6 +29,7 @@ import type { BetterAuthOptions } from "better-auth";
 import type { Pool } from "pg";
 
 import type { Configuration } from "../modules/config/configuration";
+import { activeOrganizationHooks } from "./active.organization";
 import { ACCOUNT_LINKING, GITHUB_PROVIDER_ID, githubProvider } from "./github.provider";
 import { sessionOptions } from "./session.options";
 
@@ -85,17 +86,22 @@ export interface AuthDependencies {
  * BetterAuth's options for this service.
  *
  * What is deliberately *absent* is as much of the specification as what is here. There is
- * no organization plugin ([#704](https://github.com/NobuData/ouroboros/issues/704)) and no
- * email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)) — two issues
- * each of which owns one option, and an option added here before the issue that owns it
- * would be a route this service serves that nothing tests. `auth.options.spec.ts` pins the
- * whole surface for exactly that reason.
+ * no email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)) — an issue
+ * that owns one option, and an option added here before the issue that owns it would be a
+ * route this service serves that nothing tests. `auth.options.spec.ts` pins the whole
+ * surface for exactly that reason.
  *
  * [#702](https://github.com/NobuData/ouroboros/issues/702) added the two it does own: the
  * GitHub provider, and the account-linking policy that exists because of it. Both live in
  * `github.provider.ts`, with the arguments for every value in them.
  * [#703](https://github.com/NobuData/ouroboros/issues/703) added the third, the session
  * strategy, which lives in `session.options.ts` for the same reason.
+ * [#704](https://github.com/NobuData/ouroboros/issues/704) added the fourth, the session
+ * hook that resolves the active organization, which lives in `active.organization.ts`.
+ *
+ * **The organization plugin itself is not here**, and that is not an omission: `plugins`
+ * takes values built by `better-auth`, and this module names no value from that library.
+ * `auth.factory.ts` registers it, from the options `organization.plugin.ts` decides.
  *
  * @param dependencies - The configuration and the pool — see {@link AuthDependencies}.
  * @returns The options object, ready for `betterAuth()`. A fresh object each call: the
@@ -138,6 +144,15 @@ export function authOptions({ configuration, pool }: AuthDependencies): BetterAu
     // there will ever be — but the policy exists because of this one, so it is argued for
     // beside it.
     account: { accountLinking: ACCOUNT_LINKING },
+
+    // Where a new session starts out acting, and the personal organization that gives it
+    // somewhere to be — decision **A5**, and #704's. It is a root option rather than one of
+    // the organization plugin's because the library puts session hooks here; the plugin
+    // itself is registered in `auth.factory.ts`, and everything it decides is in
+    // `organization.plugin.ts`. See `active.organization.ts` for why the rule hangs off
+    // session creation rather than user creation — in short, because `V004`'s back-filled
+    // people were never *created* by a sign-in and would otherwise never get one.
+    databaseHooks: activeOrganizationHooks(),
 
     // Decision **A2**: the built-in Kysely adapter, over the pool the service already has.
     // A `pg` pool given directly is how BetterAuth is told to build that adapter itself —
