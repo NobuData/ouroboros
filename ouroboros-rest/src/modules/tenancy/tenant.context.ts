@@ -134,7 +134,7 @@ export function currentMembership(): ActiveMembership | undefined {
 /**
  * The signed-in person.
  *
- * @returns The user, or `undefined` on a `@Public()` route.
+ * @returns The user, or `undefined` on an `@AllowAnonymous()` route.
  */
 export function currentUser(): User | undefined {
   return tenantContext()?.user;

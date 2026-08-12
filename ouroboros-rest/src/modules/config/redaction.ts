@@ -40,7 +40,6 @@ export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   // ([#700](https://github.com/NobuData/ouroboros/issues/700)), so it is the single most
   // valuable string this service holds after the database password.
   VARIABLES.betterAuthSecret,
-  VARIABLES.sessionSecret,
   VARIABLES.githubClientSecret,
 ]);
 

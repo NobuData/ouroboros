@@ -106,8 +106,13 @@ and calls it lazily for the same reason.
 Two pieces of per-browser state belong to this module rather than to configuration: the
 [theme choice](#theming), in `localStorage` under `ouro-theme`, and the
 [active workspace](#access--who-is-signed-in-and-where), in an `HttpOnly` `ouro_tenant`
-cookie that [the login screen](#sign-in--tenancy) writes. The session cookie,
-`ouro_session`, is `ouroboros-rest`'s — this module forwards it and never writes it.
+cookie that [the login screen](#sign-in--tenancy) writes. The session cookie is
+`ouroboros-rest`'s — this module forwards it and never writes it. **It is still named
+`ouro_session` here**, which [#703](https://github.com/NobuData/ouroboros/issues/703) has
+made wrong: a session is now a row and the cookie naming it is BetterAuth's
+`better-auth.session_token`. Re-pointing this module at it is
+[#720](https://github.com/NobuData/ouroboros/issues/720), which that issue's body predicted;
+until then a completed sign-in does not reach these screens.
 
 ## Container
 
@@ -260,7 +265,7 @@ and no call should repeat:
 | | |
 |---|---|
 | **Base URL** | `OURO_REST_URL`, via [`app/env.ts`](app/env.ts) |
-| **Session** | the `ouro_session` cookie of the request being served, forwarded — and only that cookie |
+| **Session** | the session cookie of the request being served, forwarded — and only that cookie. Still named `ouro_session`; #720 re-points it at BetterAuth's |
 | **Workspace** | `X-Ouro-Tenant`, from the active-workspace store |
 | **Failure** | the contract's `{code, message, details}` envelope, parsed into a thrown `ApiError`; a `401` redirects to `/login` first |
 

@@ -21,11 +21,11 @@ import type { StubbedAuth } from "./better-auth.fixture";
  *
  * `@thallesp/nestjs-better-auth` is loaded for real here — `jest.esm-transform.cjs` is what
  * makes that possible in a CommonJS runner, and its header says why a stand-in would have
- * been worthless. What is replaced is BetterAuth itself, by `better-auth.fixture.ts`, which
- * is the seam [#701](https://github.com/NobuData/ouroboros/issues/701) ends at: mounting is
- * this issue's, and what the routes then do belongs to
- * [#702](https://github.com/NobuData/ouroboros/issues/702) and
- * [#703](https://github.com/NobuData/ouroboros/issues/703).
+ * been worthless. That matters more since
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) than it did when this file was
+ * written: the `AuthGuard` this module registers is the library's own class, so the guard
+ * exercised below is the genuine article and only the session lookup behind it is
+ * `better-auth.fixture.ts`.
  *
  * The HTTP surface itself — that `/api/auth/*` answers, that it escapes the prefix, that
  * every other route still parses its body — is `application.spec.ts`, because it is a
@@ -103,9 +103,10 @@ describe("the module, in a running application", () => {
 
   const server = (): Server => app.getHttpServer() as Server;
 
-  it("resolves the library's service, so #703 has something to inject", () => {
+  it("resolves the library's service, which is what sign-out is called through", () => {
     // A module whose provider cannot be reached from outside it is one the next issue
-    // copies instead of importing. This is the `exports` line in `auth.module.ts`.
+    // copies instead of importing. This is the `exports` line in `auth.module.ts`, and
+    // `AuthController.logout` is the caller.
     expect(app.get(AuthService)).toBeInstanceOf(AuthService);
   });
 
@@ -117,20 +118,34 @@ describe("the module, in a running application", () => {
     );
   });
 
-  it("registers no global guard of its own", async () => {
-    // The library's default is an `APP_GUARD` requiring a BetterAuth session on every
-    // route. This service already has one — #33's `SessionGuard`, reading the cookie that
-    // still signs people in — and two would mean every request had to satisfy both, which
-    // no caller can do until they are the same session. #703 is what swaps them.
-    await request(server()).get(API_BASE_PATH).expect(200);
-  });
-
-  it("leaves the guard that is in force this service's own", async () => {
-    // The other half: a route that *does* need a session is still refused by #33's guard,
-    // in #33's shape. A BetterAuth guard answering here would be a different code in a
-    // different envelope, which is what `ouroboros-ui` would notice first.
+  it("registers the global guard, so a route that needs a session is refused without one", async () => {
+    // #703 turned the library's `AuthGuard` on. The envelope is unchanged — `401` with
+    // `code: "unauthenticated"` — because the code is derived from the status
+    // (`error.envelope.ts`), which is what keeps a swap of guard from being a change of
+    // contract for `ouroboros-ui`.
     const response = await request(server()).get(`${API_BASE_PATH}/auth/me`).expect(401);
 
     expect((response.body as ErrorEnvelope).code).toBe(AUTH_ERRORS.unauthenticated);
+  });
+
+  it("registers exactly one, and it is not the library's own registration", async () => {
+    // The guard is declared by *this* module rather than by the dynamic module inside it,
+    // because Nest reaches the nested one a scan level later — after `TenancyModule`'s
+    // guards, which then run before anybody has been authenticated. The observable form of
+    // that mistake is a `500` from `@Roles()` on a route with no tenant context, so the
+    // route that would produce it is what this asks about.
+    const response = await request(server())
+      .patch(`${API_BASE_PATH}/tenants/00000000-0000-4000-8000-000000000000`)
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ displayName: "Anything" }))
+      .expect(401);
+
+    expect((response.body as ErrorEnvelope).code).toBe(AUTH_ERRORS.unauthenticated);
+  });
+
+  it("leaves the routes the shipped public surface exempts alone", async () => {
+    // One case here; `src/modules/auth/guard.surface.spec.ts` is the enumeration over the
+    // whole route table, which is #703's second acceptance criterion.
+    await request(server()).get(API_BASE_PATH).expect(200);
   });
 });

@@ -16,14 +16,21 @@ import { AuthRepository } from "./auth.repository";
 import { AuthService } from "./auth.service";
 
 /**
- * The wiring, and the one piece of it that is a security property.
+ * The wiring, and what this module contributes to a request now that it no longer
+ * contributes a guard.
  *
- * `TenancyModule`'s spec explains why compiling a module is worth a test: a missing
- * provider is a green typecheck and a boot failure on the first request. This module has a
- * second thing worth checking, and it is not about resolution at all — **the guard is
- * registered globally**, which is what makes every route in the application authenticated
- * by default. If that registration were dropped, every other test in the suite would still
- * pass and the service would answer to anybody.
+ * `TenancyModule`'s spec explains why compiling a module is worth a test: a missing provider
+ * is a green typecheck and a boot failure on the first request.
+ *
+ * **The guard used to be here and is not.**
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced #33's `SessionGuard`
+ * with the library's `AuthGuard`, registered in `src/auth/auth.module.ts`. The polarity it
+ * enforced is unchanged and is asserted below — every route authenticated unless it says
+ * otherwise — but *which routes say otherwise* is `guard.surface.spec.ts`, which enumerates
+ * the whole table rather than the three routes a reader happens to remember.
+ *
+ * What this module contributes instead is one piece of middleware, and it is the other
+ * thing asserted here: a browser still holding `ouro_session` is told to drop it.
  *
  * Nothing connects. `pg` connects lazily, so the real `DatabaseService` can be resolved by a
  * suite that starts no database.
@@ -71,7 +78,7 @@ describe("the auth module", () => {
   });
 });
 
-describe("the guard this module registers", () => {
+describe("the authentication this module's routes sit behind", () => {
   let app: INestApplication;
 
   beforeEach(async () => {
@@ -88,9 +95,10 @@ describe("the guard this module registers", () => {
 
   it("protects a route declared in another module entirely", async () => {
     // The whole point of `APP_GUARD`: `TenancyModule` knows nothing about authentication,
-    // and its routes are authenticated anyway. Asserted through the application rather than
-    // by introspecting the container, because Nest registers a global guard under a token
-    // it generates — so behaviour is the only honest way to ask this question.
+    // and its routes are authenticated anyway — by a guard that is now registered in a
+    // third module again. Asserted through the application rather than by introspecting the
+    // container, because Nest registers a global guard under a token it generates, so
+    // behaviour is the only honest way to ask this question.
     const response = await request(server()).get("/api/v1/tenants").expect(401);
 
     expect((response.body as ErrorEnvelope).code).toBe(AUTH_ERRORS.unauthenticated);
@@ -117,10 +125,24 @@ describe("the guard this module registers", () => {
   });
 
   it("leaves signing out alone", async () => {
-    // The one route of this module's own that stays public. #702 removed the two sign-in
-    // routes that used to be asserted beside it — BetterAuth serves the replacement under
-    // `/api/auth`, which never reaches this guard because it never reaches Nest's router.
+    // The one route of this module's own that stays anonymous, and the one exemption #703
+    // had to port rather than merely keep: it is what makes an *expired* session disposable,
+    // since requiring one would refuse the request for carrying the thing it came to remove.
     await request(server()).post("/api/v1/auth/logout").expect(204);
+  });
+
+  it("tells a browser still holding #33's cookie to drop it", async () => {
+    // The middleware this module does contribute. The cut-over invalidates every live
+    // session — there is no way to migrate a stateless cookie into a session row — so a
+    // browser that goes on sending `ouro_session` is refused cleanly and told to stop.
+    const response = await request(server())
+      .get("/api/v1")
+      .set("Cookie", "ouro_session=left-over-from-33")
+      .expect(200);
+
+    const cookies = (response.headers["set-cookie"] ?? []) as unknown as string[];
+
+    expect(cookies.find((header) => header.startsWith("ouro_session="))).toContain("Max-Age=0");
   });
 
   it("leaves BetterAuth's own routes alone, mounted ahead of the router as they are", async () => {

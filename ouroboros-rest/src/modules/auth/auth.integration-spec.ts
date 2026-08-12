@@ -11,9 +11,11 @@ import { GITHUB_PROVIDER_ID } from "../../auth/github.provider";
 import { AppModule } from "../app/app.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
+import { SESSION_COOKIE, SESSION_DATA_COOKIE } from "../../auth/session.options";
 import { AUTH_ERRORS } from "./auth.errors";
 import type { SessionResource } from "./auth.resources";
-import { issueSession, SESSION_COOKIE } from "./session";
+import { LEGACY_SESSION_COOKIE } from "./legacy.cookie";
+import { sessionExists, signInAs } from "./session.fixture";
 
 /**
  * What is left of this module against a real migrated PostgreSQL, and the one thing #702
@@ -45,9 +47,13 @@ import { issueSession, SESSION_COOKIE } from "./session";
  *
  *   1. **The session the guard reads**, and everything `GET /api/v1/auth/me` joins to
  *      answer — memberships, the tenant suggestion, and a session whose person has been
- *      deleted since. #703 replaces the mechanism; the *answers* are this module's either
- *      way.
- *   2. **That a person who signed in under #33 is the same person to BetterAuth**, which is
+ *      deleted since.
+ *   2. **[#703](https://github.com/NobuData/ouroboros/issues/703)'s revocation**, which is
+ *      the one acceptance criterion in this issue that only a database can answer: sign out,
+ *      present the very same cookie, and be refused. The session is a row here — minted by
+ *      `session.fixture.ts` and deleted by the library's `signOut` — so what is asserted is
+ *      the mechanism rather than a stand-in for it.
+ *   3. **That a person who signed in under #33 is the same person to BetterAuth**, which is
  *      the issue's second acceptance criterion and the one with a seeded pre-migration row
  *      in it. It is asserted here rather than only in SQL because the value being matched
  *      is `GITHUB_PROVIDER_ID` — a constant this service hands the library — and the point
@@ -72,9 +78,6 @@ const EMAIL = `${TEST_PREFIX}-person@example.test`;
 
 /** GitHub's immutable id for the account they signed in with under #33. */
 const EXTERNAL_ID = "990000001";
-
-/** The signing key the test configuration validates with, so an issued session verifies. */
-const SESSION_SECRET = testConfiguration().sessionSecret;
 
 /** A connection of this suite's own, for the setup and cleanup the application must not do. */
 const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
@@ -138,18 +141,22 @@ describe("the auth surface, against a real database", () => {
   const server = (): Server => app.getHttpServer() as Server;
 
   /**
-   * Create the person #33's flow would have created, and sign in as them.
+   * Create a person and give them a session, as a completed sign-in would have.
    *
-   * The session is issued directly rather than walked to through a sign-in route, because
-   * there is no longer a sign-in route in this service to walk — see this file's header.
-   * That is honest about what is being tested: the *answers* below, not the mechanism, and
-   * #703 is what replaces the mechanism.
+   * The rows are written directly rather than walked to through a sign-in route, because
+   * there is no longer a sign-in route in this service to walk — BetterAuth serves it, and
+   * these suites do not load BetterAuth. What that leaves real is everything after the
+   * sign-in: a `session` row, the cookie naming it, and a guard that reads both.
    *
    * @param displayName - What to call them.
+   * @param lifetimeSeconds - How long the session lasts. A negative value mints one that has
+   *   already expired, which is how "the guard checks the row rather than the cookie" is
+   *   asserted.
    * @returns Their id and the `Cookie` header a signed-in browser would send.
    */
   async function signedInPerson(
     displayName = "Integration Person",
+    lifetimeSeconds?: number,
   ): Promise<{ id: string; cookie: string }> {
     const { rows } = await admin.query<{ id: string }>(
       "insert into ouroboros.users (email, display_name) values ($1, $2) returning id",
@@ -157,7 +164,7 @@ describe("the auth surface, against a real database", () => {
     );
     const id = rows[0].id;
 
-    return { id, cookie: `${SESSION_COOKIE}=${issueSession(id, SESSION_SECRET, new Date())}` };
+    return { id, cookie: await signInAs(admin, id, lifetimeSeconds) };
   }
 
   describe("reading the session back", () => {
@@ -215,17 +222,75 @@ describe("the auth surface, against a real database", () => {
     });
 
     it("refuses a session whose person has since been deleted", async () => {
-      // The reason the cookie carries an id rather than a copy of the person: the signature
-      // is still perfectly good and there is no row behind it.
+      // V004's `on delete cascade` is what makes this true rather than a lookup this service
+      // performs: removing the person removes their sessions in the same statement, so the
+      // cookie names nothing a moment later. Under #33 the same case was a signature that
+      // still verified over a row that had gone.
       const { cookie } = await signedInPerson();
-      await admin.query("delete from ouroboros.users where email = $1", [EMAIL]);
+      await admin.query('delete from ouroboros."user" where "email" = $1', [EMAIL]);
 
       await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
+    });
+
+    it("refuses a session that has expired, whatever the cookie still says", async () => {
+      // The expiry is on the row. A browser holding a cookie past it is refused by the
+      // server rather than trusted to have stopped sending it.
+      const { cookie } = await signedInPerson("Integration Person", -60);
+
+      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
+    });
+
+    it("refuses a cookie naming a session that was never issued", async () => {
+      await request(server())
+        .get(`${AUTH}/me`)
+        .set("Cookie", `${SESSION_COOKIE}=never-issued`)
+        .expect(401);
+    });
+  });
+
+  describe("a browser still holding #33's cookie", () => {
+    // #703's fifth acceptance criterion, and the reason `legacy.cookie.ts` exists: the
+    // cut-over invalidates every live session, and a browser that goes on sending
+    // `ouro_session` must be refused cleanly and told to drop it — not answered with a 500
+    // by something trying to verify a signature nothing checks any more.
+    it("is refused with the envelope rather than a 500", async () => {
+      const response = await request(server())
+        .get(`${AUTH}/me`)
+        .set("Cookie", `${LEGACY_SESSION_COOKIE}=whatever-it-used-to-hold`)
+        .expect(401);
+
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe(AUTH_ERRORS.unauthenticated);
+    });
+
+    it("is told to drop it", async () => {
+      const response = await request(server())
+        .get(`${AUTH}/me`)
+        .set("Cookie", `${LEGACY_SESSION_COOKIE}=whatever-it-used-to-hold`)
+        .expect(401);
+
+      expect(cookieHeader(response, LEGACY_SESSION_COOKIE)).toContain("Max-Age=0");
+    });
+
+    it("is told to drop it on a route that answers, too", async () => {
+      // The cookie is dead everywhere, so the eviction is a property of the request rather
+      // than of the answer — which is why it is middleware and not a 401 handler.
+      const response = await request(server())
+        .get("/api/v1")
+        .set("Cookie", `${LEGACY_SESSION_COOKIE}=whatever-it-used-to-hold`)
+        .expect(200);
+
+      expect(cookieHeader(response, LEGACY_SESSION_COOKIE)).toContain("Max-Age=0");
+    });
+
+    it("is left alone when it is not sending one", async () => {
+      const response = await request(server()).get("/api/v1").expect(200);
+
+      expect(cookieHeader(response, LEGACY_SESSION_COOKIE)).toBe("");
     });
   });
 
   describe("signing out", () => {
-    it("answers 204 and removes the cookie", async () => {
+    it("answers 204 and removes both cookies", async () => {
       const { cookie } = await signedInPerson();
 
       const response = await request(server())
@@ -234,10 +299,44 @@ describe("the auth surface, against a real database", () => {
         .expect(204);
 
       expect(cookieHeader(response, SESSION_COOKIE)).toContain("Max-Age=0");
+      expect(cookieHeader(response, SESSION_DATA_COOKIE)).toContain("Max-Age=0");
       expect(response.body).toEqual({});
     });
 
-    it("works without a session, which is why it is public", async () => {
+    it("deletes the session row, which is what makes revocation immediate", async () => {
+      // #703's third acceptance criterion, and the half #38 was opened for. Clearing the
+      // browser's copy was all #33 could do; this is the server forgetting.
+      const { cookie } = await signedInPerson();
+      expect(await sessionExists(admin, cookie)).toBe(true);
+
+      await request(server()).post(`${AUTH}/logout`).set("Cookie", cookie).expect(204);
+
+      expect(await sessionExists(admin, cookie)).toBe(false);
+    });
+
+    it("refuses the very same cookie on the next request", async () => {
+      // The criterion as a caller experiences it: a cookie copied before sign-out is worth
+      // nothing after it, rather than good for the rest of its week.
+      const { cookie } = await signedInPerson();
+      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(200);
+
+      await request(server()).post(`${AUTH}/logout`).set("Cookie", cookie).expect(204);
+
+      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
+    });
+
+    it("ends one session and not the person's others", async () => {
+      // Two browsers, one account. Sign-out deletes the session that asked, so somebody
+      // signing out of a shared machine is not signed out of their own.
+      const { id, cookie } = await signedInPerson();
+      const other = await signInAs(admin, id);
+
+      await request(server()).post(`${AUTH}/logout`).set("Cookie", cookie).expect(204);
+
+      await request(server()).get(`${AUTH}/me`).set("Cookie", other).expect(200);
+    });
+
+    it("works without a session, which is why it is anonymous", async () => {
       await request(server()).post(`${AUTH}/logout`).expect(204);
     });
   });
@@ -334,7 +433,7 @@ describe("the auth surface, against a real database", () => {
       const session = bodyOf<SessionResource>(
         await request(server())
           .get(`${AUTH}/me`)
-          .set("Cookie", `${SESSION_COOKIE}=${issueSession(legacyId, SESSION_SECRET, new Date())}`)
+          .set("Cookie", await signInAs(admin, legacyId))
           .expect(200),
       );
 

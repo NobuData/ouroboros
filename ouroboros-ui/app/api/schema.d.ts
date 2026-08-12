@@ -45,8 +45,9 @@ export interface paths {
          *     it can render anything: the person for the profile menu, the memberships for the
          *     workspace switcher, and the suggestion for a first-run screen.
          *
-         *     The person is read from the database on every request rather than from the cookie,
-         *     which is why a deleted account's outstanding session stops working immediately.
+         *     The person comes from the session BetterAuth resolved, which is a row rather than a
+         *     claim in a cookie — so a deleted account's outstanding session stops working
+         *     immediately, by the `on delete cascade` that removes their sessions with them.
          */
         get: operations["readSession"];
         put?: never;
@@ -68,7 +69,13 @@ export interface paths {
         put?: never;
         /**
          * Sign out
-         * @description Remove the session cookie from the browser.
+         * @description End the session, and remove its cookies from the browser.
+         *
+         *     **It deletes the session row** ([#703](https://github.com/NobuData/ouroboros/issues/703)),
+         *     so revocation is immediate: a cookie copied beforehand is refused on its next use.
+         *     This service delegates to BetterAuth's own `POST /api/auth/sign-out` rather than
+         *     implementing a second sign-out beside it, and the two are interchangeable — this
+         *     one is the versioned alias `ouroboros-ui` calls.
          *
          *     Idempotent, and reachable without a session: requiring one would mean an *expired*
          *     cookie could never be cleared, because the request to remove it would be refused
@@ -78,9 +85,8 @@ export interface paths {
          *     A `POST` rather than a `GET`, because it changes state — a `GET` that signs you out
          *     is a link, an image tag or a prefetch away from signing you out.
          *
-         *     What it ends is the *browser's* copy. The session is a stateless signed cookie, so
-         *     a copy taken beforehand stays valid until it ages out; revocation is recorded with
-         *     the security baseline, [#38](https://github.com/NobuData/ouroboros/issues/38).
+         *     It ends **one** session rather than all of the person's: somebody signing out of a
+         *     shared machine is not signed out of their own.
          */
         post: operations["signOut"];
         delete?: never;
@@ -1413,12 +1419,15 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description Signed out. `Set-Cookie` removes `ouro_session`. There is no body — there is
-             *     nothing to say.
+             * @description Signed out. `Set-Cookie` removes the session cookie and its cache. There is no
+             *     body — there is nothing to say.
              */
             204: {
                 headers: {
-                    /** @description `ouro_session`, emptied, with `Max-Age=0`. */
+                    /**
+                     * @description `better-auth.session_token` and `better-auth.session_data`, emptied, with
+                     *     `Max-Age=0` — one header each.
+                     */
                     "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };

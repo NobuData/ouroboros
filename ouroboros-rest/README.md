@@ -208,10 +208,9 @@ service never starts half-configured.
 | `OURO_ENGINE_SHARED_SECRET` | Shared secret for the internal engine call               |        yes         | at least 16 characters                                                      |
 | `BETTER_AUTH_SECRET`        | What BetterAuth signs sessions and encrypts tokens with  |        yes         | at least 16 characters                                                      |
 | `BETTER_AUTH_URL`           | The origin BetterAuth builds its own URLs from           |        yes         | an origin, as above — BetterAuth appends its own `/api/auth`                |
-| `OURO_SESSION_SECRET`       | Signing key for the session cookie                       |        yes         | at least 16 characters                                                      |
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
-| `OURO_AUTH_DEV_USER`        | [Development sign-in bypass](#the-development-bypass)    |         no         | an email address of a row in `ouroboros.users`; ignored in production        |
+| `OURO_AUTH_DEV_USER`        | [#33's sign-in bypass](#the-development-bypass) — read by nothing since #703 |         no         | an email address; dropped in production                                     |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 
 Every one of them is documented with a development default in the repo-root
@@ -287,12 +286,11 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   OURO_ENGINE_SHARED_SECRET=[redacted]
   BETTER_AUTH_SECRET=[redacted]
   BETTER_AUTH_URL=http://localhost:4000
-  OURO_SESSION_SECRET=[redacted]
   OURO_GITHUB_CLIENT_ID=dev-github-client-id
   OURO_GITHUB_CLIENT_SECRET=[redacted]
   OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.13.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.14.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -688,7 +686,8 @@ handshake and serves its own routes under `/api/auth`, outside the versioned API
 | `POST /api/auth/sign-in/social`      | `{ "provider": "github" }` in, the github.com authorization URL out  |
 | `GET  /api/auth/callback/github`     | Where GitHub returns the browser; upserts `"user"` + `account`       |
 | `GET  /api/v1/auth/me`               | The person, their memberships, and a tenant suggestion               |
-| `POST /api/v1/auth/logout`           | `204`, and a `Set-Cookie` that removes the session                   |
+| `POST /api/auth/sign-out`            | Deletes the session row; clears its cookies                          |
+| `POST /api/v1/auth/logout`           | The same thing, versioned — delegates to `sign-out`. `204`           |
 
 ```mermaid
 sequenceDiagram
@@ -726,11 +725,11 @@ Four decisions are this service's rather than the library's, and all four live i
   #33 enforced by hand. The *local* `emailVerified` is deliberately not required, because
   somebody invited to a workspace before they ever signed in has never had the chance to
   verify anything, and requiring it would make the invitation flow unusable.
-- **Sessions are still #33's stateless cookie, for now.** BetterAuth signs people in and
-  [#703](https://github.com/NobuData/ouroboros/issues/703) is what makes it *remember* them
-  — database-backed, revocable sessions behind the library's own guard. Between the two
-  issues this service has BetterAuth sign-in and a hand-rolled session, which is why they
-  are meant to land close together.
+- **Sessions are BetterAuth's, and they are rows.**
+  [#703](https://github.com/NobuData/ouroboros/issues/703) retired #33's stateless cookie:
+  a sign-in writes `ouroboros.session`, the browser carries a cookie naming it, signing out
+  deletes it, and the library's own `AuthGuard` is what every route sits behind. See
+  [Sessions](#sessions) below for the lifetimes and the cookies.
 
 ### What #33 shipped, and where it went
 
@@ -793,26 +792,63 @@ curl -sS -X POST http://localhost:4000/api/auth/sign-in/social \
         -c 'select "providerId", "accountId" from ouroboros.account;'
    ```
 
-`GET /api/v1/auth/me` will still answer `401` until #703 lands — it reads #33's
-`ouro_session` cookie, and BetterAuth sets its own.
+4. **Ask who you are.** `GET /api/v1/auth/me`, with the cookies the browser now holds,
+   answers with the person, their memberships, and — for somebody brand new — the tenant
+   their address's domain points at.
+
+### Sessions
+
+**A session is a row** ([#703](https://github.com/NobuData/ouroboros/issues/703)). A
+sign-in writes `ouroboros.session` (V004) and the browser carries a cookie naming it;
+`POST /api/v1/auth/logout` deletes the row, so **revocation is immediate** — a cookie
+copied beforehand is refused on its next use rather than honoured for the rest of its week.
+That is the property #33's stateless cookie wrote down that it could not offer, and it
+closes the revocation half of [#38](https://github.com/NobuData/ouroboros/issues/38).
+
+The values, and where each is argued —
+[`src/auth/session.options.ts`](src/auth/session.options.ts):
+
+| Property                    | Value                        | Why                                                                                              |
+| --------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| Cookie                      | `better-auth.session_token`  | The library's default. `__Secure-`-prefixed over HTTPS, which a browser refuses over plain HTTP  |
+| Lifetime (`expiresIn`)      | 7 days                       | A week of work without re-authenticating; still the bound on a stolen cookie                     |
+| Refresh (`updateAge`)       | 1 day                        | Daily use slides the expiry, so a session never ends mid-task. Not per request, which is a write |
+| Cookie cache (`maxAge`)     | 5 minutes                    | A signed snapshot in `better-auth.session_data`, so a request costs **no** query while it is fresh |
+
+**Two cookies, therefore.** The token names the row; the cache holds a signed copy of the
+session and the user so that an authenticated request does not pay for a lookup. Both are
+`HttpOnly`, both are `SameSite=Lax`, and both are cleared by signing out.
+
+**The rename invalidated every session live at the cut-over.** `ouro_session` →
+`better-auth.session_token` was unavoidable: there is no way to migrate a stateless signed
+cookie into a session row, and inventing one would mean trusting the signature the change
+exists to stop trusting. A browser still sending the old cookie is answered `401` and told
+to drop it — see `src/modules/auth/legacy.cookie.ts`, which is also where the date that
+eviction can be deleted is written down.
+
+**Every route needs one unless it says otherwise**, with `@AllowAnonymous()`. The exempt
+surface is the heartbeat, the two probes and sign-out — the same four routes #33's
+`@Public()` exempted, ported one for one — and it is not maintained by inspection:
+`src/modules/auth/guard.surface.spec.ts` enumerates the guard's decision for every route in
+the table and fails if one gains or loses an exemption.
 
 ### The development bypass
 
-`OURO_AUTH_DEV_USER` treats every request as coming from the person with that address, so
-local work needs no GitHub OAuth application at all. The address must name a real
-`ouroboros.users` row — the development seed
-([#23](https://github.com/NobuData/ouroboros/issues/23)) creates
-`ken@acme-robotics.dev` — and one nobody has grants nothing rather than creating anybody.
+**There is not one any more.** `OURO_AUTH_DEV_USER` treated every request as coming from
+the person with that address, so local work needed no GitHub OAuth application at all.
+[#703](https://github.com/NobuData/ouroboros/issues/703) removed the guard that read it: a
+bypass is a branch inside an authentication decision, and this service no longer makes one
+— BetterAuth does.
 
-It is **off in production**, twice over: `loadConfiguration` drops the variable when
-`NODE_ENV=production`, so there is no value for anything to read, and the accessor the
-guard uses refuses one anyway. The boot log prints `OURO_AUTH_DEV_USER=` with nothing
-after it, which is the line to check. A real session cookie still wins over it, so a real
-sign-in stays exercisable on a machine that has it set.
+So **signing in locally means a real GitHub OAuth application** until
+[#705](https://github.com/NobuData/ouroboros/issues/705) lands the development
+email/password sign-in, which is a credential the library supports natively rather than a
+way around authentication. See [Signing in for real](#signing-in-for-real) above; it takes
+about two minutes.
 
-It is [#705](https://github.com/NobuData/ouroboros/issues/705) that removes this, replacing
-it with BetterAuth's email/password provider enabled outside production — a mechanism the
-library supports natively, rather than a bypass that skips authentication entirely.
+The variable is still in `.env.example` and still validated, because #705 removes it in the
+same change that delivers its replacement. Nothing reads it, and it is still dropped
+outright when `NODE_ENV=production`.
 
 ## The tenant context
 
@@ -821,9 +857,10 @@ library supports natively, rather than a bypass that skips authentication entire
 place, rather than re-implemented per controller.
 
 ```
-request ─▶ middleware ─▶ SessionGuard ─▶ TenantContextGuard ─▶ RolesGuard ─▶ handler
-           opens the      who is           which workspace,      may they
-           context        asking (#33)     and are they in it    do this
+request ─▶ middleware ─▶ AuthGuard ─▶ TenantContextGuard ─▶ RolesGuard ─▶ handler
+           opens the      who is        which workspace,      may they
+           context        asking        and are they in it    do this
+                          (#703)
 ```
 
 ### Where the workspace comes from
@@ -961,7 +998,6 @@ docker run --rm -p 4000:4000 --network ouroboros_default \
   -e OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me \
   -e BETTER_AUTH_SECRET=dev-better-auth-secret-change-me \
   -e BETTER_AUTH_URL=http://localhost:4000 \
-  -e OURO_SESSION_SECRET=dev-session-secret-change-me \
   -e OURO_GITHUB_CLIENT_ID=dev-github-client-id \
   -e OURO_GITHUB_CLIENT_SECRET=dev-github-client-secret \
   -e OURO_CORS_ORIGINS=http://localhost:3000 \
@@ -1130,9 +1166,9 @@ const tenant = await api.workspace(owner);
 await api.as(owner)("get", `/api/v1/tenants/${tenant.id}`).expect(200);
 ```
 
-The session it mints is a real one — `issueSession`, signed with the secret the application
-under test was configured with — so a suite using it exercises the global guard rather than
-avoiding it. `api.sql` is a connection outside the application, for the arrangements the API
+The session it mints is a real one — a row in `ouroboros.session` naming a real person,
+exactly as a completed sign-in would have written — so a suite using it exercises the global
+guard rather than avoiding it, and can *revoke* it and watch the same cookie stop working. `api.sql` is a connection outside the application, for the arrangements the API
 will not make: there is no route that creates a `viewer`, and a fixture that went through one
 would make the arrangement part of what is being asserted.
 
@@ -1147,6 +1183,8 @@ tenancy API [#31](https://github.com/NobuData/ouroboros/issues/31) ·
 auth [#33](https://github.com/NobuData/ouroboros/issues/33) ·
 BetterAuth installation & configuration [#700](https://github.com/NobuData/ouroboros/issues/700) ·
 BetterAuth mounted in NestJS [#701](https://github.com/NobuData/ouroboros/issues/701) ·
+GitHub social provider [#702](https://github.com/NobuData/ouroboros/issues/702) ·
+database-backed sessions & the global guard [#703](https://github.com/NobuData/ouroboros/issues/703) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·

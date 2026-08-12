@@ -7,6 +7,7 @@ import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
 import { AUTH_APP_NAME, AUTH_BASE_PATH, authOptions } from "./auth.options";
 import { ACCOUNT_LINKING, githubProvider, GITHUB_PROVIDER_ID } from "./github.provider";
+import { sessionOptions } from "./session.options";
 
 /**
  * What BetterAuth is configured with, and what it is deliberately not configured with.
@@ -102,8 +103,8 @@ describe("authOptions", () => {
   // #700 was the foundation and the issues after it each own one of the options below.
   // Listing the whole surface is how that stays true: an option added here — rather than in
   // the issue that owns it, with the migration and the tests that go with it — fails this
-  // test. #702 added the two it owns, `socialProviders` and `account`; #703, #704 and #705
-  // are still to come.
+  // test. #702 added the two it owns, `socialProviders` and `account`, and #703 the one it
+  // owns, `session`; #704 and #705 are still to come.
   it("configures nothing the issues after it own", () => {
     const options = authOptions({ configuration: testConfiguration(), pool: fakePool() });
 
@@ -114,10 +115,21 @@ describe("authOptions", () => {
       "baseURL",
       "database",
       "secret",
+      "session",
       "socialProviders",
       "telemetry",
       "trustedOrigins",
     ]);
+  });
+
+  it("carries the session strategy #703 owns", () => {
+    // The values themselves, and the arguments for them, are `session.options.spec.ts`.
+    // What is asserted here is that they reach the library at all — an option object that
+    // omitted them would be a service back on BetterAuth's defaults, which is a seven-day
+    // session with no cookie cache and a database lookup on every request.
+    const { session } = authOptions({ configuration: testConfiguration(), pool: fakePool() });
+
+    expect(session).toEqual(sessionOptions());
   });
 });
 

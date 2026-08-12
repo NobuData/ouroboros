@@ -13,13 +13,13 @@
  *     It maps a constraint the database refused into the envelope — the issue's worked
  *     example, `409 domain_taken` — including constraints no service anticipated.
  *   * **`@TenantOptional()` on the two routes that have no tenant to be in**, and nothing
- *     on the two that do. That is the same polarity `@Public()` has: the guards
- *     [#33](https://github.com/NobuData/ouroboros/issues/33) and
- *     [#32](https://github.com/NobuData/ouroboros/issues/32) register are global, so a
- *     route needs a session and a membership unless it says otherwise, and a route added
- *     later is scoped because somebody wrote a controller. Listing and creating are the
- *     exceptions because both are questions about the *person* — which workspaces are
- *     mine, and let me have one — and requiring a workspace first would be circular.
+ *     on the two that do. That is the same polarity `@AllowAnonymous()` has: the
+ *     authentication guard ([#703](https://github.com/NobuData/ouroboros/issues/703)) and
+ *     the tenant guard ([#32](https://github.com/NobuData/ouroboros/issues/32)) are both
+ *     global, so a route needs a session and a membership unless it says otherwise, and a
+ *     route added later is scoped because somebody wrote a controller. Listing and creating
+ *     are the exceptions because both are questions about the *person* — which workspaces
+ *     are mine, and let me have one — and requiring a workspace first would be circular.
  *   * **`@Roles(…)` on the mutation and not on the read.** A `viewer` is a role that exists
  *     to be able to look; renaming or suspending a workspace is an administrator's. The
  *     read carries nothing because the tenant guard has already refused anybody who is not
@@ -27,9 +27,9 @@
  */
 
 import { Body, Controller, Get, Param, Patch, Post, Query, UseInterceptors } from "@nestjs/common";
+import { Session } from "@thallesp/nestjs-better-auth";
 
-import type { User } from "../db/schema";
-import { CurrentUser } from "../auth/principal";
+import { principalUser, type Principal } from "../auth/principal";
 import { ConstraintViolationInterceptor } from "./constraints";
 import { PageQuery, type Page } from "./pagination";
 import type { TenantResource } from "./resources";
@@ -74,14 +74,20 @@ export class TenantsController {
    *
    * `@TenantOptional()`, because somebody creating their first workspace belongs to none.
    *
-   * @param user - The signed-in person, who becomes the owner.
+   * @param principal - The session, established by the global authentication guard. Its
+   *   person becomes the owner. Typed nullable because the library's `@Session()` decorator
+   *   is; `principalUser` is what refuses a `null` loudly rather than three layers down —
+   *   see `../auth/principal.ts`.
    * @param body - The slug and the display name.
    * @returns The tenant as it was stored, with `201`.
    */
   @TenantOptional()
   @Post()
-  create(@CurrentUser() user: User, @Body() body: CreateTenantBody): Promise<TenantResource> {
-    return this.tenants.create(user, body);
+  create(
+    @Session() principal: Principal | null,
+    @Body() body: CreateTenantBody,
+  ): Promise<TenantResource> {
+    return this.tenants.create(principalUser(principal), body);
   }
 
   /**

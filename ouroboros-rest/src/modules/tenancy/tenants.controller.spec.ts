@@ -1,3 +1,5 @@
+import { userRow } from "../auth/principal";
+import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
 import type { User } from "../db/schema";
 import { TenantsController } from "./tenants.controller";
 import type { TenantsService } from "./tenants.service";
@@ -17,15 +19,8 @@ import type { TenantsService } from "./tenants.service";
 
 const TENANT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 
-/** The signed-in person, as the global guard would have established them. */
-const USER: User = {
-  id: "5eed0003-0000-4000-8000-000000000001",
-  email: "ken@acme-robotics.dev",
-  display_name: "Ken Suenobu",
-  avatar_url: null,
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+/** The signed-in person, in the shape the service takes them. */
+const USER: User = userRow(FIXTURE_USER);
 
 describe("the tenants controller", () => {
   let service: jest.Mocked<TenantsService>;
@@ -51,9 +46,18 @@ describe("the tenants controller", () => {
   it("passes a creation straight through, with the person who is making it", async () => {
     const body = { slug: "acme", displayName: "Acme, Inc." };
 
-    await controller.create(USER, body);
+    await controller.create(principalFor(), body);
 
     expect(service.create).toHaveBeenCalledWith(USER, body);
+  });
+
+  it("refuses a creation with no session rather than making a workspace for nobody", () => {
+    // Reachable only by somebody adding @AllowAnonymous() to this handler; the owner it
+    // would then write is `undefined`, and a workspace with no owner is one nobody can
+    // administer. It fails here by name instead.
+    expect(() => controller.create(null, { slug: "acme", displayName: "Acme, Inc." })).toThrow(
+      /@AllowAnonymous/,
+    );
   });
 
   it("takes the tenant's id off the validated parameters", async () => {

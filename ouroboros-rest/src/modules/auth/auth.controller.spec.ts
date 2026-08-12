@@ -1,42 +1,30 @@
-import { AppConfigService } from "../config/config.service";
-import { testConfiguration } from "../config/configuration.fixture";
-import type { Configuration } from "../config/configuration";
-import type { User } from "../db/schema";
+import type { AuthService as BetterAuth } from "@thallesp/nestjs-better-auth";
+
+import type { Auth } from "../../auth/auth.factory";
+import { SESSION_COOKIE, SESSION_DATA_COOKIE } from "../../auth/session.options";
 import { AuthController } from "./auth.controller";
 import type { AuthService } from "./auth.service";
-import { parseCookies } from "./cookies";
-import type { AuthResponse } from "./http";
-import { SESSION_COOKIE } from "./session";
+import { SET_COOKIE, type AuthResponse } from "./http";
+import { principalFor, FIXTURE_USER } from "./principal.fixture";
+import { userRow } from "./principal";
 
 /**
- * The two routes, and what they write to the response.
+ * The two routes, and what each of them hands on.
  *
- * One of them answers with something Nest's serialiser cannot produce — a `204` whose whole
- * payload is a `Set-Cookie` — so the assertions here are about *headers*. `http.ts` is what
- * makes that readable: the response is an object literal rather than a mocked framework
- * class.
+ * `GET me` is now a question about the *session* rather than about a row this service read,
+ * and `POST logout` is a forward to the library rather than a cookie this service composed
+ * — so the assertions here are about what leaves the controller: which person reaches the
+ * service, which headers reach the browser, and the `204` that says there is nothing else.
  *
  * **Two routes and their suites left with #33's OAuth flow.** `GET auth/github` and
  * `GET auth/github/callback` were the browser-facing halves of a handshake this service no
  * longer performs, and [#702](https://github.com/NobuData/ouroboros/issues/702) removed
- * them rather than forwarding them — see `auth.controller.ts`, which is where that decision
- * is argued. BetterAuth serves the replacement at `/api/auth/*`, outside Nest's router
- * altogether, so there is no controller here to assert about.
+ * them rather than forwarding them. BetterAuth serves the replacement at `/api/auth/*`,
+ * outside Nest's router altogether, so there is no controller here to assert about.
  */
-
-const USER = {
-  id: "5eed0003-0000-4000-8000-000000000001",
-  email: "ken@acme-robotics.dev",
-  display_name: "Ken Suenobu",
-  avatar_url: null,
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-} satisfies User;
 
 /** What the response recorded. */
 interface Recorded extends AuthResponse {
-  headers: Map<string, string | string[]>;
-  redirects: { status: number; url: string }[];
   statuses: number[];
   ended: boolean;
   /** Every `Set-Cookie` value, however many headers were written at once. */
@@ -51,16 +39,13 @@ interface Recorded extends AuthResponse {
  */
 function recordingResponse(): Recorded {
   const headers = new Map<string, string | string[]>();
-  const redirects: { status: number; url: string }[] = [];
   const statuses: number[] = [];
 
   const response: Recorded = {
-    headers,
-    redirects,
     statuses,
     ended: false,
+    getHeader: (name) => headers.get(name),
     setHeader: (name, value) => headers.set(name, value),
-    redirect: (status, url) => redirects.push({ status, url }),
     status: (code) => {
       statuses.push(code);
       return {
@@ -70,7 +55,7 @@ function recordingResponse(): Recorded {
       };
     },
     cookies: () => {
-      const value = headers.get("Set-Cookie");
+      const value = headers.get(SET_COOKIE);
       if (value === undefined) {
         return [];
       }
@@ -81,21 +66,6 @@ function recordingResponse(): Recorded {
   return response;
 }
 
-/**
- * A configuration service over a validated configuration.
- *
- * @param overrides - Environment variables to change.
- * @returns The accessor.
- */
-function configFor(overrides: NodeJS.ProcessEnv = {}): AppConfigService {
-  const configuration = testConfiguration(overrides);
-
-  return new AppConfigService({
-    getOrThrow: (key: string) => configuration[key as keyof Configuration],
-    get: (key: string) => configuration[key as keyof Configuration],
-  } as never);
-}
-
 /** An auth service double whose every method is a mock. */
 function authDouble(): jest.Mocked<AuthService> {
   return {
@@ -103,78 +73,113 @@ function authDouble(): jest.Mocked<AuthService> {
   } as unknown as jest.Mocked<AuthService>;
 }
 
-/** The controller, its double, and a fresh response. */
-function harness(overrides: NodeJS.ProcessEnv = {}) {
+/**
+ * A stand-in for the library's `AuthService`, answering sign-out as the real one does.
+ *
+ * The real `signOut` deletes the session row and answers with the two cookie removals; this
+ * records what it was asked and answers with the same shape, because what the controller is
+ * responsible for is *forwarding the request and copying the answer*, and that is what can
+ * go wrong here.
+ */
+function betterAuthDouble() {
+  const signOut = jest.fn((request: { headers: Headers }): Promise<Response> => {
+    const headers = new Headers();
+    headers.append("set-cookie", `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly`);
+    headers.append("set-cookie", `${SESSION_DATA_COOKIE}=; Path=/; Max-Age=0; HttpOnly`);
+
+    return Promise.resolve(
+      new Response(JSON.stringify({ success: true, saw: request.headers.get("cookie") }), {
+        status: 200,
+        headers,
+      }),
+    );
+  });
+
+  return { double: { api: { signOut } } as unknown as BetterAuth<Auth>, signOut };
+}
+
+/** The controller, its doubles, and a fresh response. */
+function harness() {
   const auth = authDouble();
+  const { double, signOut } = betterAuthDouble();
 
   return {
     auth,
-    controller: new AuthController(auth, configFor(overrides)),
+    signOut,
+    controller: new AuthController(auth, double),
     response: recordingResponse(),
   };
 }
 
-/** The value of one named cookie among the `Set-Cookie` headers written. */
-function cookieValue(response: Recorded, name: string): string | undefined {
-  for (const header of response.cookies()) {
-    const value = parseCookies(header.slice(0, header.indexOf(";"))).get(name);
-    if (value !== undefined) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-/** The attributes of one named cookie among the `Set-Cookie` headers written. */
-function cookieHeader(response: Recorded, name: string): string {
-  return response.cookies().find((header) => header.startsWith(`${name}=`)) ?? "";
-}
-
 describe("reading the session", () => {
-  it("describes the person the guard established", async () => {
+  it("describes the person the guard resolved", async () => {
     const { auth, controller } = harness();
 
-    await controller.read(USER);
+    await controller.read(principalFor());
 
-    expect(auth.describe).toHaveBeenCalledWith(USER);
+    expect(auth.describe).toHaveBeenCalledWith(userRow(FIXTURE_USER));
+  });
+
+  it("refuses a route with no session rather than describing nobody", () => {
+    // Reachable only by somebody adding @AllowAnonymous() to this handler. It is a
+    // programming mistake, and it fails here by name rather than as a 500 about a query.
+    const { controller } = harness();
+
+    expect(() => controller.read(null)).toThrow(/@AllowAnonymous/);
   });
 });
 
 describe("signing out", () => {
-  it("answers 204 with no body", () => {
+  it("answers 204 with no body", async () => {
     const { controller, response } = harness();
 
-    controller.logout(response);
+    await controller.logout({ headers: {} }, response);
 
     expect(response.statuses).toEqual([204]);
     expect(response.ended).toBe(true);
   });
 
-  it("removes the session cookie", () => {
-    const { controller, response } = harness();
+  it("asks the library to end the session, which is what deletes the row", async () => {
+    // The whole of #703's revocation criterion at this layer: this route does not compose
+    // a cookie, it calls `signOut`. What that does to `ouroboros.session` is asserted where
+    // there is a database — `auth.integration-spec.ts`.
+    const { controller, response, signOut } = harness();
 
-    controller.logout(response);
+    await controller.logout({ headers: { cookie: "better-auth.session_token=abc" } }, response);
 
-    expect(cookieHeader(response, SESSION_COOKIE)).toContain("Max-Age=0");
-    expect(cookieValue(response, SESSION_COOKIE)).toBe("");
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(signOut.mock.calls[0][0].headers.get("cookie")).toBe("better-auth.session_token=abc");
   });
 
-  it("repeats the attributes the cookie was set with", () => {
-    // A browser treats a differing Path as a different cookie and leaves the original in
-    // place — so a logout that guessed would answer 204 and sign nobody out.
+  it("copies every cookie removal the library wrote, as separate headers", async () => {
+    // `Headers.forEach` folds repeated values into one comma-joined string, and a browser
+    // reads that as a single malformed cookie and sets none of them. Two cookies have to
+    // arrive as two headers or signing out leaves the cache cookie in place.
     const { controller, response } = harness();
 
-    controller.logout(response);
+    await controller.logout({ headers: {} }, response);
 
-    expect(cookieHeader(response, SESSION_COOKIE)).toContain("Path=/");
-    expect(cookieHeader(response, SESSION_COOKIE)).toContain("SameSite=Lax");
-    expect(cookieHeader(response, SESSION_COOKIE)).toContain("HttpOnly");
+    expect(response.cookies()).toHaveLength(2);
+    expect(response.cookies()[0]).toContain(SESSION_COOKIE);
+    expect(response.cookies()[1]).toContain(SESSION_DATA_COOKIE);
   });
 
-  it("works without a session, which is the whole reason it is public", () => {
+  it("keeps a Set-Cookie something else already wrote", async () => {
+    // The legacy `ouro_session` eviction runs as middleware, before this. A `setHeader`
+    // here would discard it on precisely the route where a stale cookie is most likely.
+    const { controller, response } = harness();
+    response.setHeader(SET_COOKIE, ["ouro_session=; Max-Age=0"]);
+
+    await controller.logout({ headers: {} }, response);
+
+    expect(response.cookies()[0]).toBe("ouro_session=; Max-Age=0");
+    expect(response.cookies()).toHaveLength(3);
+  });
+
+  it("works without a session, which is the whole reason it is anonymous", async () => {
     const { controller, response } = harness();
 
-    expect(() => controller.logout(response)).not.toThrow();
+    await expect(controller.logout({}, response)).resolves.toBeUndefined();
+    expect(response.statuses).toEqual([204]);
   });
 });

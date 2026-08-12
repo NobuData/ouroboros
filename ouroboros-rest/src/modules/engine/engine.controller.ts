@@ -9,8 +9,11 @@
  * be answered by asking the engine one question. The next engine feature is another named
  * operation beside it.
  *
- * It requires a session, by the polarity `@Public()` establishes: a route is authenticated
- * unless it says otherwise ([#33](https://github.com/NobuData/ouroboros/issues/33)). The
+ * It requires a session, by the polarity `@AllowAnonymous()` establishes: a route is
+ * authenticated unless it says otherwise
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33), and
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) for the guard that enforces it
+ * now). The
  * engine's version and reachability are not a secret worth much, but they are also nothing a
  * signed-out visitor has any business asking, and "this is the one route we left open" is
  * how a surface starts growing exceptions.

@@ -21,7 +21,7 @@ import { currentMembership, type ActiveMembership } from "./tenant.context";
 /**
  * The metadata key `@TenantOptional()` sets.
  *
- * Namespaced, for the reason `IS_PUBLIC` is: `Reflector` metadata is one flat space shared
+ * Namespaced, unlike the library's own `@AllowAnonymous()` key, and for the reason #33's `IS_PUBLIC` was: `Reflector` metadata is one flat space shared
  * with every library in the process.
  */
 export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
@@ -30,7 +30,7 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  * Mark a route as reachable without an active tenant.
  *
  * **Every authenticated route requires one unless it says this**, the same polarity
- * `@Public()` has and for the same reason: a route added later is scoped because somebody
+ * `@AllowAnonymous()` has and for the same reason: a route added later is scoped because somebody
  * wrote a controller, not because they remembered a decorator.
  *
  * The exceptions are enumerated, and each one is a question a workspace is not part of the
@@ -64,7 +64,7 @@ export const TenantOptional = (): CustomDecorator => SetMetadata(TENANT_OPTIONAL
  * ```
  *
  * @throws {Error} If no tenant was established — which means the decorator is on a
- *   `@TenantOptional()` or `@Public()` route. A programming mistake rather than a request's,
+ *   `@TenantOptional()` or `@AllowAnonymous()` route. A programming mistake rather than a request's,
  *   and it fails loudly here rather than handing a handler `undefined` typed as a `Tenant`,
  *   which is how a query ends up filtered by nothing at all.
  */

@@ -96,7 +96,7 @@ function declaredRoles(target: new (...args: never[]) => object, handler: unknow
 
 describe("a route that declares no roles", () => {
   it("is open to every member, including a viewer", () => {
-    // Not the same laxity as `@Public()`: the tenant guard has already refused anybody who
+    // Not the same laxity as `@AllowAnonymous()`: the tenant guard has already refused anybody who
     // is not a member, so the default is "any of the four roles" rather than "anybody". A
     // `viewer` is a role that exists to be able to look.
     for (const role of ["owner", "admin", "member", "viewer"] as TenantRole[]) {
