@@ -29,7 +29,7 @@ const { LoginScreen } = await import("@/app/login/login-screen");
  * to markup.
  */
 
-const SIGN_IN = "http://rest.test:4000/api/v1/auth/github";
+const SIGN_IN = "http://rest.test:4000/api/auth/sign-in/social";
 
 describe("the login screen, signed out", () => {
   /**

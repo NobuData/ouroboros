@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.12.0"
+  version: "0.13.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -103,19 +103,30 @@ tags:
 
   - name: auth
     description: |-
-      Signing in, and finding out who is signed in. Sign-in is GitHub's authorization code
-      flow: a browser is navigated to `/api/v1/auth/github`, authorizes on github.com, and
-      returns to a callback that lands an `HttpOnly` session cookie.
+      Finding out who is signed in, and signing out.
 
-      **Everything else in this document requires that cookie.** The three routes that do
-      not are the two halves of sign-in and sign-out — one has no session yet and the other
-      is disposing of one that may already have expired — along with the heartbeat and the
-      two probes, whose readers hold no session and could not be given one.
+      **Signing in is no longer in this document, and that is not an omission.**
+      [#702](https://github.com/NobuData/ouroboros/issues/702) replaced the hand-rolled
+      GitHub flow with BetterAuth's, which serves its own routes under `/api/auth/*` —
+      beside this versioned surface rather than inside it, because the library versions its
+      own routes. `POST /api/auth/sign-in/social` with `{"provider": "github"}` begins a
+      sign-in and `/api/auth/callback/github` is where GitHub returns the browser;
+      `ouroboros-rest/src/auth/auth.routes.ts` is the map, and
+      [#711](https://github.com/NobuData/ouroboros/issues/711) is the issue that publishes
+      those paths here. Until it lands, this document describes what *this service's
+      controllers* serve, and describing routes it does not serve would be worse than
+      describing fewer.
+
+      **Everything else in this document requires the session cookie.** The routes that do
+      not are sign-out — which is disposing of a session that may already have expired —
+      along with the heartbeat and the two probes, whose readers hold no session and could
+      not be given one.
 
       The session is a signed, stateless cookie: no server-side store, and so no revocation
       before it ages out. Signing out clears the browser's copy; a copy taken beforehand
-      stays valid for the remainder of its seven days. That is the MVP trade, and the
-      revocable design is recorded with
+      stays valid for the remainder of its seven days. That is the MVP trade;
+      [#703](https://github.com/NobuData/ouroboros/issues/703) replaces it with a
+      database-backed session that sign-out deletes, closing the revocation half of
       [#38](https://github.com/NobuData/ouroboros/issues/38).
 
   - name: engine
@@ -222,158 +233,6 @@ paths:
                 status: ok
                 uptimeSeconds: 3.885
 
-  /api/v1/auth/github:
-    get:
-      tags: [auth]
-      summary: Begin sign-in with GitHub
-      description: |-
-        Send the browser to GitHub to authorize, and remember the trip.
-
-        This is a **navigation, not a call**. A person clicks "Continue with GitHub" and
-        their browser follows a `302` to github.com, where they see a consent screen; a
-        `fetch` from script would follow the redirect into a page it cannot render and land
-        nobody anywhere. `ouroboros-ui` links to it.
-
-        The redirect carries the client id, the scopes (`read:user` and `user:email`, and
-        nothing else), an opaque `state` and a PKCE `code_challenge`. The `state` and the
-        matching verifier are kept in a short-lived signed `HttpOnly` cookie —
-        `ouro_oauth`, ten minutes, scoped to `/api/v1/auth` — and comparing the returned
-        `state` against that cookie is what makes the callback safe from being fabricated.
-      operationId: startGithubSignIn
-      security: []
-      responses:
-        "302":
-          description: |-
-            Go and authorize. `Location` is on github.com and `Set-Cookie` carries the
-            handshake this service will check on the way back. There is no body.
-          headers:
-            Location:
-              description: The GitHub authorization URL, with the state and PKCE challenge.
-              schema:
-                type: string
-                format: uri
-            Set-Cookie:
-              description: |-
-                `ouro_oauth`, `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/auth`, ten minutes,
-                and `Secure` outside development.
-              schema:
-                type: string
-        "500":
-          description: |-
-            `internal_error` — the service itself failed. The message is a constant and
-            `details` is empty, deliberately: the real diagnosis names a query, a host or a
-            role, and it goes to the service log where only an operator reads it.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /api/v1/auth/github/callback:
-    get:
-      tags: [auth]
-      summary: Finish sign-in with GitHub
-      description: |-
-        Where GitHub returns the browser. Verifies the handshake, exchanges the code for a
-        token, reads the account's profile and verified primary address, resolves the
-        person, and lands the session cookie before redirecting to `OURO_UI_URL`.
-
-        **This URL is registered against the OAuth application**; it is not something a
-        client composes. It is described here because this document describes everything
-        the service serves.
-
-        Resolving the person has three outcomes, and the middle one is why a sign-in can
-        arrive already holding a membership: the GitHub identity is already known and the
-        same user row is reused; or the identity is new and the *address* is one an
-        invitation was sent to, in which case the identity is attached to that existing
-        row; or neither is known and a person is created. The access token is used for
-        those two reads and then dropped — `ouroboros.user_identities` holds no credential,
-        and the schema's own tests fail if a column that looks like one ever appears.
-      operationId: completeGithubSignIn
-      security: []
-      parameters:
-        - name: code
-          in: query
-          required: true
-          description: The authorization code GitHub issued. Opaque, and redeemable once.
-          schema:
-            type: string
-            pattern: ^[A-Za-z0-9._~-]+$
-            minLength: 1
-            maxLength: 512
-        - name: state
-          in: query
-          required: true
-          description: |-
-            The value this service generated before the browser left, echoed back
-            unchanged. Compared against the `ouro_oauth` cookie; a mismatch is a `401`.
-          schema:
-            type: string
-            pattern: ^[A-Za-z0-9._~-]+$
-            minLength: 1
-            maxLength: 512
-      responses:
-        "302":
-          description: |-
-            Signed in. `Location` is `OURO_UI_URL` and `Set-Cookie` carries two headers: the
-            session, and the removal of the spent handshake. There is no body.
-          headers:
-            Location:
-              description: "`OURO_UI_URL` — where a signed-in browser lands."
-              schema:
-                type: string
-                format: uri
-            Set-Cookie:
-              description: |-
-                `ouro_session`, `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and
-                `Secure` outside development — plus the expiry of `ouro_oauth`.
-              schema:
-                type: string
-        "401":
-          description: |-
-            `oauth_handshake_invalid` — this callback does not match a handshake this
-            service started. The cookie was absent, expired, forged, or carries a different
-            `state` than the query string.
-
-            All four are one answer on purpose. A callback an attacker composed cannot
-            carry the cookie, and telling them which part was missing is telling them what
-            to fix.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: |-
-            `validation_failed` — `code` or `state` was missing, too long, or not an opaque
-            URL-safe value. `details` carries one entry per parameter, keyed by its name.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "502":
-          description: |-
-            `github_unavailable` — GitHub refused the exchange or did not answer inside ten
-            seconds. Or `github_email_unavailable`, when the account authenticated and
-            offered no *verified* address: an address is how a person invited to a tenant
-            before their first sign-in is recognised as that person, and accepting an
-            unverified one would let somebody else's address decide which account they land
-            on.
-
-            A `502` rather than a `500`, because nothing in this service is broken and
-            retrying is reasonable. Nothing GitHub said is repeated in the body.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: |-
-            `internal_error` — the service itself failed. The message is a constant and
-            `details` is empty, deliberately: the real diagnosis names a query, a host or a
-            role, and it goes to the service log where only an operator reads it.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /api/v1/auth/me:
     get:
       tags: [auth]
@@ -416,7 +275,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -593,7 +452,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -673,7 +532,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -739,7 +598,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -823,7 +682,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -922,7 +781,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1006,7 +865,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1118,7 +977,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1207,7 +1066,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1302,7 +1161,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1394,7 +1253,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1500,7 +1359,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1591,7 +1450,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1692,7 +1551,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1777,7 +1636,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1883,7 +1742,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -1983,7 +1842,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -2076,7 +1935,7 @@ paths:
         "401":
           description: |-
             `unauthenticated` — this request carries no session, or one this service will
-            not honour. Sign in at `/api/v1/auth/github`.
+            not honour. Sign in through `/api/auth/sign-in/social`.
 
             Every way a session can fail is this one answer: absent, expired, signed with a
             rotated key, forged, or naming a person who has since been deleted. A client
@@ -2245,9 +2104,12 @@ components:
       in: cookie
       name: ouro_session
       description: |-
-        The session cookie, issued by `/api/v1/auth/github/callback` and removed by
-        `/api/v1/auth/logout`. `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and
-        `Secure` outside development.
+        The session cookie, removed by `/api/v1/auth/logout`. `HttpOnly`, `SameSite=Lax`,
+        `Path=/`, seven days, and `Secure` outside development.
+
+        **Nothing issues one as of #702**, which moved sign-in to BetterAuth and its own
+        session cookie; #703 is what replaces this scheme with that one. The two land close
+        together for exactly that reason.
 
         It is a signed value carrying a user id and an issue time — not a bearer token to
         be minted or pasted. `apiKey`/`cookie` is OpenAPI's nearest description of a cookie

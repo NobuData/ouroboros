@@ -18,6 +18,23 @@
  * you were called at sign-in, and a membership that was revoked keeps being honoured. The
  * guard reads the row on every request instead (`auth.guard.ts`), which costs one indexed
  * lookup and buys "deleted user, no access" for free.
+ *
+ * ---
+ *
+ * **Nothing issues one of these any more.**
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) moved sign-in to BetterAuth,
+ * which mints its own session against the `session` table
+ * ([#706](https://github.com/NobuData/ouroboros/issues/706)) — so
+ * {@link issueSession}'s only caller went with `completeSignIn`, and this module is now
+ * half a mechanism: `readSession` is still what `SessionGuard` authenticates every request
+ * with, and `issueSession` is what nothing calls.
+ *
+ * That is the seam both issues warn about, and it is deliberately not patched over here.
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) deletes this file — along with
+ * `signing.ts` and `cookies.ts` — and replaces the guard with the library's, and the two
+ * are meant to land close together for exactly this reason. Reissuing an `ouro_session`
+ * cookie from a BetterAuth session in the meantime would be a *third* session mechanism
+ * built to be deleted a week later.
  */
 
 import { epochSeconds, readToken, signToken, type Issued, type TokenTerms } from "./signing";

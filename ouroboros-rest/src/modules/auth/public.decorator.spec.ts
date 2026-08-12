@@ -40,8 +40,6 @@ describe("the routes that need no session", () => {
     ["the heartbeat", AppController, AppController.prototype.heartbeat],
     ["liveness", HealthController, HealthController.prototype.live],
     ["readiness", HealthController, HealthController.prototype.ready],
-    ["beginning a sign-in", AuthController, AuthController.prototype.start],
-    ["finishing a sign-in", AuthController, AuthController.prototype.callback],
     ["signing out", AuthController, AuthController.prototype.logout],
   ])("%s is public", (_description, target, handler) => {
     expect(isPublic(target as never, handler)).toBe(true);

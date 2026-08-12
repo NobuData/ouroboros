@@ -14,7 +14,6 @@ import { AUTH_ERRORS } from "./auth.errors";
 import { AuthModule } from "./auth.module";
 import { AuthRepository } from "./auth.repository";
 import { AuthService } from "./auth.service";
-import { GithubClient } from "./github";
 
 /**
  * The wiring, and the one piece of it that is a security property.
@@ -44,7 +43,6 @@ describe("the auth module", () => {
 
   it.each([
     ["the repository", AuthRepository],
-    ["the GitHub client", GithubClient],
     ["the service", AuthService],
   ])("resolves %s", async (_description, provider) => {
     const moduleRef = await compile();
@@ -118,9 +116,19 @@ describe("the guard this module registers", () => {
     await request(server()).get("/health/live").expect(200);
   });
 
-  it("leaves the sign-in routes alone", async () => {
-    await request(server()).get("/api/v1/auth/github").expect(302);
+  it("leaves signing out alone", async () => {
+    // The one route of this module's own that stays public. #702 removed the two sign-in
+    // routes that used to be asserted beside it — BetterAuth serves the replacement under
+    // `/api/auth`, which never reaches this guard because it never reaches Nest's router.
     await request(server()).post("/api/v1/auth/logout").expect(204);
+  });
+
+  it("leaves BetterAuth's own routes alone, mounted ahead of the router as they are", async () => {
+    // The seam #702 depends on: sign-in has to work for somebody holding no session, and it
+    // does so by not passing through a Nest guard at all. `/api/auth/ok` is the library
+    // answering for itself, which is what makes this an assertion about the mount rather
+    // than about a provider.
+    await request(server()).get("/api/auth/ok").expect(200);
   });
 
   it("answers the envelope, so a 401 parses like every other failure", async () => {

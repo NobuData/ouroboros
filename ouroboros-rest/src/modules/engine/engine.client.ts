@@ -6,9 +6,10 @@
  * here rather than at each call site — the base URL, the shared secret, a deadline, one
  * retry, and the mapping of every possible failure onto one `502`.
  *
- * Bare `fetch` rather than a client library, for the reason `auth/github.ts` gives: Node 24
- * has one, this is two routes, and `@nestjs/axios` would add an interceptor stack and an
- * RxJS surface in exchange for a base URL and a header.
+ * Bare `fetch` rather than a client library: Node 24 has one, this is two routes, and
+ * `@nestjs/axios` would add an interceptor stack and an RxJS surface in exchange for a base
+ * URL and a header. (`auth/github.ts` made the same call for the same reason until #702
+ * replaced it with BetterAuth's provider, which brings its own fetch wrapper.)
  *
  * Four rules hold for every call below:
  *
@@ -55,12 +56,14 @@ import { engineUnavailable } from "./engine.errors";
 /**
  * How long any single call to the engine may take, in milliseconds.
  *
- * Longer than the readiness probe's two seconds (`health/probe.ts`) and shorter than
- * GitHub's ten (`auth/github.ts`), and both comparisons are the reason. A probe answers a
- * healthcheck that has its own short timeout; the GitHub calls hold a browser mid-redirect,
- * which it will wait through. This holds a request a person is watching a spinner for, over
- * a hop that is inside the cluster — so a call that has not answered in five seconds has
- * told us what we needed to know.
+ * Longer than the readiness probe's two seconds (`health/probe.ts`), and the comparison is
+ * the reason: a probe answers a healthcheck that has its own short timeout, while this holds
+ * a request a person is watching a spinner for, over a hop that is inside the cluster — so a
+ * call that has not answered in five seconds has told us what we needed to know.
+ *
+ * It is deliberately *shorter* than a call to a third party would be. BetterAuth's own
+ * deadline governs the GitHub round trips now (#702); those hold a browser mid-redirect,
+ * which it will wait through, and this does not.
  */
 export const ENGINE_TIMEOUT_MS = 5_000;
 

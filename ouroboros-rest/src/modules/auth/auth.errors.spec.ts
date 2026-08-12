@@ -3,22 +3,24 @@ import { join } from "node:path";
 
 import { HttpStatus } from "@nestjs/common";
 
-import {
-  AUTH_ERRORS,
-  emailUnavailable,
-  githubUnavailable,
-  handshakeInvalid,
-  unauthenticated,
-} from "./auth.errors";
+import { AUTH_ERRORS, unauthenticated } from "./auth.errors";
 
 /**
- * The codes sign-in answers with, and the two promises made about them.
+ * The codes the authentication surface answers with, and the two promises made about them.
  *
  * The first is that every code here is in `openapi.yaml`, because the document is the
  * registry a client reads and a code that is not in it is a `switch` case nobody knew to
  * write. The second is the one specific to authentication: **a failed sign-in says as
  * little as it truthfully can**, so none of these messages names a cookie, a field, or
  * which half of a check failed.
+ *
+ * **Three of the four codes left with #33's OAuth flow.** `oauth_handshake_invalid`,
+ * `github_unavailable` and `github_email_unavailable` were `oauth.ts`'s and `github.ts`'s,
+ * and [#702](https://github.com/NobuData/ouroboros/issues/702) deleted the files, the
+ * codes, the specification entries and these suites together. BetterAuth reports its own
+ * failures by redirecting to `/api/auth/error` with the reason in the query string, which
+ * is a surface [#711](https://github.com/NobuData/ouroboros/issues/711) publishes rather
+ * than one this catalogue describes.
  */
 
 /** The module root, where the authoritative specification is committed. */
@@ -67,48 +69,8 @@ describe("a request with no session", () => {
   });
 });
 
-describe("a callback that does not match a handshake", () => {
-  it("is a 401, not a 403 — nobody is signed in yet", () => {
-    expect(handshakeInvalid().getStatus()).toBe(HttpStatus.UNAUTHORIZED);
-    expect(handshakeInvalid().code).toBe(AUTH_ERRORS.handshakeInvalid);
-  });
-
-  it("says the link is no longer valid, and not which check refused it", () => {
-    const message = handshakeInvalid().message;
-
-    expect(message).toContain("Start again");
-    expect(message).not.toMatch(/state|cookie|csrf/i);
-  });
-});
-
-describe("a failure at GitHub", () => {
-  it("is a 502, because nothing here is broken and retrying is reasonable", () => {
-    expect(githubUnavailable().getStatus()).toBe(HttpStatus.BAD_GATEWAY);
-    expect(emailUnavailable().getStatus()).toBe(HttpStatus.BAD_GATEWAY);
-  });
-
-  it("names GitHub, which is the one thing the caller can act on", () => {
-    expect(githubUnavailable().message).toContain("GitHub");
-    expect(emailUnavailable().message).toContain("GitHub");
-  });
-
-  it("tells somebody with no verified address exactly what to fix", () => {
-    // The one failure here that is permanent until the person does something: an account
-    // with no verified address cannot be matched to an invitation, and guessing at one is
-    // the mistake that would be silent and irreversible.
-    expect(emailUnavailable().message).toContain("Verify an address on GitHub");
-  });
-});
-
 describe("every error here", () => {
   it("carries empty details rather than absent ones", () => {
-    for (const error of [
-      unauthenticated(),
-      handshakeInvalid(),
-      githubUnavailable(),
-      emailUnavailable(),
-    ]) {
-      expect(error.envelope().details).toEqual({});
-    }
+    expect(unauthenticated().envelope().details).toEqual({});
   });
 });

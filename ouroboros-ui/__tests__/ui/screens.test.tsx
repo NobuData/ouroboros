@@ -40,7 +40,7 @@ type LoginScreenState = Parameters<typeof LoginScreen>[0]["state"];
  * no domain concept.
  */
 
-const SIGN_IN = "http://rest.test:4000/api/v1/auth/github";
+const SIGN_IN = "http://rest.test:4000/api/auth/sign-in/social";
 
 /** The four states of the login screen, so no shape of step 2 escapes the sweep. */
 const LOGIN_STATES: readonly (readonly [string, LoginScreenState])[] = [
