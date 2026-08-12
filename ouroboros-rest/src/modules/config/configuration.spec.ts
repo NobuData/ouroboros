@@ -61,6 +61,8 @@ describe("the development defaults", () => {
       uiUrl: "http://localhost:3000",
       engineUrl: "http://localhost:8000",
       engineSharedSecret: "dev-engine-shared-secret-change-me",
+      betterAuthSecret: "dev-better-auth-secret-change-me",
+      betterAuthUrl: "http://localhost:4000",
       sessionSecret: "dev-session-secret-change-me",
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
@@ -95,10 +97,32 @@ describe("the shape of a configuration", () => {
     expect(Object.keys(VARIABLES).sort()).toEqual(Object.keys(configuration).sort());
   });
 
-  it("prefixes every Ouroboros variable and leaves the platform standards alone", () => {
+  // `docs/CONVENTIONS.md` § 4, as an assertion. The exceptions are enumerated rather than
+  // pattern-matched, so the next variable that forgets the prefix fails here instead of
+  // being absorbed by a rule written loosely enough to admit it.
+  it("prefixes every Ouroboros variable and leaves the documented exceptions alone", () => {
     const names = Object.values(VARIABLES);
 
-    expect(names.filter((name) => !name.startsWith("OURO_"))).toEqual(["PORT", "NODE_ENV"]);
+    expect(names.filter((name) => !name.startsWith("OURO_"))).toEqual([
+      // The platform's, because that is what container runtimes set.
+      "PORT",
+      "NODE_ENV",
+      // BetterAuth's own, because the library, its CLI and its documentation all name them
+      // — roadmap decision A9 (#700).
+      "BETTER_AUTH_SECRET",
+      "BETTER_AUTH_URL",
+    ]);
+  });
+
+  // Decision A9's other half, and the one worth a test: BetterAuth's GitHub provider
+  // (#702) reads `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` from the environment when it is
+  // handed nothing, so the way this goes wrong is a second pair of keys appearing beside
+  // the ones `.env.example` has documented since #33 — with a deployment then setting one
+  // pair and signing in through the other.
+  it("declares one GitHub application, under the keys the template already documents", () => {
+    const github = Object.values(VARIABLES).filter((name) => name.includes("GITHUB"));
+
+    expect(github).toEqual(["OURO_GITHUB_CLIENT_ID", "OURO_GITHUB_CLIENT_SECRET"]);
   });
 });
 
@@ -111,6 +135,8 @@ describe("a missing variable", () => {
     VARIABLES.uiUrl,
     VARIABLES.engineUrl,
     VARIABLES.engineSharedSecret,
+    VARIABLES.betterAuthSecret,
+    VARIABLES.betterAuthUrl,
     VARIABLES.sessionSecret,
     VARIABLES.githubClientId,
     VARIABLES.githubClientSecret,
@@ -131,12 +157,14 @@ describe("a missing variable", () => {
   it("is reported alongside every other problem, not one boot at a time", () => {
     const message = failureFor({ OURO_DATABASE_URL: "postgresql://user@host:5432/db" });
 
-    expect(message).toContain("invalid configuration (8 problems)");
+    expect(message).toContain("invalid configuration (10 problems)");
     for (const variable of [
       VARIABLES.restUrl,
       VARIABLES.uiUrl,
       VARIABLES.engineUrl,
       VARIABLES.engineSharedSecret,
+      VARIABLES.betterAuthSecret,
+      VARIABLES.betterAuthUrl,
       VARIABLES.sessionSecret,
       VARIABLES.githubClientId,
       VARIABLES.githubClientSecret,
@@ -253,8 +281,33 @@ describe("OURO_ENGINE_URL", () => {
   });
 });
 
+describe("BETTER_AUTH_URL", () => {
+  it.each([
+    ["this service's development origin", "http://localhost:4000"],
+    ["a deployed origin", "https://api.ouroboros.build"],
+  ])("accepts %s", (_description, value) => {
+    expect(loadConfiguration(testEnvironment({ BETTER_AUTH_URL: value })).betterAuthUrl).toBe(
+      value,
+    );
+  });
+
+  // BetterAuth appends its own base path (`/api/auth`) to this, so a value that already
+  // carries one produces callback URLs with the path twice — a sign-in that fails at
+  // GitHub's end with a redirect_uri mismatch, which is a long way from the typo.
+  it.each([
+    ["a base path, which BetterAuth adds for itself", "http://localhost:4000/api/auth"],
+    ["a trailing slash", "http://localhost:4000/"],
+    ["a bare host", "localhost:4000"],
+    ["a wildcard", "*"],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ BETTER_AUTH_URL: value }))).toContain(
+      `${VARIABLES.betterAuthUrl}: expected this service's own browser origin`,
+    );
+  });
+});
+
 describe("the secrets", () => {
-  it.each([VARIABLES.engineSharedSecret, VARIABLES.sessionSecret])(
+  it.each([VARIABLES.engineSharedSecret, VARIABLES.betterAuthSecret, VARIABLES.sessionSecret])(
     "rejects a %s short enough to have been typed by hand",
     (variable) => {
       const message = failureFor(testEnvironment({ [variable]: "hunter2" }));

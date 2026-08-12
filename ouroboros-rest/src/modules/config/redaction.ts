@@ -27,14 +27,19 @@ export const REDACTED_PASSWORD = "***";
  * `OURO_GITHUB_CLIENT_ID` is deliberately not among them: it is published in the OAuth
  * redirect every browser follows, so hiding it would cost a useful diagnostic and protect
  * nothing. `OURO_DATABASE_URL` is not among them either, because it is redacted more
- * precisely — see {@link redactDatabaseUrl}. Nor is `OURO_AUTH_DEV_USER`, and that one is
- * the point of the output rather than an omission from it: it is an address, it is a
- * credential only in the sense that a bypass *is* one, and printing it is how an operator
- * confirms the bypass is off ([#33](https://github.com/NobuData/ouroboros/issues/33)).
- * Redacting it would make "off" and "on, as somebody" print the same line.
+ * precisely — see {@link redactDatabaseUrl}. Nor is `BETTER_AUTH_URL`, which is an address
+ * a browser is redirected to. Nor is `OURO_AUTH_DEV_USER`, and that one is the point of
+ * the output rather than an omission from it: it is an address, it is a credential only in
+ * the sense that a bypass *is* one, and printing it is how an operator confirms the bypass
+ * is off ([#33](https://github.com/NobuData/ouroboros/issues/33)). Redacting it would make
+ * "off" and "on, as somebody" print the same line.
  */
 export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   VARIABLES.engineSharedSecret,
+  // BetterAuth signs sessions and encrypts stored OAuth tokens with this one
+  // ([#700](https://github.com/NobuData/ouroboros/issues/700)), so it is the single most
+  // valuable string this service holds after the database password.
+  VARIABLES.betterAuthSecret,
   VARIABLES.sessionSecret,
   VARIABLES.githubClientSecret,
 ]);

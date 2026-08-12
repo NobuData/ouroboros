@@ -280,11 +280,15 @@ printf '\nCredential handling\n'
 # git that also silently ignores whatever the developer put in .env.
 check_absent "$COMPOSE" '^ *POSTGRES_[A-Z_]+:[[:space:]]*[^$[:space:]]' 'no literal POSTGRES_* credential in the compose file'
 check_absent "$COMPOSE" '^ *- -(user|password|url)=[^$]*$' 'no literal Flyway credential in the compose file'
-# The application services brought four more of them, and the same rule: a value that
-# does not open with `$` is one somebody typed into a committed file, and one a developer
-# cannot change from their .env because nothing here would read it.
-check_absent "$COMPOSE" '^ *OURO_[A-Z_]*(SECRET|CLIENT_ID):[[:space:]]*[^$[:space:]]' \
-  'no literal OURO_* credential in the compose file'
+# The application services brought more of them, and the same rule: a value that does not
+# open with `$` is one somebody typed into a committed file, and one a developer cannot
+# change from their .env because nothing here would read it.
+#
+# Matched on the *suffix* rather than on the OURO_ prefix, because not every credential in
+# this stack carries one — BETTER_AUTH_SECRET is the library's own name (issue #700,
+# docs/CONVENTIONS.md § 4), and a rule anchored to the prefix would have let it through.
+check_absent "$COMPOSE" '^ *[A-Z_]*(SECRET|CLIENT_ID):[[:space:]]*[^$[:space:]]' \
+  'no literal credential in the compose file'
 check_absent "$COMPOSE" '^ *env_file:' 'the stack does not depend on an uncommitted env_file to start'
 
 # ---------------------------------------------------------------------------
@@ -316,8 +320,13 @@ done
 
 # Anything a module README documents has to be in the template too — this is the check
 # that catches the template drifting behind the modules as they are scaffolded.
+#
+# `BETTER_AUTH_` is matched beside the prefix rather than instead of it: docs/CONVENTIONS.md
+# § 4 lets a library's own canonical variable keep its own name, and a pattern that only
+# knew about OURO_ would stop checking a variable the moment it became an exception —
+# which is the moment it most needs checking (issue #700).
 for name in $(cat ouroboros-*/README.md docs/CONVENTIONS.md 2>/dev/null |
-  grep -oE 'OURO_[A-Z0-9_]+' | sort -u); do
+  grep -oE '(OURO_|BETTER_AUTH_)[A-Z0-9_]+' | sort -u); do
   check_declared "$name" 'documented by a module'
 done
 

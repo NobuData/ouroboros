@@ -61,7 +61,7 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 |---|---|---|
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
 | **`ouroboros-rest`** | `modules/auth/` (21 files — full OAuth + stateless session), `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app` | A.3/A.4 **delete** `oauth.ts`, `github.ts`, `session.ts`, `signing.ts`, `cookies.ts` and rewrite `auth.guard.ts`/`principal.ts` against BetterAuth. |
-| **env (`.env.example`)** | `OURO_SESSION_SECRET`, `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, `OURO_AUTH_DEV_USER=ken@acme-robotics.dev` | A.1 **replaces** `OURO_SESSION_SECRET` with `BETTER_AUTH_SECRET`/`BETTER_AUTH_URL`; A.6 **removes** `OURO_AUTH_DEV_USER`. Both are live keys, not plans. |
+| **env (`.env.example`)** | `OURO_SESSION_SECRET`, `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, `OURO_AUTH_DEV_USER=ken@acme-robotics.dev`, and — since A.1 shipped — `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.1 **added** BetterAuth's two beside the existing keys rather than swapping them: `OURO_SESSION_SECRET` signs a session that is still live, so **A.4** is what removes it. A.6 **removes** `OURO_AUTH_DEV_USER`. All of them are live keys, not plans. |
 | **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2 is largely **done**; D.3's SSO half is **built and waiting for C.2**; D.4's cards exist and need re-pointing at C.4. Epic D shrinks accordingly. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
@@ -157,9 +157,24 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 
 ## Epic A (#695) — BetterAuth Foundation (`ouroboros-rest`)
 
+> **A.1 · #700 has shipped and has left the table below.** `better-auth` is a dependency of
+> `ouroboros-rest`; [`src/auth/`](../ouroboros-rest/src/auth) holds `auth.options.ts` (the
+> options, and every decision in them), `auth.factory.ts` (the one place the library is a
+> value rather than a type) and `auth.config.ts` (the standalone instance
+> `@better-auth/cli` loads). `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are in the #28
+> schema, both `.env.example` files, `docker-compose.yml` and `turbo.json`'s `globalEnv`;
+> the secret is in `redaction.ts`'s classification. The adapter is handed
+> `DatabaseService`'s `pg` pool, so the running service still opens exactly one — asserted
+> in `auth.options.spec.ts`, not assumed. Its issue section below is kept as the record of
+> what was asked for.
+>
+> Two things it deliberately did **not** do. `OURO_SESSION_SECRET` is still there, because
+> the hand-rolled signer it belongs to is still there until **A.4**; and no provider,
+> plugin or session strategy is configured, which `auth.options.spec.ts` pins by asserting
+> the whole option surface. **A.2** is the next one, and it is unblocked.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.1 · #700 | ouroboros-rest: [A.1] BetterAuth installation & configuration module | Library + config file, Kysely adapter over the existing pool, env schema | mvp, auth, rest | N (after #27, #28) | Y | M | ouroboros-rest |
 | A.2 · #701 | ouroboros-rest: [A.2] Mount BetterAuth handler in NestJS | `@thallesp/nestjs-better-auth`, raw-body bootstrap, `/api/auth/*` | mvp, auth, rest | N (after A.1) | Y | S | ouroboros-rest |
 | A.3 · #702 | ouroboros-rest: [A.3] GitHub social provider (retiring the hand-rolled OAuth) | Provider wiring + back-fill `user_identities`→`account` + delete #33's OAuth files | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.4 · #703 | ouroboros-rest: [A.4] Session strategy & global auth guard (retiring the stateless cookie) | DB sessions + cookie cache, swap the live guard, port every `@Public()` exemption | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
@@ -167,6 +182,10 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 | A.6 · #705 | ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`) | Local/e2e auth without GitHub, hard-off in production, bypass deleted | mvp, auth, rest | N (after A.4) | Y | **M** ⬆ | ouroboros-rest |
 
 ### Issue A.1 (#700) — ouroboros-rest: [A.1] BetterAuth installation & configuration module
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, and
+`ouroboros-rest/README.md` § BetterAuth for how it is used.
 
 - **Problem Statement:** BetterAuth needs a home in the NestJS service: a standalone
   config (`src/auth/auth.config.ts`, importable by the CLI without booting Nest), the
@@ -1189,7 +1208,7 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** A.1 #700 → { A.2 #701 ⊕ (B.1 #706 → B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 }) }
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ *(shipped)* → { A.2 #701 ⊕ (B.1 #706 → B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 }) }
    *(**B.3 is the cutover.** It drops `tenants`, `tenant_members`, `users` and
    `user_identities` — every consumer of those tables must already be migrated or
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
@@ -1299,8 +1318,9 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here:** #700 (A.1) is the only issue with no unmet dependency. Everything else
-is blocked until it lands.
+**Start here:** #700 (A.1) **has landed**, so #701 (A.2) and #706 (B.1) are both
+unblocked and can run side by side — the mount and the schema. Everything else is still
+blocked behind those two.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

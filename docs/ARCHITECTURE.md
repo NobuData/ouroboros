@@ -587,7 +587,9 @@ checkout runs with:
 | `OURO_UI_URL` | `ouroboros-rest` | Where a browser lands after signing in or out; the OAuth callback is a navigation, and this service serves no pages | `http://localhost:3000` |
 | `OURO_ENGINE_URL` | `ouroboros-rest` | Base URL of the engine; never exposed to a browser | `http://localhost:8000` |
 | `OURO_ENGINE_SHARED_SECRET` | `ouroboros-rest`, `ouroboros-engine` | Value of `X-Ouro-Internal-Key`; compared in constant time. Both sides must match | `dev-engine-shared-secret-change-me` |
-| `OURO_SESSION_SECRET` | `ouroboros-rest` | Signing key for the session cookie; rotating it invalidates every session | `dev-session-secret-change-me` |
+| `BETTER_AUTH_SECRET` | `ouroboros-rest` | What BetterAuth signs sessions and encrypts stored OAuth tokens with. Unprefixed because the library and its CLI read this name ([#700](https://github.com/NobuData/ouroboros/issues/700), conventions § 4) | `dev-better-auth-secret-change-me` |
+| `BETTER_AUTH_URL` | `ouroboros-rest` | The origin BetterAuth builds its own URLs from — the same address as `OURO_REST_URL`, in the library's vocabulary. Nothing derives one from the other | `http://localhost:4000` |
+| `OURO_SESSION_SECRET` | `ouroboros-rest` | Signing key for the session cookie; rotating it invalidates every session. Retired by [#703](https://github.com/NobuData/ouroboros/issues/703) with the hand-rolled session itself | `dev-session-secret-change-me` |
 | `OURO_GITHUB_CLIENT_ID` | `ouroboros-rest` | GitHub OAuth application, client id | `dev-github-client-id` |
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
 | `OURO_AUTH_DEV_USER` | `ouroboros-rest` | Development sign-in bypass: every request is treated as coming from this address, which must name a `ouroboros.users` row. Dropped before validation when `NODE_ENV=production` | `ken@acme-robotics.dev` |

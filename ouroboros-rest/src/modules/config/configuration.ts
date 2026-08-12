@@ -3,10 +3,11 @@
  *
  * `docs/CONVENTIONS.md` § 4 asks two things of configuration: that everything
  * Ouroboros-specific carries the `OURO_` prefix while platform standards (`PORT`,
- * `NODE_ENV`) do not, and that a missing or malformed value **stops the process while it
- * is starting, naming the variable**, rather than surfacing as a stack trace on the first
- * request that happens to need it. This file is where the second half of that is decided
- * for `ouroboros-rest`, the way `settings.py` decides it for `ouroboros-engine`.
+ * `NODE_ENV`) and a library's own canonical names (`BETTER_AUTH_*`) do not, and that a
+ * missing or malformed value **stops the process while it is starting, naming the
+ * variable**, rather than surfacing as a stack trace on the first request that happens to
+ * need it. This file is where the second half of that is decided for `ouroboros-rest`,
+ * the way `settings.py` decides it for `ouroboros-engine`.
  *
  * Three things about the shape are deliberate:
  *
@@ -109,6 +110,29 @@ export interface Configuration {
   readonly engineUrl: string;
   /** Value sent as `X-Ouro-Internal-Key`. From `OURO_ENGINE_SHARED_SECRET`. */
   readonly engineSharedSecret: string;
+  /**
+   * BetterAuth's signing and encryption key. From `BETTER_AUTH_SECRET`.
+   *
+   * Unprefixed because it is BetterAuth's own canonical name, which the library reads
+   * from the environment by itself when it is not handed one — roadmap decision **A9**,
+   * `docs/ROADMAP_MOCKUP_01_BETTERAUTH.md`. Renaming it to `OURO_BETTER_AUTH_SECRET`
+   * would buy consistency at the price of a variable the library's own documentation,
+   * its CLI and every answer on the internet call something else.
+   *
+   * Rotating it invalidates every session and makes every stored OAuth token
+   * undecryptable ([#700](https://github.com/NobuData/ouroboros/issues/700)).
+   */
+  readonly betterAuthSecret: string;
+  /**
+   * The origin BetterAuth builds its own URLs from. From `BETTER_AUTH_URL`.
+   *
+   * The same origin as {@link restUrl} — this service's public address — spelled in
+   * BetterAuth's vocabulary, because it is what the library reads and what its CLI reads.
+   * Keep the two in step: nothing derives one from the other, deliberately, so that a
+   * deployment that terminates somewhere unexpected can say so once rather than have a
+   * value inferred for it.
+   */
+  readonly betterAuthUrl: string;
   /** Signing key for the session cookie. From `OURO_SESSION_SECRET`. */
   readonly sessionSecret: string;
   /** GitHub OAuth application, client id. From `OURO_GITHUB_CLIENT_ID`. */
@@ -150,6 +174,8 @@ export const VARIABLES = {
   uiUrl: "OURO_UI_URL",
   engineUrl: "OURO_ENGINE_URL",
   engineSharedSecret: "OURO_ENGINE_SHARED_SECRET",
+  betterAuthSecret: "BETTER_AUTH_SECRET",
+  betterAuthUrl: "BETTER_AUTH_URL",
   sessionSecret: "OURO_SESSION_SECRET",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
@@ -254,6 +280,18 @@ const environmentSchema = z.object({
     ),
 
   OURO_ENGINE_SHARED_SECRET: secret,
+
+  // BetterAuth's two canonical variables (roadmap decision A9). They are validated by the
+  // same rules as their OURO_ counterparts rather than by the library's own defaults,
+  // because BetterAuth falls back to reading the environment itself and would start
+  // without a secret in development — which is a service that boots and then hands out
+  // sessions signed with a key nobody chose.
+  BETTER_AUTH_SECRET: secret,
+
+  BETTER_AUTH_URL: z
+    .string({ error: "is required" })
+    .refine(isOrigin, "expected this service's own browser origin, such as http://localhost:4000"),
+
   OURO_SESSION_SECRET: secret,
 
   OURO_GITHUB_CLIENT_ID: z.string({ error: "is required" }),
@@ -398,6 +436,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     uiUrl: values.OURO_UI_URL,
     engineUrl: values.OURO_ENGINE_URL,
     engineSharedSecret: values.OURO_ENGINE_SHARED_SECRET,
+    betterAuthSecret: values.BETTER_AUTH_SECRET,
+    betterAuthUrl: values.BETTER_AUTH_URL,
     sessionSecret: values.OURO_SESSION_SECRET,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,

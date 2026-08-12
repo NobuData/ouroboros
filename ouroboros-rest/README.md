@@ -57,6 +57,7 @@ in a single, auditable place.
 | Requests        | `class-validator` DTOs behind a global pipe — transform, whitelist, refuse the undeclared ([#31](https://github.com/NobuData/ouroboros/issues/31))                         |
 | Health          | `@nestjs/terminus` — `/health/live` and `/health/ready`, with bounded database and engine probes ([#29](https://github.com/NobuData/ouroboros/issues/29))                  |
 | Auth            | GitHub OAuth over bare `fetch` — no passport; a signed `HttpOnly` session cookie and a global guard ([#33](https://github.com/NobuData/ouroboros/issues/33))               |
+| Auth (incoming) | `better-auth`, configured over the same `pg` pool and not yet mounted — see [BetterAuth](#betterauth) ([#700](https://github.com/NobuData/ouroboros/issues/700))            |
 | Tenancy         | A request-scoped tenant context over `AsyncLocalStorage`, a global guard and `@Roles(…)` ([#32](https://github.com/NobuData/ouroboros/issues/32))                          |
 | Engine gateway  | A typed client over bare `fetch` — shared secret, five-second deadline, one retry, zod-parsed answers, every failure a `502` ([#35](https://github.com/NobuData/ouroboros/issues/35)) |
 | API spec        | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it; Swagger UI at `/api/docs`      |
@@ -205,6 +206,8 @@ service never starts half-configured.
 | `OURO_UI_URL`               | Where a browser lands after signing in or out            |        yes         | an origin, as above                                                         |
 | `OURO_ENGINE_URL`           | Base URL of `ouroboros-engine`                           |        yes         | an absolute `http://` or `https://` URL                                     |
 | `OURO_ENGINE_SHARED_SECRET` | Shared secret for the internal engine call               |        yes         | at least 16 characters                                                      |
+| `BETTER_AUTH_SECRET`        | What BetterAuth signs sessions and encrypts tokens with  |        yes         | at least 16 characters                                                      |
+| `BETTER_AUTH_URL`           | The origin BetterAuth builds its own URLs from           |        yes         | an origin, as above — BetterAuth appends its own `/api/auth`                |
 | `OURO_SESSION_SECRET`       | Signing key for the session cookie                       |        yes         | at least 16 characters                                                      |
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
@@ -218,13 +221,21 @@ table and that template fall out of step. Those same variables — and only thos
 [integration harness](#running-the-integration-suite) reads — appear again in [`.env.example`](.env.example) here, for copying. The repo-root
 template stays the complete list and this one is a subset of it; the values in the two are
 identical. `PORT` and `NODE_ENV` are the documented
-unprefixed exceptions — container platforms set them, not Ouroboros
-([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)).
+unprefixed exceptions — container platforms set them, not Ouroboros — and
+`BETTER_AUTH_SECRET`/`BETTER_AUTH_URL` are the third and fourth: the library reads those
+names for itself, and so does the CLI that generates its schema
+([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables), and
+[#700](https://github.com/NobuData/ouroboros/issues/700)).
 `NODE_ENV` also decides which interface is bound: every interface in production, where the
 platform routes to the container; loopback everywhere else, so a development machine does
 not answer to the network it is on.
 
-**This service does not start on defaults alone.** Nine variables have no default,
+`BETTER_AUTH_URL` is this service's public origin, which is what `OURO_REST_URL` is too —
+two vocabularies for one address. Nothing derives either from the other, deliberately, so
+keep them in step; the boot log below prints both, side by side, which is where a
+disagreement is visible before an OAuth callback goes to the wrong place.
+
+**This service does not start on defaults alone.** Eleven variables have no default,
 because a communications layer without a database, an engine, a signing key or a GitHub
 application could serve nothing — so it names what is missing and exits rather than
 starting into a wall of 500s. Configuration comes from the process environment layered
@@ -237,9 +248,10 @@ Copy the template and it runs with nothing exported:
 ```console
 $ cp .env.example .env && yarn dev             # or ../.env.example to configure the stack
 $ node dist/main.js                            # with no .env and nothing exported
-ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (9 problems)
+ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (11 problems)
   OURO_DATABASE_URL: is required
   OURO_ENGINE_URL: is required
+  BETTER_AUTH_SECRET: is required
   …
 $ echo $?
 2
@@ -257,7 +269,7 @@ all of it lives in [`src/modules/config/`](src/modules/config):
   that a lint error everywhere else rather than a review habit.
 - **Secrets are redacted, by construction.** The service logs its configuration at boot,
   and [`src/modules/config/redaction.ts`](src/modules/config/redaction.ts) is the only
-  renderer there is: the three secrets become `[redacted]`, and the connection string
+  renderer there is: the four secrets become `[redacted]`, and the connection string
   keeps its host and database while its password is masked in place. `OURO_AUTH_DEV_USER`
   is deliberately *not* redacted — printing it is how an operator confirms the development
   bypass is off, and a redacted line would look the same either way. Real `.env` files are
@@ -273,12 +285,14 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   OURO_UI_URL=http://localhost:3000
   OURO_ENGINE_URL=http://localhost:8000
   OURO_ENGINE_SHARED_SECRET=[redacted]
+  BETTER_AUTH_SECRET=[redacted]
+  BETTER_AUTH_URL=http://localhost:4000
   OURO_SESSION_SECRET=[redacted]
   OURO_GITHUB_CLIENT_ID=dev-github-client-id
   OURO_GITHUB_CLIENT_SECRET=[redacted]
   OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.7.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.11.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -531,6 +545,66 @@ the contract by accident.
 you are not a member of answers `404`, and the ten mutations above need `owner` or `admin`.
 See [The tenant context](#the-tenant-context).
 
+## BetterAuth
+
+**The library is installed and configured; nothing is mounted yet**
+([#700](https://github.com/NobuData/ouroboros/issues/700)). What signs a person in today is
+still the hand-rolled flow described under [Signing in](#signing-in) —
+[#701](https://github.com/NobuData/ouroboros/issues/701) mounts BetterAuth's handler at
+`/api/auth/*`, [#702](https://github.com/NobuData/ouroboros/issues/702) moves GitHub onto
+it, and [#703](https://github.com/NobuData/ouroboros/issues/703) replaces the cookie
+session. This section is the foundation those three stand on.
+
+[`src/auth/`](src/auth) is three files, and the split is about *who can load what*:
+
+| File               | What it is                                                                    |
+| ------------------ | ----------------------------------------------------------------------------- |
+| `auth.options.ts`  | the options object — every decision, and no dependency: it imports the library's *types* only |
+| `auth.factory.ts`  | `createAuth(dependencies)` — the one place `better-auth` is a value rather than a type |
+| `auth.config.ts`   | a standalone instance built from the environment, for `@better-auth/cli`       |
+
+Two constraints shape that. The library is **ES-module-only** and this service compiles to
+CommonJS, because Nest's dependency injection needs the decorator metadata that setting
+emits; Node 24 bridges the two with `require(esm)`, and Jest's CommonJS runtime does not —
+so the module that names `better-auth` as a value is kept to a single function, and the
+suites substitute it. And the configuration has to be loadable **with no Nest process at
+all**, because that is how [#706](https://github.com/NobuData/ouroboros/issues/706)
+generates the schema; nothing under `src/auth/` imports `@nestjs/*`.
+
+**One pool, not two.** `authOptions` takes a `pg.Pool` and puts *that object* into
+BetterAuth's `database` — decision **A2** of
+[the roadmap](../docs/ROADMAP_MOCKUP_01_BETTERAUTH.md). In the running service that is
+`DatabaseService.pool`, so the auth tables and the tenancy tables share ten connections,
+one drain on `SIGTERM`, and one row in `pg_stat_activity`. It also carries the
+`search_path` this service connects with, which is what puts BetterAuth's tables in the
+Flyway-owned `ouroboros` schema without the library being taught the name.
+
+### Generating the auth schema
+
+Flyway owns every table (`docs/ARCHITECTURE.md` decision **D3**), so BetterAuth's CLI is
+used for `generate` and never for `migrate`: it prints SQL, and a person ports it into a
+versioned migration. That is what `auth.config.ts` exists for — it needs a database to
+introspect, and no application:
+
+```console
+$ npx @better-auth/cli@1.4.21 generate --config src/auth/auth.config.ts --output V004.sql
+🚀 Schema was generated successfully!
+
+$ head -1 V004.sql
+create table "user" ("id" text not null primary key, "name" text not null, …);
+```
+
+Four tables come out — `user`, `session`, `account`, `verification` — with the library's
+own camelCase column names, quoted, which is roadmap decision **A4**: they are vendor-shaped
+tables, and renaming their columns fights every plugin update. The house snake_case style
+still applies to *our* tables.
+
+The command reads this module's `.env` and the repo root's, exactly as `yarn dev` does, so
+it needs nothing exported; point `OURO_DATABASE_URL` at whichever database should be
+introspected. The CLI is deliberately **not** a dependency of this module — it is run once
+per schema change, it pulls in three database drivers this service does not use, and its
+version tracks the library's loosely.
+
 ## Signing in
 
 **GitHub's authorization code flow, and a signed cookie**
@@ -758,6 +832,8 @@ docker run --rm -p 4000:4000 --network ouroboros_default \
   -e OURO_UI_URL=http://localhost:3000 \
   -e OURO_ENGINE_URL=http://engine:8000 \
   -e OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me \
+  -e BETTER_AUTH_SECRET=dev-better-auth-secret-change-me \
+  -e BETTER_AUTH_URL=http://localhost:4000 \
   -e OURO_SESSION_SECRET=dev-session-secret-change-me \
   -e OURO_GITHUB_CLIENT_ID=dev-github-client-id \
   -e OURO_GITHUB_CLIENT_SECRET=dev-github-client-secret \
@@ -792,7 +868,7 @@ fails rather than shipping dependencies the repository never committed.
 | Port | 4000 (`PORT`), bound on `0.0.0.0` because `NODE_ENV=production` |
 | Healthcheck | BusyBox `wget` against `/health/live` every 30 s, after a 15 s grace |
 | Size | 64 MB to pull, 226 MB of layers unpacked — against a 300 MB budget |
-| Runtime config | every `OURO_*` variable, supplied per environment — never baked into a layer |
+| Runtime config | every `OURO_*` and `BETTER_AUTH_*` variable, supplied per environment — never baked into a layer |
 
 On Docker's containerd snapshotter `docker images` reports a third number — 291 MB of
 *disk usage*, which is those same layers plus the per-file overhead of unpacking some
@@ -816,7 +892,8 @@ process nothing can route to — and it is what strips `OURO_AUTH_DEV_USER` befo
 sees it, so an image started with an inherited development environment ignores the bypass
 rather than trusting it.
 
-No `OURO_*` variable is set anywhere in the image. Each is either an address that differs
+No `OURO_*` or `BETTER_AUTH_*` variable is set anywhere in the image. Each is either an
+address that differs
 per environment or a secret; the configuration module names every missing one at boot and
 exits `2`, and a default in a layer would replace that line with a silent connection to the
 wrong host — or with a published image carrying a credential.
@@ -844,6 +921,7 @@ ouroboros-rest/
 │   ├── container.spec.ts   # the image, asserted from the files that define it  · #36
 │   ├── openapi/            # loads the committed spec — it is never generated
 │   ├── testing/            # the integration harness: container, app, sessions · #37
+│   ├── auth/               # BetterAuth: options, factory, the CLI's config    · #700
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
 │       ├── config/         # the zod schema, the typed service, redaction
@@ -939,6 +1017,7 @@ health [#29](https://github.com/NobuData/ouroboros/issues/29) ·
 data access [#30](https://github.com/NobuData/ouroboros/issues/30) ·
 tenancy API [#31](https://github.com/NobuData/ouroboros/issues/31) ·
 auth [#33](https://github.com/NobuData/ouroboros/issues/33) ·
+BetterAuth installation & configuration [#700](https://github.com/NobuData/ouroboros/issues/700) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
