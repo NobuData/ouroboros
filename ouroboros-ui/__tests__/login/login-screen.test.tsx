@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { DASHBOARD_PATH } from "@/app/paths";
+
 import { enablement, membership, org, repo, sessionUser } from "../helpers/login";
 
 // The screen contains the Server-Action forms, whose module reaches for `next/cache`,
@@ -119,7 +121,7 @@ describe("the login screen, enabling organisations", () => {
     expect(screen.getAllByRole("switch")).toHaveLength(2);
     expect(screen.getByRole("link", { name: /Enter mission control/ })).toHaveAttribute(
       "href",
-      "/",
+      DASHBOARD_PATH,
     );
   });
 });

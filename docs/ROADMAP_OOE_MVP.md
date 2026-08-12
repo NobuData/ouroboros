@@ -189,6 +189,21 @@ issue level.
 > workspace from the session's `activeOrganizationId` rather than from the `ouro_tenant`
 > cookie — the same amendment `C.3` already records for `#32`.
 
+> **`5.7` · `#45` Dashboard placeholder shipped, and row `57` has left the P2 table
+> above** — which is why its order numbers step from `56` to `58`.
+>
+> Same reason as `#33` and `#44` before it, one step further along: it was re-pointed to
+> land behind `D.5`'s guards, and by the time P1 reached it those guards existed as
+> `ouroboros-ui/app/api/access.ts` in their original `ouro_tenant` shape. The screen is
+> built against them, so if BetterAuth is confirmed the change is `D.5`'s one-line
+> amendment — the active workspace read from the session's `activeOrganizationId` rather
+> than from the cookie — and nothing on the dashboard itself moves: it takes the workspace
+> from the gate and never resolves one.
+>
+> `#45` is `ouroboros-ui/app/(app)/dashboard` over `app/dashboard/`, against
+> `/api/v1/tenants/{tenantId}/members`, the `#31` enablement endpoints, `/health/ready`
+> and `/api/v1/engine/status`. It also moved the dashboard off `/`, which now redirects.
+
 **Deferred out of P1 into P2 — implement once, in BetterAuth shape:**
 
 | Ref | Issue | Amendment |
@@ -343,7 +358,7 @@ which appear earlier in this document.
 
 ## P2 — Identity, Tenancy & the Login Page
 
-> **29 issues** · 86 complexity points · order **#31–#59** · 8 dependency waves
+> **28 issues** · 83 complexity points · order **#31–#59**, less `57` · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_LOGIN_PAGE_BETTERAUTH.md` (Epics A–D) + the deferred scaffolding tail
 
 **Goal.** Install BetterAuth inside `ouroboros-rest`, land the auth and organization schema through Flyway, reconcile the tenancy extension tables onto `organization.id`, and build mockup 01 as a working login page — GitHub OAuth, domain discovery, org/repo enablement, active-organization sessions.
@@ -384,7 +399,6 @@ which appear earlier in this document.
 | 54 | **D.3** | *new* | Step 1 card — GitHub sign-in & SSO domain form | ouroboros-ui | M | C.2, D.1, D.2 |
 | 55 | **D.5** | *new* | Auth route guards & session-aware redirects | ouroboros-ui | S | D.1 |
 | 56 | **D.6** | *new* | Signed-in session UI in the app shell | ouroboros-ui | S | 5.3, D.1 |
-| 57 | **5.7** | #45 | Dashboard placeholder | ouroboros-ui | M | D.5 |
 | 58 | **7.2** | #56 | End-to-end smoke test | repo root, .github | M | 7.1, D.5 |
 | 59 | **D.4** | *new* | Step 2 card — tenancy & org enablement | ouroboros-ui | L | C.4, D.3 |
 

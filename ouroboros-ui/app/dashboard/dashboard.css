@@ -1,0 +1,454 @@
+/*
+ * The dashboard (#45) — mockup 02's page frame, grid and cards.
+ *
+ * The mockup is docs/mockups/02-dashboard.html over docs/mockups/assets/ouroboros.css.
+ * What is taken from it is the *anatomy* the design system requires of every module page
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 2): page head, then the twelve-column card grid, at
+ * the pane's own measure. What is not taken from it is the topbar and sidebar markup —
+ * this page renders inside the app shell (#41) and starts at its page head.
+ *
+ * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
+ * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length
+ * that should follow the reader's font-size preference is rem — a spacing or radius token,
+ * or a rem literal where the design names a pixel size. Media-query widths are the
+ * exception, for the reason app/shell/shell.css sets out: `rem` there is measured against
+ * the browser's initial font size rather than the root's, so a breakpoint stays where the
+ * design puts it at every font scale.
+ *
+ * The mockup's token names are its own; each maps onto the #16 sheet's: --border → --line,
+ * --border-strong → --line-strong, --mut → --ink-mut, --faint → --ink-faint, --glow-soft →
+ * --accent-tint, --glow → --accent-glow.
+ *
+ * One deliberate deviation, in the same spirit as #44's: the mockup fills its primary
+ * button with a two-stop gradient written as two hex literals. A gradient is not in the
+ * token sheet's vocabulary and inventing one here would fork it, so the primary action is
+ * the flat --accent fill the sheet publishes for exactly this, with the glow the sheet
+ * reserves for live things. --accent on --accent-ink is a measured pair in both palettes.
+ */
+
+/* ---------- the page frame ---------- */
+
+/*
+ * The pane is the scroll container and already centres the 1440px measure
+ * (app/shell/shell.css), so this contributes the gutter rhythm and nothing else. The deep
+ * bottom padding is the mockup's: the last card should be able to clear the fold rather
+ * than sit against it.
+ */
+.dash {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.dash__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+.dash__headings {
+  flex: 1;
+  min-width: 16rem;
+}
+
+.dash__eyebrow {
+  margin: 0 0 var(--sp-3);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.dash__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+.dash__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+}
+
+.dash__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+/* ---------- actions ---------- */
+
+/*
+ * Both actions lead to screens that do not exist yet, so both are inert — and *labelled*
+ * inert rather than absent or dead (design system § 3.5). `aria-disabled` rather than
+ * `disabled` for the reason the login screen's SSO control uses it: a disabled button
+ * leaves the tab order, taking the explanation of why it cannot act with it.
+ */
+.dash-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-8);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dash-btn--ghost {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+}
+
+.dash-btn--primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 1.125rem -0.125rem var(--accent-glow);
+}
+
+/*
+ * What an inert control looks like. It keeps its shape — this is what the action *will*
+ * be — and loses the contrast that invites a press. The glow goes with it: that treatment
+ * is reserved for live things.
+ */
+.dash-btn[aria-disabled="true"] {
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.dash-btn--primary[aria-disabled="true"] {
+  border-color: var(--line-strong);
+  background: var(--raised);
+  color: var(--ink-faint);
+}
+
+.dash-btn--ghost[aria-disabled="true"] {
+  color: var(--ink-faint);
+}
+
+/* ---------- the grid ---------- */
+
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+.dash-col--3 {
+  grid-column: span 3;
+}
+
+.dash-col--4 {
+  grid-column: span 4;
+}
+
+.dash-col--5 {
+  grid-column: span 5;
+}
+
+.dash-col--7 {
+  grid-column: span 7;
+}
+
+.dash-col--8 {
+  grid-column: span 8;
+}
+
+/*
+ * The mockup's two steps, at its own widths. The stat row halves before the wide pairs
+ * stack, so a narrow window shows two readable tiles rather than four crushed ones; then
+ * everything is full width.
+ */
+@media (max-width: 68.75rem) {
+  .dash-col--3,
+  .dash-col--4 {
+    grid-column: span 6;
+  }
+
+  .dash-col--5,
+  .dash-col--7,
+  .dash-col--8 {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 40rem) {
+  .dash-grid > * {
+    grid-column: span 12;
+  }
+
+  .dash {
+    padding-inline: var(--sp-6);
+  }
+}
+
+/* ---------- cards ---------- */
+
+.dash-card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.dash-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-7);
+}
+
+.dash-card__title {
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* Pushes whatever follows it in the head to the trailing edge. */
+.dash-card__spacer {
+  flex: 1;
+}
+
+/* ---------- stat tiles ---------- */
+
+.dash-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dash-stat__label {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.dash-stat__value {
+  font-family: var(--f-disp);
+  font-size: var(--t-3xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  /* One column of digits that does not reflow as a count changes. */
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-stat__delta {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The caption of a figure that could not be read, rather than of one that is zero. */
+.dash-stat__delta--failed {
+  color: var(--err);
+}
+
+/* ---------- status pills ---------- */
+
+.dash-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.dash-pill--up {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.dash-pill--down {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.dash-pill--unknown {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+/*
+ * The dot repeats the pill's state in shape as well as in hue, so the three states are
+ * distinguishable without colour vision. It inherits `currentColor`, which is what keeps
+ * that true in both palettes without a second set of rules.
+ */
+.dash-pill__dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border-radius: var(--r-round);
+  background: currentColor;
+}
+
+.dash-pill--unknown .dash-pill__dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* ---------- the system card ---------- */
+
+.dash-system {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: 0;
+}
+
+.dash-system__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-6);
+  border-bottom: 1px solid var(--line);
+}
+
+.dash-system__row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.dash-system__label {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+}
+
+/*
+ * Both values below are `dd`, and the user-agent sheet gives a `dd` a 40px inline start
+ * margin. Left alone it would push the pill out of its own column and indent the note
+ * under it, so every `dd` in this list zeroes it — a length in px is also the one thing on
+ * this page that would not follow the reader's font-size preference.
+ */
+.dash-system__value {
+  margin: 0;
+  justify-self: end;
+}
+
+/*
+ * The note spans both columns under the label and its pill, so a long reason from the
+ * probe wraps into the card rather than squeezing the pill.
+ */
+.dash-system__note {
+  grid-column: 1 / -1;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- empty states ---------- */
+
+/*
+ * A panel whose data source does not exist yet. It is a designed state rather than a gap:
+ * it says what will fill it and what has to land first, which is the honesty rule (§ 3.5)
+ * applied to a whole card instead of to a number.
+ *
+ * The well is --inset, the sheet's surface for a container rather than a plane, so the
+ * card still reads as a card while its interior reads as waiting.
+ */
+.dash-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  min-height: 8rem;
+  padding: var(--sp-10) var(--sp-8);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  text-align: center;
+}
+
+/* `margin: 0` because it is a `p`: the user-agent's block margin would be added to the
+   flex gap above and read as an uneven one. */
+.dash-empty__title {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-lg);
+  font-weight: 600;
+}
+
+.dash-empty__note {
+  max-width: 44ch;
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- loading skeleton ---------- */
+
+/*
+ * What `app/(app)/dashboard/loading.tsx` draws while the reads are in flight. Bars at the
+ * heights of the things they stand in for, so the page does not jump when the data
+ * arrives.
+ *
+ * It pulses only for a reader who has not asked for less motion, and it is hidden from the
+ * accessibility tree by the `aria-hidden` on its container — a screen reader is told the
+ * page is busy once, by the region's own label, rather than read a dozen empty bars.
+ */
+.dash-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.dash-skeleton__bar {
+  height: var(--sp-8);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.dash-skeleton__bar--wide {
+  width: 100%;
+}
+
+.dash-skeleton__bar--half {
+  width: 55%;
+}
+
+.dash-skeleton__bar--tall {
+  height: var(--sp-11);
+  width: 40%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dash-skeleton__bar {
+    animation: dash-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes dash-skeleton-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}

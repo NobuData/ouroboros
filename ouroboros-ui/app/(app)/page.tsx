@@ -1,39 +1,31 @@
-import { requireWorkspace } from "@/app/api/access";
+import { redirect } from "next/navigation";
+
+import { DASHBOARD_PATH } from "@/app/paths";
 
 /**
- * The scaffold's placeholder home page — now behind the gate.
+ * The product's root, which is now a signpost rather than a screen.
  *
- * Its original job was to be something `yarn dev` renders, in all three faces, so that "the
- * toolchain is up" is a thing you can see rather than infer. #44 adds the other half of that
- * sentence: this is a screen in `(app)`, so it is reachable only by somebody signed in who
- * has chosen a workspace, and `requireWorkspace()` is what makes "unauthenticated `(app)`
- * routes redirect to the login screen" true rather than intended. The call is here rather
- * than in the layout for the reason `app/(app)/layout.tsx` sets out.
+ * `/` was the scaffold's placeholder and then, briefly, where a signed-in request landed.
+ * #45 moves the dashboard to its own segment, because a page needs a route of its own before
+ * anything can link to it, highlight it in the sidebar, or replace it — and `/` is the one
+ * route in the product that belongs to no module.
  *
- * It also demonstrates the shape every screen in this group takes: the gate returns the
- * workspace, so naming it costs nothing and forgetting it costs the data. The dashboard
- * (#45) replaces this page at this route and reads the rest of what it needs the same way.
+ * It redirects rather than 404s so that everything already pointing here still arrives:
+ * bookmarks, the OAuth callback's landing, and any link written while this was the
+ * dashboard. {@link DASHBOARD_PATH} is that target, from `app/paths.ts`, so this file and
+ * the login screen that redirects to the same place cannot drift apart.
  *
- * @returns The placeholder screen, naming the workspace it is being rendered for.
+ * **No session check here, deliberately.** There is nothing on this route to protect — it
+ * renders nothing and reads nothing — and the gate a visitor actually needs is the one on
+ * the page they are being sent to. Checking here as well would cost every request to `/` an
+ * extra `GET /auth/me` to reach the same outcome one redirect later.
+ *
+ * Temporary rather than permanent (`redirect`, not `permanentRedirect`): a `308` is cached
+ * by the browser indefinitely, which would make `/` unusable for anything else for as long
+ * as anyone who visited it today still has a profile.
+ *
+ * @returns Never. `redirect` signals by throwing.
  */
-export default async function Page() {
-  const { session, membership } = await requireWorkspace();
-
-  return (
-    <main className="placeholder">
-      <p className="placeholder__eyebrow">ouroboros-ui · {membership.slug}</p>
-      <h1 className="placeholder__title">Infinity in autonomy</h1>
-      <p className="placeholder__body">
-        Signed in as {session.user.displayName}, in {membership.displayName} as{" "}
-        {membership.role}. The application scaffold is up: App Router, TypeScript, and the
-        lint, typecheck, test and build pipeline <code>ci/ui</code> runs. This page is a
-        placeholder — it renders in Chakra Petch, IBM Plex Sans and IBM Plex Mono, which is
-        how you can tell the three faces loaded, and in whichever palette you ask for — the
-        switcher is in the header. The chrome around it is the app shell.
-      </p>
-      <ul className="placeholder__next">
-        <li>#45 — the dashboard, at this route</li>
-      </ul>
-    </main>
-  );
+export default function Page(): never {
+  redirect(DASHBOARD_PATH);
 }

@@ -55,7 +55,7 @@ truthful zero/empty states in a fresh workspace. No fabricated numbers outside s
 
 | Existing issue | Disposition under this roadmap |
 |---|---|
-| #45 `ouroboros-ui: [5.7] Dashboard placeholder` (mockup 02 grid + health data + empty states, single M issue) | **Superseded** — split into Epic I / #62 (I.1–I.8). The health-status card idea survives inside I.2 (#81) / I.7 (#86). Retitle/close when I.1 (#80) lands. *Amendment comment posted 2026-08-09.* |
+| #45 `ouroboros-ui: [5.7] Dashboard placeholder` (mockup 02 grid + health data + empty states, single M issue) | **Superseded in scope, but 🟢 built as written** — Epic I / #62 (I.1–I.8) is where the real dashboard is specified card by card, and the health-status card idea survives inside I.2 (#81) / I.7 (#86). #45 shipped first because P1 reached it while Epic I's own blockers (#46 primitives, #70 aggregate endpoint) were still open, and a signed-in session had nowhere to land: it is the route at `(app)/dashboard`, the readers behind it (`app/dashboard/data.ts`, `app/api/health.ts`, `app/api/engine.ts`, `app/api/members.ts`), the status logic, and designed empty states where Epic I's cards go. **#80 replaces the page body and inherits all of that.** *Amendment comment posted 2026-08-09; #45 delivered 2026-08-11.* |
 | #41 `ouroboros-ui: [5.3] App shell` (top bar with nav, needs-you *placeholder*, gear, avatar) | **Amended/extended** by Epic H / #61 — tenant chip (#77), live & needs-you pills (#78), ⌘K palette (#79) are mockup-02 chrome beyond #41's placeholder scope. *Amendment comment posted 2026-08-09.* |
 | #56 `ouroboros: [7.2] End-to-end smoke test` | **Amended** — the dashboard leg upgrades from "shows seeded tenant" to the I.9 (#88) assertions (stats, tables, pulse from seeded read-model). *Amendment comment posted 2026-08-09.* |
 | #49 `ouroboros-ui: [5.11] Placeholder routes` (v2) | **Unchanged, load-bearing** — mockup-02 links (`run console →`, `All issues →`, `Manage queue →`, Edit workflows, inbox) land on #49 placeholders until those screens get their own roadmaps. *Note comment posted 2026-08-09.* |
@@ -646,7 +646,13 @@ themes hold.
   - Frame matches the mockup at 1440px; sensible stacking at 900px; both themes.
   - Greeting says the right daypart/name; subline matches seeds exactly
     ("3 issues in flight, 12 queued…").
-  - #45 closed/retitled with a pointer here (amendment).
+  - #45 closed/retitled with a pointer here (amendment). **Note:** #45 shipped
+    2026-08-11, so this is a replacement of a working page rather than of a stub —
+    the route, `app/paths.ts`'s `DASHBOARD_PATH`, the four readers and the system
+    card's state logic are all in place and are what I.1 builds on. The `/` →
+    `/dashboard` redirect is already there too. What I.1 still adds is this frame's
+    own two pieces: the client-rendered greeting (F7) and the activity subline from
+    G.1's aggregate.
 - **Parallelism/Dependencies:** Needs #41, G.1, BA-D.5 (auth guard). Blocks I.2–I.7.
 - **Technical Stack:** Next.js server components, #46 primitives, #16 tokens.
 - **Epic:** I

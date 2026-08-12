@@ -13,6 +13,8 @@ import {
   Workflow,
 } from "lucide-react";
 
+import { DASHBOARD_PATH } from "@/app/paths";
+
 /**
  * The application's navigation model: what the sidebar offers, and which entry the
  * current URL belongs to.
@@ -69,7 +71,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   {
     id: "dashboard",
     label: "Dashboard",
-    route: "/",
+    route: DASHBOARD_PATH,
     icon: Gauge,
     group: "primary",
     status: "live",
@@ -186,8 +188,9 @@ export function navGroup(
  * Two rules, which is what the specification means by "exact-route and section
  * matching" (§ 1.2):
  *
- * - The dashboard is `/`, and only `/`. A prefix rule there would make it the active
- *   entry on every page in the product.
+ * - `/` is itself, and only itself. No entry claims it since #45 moved the dashboard to
+ *   `/dashboard` — and the rule stays because a prefix match on the root would make
+ *   whichever entry did claim it the active one on every page in the product.
  * - Every other entry owns its route *and everything under it*, so `/models/routing`
  *   keeps **Models** highlighted. The boundary is a `/`: `/model-registry` is not
  *   under `/models`, which a bare `startsWith` would get wrong.

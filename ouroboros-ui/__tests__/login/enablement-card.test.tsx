@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { DASHBOARD_PATH } from "@/app/paths";
+
 import { enablement, membership, org, repo } from "../helpers/login";
 
 // The switches submit to Server Actions, whose module reaches for `next/cache`,
@@ -92,7 +94,7 @@ describe("<EnablementCard>", () => {
 
     expect(screen.getByRole("link", { name: /Enter mission control/ })).toHaveAttribute(
       "href",
-      "/",
+      DASHBOARD_PATH,
     );
   });
 
