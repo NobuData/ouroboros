@@ -11,16 +11,21 @@
  * `linkIdentity` — and [#702](https://github.com/NobuData/ouroboros/issues/702) deleted all
  * four along with the flow that called them. BetterAuth owns the identity model now, and
  * writes `"user"` and `account` through its own adapter over the same pool
- * (`src/auth/auth.options.ts`). What is left here are four reads, and the two that survive
- * [#703](https://github.com/NobuData/ouroboros/issues/703) are the two that answer
- * `GET /api/v1/auth/me`.
+ * (`src/auth/auth.options.ts`).
  *
- * It overlaps `MembersRepository` in exactly one place, deliberately: both can find a user
- * by address. Tenancy needs it to attach an invitation to a person who may not exist yet;
- * auth needs it for the development bypass. Sharing one repository between the two modules
- * would mean `TenancyModule` and `AuthModule` reaching into each other for a two-line
- * select, and the seam that buys is worth less than the one it costs — see
- * `auth.module.ts`, which imports `DbModule` and not `TenancyModule`.
+ * **And it no longer reads a person, either.**
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) took `findUserById` and
+ * `findUserByEmail` with the guard and the development bypass that were their only callers:
+ * the signed-in person now arrives with the session the library resolved, so reading a
+ * `users` row to confirm them would be a query per request — the cost the cookie cache
+ * exists to remove — and would find nothing at all for anybody who first signed in after
+ * V004, since such a person has a `"user"` row and no `users` row. See `principal.ts`.
+ *
+ * What is left are the two reads that answer `GET /api/v1/auth/me`: the caller's
+ * memberships, and the tenant their address's domain points at. Both are about *tenancy*
+ * rather than identity, which is why they outlive the identity model that used to be here
+ * and why this module still imports `DbModule` rather than `TenancyModule` — see
+ * `auth.module.ts`.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -28,7 +33,7 @@ import type { Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import { queryOn } from "../tenancy/queries";
-import type { Database, Tenant, User } from "../db/schema";
+import type { Database, Tenant } from "../db/schema";
 import type { MembershipRow } from "./auth.resources";
 
 /** The columns a membership listing selects, in the order the join returns them. */
@@ -45,48 +50,6 @@ const MEMBERSHIP_COLUMNS = [
 @Injectable()
 export class AuthRepository {
   constructor(private readonly database: DatabaseService) {}
-
-  /**
-   * Find a person by their address.
-   *
-   * Read by the development bypass, which is the only caller left: #33's sign-in used this
-   * to attach an arriving GitHub identity to a stub row an invitation had created, and
-   * BetterAuth's account linking is what does that now
-   * (`src/auth/github.provider.ts`). It goes with the bypass in
-   * [#705](https://github.com/NobuData/ouroboros/issues/705).
-   *
-   * @param email - The address, already lower-cased. `users_email_key` indexes the stored
-   *   column, so a differently-cased address would silently miss.
-   * @param trx - The transaction to run in, if there is one.
-   * @returns The person, or `undefined`.
-   */
-  async findUserByEmail(email: string, trx?: Transaction<Database>): Promise<User | undefined> {
-    return queryOn(this.database, trx)
-      .selectFrom("users")
-      .selectAll()
-      .where("email", "=", email)
-      .executeTakeFirst();
-  }
-
-  /**
-   * Find a person by id.
-   *
-   * Issued on every authenticated request, by the session guard, which is why it is a
-   * primary-key lookup and nothing more. Reading the row rather than trusting the cookie
-   * is what makes a deleted user's outstanding session stop working immediately — see
-   * `session.ts` on why the cookie carries an id and not a copy of the person.
-   *
-   * @param id - `ouroboros.users.id`.
-   * @param trx - The transaction to run in, if there is one.
-   * @returns The person, or `undefined` when the row is gone.
-   */
-  async findUserById(id: string, trx?: Transaction<Database>): Promise<User | undefined> {
-    return queryOn(this.database, trx)
-      .selectFrom("users")
-      .selectAll()
-      .where("id", "=", id)
-      .executeTakeFirst();
-  }
 
   /**
    * Every tenant a person belongs to, with the role they hold there.

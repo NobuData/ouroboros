@@ -113,8 +113,6 @@ describe("main", () => {
 
     const [described] = logger.log.mock.calls[0] as [string];
     expect(described).toContain("ouroboros-rest: configuration");
-    expect(described).toContain(`OURO_SESSION_SECRET=${REDACTED}`);
-    expect(described).not.toContain("dev-session-secret-change-me");
     // BetterAuth signs every session with this one (#700), so the boot log is the first
     // place it could have leaked and the last place it may appear.
     expect(described).toContain(`BETTER_AUTH_SECRET=${REDACTED}`);

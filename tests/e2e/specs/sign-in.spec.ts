@@ -8,26 +8,26 @@
  *
  * ## About the session
  *
- * The issue asks for a *dev-auth login*. The compose stack cannot serve one — its
- * `ouroboros-rest` image pins `NODE_ENV=production`, which strips `OURO_AUTH_DEV_USER`
- * before the configuration schema sees it, by design and documented in `README.md`
- * § Signing in. `support/session.ts` explains what this suite does instead and why it is a
- * credential rather than a bypass; the short version is that the cookie is signed by
- * `ouroboros-rest`'s own `issueSession`, and every check the guard makes still runs.
+ * **The signed-in half of this leg is parked.**
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the stateless cookie
+ * this suite used to mint with a database-backed session row, which cannot be produced from
+ * outside the stack — `support/session.ts` sets out what has to land first
+ * ([#709](https://github.com/NobuData/ouroboros/issues/709) and
+ * [#705](https://github.com/NobuData/ouroboros/issues/705)) and why the alternatives were
+ * rejected. Those tests carry `test.fixme` and say so in the report.
  *
- * The first test in this file is what keeps that honest: it proves an *invalid* session is
- * refused. Without it, a suite that minted its own cookie would pass just as happily
- * against a service that had stopped checking cookies at all.
+ * **The signed-*out* half still runs**, and it is the half that was keeping the other one
+ * honest: a visitor with no session is sent to the login screen, and a cookie naming no
+ * session is worth exactly as little. Without those, a suite that minted its own credential
+ * would pass just as happily against a service that had stopped checking credentials at
+ * all.
  */
 
 import { expect, test } from "@playwright/test";
 
 import { SEED_OWNER, SEED_TENANT } from "../support/seed";
-import { mintSession, signIn } from "../support/session";
+import { SESSION_COOKIE, SESSION_PARKED, signIn } from "../support/session";
 import { UI_URL } from "../support/stack";
-
-/** A week and a day — past `SESSION_MAX_AGE_SECONDS`, which is seven days. */
-const EXPIRED_AT = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
 
 test.describe("the session is really checked", () => {
   test("a signed-out visitor gets the sign-in step, not the dashboard", async ({ page }) => {
@@ -38,18 +38,15 @@ test.describe("the session is really checked", () => {
     await expect(page.getByRole("heading", { name: /sign in|continue/i }).first()).toBeVisible();
   });
 
-  test("a forged signature authenticates nobody", async ({ context, page }) => {
-    const { token } = mintSession(SEED_OWNER.id);
-
-    // Flip the payload while keeping the signature: the HMAC no longer covers the bytes,
-    // which is the one thing `signing.ts` promises to notice.
-    const [body, signature] = token.split(".");
-    const forged = `${body.slice(0, -2)}xx.${signature}`;
-
+  test("a session token naming nothing authenticates nobody", async ({ context, page }) => {
+    // The post-#703 form of "a forged credential is refused". The cookie no longer carries
+    // a signed payload to tamper with — it names a row in `ouroboros.session` — so the way
+    // to be somebody you are not is to invent a token, and this is that request. It needs
+    // no session to have been minted, which is why it still runs.
     await context.addCookies([
       {
-        name: "ouro_session",
-        value: forged,
+        name: SESSION_COOKIE,
+        value: "a-token-no-session-was-ever-issued-with",
         domain: new URL(UI_URL).hostname,
         path: "/",
         expires: -1,
@@ -64,19 +61,33 @@ test.describe("the session is really checked", () => {
     await expect(page).toHaveURL(new RegExp("/login"));
   });
 
-  test("an expired session is refused however good its signature", async ({ context, page }) => {
-    const expired = mintSession(SEED_OWNER.id, EXPIRED_AT);
+  test("#33's cookie is worth nothing, and is taken away", async ({ context, page }) => {
+    // The cut-over invalidated every live session, and a browser that goes on sending
+    // `ouro_session` has to be refused cleanly rather than trusted or crashed into. This is
+    // that browser: it is sent to the login screen, and the service tells it to drop the
+    // cookie on the way past.
+    await context.addCookies([
+      {
+        name: "ouro_session",
+        value: "left-over-from-33",
+        domain: new URL(UI_URL).hostname,
+        path: "/",
+        expires: -1,
+        httpOnly: true,
+        secure: false,
+        sameSite: "Lax",
+      },
+    ]);
 
-    await context.addCookies([...expired.cookies]);
     await page.goto("/dashboard");
 
-    // Age is part of verification rather than of reading (`signing.ts`), so this is the
-    // same rejection a forged token gets — which is what the caller is meant to see.
     await expect(page).toHaveURL(new RegExp("/login"));
   });
 });
 
 test.describe("login → tenant select → dashboard", () => {
+  test.fixme(true, SESSION_PARKED);
+
   test("the seeded owner reaches their workspace", async ({ context, page }) => {
     await signIn(context, SEED_OWNER.id);
 

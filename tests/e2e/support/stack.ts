@@ -36,18 +36,6 @@ export const UI_URL = address("OURO_E2E_UI_URL", "http://localhost:3000");
 export const REST_URL = address("OURO_E2E_REST_URL", "http://localhost:4000");
 
 /**
- * The signing key the stack's sessions are made with — `OURO_SESSION_SECRET`.
- *
- * The one value this suite needs that is not an address. It has the same development
- * default `docker-compose.yml` interpolates, so a clean checkout with no `.env` works
- * as-is; a stack brought up with a different secret must export the same one here, and
- * the mismatch shows up as an unauthenticated request rather than as a confusing 500.
- *
- * @see `support/session.ts` for what it is used for and why that is not a bypass.
- */
-export const SESSION_SECRET = address("OURO_SESSION_SECRET", "dev-session-secret-change-me");
-
-/**
  * The suite's whole wall-clock budget, in milliseconds.
  *
  * Ten minutes, which is issue [#56](https://github.com/NobuData/ouroboros/issues/56)'s

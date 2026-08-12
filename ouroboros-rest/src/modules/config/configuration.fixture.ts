@@ -10,13 +10,15 @@
  * validating, every suite that builds an application fails — so a clean checkout that
  * cannot start is caught here rather than by the developer who copied the template.
  *
- * **One deliberate divergence.** `.env.example` sets `OURO_AUTH_DEV_USER` so that a fresh
- * checkout is signed in against the development seed without a GitHub OAuth application
- * ([#33](https://github.com/NobuData/ouroboros/issues/33)); this fixture leaves it unset.
- * A suite whose every request arrived pre-authenticated could not assert that a route is
- * protected — the one thing about authentication most worth asserting — and it would go on
- * passing if the guard were removed. A spec that wants the bypass asks for it by name:
- * `testConfiguration({ OURO_AUTH_DEV_USER: "…" })`.
+ * **One deliberate divergence.** `.env.example` still carries `OURO_AUTH_DEV_USER`, which
+ * signed a fresh checkout in against the development seed without a GitHub OAuth
+ * application ([#33](https://github.com/NobuData/ouroboros/issues/33)); this fixture leaves
+ * it unset. That mattered while something read it — a suite whose every request arrived
+ * pre-authenticated could not assert that a route is protected, and would go on passing if
+ * the guard were removed — and it is kept unset now that
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) has left nothing reading it at
+ * all, because a fixture that supplies a value nothing consumes is a value somebody has to
+ * work out the meaning of.
  *
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs, so
  * nothing under `dist/` carries these strings.
@@ -38,7 +40,6 @@ export const DEVELOPMENT_ENVIRONMENT: Readonly<Record<string, string>> = Object.
   OURO_ENGINE_SHARED_SECRET: "dev-engine-shared-secret-change-me",
   BETTER_AUTH_SECRET: "dev-better-auth-secret-change-me",
   BETTER_AUTH_URL: "http://localhost:4000",
-  OURO_SESSION_SECRET: "dev-session-secret-change-me",
   OURO_GITHUB_CLIENT_ID: "dev-github-client-id",
   OURO_GITHUB_CLIENT_SECRET: "dev-github-client-secret",
   OURO_CORS_ORIGINS: "http://localhost:3000",

@@ -63,7 +63,6 @@ describe("the development defaults", () => {
       engineSharedSecret: "dev-engine-shared-secret-change-me",
       betterAuthSecret: "dev-better-auth-secret-change-me",
       betterAuthUrl: "http://localhost:4000",
-      sessionSecret: "dev-session-secret-change-me",
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
       // The fixture leaves `OURO_AUTH_DEV_USER` out where `.env.example` sets it; see the
@@ -137,7 +136,6 @@ describe("a missing variable", () => {
     VARIABLES.engineSharedSecret,
     VARIABLES.betterAuthSecret,
     VARIABLES.betterAuthUrl,
-    VARIABLES.sessionSecret,
     VARIABLES.githubClientId,
     VARIABLES.githubClientSecret,
     VARIABLES.corsOrigins,
@@ -149,15 +147,15 @@ describe("a missing variable", () => {
     ["empty", ""],
     ["whitespace, which is what an unfilled env line leaves", "   "],
   ])("is named when %s", (_description, value) => {
-    const message = failureFor(testEnvironment({ OURO_SESSION_SECRET: value }));
+    const message = failureFor(testEnvironment({ BETTER_AUTH_SECRET: value }));
 
-    expect(message).toContain(`${VARIABLES.sessionSecret}: is required`);
+    expect(message).toContain(`${VARIABLES.betterAuthSecret}: is required`);
   });
 
   it("is reported alongside every other problem, not one boot at a time", () => {
     const message = failureFor({ OURO_DATABASE_URL: "postgresql://user@host:5432/db" });
 
-    expect(message).toContain("invalid configuration (10 problems)");
+    expect(message).toContain("invalid configuration (9 problems)");
     for (const variable of [
       VARIABLES.restUrl,
       VARIABLES.uiUrl,
@@ -165,7 +163,6 @@ describe("a missing variable", () => {
       VARIABLES.engineSharedSecret,
       VARIABLES.betterAuthSecret,
       VARIABLES.betterAuthUrl,
-      VARIABLES.sessionSecret,
       VARIABLES.githubClientId,
       VARIABLES.githubClientSecret,
       VARIABLES.corsOrigins,
@@ -175,7 +172,7 @@ describe("a missing variable", () => {
   });
 
   it("counts a single problem in the singular", () => {
-    expect(failureFor(without(VARIABLES.sessionSecret))).toContain(
+    expect(failureFor(without(VARIABLES.betterAuthSecret))).toContain(
       "invalid configuration (1 problem)",
     );
   });
@@ -307,7 +304,7 @@ describe("BETTER_AUTH_URL", () => {
 });
 
 describe("the secrets", () => {
-  it.each([VARIABLES.engineSharedSecret, VARIABLES.betterAuthSecret, VARIABLES.sessionSecret])(
+  it.each([VARIABLES.engineSharedSecret, VARIABLES.betterAuthSecret])(
     "rejects a %s short enough to have been typed by hand",
     (variable) => {
       const message = failureFor(testEnvironment({ [variable]: "hunter2" }));
@@ -322,9 +319,9 @@ describe("the secrets", () => {
   it("accepts one exactly at the minimum", () => {
     const secret = "x".repeat(MINIMUM_SECRET_LENGTH);
 
-    expect(loadConfiguration(testEnvironment({ OURO_SESSION_SECRET: secret })).sessionSecret).toBe(
-      secret,
-    );
+    expect(
+      loadConfiguration(testEnvironment({ BETTER_AUTH_SECRET: secret })).betterAuthSecret,
+    ).toBe(secret);
   });
 
   // The GitHub credentials are whatever GitHub issued, so the only rule is that they are
@@ -343,7 +340,7 @@ describe("the secrets", () => {
   it("never echoes a value it rejected", () => {
     const message = failureFor(
       testEnvironment({
-        OURO_SESSION_SECRET: "s3cr3t-but-too-short",
+        BETTER_AUTH_SECRET: "s3cr3t-but-too-short",
         OURO_DATABASE_URL: "postgres-but-not://s3cr3t:s3cr3t@host/db",
         PORT: "s3cr3t",
       }),

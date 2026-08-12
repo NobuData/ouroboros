@@ -73,11 +73,6 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("betterAuthUrl");
   }
 
-  /** Signing key for the session cookie — `OURO_SESSION_SECRET`. */
-  get sessionSecret(): string {
-    return this.config.getOrThrow<string>("sessionSecret");
-  }
-
   /** GitHub OAuth application, client id — `OURO_GITHUB_CLIENT_ID`. */
   get githubClientId(): string {
     return this.config.getOrThrow<string>("githubClientId");
@@ -89,12 +84,13 @@ export class AppConfigService {
   }
 
   /**
-   * The address the development bypass signs every request in as — `OURO_AUTH_DEV_USER`.
+   * The address the development bypass used to sign every request in as —
+   * `OURO_AUTH_DEV_USER`. Read by nothing since
+   * [#703](https://github.com/NobuData/ouroboros/issues/703); see `configuration.ts`.
    *
    * `getOrThrow` is wrong for this one and `get` is right: it is the only field that is
    * legitimately nothing, and `loadConfiguration` has already forced it to `null` in
-   * production. A reader must still refuse it there on its own — see
-   * {@link devUserEmail}, which is the accessor auth actually uses.
+   * production.
    */
   get authDevUser(): string | null {
     return this.config.get<string | null>("authDevUser") ?? null;
@@ -110,22 +106,24 @@ export class AppConfigService {
    *
    * The one derived flag worth naming, because it is asked in several places and asking
    * it as `nodeEnv === "production"` in each of them is how one of them ends up spelling
-   * it `"prod"`. It gates the cookie's `Secure` attribute and the development auth bypass
-   * ([#33](https://github.com/NobuData/ouroboros/issues/33)).
+   * it `"prod"`. It gates the `Secure` attribute on the legacy cookie eviction
+   * (`src/modules/auth/legacy.cookie.ts`) and the refusal below.
    */
   get isProduction(): boolean {
     return this.nodeEnv === "production";
   }
 
   /**
-   * The address the development bypass may sign a request in as, or `null`.
+   * The address a development bypass would be allowed to sign a request in as, or `null`.
    *
-   * The second of the two independent checks the bypass is behind: `loadConfiguration`
+   * The second of the two independent checks the bypass was behind: `loadConfiguration`
    * drops the variable in production, and this refuses it again from a configuration that
    * somehow carries one. Two, because a single check being wrong is authentication turned
-   * off for a deployment — and because this is the accessor
-   * [#33](https://github.com/NobuData/ouroboros/issues/33)'s guard reads, so the refusal is
-   * beside the read rather than several files away from it.
+   * off for a deployment.
+   *
+   * Nothing calls it today — #703 deleted the guard that did — and it is kept beside the
+   * field it guards until [#705](https://github.com/NobuData/ouroboros/issues/705) removes
+   * both, so that the safety and the value never live in different commits.
    */
   get devUserEmail(): string | null {
     return this.isProduction ? null : this.authDevUser;
@@ -153,7 +151,6 @@ export class AppConfigService {
       engineSharedSecret: this.engineSharedSecret,
       betterAuthSecret: this.betterAuthSecret,
       betterAuthUrl: this.betterAuthUrl,
-      sessionSecret: this.sessionSecret,
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
       authDevUser: this.authDevUser,

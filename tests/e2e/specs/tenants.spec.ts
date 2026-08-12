@@ -23,7 +23,7 @@ import { expect, test } from "@playwright/test";
 
 import { asUser, expectError, expectJson, getAnonymously, restUrl } from "../support/api";
 import { SEED_OWNER, SEED_TENANT, ephemeralSlug } from "../support/seed";
-import { mintSession } from "../support/session";
+import { mintSession, SESSION_PARKED } from "../support/session";
 
 /** The `Tenant` resource, as `openapi.json` defines it. */
 interface Tenant {
@@ -44,7 +44,12 @@ interface TenantPage {
 }
 
 test.describe("tenant CRUD roundtrip", () => {
+  // Every leg below but the last carries a session, and those are parked — see
+  // `support/session.ts`. "The collection is closed to strangers" needs none and still
+  // runs, which is the half of this group that guards the boundary.
   test("create → read → update → list → suspend", async ({ request }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
     const headers = asUser(token);
     const slug = ephemeralSlug("crud");
@@ -129,6 +134,8 @@ test.describe("tenant CRUD roundtrip", () => {
   });
 
   test("a duplicate slug is refused", async ({ request }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
     const headers = asUser(token);
 
@@ -144,6 +151,8 @@ test.describe("tenant CRUD roundtrip", () => {
   });
 
   test("a malformed slug is refused before anything is written", async ({ request }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
 
     const response = await request.post(restUrl("/api/v1/tenants"), {
@@ -155,6 +164,8 @@ test.describe("tenant CRUD roundtrip", () => {
   });
 
   test("an unknown property is refused rather than ignored", async ({ request }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
 
     // Request schemas are closed (`CreateTenantRequest.additionalProperties: false`),

@@ -1,5 +1,5 @@
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
-import type { Tenant, User } from "../db/schema";
+import type { Tenant } from "../db/schema";
 import { AuthRepository } from "./auth.repository";
 import type { MembershipRow } from "./auth.resources";
 
@@ -17,19 +17,16 @@ import type { MembershipRow } from "./auth.resources";
  * covered them were deleted rather than skipped. What replaced the identity lookup is the
  * `account(providerId, accountId)` unique index and #706's back-fill into it, asserted in
  * `ouroboros-db/tests/constraints.sql`.
+ *
+ * **And two more were the guard's.**
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) deleted `findUserById` and
+ * `findUserByEmail`: the signed-in person arrives with the session the library resolved, so
+ * reading a `users` row to confirm them is a query per request that would also find nothing
+ * for anybody who first signed in after V004. The two reads left are the two that answer
+ * `GET /api/v1/auth/me`, and both are about tenancy rather than identity.
  */
 
 const USER_ID = "5eed0003-0000-4000-8000-000000000001";
-const EMAIL = "ken@acme-robotics.dev";
-
-const USER = {
-  id: USER_ID,
-  email: EMAIL,
-  display_name: "Ken Suenobu",
-  avatar_url: null,
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-} satisfies User;
 
 const MEMBERSHIP = {
   tenant_id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
@@ -57,44 +54,6 @@ describe("the auth repository", () => {
   beforeEach(() => {
     database = recordingDatabase();
     repository = new AuthRepository(database.service);
-  });
-
-  describe("finding a person by address", () => {
-    it("matches the stored column exactly, which is why the caller folds the address", async () => {
-      await repository.findUserByEmail(EMAIL);
-
-      expect(database.statements[0].sql).toContain('where "email" = $1');
-      expect(database.statements[0].parameters).toEqual([EMAIL]);
-    });
-
-    it("returns the person when there is one", async () => {
-      database.answers({ rows: [USER] });
-
-      expect(await repository.findUserByEmail(EMAIL)).toEqual(USER);
-    });
-
-    it("returns nothing when no user holds that address", async () => {
-      expect(await repository.findUserByEmail(EMAIL)).toBeUndefined();
-    });
-  });
-
-  describe("finding a person by id", () => {
-    it("is a primary-key lookup — this runs on every authenticated request", async () => {
-      await repository.findUserById(USER_ID);
-
-      expect(database.statements[0].sql).toContain('where "id" = $1');
-      expect(database.statements[0].parameters).toEqual([USER_ID]);
-    });
-
-    it("returns the person when the row is still there", async () => {
-      database.answers({ rows: [USER] });
-
-      expect(await repository.findUserById(USER_ID)).toEqual(USER);
-    });
-
-    it("returns nothing once the row is gone, which is what ends a deleted user's session", async () => {
-      expect(await repository.findUserById(USER_ID)).toBeUndefined();
-    });
   });
 
   describe("listing memberships", () => {
@@ -157,15 +116,13 @@ describe("the auth repository", () => {
       // on the pool instead: it takes its own connection, commits on its own, and is not
       // undone by a rollback. Every method here forwards the transaction for that reason.
       await database.service.transaction(async (trx) => {
-        await repository.findUserById(USER_ID, trx);
-        await repository.findUserByEmail(EMAIL, trx);
         await repository.listMemberships(USER_ID, trx);
         await repository.findTenantByDomain("acme-robotics.dev", trx);
       });
 
       expect(database.sql()[0]).toBe("begin");
       expect(database.sql().at(-1)).toBe("commit");
-      expect(database.statements).toHaveLength(6);
+      expect(database.statements).toHaveLength(4);
     });
   });
 });

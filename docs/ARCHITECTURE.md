@@ -380,36 +380,55 @@ arriving GitHub account to an existing person only on an address GitHub says is 
 `ouroboros-rest/README.md` § Signing in carries the reasoning and the OAuth App
 registration.
 
-The session cookie:
+#### 4.1.1 The session
+
+**The session is a row, not a claim** — decision **A6**, delivered by
+[#703](https://github.com/NobuData/ouroboros/issues/703). BetterAuth writes one row per
+sign-in to `ouroboros.session` (V004) and the browser carries a cookie naming it. Signing
+out **deletes the row**, so revocation is immediate rather than an expiry a copied cookie
+can outlive — which closes the revocation half of
+[#38](https://github.com/NobuData/ouroboros/issues/38).
+
+That replaced [#33](https://github.com/NobuData/ouroboros/issues/33)'s stateless signed
+`ouro_session` cookie, which had no server-side record to delete and said so. **The rename
+invalidated every session live at the cut-over**, and that is intended: there is no way to
+migrate a stateless cookie into a session row, and inventing one would mean trusting the
+signature the change exists to stop trusting. A browser still sending `ouro_session` is
+answered `401` and told to drop it.
+
+Session expiry and refresh — the values, and where they are argued
+(`ouroboros-rest/src/auth/session.options.ts`):
 
 | Property | Value | Why |
 |---|---|---|
-| Name | `ouro_session` | One cookie, one purpose |
-| Contents | Signed principal reference — user id and issue time | No profile data in the browser |
-| `httpOnly` | yes | Script on the page cannot read it |
+| Cookie | `better-auth.session_token` | BetterAuth's default. `__Secure-`-prefixed over HTTPS, which a browser will not accept over plain HTTP |
+| Contents | The session's token — a reference to a row | No profile data and no claims in the browser |
+| Lifetime (`expiresIn`) | 7 days | A week of work without re-authenticating; still the bound on a stolen cookie |
+| Refresh (`updateAge`) | 1 day | Using a session older than this slides its expiry, so daily use never ends mid-task. Not every request, which would be a write per request |
+| Cookie cache (`cookieCache.maxAge`) | 5 minutes | A signed snapshot in a second cookie, `better-auth.session_data`, so an authenticated request costs **no** database query while it is fresh. Also the window in which a revoked session can still be honoured by a browser that already held one |
+| `httpOnly` | yes | Script on the page cannot read either cookie |
 | `SameSite` | `Lax` | The OAuth redirect still works; cross-site posts do not |
-| `Secure` | outside development | A development stack has no TLS |
-| Signing key | `OURO_SESSION_SECRET` | Rotating it invalidates every open session |
+| `Secure` | over HTTPS | Set by the library from `BETTER_AUTH_URL`'s scheme; a development stack has no TLS |
+| Signing key | `BETTER_AUTH_SECRET` | Signs the token and the cached snapshot. Rotating it invalidates every open session |
 
-The MVP session is a stateless signed cookie, which is honest about its trade-off: there
-is no server-side record to delete, so revocation before expiry is deferred — tracked with
-the security hardening pass ([#38](https://github.com/NobuData/ouroboros/issues/38)) and
-closed by [#703](https://github.com/NobuData/ouroboros/issues/703), which replaces this
-table wholesale with BetterAuth's database-backed session and its own guard. **Between #702
-and #703 this service signs people in with BetterAuth and remembers them with the cookie
-above**, which means a completed sign-in does not yet satisfy the guard; the two issues are
-meant to land close together for that reason. Local development without GitHub credentials uses a dev-mode bypass
-(`OURO_AUTH_DEV_USER`) that is hard disabled when `NODE_ENV=production` — the variable is
-dropped before the environment is validated, so there is no value for any later code path
-to read, and the accessor the guard uses refuses one anyway.
+**Local development has no bypass.** #33's `OURO_AUTH_DEV_USER` signed every request in as
+a named address; #703 removed the guard that read it, because a bypass is a branch inside
+an authentication decision this service no longer makes.
+[#705](https://github.com/NobuData/ouroboros/issues/705) replaces it with a development
+email/password sign-in — a credential rather than a way around one — and removes the
+variable. Until it lands, signing in locally means a real GitHub OAuth application; see
+`ouroboros-rest/README.md` § Signing in.
 
-The guard is registered globally, so **every route requires a session unless it opts out**
-with `@Public()`: the heartbeat, the two probes and sign-out are the whole of the exception
-list — BetterAuth's own routes need no exemption, because they are registered on the HTTP
-adapter ahead of Nest's router and never reach the guard. A request without one is a `401` with `code: "unauthenticated"` —
-one answer for every way a session can fail, because a client cannot act differently on
-any of them and distinguishing them would tell whoever is probing which part of their
-forgery was right.
+The guard is the library's own `AuthGuard`, registered globally, so **every route requires
+a session unless it opts out** with `@AllowAnonymous()`: the heartbeat, the two probes and
+sign-out are the whole of the exception list — BetterAuth's own routes need no exemption,
+because they are registered on the HTTP adapter ahead of Nest's router and never reach the
+guard. That list is not maintained by inspection:
+`ouroboros-rest/src/modules/auth/guard.surface.spec.ts` enumerates the guard's decision for
+every route in the table and fails if one gains or loses an exemption. A request without a
+session is a `401` with `code: "unauthenticated"` — one answer for every way a session can
+fail, because a client cannot act differently on any of them and distinguishing them would
+tell whoever is probing which part of their forgery was right.
 
 ### 4.2 Resolving the tenant
 
@@ -632,10 +651,9 @@ checkout runs with:
 | `OURO_ENGINE_SHARED_SECRET` | `ouroboros-rest`, `ouroboros-engine` | Value of `X-Ouro-Internal-Key`; compared in constant time. Both sides must match | `dev-engine-shared-secret-change-me` |
 | `BETTER_AUTH_SECRET` | `ouroboros-rest` | What BetterAuth signs sessions and encrypts stored OAuth tokens with. Unprefixed because the library and its CLI read this name ([#700](https://github.com/NobuData/ouroboros/issues/700), conventions § 4) | `dev-better-auth-secret-change-me` |
 | `BETTER_AUTH_URL` | `ouroboros-rest` | The origin BetterAuth builds its own URLs from — the same address as `OURO_REST_URL`, in the library's vocabulary. Nothing derives one from the other | `http://localhost:4000` |
-| `OURO_SESSION_SECRET` | `ouroboros-rest` | Signing key for the session cookie; rotating it invalidates every session. Retired by [#703](https://github.com/NobuData/ouroboros/issues/703) with the hand-rolled session itself | `dev-session-secret-change-me` |
 | `OURO_GITHUB_CLIENT_ID` | `ouroboros-rest` | GitHub OAuth application, client id | `dev-github-client-id` |
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
-| `OURO_AUTH_DEV_USER` | `ouroboros-rest` | Development sign-in bypass: every request is treated as coming from this address, which must name a `ouroboros.users` row. Dropped before validation when `NODE_ENV=production` | `ken@acme-robotics.dev` |
+| `OURO_AUTH_DEV_USER` | `ouroboros-rest` | #33's development sign-in bypass. **Read by nothing since [#703](https://github.com/NobuData/ouroboros/issues/703)**, which removed the guard that consulted it; [#705](https://github.com/NobuData/ouroboros/issues/705) removes the variable along with delivering what replaces it. Still dropped before validation when `NODE_ENV=production` | `ken@acme-robotics.dev` |
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 | `OURO_TEST_DATABASE_DISPOSABLE` | `ouroboros-rest` tests | Whether `yarn test:integration` may empty the database between tests. The harness normally starts a throwaway PostgreSQL, which is disposable by definition; this is consulted only when `OURO_DATABASE_URL` points the suite at somebody else's, where truncation would take the development seed with it | `false` |

@@ -5,8 +5,8 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 
 import { applicationOptions, configureApplication, createApplication } from "../../application";
+import { grantSession, revokeGrantedSessions } from "../../auth/better-auth.fixture";
 import { AppModule } from "../app/app.module";
-import { AuthService } from "../auth/auth.service";
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
@@ -26,22 +26,14 @@ import { EngineModule } from "./engine.module";
  * answer really becomes the envelope, through the application's own filter rather than
  * through a `try` in a controller.
  *
- * Nothing connects. Where a signed-in caller is needed, `AuthService` is replaced rather
- * than a session earned: this suite starts no database, and `auth`'s own specs are where a
- * cookie is proved to become a person.
+ * Nothing connects. Where a signed-in caller is needed the session is granted to the
+ * BetterAuth stand-in rather than earned — this suite starts no database, and
+ * `auth.integration-spec.ts` is where a cookie is proved to become a person against real
+ * rows. The guard itself is the real one either way, which is the part this file is about.
  */
 
-/** The person the replaced `AuthService` signs every request in as. */
-const SIGNED_IN = {
-  user: {
-    id: "5eed0003-0000-4000-8000-000000000001",
-    email: "ken@acme-robotics.dev",
-    displayName: "Ken Suenobu",
-    avatarUrl: null,
-    createdAt: new Date("2026-08-11T10:20:23.114Z"),
-    updatedAt: new Date("2026-08-11T10:20:23.114Z"),
-  },
-};
+/** The cookie a signed-in caller carries, granted once for the whole file. */
+const SIGNED_IN = grantSession();
 
 /**
  * The real application, with a session and an engine that behaves as the test says.
@@ -57,8 +49,6 @@ async function applicationWith(engine: Partial<EngineClient>): Promise<INestAppl
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule.forRoot(testConfiguration())],
   })
-    .overrideProvider(AuthService)
-    .useValue({ authenticate: () => Promise.resolve(SIGNED_IN) })
     .overrideProvider(EngineClient)
     .useValue(engine)
     .compile();
@@ -116,6 +106,8 @@ describe("the route it publishes", () => {
     await app.close();
   });
 
+  afterAll(revokeGrantedSessions);
+
   /** The adapter's server, typed so Supertest can be handed it without an `any`. */
   const server = (): Server => app.getHttpServer() as Server;
 
@@ -147,7 +139,10 @@ describe("the route it publishes", () => {
         Promise.resolve({ service: "ouroboros-engine", version: "0.3.0", uptimeSeconds: 1 }),
     });
 
-    const response = await request(server()).get("/api/v1/engine/status").expect(200);
+    const response = await request(server())
+      .get("/api/v1/engine/status")
+      .set("Cookie", SIGNED_IN)
+      .expect(200);
 
     expect(response.body).toEqual({ engine: "up", version: "0.3.0" });
   });
@@ -160,13 +155,16 @@ describe("the route it publishes", () => {
         Promise.resolve({ service: "ouroboros-engine", version: "0.3.0", uptimeSeconds: 1 }),
     });
 
-    await request(server()).get("/api/v1/engine/status").expect(200);
+    await request(server()).get("/api/v1/engine/status").set("Cookie", SIGNED_IN).expect(200);
   });
 
   it("answers 502 in the envelope when the engine cannot serve the request", async () => {
     app = await applicationWith({ status: () => Promise.reject(engineUnavailable()) });
 
-    const response = await request(server()).get("/api/v1/engine/status").expect(502);
+    const response = await request(server())
+      .get("/api/v1/engine/status")
+      .set("Cookie", SIGNED_IN)
+      .expect(502);
 
     const envelope = response.body as ErrorEnvelope;
     expect(envelope.code).toBe(ENGINE_ERRORS.unavailable);
@@ -176,7 +174,10 @@ describe("the route it publishes", () => {
   it("names no internal address in that answer", async () => {
     app = await applicationWith({ status: () => Promise.reject(engineUnavailable()) });
 
-    const response = await request(server()).get("/api/v1/engine/status").expect(502);
+    const response = await request(server())
+      .get("/api/v1/engine/status")
+      .set("Cookie", SIGNED_IN)
+      .expect(502);
 
     expect(JSON.stringify(response.body)).not.toContain("localhost:8000");
   });

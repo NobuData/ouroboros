@@ -1,8 +1,10 @@
 import { Controller, Get, type ExecutionContext } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
-import { attachPrincipal } from "../auth/principal";
-import { Public } from "../auth/public.decorator";
+import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
+
+import { SESSION_PROPERTY, userRow } from "../auth/principal";
+import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
 import type { Tenant, User } from "../db/schema";
 import { currentMembership, currentUser, runWithTenantContext } from "./tenant.context";
 import { TenantOptional } from "./tenant.decorators";
@@ -27,14 +29,8 @@ const TENANT: Tenant = {
   updated_at: new Date("2026-08-11T10:20:23.114Z"),
 };
 
-const USER: User = {
-  id: "5eed0003-0000-4000-8000-000000000001",
-  email: "ken@acme-robotics.dev",
-  display_name: "Ken Suenobu",
-  avatar_url: null,
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+/** The person the session names, in the shape the tenancy code reads them. */
+const USER: User = userRow(FIXTURE_USER);
 
 /** Controllers whose decorators are the thing under test. */
 @Controller()
@@ -51,8 +47,8 @@ class OptionalController {
 }
 
 @Controller()
-class PublicController {
-  @Public()
+class AnonymousController {
+  @AllowAnonymous()
   @Get()
   handler(): void {}
 }
@@ -79,10 +75,7 @@ function contextFor(
 
 /** A request from a signed-in person, with whatever headers and parameters a test wants. */
 function signedInRequest(extra: Partial<TenantRequest> = {}): TenantRequest {
-  const request: TenantRequest = { headers: {}, params: {}, ...extra };
-  attachPrincipal(request, { user: USER });
-
-  return request;
+  return { headers: {}, params: {}, [SESSION_PROPERTY]: principalFor(), ...extra };
 }
 
 /** A resolver that answers with a membership in {@link TENANT}. */
@@ -202,7 +195,7 @@ describe("a route marked @TenantOptional()", () => {
   });
 });
 
-describe("a route marked @Public()", () => {
+describe("a route marked @AllowAnonymous()", () => {
   it("is allowed, and nothing is recorded", async () => {
     const resolver = resolverDouble();
     const guard = new TenantContextGuard(new Reflector(), resolver);
@@ -210,7 +203,7 @@ describe("a route marked @Public()", () => {
     await runWithTenantContext(async () => {
       expect(
         await guard.canActivate(
-          contextFor(PublicController, PublicController.prototype.handler, {}),
+          contextFor(AnonymousController, AnonymousController.prototype.handler, {}),
         ),
       ).toBe(true);
 
@@ -221,7 +214,7 @@ describe("a route marked @Public()", () => {
 });
 
 describe("a request with no principal on a scoped route", () => {
-  it("is allowed through, because refusing it is the session guard's job", async () => {
+  it("is allowed through, because refusing it is the authentication guard's job", async () => {
     // Unreachable through the pipeline. Checked because "the guard before me ran" is an
     // assumption about registration order, and if it were ever wrong the failure mode would
     // be a tenant resolved for nobody.

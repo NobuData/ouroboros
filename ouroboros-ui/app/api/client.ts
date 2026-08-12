@@ -31,6 +31,17 @@ import { TENANT_HEADER, assertTenantReference } from "@/app/api/tenant";
 /**
  * The session cookie, as `ouroboros-rest` issues and reads it
  * (`openapi.yaml` § `components.securitySchemes.ouroSession`).
+ *
+ * **This is out of date and is deliberately not fixed here.**
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) made a session a database row
+ * and renamed the cookie to BetterAuth's `better-auth.session_token`; the scheme above now
+ * names that one. Re-pointing this module — this constant, the layout gate and
+ * `loginView()` — is [#720](https://github.com/NobuData/ouroboros/issues/720), which owns
+ * them together because they have to move in one step: a gate that reads one cookie and a
+ * client that forwards another is a screen that renders for somebody the API then refuses.
+ * Nothing here works in the meantime, and nothing here worked before it either — the login
+ * button has been waiting on [#718](https://github.com/NobuData/ouroboros/issues/718) since
+ * #702.
  */
 export const SESSION_COOKIE = "ouro_session";
 

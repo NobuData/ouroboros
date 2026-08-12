@@ -22,12 +22,15 @@
  *     fixture creates a row the suite did not name — a membership, an identity, an
  *     organisation — the cleanup leaks. {@link ApiHarness.truncate} empties every table the
  *     migrations created, so what a suite sees is what it put there.
- *   * **Sessions minted the way the callback route mints them.** {@link ApiHarness.signIn}
- *     inserts a real person and signs a real cookie with the secret the application under
- *     test was configured with. Nothing here is a bypass: a suite using it exercises the
- *     global guard rather than avoiding it, which is the difference between proving the
- *     tenancy API works for a signed-in caller and proving nothing because authentication
- *     was switched off underneath it.
+ *   * **Sessions minted the way a sign-in mints them.** {@link ApiHarness.signIn} inserts a
+ *     real person — in both the tenancy `users` table and BetterAuth's `"user"`, which V004
+ *     keys by the same id — and then a real `session` row, and hands back the cookie that
+ *     names it. Nothing here is a bypass: a suite using it exercises the global guard
+ *     rather than avoiding it, which is the difference between proving the tenancy API
+ *     works for a signed-in caller and proving nothing because authentication was switched
+ *     off underneath it. Since
+ *     [#703](https://github.com/NobuData/ouroboros/issues/703) it also means a suite can
+ *     *revoke* one and watch the same cookie stop working.
  *
  * ```ts
  * let api: ApiHarness;
@@ -55,7 +58,7 @@ import { Pool } from "pg";
 import request from "supertest";
 
 import { createApplication } from "../application";
-import { sessionCookieFor } from "../modules/auth/session.fixture";
+import { signInAs } from "../modules/auth/session.fixture";
 import type { Configuration } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { SCHEMA_NAME, type TenantRole } from "../modules/db/schema";
@@ -73,9 +76,16 @@ import {
 /** The verbs this API answers to, which is every verb a suite has to be able to send. */
 export type Method = "get" | "post" | "patch" | "delete";
 
-/** Somebody signed in: the row in `ouroboros.users`, and the cookie their browser carries. */
+/** Somebody signed in: the person, and the cookie their browser carries. */
 export interface Person {
-  /** Their `ouroboros.users.id`. The guard reads the row, so this names a real one. */
+  /**
+   * Their id — one value, in two tables.
+   *
+   * `ouroboros.users.id` for everything tenancy references, and `ouroboros."user".id` for
+   * the session. V004 back-filled one from the other preserving ids, and
+   * {@link ApiHarness.signIn} writes both with the same value for exactly that reason: a
+   * fixture that let them differ would be a fixture that could not reproduce production.
+   */
   readonly id: string;
   /** Their address, folded to lower case exactly as the API would fold it. */
   readonly email: string;
@@ -118,8 +128,8 @@ export class ApiHarness {
   /**
    * @param app - The application, already listening.
    * @param baseUrl - Where it is listening, as a Supertest base.
-   * @param configuration - What it was configured with — the session secret above all, which
-   *   is what makes a minted cookie one this application will honour.
+   * @param configuration - What it was configured with, for a suite that needs to assert
+   *   against a value the application was given.
    * @param sql - The suite's own connection, outside the application.
    */
   private constructor(
@@ -134,7 +144,7 @@ export class ApiHarness {
    *
    * `createApplication` rather than `@nestjs/testing`, deliberately: this is the whole
    * pipeline — the global prefix, the versioning, the validation pipe, the error filter, the
-   * session guard, the tenant guard and the roles guard, in that order — and a suite that
+   * authentication guard, the tenant guard and the roles guard, in that order — and a suite that
    * assembled its own would be asserting against a copy of the real one that is free to
    * drift from it. A suite that has to *replace* a provider is the exception and builds its
    * own; `auth.integration-spec.ts` is the one that does, because github.com is not
@@ -198,10 +208,14 @@ export class ApiHarness {
   /**
    * Create somebody, and sign them in.
    *
-   * The row is inserted directly rather than through the API, because the API's invite flow
-   * makes a stub `users` row with no identity — which is exactly right for an invitation and
-   * no use for being somebody. The cookie is `issueSession`'s, signed with this
-   * application's secret.
+   * The rows are inserted directly rather than through the API, because the API's invite
+   * flow makes a stub `users` row with no identity — which is exactly right for an
+   * invitation and no use for being somebody. Two people-shaped tables are written, with
+   * one id between them: `users`, which every tenancy foreign key points at, and
+   * BetterAuth's `"user"`, which the session references. That is not duplication invented
+   * here — it is exactly what V004's back-fill did to everybody who had already signed in,
+   * and it is what [#708](https://github.com/NobuData/ouroboros/issues/708) collapses back
+   * to one.
    *
    * @param overrides - Their address and name, when a suite cares what they are.
    * @returns Them, with the cookie their browser carries.
@@ -217,12 +231,22 @@ export class ApiHarness {
       [email, displayName],
     );
 
-    return {
-      id: rows[0].id,
-      email,
-      displayName,
-      cookie: sessionCookieFor(rows[0].id, this.configuration.sessionSecret),
-    };
+    return { id: rows[0].id, email, displayName, cookie: await this.session(rows[0].id) };
+  }
+
+  /**
+   * Give an existing person a second session.
+   *
+   * Two browsers, one account — which is the arrangement every revocation assertion needs:
+   * sign out of one and the other must be unaffected, because sign-out deletes *a* session
+   * row rather than everybody's.
+   *
+   * @param userId - Whose. A `users.id` from {@link signIn}; the `"user"` row is written
+   *   here if it is not already there, keyed by the same value.
+   * @returns The `Cookie` header value for the new session.
+   */
+  async session(userId: string): Promise<string> {
+    return signInAs(this.sql, userId);
   }
 
   /**

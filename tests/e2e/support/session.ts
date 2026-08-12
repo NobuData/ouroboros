@@ -1,148 +1,93 @@
 /**
- * How this suite arrives signed in — and why that is a credential rather than a bypass.
+ * How this suite arrives signed in — and why, for the moment, it cannot.
  *
- * ## The problem
+ * ## What this used to be
  *
  * Issue [#56](https://github.com/NobuData/ouroboros/issues/56) asks for a *dev-auth login*
- * leg. The stack it must run against will not serve one. `ouroboros-rest`'s image pins
- * `NODE_ENV=production` (`ouroboros-rest/Dockerfile`), and production is where
- * `loadConfiguration` *deletes* `OURO_AUTH_DEV_USER` before the schema ever sees it — the
- * acceptance criterion of [#33](https://github.com/NobuData/ouroboros/issues/33), and
- * documented in `README.md` § Signing in as the reason sign-in in the compose stack is the
- * real GitHub handshake. Nor can that be turned off from the outside: `listenHost()` reads
- * the same variable, so a container told `NODE_ENV=development` binds `127.0.0.1` *inside
- * itself* and the published port goes dead.
+ * leg. The stack it runs against would not serve one — `ouroboros-rest`'s image pins
+ * `NODE_ENV=production`, and production is where `loadConfiguration` *deleted*
+ * `OURO_AUTH_DEV_USER` before the schema ever saw it — so this module minted a session the
+ * way the service minted one: `issueSession()`, imported from `ouroboros-rest`'s own
+ * source, signed with the `OURO_SESSION_SECRET` the running container held. Every check the
+ * guard made still ran. It was a legitimately signed credential rather than a bypass, and
+ * that distinction is what made it acceptable.
  *
- * The real handshake is not scriptable either. It is a redirect to github.com, a human
- * consenting, and a callback — none of which a nightly job can perform, and the BetterAuth
- * flow `docs/ROADMAP_OOE_MVP.md` amends this issue to require does not exist yet: its
- * blocker `D.5` is one of the 22 issues that roadmap flags as unfiled.
+ * ## Why it is parked
  *
- * ## What this does instead
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) retired that session. There is
+ * no `issueSession` any longer and no signing key it could use: a session is now a **row**
+ * in `ouroboros.session`, and a cookie names it. Nothing about that is reproducible from
+ * outside the stack, and two things have to land before it is:
  *
- * It mints a session the way the service mints one, and hands it to the browser.
+ *   * **[#709](https://github.com/NobuData/ouroboros/issues/709)** — the development seed
+ *     does not yet write BetterAuth's `"user"` rows, so the seeded owner this suite signs
+ *     in as has no identity for a session to reference at all.
+ *   * **[#705](https://github.com/NobuData/ouroboros/issues/705)** — the development
+ *     email/password sign-in, which is what gives a scripted caller an honest way to obtain
+ *     a session over HTTP. [#715](https://github.com/NobuData/ouroboros/issues/715) is the
+ *     issue that then builds the automated auth suite on top of it.
  *
- * `issueSession()` below is not a re-implementation — it is `ouroboros-rest`'s own
- * function, imported. The cookie it returns is signed with `OURO_SESSION_SECRET`, the same
- * key the running container holds, so the request that carries it goes through the entire
- * ordinary path: `auth.guard.ts` reads the header, `readToken` verifies the HMAC in
- * constant time, checks the `iat` against the maximum age, and the service then *reads the
- * user row from the database* before anything is authorised. Nothing is stubbed and no
- * check is skipped. A deleted user, a rotated secret or an expired token all fail here
- * exactly as they fail for a person.
+ * The alternatives were weighed and rejected. Reaching into PostgreSQL from here — to
+ * insert a `"user"` and a `session` row — would break the rule this directory is built on,
+ * which is that everything reaches a service over HTTP; `eslint.config.mjs` enforces the
+ * import half of it, and the single exception it used to permit is what this file has just
+ * lost. Walking the real GitHub handshake needs a human at a consent screen.
  *
- * The distinction worth holding on to: a bypass is code in the product that makes the
- * service trust an unauthenticated request. This is a test holding a legitimately signed
- * credential. The product is byte-for-byte the image that ships, and turning this suite
- * off changes nothing about it.
- *
- * ## Why the import rather than a local HMAC
- *
- * Because a copy would drift. If the token format changed — a field added, the separator
- * moved, the payload encoded differently — a local implementation would keep producing
- * yesterday's cookie, and this suite would report an authentication failure that has
- * nothing to do with authentication. Importing means the format has one definition, and
- * `yarn typecheck` here fails the moment its signature changes.
- *
- * It is the *only* import from a service's source in this directory, and
- * `eslint.config.mjs` enforces that — every other module in the suite reaches a service
- * over HTTP, which is what makes it an end-to-end test at all.
+ * So the legs that need a session are annotated `test.fixme` with {@link SESSION_PARKED}
+ * as the reason, and they say so in the run's report rather than failing every night at
+ * three. **Every leg that does not need one still runs**, which is most of the health,
+ * shell and negative-path coverage — including, importantly, the assertions that a stranger
+ * is refused.
  *
  * ## What replaces this
  *
- * One function. When the BetterAuth work lands, `signedInContext()` becomes a call to
- * whatever that flow's test helper is, and no spec changes — none of them know how the
- * cookie got there.
+ * One function. When #705 lands, {@link signIn} becomes a call to its sign-in route and no
+ * spec changes — none of them know how the cookie got there.
  */
 
-import type { BrowserContext, Cookie } from "@playwright/test";
+import type { BrowserContext } from "@playwright/test";
 
-// The two files that define the credential format. See this module's header for the rule
-// that permits these two imports and forbids every other one.
-import {
-  SESSION_COOKIE,
-  SESSION_COOKIE_PATH,
-  issueSession,
-} from "../../../ouroboros-rest/src/modules/auth/session";
+/**
+ * Why the signed-in legs do not run, in the words a report should carry.
+ *
+ * A constant rather than a string per call site, so that the day it stops being true there
+ * is one place to delete and `grep` finds every leg that was waiting on it.
+ */
+export const SESSION_PARKED =
+  "Signing in needs #709 (the seed writes BetterAuth's user rows) and #705 (development " +
+  "email/password sign-in). #703 replaced the stateless cookie this suite used to mint " +
+  "with a database-backed session row, which cannot be produced from outside the stack.";
 
-import { REST_URL, SESSION_SECRET, UI_URL } from "./stack";
+/**
+ * The cookie a signed-in browser carries.
+ *
+ * Named here because the specs that assert a session is *checked* still set one — a value
+ * naming no row, which is the post-#703 form of "a forged credential authenticates
+ * nobody". Those legs need no minting and do still run.
+ */
+export const SESSION_COOKIE = "better-auth.session_token";
 
-/** What a signed-in caller carries, in the two forms the suite needs it in. */
-export interface SignedIn {
-  /** The raw token, for a scripted request's own `Cookie` header. */
-  readonly token: string;
-  /** The cookies to seed a browser context with — one per origin; see below. */
-  readonly cookies: readonly Cookie[];
+/**
+ * Sign a browser context in as a seeded user.
+ *
+ * @param _context - The context that would carry the session.
+ * @param _userId - Whose session, from `support/seed.ts`.
+ * @returns Never; see {@link SESSION_PARKED}.
+ * @throws {Error} Always. A leg that reaches this has lost its `test.fixme` annotation,
+ *   and failing loudly here is better than a browser that silently proceeds signed out and
+ *   then fails on a heading that is not there.
+ */
+export function signIn(_context: BrowserContext, _userId: string): Promise<never> {
+  return Promise.reject(new Error(SESSION_PARKED));
 }
 
 /**
  * Mint a session for a seeded user.
  *
- * @param userId - `ouroboros.users.id`. Must name a row the seed created, because the
- *   guard reads the row: a signature over a user that does not exist authenticates
- *   nobody, which is the property `auth.service.ts` calls out.
- * @param now - When the session is issued. Defaults to now; a test that wants an expired
- *   token passes a date a week back, which is how `specs/sign-in.spec.ts` proves the
- *   session is actually checked rather than merely present.
- * @returns The token and the cookies that carry it.
+ * @param _userId - Whose session.
+ * @returns Never; see {@link SESSION_PARKED}.
+ * @throws {Error} Always, for the reason {@link signIn} gives.
  */
-export function mintSession(userId: string, now: Date = new Date()): SignedIn {
-  const token = issueSession(userId, SESSION_SECRET, now);
-
-  return { token, cookies: sessionCookies(token) };
-}
-
-/**
- * The session cookie, once per origin the browser will send it to.
- *
- * Two origins, and the reason is the compose stack's shared network namespace: the UI is
- * published on `localhost:3000` and `ouroboros-rest` on `localhost:4000`. A cookie is
- * scoped to a host *and a port is not part of that scope*, so one entry would in principle
- * cover both — but Playwright's `addCookies` takes either a `url` or an explicit
- * `domain`/`path` pair, and giving it both urls states the intent plainly rather than
- * relying on how a cookie jar happens to key its entries.
- *
- * `httpOnly` matches what the service sets (`sessionCookieAttributes`), so the page cannot
- * read it through `document.cookie` here either — a suite whose session is visible to
- * script would be quietly testing a weaker cookie than the one that ships.
- *
- * `secure` is `false`, and that is not a relaxation: the attribute means *never over plain
- * HTTP*, this stack is plain HTTP on loopback, and a `Secure` cookie the browser declined
- * to send would look exactly like a broken session.
- *
- * @param token - The signed token.
- * @returns One cookie per origin, ready for `BrowserContext.addCookies`.
- */
-function sessionCookies(token: string): Cookie[] {
-  return [UI_URL, REST_URL].map((origin) => {
-    const { hostname } = new URL(origin);
-
-    return {
-      name: SESSION_COOKIE,
-      value: token,
-      domain: hostname,
-      path: SESSION_COOKIE_PATH,
-      expires: -1,
-      httpOnly: true,
-      secure: false,
-      sameSite: "Lax" as const,
-    };
-  });
-}
-
-/**
- * Sign a browser context in as a seeded user.
- *
- * @param context - The context to add the cookies to. Every page opened from it afterwards
- *   carries the session; pages already open do too, on their next request.
- * @param userId - Whose session, from `support/seed.ts`.
- * @returns The credential, for a spec that also wants to make a scripted call as the same
- *   person.
- */
-export async function signIn(context: BrowserContext, userId: string): Promise<SignedIn> {
-  const session = mintSession(userId);
-
-  await context.addCookies([...session.cookies]);
-
-  return session;
+export function mintSession(_userId: string): never {
+  throw new Error(SESSION_PARKED);
 }

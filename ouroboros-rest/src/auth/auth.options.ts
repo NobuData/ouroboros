@@ -30,6 +30,7 @@ import type { Pool } from "pg";
 
 import type { Configuration } from "../modules/config/configuration";
 import { ACCOUNT_LINKING, GITHUB_PROVIDER_ID, githubProvider } from "./github.provider";
+import { sessionOptions } from "./session.options";
 
 /**
  * Where BetterAuth's own routes are mounted.
@@ -84,16 +85,17 @@ export interface AuthDependencies {
  * BetterAuth's options for this service.
  *
  * What is deliberately *absent* is as much of the specification as what is here. There is
- * no session strategy ([#703](https://github.com/NobuData/ouroboros/issues/703)), no
- * organization plugin ([#704](https://github.com/NobuData/ouroboros/issues/704)) and no
- * email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)) — three issues
+ * no organization plugin ([#704](https://github.com/NobuData/ouroboros/issues/704)) and no
+ * email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)) — two issues
  * each of which owns one option, and an option added here before the issue that owns it
  * would be a route this service serves that nothing tests. `auth.options.spec.ts` pins the
  * whole surface for exactly that reason.
  *
- * [#702](https://github.com/NobuData/ouroboros/issues/702) added the two below it does own:
- * the GitHub provider, and the account-linking policy that exists because of it. Both live
- * in `github.provider.ts`, with the arguments for every value in them.
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) added the two it does own: the
+ * GitHub provider, and the account-linking policy that exists because of it. Both live in
+ * `github.provider.ts`, with the arguments for every value in them.
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) added the third, the session
+ * strategy, which lives in `session.options.ts` for the same reason.
  *
  * @param dependencies - The configuration and the pool — see {@link AuthDependencies}.
  * @returns The options object, ready for `betterAuth()`. A fresh object each call: the
@@ -123,6 +125,13 @@ export function authOptions({ configuration, pool }: AuthDependencies): BetterAu
     // `github.provider.ts` for the scopes, the profile mapping and why they are stated
     // rather than inherited.
     socialProviders: { [GITHUB_PROVIDER_ID]: githubProvider(configuration) },
+
+    // How long a sign-in lasts, when using it renews it, and how the per-request cost of
+    // asking is kept to nothing. Decision **A6**: the session is a row in
+    // `ouroboros.session`, so signing out is a `delete` and revocation is immediate — the
+    // property #33's stateless cookie wrote down that it could not offer. Every number is
+    // in `session.options.ts` with the argument for it.
+    session: sessionOptions(),
 
     // When an arriving GitHub account is somebody already in the database. It is an
     // `account`-level option rather than a provider-level one — it governs every provider

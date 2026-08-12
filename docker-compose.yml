@@ -233,7 +233,6 @@ services:
       # one this container's *browser* reaches, not one anything in this network resolves.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-better-auth-secret-change-me}
       BETTER_AUTH_URL: http://localhost:4000
-      OURO_SESSION_SECRET: ${OURO_SESSION_SECRET:-dev-session-secret-change-me}
       OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID:-dev-github-client-id}
       OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET:-dev-github-client-secret}
       # The browser origins allowed to call this API with credentials — one, the UI's.

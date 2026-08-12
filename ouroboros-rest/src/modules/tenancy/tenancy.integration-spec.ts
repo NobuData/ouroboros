@@ -13,7 +13,7 @@ import {
   uniqueEmail,
   uniqueName,
 } from "../../testing/integration.fixture";
-import { sessionCookieFor } from "../auth/session.fixture";
+import { signInAs } from "../auth/session.fixture";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import type { Page } from "./pagination";
@@ -117,20 +117,20 @@ describe("the tenancy API, for real", () => {
     });
     await app.init();
 
-    // Every route below is authenticated ([#33](https://github.com/NobuData/ouroboros/issues/33)),
-    // so the suite signs in as somebody real. The cookie is a genuine one — the same
-    // `issueSession` the callback route uses, signed with the same secret this application
-    // was configured with — so what runs below is the guard doing its job rather than the
-    // guard switched off. The row is the suite's own and is removed in `afterAll`; its
-    // address deliberately does not match `cleanUp`'s pattern, which would otherwise delete
-    // the person this suite is signed in as after its first test.
+    // Every route below is authenticated ([#703](https://github.com/NobuData/ouroboros/issues/703)),
+    // so the suite signs in as somebody real. The session is a genuine one — a row in
+    // `ouroboros.session` naming a real person, exactly as a sign-in would have written —
+    // so what runs below is the guard doing its job rather than the guard switched off. The
+    // rows are the suite's own and are removed in `afterAll`; the address deliberately does
+    // not match `cleanUp`'s pattern, which would otherwise delete the person this suite is
+    // signed in as after its first test.
     const { rows } = await admin.query<{ id: string }>(
       "insert into ouroboros.users (email, display_name) values ($1, $2) " +
         "on conflict (email) do update set display_name = excluded.display_name returning id",
       [SESSION_EMAIL, "Integration Suite"],
     );
     sessionUserId = rows[0].id;
-    session = sessionCookieFor(sessionUserId, testConfiguration().sessionSecret);
+    session = await signInAs(admin, sessionUserId);
   });
 
   afterAll(async () => {
@@ -848,10 +848,7 @@ describe("the tenancy API, for real", () => {
         );
       }
 
-      return {
-        id: rows[0].id,
-        cookie: sessionCookieFor(rows[0].id, testConfiguration().sessionSecret),
-      };
+      return { id: rows[0].id, cookie: await signInAs(admin, rows[0].id) };
     }
 
     it("answers 404 for a workspace you are not a member of — the first acceptance criterion", async () => {

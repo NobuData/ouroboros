@@ -133,22 +133,28 @@ export interface Configuration {
    * value inferred for it.
    */
   readonly betterAuthUrl: string;
-  /** Signing key for the session cookie. From `OURO_SESSION_SECRET`. */
-  readonly sessionSecret: string;
   /** GitHub OAuth application, client id. From `OURO_GITHUB_CLIENT_ID`. */
   readonly githubClientId: string;
   /** GitHub OAuth application, client secret. From `OURO_GITHUB_CLIENT_SECRET`. */
   readonly githubClientSecret: string;
   /**
-   * The address every request is treated as signed in by, for local work without a GitHub
-   * OAuth application. From `OURO_AUTH_DEV_USER`; `null` when unset.
+   * The address every request used to be treated as signed in by, for local work without a
+   * GitHub OAuth application. From `OURO_AUTH_DEV_USER`; `null` when unset.
    *
-   * **Always `null` in production, whatever the environment says.** See
-   * {@link loadConfiguration}: the variable is dropped rather than validated when
-   * `NODE_ENV=production`, so a deployment that inherited a development `.env` cannot be
-   * talked into trusting it. The guard that reads it refuses again on the same grounds
-   * ([#33](https://github.com/NobuData/ouroboros/issues/33)) — two independent checks,
-   * because one of them being wrong is authentication turned off.
+   * **Nothing reads it any more.**
+   * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the hand-rolled guard
+   * with BetterAuth's, and a bypass is a branch inside an authentication decision this
+   * service no longer makes. The variable outlives its reader by exactly one issue:
+   * [#705](https://github.com/NobuData/ouroboros/issues/705) removes it from here, from
+   * `.env.example` and from the compose files in the same change that delivers what
+   * replaces it — a development email/password sign-in, which is a credential rather than
+   * a way around one.
+   *
+   * It is still **always `null` in production, whatever the environment says**, and that is
+   * kept rather than tidied away: it costs four lines, and the day somebody wires a reader
+   * back up in the interval, the production-safety it depends on is already there. See
+   * {@link loadConfiguration}, where the variable is dropped rather than validated when
+   * `NODE_ENV=production`.
    */
   readonly authDevUser: string | null;
   /**
@@ -176,7 +182,6 @@ export const VARIABLES = {
   engineSharedSecret: "OURO_ENGINE_SHARED_SECRET",
   betterAuthSecret: "BETTER_AUTH_SECRET",
   betterAuthUrl: "BETTER_AUTH_URL",
-  sessionSecret: "OURO_SESSION_SECRET",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
   authDevUser: "OURO_AUTH_DEV_USER",
@@ -292,8 +297,6 @@ const environmentSchema = z.object({
     .string({ error: "is required" })
     .refine(isOrigin, "expected this service's own browser origin, such as http://localhost:4000"),
 
-  OURO_SESSION_SECRET: secret,
-
   OURO_GITHUB_CLIENT_ID: z.string({ error: "is required" }),
   OURO_GITHUB_CLIENT_SECRET: z.string({ error: "is required" }),
 
@@ -328,7 +331,7 @@ const environmentSchema = z.object({
 /**
  * Drop the variables that are set but empty, so they read as unset.
  *
- * `OURO_SESSION_SECRET=` in an env file is an unfilled line rather than a deliberate
+ * `BETTER_AUTH_SECRET=` in an env file is an unfilled line rather than a deliberate
  * empty string, and "is required" is a better answer to it than "expected at least 16
  * characters". A value that is only whitespace is treated the same way; one that has
  * whitespace *around* something is left alone, so a padded value is still rejected rather
@@ -438,7 +441,6 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     engineSharedSecret: values.OURO_ENGINE_SHARED_SECRET,
     betterAuthSecret: values.BETTER_AUTH_SECRET,
     betterAuthUrl: values.BETTER_AUTH_URL,
-    sessionSecret: values.OURO_SESSION_SECRET,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
     // `?? null` rather than left undefined: an optional property and a property that is

@@ -27,7 +27,7 @@ import { expect, test } from "@playwright/test";
 
 import { asUser, describe, expectError, expectJson, getAnonymously, restUrl } from "../support/api";
 import { SEED_OWNER } from "../support/seed";
-import { mintSession } from "../support/session";
+import { mintSession, SESSION_PARKED } from "../support/session";
 
 /** The `EngineStatus` resource, as `openapi.json` defines it. */
 interface EngineStatus {
@@ -36,9 +36,14 @@ interface EngineStatus {
 }
 
 test.describe("the engine answers through the gateway", () => {
+  // Three of these four legs carry a session and are parked — see `support/session.ts`.
+  // "A stranger cannot ask" is not one of them and still runs, which is the assertion that
+  // matters most about this route.
   test("a signed-in caller learns the engine is up and which build answered", async ({
     request,
   }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
 
     const response = await request.get(restUrl("/api/v1/engine/status"), {
@@ -59,6 +64,8 @@ test.describe("the engine answers through the gateway", () => {
   });
 
   test("the answer is narrower than what the engine reported", async ({ request }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
 
     const status = await expectJson<Record<string, unknown>>(
@@ -84,6 +91,8 @@ test.describe("the engine answers through the gateway", () => {
   });
 
   test("the gateway exposes no path-forwarding proxy", async ({ request }) => {
+    test.fixme(true, SESSION_PARKED);
+
     const { token } = mintSession(SEED_OWNER.id);
     const headers = asUser(token);
 

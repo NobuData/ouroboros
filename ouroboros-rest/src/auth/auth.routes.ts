@@ -63,10 +63,9 @@ export interface AuthRoute {
  *
  * **Not the whole surface.** BetterAuth also exposes email/password, account linking and
  * session-management endpoints, and this service answers on them the moment the options
- * that back them are set: [#703](https://github.com/NobuData/ouroboros/issues/703) is the
- * session strategy, [#705](https://github.com/NobuData/ouroboros/issues/705)
- * email/password. Each of those issues adds its own rows here, which is what keeps this
- * list a record of what the service *does* rather than of what the library *could*.
+ * that back them are set — [#705](https://github.com/NobuData/ouroboros/issues/705) is
+ * email/password, and it adds its own rows here. That is what keeps this list a record of
+ * what the service *does* rather than of what the library *could*.
  * [#702](https://github.com/NobuData/ouroboros/issues/702) added the GitHub rows below, and
  * with them the four routes that make a sign-in reachable — which is also the four routes
  * `/api/v1/auth/github` and `/api/v1/auth/github/callback` were removed in favour of.
@@ -92,12 +91,19 @@ export const AUTH_ROUTES: readonly AuthRoute[] = [
   {
     methods: ["GET", "POST"],
     path: `${AUTH_BASE_PATH}/get-session`,
-    purpose: "The caller's session, or null. What the login screen reads on load (#703).",
+    purpose:
+      "The caller's session, or null. What the login screen reads on load, and — since " +
+      "#703 — what the global guard calls on every request: with the cookie cache fresh " +
+      "it answers from the signed snapshot in the cookie and issues no statement at all.",
   },
   {
     methods: ["POST"],
     path: `${AUTH_BASE_PATH}/sign-out`,
-    purpose: "End the session and clear its cookie (#703).",
+    purpose:
+      "End the session and clear its cookie. Since #703 it **deletes the `session` row**, " +
+      "so revocation is immediate rather than an expiry a copied cookie can outlive. " +
+      "`POST /api/v1/auth/logout` is this service's own documented alias and delegates to " +
+      "it — see `src/modules/auth/auth.controller.ts`.",
   },
   {
     methods: ["GET"],

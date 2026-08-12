@@ -213,7 +213,7 @@ issue level.
 | `4.11` | `#37` Integration test harness | Extended so `C.5`'s auth-flow suites build on it |
 | `4.8` · `5.5` | `#34` · `#43` OpenAPI export & typed client | Auth routes use the BetterAuth client; the generated client covers everything else (`D.1`). **Both shipped in P1** — the generated client is `ouroboros-ui/app/api/`, and `D.1` reduces to pointing the auth calls at BetterAuth when `A.2` lands |
 | `5.7` | `#45` Dashboard placeholder | Re-pointed to land behind `D.5`'s guards |
-| `7.2` | `#56` End-to-end smoke test | Must sign in through the real BetterAuth flow, not a bypass. **Shipped ahead of `D.5`** — see the P2 note; the browser legs mint a session with `ouroboros-rest`'s own `issueSession`, which is a signed credential the guard checks in full rather than a bypass, and re-pointing it at BetterAuth is one function |
+| `7.2` | `#56` End-to-end smoke test | Must sign in through the real BetterAuth flow, not a bypass. **Shipped ahead of `D.5`**, and its signed-in legs are now **parked**: [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the stateless cookie those legs minted with a database-backed session row, which cannot be produced from outside the stack. `#709` (the seed writes BetterAuth's `"user"` rows) and `#705` (a sign-in a script can perform) are what restore them; every leg needing no session still runs |
 
 **Amended in place** (build as written, with the noted change):
 
@@ -407,13 +407,16 @@ that roadmap's "Existing issues affected" section.
 > issue's second acceptance criterion as a script: it stops each service in turn and
 > requires the matching leg to go red with a message that names the layer.
 >
-> **Two deviations, both recorded on the issue.** The dashboard leg signs in by minting a
-> session with `ouroboros-rest`'s own `issueSession`, because the amendment below — *the
-> real BetterAuth flow, not a bypass* — has no flow to use yet, and the compose stack's
-> production image strips the `OURO_AUTH_DEV_USER` bypass the issue body assumed. It is a
-> credential rather than a bypass: the guard verifies the signature, the age and the user
-> row exactly as it does for a person, and the suite proves it by refusing a forged and an
-> expired token first. Re-pointing it when `D.5` lands is one function, and no spec moves.
+> **Two deviations, both recorded on the issue.** The dashboard leg used to sign in by
+> minting a session with `ouroboros-rest`'s own `issueSession`, because the amendment below
+> — *the real BetterAuth flow, not a bypass* — had no flow to use yet, and the compose
+> stack's production image strips the `OURO_AUTH_DEV_USER` bypass the issue body assumed.
+> **That is now parked rather than deviating**:
+> [#703](https://github.com/NobuData/ouroboros/issues/703) made a session a database row,
+> so there is nothing left for a suite outside the stack to mint. The legs that need one
+> carry `test.fixme` naming `#709` and `#705`; the legs that assert a *stranger* is refused
+> — the ones that kept the minted credential honest — still run, and now include a browser
+> still holding #33's cookie being refused cleanly and told to drop it.
 > And the chain leg asserts through `GET /api/v1/engine/status` rather than an echo route,
 > because `ouroboros-rest` publishes no echo pass-through and adding public API surface to
 > satisfy a test's wording would be the test deciding the contract.

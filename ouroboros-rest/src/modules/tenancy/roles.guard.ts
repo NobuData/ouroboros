@@ -12,7 +12,7 @@
  * on any route that declares roles.
  *
  * **A route with no `@Roles()` is open to every member.** That is not the same laxity as
- * `@Public()`: the tenant guard has already refused anybody who is not a member of the
+ * `@AllowAnonymous()`: the tenant guard has already refused anybody who is not a member of the
  * workspace, so the default is "any of the four roles" rather than "anybody". Reads are
  * deliberately left at that default across this module — a `viewer` is a role that exists to
  * be able to look.

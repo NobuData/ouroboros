@@ -103,7 +103,11 @@ the secrets in the ones it finds, so it is safe to re-run after a `git pull` tha
 variable. `scripts/setup.sh --dry-run` reports what it would write without writing it, and
 `--db-port 55433` publishes PostgreSQL somewhere other than 5432, moving
 `OURO_DATABASE_URL` with it. The one thing it cannot do for you is register a GitHub OAuth
-application — and `yarn dev` signs in without one, through `OURO_AUTH_DEV_USER`.
+application, and since [#703](https://github.com/NobuData/ouroboros/issues/703) that is the
+only way to sign in: the `OURO_AUTH_DEV_USER` bypass went with the guard that read it.
+[#705](https://github.com/NobuData/ouroboros/issues/705) restores a local sign-in — an
+email and a password rather than a way around authentication — and until it lands
+`ouroboros-rest/README.md` § Signing in for real is the two-minute setup.
 
 `yarn dev` starts PostgreSQL, waits for its healthcheck, applies every pending
 migration, and then brings the services up side by side, streaming all of their logs
@@ -164,22 +168,24 @@ the API through `ouroboros-rest`'s network namespace, so restarting `rest` on it
 strands it — run `docker compose --profile full restart ui` after, and see the comment
 above the `ui` service for why.
 
-**Signing in.** These are production images, and `ouroboros-rest` strips the development
-bypass (`OURO_AUTH_DEV_USER`) when `NODE_ENV=production` — by design, and unlike
-`yarn dev`. Sign-in here is therefore the real GitHub handshake, performed by BetterAuth
-([#702](https://github.com/NobuData/ouroboros/issues/702)): register a development OAuth
+**Signing in.** Sign-in is the real GitHub handshake, performed by BetterAuth
+([#702](https://github.com/NobuData/ouroboros/issues/702)) — here and, since
+[#703](https://github.com/NobuData/ouroboros/issues/703) removed the `OURO_AUTH_DEV_USER`
+bypass, under `yarn dev` too. Register a development OAuth
 application whose authorization callback is
 `http://localhost:4000/api/auth/callback/github`, put its client id and secret in `.env`,
 and bring the stack up. The development seed
 ([#23](https://github.com/NobuData/ouroboros/issues/23)) provides the `acme-robotics`
 workspace the tenancy step offers, and its three users at `acme-robotics.dev`.
 
-Two caveats until the next two issues land, and both are deliberate.
-[#703](https://github.com/NobuData/ouroboros/issues/703) is what makes the service
-*remember* a completed sign-in — it still reads #33's `ouro_session` cookie, which
-BetterAuth does not set — and [#718](https://github.com/NobuData/ouroboros/issues/718) is
-what re-points the login page's button at the library. `ouroboros-rest/README.md`
-§ Signing in has the `curl` that exercises the flow in the meantime.
+**The service now remembers a completed sign-in**: #703 made the session a row, so signing
+out revokes it and a copied cookie is worth nothing afterwards. Two caveats remain until the
+next two issues land, and both are deliberate.
+[#718](https://github.com/NobuData/ouroboros/issues/718) is what re-points the login page's
+button at the library, and [#720](https://github.com/NobuData/ouroboros/issues/720) is what
+re-points the UI's own gate — which still forwards #33's cookie name.
+`ouroboros-rest/README.md` § Signing in has the `curl` that exercises the flow in the
+meantime.
 
 **The engine is not published**, which is the boundary
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes, made true by the topology

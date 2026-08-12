@@ -37,7 +37,7 @@ edit — ten of these eleven shipped, so each disposition below now costs a migr
 
 | Existing issue | State | Disposition under this roadmap |
 |---|:---:|---|
-| #33 `ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions` | 🔴 **Closed** | **Superseded** by Epic A, but it **shipped a complete hand-rolled OAuth implementation** — `oauth.ts` (state + PKCE, signed handshake cookie), `github.ts`, `auth.service.ts` (`resolveUser`, a 3-branch identity model), `session.ts` (stateless signed `ouro_session` cookie, 7-day max age, explicitly *no* sessions table), `signing.ts`, `cookies.ts`, `auth.guard.ts`, `principal.ts`, `public.decorator.ts`, plus a full `.spec.ts` suite and `auth.integration-spec.ts`. A.3 and A.4 must **migrate off and delete** these files, not write new ones beside them. |
+| #33 `ouroboros-rest: [4.7] GitHub OAuth sign-in & sessions` | 🔴 **Closed** | **Superseded** by Epic A, but it **shipped a complete hand-rolled OAuth implementation** — `oauth.ts` (state + PKCE, signed handshake cookie), `github.ts`, `auth.service.ts` (`resolveUser`, a 3-branch identity model), `session.ts` (stateless signed `ouro_session` cookie, 7-day max age, explicitly *no* sessions table), `signing.ts`, `cookies.ts`, `auth.guard.ts`, `principal.ts`, `public.decorator.ts`, plus a full `.spec.ts` suite and `auth.integration-spec.ts`. A.3 and A.4 have now **migrated off and deleted** every one of them — `principal.ts` is rewritten against BetterAuth's `@Session()` shape and the rest are gone. |
 | #21 `ouroboros-db: [3.3] Users, identities & tenant membership` | 🔴 **Closed** | ~~Superseded by B.1/B.2~~ — **shipped as originally specified** (`V002__users_membership.sql`: `users`, `user_identities`, `tenant_members` with a `role in ('owner','admin','member','viewer')` check). B.1/B.2 are a fix-forward migration from these real tables. |
 | #20 `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains` | 🔴 **Closed** | **Amended** by B.3 — `V001__tenants.sql` really created `ouroboros.tenants` and `tenant_domains` (incl. the one-primary-per-tenant partial unique index). `tenants` is *replaced* by the org plugin's `organization`; `tenant_domains` is *re-pointed*, with its existing rows migrated. |
 | #22 `ouroboros-db: [3.4] GitHub org & repo enablement` | 🔴 **Closed** | **Amended** by B.3 — `V003__github_enablement.sql` shipped `github_orgs`/`github_repos`; same shape, FK re-pointed to `organization.id` with data migrated. |
@@ -60,8 +60,8 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 | Layer | Shipped artifacts | Consequence for this roadmap |
 |---|---|---|
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
-| **`ouroboros-rest`** | `modules/auth/` (21 files — full OAuth + stateless session), `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app` | A.3/A.4 **delete** `oauth.ts`, `github.ts`, `session.ts`, `signing.ts`, `cookies.ts` and rewrite `auth.guard.ts`/`principal.ts` against BetterAuth. |
-| **env (`.env.example`)** | `OURO_SESSION_SECRET`, `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, `OURO_AUTH_DEV_USER=ken@acme-robotics.dev`, and — since A.1 shipped — `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.1 **added** BetterAuth's two beside the existing keys rather than swapping them: `OURO_SESSION_SECRET` signs a session that is still live, so **A.4** is what removes it. A.6 **removes** `OURO_AUTH_DEV_USER`. All of them are live keys, not plans. |
+| **`ouroboros-rest`** | `modules/auth/`, `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app`; `auth/` (BetterAuth) | **Done.** A.3 deleted `oauth.ts`/`github.ts`; A.4 deleted `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts`, and rewrote `principal.ts` against BetterAuth's `@Session()` shape. |
+| **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, `OURO_AUTH_DEV_USER=ken@acme-robotics.dev`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. `OURO_AUTH_DEV_USER` is still declared and is read by nothing — A.6 removes it with the change that replaces it. |
 | **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2 is largely **done**; D.3's SSO half is **built and waiting for C.2**; D.4's cards exist and need re-pointing at C.4. Epic D shrinks accordingly. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
@@ -227,10 +227,44 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > until D.3 · #718** re-points it at `signIn.social`. That gap is the deliberate cost of not
 > keeping two sign-in paths alive at once. Its issue section below is kept as the record of
 > what was asked for.
+>
+> **A.4 · #703 has shipped and has left the table below.** Sessions are **rows**:
+> `src/auth/session.options.ts` sets `expiresIn` (7 days), `updateAge` (1 day) and
+> `cookieCache` (enabled, 5 minutes), so an authenticated request costs **no** query while
+> the signed snapshot is fresh, and signing out **deletes the `ouroboros.session` row** —
+> revocation is immediate, which closes the revocation half of **#38**. The library's own
+> `AuthGuard` is the global guard, registered by `src/auth/auth.module.ts` rather than by the
+> library's nested dynamic module, because Nest reaches that one a scan level *after*
+> `TenancyModule` — which put `@Roles()` in front of authentication and answered `500`. Every
+> `@Public()` was ported to `@AllowAnonymous()` one for one, and the surface is no longer
+> maintained by inspection: `guard.surface.spec.ts` walks the running application's whole
+> route table with `DiscoveryService` and fails if any route gains or loses its exemption.
+> `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts` are
+> **deleted**; `principal.ts` is rewritten as the typing of BetterAuth's `@Session()` shape
+> plus the one `"user"` → `users` adaptation #708 will delete. `POST /api/v1/auth/logout`
+> was **kept and re-pointed** rather than removed — unlike #702's sign-in routes there is an
+> honest forward, and deleting it would have shrunk the public surface the issue's own
+> instruction called the spec.
+>
+> **The breaking change, stated rather than discovered:** the cookie rename `ouro_session` →
+> `better-auth.session_token` **invalidated every session live at the cut-over**. There is no
+> way to migrate a stateless signed cookie into a session row. A browser still holding the
+> old cookie is answered `401` and told to drop it —
+> `src/modules/auth/legacy.cookie.ts`, which is dated for deletion a week after the deploy.
+>
+> Three things it deliberately did **not** do. **The `OURO_AUTH_DEV_USER` bypass is gone**
+> and the variable is not: A.4 deleted the guard that read it, and **A.6 · #705** removes
+> the variable in the change that delivers the development email/password sign-in replacing
+> it — so local work needs a real GitHub OAuth app in the interval. **The UI still forwards
+> `ouro_session`**, which is **D.5 · #720**'s to re-point, exactly as that issue's body
+> predicted. And **the e2e suite's sign-in is parked**: it minted a stateless cookie with
+> `issueSession`, which no longer exists, and it cannot mint a row from outside the stack —
+> the legs that need one carry `test.fixme` naming **B.4 · #709** (seed writes the `"user"`
+> rows) and **A.6 · #705** (a sign-in a script can perform). Every leg that needs no session
+> still runs. Its issue section below is kept as the record of what was asked for.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.4 · #703 | ouroboros-rest: [A.4] Session strategy & global auth guard (retiring the stateless cookie) | DB sessions + cookie cache, swap the live guard, port every `@Public()` exemption | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.5 · #704 | ouroboros-rest: [A.5] Organization plugin adoption (tenancy backbone) | Org/member/invitation APIs, roles, `activeOrganizationId`, hooks | mvp, auth, rest | N (after A.4, B.2) | Y | L | ouroboros-rest |
 | A.6 · #705 | ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`) | Local/e2e auth without GitHub, hard-off in production, bypass deleted | mvp, auth, rest | N (after A.4) | Y | **M** ⬆ | ouroboros-rest |
 
@@ -361,6 +395,10 @@ sequenceDiagram
 ```
 
 ### Issue A.4 (#703) — ouroboros-rest: [A.4] Session strategy & global auth guard (retiring the stateless cookie)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, and
+`ouroboros-rest/README.md` § Sessions for the values and the cookies.
 
 - **Problem Statement:** Every non-public route must require a valid session, resolved
   once and injected — and sessions must be revocable. The shipped `session.ts` is
@@ -1311,12 +1349,13 @@ Ordered checklist (⊕ = parallelizable within its phase):
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
    it against a seeded copy; it is the one step in this roadmap that cannot be
    reverted by redeploying the previous build.)*
-3. **Phase 2 — Auth capability:** ~~A.3 #702~~ *(shipped)* → A.4 #703 → { A.5 #704 ⊕ A.6 #705 }
-   *(**A.4 is now urgent rather than merely next.** A.3 has landed, so the service is in
-   the state its sequencing warning describes: BetterAuth signs people in and #33's
-   stateless cookie is still what the guard reads, so a completed sign-in does not yet
-   satisfy it. A.4 closes that, and it deletes `session.ts`, `signing.ts`, `cookies.ts`
-   and `public.decorator.ts` on the way through.)*
+3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ *(both shipped)* →
+   { A.5 #704 ⊕ A.6 #705 }
+   *(**A.6 is now the urgent one.** A.4 deleted the `OURO_AUTH_DEV_USER` bypass along with
+   the guard that read it, so signing in locally means a real GitHub OAuth application and
+   the e2e suite's login legs are parked. A.6's development email/password sign-in is what
+   ends both — and B.4 #709, which teaches the seed to write BetterAuth's `"user"` rows, is
+   what the e2e suite needs beside it.)*
 4. **Phase 3 — REST services:** { C.1 #711 ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
    *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
    creates.)*
@@ -1340,7 +1379,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 Plus **11 annotations** to the surveyed issues (#20, #21, #22, #23, #31, #32, #33, #37,
 #38, #43, #44) executed during issue filing. Ten of the eleven are 🔴 Closed, so these
 are forward-pointer comments plus the `auth` label — **not reopenings**. The single
-open one, **#38**, additionally gets its body trimmed: A.4 delivers the session
+open one, **#38**, additionally gets its body trimmed: A.4 **has now delivered** the session
 revocation it was holding, and rate limiting moves to E.4.
 
 **Complexity re-rated 2026-08-12** against the shipped code — net effect is a wash,
@@ -1350,7 +1389,7 @@ got easier (its components exist).
 | Issue | Was | Now | Why |
 |---|:---:|:---:|---|
 | A.3 · #702 | M | **L** | Also back-fills `user_identities`→`account` and deletes 4 shipped files |
-| A.4 · #703 | M | **L** | Swaps the session mechanism under a guard already in production use |
+| ~~A.4 · #703~~ | M | **L** | *Shipped.* Swapped the session mechanism under a guard already in production use |
 | A.6 · #705 | S | **M** | Must remove a live bypass from env, compose, service and #56's e2e |
 | B.1 · #706 | M | **L** | Back-fills two populated tables, not just DDL |
 | B.3 · #708 | L | **L ⚠** | Unchanged chip, but re-rated **riskiest issue in the roadmap** — irreversible |
@@ -1417,13 +1456,18 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #703 (A.4).** #700 (A.1), #701 (A.2), #706 (B.1) and #702 (A.3) **have
-landed** — BetterAuth is configured, its handler answers at `/api/auth/*`, its four core
-tables exist with the shipped identities back-filled into them, and its GitHub provider
-signs people in. What is *not* yet true is that the service remembers them: #33's stateless
-cookie is still what the guard reads, and #702's own sequencing warning named this state.
-#703 is what ends it. #707 (B.2) is the next database step and #718 (D.3) is what makes the
-login page's button work again.
+**Start here: #705 (A.6), with #709 (B.4) beside it.** #700 (A.1), #701 (A.2), #706 (B.1),
+#702 (A.3) and #703 (A.4) **have landed** — BetterAuth is configured, its handler answers at
+`/api/auth/*`, its four core tables exist with the shipped identities back-filled into them,
+its GitHub provider signs people in, and the service now *remembers* people: a session is a
+row, the library's guard is what every route sits behind, and signing out revokes.
+
+What is not yet true is that anybody can sign in **without github.com**. A.4 deleted the
+`OURO_AUTH_DEV_USER` bypass with the guard that read it, which is why #705 is next: it is
+what returns local development and the e2e gate to a working sign-in, and #709 is what gives
+the seeded people a BetterAuth identity to sign in as. #707 (B.2) is the next database step,
+#718 (D.3) makes the login page's button work, and #720 (D.5) re-points the UI's own gate,
+which still forwards #33's cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate
@@ -1440,8 +1484,8 @@ three findings that most change how this work should be picked up:
    enterprise-SSO half of Step 1 — built, tested, and deliberately inert for want of an
    endpoint. Decision **A7** is already honoured in the UI. Epic D is re-wiring work,
    and D.2/D.4 shrank accordingly.
-2. **Two epics now delete working code.** A.3 and A.4 remove #33's OAuth and session
-   implementation; B.3 drops four populated tables. These are migrations with a
+2. **Two epics now delete working code.** A.3 and A.4 **have removed** #33's OAuth and
+   session implementation; B.3 drops four populated tables. These are migrations with a
    rollback story, not additions — and B.3 in particular should be rehearsed against a
    seeded copy before it runs anywhere real.
 3. **Only #38 is still open.** The other ten surveyed issues are closed and merged, so

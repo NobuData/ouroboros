@@ -1,6 +1,6 @@
 import { Reflector } from "@nestjs/core";
 
-import { IS_PUBLIC } from "../auth/public.decorator";
+import { ALLOW_ANONYMOUS } from "../auth/anonymous";
 import { TENANT_OPTIONAL } from "../tenancy/tenant.decorators";
 import type { EngineClient } from "./engine.client";
 import { EngineController } from "./engine.controller";
@@ -12,7 +12,7 @@ import { engineUnavailable } from "./engine.errors";
  * What it answers, that it does *not* answer when the engine cannot, and the two decorators
  * — one present, one deliberately absent. The decorator assertions read like introspection
  * for its own sake and are not: `@TenantOptional()` is why this route works for somebody who
- * belongs to two workspaces, and the *absence* of `@Public()` is the only thing standing
+ * belongs to two workspaces, and the *absence* of `@AllowAnonymous()` is the only thing standing
  * between a signed-out visitor and a question about the inside of the deployment.
  */
 
@@ -65,11 +65,11 @@ describe("the decorators on it", () => {
     expect(reflector.get(TENANT_OPTIONAL, EngineController.prototype.status)).toBe(true);
   });
 
-  it("is not public", () => {
-    // The polarity #33 establishes: a route is authenticated unless it says otherwise. The
-    // engine's version is not much of a secret, and "this is the one route we left open" is
-    // how a surface starts growing exceptions.
-    expect(reflector.get(IS_PUBLIC, EngineController.prototype.status)).toBeUndefined();
-    expect(reflector.get(IS_PUBLIC, EngineController)).toBeUndefined();
+  it("is not anonymous", () => {
+    // The polarity #33 established and #703 kept: a route is authenticated unless it says
+    // otherwise. The engine's version is not much of a secret, and "this is the one route
+    // we left open" is how a surface starts growing exceptions.
+    expect(reflector.get(ALLOW_ANONYMOUS, EngineController.prototype.status)).toBeUndefined();
+    expect(reflector.get(ALLOW_ANONYMOUS, EngineController)).toBeUndefined();
   });
 });

@@ -60,6 +60,13 @@ export default tseslint.config(
     // duplicating the HMAC here would let the two drift until the suite was signing
     // cookies the running service rejects. The narrow allowance is what keeps it from
     // becoming the general habit this rule exists to prevent.
+    //
+    // **The exception is no longer used, and the rule now covers every file.**
+    // [#703](https://github.com/NobuData/ouroboros/issues/703) deleted the module
+    // `support/session.ts` imported: a session is a database row now rather than a signed
+    // cookie, and there is nothing left to import. The `ignores` entry is kept so that the
+    // reasoning above survives for whoever restores signing in — #705 and #709 — and so
+    // that they have to decide again rather than inherit the allowance by accident.
     files: ["**/*.ts"],
     ignores: ["support/session.ts"],
     rules: {

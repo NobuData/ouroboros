@@ -169,7 +169,7 @@ Two rules, and one enumerated exception:
    that is what container platforms set. Standard platform variables (`NODE_ENV`,
    `HOSTNAME`) likewise stay unprefixed.
 2. **Everything Ouroboros-specific is prefixed `OURO_`.** `OURO_DATABASE_URL`,
-   `OURO_ENGINE_URL`, `OURO_SESSION_SECRET`, and so on. The prefix makes it obvious at a
+   `OURO_ENGINE_URL`, `OURO_ENGINE_SHARED_SECRET`, and so on. The prefix makes it obvious at a
    glance which variables belong to this system, and lets a container inherit unrelated
    environment without collision.
 3. **A library's own canonical variable keeps its own name.** Today that is exactly two:

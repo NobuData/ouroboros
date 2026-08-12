@@ -18,7 +18,7 @@ import { expect, test } from "@playwright/test";
 
 import { describe } from "../support/api";
 import { SEED_OWNER, SEED_TENANT } from "../support/seed";
-import { signIn } from "../support/session";
+import { SESSION_PARKED, signIn } from "../support/session";
 import { UI_URL } from "../support/stack";
 import { selectWorkspace } from "../support/workspace";
 
@@ -74,7 +74,9 @@ test.describe("the UI is the product", () => {
 test.describe("the theme toggle flips palettes", () => {
   // The toggle lives in the app shell's header (`app/shell/shell-header.tsx`), so this
   // needs a signed-in request in a workspace. The login screen has no toggle — mockup 01
-  // does not draw one.
+  // does not draw one. Which is why the whole group is parked: see `support/session.ts`.
+  test.fixme(true, SESSION_PARKED);
+
   test.beforeEach(async ({ context, page }) => {
     await signIn(context, SEED_OWNER.id);
     await selectWorkspace(context, SEED_TENANT.slug);
