@@ -14,8 +14,16 @@
  *
  * Sizes come from the mockup's pixels mapped onto the nearest token — the 24px brand lines
  * are `--t-2xl`, the 20px card title is `--t-xl` — rather than being re-specified. Where
- * the mockup has no token to map onto (the panel widths, the lockup, the switch) the value
- * is the mockup's own, in rem.
+ * the mockup has no token to map onto (the panel widths, the lockup) the value is the
+ * mockup's own, in rem.
+ *
+ * ### What is left in this file, since #46
+ *
+ * The cards, buttons, chips, fields, switches and empty states this screen draws are the
+ * primitives in `app/ui/` — one definition for the whole product rather than one per
+ * screen. What stays here is what belongs to *this screen and no other*: the two-panel
+ * frame, the brand panel and its lockup pair, the step cards' own heading type, the rows a
+ * workspace or an organisation is chosen from, and the monogram beside them.
  */
 
 /* ---------- the frame ---------- */
@@ -178,68 +186,55 @@
   max-width: 23.75rem;
 }
 
-/* ---------- cards ---------- */
-
-.login-card {
-  padding: var(--sp-9);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--ground);
-}
+/* ---------- the two step cards ---------- */
 
 /*
- * The step nobody can act on yet — recessed, but **not** dimmed.
+ * The cards themselves are the #46 `Card` primitive, on the `ground` surface — they sit on
+ * the auth panel, which is already `--surface`, so a card that took the page's usual raised
+ * plane would disappear into it. Step 2 before sign-in takes the `inset` one instead, and
+ * the reason is worth keeping written down:
  *
- * The mockup drops this card to `opacity: 0.66`, and that one declaration would take every
- * measured pair on it below WCAG AA: the token sheet's contrast tables are computed against
- * the surfaces here, and a translucent layer is a surface nobody measured. The design system
- * § 3.4 asks for AA in both themes at every font scale, and this card carries real sentences
- * a signed-out visitor is meant to read.
- *
- * So the recession is a surface change instead. It sits on the well rather than the page, its
- * eyebrow is the quiet one (`.login-card__eyebrow--quiet`), and it holds no control at all.
- * Between them those put it behind step 1 in exactly the way the mockup intends, with every
+ * The mockup drops that card to `opacity: 0.66`, and that one declaration would take every
+ * measured pair on it below WCAG AA — the token sheet's contrast tables are computed against
+ * surfaces, and a translucent layer is a surface nobody measured. The design system § 3.4
+ * asks for AA in both themes at every font scale, and the card carries real sentences a
+ * signed-out visitor is meant to read. So the recession is a surface change instead: the
+ * well rather than the page, the quiet eyebrow rather than the accent one, and no control at
+ * all. Between them those put it behind step 1 exactly as the mockup intends, with every
  * pair still one of the published ones.
+ *
+ * What is below is only the heading type inside a step card. It is not the design system's
+ * `.ou-card__title` — that is the uppercase display label a dashboard panel wears — but a
+ * page heading that happens to be inside a card, which is what step 1's `h1` is.
  */
-.login-card--preview {
-  background: var(--inset);
-}
 
-.login-card__eyebrow {
-  margin: 0 0 var(--sp-3);
-  color: var(--accent);
-  font-family: var(--f-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: var(--tr-widest);
-  text-transform: uppercase;
-}
-
-.login-card__eyebrow--quiet {
-  color: var(--ink-faint);
-}
-
-.login-card__title {
+.login-step__title {
   margin: 0 0 var(--sp-4);
   font-size: var(--t-xl);
   font-weight: 600;
   letter-spacing: var(--tr-tight);
 }
 
-.login-card__title--sub {
+.login-step__title--sub {
   font-size: var(--t-lg);
 }
 
-.login-card__lede {
+.login-step__lede {
   margin: 0 0 var(--sp-8);
   color: var(--ink-mut);
   font-size: var(--t-xs);
 }
 
-.login-card__rule {
+.login-step__rule {
   height: 1px;
   margin: var(--sp-8) 0;
   border: none;
   background: var(--line);
+}
+
+/* An empty state in the flow of a step card, spaced off the prose around it. */
+.login-step__empty {
+  margin: var(--sp-8) 0;
 }
 
 /* ---------- notes ---------- */
@@ -259,62 +254,6 @@
 .login-note__marker {
   color: var(--accent);
   font-family: var(--f-mono);
-}
-
-/* ---------- buttons ---------- */
-
-.login-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-4);
-  width: 100%;
-  padding: var(--sp-6) var(--sp-8);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--raised);
-  color: var(--ink);
-  font: inherit;
-  font-size: var(--t-sm);
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.login-btn:hover:not([aria-disabled="true"]) {
-  border-color: var(--line-control);
-}
-
-/*
- * The primary fill, exactly as docs/DESIGN_TOKENS.md specifies it: the accent gradient
- * from its light stop to its deep one, its own ink, and the glow reserved for live things.
- * Both label pairs are measured against WCAG AA in that document's contrast table.
- */
-.login-btn--primary {
-  border-color: transparent;
-  background: linear-gradient(180deg, var(--accent-lift), var(--accent-deep));
-  color: var(--accent-ink);
-  box-shadow: 0 0 1.125rem -0.125rem var(--accent-glow);
-}
-
-.login-btn--primary:hover:not([aria-disabled="true"]) {
-  box-shadow: 0 0 1.625rem 0 var(--accent-glow);
-}
-
-.login-btn--ghost {
-  border-color: var(--line);
-  background: transparent;
-  color: var(--ink-dim);
-}
-
-.login-btn[aria-disabled="true"] {
-  color: var(--ink-faint);
-  cursor: not-allowed;
-}
-
-.login-btn__mark {
-  flex: none;
 }
 
 /* ---------- the "or enterprise SSO" divider ---------- */
@@ -342,36 +281,10 @@
 
 /* ---------- the enterprise-domain field ---------- */
 
+/* The field is the #46 `TextField`; this is only the gap between it and the button under
+   it, which is this card's layout rather than the field's own. */
 .login-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-3);
   margin-bottom: var(--sp-5);
-}
-
-.login-field__label {
-  color: var(--ink-dim);
-  font-size: var(--t-xs);
-  font-weight: 600;
-}
-
-.login-field__input {
-  width: 100%;
-  padding: var(--sp-5) var(--sp-6);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink);
-  font-family: var(--f-mono);
-  font-size: var(--t-xs);
-}
-
-.login-field__input::placeholder {
-  color: var(--ink-faint);
-}
-
-.login-field__input:disabled {
-  cursor: not-allowed;
 }
 
 /* ---------- identity line, once somebody is signed in ---------- */
@@ -490,31 +403,6 @@ button.login-row:hover {
   font-weight: 700;
 }
 
-.login-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--sp-5);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-pill);
-  background: var(--raised);
-  color: var(--ink-dim);
-  font-size: var(--t-2xs);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.login-pill--warn {
-  border-color: var(--warn-line);
-  background: var(--warn-tint);
-  color: var(--warn);
-}
-
-.login-pill--ok {
-  border-color: var(--ok-line);
-  background: var(--ok-tint);
-  color: var(--ok);
-}
-
 /* ---------- repositories, indented under their organisation ---------- */
 
 .login-repos {
@@ -546,84 +434,25 @@ button.login-row:hover {
   font-size: var(--t-2xs);
 }
 
-/* ---------- the switch ---------- */
+/* ---------- the switch's transport ---------- */
 
 /*
- * Shape and behaviour from the mockup; the two colours are the pair
- * docs/DESIGN_TOKENS.md measures for exactly this (`--accent-deep` as the on-track,
- * `--accent-panel-ink` as the knob on it).
- *
- * It is a submit button inside a form rather than a checkbox, so the choice reaches the
- * server without JavaScript — see app/login/enablement-switch.tsx. `role="switch"` and
- * `aria-checked` are what make a button announce as one.
+ * The switch itself is the #46 `Toggle`. What is here is the form around it: it carries the
+ * choice to a Server Action, so the row works before hydration and without JavaScript, and
+ * `display: contents` is what keeps it out of the row's layout — it is the transport, and it
+ * must not become a box.
  */
-.login-switch {
-  position: relative;
-  width: 2.375rem;
-  height: 1.3125rem;
-  flex: none;
-  padding: 0;
-  border: none;
-  border-radius: var(--r-pill);
-  background: var(--line-strong);
-  cursor: pointer;
-}
-
-.login-switch::after {
-  content: "";
-  position: absolute;
-  top: 0.15625rem;
-  left: 0.1875rem;
-  width: 1rem;
-  height: 1rem;
-  border-radius: var(--r-round);
-  background: var(--ink-mut);
-}
-
-.login-switch[aria-checked="true"] {
-  background: var(--accent-deep);
-}
-
-.login-switch[aria-checked="true"]::after {
-  left: 1.1875rem;
-  background: var(--accent-panel-ink);
-}
-
-.login-switch[aria-disabled="true"] {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .login-switch::after {
-    transition:
-      left 150ms ease,
-      background-color 150ms ease;
-  }
-}
-
-/* The form is only the transport; it must not add a box to the row. */
-.login-switch__form {
+.login-switch-form {
   display: contents;
 }
 
-/* ---------- footnotes and the way out ---------- */
+/* ---------- footnotes ---------- */
 
 .login-summary {
   margin: var(--sp-8) 0 var(--sp-6);
   color: var(--ink-faint);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
-}
-
-.login-empty {
-  margin: var(--sp-8) 0;
-  padding: var(--sp-8);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--r-md);
-  color: var(--ink-mut);
-  font-size: var(--t-xs);
-  line-height: var(--lh-body);
 }
 
 /* ---------- responsive ---------- */

@@ -11,7 +11,9 @@
 > ([#43](https://github.com/NobuData/ouroboros/issues/43)), serving
 > [sign-in and workspace selection](#sign-in--tenancy)
 > ([#44](https://github.com/NobuData/ouroboros/issues/44)) and, behind it, the
-> [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)) —
+> [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)), both
+> built from the [UI primitives](#ui-primitives)
+> ([#46](https://github.com/NobuData/ouroboros/issues/46)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
@@ -37,7 +39,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Package manager | Yarn 4 via corepack (`nodeLinker: node-modules`) |
 | Runtime | Node 24 |
 | API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The API client](#the-api-client) |
-| Styling | CSS custom properties (design tokens), no CSS-in-JS |
+| Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives) |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
 | Lint | ESLint flat config |
@@ -197,6 +199,18 @@ ouroboros-ui/
 │   │   ├── enablement.ts    #   the two composed into what one screen reads
 │   │   ├── engine.ts        #   engine.status() — GET /engine/status
 │   │   └── health.ts        #   readReadiness() — the one read not via the client
+│   ├── ui/                  # the UI component primitives — the design system
+│   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
+│   │   ├── button.tsx       #   Button — default · primary · ghost · danger
+│   │   ├── card.tsx         #   Card + CardHead
+│   │   ├── chip.tsx         #   Chip (status · model) + EffortChip
+│   │   ├── badge.tsx        #   Tag (metadata) + Badge (a count)
+│   │   ├── table.tsx        #   Table, inside its own scroll container
+│   │   ├── field.tsx        #   TextField · SelectField · Toggle
+│   │   ├── empty-state.tsx  #   EmptyState — a surface that is not ready
+│   │   ├── eyebrow.tsx      #   Eyebrow — the caption above a title
+│   │   ├── class-names.ts   #   cx(), the one class-list join
+│   │   └── index.ts         #   the barrel: `import { Button } from "@/app/ui"`
 │   ├── shell/               # the app shell: header, sidebar, content pane
 │   ├── login/               # the sign-in & tenancy screen's components
 │   ├── dashboard/           # the dashboard's reader, decisions, components, sheet
@@ -332,7 +346,10 @@ Three things about the shape are deliberate.
 
 `/login` ([#44](https://github.com/NobuData/ouroboros/issues/44)) is
 [`docs/mockups/01-login.html`](../docs/mockups/01-login.html) as a working page, and the first
-screen to prove the design system, the session and the API together. It renders **outside the
+screen to prove the design system, the session and the API together. Every card, button,
+chip, field and switch on it is a [UI primitive](#ui-primitives); what
+[`app/login/`](app/login) owns is the two-panel frame, the brand panel, the rows a workspace
+is chosen from, and the monogram beside them. It renders **outside the
 app shell** — the design system § 5 puts login and the onboarding wizard there, because a
 visitor who has not signed in has no workspace for the shell to describe — so it owns its own
 scroll container, `html`/`body` being locked for the shell's benefit.
@@ -417,7 +434,10 @@ asks for something specific instead of inverting whatever the flag has become si
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
-(design system § 2).
+(design system § 2). Its cards, actions, status chips and empty states are
+[UI primitives](#ui-primitives); [`app/dashboard/`](app/dashboard) owns the page head, the
+twelve-column grid, and the two compositions built on top — the stat tile and the system
+list.
 
 ```
 MISSION CONTROL
@@ -553,6 +573,96 @@ Four things are worth knowing before adding a screen to it.
 Responsive collapse below 1024px is CSS, not state: the sidebar becomes a 64px icon rail
 and every name becomes its tooltip. The user-controlled collapse, its per-account
 persistence, and the overlay drawer below 768px are CP.2.
+
+## UI primitives
+
+Every screen in this module is built from one set of components
+([#46](https://github.com/NobuData/ouroboros/issues/46)), in [`app/ui/`](app/ui). They are
+[`../docs/mockups/assets/ouroboros.css`](../docs/mockups/assets/ouroboros.css) — the design
+system the twenty-two mockups were drawn against — expressed in the
+[design tokens](#design-tokens), so the product has one definition of a button rather than
+one per screen.
+
+```tsx
+import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
+```
+
+| Primitive | What it is | The mockups' class |
+|---|---|---|
+| `Button` | The one button: `default` · `primary` · `ghost` · `danger`, in three sizes. Renders `<a>` when it navigates | `.btn` |
+| `Card` / `CardHead` | The raised plane a panel is drawn on, on three surfaces, and the head that names one | `.card` / `.card-head` |
+| `Chip` / `EffortChip` | A small marker carrying a state in its hue, optionally with a dot; and the square XS–XL estimate | `.pill` / `.effort` |
+| `Tag` / `Badge` | Metadata with no state; and a count attached to something else | `.tag` / `.nav-badge` |
+| `Table` | Columns and rows, inside their own horizontal scroll container | `.tbl` |
+| `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
+| `EmptyState` | A surface that is not ready, labelled rather than blank | — |
+| `Eyebrow` | The caption above a title | `.eyebrow` |
+
+Six decisions in the set are worth knowing before adding to it.
+
+**Plain CSS, not CSS Modules or vanilla-extract.** The issue left the choice open and this is
+where it was made. The module already had token-driven global sheets, one naming convention
+inside them, and one test walking every `.css` file under `app/` for a colour literal; a
+fourth sheet in that shape keeps all of it true. Hashed class names would make the design
+system unreadable in devtools and unassertable from the sheet tests this module relies on,
+and vanilla-extract adds a build plugin for a set of primitives that computes no style at
+all. Every class is prefixed `ou-`, which is the whole of the scoping story: a page **places**
+a primitive by passing its own class (`className`), and never by restyling `.ou-*` from its
+own sheet. Both screens' suites assert that neither has.
+
+**A control that cannot act takes a `reason`, not a boolean.** The design system
+([§ 3.5](../docs/DESIGN_SYSTEM_APP_SHELL.md)) asks that such a control be labelled rather
+than dropped or left dead, so there is no way to switch a button off here without saying
+what is missing. It sets `aria-disabled` rather than `disabled` — a disabled button leaves
+the tab order and takes its explanation with it — and it drops `onClick`, so an inert
+control cannot fire a handler whatever the caller passed.
+
+**A badge never renders a zero**, and an empty state is not a count of nothing. "No loops
+have run" is a claim about a loop engine; "nothing here can tell you yet" is the truth, and
+only the second is what an empty state says.
+
+**Hue is never the only signal.** Every chip carries its state in words, and where two sit
+side by side the dot's *shape* differs — filled for a state that was reported, a ring for one
+nobody could. Each tone is one of the token sheet's published triples (ink, a 35% border, a
+10–12% fill), so no hue is invented at a call site and every pair's contrast is measured.
+
+**An empty state recedes by surface, never by opacity.** Every contrast pair
+[`../docs/DESIGN_TOKENS.md`](../docs/DESIGN_TOKENS.md) publishes is measured against a
+surface, and a translucent layer is not one of them — so a panel carrying sentences somebody
+is meant to read cannot be dimmed. The same rule is why the login screen's step 2 recedes
+onto the well before sign-in instead of taking the mockup's `opacity: 0.66`.
+
+**A primitive names no domain concept.** That is the line between this directory and a
+screen's own components: there is no `<WorkspaceCard>` here and there should not be. The
+login screen's workspace rows and the dashboard's stat tile are compositions built *from*
+these, in their own directories, with their own sheets.
+
+### What the tests can prove
+
+Each primitive has a render test in both palettes, and
+[`__tests__/helpers/palettes.tsx`](__tests__/helpers/palettes.tsx) is careful about what that
+means. jsdom applies no stylesheet — Vitest resolves a CSS import to nothing — so no test
+here can read a computed colour, and one that appeared to would be reading the same default
+under both themes and passing for the wrong reason. What the tests *do* prove is the
+property that belongs to a component rather than to a palette: a primitive expresses the
+theme entirely in CSS, rendering byte-identical markup under `data-theme="light"` and
+`data-theme="dark"`. A component that branched on the theme in JavaScript would be one the
+boot script could not paint before hydration. Whether the dark palette itself is correct is
+[`verify-tokens.sh`](../scripts/verify-tokens.sh)'s question, and it answers it from the
+token sheet where the values are.
+
+[`__tests__/ui/ui-styles.test.ts`](__tests__/ui/ui-styles.test.ts) holds the sheet and the
+components together in both directions: every class a primitive renders has a rule, and
+every rule is rendered by something — a rule nobody renders is a rule nobody keeps correct.
+
+### What is still to come
+
+The shell's own primitives — ShellHeader, SidebarNav, ContentPane, StickyBar, PageSubnav —
+join this set with CP.1/CP.2/CP.4
+([#646](https://github.com/NobuData/ouroboros/issues/646)), and the isolated playground with
+theme switching is the component workshop
+([#48](https://github.com/NobuData/ouroboros/issues/48)). Chart primitives are their own
+issue ([#442](https://github.com/NobuData/ouroboros/issues/442)) and build on these.
 
 ## Design tokens
 
@@ -760,6 +870,7 @@ scripts/verify-favicons.sh                               # files ↔ manifest �
 
 Scaffold [#39](https://github.com/NobuData/ouroboros/issues/39) ·
 favicons [#15](https://github.com/NobuData/ouroboros/issues/15) ·
+UI primitives [#46](https://github.com/NobuData/ouroboros/issues/46) ·
 design tokens [#16](https://github.com/NobuData/ouroboros/issues/16) ·
 theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
 theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·

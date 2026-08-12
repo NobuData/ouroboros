@@ -160,7 +160,7 @@ describe("what every state has in common", () => {
     );
 
     expect(screen.getByRole("region", { name: "Ouroboros" })).toBeInTheDocument();
-    expect(container.querySelectorAll(".login-card")).toHaveLength(2);
+    expect(container.querySelectorAll(".login__split .ou-card")).toHaveLength(2);
   });
 
   it.each(STATES)("in the %s state, names step 2 with its own heading", (_, state, user) => {

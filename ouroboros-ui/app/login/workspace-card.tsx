@@ -1,5 +1,6 @@
 import type { Membership } from "@/app/api/membership";
 import type { TenantSuggestion } from "@/app/api/session";
+import { Card, Chip, EmptyState, Eyebrow } from "@/app/ui";
 
 import { chooseWorkspace } from "./actions";
 import { APP_NOTE, STEP_TWO_ID, STEP_TWO_LEDE, STEP_TWO_TITLE } from "./copy";
@@ -15,10 +16,12 @@ import { Monogram } from "./monogram";
  * anything.
  *
  * All three share a head, and it is the mockup's: the eyebrow, "Choose where the loop
- * runs", and the least-privilege GitHub App note at the foot. The card that cannot act is
- * dimmed the way the mockup dims it, which is honest here in a way dimming usually is not —
- * it is a description of what happens after sign-in rather than a control that has been
- * switched off.
+ * runs", and the least-privilege GitHub App note at the foot. The card that cannot act yet
+ * recedes where the mockup dims it — onto the well surface, with the quiet eyebrow, holding
+ * no control — which says the same thing without taking its prose below AA (`login.css`).
+ *
+ * Every shape here is drawn with the #46 primitives: the card, the eyebrow, the chips
+ * beside a name, and the empty state that explains a workspace nobody has.
  */
 
 /** What a workspace's lifecycle is called when it is not `active`. */
@@ -41,17 +44,17 @@ const STATUS_LABEL: Record<Membership["status"], string> = {
  */
 export function WorkspacePreview() {
   return (
-    <section className="login-card login-card--preview" aria-labelledby={STEP_TWO_ID}>
-      <p className="login-card__eyebrow login-card__eyebrow--quiet">After sign-in · Step 2</p>
-      <h2 className="login-card__title login-card__title--sub" id={STEP_TWO_ID}>
+    <Card as="section" tone="inset" size="lg" aria-labelledby={STEP_TWO_ID}>
+      <Eyebrow tone="quiet">After sign-in · Step 2</Eyebrow>
+      <h2 className="login-step__title login-step__title--sub" id={STEP_TWO_ID}>
         {STEP_TWO_TITLE}
       </h2>
-      <p className="login-card__lede">{STEP_TWO_LEDE}</p>
+      <p className="login-step__lede">{STEP_TWO_LEDE}</p>
       <p className="login-note login-note--faint">
         Your workspaces and their organisations appear here once you have signed in.
       </p>
       <p className="login-note login-note--faint">{APP_NOTE}</p>
-    </section>
+    </Card>
   );
 }
 
@@ -71,12 +74,12 @@ export function WorkspacePicker({
   memberships,
 }: Readonly<{ memberships: readonly Membership[] }>) {
   return (
-    <section className="login-card" aria-labelledby={STEP_TWO_ID}>
-      <p className="login-card__eyebrow">Step 2 · Workspace</p>
-      <h2 className="login-card__title login-card__title--sub" id={STEP_TWO_ID}>
+    <Card as="section" tone="ground" size="lg" aria-labelledby={STEP_TWO_ID}>
+      <Eyebrow>Step 2 · Workspace</Eyebrow>
+      <h2 className="login-step__title login-step__title--sub" id={STEP_TWO_ID}>
         {STEP_TWO_TITLE}
       </h2>
-      <p className="login-card__lede">
+      <p className="login-step__lede">
         {memberships.length === 1
           ? "Confirm the workspace this browser operates in."
           : "Pick the workspace this browser operates in. You can change it later."}
@@ -92,7 +95,7 @@ export function WorkspacePicker({
                 <span className="login-row__meta">
                   <span className="login-row__name">
                     {membership.displayName}
-                    <span className="login-pill">{membership.role}</span>
+                    <Chip>{membership.role}</Chip>
                   </span>
                   <span className="login-row__detail">{membership.slug}</span>
                 </span>
@@ -106,7 +109,7 @@ export function WorkspacePicker({
       </ul>
 
       <p className="login-note login-note--faint">{APP_NOTE}</p>
-    </section>
+    </Card>
   );
 }
 
@@ -137,24 +140,30 @@ export function NoWorkspaceCard({
   memberships: readonly Membership[];
 }>) {
   return (
-    <section className="login-card" aria-labelledby={STEP_TWO_ID}>
-      <p className="login-card__eyebrow">Step 2 · Workspace</p>
-      <h2 className="login-card__title login-card__title--sub" id={STEP_TWO_ID}>
+    <Card as="section" tone="ground" size="lg" aria-labelledby={STEP_TWO_ID}>
+      <Eyebrow>Step 2 · Workspace</Eyebrow>
+      <h2 className="login-step__title login-step__title--sub" id={STEP_TWO_ID}>
         No workspace yet
       </h2>
 
       {suggestion === null ? (
-        <p className="login-empty">
-          You are signed in, but you do not belong to a workspace yet. Ask whoever runs your
-          organisation&apos;s Ouroboros to invite you — an invitation sent to your email
-          address attaches to this account.
-        </p>
+        <EmptyState
+          variant="flush"
+          className="login-step__empty"
+          note="You are signed in, but you do not belong to a workspace yet. Ask whoever runs your organisation's Ouroboros to invite you — an invitation sent to your email address attaches to this account."
+        />
       ) : (
-        <p className="login-empty">
-          <strong>{suggestion.displayName}</strong> is already here — your email domain
-          matches it. Matching a domain is not membership, so ask one of its owners to add
-          you, and this step will offer it.
-        </p>
+        <EmptyState
+          variant="flush"
+          className="login-step__empty"
+          note={
+            <>
+              <strong>{suggestion.displayName}</strong> is already here — your email domain
+              matches it. Matching a domain is not membership, so ask one of its owners to
+              add you, and this step will offer it.
+            </>
+          }
+        />
       )}
 
       {memberships.length > 0 && (
@@ -166,9 +175,7 @@ export function NoWorkspaceCard({
                 <span className="login-row__meta">
                   <span className="login-row__name">
                     {membership.displayName}
-                    <span className="login-pill login-pill--warn">
-                      {STATUS_LABEL[membership.status]}
-                    </span>
+                    <Chip tone="warn">{STATUS_LABEL[membership.status]}</Chip>
                   </span>
                   <span className="login-row__detail">{membership.slug}</span>
                 </span>
@@ -179,6 +186,6 @@ export function NoWorkspaceCard({
       )}
 
       <p className="login-note login-note--faint">{APP_NOTE}</p>
-    </section>
+    </Card>
   );
 }

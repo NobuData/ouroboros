@@ -226,11 +226,13 @@ describe("the system card", () => {
       <DashboardScreen readings={readings({ readiness: null })} />,
     );
 
-    expect(container.querySelectorAll(".dash-pill--down").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".dash-pill--unknown").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".dash-pill__dot").length).toBe(
-      container.querySelectorAll(".dash-pill").length,
+    expect(container.querySelectorAll(".ou-chip--err").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".ou-chip--warn").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll(".ou-chip__dot").length).toBe(
+      container.querySelectorAll(".ou-chip").length,
     );
+    // The unknown state is the one that differs in shape rather than only in hue.
+    expect(container.querySelectorAll(".ou-chip__dot--ring").length).toBeGreaterThan(0);
   });
 
   it("pairs every pill with the dependency it belongs to", () => {
@@ -317,7 +319,7 @@ describe("the grid", () => {
   it("gives every card a heading or a name, so the grid is navigable", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    const cards = [...container.querySelectorAll(".dash-grid > .dash-card")];
+    const cards = [...container.querySelectorAll(".dash-grid > .ou-card")];
     expect(cards).toHaveLength(8);
     for (const card of cards) {
       expect(
@@ -373,7 +375,7 @@ describe("a workspace that is not the seeded one", () => {
       />,
     );
 
-    expect(container.querySelectorAll(".dash-grid > .dash-card")).toHaveLength(8);
+    expect(container.querySelectorAll(".dash-grid > .ou-card")).toHaveLength(8);
     expect(screen.getByRole("heading", { level: 1, name: "Acme Robotics" })).toBeInTheDocument();
     expect(screen.getAllByText(NO_VALUE).length).toBeGreaterThan(0);
     expect(container.textContent).not.toMatch(/\bundefined\b|\bNaN\b|\[object/);

@@ -111,9 +111,16 @@ a {
  * for.
  *
  * Here rather than in a component's stylesheet because it belongs to no component: the
- * theme toggle's announcement (app/shell/shell.css's caller) and every switch on the login
- * screen need the same nine declarations, and a second copy of them is a second technique to
- * keep correct. It joins the primitives in #46 when those land.
+ * theme toggle's announcement (app/shell/shell.css's caller), every switch the primitives
+ * draw, and a table caption that names its table without printing it all need the same nine
+ * declarations, and a second copy of them is a second technique to keep correct.
+ *
+ * #46 asked whether it should move into app/ui/ui.css with the primitives, and the answer
+ * is no. Its callers are the shell, the screens *and* the primitives, so putting it in the
+ * primitive sheet would make the application's base chrome depend on the design system's
+ * sheet being loaded — one import away from a control whose accessible name is a visible
+ * line of text. It is a base utility, like the focus ring above it, and it stays where the
+ * base is.
  *
  * The 1px box and the negative margin are that technique, not a length a reader's font-size
  * preference should scale: this element is never seen, and growing it with the type scale

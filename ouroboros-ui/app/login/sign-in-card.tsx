@@ -1,4 +1,5 @@
 import type { SessionUser } from "@/app/api/session";
+import { Button, Card, Eyebrow, TextField } from "@/app/ui";
 
 import { GithubMark } from "./github-mark";
 import { Monogram } from "./monogram";
@@ -51,9 +52,9 @@ export function SignInCard({
 }: Readonly<{ signInHref: string; user: SessionUser | null }>) {
   if (user !== null) {
     return (
-      <section className="login-card" aria-labelledby="login-step-1">
-        <p className="login-card__eyebrow">Step 1 · Signed in</p>
-        <h1 className="login-card__title" id="login-step-1">
+      <Card as="section" tone="ground" size="lg" aria-labelledby="login-step-1">
+        <Eyebrow>Step 1 · Signed in</Eyebrow>
+        <h1 className="login-step__title" id="login-step-1">
           Signed in
         </h1>
         <p className="login-identity">
@@ -63,57 +64,54 @@ export function SignInCard({
             <span className="login-identity__mail">{user.email}</span>
           </span>
         </p>
-      </section>
+      </Card>
     );
   }
 
   return (
-    <section className="login-card" aria-labelledby="login-step-1">
-      <p className="login-card__eyebrow">Step 1 · Sign in</p>
-      <h1 className="login-card__title" id="login-step-1">
+    <Card as="section" tone="ground" size="lg" aria-labelledby="login-step-1">
+      <Eyebrow>Step 1 · Sign in</Eyebrow>
+      <h1 className="login-step__title" id="login-step-1">
         Sign in
       </h1>
 
-      <a className="login-btn login-btn--primary" href={signInHref}>
+      <Button tone="primary" size="lg" block href={signInHref}>
         <GithubMark />
         Continue with GitHub
-      </a>
+      </Button>
 
       <p className="login-or">or enterprise SSO</p>
 
-      <div className="login-field">
-        <label className="login-field__label" htmlFor="login-sso-domain">
-          Company domain
-        </label>
-        <input
-          className="login-field__input"
-          id="login-sso-domain"
-          name="domain"
-          type="text"
-          inputMode="url"
-          autoComplete="organization"
-          placeholder="acme.ouroboros.dev"
-          disabled
-          aria-describedby="login-sso-why"
-        />
-      </div>
-
-      <button
-        type="button"
-        className="login-btn login-btn--ghost"
-        aria-disabled="true"
+      <TextField
+        className="login-field"
+        id="login-sso-domain"
+        label="Company domain"
+        name="domain"
+        type="text"
+        inputMode="url"
+        autoComplete="organization"
+        placeholder="acme.ouroboros.dev"
+        mono
+        disabled
         aria-describedby="login-sso-why"
-        title={SSO_UNAVAILABLE}
+      />
+
+      <Button
+        tone="ghost"
+        size="lg"
+        block
+        reason={SSO_UNAVAILABLE}
+        aria-describedby="login-sso-why"
       >
         Continue with SSO
-      </button>
+      </Button>
 
       <p className="login-note login-note--faint" id="login-sso-why">
         SAML 2.0 and OIDC via your identity provider — Okta, Entra ID, Google Workspace.{" "}
         {SSO_UNAVAILABLE}
       </p>
 
-      <hr className="login-card__rule" />
+      <hr className="login-step__rule" />
 
       <p className="login-note">
         <span className="login-note__marker" aria-hidden>
@@ -122,6 +120,6 @@ export function SignInCard({
         Each domain is an isolated tenant. Your code, runs, and model keys never cross the
         boundary.
       </p>
-    </section>
+    </Card>
   );
 }
