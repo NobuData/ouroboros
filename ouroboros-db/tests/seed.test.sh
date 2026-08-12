@@ -105,13 +105,13 @@ check_absent "$BODY" 'gen_random_uuid' 'the seed generates no ids — every one 
 check_contains "$BODY" '5eed0001-0000-4000-8000-000000000001' \
   'the demo organization has the documented id'
 
-# Thirteen rows, thirteen ids, all of them recognisable on sight. Distinct ids are
+# Twenty-six rows, twenty-six ids, all of them recognisable on sight. Distinct ids are
 # counted rather than occurrences: an id reused between two tables would still satisfy a
 # total, and would give two different rows the same name in every log and URL that
 # carries one. (The BetterAuth tables hold them as text; the shape is the same.)
 seed_ids=$(grep -Eo "'5eed[0-9a-f]{4}-0000-4000-8000-[0-9a-f]{12}'" "$BODY" | sort -u | wc -l)
-check_equals 13 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
-  'the seed uses thirteen distinct 5eed… ids, one per row it creates'
+check_equals 26 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
+  'the seed uses twenty-six distinct 5eed… ids, one per row it creates'
 
 # The seed writes to the tenancy tables and to nothing else — not to Flyway's own
 # history, not to a table another module owns.
@@ -121,12 +121,24 @@ check_absent "$BODY" 'flyway_schema_history' \
   'the seed does not touch Flyway'"'"'s history table'
 
 # A seed is where a credential is most tempting to put and least likely to be noticed.
-# The `account` table *can* hold the library's encrypted tokens and a password hash, and
-# the seed deliberately writes none of those columns (tests/seed.sql asserts the rows
-# stay null); this asserts no statement here even names one, whatever the schema grows.
-for secret in token secret password credential api_key; do
+# The `account` table *can* hold the library's encrypted tokens, and the seed
+# deliberately writes none of those columns (tests/seed.sql asserts the rows stay
+# null); this asserts no statement here even names one, whatever the schema grows.
+for secret in token secret api_key; do
   check_absent "$BODY" "$secret" "the seed writes no $secret"
 done
+
+# The one credential the seed *is* allowed to write (#709): the three password hashes
+# behind the documented development password, and nothing that merely resembles one.
+# Exactly three values in scrypt's `salt:key` shape — 32 hex chars, a colon, 128 — and
+# every mention of the password column is one of those literals landing in it. The
+# plaintext lives in documentation, never in a statement, so a database seeded from
+# this file holds only what BetterAuth's verifier needs.
+hashes=$(grep -Eoc "'[0-9a-f]{32}:[0-9a-f]{128}'" "$BODY" || true)
+check_equals 3 "$(printf '%s' "$hashes" | tr -d ' ')" \
+  'the seed writes exactly three password hashes, one per demo person'
+check_absent "$BODY" 'ouroboros-dev-password' \
+  'the development password appears in documentation, never in SQL'
 
 # ---------------------------------------------------------------------------
 # The guard is off by default

@@ -260,9 +260,10 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > predicted. And **the e2e suite's sign-in is parked**: it minted a stateless cookie with
 > `issueSession`, which no longer exists, and it cannot mint a row from outside the stack —
 > the legs that need one carry `test.fixme`. **A.6 · #705 has since supplied the sign-in a
-> script can perform** — `support/session.ts` calls it for real — so what they now wait on is
-> **B.4 · #709** (the seed writes the `"user"` and `account` rows) and a stack whose
-> `ouroboros-rest` is not the production image. Every leg that needs no session still runs.
+> script can perform** — `support/session.ts` calls it for real — and **B.4 · #709 has since
+> landed the rows it signs in as** (the seeded `"user"` and `account` rows, dev password
+> included), so what they now wait on is only a stack whose `ouroboros-rest` is not the
+> production image. Every leg that needs no session still runs.
 > Its issue section below is kept as the record of what was asked for.
 
 > **A.5 · #704 has shipped and has left the table below.** Tenancy is the organization
@@ -330,9 +331,9 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 >   the gate turns off. Overriding `NODE_ENV` there does not help: the same variable moves
 >   `listenHost` back to loopback, and a container bound to loopback publishes nothing.
 >   `tests/e2e/support/session.ts` has been re-pointed at `signIn.email` and is finished —
->   the "one function" it spent two issues predicting — but its legs stay parked on **B.4 ·
->   #709** and on a non-production `rest` for the suite to talk to. Giving it one is a stack
->   decision for **#56** or **C.5 · #715**.
+>   the "one function" it spent two issues predicting — and with **B.4 · #709** since
+>   landed, its legs stay parked only on a non-production `rest` for the suite to talk
+>   to. Giving it one is a stack decision for **#56** or **C.5 · #715**.
 >
 > Sign-**up** is enabled in development too, which the issue did not ask for: a developer
 > whose database predates #709's seed otherwise has no way into the product at all, and the
@@ -616,9 +617,9 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 >
 > One consequence it deliberately did **not** paper over: Flyway applies repeatable
 > migrations last, so a database created from empty runs V004 before `R__dev_seed.sql` and
-> the back-fill finds nothing to copy. **B.4 · #709** is what teaches the seed about these
-> tables; until then, calling the function by hand brings a seeded development database
-> across.
+> the back-fill finds nothing to copy. **B.4 · #709 has since taught the seed about these
+> tables** — the seed writes the BetterAuth rows directly now, and the hand-run workaround
+> is history along with the back-fill function V006 dropped.
 >
 > **B.2 · #707 has shipped and has left the table below.**
 > [`ouroboros-db/migrations/V005__betterauth_organization.sql`](../ouroboros-db/migrations/V005__betterauth_organization.sql)
@@ -675,10 +676,26 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 > V006 section asserts the four dropped tables **stay** gone — a migration that
 > recreated one fails `ci/db`. `modules/tenancy` still reads the old names; that is
 > **C.3 · #713 / C.4 · #714**, and `ci/rest` stays red until they land.
+>
+> **B.4 · #709 has shipped and has left the table below — the seed is auth-aware.**
+> [`ouroboros-db/migrations/R__dev_seed.sql`](../ouroboros-db/migrations/R__dev_seed.sql)
+> now writes mockup 01 Step 2's demo set number for number: three organizations —
+> `acme-robotics` with domain `acme-robotics.dev` and four enabled repos incl.
+> `helios-firmware`, `acme-labs` with none and its org switch off, personal
+> `kensuenobu` (`metadata.personal = true`) with two — six memberships spanning
+> owner/admin/member (every organization exactly one owner, and someone for the role
+> gate to refuse in each shared workspace), one GitHub-shaped account, and a
+> `credential` account per person whose scrypt hash BetterAuth's own verifier accepts,
+> behind the documented development password (`ouroboros-db/README.md` § The
+> development seed). The three #23 conventions carried over intact — the
+> `${ouro_dev_seed}` guard on every statement, the `5eed…` id convention (now
+> twenty-six ids), insert-only idempotence — and `tests/seed.sql` /
+> `tests/seed.test.sh` grew with the content, including the new rule that the seed may
+> hold exactly the three documented password hashes and never a token or the
+> plaintext.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| B.4 · #709 | ouroboros-db: [B.4] Auth-aware dev seed data | Seeded users (password + GitHub-shaped), orgs, domains, enablement | mvp, auth, db | N (after B.3) | Y | S | ouroboros-db |
 | B.5 · #710 | ouroboros-db: [B.5] Auth constraint & drift tests in ci/db | Constraint assertions + BetterAuth-schema drift check | mvp, auth, db, ci | N (after B.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue B.1 (#706) — ouroboros-db: [B.1] BetterAuth core schema (Flyway V004)
@@ -851,6 +868,10 @@ erDiagram
 ```
 
 ### Issue B.4 (#709) — ouroboros-db: [B.4] Auth-aware dev seed data
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic B](#epic-b-696--auth-database-ouroboros-db) for what landed, and
+`ouroboros-db/tests/seed.sql` for the standing assertions the content is proven by.
 
 - **Problem Statement:** The mockup's demo content (orgs `acme-robotics`, `acme-labs`,
   personal `kensuenobu`; repo counts; roles) must exist as BetterAuth-shaped rows for
@@ -1485,7 +1506,7 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ ⊕ ~~B.3 #708~~ *(all shipped)* → { B.4 #709 ⊕ B.5 #710 }
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ ⊕ ~~B.3 #708~~ ⊕ ~~B.4 #709~~ *(all shipped)* → { B.5 #710 }
    *(**B.3 — the cutover — has shipped.** `tenants`, `tenant_members`, `users` and
    `user_identities` are gone, and `ci/db` rehearses the migration against a populated
    V005 copy on every run rather than trusting the one that was recorded on its PR.
@@ -1600,20 +1621,22 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #713 (C.3) and #714 (C.4), which un-red `ci/rest`; #709 (B.4) and #710 (B.5)
-run in parallel.** **Epic A is complete**: #700 (A.1), #701 (A.2), #702 (A.3), #703 (A.4),
-#704 (A.5) and #705 (A.6) **have all landed**, along with #706 (B.1), #707 (B.2) and now
-**#708 (B.3)** — BetterAuth is configured, its handler answers at `/api/auth/*`, its core and
-organization tables exist with the shipped identities back-filled into them, its GitHub
-provider signs people in, development signs in with a password, and the service now
-*remembers* people: a session is a row, the library's guard is what every route sits behind,
-and signing out revokes.
+**Start here: #713 (C.3) and #714 (C.4), which un-red `ci/rest`; #710 (B.5) runs in
+parallel.** **Epic A is complete**: #700 (A.1), #701 (A.2), #702 (A.3), #703 (A.4),
+#704 (A.5) and #705 (A.6) **have all landed**, along with #706 (B.1), #707 (B.2),
+**#708 (B.3)** and now **#709 (B.4)** — BetterAuth is configured, its handler answers at
+`/api/auth/*`, its core and organization tables exist with the shipped identities
+back-filled into them, its GitHub provider signs people in, development signs in with a
+password, and the service now *remembers* people: a session is a row, the library's guard
+is what every route sits behind, and signing out revokes.
 
 Signing in **without github.com** works again outside production: A.4 deleted the dev-user
 bypass with the guard that read it, and **#705 (A.6) has since landed** the email/password
-sign-in that replaces it, removing the variable in the same change. #709 is what gives the
-seeded people a BetterAuth identity to sign in *as*, and the e2e gate additionally needs a
-non-production `ouroboros-rest` to talk to. `organization`, `member`, `invitation` and the session's tenant
+sign-in that replaces it, removing the variable in the same change. **#709 (B.4) has now
+landed too**, giving the seeded people a BetterAuth identity to sign in *as* — credential
+accounts behind the documented dev password, mockup 01 Step 2's three organizations,
+number for number — so the e2e gate now needs only a non-production `ouroboros-rest` to
+talk to. `organization`, `member`, `invitation` and the session's tenant
 pointer exist, the plugin is enabled with a `viewer` role asserted against the library, and a
 first sign-in yields a personal organization. **#708 (B.3) — the cut-over, and the riskiest
 step in this roadmap — has now landed too**: `tenants`, `tenant_members`, `users` and

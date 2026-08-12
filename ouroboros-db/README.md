@@ -177,23 +177,26 @@ There is deliberately no `scripts/clean`.
 
 ### The development seed
 
-`docker compose up` leaves a database with data in it: the demo tenant every screen in
-[`../docs/mockups`](../docs/mockups) is drawn around, so a UI has something to render and
-an e2e test has something to assert against by name.
+`docker compose up` leaves a database with data in it: the demo content every screen in
+[`../docs/mockups`](../docs/mockups) is drawn around — mockup 01 Step 2's three
+organizations, number for number — so a UI has something to render and an e2e test has
+something to assert against by name.
 
 | Row | Value |
 |---|---|
-| Tenant | `acme-robotics` — *Acme Robotics*, active |
-| Domain | `acme-robotics.dev`, primary — the address domain mockup 01 resolves the tenant from |
-| People | `ken@acme-robotics.dev` (owner) · `maya@acme-robotics.dev` (admin) · `jorge@acme-robotics.dev` (member) |
-| Identities | one GitHub identity each, so the sign-in path has someone to resolve to |
-| Org | `acme-robotics`, enabled |
-| Repo | `helios-firmware`, enabled, default branch `main` |
+| Organizations | `acme-robotics` — *Acme Robotics*, shared · `acme-labs` — *Acme Labs*, shared · `kensuenobu` — Ken's personal workspace (`metadata.personal = true`) |
+| Domain | `acme-robotics.dev`, primary — the address domain mockup 01 resolves acme-robotics from |
+| People | `ken@acme-robotics.dev` · `maya@acme-robotics.dev` · `jorge@acme-robotics.dev` |
+| Roles | acme-robotics: Ken owner, Maya admin, Jorge member · acme-labs: Maya owner, Ken member · kensuenobu: Ken owner |
+| Passwords | every person signs in with `ouroboros-dev-password` — a `credential` account holding a real scrypt hash BetterAuth's verifier accepts; the form only exists on a non-production stack |
+| GitHub | one GitHub-shaped account, Ken's, so "Continue with GitHub" has someone deterministic to resolve to |
+| Orgs | `acme-robotics` enabled · `acme-labs` disabled · `kensuenobu` enabled |
+| Repos | acme-robotics: 4 enabled, incl. `helios-firmware` · acme-labs: none · kensuenobu: 2 enabled — all default branch `main` |
 
 Every seeded row carries an id beginning `5eed` —
-`5eed0001-0000-4000-8000-000000000001` is the tenant — so demo data is recognisable on
-sight in a log or a URL, and a test can name a row without looking it up.
-[`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql) lists all ten.
+`5eed0001-0000-4000-8000-000000000001` is the acme-robotics organization — so demo data
+is recognisable on sight in a log or a URL, and a test can name a row without looking it
+up. [`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql) lists all of them.
 
 **It cannot run against anything but a development database.** Each statement in the
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
