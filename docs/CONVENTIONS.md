@@ -317,16 +317,21 @@ inside it.
 
 ### The local development stack
 
-The repo-root [`docker-compose.yml`](../docker-compose.yml) is the development data tier
-— PostgreSQL 17 plus the Flyway pass that migrates it
-([#10](https://github.com/NobuData/ouroboros/issues/10)). The application services are
-added to this same file by [#55](https://github.com/NobuData/ouroboros/issues/55) rather
-than to a second one, so there is only ever one stack to bring up:
+The repo-root [`docker-compose.yml`](../docker-compose.yml) is the whole local stack:
+PostgreSQL 17 plus the Flyway pass that migrates it
+([#10](https://github.com/NobuData/ouroboros/issues/10)), and the three application
+services on top ([#55](https://github.com/NobuData/ouroboros/issues/55)). One file rather
+than two, so there is only ever one stack to bring up, split by profile:
 
 ```bash
-docker compose up            # database, migrated and listening on :5432
-docker compose down -v       # reset — drops the named volume and all data
+docker compose up                  # database, migrated and listening on :5432
+docker compose --profile full up   # …and engine, rest and ui, in that order
+docker compose down -v             # reset — drops the named volume and all data
 ```
+
+The data tier carries **no profile at all**, which is what keeps it in every run: the
+application services name `full`, and a bare `up` is still the database and its
+migrations. `--profile db` selects that same subset by name.
 
 `yarn dev` (§ 1) drives this same file rather than a second one:
 [`ouroboros-db/scripts/dev`](../ouroboros-db/scripts/dev) is `up --detach --wait db`
@@ -337,19 +342,35 @@ alike.
 [`ouroboros-db/run.sh`](../ouroboros-db/run.sh) answers the other question, migrating a
 database wherever it happens to be, and reads the module's own `.env` to do it.
 
-Three rules keep it reproducible:
+Six rules keep it reproducible:
 
 1. **Images are pinned** to a major version (`postgres:17-alpine`, `flyway/flyway:11`),
    never `latest`, so two developers a month apart get the same database.
 2. **Dependencies wait on healthchecks, never on sleeps.** The migrator starts on
    `condition: service_healthy`, which is what stops the first migration racing the
-   restart PostgreSQL performs at the end of its own initialisation.
+   restart PostgreSQL performs at the end of its own initialisation; `ouroboros-rest`
+   starts on `service_completed_successfully`, because a service that came up beside a
+   *failed* migration would answer requests against a schema that is not this checkout's.
+   The probe each condition reads belongs to the image (§ 5), never to this file — what
+   the stack adds is `start_interval`, the rate a cold container is probed at before its
+   first success, so a chain four deep comes up in seconds rather than in image intervals.
 3. **Every credential is interpolated with a development default** —
    `${OURO_DB_USER:-ouroboros}`. A clean checkout runs with no `.env` at all, and a
    literal credential never enters the file.
-4. **Published ports name the loopback interface** — `127.0.0.1:5432:5432`. A
+4. **Addresses are the opposite: they are literals.** `db:5432` and `engine:8000` are
+   what a container resolves and `localhost:4000` is what a browser does, and neither is
+   the developer's to change — `OURO_DATABASE_URL` as `.env.example` documents it, at
+   `localhost`, is the one value that cannot work inside the network. Interpolating an
+   address would let a correct `.env` break the stack.
+5. **Published ports name the loopback interface** — `127.0.0.1:5432:5432`. A
    development password is a real password to anything that can reach the port, and
    Docker's default is every interface on the machine.
+6. **Only what a browser has to reach is published at all.** `ouroboros-ui` on 3000 and
+   `ouroboros-rest` on 4000, plus the database for the tooling on the host that migrates
+   and inspects it. `ouroboros-engine` publishes nothing: it is reachable at `engine:8000`
+   from inside the stack and at no address the host has, which is
+   [`ARCHITECTURE.md`](ARCHITECTURE.md) § 2's boundary made true by the topology instead
+   of by a rule somebody has to keep.
 
 ## 6. Code style
 

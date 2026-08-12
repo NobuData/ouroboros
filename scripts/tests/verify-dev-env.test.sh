@@ -70,7 +70,75 @@ services:
       - -password=${OURO_DB_PASSWORD:-ouroboros}
       - -schemas=${OURO_DB_SCHEMA:-ouroboros}
       - migrate
+    networks:
+      - ouroboros
     restart: "no"
+
+  engine:
+    build:
+      context: ./ouroboros-engine
+    environment:
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
+      OURO_LOG_LEVEL: ${OURO_LOG_LEVEL:-info}
+    healthcheck:
+      start_period: 30s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  rest:
+    build:
+      context: .
+      dockerfile: ouroboros-rest/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+      engine:
+        condition: service_healthy
+    environment:
+      OURO_DATABASE_URL: postgresql://${OURO_DB_USER:-ouroboros}:${OURO_DB_PASSWORD:-ouroboros}@db:5432/${OURO_DB_NAME:-ouroboros}
+      OURO_REST_URL: http://localhost:4000
+      OURO_UI_URL: http://localhost:3000
+      OURO_ENGINE_URL: http://engine:8000
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
+      OURO_SESSION_SECRET: ${OURO_SESSION_SECRET:-dev-session-secret-change-me}
+      OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID:-dev-github-client-id}
+      OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET:-dev-github-client-secret}
+      OURO_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      start_period: 30s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  ui:
+    build:
+      context: .
+      dockerfile: ouroboros-ui/Dockerfile
+    depends_on:
+      rest:
+        condition: service_healthy
+    environment:
+      OURO_REST_URL: http://localhost:4000
+    healthcheck:
+      start_period: 30s
+      start_interval: 1s
+    network_mode: "service:rest"
+    profiles:
+      - full
+
+networks:
+  ouroboros:
+    driver: bridge
 
 volumes:
   ouroboros-db-data:
@@ -89,6 +157,13 @@ OURO_DB_SCHEMA=ouroboros
 OURO_DB_PORT=5432
 # The connection string.
 OURO_DATABASE_URL=postgresql://ouroboros:ouroboros@localhost:5432/ouroboros
+# The key on the internal call.
+OURO_ENGINE_SHARED_SECRET=dev-engine-shared-secret-change-me
+# The session cookie's signing key.
+OURO_SESSION_SECRET=dev-session-secret-change-me
+# The GitHub OAuth application.
+OURO_GITHUB_CLIENT_ID=dev-github-client-id
+OURO_GITHUB_CLIENT_SECRET=dev-github-client-secret
 # Log verbosity.
 OURO_LOG_LEVEL=info
 ENV
@@ -103,8 +178,21 @@ IGNORE
 # Fixture
 
     docker compose up
+    docker compose --profile full up
+    docker compose --profile full up --build
     docker compose down -v
 DOC
+
+  # The three application images. Only what the verifier cross-checks is here — the
+  # HEALTHCHECK every `condition: service_healthy` in the stack above is really waiting
+  # on. What each image is otherwise made of is that module's own subject.
+  for module in engine rest ui; do
+    mkdir -p "$fixture/ouroboros-$module"
+    cat > "$fixture/ouroboros-$module/Dockerfile" <<'IMAGE'
+FROM scratch
+HEALTHCHECK CMD probe || exit 1
+IMAGE
+  done
 
   cat > "$fixture/ouroboros-db/README.md" <<'DOC'
 # ouroboros-db fixture
@@ -336,7 +424,119 @@ check_break 'a restarting migrator is reported' \
   'flyway does not restart after it succeeds' \
   'sed -i "s|^    restart: \"no\"|    restart: always|" "$root/docker-compose.yml"'
 
+# ---------------------------------------------------------------------------
+# Application services (#55)
+# ---------------------------------------------------------------------------
+
+printf '\nStack shape violations\n'
+
+# The data tier is what a bare `docker compose up` means everywhere it is documented,
+# and it means that only while neither of its two services is in a profile.
+check_break 'a data-tier service put behind a profile is reported' \
+  'db is in no profile' \
+  'sed -i "s|^    image: postgres:17-alpine|    profiles:\n      - db\n    image: postgres:17-alpine|" "$root/docker-compose.yml"'
+
+check_break 'an application service outside the full profile is reported' \
+  'engine starts only under the full profile' \
+  'sed -i "/^  engine:$/,/^  rest:$/ s|^      - full$||" "$root/docker-compose.yml"'
+
+check_break 'a stack with no named network is reported' \
+  'the services share one named network' \
+  'sed -i "/^  ouroboros:$/d" "$root/docker-compose.yml"'
+
+# A service that is not there at all: every assertion about it has to fail and be
+# reported, rather than an empty block reading as an absence of violations.
+check_break 'a missing application service is reported' \
+  'docker-compose\.yml defines the ui service' \
+  'sed -i "/^  ui:$/,/^networks:$/{/^networks:$/!d}" "$root/docker-compose.yml"'
+check_break 'and its wiring is reported missing with it' \
+  'ui waits for rest to be healthy' \
+  'sed -i "/^  ui:$/,/^networks:$/{/^networks:$/!d}" "$root/docker-compose.yml"'
+
+printf '\nStartup order violations\n'
+
+# The edge with data behind it: `rest` beside a migration that has not finished is an API
+# answering against a schema that is not this checkout's.
+check_break 'a rest that starts beside the migrations rather than after them is reported' \
+  'waits for the migrations to have succeeded' \
+  'sed -i "s|condition: service_completed_successfully|condition: service_started|" "$root/docker-compose.yml"'
+
+check_break 'a rest that does not wait for the engine is reported' \
+  'rest waits for the engine to be healthy' \
+  'sed -i "/^      engine:$/,+1d" "$root/docker-compose.yml"'
+
+check_break 'a ui that does not wait for rest is reported' \
+  'ui waits for rest to be healthy' \
+  'sed -i "/^      rest:$/,+1d" "$root/docker-compose.yml"'
+
+# `condition: service_healthy` is worth exactly what the image's probe is worth, and
+# there is nothing else for compose to read.
+check_break 'an image with no healthcheck to wait on is reported' \
+  'ouroboros-ui/Dockerfile declares the probe' \
+  'printf "FROM scratch\\n" > "$root/ouroboros-ui/Dockerfile"'
+
+check_break 'a stack that restates a probe its image already declares is reported' \
+  'engine takes its probe from its image' \
+  'sed -i "/^  engine:$/,/^  rest:$/ s|^      start_period: 30s|      test: ["'"'"'CMD'"'"'", "'"'"'true'"'"'"]\n      start_period: 30s|" "$root/docker-compose.yml"'
+
+check_break 'a service probed at the image interval while it is starting is reported' \
+  'ui is probed at a cold-start rate' \
+  'sed -i "/^  ui:$/,\$ s|^      start_interval: 1s||" "$root/docker-compose.yml"'
+
+printf '\nPublished surface violations\n'
+
+# The boundary check the issue asks for, from both sides: the engine declaring a port,
+# and anything at all publishing the port it serves on.
+check_break 'an engine that publishes a port is reported' \
+  'the engine publishes no port at all' \
+  'sed -i "/^  engine:$/,/^  rest:$/ s|^    healthcheck:|    ports:\n      - \"127.0.0.1:8000:8000\"\n    healthcheck:|" "$root/docker-compose.yml"'
+
+check_break 'any service publishing the engine port is reported' \
+  'nothing in the stack publishes the engine port' \
+  'sed -i "s|- \"127.0.0.1:4000:4000\"|- \"127.0.0.1:8000:8000\"|" "$root/docker-compose.yml"'
+
+check_break 'publishing the API on every interface is reported' \
+  'rest publishes its own port on loopback only' \
+  'sed -i "s|- \"127.0.0.1:4000:4000\"|- \"4000:4000\"|" "$root/docker-compose.yml"'
+
+check_break 'a ui that publishes a port of its own is reported' \
+  'ui declares no port of its own' \
+  'sed -i "/^  ui:$/,\$ s|^    network_mode:|    ports:\n      - \"127.0.0.1:3000:3000\"\n    network_mode:|" "$root/docker-compose.yml"'
+
+check_break 'a ui that does not share the namespace it is addressed through is reported' \
+  'ui shares rest.s network namespace' \
+  'sed -i "/^    network_mode: /d" "$root/docker-compose.yml"'
+
+printf '\nService wiring violations\n'
+
+# `localhost` inside a container is the container. Both of these are the value
+# .env.example documents, and both are the one value that cannot work in here.
+check_break 'a database address a container cannot reach is reported' \
+  'rest reaches the database at db:5432' \
+  'sed -i "s|@db:5432|@localhost:5432|" "$root/docker-compose.yml"'
+
+check_break 'an engine address a container cannot reach is reported' \
+  'rest reaches the engine at engine:8000' \
+  'sed -i "s|http://engine:8000|http://localhost:8000|" "$root/docker-compose.yml"'
+
+# And the reverse mistake: an address inside the network handed to a browser.
+check_break 'an OAuth origin a browser cannot reach is reported' \
+  'rest builds its OAuth redirect_uri' \
+  'sed -i "s|OURO_REST_URL: http://localhost:4000|OURO_REST_URL: http://rest:4000|" "$root/docker-compose.yml"'
+
+check_break 'a ui and rest that disagree about that one address is reported' \
+  'agree on the one address OURO_REST_URL names' \
+  'sed -i "/^  ui:$/,\$ s|OURO_REST_URL: http://localhost:4000|OURO_REST_URL: http://rest:4000|" "$root/docker-compose.yml"'
+
+check_break 'an engine reading a shared secret rest does not is reported' \
+  'engine reads the shared secret from the one variable' \
+  'sed -i "/^  engine:$/,/^  rest:$/ {/OURO_ENGINE_SHARED_SECRET/d}" "$root/docker-compose.yml"'
+
 printf '\nCredential violations\n'
+
+check_break 'a literal session secret is reported' \
+  'no literal OURO_\* credential' \
+  'sed -i "s|OURO_SESSION_SECRET: .*|OURO_SESSION_SECRET: hunter2hunter2hunter2|" "$root/docker-compose.yml"'
 
 check_break 'a literal PostgreSQL password is reported' \
   'no literal POSTGRES_\* credential' \
@@ -632,6 +832,16 @@ printf '\nDocumentation violations\n'
 check_break 'a root README missing the reset flow is reported' \
   'README\.md documents the reset flow' \
   'sed -i "/docker compose down -v/d" "$root/README.md"'
+
+check_break 'a root README that never says how to start the whole stack is reported' \
+  'documents the cold start of the whole stack' \
+  'sed -i "/--profile full/d" "$root/README.md"'
+
+# Compose builds an image that is missing and never rebuilds one that is stale, so a
+# developer who only ever reads the first command is looking at an old commit.
+check_break 'a root README that never says how to rebuild is reported' \
+  'documents rebuilding an image after a source change' \
+  'sed -i "/--profile full up --build/d" "$root/README.md"'
 
 check_break 'a module README missing the up flow is reported' \
   'ouroboros-db/README\.md documents bringing the stack up' \
