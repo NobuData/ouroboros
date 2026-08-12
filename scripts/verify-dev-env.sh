@@ -360,6 +360,69 @@ else
   fail "$MIGRATIONS/ holds at least one migration to apply (none found)"
 fi
 
+# `user` is a reserved word, and V004 (#706) introduced a table called it — BetterAuth's
+# core table, which differs from V002's shipped `users` by a single letter. Unquoted it
+# parses as the keyword and the statement fails; the failure arrives when the migration is
+# applied, which is minutes into a CI run or, worse, on somebody's database.
+#
+# So the rule is checked here instead, on a file read. Comments are stripped first —
+# `ouroboros-db/README.md` and every migration header discuss "the user" in prose, and
+# prose is not SQL. What is left is searched for `user` in a *table* position: immediately
+# after the keyword that introduces one, and not wrapped in the quotes that make it an
+# identifier. `users`, `user_id`, `"userId"` and `ouroboros."user"` are all untouched by it;
+# `from ouroboros.user` is not.
+for migration in "$MIGRATIONS"/*.sql; do
+  [ -f "$migration" ] || continue
+  unquoted=$(sed 's/--.*//' "$migration" |
+    grep -Ein '(from|join|into|update|table|references|exists)[[:space:]]+(only[[:space:]]+)?(ouroboros\.)?user([^s_"[:alnum:]]|$)' || true)
+  if [ -n "$unquoted" ]; then
+    fail "${migration##*/} quotes every reference to the reserved-word table \"user\""
+    printf '%s\n' "$unquoted" | sed 's/^/    /'
+  else
+    pass "${migration##*/} quotes every reference to the reserved-word table \"user\""
+  fi
+done
+
+# The check above passes trivially on a migration that never mentions the table, so this is
+# what stops it from being a rule nothing exercises: the migration that creates it names it
+# in the one spelling that works.
+check_contains "$MIGRATIONS/V004__betterauth_core.sql" '^create table ouroboros\."user" \($' \
+  'V004 creates the BetterAuth user table under its quoted name'
+
+# Roadmap decision **A3**: Flyway is the only thing that issues DDL. BetterAuth ships a
+# `migrate` command that would create its own tables at the drop of a hat, and the whole of
+# ouroboros-db's ownership of the schema rests on that command never being wired into
+# anything. `generate` is the one that is used — it prints SQL and applies nothing — so what
+# is searched for is the pairing, across every script, workflow and compose file in the
+# repository rather than in one module.
+#
+# This file and its own test are excluded from the search. Both have to write the
+# forbidden invocation down — this one in the sentence it prints, the test in the cases
+# that prove the pattern catches each spelling of it — and a check that fails on its own
+# description is a check nobody can add.
+#
+# The pattern is a *running* of it, not the two words near each other: a package runner,
+# the CLI's name with an optional pin, flags if any, then `migrate` as the command. The
+# runner is what separates an invocation from prose — this repository has several sentences
+# of the form "generate only, never migrate", and a rule that could not be written down
+# without tripping itself is a rule that gets deleted. A runner is also the only way to
+# reach this CLI at all: it is deliberately not a dependency of any module
+# (`ouroboros-rest/README.md` § Generating the auth schema), so there is no `node_modules`
+# binary for a bare `better-auth migrate` to resolve to.
+#
+# Every file is searched, with no extension filter, because `ouroboros-db/scripts/*` carry
+# none.
+better_auth_migrate=$(grep -REIn \
+  '(npx|bunx|bun x|npm exec|pnpm dlx|pnpm exec|yarn dlx)[[:space:]][^;&|]*better-auth/cli(@[^[:space:]]+)?([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+migrate' . \
+  --exclude="${0##*/}" --exclude="$(basename "$0" .sh).test.sh" \
+  --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=coverage || true)
+if [ -n "$better_auth_migrate" ]; then
+  fail 'nothing in the repository runs @better-auth/cli migrate — Flyway owns every DDL statement'
+  printf '%s\n' "$better_auth_migrate" | sed 's/^/    /'
+else
+  pass 'nothing in the repository runs @better-auth/cli migrate — Flyway owns every DDL statement'
+fi
+
 # ---------------------------------------------------------------------------
 # Flyway project
 # ---------------------------------------------------------------------------

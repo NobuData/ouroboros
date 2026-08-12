@@ -431,15 +431,51 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 
 ## Epic B (#696) — Auth Database (`ouroboros-db`)
 
+> **B.1 · #706 has shipped and has left the table below.**
+> [`ouroboros-db/migrations/V004__betterauth_core.sql`](../ouroboros-db/migrations/V004__betterauth_core.sql)
+> is a hand-port of `@better-auth/cli generate` run against A.1's `auth.config.ts`:
+> `"user"`, `session`, `account` and `verification` in the `ouroboros` schema, with the
+> library's quoted camelCase columns kept exactly as emitted (decision **A4**). Three
+> statements are ours and marked so — the schema qualification, the
+> `account(providerId, accountId)` unique index the acceptance criteria name, and the
+> back-fill.
+>
+> The back-fill is a **function**, `ouroboros.backfill_betterauth_core()`, called once by
+> the migration. It copies `users` → `"user"` and `user_identities` → `account`
+> **preserving ids**, so `tenant_members.user_id` and every other key written against
+> `users.id` still resolves through **B.3**. Being a function rather than four statements
+> makes it idempotent, re-runnable by hand, and callable from `tests/constraints.sql` —
+> which is where `ci/db` now asserts the row counts, the preserved ids and the column
+> mapping against fixtures rather than trusting them. `emailVerified` is derived rather
+> than defaulted: `true` for a person holding a GitHub identity, who proved a verified
+> address through #33's flow, and `false` for one who exists only because they were
+> invited.
+>
+> Two mechanical guards landed in `scripts/verify-dev-env.sh`, both in `ci/db`'s first
+> step: every migration is grepped for an unquoted `user` in a table position, and the
+> whole repository for anything wiring up `@better-auth/cli migrate` — decision **A3**,
+> asserted rather than remembered. `users`/`user_identities` are **not** dropped; that is
+> **B.3**, so that pointing traffic back at them stays possible until A.3 has been
+> exercised. Its issue section below is kept as the record of what was asked for.
+>
+> One consequence it deliberately did **not** paper over: Flyway applies repeatable
+> migrations last, so a database created from empty runs V004 before `R__dev_seed.sql` and
+> the back-fill finds nothing to copy. **B.4 · #709** is what teaches the seed about these
+> tables; until then, calling the function by hand brings a seeded development database
+> across.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| B.1 · #706 | ouroboros-db: [B.1] BetterAuth core schema (Flyway V004) | `user`, `session`, `account`, `verification` + back-fill from shipped `users`/`user_identities` | mvp, auth, db | N (after #19, A.1) | Y | **L** ⬆ | ouroboros-db |
 | B.2 · #707 | ouroboros-db: [B.2] Organization plugin schema (Flyway V005) | `organization`, `member`, `invitation` + session active-org column | mvp, auth, db | N (after B.1) | Y | M | ouroboros-db |
 | B.3 · #708 | ouroboros-db: [B.3] Tenancy **data migration** — `tenants`→`organization`, extensions re-pointed | Live migration of 5 populated tables; drops `tenants`/`tenant_members`/`users`/`user_identities` | mvp, auth, db | N (after B.1, B.2) | Y | **L** ⚠ riskiest | ouroboros-db |
 | B.4 · #709 | ouroboros-db: [B.4] Auth-aware dev seed data | Seeded users (password + GitHub-shaped), orgs, domains, enablement | mvp, auth, db | N (after B.3) | Y | S | ouroboros-db |
 | B.5 · #710 | ouroboros-db: [B.5] Auth constraint & drift tests in ci/db | Constraint assertions + BetterAuth-schema drift check | mvp, auth, db, ci | N (after B.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue B.1 (#706) — ouroboros-db: [B.1] BetterAuth core schema (Flyway V004)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic B](#epic-b-696--auth-database-ouroboros-db) for what landed, and
+`ouroboros-db/README.md` § The two generations of user table for how it is used.
 
 - **Problem Statement:** BetterAuth needs its four core tables — but Flyway is the only
   migration authority (decision A3), so the library must never touch DDL at runtime.
@@ -1231,7 +1267,7 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ *(both shipped)* → (B.1 #706 → B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ *(all shipped)* → (B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
    *(**B.3 is the cutover.** It drops `tenants`, `tenant_members`, `users` and
    `user_identities` — every consumer of those tables must already be migrated or
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
@@ -1341,10 +1377,12 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here:** #700 (A.1) and #701 (A.2) **have landed** — BetterAuth is configured and
-its handler answers at `/api/auth/*`. #706 (B.1) is the only unblocked issue left in
-Phase 1, and it is what unblocks the rest: #702 (A.3) and #703 (A.4) both need the schema
-as well as the mount.
+**Start here:** #700 (A.1), #701 (A.2) and #706 (B.1) **have landed** — BetterAuth is
+configured, its handler answers at `/api/auth/*`, and its four core tables exist with the
+shipped identities back-filled into them. That unblocks the whole of Phase 2: #702 (A.3)
+and #703 (A.4) needed the schema as well as the mount, and both may now proceed — close
+together, for the reason their sequencing note gives. #707 (B.2) is the next database
+step.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

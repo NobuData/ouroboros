@@ -16,10 +16,10 @@
 -- CI step (issue #24 wires it into `ci/db`; the assertions themselves belong beside the
 -- migrations that must satisfy them).
 --
--- Covers V001 (#20), V002 (#21) and V003 (#22). A migration that adds a rule adds its
--- assertion here in the same change. What R__dev_seed.sql (#23) *puts* in a development
--- database is seed.sql beside this file; what the schema refuses to let anything put
--- there is here.
+-- Covers V001 (#20), V002 (#21), V003 (#22) and V004 (#706). A migration that adds a rule
+-- adds its assertion here in the same change. What R__dev_seed.sql (#23) *puts* in a
+-- development database is seed.sql beside this file; what the schema refuses to let
+-- anything put there is here.
 
 \set ON_ERROR_STOP on
 
@@ -51,11 +51,16 @@ begin;
 --
 -- Nothing is lost. This is inside the transaction the end of the script rolls back, so
 -- every row deleted here is restored on the way out — which is what keeps this safe to
--- run against a database somebody is using. Two deletes cover the schema: every other
--- table cascades from `tenants` or from `users`.
+-- run against a database somebody is using. Three deletes cover the schema: every other
+-- table cascades from `tenants`, from `users`, or from `"user"`.
+--
+-- `"user"` needs its own delete because nothing joins it to `users` — V004 copied the rows
+-- across and left no foreign key between the two, which is exactly what makes the old
+-- tables droppable in #708. Quoted, like every other reference to it in this repository.
 -- ---------------------------------------------------------------------------
 delete from ouroboros.tenants;
 delete from ouroboros.users;
+delete from ouroboros."user";
 
 -- ---------------------------------------------------------------------------
 -- Fixtures. Fixed uuids so an assertion can name a row without a lookup.
@@ -618,6 +623,226 @@ select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.tenants
    where id = '22222222-2222-2222-2222-222222222222'),
   'deleting an org does not delete its tenant');
+
+-- ===========================================================================
+-- V004 — BetterAuth core schema and the back-fill out of V002 (#706)
+-- ===========================================================================
+--
+-- Two different things are asserted here and they are worth telling apart. The first is
+-- ordinary: four vendor-shaped tables, and the rules V004 adds to the ones the library
+-- emitted. The second is the migration's *data* half — that the people V002 already held
+-- came across with their ids intact — which is the acceptance criterion nothing but a
+-- populated database can answer.
+--
+-- The state this section starts from is the state the sections above left behind, and it is
+-- exactly the fixture the back-fill needs: three `users` rows, two of them holding a GitHub
+-- identity, and the BetterAuth tables empty because the header cleared them. Nothing new is
+-- inserted into the V002 tables for this.
+
+-- --- the tables exist, under the names the library looks for ----------------
+--
+-- `to_regclass` answers null rather than raising for a name that resolves to nothing, which
+-- is what lets a missing table be a named assertion failure instead of an aborted script.
+-- The literal is double-quoted *inside* the string, because that is the only spelling
+-- PostgreSQL resolves: `ouroboros.user` unquoted is the `user` keyword.
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."user"') is not null),
+  'V004 created ouroboros."user" — the quoted, reserved-word table name');
+select pg_temp.must_hold(
+  (select count(*) = 4 from information_schema.tables
+   where table_schema = 'ouroboros'
+     and table_name in ('user', 'session', 'account', 'verification')),
+  'V004 created all four BetterAuth core tables');
+
+-- The library's column names are kept exactly as generated — roadmap decision A4. A
+-- migration that "tidied" `emailVerified` into `email_verified` would apply cleanly and
+-- then fail on the first sign-in, so the casing is asserted rather than assumed.
+select pg_temp.must_hold(
+  (select count(*) = 5 from information_schema.columns
+   where table_schema = 'ouroboros' and table_name = 'user'
+     and column_name in ('id', 'name', 'email', 'emailVerified', 'image')),
+  '"user" keeps BetterAuth''s camelCase column names');
+
+-- The one place in this schema where a credential may live, stated as a decision rather
+-- than left as an absence. V002's tables are asserted *not* to hold one, a few hundred
+-- lines up; `account` is the library's table, the columns are its contract, and BetterAuth
+-- encrypts the tokens with BETTER_AUTH_SECRET before they are written.
+select pg_temp.must_hold(
+  (select count(*) = 3 from information_schema.columns
+   where table_schema = 'ouroboros' and table_name = 'account'
+     and column_name in ('accessToken', 'refreshToken', 'password')),
+  'account is the one table that holds credentials, and holds all three columns for them');
+
+-- --- the back-fill (#706''s data half) --------------------------------------
+--
+-- Run against the rows the sections above left in `users` and `user_identities`. What is
+-- asserted is the acceptance criterion in its own words: the counts match and the ids did
+-- not change.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros."user"),
+  'the back-fill is being run against empty BetterAuth tables, as V004 found them');
+
+create temporary table backfilled as
+  select * from ouroboros.backfill_betterauth_core();
+
+select pg_temp.must_hold(
+  (select users_copied = (select count(*) from ouroboros.users) from backfilled),
+  'the back-fill reports copying every users row');
+select pg_temp.must_hold(
+  (select accounts_copied = (select count(*) from ouroboros.user_identities) from backfilled),
+  'the back-fill reports copying every user_identities row');
+
+select pg_temp.must_hold(
+  (select (select count(*) from ouroboros."user") = (select count(*) from ouroboros.users)),
+  'count("user") = count(users) after the back-fill');
+select pg_temp.must_hold(
+  (select (select count(*) from ouroboros.account) = (select count(*) from ouroboros.user_identities)),
+  'count(account) = count(user_identities) after the back-fill');
+
+-- Ids preserved, which is the property #708 depends on: every foreign key already written
+-- against `users.id` names the same person in `"user"`.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.users u
+   where not exists (select 1 from ouroboros."user" b where b."id" = u.id::text)),
+  'every users.id survives as "user".id, spelled as text');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.user_identities i
+   where not exists (select 1 from ouroboros.account a where a."id" = i.id::text)),
+  'every user_identities.id survives as account.id');
+
+-- The columns, one by one, on a row whose values the fixture above chose.
+select pg_temp.must_hold(
+  (select b."name" = 'Ken S' and b."email" = 'ken@acme-robotics.dev'
+      and b."image" = 'https://avatars.example/ken.png'
+   from ouroboros."user" b where b."id" = '66666666-6666-6666-6666-666666666666'),
+  'the back-fill maps display_name → name and avatar_url → image');
+-- Keyed on the pair rather than on the id, because the fixture above let
+-- `user_identities.id` default — that the id came across at all is the assertion two above,
+-- and this one is about the two columns whose names change in the move.
+select pg_temp.must_hold(
+  (select a."userId" = '66666666-6666-6666-6666-666666666666'
+     and a."id" = (select i.id::text from ouroboros.user_identities i where i.external_id = '1001')
+   from ouroboros.account a
+   where a."providerId" = 'github' and a."accountId" = '1001'),
+  'the back-fill maps provider → providerId and external_id → accountId');
+
+-- No token comes across, because V002 never held one. A null `accessToken` is the correct
+-- reading of "this person is recognised but has not signed in since the move".
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.account
+   where "accessToken" is not null or "refreshToken" is not null or "password" is not null),
+  'the back-fill carries no credential across, because V002 stored none');
+
+-- `emailVerified` is derived rather than defaulted, and the two answers are both here:
+-- somebody who signed in through #33's flow proved a verified GitHub address, and somebody
+-- who exists only because they were invited (#31) has proved nothing. `88888888…` is the
+-- fixture's person with no identity row, which is what an uninvited stub looks like.
+select pg_temp.must_hold(
+  (select b."emailVerified" from ouroboros."user" b
+   where b."id" = '66666666-6666-6666-6666-666666666666'),
+  'a back-filled person with a GitHub identity is emailVerified');
+select pg_temp.must_hold(
+  (select not b."emailVerified" from ouroboros."user" b
+   where b."id" = '88888888-8888-8888-8888-888888888888'),
+  'a back-filled person with no identity is not emailVerified');
+
+-- Idempotent, which is what makes it safe to run by hand on a development database the
+-- seed filled after V004 had already been applied — the case this migration's header
+-- describes.
+select pg_temp.must_hold(
+  (select users_copied = 0 and accounts_copied = 0
+   from ouroboros.backfill_betterauth_core()),
+  'running the back-fill a second time copies nothing');
+
+-- --- uniqueness -------------------------------------------------------------
+--
+-- The three rules the acceptance criteria name. Each is asserted by the statement it must
+-- refuse, with the constraint that has to be the one to fire — without naming it, a row
+-- rejected by some unrelated not-null would read as a pass.
+select pg_temp.must_reject(
+  $$insert into ouroboros."user" ("id", "name", "email", "emailVerified", "updatedAt")
+    values ('impostor', 'Impostor', 'ken@acme-robotics.dev', false, now())$$,
+  '"user".email is unique across the installation', 'user_email_key');
+
+insert into ouroboros.session ("id", "userId", "token", "expiresAt", "updatedAt")
+  values ('session-1', '66666666-6666-6666-6666-666666666666', 'token-1',
+          now() + interval '7 days', now());
+select pg_temp.must_reject(
+  $$insert into ouroboros.session ("id", "userId", "token", "expiresAt", "updatedAt")
+    values ('session-2', '77777777-7777-7777-7777-777777777777', 'token-1',
+            now() + interval '7 days', now())$$,
+  'session.token is unique — two sessions cannot share a cookie', 'session_token_key');
+
+-- The rule V004 adds that the library does not emit, and the successor to V002's
+-- `user_identities_provider_external_id_key`: one GitHub account belongs to one person.
+select pg_temp.must_reject(
+  $$insert into ouroboros.account ("id", "accountId", "providerId", "userId", "updatedAt")
+    values ('second-claim', '1001', 'github',
+            '77777777-7777-7777-7777-777777777777', now())$$,
+  'account(providerId, accountId) is unique — one GitHub account is one person',
+  'account_provider_account_key');
+
+-- Scoped by provider, exactly as V002''s was: two providers may independently issue the id
+-- `1001`, and those are not the same account.
+insert into ouroboros.account ("id", "accountId", "providerId", "userId", "updatedAt")
+  values ('other-provider', '1001', 'credential',
+          '77777777-7777-7777-7777-777777777777', now());
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.account where "accountId" = '1001'),
+  'the same accountId under a different providerId is a different account');
+
+-- --- referential integrity --------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.session ("id", "userId", "token", "expiresAt", "updatedAt")
+    values ('orphan', 'nobody', 'token-orphan', now() + interval '1 day', now())$$,
+  'session.userId references an existing "user"', 'session_userId_fkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.account ("id", "accountId", "providerId", "userId", "updatedAt")
+    values ('orphan', '2002', 'github', 'nobody', now())$$,
+  'account.userId references an existing "user"', 'account_userId_fkey');
+
+-- --- indexes ----------------------------------------------------------------
+--
+-- The two reads every request makes once #703 turns database-backed sessions on: the
+-- session by its cookie, and — on a sign-in — the account by provider and id. Both must be
+-- served by an index at production size, which is what these assert; as elsewhere in this
+-- file, the planner is stopped from preferring a scan over a fixture-sized table.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select "userId" from ouroboros.session where "token" = 'token-1'$$,
+  'session_token_key');
+select pg_temp.must_use_index(
+  $$select "userId" from ouroboros.account where "providerId" = 'github' and "accountId" = '1001'$$,
+  'account_provider_account_key');
+select pg_temp.must_use_index(
+  $$select "id" from ouroboros."user" where "email" = 'ken@acme-robotics.dev'$$,
+  'user_email_key');
+set local enable_seqscan = on;
+
+-- --- cascades ---------------------------------------------------------------
+--
+-- Deleting a person ends their sessions and removes the accounts that authenticated them,
+-- in the same statement. A session row outliving its user would be a cookie that resolves
+-- to nobody — a 500 rather than a sign-out — and an orphaned account row would keep its
+-- (providerId, accountId) pair reserved against the unique index above, so that GitHub
+-- account could never sign in again.
+delete from ouroboros."user" where "id" = '66666666-6666-6666-6666-666666666666';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.session
+   where "userId" = '66666666-6666-6666-6666-666666666666'),
+  'deleting a "user" cascades to their sessions');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.account
+   where "userId" = '66666666-6666-6666-6666-666666666666'),
+  'deleting a "user" cascades to their accounts');
+
+-- And it reaches no further. V004 deliberately writes no foreign key between the two
+-- generations of user table, which is what lets #708 drop the old one without a rewrite.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.users
+   where id = '66666666-6666-6666-6666-666666666666'),
+  'deleting a "user" leaves the V002 users row alone — the two tables carry no FK between them');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

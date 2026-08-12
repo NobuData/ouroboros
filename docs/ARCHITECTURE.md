@@ -239,6 +239,29 @@ tenant predicate sufficient to isolate a customer — and what makes row-level s
 ([#25](https://github.com/NobuData/ouroboros/issues/25)) a later addition rather than a
 redesign.
 
+`V004` ([#706](https://github.com/NobuData/ouroboros/issues/706)) adds BetterAuth's four
+core tables beside them — `"user"`, `session`, `account`, `verification` — and back-fills
+the identity layer into the first two of those, preserving ids:
+
+```mermaid
+erDiagram
+    user ||--o{ session : "is signed in through"
+    user ||--o{ account : "authenticates with"
+    users ||..|| user : "back-filled into, id for id"
+    user_identities ||..|| account : "back-filled into, id for id"
+```
+
+That leaves the schema holding two tables for the same people — `users` and `"user"`,
+which differ by one letter — and it is a transitional state on purpose:
+[#708](https://github.com/NobuData/ouroboros/issues/708) drops the older pair once
+[#702](https://github.com/NobuData/ouroboros/issues/702) has retired the sign-in flow that
+writes them, and until then a revert is redeploying rather than restoring. Two rules travel
+with these tables and are asserted rather than remembered — `user` is a reserved word and
+is quoted at every reference, and Flyway still issues every DDL statement, which means
+BetterAuth's own `migrate` command is wired into nothing. `scripts/verify-dev-env.sh`
+checks both on every `ci/db` run; `ouroboros-db/README.md` § The two generations of user
+table is the longer account.
+
 ### 2.5 `ouroboros-web` — the marketing site
 
 **Running**, and deliberately outside everything above. It is
