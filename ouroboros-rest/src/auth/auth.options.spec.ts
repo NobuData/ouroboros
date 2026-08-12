@@ -6,6 +6,7 @@ import { testConfiguration } from "../modules/config/configuration.fixture";
 import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
 import { AUTH_APP_NAME, AUTH_BASE_PATH, authOptions } from "./auth.options";
+import { ACCOUNT_LINKING, githubProvider, GITHUB_PROVIDER_ID } from "./github.provider";
 
 /**
  * What BetterAuth is configured with, and what it is deliberately not configured with.
@@ -98,22 +99,78 @@ describe("authOptions", () => {
     expect(first).toEqual(second);
   });
 
-  // This issue is the foundation, and the four that build on it each own one of the
-  // options below. Listing the whole surface is how "before any provider or route exists"
-  // stays true: adding `socialProviders` here — rather than in #702, with the migration
-  // and the tests that go with it — fails this test.
+  // #700 was the foundation and the issues after it each own one of the options below.
+  // Listing the whole surface is how that stays true: an option added here — rather than in
+  // the issue that owns it, with the migration and the tests that go with it — fails this
+  // test. #702 added the two it owns, `socialProviders` and `account`; #703, #704 and #705
+  // are still to come.
   it("configures nothing the issues after it own", () => {
     const options = authOptions({ configuration: testConfiguration(), pool: fakePool() });
 
     expect(Object.keys(options).sort()).toEqual([
+      "account",
       "appName",
       "basePath",
       "baseURL",
       "database",
       "secret",
+      "socialProviders",
       "telemetry",
       "trustedOrigins",
     ]);
+  });
+});
+
+describe("the GitHub provider", () => {
+  it("is configured, and is the only one", () => {
+    // Mockup 01's primary action, and the only way into this service until #705 adds a
+    // development password. A second provider appearing here without an issue behind it is
+    // a consent screen nobody designed.
+    const { socialProviders } = authOptions({
+      configuration: testConfiguration(),
+      pool: fakePool(),
+    });
+
+    expect(Object.keys(socialProviders ?? {})).toEqual([GITHUB_PROVIDER_ID]);
+  });
+
+  it("is the provider `github.provider.ts` builds, decisions and all", () => {
+    const configuration = testConfiguration({ OURO_GITHUB_CLIENT_ID: "Iv1.abc" });
+
+    expect(authOptions({ configuration, pool: fakePool() }).socialProviders?.github).toEqual(
+      githubProvider(configuration),
+    );
+  });
+
+  it("means the callback GitHub is registered against is BETTER_AUTH_URL's", () => {
+    // The URL an OAuth App has to carry, and the one string this service cannot get wrong
+    // without every sign-in failing at the last hop. It is built by the library from
+    // `baseURL` + `basePath` + `/callback/` + the provider id — all four of which are
+    // asserted above, so this composes them rather than hard-coding the result.
+    const options = authOptions({
+      configuration: testConfiguration({ BETTER_AUTH_URL: "https://api.ouroboros.build" }),
+      pool: fakePool(),
+    });
+
+    // `baseURL` is typed as a union with an object form the library also accepts; this
+    // service always sets the string, which `auth.options.ts` does from one validated
+    // variable — so the cast narrows a type rather than assuming a value.
+    const origin = options.baseURL as string;
+
+    expect(`${origin}${options.basePath}/callback/${GITHUB_PROVIDER_ID}`).toBe(
+      "https://api.ouroboros.build/api/auth/callback/github",
+    );
+  });
+});
+
+describe("account linking", () => {
+  it("is the policy `github.provider.ts` argues for", () => {
+    // An `account`-level option rather than a provider-level one — it governs every
+    // provider there will ever be — but the policy exists because of GitHub, so it is
+    // argued for and asserted beside it.
+    expect(authOptions({ configuration: testConfiguration(), pool: fakePool() }).account).toEqual({
+      accountLinking: ACCOUNT_LINKING,
+    });
   });
 });
 

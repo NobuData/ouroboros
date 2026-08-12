@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.12.0",
+    "version": "0.13.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\nEvery path sits under `/api/v1`. The version is in the URI because that is what a\ngenerated client, an address bar and a log line can all carry without negotiation,\nand a controller opts *out* of v1 rather than into it — so a route cannot be\npublished unversioned by omission.\n\nTwo paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), sign-in\n([#33](https://github.com/NobuData/ouroboros/issues/33)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the five operations that carry\n`security: []` — the two halves of sign-in, sign-out, and the three routes whose reader\nis not a browser at all. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, forged, or naming a person who no longer exists.\n\n**Every request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). It is named by the\n`{tenantId}` in the path, or by the `X-Ouro-Tenant` header on the operations that have\nnone, or inferred when the caller belongs to exactly one. A workspace the caller is not\na member of answers **`404`, never `403`** — a `403` would confirm that an identifier\nnames something real — and a member whose role is too low gets the one `403` this API\ndoes answer, because by then the workspace is no secret from them.",
     "license": {
@@ -32,7 +32,7 @@
     },
     {
       "name": "auth",
-      "description": "Signing in, and finding out who is signed in. Sign-in is GitHub's authorization code\nflow: a browser is navigated to `/api/v1/auth/github`, authorizes on github.com, and\nreturns to a callback that lands an `HttpOnly` session cookie.\n\n**Everything else in this document requires that cookie.** The three routes that do\nnot are the two halves of sign-in and sign-out — one has no session yet and the other\nis disposing of one that may already have expired — along with the heartbeat and the\ntwo probes, whose readers hold no session and could not be given one.\n\nThe session is a signed, stateless cookie: no server-side store, and so no revocation\nbefore it ages out. Signing out clears the browser's copy; a copy taken beforehand\nstays valid for the remainder of its seven days. That is the MVP trade, and the\nrevocable design is recorded with\n[#38](https://github.com/NobuData/ouroboros/issues/38)."
+      "description": "Finding out who is signed in, and signing out.\n\n**Signing in is no longer in this document, and that is not an omission.**\n[#702](https://github.com/NobuData/ouroboros/issues/702) replaced the hand-rolled\nGitHub flow with BetterAuth's, which serves its own routes under `/api/auth/*` —\nbeside this versioned surface rather than inside it, because the library versions its\nown routes. `POST /api/auth/sign-in/social` with `{\"provider\": \"github\"}` begins a\nsign-in and `/api/auth/callback/github` is where GitHub returns the browser;\n`ouroboros-rest/src/auth/auth.routes.ts` is the map, and\n[#711](https://github.com/NobuData/ouroboros/issues/711) is the issue that publishes\nthose paths here. Until it lands, this document describes what *this service's\ncontrollers* serve, and describing routes it does not serve would be worse than\ndescribing fewer.\n\n**Everything else in this document requires the session cookie.** The routes that do\nnot are sign-out — which is disposing of a session that may already have expired —\nalong with the heartbeat and the two probes, whose readers hold no session and could\nnot be given one.\n\nThe session is a signed, stateless cookie: no server-side store, and so no revocation\nbefore it ages out. Signing out clears the browser's copy; a copy taken beforehand\nstays valid for the remainder of its seven days. That is the MVP trade;\n[#703](https://github.com/NobuData/ouroboros/issues/703) replaces it with a\ndatabase-backed session that sign-out deletes, closing the revocation half of\n[#38](https://github.com/NobuData/ouroboros/issues/38)."
     },
     {
       "name": "engine",
@@ -85,144 +85,6 @@
         }
       }
     },
-    "/api/v1/auth/github": {
-      "get": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Begin sign-in with GitHub",
-        "description": "Send the browser to GitHub to authorize, and remember the trip.\n\nThis is a **navigation, not a call**. A person clicks \"Continue with GitHub\" and\ntheir browser follows a `302` to github.com, where they see a consent screen; a\n`fetch` from script would follow the redirect into a page it cannot render and land\nnobody anywhere. `ouroboros-ui` links to it.\n\nThe redirect carries the client id, the scopes (`read:user` and `user:email`, and\nnothing else), an opaque `state` and a PKCE `code_challenge`. The `state` and the\nmatching verifier are kept in a short-lived signed `HttpOnly` cookie —\n`ouro_oauth`, ten minutes, scoped to `/api/v1/auth` — and comparing the returned\n`state` against that cookie is what makes the callback safe from being fabricated.",
-        "operationId": "startGithubSignIn",
-        "security": [],
-        "responses": {
-          "302": {
-            "description": "Go and authorize. `Location` is on github.com and `Set-Cookie` carries the\nhandshake this service will check on the way back. There is no body.",
-            "headers": {
-              "Location": {
-                "description": "The GitHub authorization URL, with the state and PKCE challenge.",
-                "schema": {
-                  "type": "string",
-                  "format": "uri"
-                }
-              },
-              "Set-Cookie": {
-                "description": "`ouro_oauth`, `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/auth`, ten minutes,\nand `Secure` outside development.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/auth/github/callback": {
-      "get": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Finish sign-in with GitHub",
-        "description": "Where GitHub returns the browser. Verifies the handshake, exchanges the code for a\ntoken, reads the account's profile and verified primary address, resolves the\nperson, and lands the session cookie before redirecting to `OURO_UI_URL`.\n\n**This URL is registered against the OAuth application**; it is not something a\nclient composes. It is described here because this document describes everything\nthe service serves.\n\nResolving the person has three outcomes, and the middle one is why a sign-in can\narrive already holding a membership: the GitHub identity is already known and the\nsame user row is reused; or the identity is new and the *address* is one an\ninvitation was sent to, in which case the identity is attached to that existing\nrow; or neither is known and a person is created. The access token is used for\nthose two reads and then dropped — `ouroboros.user_identities` holds no credential,\nand the schema's own tests fail if a column that looks like one ever appears.",
-        "operationId": "completeGithubSignIn",
-        "security": [],
-        "parameters": [
-          {
-            "name": "code",
-            "in": "query",
-            "required": true,
-            "description": "The authorization code GitHub issued. Opaque, and redeemable once.",
-            "schema": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9._~-]+$",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          },
-          {
-            "name": "state",
-            "in": "query",
-            "required": true,
-            "description": "The value this service generated before the browser left, echoed back\nunchanged. Compared against the `ouro_oauth` cookie; a mismatch is a `401`.",
-            "schema": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9._~-]+$",
-              "minLength": 1,
-              "maxLength": 512
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Signed in. `Location` is `OURO_UI_URL` and `Set-Cookie` carries two headers: the\nsession, and the removal of the spent handshake. There is no body.",
-            "headers": {
-              "Location": {
-                "description": "`OURO_UI_URL` — where a signed-in browser lands.",
-                "schema": {
-                  "type": "string",
-                  "format": "uri"
-                }
-              },
-              "Set-Cookie": {
-                "description": "`ouro_session`, `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and\n`Secure` outside development — plus the expiry of `ouro_oauth`.",
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`oauth_handshake_invalid` — this callback does not match a handshake this\nservice started. The cookie was absent, expired, forged, or carries a different\n`state` than the query string.\n\nAll four are one answer on purpose. A callback an attacker composed cannot\ncarry the cookie, and telling them which part was missing is telling them what\nto fix.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — `code` or `state` was missing, too long, or not an opaque\nURL-safe value. `details` carries one entry per parameter, keyed by its name.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "`github_unavailable` — GitHub refused the exchange or did not answer inside ten\nseconds. Or `github_email_unavailable`, when the account authenticated and\noffered no *verified* address: an address is how a person invited to a tenant\nbefore their first sign-in is recognised as that person, and accepting an\nunverified one would let somebody else's address decide which account they land\non.\n\nA `502` rather than a `500`, because nothing in this service is broken and\nretrying is reasonable. Nothing GitHub said is repeated in the body.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/auth/me": {
       "get": {
         "tags": [
@@ -265,7 +127,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -425,7 +287,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -497,7 +359,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -575,7 +437,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -664,7 +526,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -775,7 +637,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -865,7 +727,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -984,7 +846,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1068,7 +930,7 @@
             "description": "Gone. No body: there is nothing to say about a row that no longer exists, and a\n`200` carrying the deleted resource invites a client to keep using it."
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1171,7 +1033,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1264,7 +1126,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1380,7 +1242,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1471,7 +1333,7 @@
             "description": "They are no longer a member."
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1583,7 +1445,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1674,7 +1536,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1789,7 +1651,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1894,7 +1756,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1993,7 +1855,7 @@
             }
           },
           "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in at `/api/v1/auth/github`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2167,7 +2029,7 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "ouro_session",
-        "description": "The session cookie, issued by `/api/v1/auth/github/callback` and removed by\n`/api/v1/auth/logout`. `HttpOnly`, `SameSite=Lax`, `Path=/`, seven days, and\n`Secure` outside development.\n\nIt is a signed value carrying a user id and an issue time — not a bearer token to\nbe minted or pasted. `apiKey`/`cookie` is OpenAPI's nearest description of a cookie\ncredential; it does not mean a client may compose one.\n\nA browser sends it automatically. A cross-origin caller must also ask for it —\n`credentials: \"include\"` in `fetch` — and its origin must be listed in\n`OURO_CORS_ORIGINS`, because a credentialed cross-origin request may not be\nanswered with a wildcard."
+        "description": "The session cookie, removed by `/api/v1/auth/logout`. `HttpOnly`, `SameSite=Lax`,\n`Path=/`, seven days, and `Secure` outside development.\n\n**Nothing issues one as of #702**, which moved sign-in to BetterAuth and its own\nsession cookie; #703 is what replaces this scheme with that one. The two land close\ntogether for exactly that reason.\n\nIt is a signed value carrying a user id and an issue time — not a bearer token to\nbe minted or pasted. `apiKey`/`cookie` is OpenAPI's nearest description of a cookie\ncredential; it does not mean a client may compose one.\n\nA browser sends it automatically. A cross-origin caller must also ask for it —\n`credentials: \"include\"` in `fetch` — and its origin must be listed in\n`OURO_CORS_ORIGINS`, because a credentialed cross-origin request may not be\nanswered with a wildcard."
       }
     },
     "parameters": {

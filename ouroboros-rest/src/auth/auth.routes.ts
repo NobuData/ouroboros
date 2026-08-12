@@ -19,6 +19,23 @@
  */
 
 import { AUTH_BASE_PATH } from "./auth.options";
+import { GITHUB_PROVIDER_ID } from "./github.provider";
+
+/**
+ * Where GitHub returns the browser, as an absolute path.
+ *
+ * **This is the URL an OAuth App is registered against**, prefixed with the origin —
+ * `${BETTER_AUTH_URL}/api/auth/callback/github`. It is exported because three places have to
+ * agree on it and only one of them is code: github.com's own application settings for
+ * development and for production, `ouroboros-rest/README.md` § Signing in, and this. GitHub
+ * compares what it was registered with against what the exchange presents, and a difference
+ * of one character is a sign-in that fails at the last hop with a message about the redirect
+ * URI.
+ *
+ * Composed from the provider id rather than written out, so the callback and the
+ * `account.providerId` value can never disagree — see `github.provider.ts`.
+ */
+export const GITHUB_CALLBACK_PATH = `${AUTH_BASE_PATH}/callback/${GITHUB_PROVIDER_ID}`;
 
 /** One route BetterAuth serves. */
 export interface AuthRoute {
@@ -46,26 +63,31 @@ export interface AuthRoute {
  *
  * **Not the whole surface.** BetterAuth also exposes email/password, account linking and
  * session-management endpoints, and this service answers on them the moment the options
- * that back them are set: [#702](https://github.com/NobuData/ouroboros/issues/702) is the
- * GitHub provider, [#703](https://github.com/NobuData/ouroboros/issues/703) the session
- * strategy, [#705](https://github.com/NobuData/ouroboros/issues/705) email/password. Each
- * of those issues adds its own rows here, which is what keeps this list a record of what
- * the service *does* rather than of what the library *could*.
+ * that back them are set: [#703](https://github.com/NobuData/ouroboros/issues/703) is the
+ * session strategy, [#705](https://github.com/NobuData/ouroboros/issues/705)
+ * email/password. Each of those issues adds its own rows here, which is what keeps this
+ * list a record of what the service *does* rather than of what the library *could*.
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) added the GitHub rows below, and
+ * with them the four routes that make a sign-in reachable — which is also the four routes
+ * `/api/v1/auth/github` and `/api/v1/auth/github/callback` were removed in favour of.
  */
 export const AUTH_ROUTES: readonly AuthRoute[] = [
   {
     methods: ["POST"],
     path: `${AUTH_BASE_PATH}/sign-in/social`,
     purpose:
-      "Begin a social sign-in. Answers with the provider's authorization URL for the " +
-      "browser to follow. No provider is configured until #702.",
+      "Begin a social sign-in. `{ provider: 'github' }` is the whole body; the answer " +
+      "carries the github.com authorization URL for the browser to follow (#702). It is a " +
+      "POST answering with a URL rather than a redirect, so a script can decide what to do " +
+      "with it — which is why `ouroboros-ui` calls `signIn.social` rather than linking.",
   },
   {
     methods: ["GET", "POST"],
     path: `${AUTH_BASE_PATH}/callback/:id`,
     purpose:
       "Where the provider redirects back to. `:id` is the provider's name, so GitHub's " +
-      "OAuth App is registered against `/api/auth/callback/github` (#702).",
+      `OAuth App is registered against \`${GITHUB_CALLBACK_PATH}\` — see ` +
+      "`GITHUB_CALLBACK_PATH`, which is that path composed rather than typed twice (#702).",
   },
   {
     methods: ["GET", "POST"],

@@ -129,16 +129,26 @@ describe("githubSignInUrl", () => {
     delete process.env.OURO_REST_URL;
   });
 
-  it("is an absolute URL on ouroboros-rest, at the path the contract publishes", () => {
+  it("is an absolute URL on ouroboros-rest, at BetterAuth's own sign-in route", () => {
+    // #702 retired `/api/v1/auth/github` — this service's own hand-rolled flow — for the
+    // library's, which is served outside the versioned API because it versions its own
+    // routes. The path is not in `openapi.yaml` and so cannot be checked by the generated
+    // types until #711 publishes it, which is why it is asserted here instead.
     process.env.OURO_REST_URL = REST;
 
-    expect(githubSignInUrl()).toBe(`${REST}/api/v1/auth/github`);
+    expect(githubSignInUrl()).toBe(`${REST}/api/auth/sign-in/social`);
   });
 
   it("is composed from the configured base rather than from a hard-coded host", () => {
     process.env.OURO_REST_URL = "http://localhost:4000";
 
-    expect(githubSignInUrl()).toBe("http://localhost:4000/api/v1/auth/github");
+    expect(githubSignInUrl()).toBe("http://localhost:4000/api/auth/sign-in/social");
+  });
+
+  it("is outside the versioned API, which is where BetterAuth mounts itself", () => {
+    process.env.OURO_REST_URL = REST;
+
+    expect(githubSignInUrl()).not.toContain("/api/v1/");
   });
 
   it("throws naming the variable when the service's address is not configured", () => {

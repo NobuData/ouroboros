@@ -24,7 +24,8 @@ import "./login.css";
  * reads the request, `app/login/view.ts` decides, and this draws it.
  *
  * @param props.state Which step to draw, and the data that step needs.
- * @param props.signInHref Absolute URL of `GET /api/v1/auth/github` on `ouroboros-rest`.
+ * @param props.signInHref Absolute URL of BetterAuth's sign-in route on `ouroboros-rest`
+ *   (#702). Not yet followable as a link — see `sign-in-card.tsx`, and #718.
  * @param props.user The signed-in person, or `null` while nobody is.
  * @returns The screen.
  */

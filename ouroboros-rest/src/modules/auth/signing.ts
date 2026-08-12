@@ -1,11 +1,21 @@
 /**
  * The signed token every cookie this service sets is made of.
  *
- * Two cookies need the same guarantee — the session (`session.ts`) and the OAuth
- * handshake (`oauth.ts`) — and the guarantee is narrow: *this service wrote this value,
- * and it has not been edited since*. Not confidentiality. The payloads are a user id and a
- * random string, both of which the browser holding them is entitled to know, so encrypting
- * them would buy nothing and hide the one thing worth being able to read in a bug report.
+ * The guarantee is narrow: *this service wrote this value, and it has not been edited
+ * since*. Not confidentiality. The payload is a user id, which the browser holding it is
+ * entitled to know, so encrypting it would buy nothing and hide the one thing worth being
+ * able to read in a bug report.
+ *
+ * **One caller left, and this file leaves with it.** Two cookies needed the same guarantee
+ * — the session (`session.ts`) and #33's OAuth handshake — and
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) deleted the second along with
+ * the flow that set it. The issue's own scope names this file among the deletions and its
+ * acceptance criterion greps for it; it is still here because `session.ts` is still here,
+ * and `session.ts` is [#703](https://github.com/NobuData/ouroboros/issues/703)'s to
+ * replace. #703's scope names the same three files — `session.ts`, `signing.ts`,
+ * `cookies.ts` — and it is the issue that can actually remove them, because it is the one
+ * that supplies the mechanism that takes over. Deleting this now would be deleting the
+ * guard's ability to authenticate anything.
  *
  * The shape is `<payload>.<signature>`, both base64url:
  *
@@ -20,8 +30,7 @@
  *   * **The comparison is constant time.** `timingSafeEqual` rather than `===`, because a
  *     comparison that returns early leaks how much of a forged signature was right, and
  *     an attacker who can measure that can build the rest of it one byte at a time. This
- *     is the whole reason the check is here rather than written at each of the two call
- *     sites.
+ *     is the whole reason the check is here rather than written out at the call site.
  *   * **The signature is verified before the payload is parsed.** `JSON.parse` on an
  *     unauthenticated string is a parser reachable by anyone with a browser; verifying
  *     first means the only bytes it ever sees are bytes this service produced.
@@ -133,10 +142,11 @@ export interface TokenTerms {
  * @param terms - The secret, the maximum age, and now.
  * @param accepts - A predicate that says whether the decoded payload is the shape this
  *   caller expects. Required rather than optional: a valid signature proves this service
- *   wrote the bytes, and nothing more — a *session* cookie replayed where an OAuth
- *   handshake cookie is expected carries a real signature and the wrong fields, and
- *   without this that would be a `undefined` field read somewhere downstream instead of a
- *   rejection here.
+ *   wrote the bytes, and nothing more — a token minted for one purpose and replayed where
+ *   another is expected carries a real signature and the wrong fields, and without this
+ *   that would be an `undefined` field read somewhere downstream instead of a rejection
+ *   here. Two purposes shared this key until #702; one does now, and the check is kept
+ *   because the property is about the *key*, not about how many callers it has.
  * @returns The payload, or `undefined` when the token is absent, malformed, unsigned,
  *   signed with a different key, older than `maxAgeSeconds`, or not the expected shape.
  *   One return value for every failure, deliberately: the caller answers `401` to all of

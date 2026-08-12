@@ -192,10 +192,44 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > configured, so `sign-in/social` answers `PROVIDER_NOT_FOUND` and `get-session` answers
 > `null` — **A.3** and **A.4** are what fill the mounted surface in, and both are now
 > unblocked.
+>
+> **A.3 · #702 has shipped and has left the table below.** BetterAuth's GitHub provider is
+> configured in [`src/auth/github.provider.ts`](../ouroboros-rest/src/auth/github.provider.ts),
+> which is where the four decisions a library cannot make for a service are argued: the
+> scopes are `read:user` and `user:email` with `disableDefaultScope` on, so the list is this
+> service's rather than a default a library upgrade could widen; `mapProfileToUser` writes
+> the name, falling back to the login, and the avatar, because `"user"."name"` is `not null`
+> and the library's default would write `""`; and account linking is on but trusts no
+> provider *by name*, so a link is authorised by GitHub having **verified** the address —
+> the rule #33 enforced by hand — while `requireLocalEmailVerified` is off, because an
+> invited stub (#31) has never had the chance to verify anything. The OAuth App's callback
+> is `${BETTER_AUTH_URL}/api/auth/callback/github`, composed from the provider id in
+> `auth.routes.ts` so it cannot disagree with `account.providerId`.
+>
+> **And #33's flow is gone**, not flagged off. `oauth.ts`, `github.ts` and their specs are
+> deleted; `auth.service.ts` lost `startSignIn`, `completeSignIn` and `resolveUser`;
+> `auth.repository.ts` lost `findUserByIdentity`, `createUser`, `refreshProfile` and
+> `linkIdentity`; three error codes and their `openapi.yaml` entries went with them. The
+> **contract question the issue asked to be decided here** was decided *remove*, not
+> *forward*: `GET /api/v1/auth/github{,/callback}` answer `404`, asserted as behaviour, because
+> BetterAuth begins a social sign-in with a `POST` answering a URL and there is no honest
+> `302` to forward with. Every superseded spec was deleted rather than skipped, and what
+> each covered moved somewhere it can still be checked — the provider's values to
+> `github.provider.spec.ts`, the identity model to `ouroboros-db/tests/constraints.sql`, and
+> "a person who signed in under #33 is the same person" to `auth.integration-spec.ts`, which
+> seeds a pre-migration `user_identities` row, runs V004's back-fill and asserts the pair
+> `findOAuthUser` reads resolves to the same id.
+>
+> Two things it deliberately did **not** do. The full browser flow against a real GitHub
+> OAuth app stays a manual check — the library is ES-module-only and both Jest runners
+> substitute it, so a suite asserting a sign-in would be asserting against a stand-in;
+> **C.5 · #715** owns the automated one. And **the login page's GitHub button does not work
+> until D.3 · #718** re-points it at `signIn.social`. That gap is the deliberate cost of not
+> keeping two sign-in paths alive at once. Its issue section below is kept as the record of
+> what was asked for.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.3 · #702 | ouroboros-rest: [A.3] GitHub social provider (retiring the hand-rolled OAuth) | Provider wiring + back-fill `user_identities`→`account` + delete #33's OAuth files | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.4 · #703 | ouroboros-rest: [A.4] Session strategy & global auth guard (retiring the stateless cookie) | DB sessions + cookie cache, swap the live guard, port every `@Public()` exemption | mvp, auth, rest | N (after A.2, B.1) | Y | **L** ⬆ | ouroboros-rest |
 | A.5 · #704 | ouroboros-rest: [A.5] Organization plugin adoption (tenancy backbone) | Org/member/invitation APIs, roles, `activeOrganizationId`, hooks | mvp, auth, rest | N (after A.4, B.2) | Y | L | ouroboros-rest |
 | A.6 · #705 | ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`) | Local/e2e auth without GitHub, hard-off in production, bypass deleted | mvp, auth, rest | N (after A.4) | Y | **M** ⬆ | ouroboros-rest |
@@ -270,6 +304,10 @@ Nest bootstrap ── bodyParser:false ──▶ [AuthModule(@thallesp)] ─▶ 
 ```
 
 ### Issue A.3 (#702) — ouroboros-rest: [A.3] GitHub social provider (retiring the hand-rolled OAuth)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, and
+`ouroboros-rest/README.md` § Signing in for how it is used.
 
 - **Problem Statement:** Mockup 01's primary action is **Continue with GitHub**
   ([`docs/mockups/01-login.html`](mockups/01-login.html), Step 1 card). A working
@@ -431,15 +469,51 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 
 ## Epic B (#696) — Auth Database (`ouroboros-db`)
 
+> **B.1 · #706 has shipped and has left the table below.**
+> [`ouroboros-db/migrations/V004__betterauth_core.sql`](../ouroboros-db/migrations/V004__betterauth_core.sql)
+> is a hand-port of `@better-auth/cli generate` run against A.1's `auth.config.ts`:
+> `"user"`, `session`, `account` and `verification` in the `ouroboros` schema, with the
+> library's quoted camelCase columns kept exactly as emitted (decision **A4**). Three
+> statements are ours and marked so — the schema qualification, the
+> `account(providerId, accountId)` unique index the acceptance criteria name, and the
+> back-fill.
+>
+> The back-fill is a **function**, `ouroboros.backfill_betterauth_core()`, called once by
+> the migration. It copies `users` → `"user"` and `user_identities` → `account`
+> **preserving ids**, so `tenant_members.user_id` and every other key written against
+> `users.id` still resolves through **B.3**. Being a function rather than four statements
+> makes it idempotent, re-runnable by hand, and callable from `tests/constraints.sql` —
+> which is where `ci/db` now asserts the row counts, the preserved ids and the column
+> mapping against fixtures rather than trusting them. `emailVerified` is derived rather
+> than defaulted: `true` for a person holding a GitHub identity, who proved a verified
+> address through #33's flow, and `false` for one who exists only because they were
+> invited.
+>
+> Two mechanical guards landed in `scripts/verify-dev-env.sh`, both in `ci/db`'s first
+> step: every migration is grepped for an unquoted `user` in a table position, and the
+> whole repository for anything wiring up `@better-auth/cli migrate` — decision **A3**,
+> asserted rather than remembered. `users`/`user_identities` are **not** dropped; that is
+> **B.3**, so that pointing traffic back at them stays possible until A.3 has been
+> exercised. Its issue section below is kept as the record of what was asked for.
+>
+> One consequence it deliberately did **not** paper over: Flyway applies repeatable
+> migrations last, so a database created from empty runs V004 before `R__dev_seed.sql` and
+> the back-fill finds nothing to copy. **B.4 · #709** is what teaches the seed about these
+> tables; until then, calling the function by hand brings a seeded development database
+> across.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| B.1 · #706 | ouroboros-db: [B.1] BetterAuth core schema (Flyway V004) | `user`, `session`, `account`, `verification` + back-fill from shipped `users`/`user_identities` | mvp, auth, db | N (after #19, A.1) | Y | **L** ⬆ | ouroboros-db |
 | B.2 · #707 | ouroboros-db: [B.2] Organization plugin schema (Flyway V005) | `organization`, `member`, `invitation` + session active-org column | mvp, auth, db | N (after B.1) | Y | M | ouroboros-db |
 | B.3 · #708 | ouroboros-db: [B.3] Tenancy **data migration** — `tenants`→`organization`, extensions re-pointed | Live migration of 5 populated tables; drops `tenants`/`tenant_members`/`users`/`user_identities` | mvp, auth, db | N (after B.1, B.2) | Y | **L** ⚠ riskiest | ouroboros-db |
 | B.4 · #709 | ouroboros-db: [B.4] Auth-aware dev seed data | Seeded users (password + GitHub-shaped), orgs, domains, enablement | mvp, auth, db | N (after B.3) | Y | S | ouroboros-db |
 | B.5 · #710 | ouroboros-db: [B.5] Auth constraint & drift tests in ci/db | Constraint assertions + BetterAuth-schema drift check | mvp, auth, db, ci | N (after B.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue B.1 (#706) — ouroboros-db: [B.1] BetterAuth core schema (Flyway V004)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic B](#epic-b-696--auth-database-ouroboros-db) for what landed, and
+`ouroboros-db/README.md` § The two generations of user table for how it is used.
 
 - **Problem Statement:** BetterAuth needs its four core tables — but Flyway is the only
   migration authority (decision A3), so the library must never touch DDL at runtime.
@@ -1231,16 +1305,18 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ *(both shipped)* → (B.1 #706 → B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ *(all shipped)* → (B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
    *(**B.3 is the cutover.** It drops `tenants`, `tenant_members`, `users` and
    `user_identities` — every consumer of those tables must already be migrated or
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
    it against a seeded copy; it is the one step in this roadmap that cannot be
    reverted by redeploying the previous build.)*
-3. **Phase 2 — Auth capability:** { A.3 #702 ⊕ A.4 #703 } → { A.5 #704 ⊕ A.6 #705 }
-   *(A.3 and A.4 each **delete** shipped files — see their scopes. Land them close
-   together: between them the service has BetterAuth sign-in with a hand-rolled
-   session, which is a state no test covers.)*
+3. **Phase 2 — Auth capability:** ~~A.3 #702~~ *(shipped)* → A.4 #703 → { A.5 #704 ⊕ A.6 #705 }
+   *(**A.4 is now urgent rather than merely next.** A.3 has landed, so the service is in
+   the state its sequencing warning describes: BetterAuth signs people in and #33's
+   stateless cookie is still what the guard reads, so a completed sign-in does not yet
+   satisfy it. A.4 closes that, and it deletes `session.ts`, `signing.ts`, `cookies.ts`
+   and `public.decorator.ts` on the way through.)*
 4. **Phase 3 — REST services:** { C.1 #711 ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
    *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
    creates.)*
@@ -1341,10 +1417,13 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here:** #700 (A.1) and #701 (A.2) **have landed** — BetterAuth is configured and
-its handler answers at `/api/auth/*`. #706 (B.1) is the only unblocked issue left in
-Phase 1, and it is what unblocks the rest: #702 (A.3) and #703 (A.4) both need the schema
-as well as the mount.
+**Start here: #703 (A.4).** #700 (A.1), #701 (A.2), #706 (B.1) and #702 (A.3) **have
+landed** — BetterAuth is configured, its handler answers at `/api/auth/*`, its four core
+tables exist with the shipped identities back-filled into them, and its GitHub provider
+signs people in. What is *not* yet true is that the service remembers them: #33's stateless
+cookie is still what the guard reads, and #702's own sequencing warning named this state.
+#703 is what ends it. #707 (B.2) is the next database step and #718 (D.3) is what makes the
+login page's button work again.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

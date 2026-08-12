@@ -166,11 +166,20 @@ above the `ui` service for why.
 
 **Signing in.** These are production images, and `ouroboros-rest` strips the development
 bypass (`OURO_AUTH_DEV_USER`) when `NODE_ENV=production` — by design, and unlike
-`yarn dev`. Sign-in here is therefore the real GitHub handshake: register a development
-OAuth application whose callback is `http://localhost:4000/api/v1/auth/github/callback`,
-put its client id and secret in `.env`, and bring the stack up. The development seed
+`yarn dev`. Sign-in here is therefore the real GitHub handshake, performed by BetterAuth
+([#702](https://github.com/NobuData/ouroboros/issues/702)): register a development OAuth
+application whose authorization callback is
+`http://localhost:4000/api/auth/callback/github`, put its client id and secret in `.env`,
+and bring the stack up. The development seed
 ([#23](https://github.com/NobuData/ouroboros/issues/23)) provides the `acme-robotics`
 workspace the tenancy step offers, and its three users at `acme-robotics.dev`.
+
+Two caveats until the next two issues land, and both are deliberate.
+[#703](https://github.com/NobuData/ouroboros/issues/703) is what makes the service
+*remember* a completed sign-in — it still reads #33's `ouro_session` cookie, which
+BetterAuth does not set — and [#718](https://github.com/NobuData/ouroboros/issues/718) is
+what re-points the login page's button at the library. `ouroboros-rest/README.md`
+§ Signing in has the `curl` that exercises the flow in the meantime.
 
 **The engine is not published**, which is the boundary
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes, made true by the topology

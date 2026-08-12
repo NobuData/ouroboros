@@ -239,6 +239,29 @@ tenant predicate sufficient to isolate a customer — and what makes row-level s
 ([#25](https://github.com/NobuData/ouroboros/issues/25)) a later addition rather than a
 redesign.
 
+`V004` ([#706](https://github.com/NobuData/ouroboros/issues/706)) adds BetterAuth's four
+core tables beside them — `"user"`, `session`, `account`, `verification` — and back-fills
+the identity layer into the first two of those, preserving ids:
+
+```mermaid
+erDiagram
+    user ||--o{ session : "is signed in through"
+    user ||--o{ account : "authenticates with"
+    users ||..|| user : "back-filled into, id for id"
+    user_identities ||..|| account : "back-filled into, id for id"
+```
+
+That leaves the schema holding two tables for the same people — `users` and `"user"`,
+which differ by one letter — and it is a transitional state on purpose:
+[#708](https://github.com/NobuData/ouroboros/issues/708) drops the older pair once
+[#702](https://github.com/NobuData/ouroboros/issues/702) has retired the sign-in flow that
+writes them, and until then a revert is redeploying rather than restoring. Two rules travel
+with these tables and are asserted rather than remembered — `user` is a reserved word and
+is quoted at every reference, and Flyway still issues every DDL statement, which means
+BetterAuth's own `migrate` command is wired into nothing. `scripts/verify-dev-env.sh`
+checks both on every `ci/db` run; `ouroboros-db/README.md` § The two generations of user
+table is the longer account.
+
 ### 2.5 `ouroboros-web` — the marketing site
 
 **Running**, and deliberately outside everything above. It is
@@ -319,8 +342,12 @@ as a hole. Each engine capability arrives as another operation beside this one.
 
 ### 4.1 Signing in
 
-Sign-in is GitHub OAuth. The browser never handles a token; the code exchange happens
-server-side in the REST layer, and what comes back to the browser is a cookie.
+Sign-in is GitHub OAuth, performed by **BetterAuth**
+([#702](https://github.com/NobuData/ouroboros/issues/702)) rather than by this service's own
+code. The browser never handles a token; the code exchange happens server-side in the REST
+layer, and what comes back to the browser is a cookie. The library serves these routes
+itself, under `/api/auth` — beside the versioned API rather than inside it, because it
+versions its own routes.
 
 ```mermaid
 sequenceDiagram
@@ -328,18 +355,30 @@ sequenceDiagram
     participant R as ouroboros-rest
     participant G as GitHub
 
-    B->>R: GET /auth/github
-    R-->>B: 302 → github.com/login/oauth/authorize (state)
-    B->>G: authorize the application
-    G-->>B: 302 → /auth/github/callback?code&state
+    B->>R: POST /api/auth/sign-in/social {provider: github}
+    R-->>B: 200 { url } → github.com/login/oauth/authorize (state)
+    B->>G: authorize the application (read:user, user:email)
+    G-->>B: 302 → /api/auth/callback/github?code&state
     B->>R: callback(code, state)
     R->>R: verify state (CSRF)
-    R->>G: exchange code → profile + primary email
-    R->>R: upsert users / user_identities
-    R-->>B: Set-Cookie: ouro_session (httpOnly) · 302 → /
-    B->>R: GET /auth/me
+    R->>G: exchange code → profile + verified primary email
+    R->>R: upsert "user" / account · create session row
+    R-->>B: Set-Cookie (httpOnly) · 302 → the app
+    B->>R: GET /api/v1/auth/me
     R-->>B: { user, memberships }
 ```
+
+A complete hand-rolled version of this flow shipped first, under #33 — state and PKCE over
+a signed handshake cookie, a `GithubClient`, and a three-branch identity model writing
+`users` and `user_identities`. #702 deleted it rather than leaving two sign-in paths in one
+service, and V004's back-fill is what carries the people it created across: their
+`user_identities` rows became `account` rows with their ids intact, so the pair BetterAuth
+looks a sign-in up by — `(providerId, accountId)` — still finds them.
+
+The scopes are `read:user` and `user:email` and nothing else; account linking attaches an
+arriving GitHub account to an existing person only on an address GitHub says is *verified*.
+`ouroboros-rest/README.md` § Signing in carries the reasoning and the OAuth App
+registration.
 
 The session cookie:
 
@@ -353,17 +392,21 @@ The session cookie:
 | Signing key | `OURO_SESSION_SECRET` | Rotating it invalidates every open session |
 
 The MVP session is a stateless signed cookie, which is honest about its trade-off: there
-is no server-side record to delete, so revocation before expiry is a v2 concern tracked
-with the security hardening pass
-([#38](https://github.com/NobuData/ouroboros/issues/38)) and documented here when it
-lands. Local development without GitHub credentials uses a dev-mode bypass
+is no server-side record to delete, so revocation before expiry is deferred — tracked with
+the security hardening pass ([#38](https://github.com/NobuData/ouroboros/issues/38)) and
+closed by [#703](https://github.com/NobuData/ouroboros/issues/703), which replaces this
+table wholesale with BetterAuth's database-backed session and its own guard. **Between #702
+and #703 this service signs people in with BetterAuth and remembers them with the cookie
+above**, which means a completed sign-in does not yet satisfy the guard; the two issues are
+meant to land close together for that reason. Local development without GitHub credentials uses a dev-mode bypass
 (`OURO_AUTH_DEV_USER`) that is hard disabled when `NODE_ENV=production` — the variable is
 dropped before the environment is validated, so there is no value for any later code path
 to read, and the accessor the guard uses refuses one anyway.
 
 The guard is registered globally, so **every route requires a session unless it opts out**
-with `@Public()`: the heartbeat, the two probes, and the three sign-in routes are the whole
-of the exception list. A request without one is a `401` with `code: "unauthenticated"` —
+with `@Public()`: the heartbeat, the two probes and sign-out are the whole of the exception
+list — BetterAuth's own routes need no exemption, because they are registered on the HTTP
+adapter ahead of Nest's router and never reach the guard. A request without one is a `401` with `code: "unauthenticated"` —
 one answer for every way a session can fail, because a client cannot act differently on
 any of them and distinguishing them would tell whoever is probing which part of their
 forgery was right.

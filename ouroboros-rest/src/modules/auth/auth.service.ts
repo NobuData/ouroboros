@@ -1,27 +1,43 @@
 /**
- * Sign-in, as rules rather than as routes.
+ * Who a request is from, and what a signed-in person is allowed to be told about
+ * themselves.
  *
- * The controller knows about redirects and cookies; this knows what a sign-in *is*. Three
- * things happen here and nowhere else:
+ * Two things happen here and nowhere else:
  *
- *   * **The handshake is started and finished.** A random state and PKCE verifier go into
- *     a signed cookie, the browser goes to GitHub, and the callback is only honoured when
- *     the state it carries is the state that cookie holds — see `oauth.ts` for why that
- *     comparison is the CSRF defence.
- *   * **A GitHub account becomes a person.** {@link AuthService.resolveUser} is the whole
- *     of the identity model, and its three branches are the three ways somebody can arrive.
- *   * **A session is issued and read.** Signing is `session.ts`; deciding *whose* session,
- *     and refusing one whose user has since been deleted, is here.
+ *   * **A session is read.** Verifying is `session.ts`; deciding *whose* session, and
+ *     refusing one whose user has since been deleted, is here.
+ *   * **`GET /api/v1/auth/me` is answered** — the person, their memberships, and, for
+ *     somebody brand new, the tenant their email domain points at.
+ *
+ * **Sign-in used to be here too, and is not any more.**
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) replaced #33's hand-rolled
+ * GitHub flow with BetterAuth's, so `startSignIn`, `completeSignIn` and `resolveUser` —
+ * the three-branch identity model that wrote `users` and `user_identities` — are gone along
+ * with `oauth.ts` and `github.ts`. What became of each branch is worth knowing, because
+ * none of them was dropped:
+ *
+ *   1. *The identity is known* is now BetterAuth's `findOAuthUser`, which looks the arriving
+ *      account up by `account(providerId, accountId)` — the pair #706's back-fill copied
+ *      `user_identities` into, which is what makes a person who first signed in under #33
+ *      resolve to the same row.
+ *   2. *The identity is new and the address is known* — the invited stub — is the library's
+ *      account linking, configured in `src/auth/github.provider.ts`, where the argument for
+ *      each setting is written out.
+ *   3. *Neither is known* is its `createOAuthUser`.
+ *
+ * What is left here is the **session half**, and it is on borrowed time as well:
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) replaces the stateless cookie
+ * with database-backed sessions and the library's own guard, and takes
+ * {@link AuthService.authenticate} and the development bypass with it. Until it lands this
+ * service signs people in with BetterAuth and remembers them with #33's cookie — a seam
+ * both issues name, and the reason they are meant to land close together.
  */
 
 import { Injectable, Logger, Optional } from "@nestjs/common";
-import type { Transaction } from "kysely";
 
 import { AppConfigService } from "../config/config.service";
-import { DatabaseService } from "../db/db.service";
-import type { Database, User } from "../db/schema";
-import { handshakeInvalid } from "./auth.errors";
-import { AuthRepository, GITHUB_PROVIDER } from "./auth.repository";
+import type { User } from "../db/schema";
+import { AuthRepository } from "./auth.repository";
 import {
   membershipResource,
   tenantSuggestionResource,
@@ -30,24 +46,8 @@ import {
   type TenantSuggestionResource,
 } from "./auth.resources";
 import { parseCookies } from "./cookies";
-import { GithubClient, type GithubProfile } from "./github";
-import {
-  authorizeUrl,
-  codeChallenge,
-  issueHandshake,
-  randomHandshakeValue,
-  readHandshake,
-} from "./oauth";
 import type { Principal } from "./principal";
-import { issueSession, readSession, SESSION_COOKIE } from "./session";
-
-/** What a started handshake needs the controller to send. */
-export interface StartedHandshake {
-  /** The `github.com` URL to redirect the browser to. */
-  authorizeUrl: string;
-  /** The signed value for the handshake cookie. */
-  handshake: string;
-}
+import { readSession, SESSION_COOKIE } from "./session";
 
 @Injectable()
 export class AuthService {
@@ -55,154 +55,18 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   /**
-   * @param config - Typed configuration: the OAuth client id, the signing secret, this
-   *   service's own origin, and the development bypass.
-   * @param database - For the one operation here that must be all-or-nothing; see
-   *   {@link resolveUser}.
+   * @param config - Typed configuration: the signing secret and the development bypass.
    * @param repository - The statements.
-   * @param github - The two calls to GitHub.
    * @param clock - What "now" means. A parameter rather than a call to `new Date()`, so
    *   that every expiry rule in this module is testable without a fake timer library.
-   *   `@Optional()` for the reason `GithubClient`'s `fetchImpl` is: Nest has no provider
-   *   for a bare function type, supplies `undefined` when told the parameter is optional,
-   *   and `undefined` is what makes a default parameter apply.
+   *   `@Optional()` because Nest has no provider for a bare function type: marked optional
+   *   it supplies `undefined`, which is exactly what makes a default parameter apply.
    */
   constructor(
     private readonly config: AppConfigService,
-    private readonly database: DatabaseService,
     private readonly repository: AuthRepository,
-    private readonly github: GithubClient,
     @Optional() private readonly clock: () => Date = () => new Date(),
   ) {}
-
-  /**
-   * Begin a sign-in.
-   *
-   * @param callbackUri - Where GitHub should send the browser back to, absolute. Passed in
-   *   by the controller, which is what knows the API's base path.
-   * @returns Where to send the browser, and the handshake to remember while it is away.
-   */
-  startSignIn(callbackUri: string): StartedHandshake {
-    const state = randomHandshakeValue();
-    const verifier = randomHandshakeValue();
-
-    return {
-      authorizeUrl: authorizeUrl({
-        clientId: this.config.githubClientId,
-        redirectUri: callbackUri,
-        state,
-        challenge: codeChallenge(verifier),
-      }),
-      handshake: issueHandshake({ state, verifier }, this.config.sessionSecret, this.clock()),
-    };
-  }
-
-  /**
-   * Finish a sign-in: verify the handshake, exchange the code, and issue a session.
-   *
-   * @param code - The `code` GitHub put in the callback's query string.
-   * @param state - The `state` it echoed back.
-   * @param handshakeToken - The handshake cookie's value, or `undefined` when the browser
-   *   sent none.
-   * @param callbackUri - The same `redirect_uri` the authorize request carried.
-   * @returns The session token to set as a cookie.
-   * @throws {UnauthenticatedError} `oauth_handshake_invalid` when the cookie is missing,
-   *   expired, forged, or carries a different state than the query string. All four are
-   *   one answer on purpose — see `auth.errors.ts`.
-   * @throws {UpstreamError} When GitHub refuses the exchange or offers no verified address.
-   */
-  async completeSignIn(
-    code: string,
-    state: string,
-    handshakeToken: string | undefined,
-    callbackUri: string,
-  ): Promise<string> {
-    const handshake = readHandshake(handshakeToken, {
-      secret: this.config.sessionSecret,
-      now: this.clock(),
-    });
-
-    // Compared before anything is spent on GitHub: a callback that did not come from a
-    // handshake this service started should cost one string comparison, not a round trip.
-    if (handshake === undefined || handshake.state !== state) {
-      throw handshakeInvalid();
-    }
-
-    const accessToken = await this.github.exchangeCode(code, handshake.verifier, callbackUri);
-    const profile = await this.github.readProfile(accessToken);
-    const user = await this.resolveUser(profile);
-
-    return issueSession(user.id, this.config.sessionSecret, this.clock());
-  }
-
-  /**
-   * Turn a GitHub profile into the person it belongs to, creating them if this is the
-   * first time.
-   *
-   * The three branches are the three ways somebody arrives, and the middle one is the one
-   * worth reading twice:
-   *
-   *   1. **The identity is known.** They have signed in before. The same `users` row is
-   *      returned — which is the issue's third acceptance criterion — and their name and
-   *      avatar are refreshed from GitHub.
-   *   2. **The identity is new and the address is known.** Somebody invited them to a
-   *      tenant before they ever signed in, and `MembersRepository.createUser` made a stub
-   *      row for the invitation to point at ([#31](https://github.com/NobuData/ouroboros/issues/31)).
-   *      This is where that stub becomes a real person: the identity is attached to the
-   *      existing row, so they arrive already holding the membership they were invited to
-   *      rather than as a stranger with an empty product and a duplicate account.
-   *   3. **Neither is known.** A new person; a new row, and the identity beside it.
-   *
-   * All of it inside one transaction. Branches 2 and 3 each write two tables, and a
-   * process that died between them would leave a `users` row nobody can sign in as —
-   * reachable only by the address, which nothing in this flow looks up second.
-   *
-   * @param profile - Who GitHub says this is.
-   * @returns The person, as `ouroboros.users` now holds them.
-   */
-  async resolveUser(profile: GithubProfile): Promise<User> {
-    return this.database.transaction(async (trx: Transaction<Database>) => {
-      const known = await this.repository.findUserByIdentity(
-        GITHUB_PROVIDER,
-        profile.externalId,
-        trx,
-      );
-
-      if (known !== undefined) {
-        return this.repository.refreshProfile(
-          known.id,
-          profile.displayName,
-          profile.avatarUrl,
-          trx,
-        );
-      }
-
-      const invited = await this.repository.findUserByEmail(profile.email, trx);
-
-      if (invited !== undefined) {
-        await this.repository.linkIdentity(invited.id, GITHUB_PROVIDER, profile.externalId, trx);
-        return this.repository.refreshProfile(
-          invited.id,
-          profile.displayName,
-          profile.avatarUrl,
-          trx,
-        );
-      }
-
-      const created = await this.repository.createUser(
-        {
-          email: profile.email,
-          display_name: profile.displayName,
-          avatar_url: profile.avatarUrl,
-        },
-        trx,
-      );
-
-      await this.repository.linkIdentity(created.id, GITHUB_PROVIDER, profile.externalId, trx);
-
-      return created;
-    });
-  }
 
   /**
    * Who a request is from, if anybody.

@@ -29,6 +29,7 @@ import type { BetterAuthOptions } from "better-auth";
 import type { Pool } from "pg";
 
 import type { Configuration } from "../modules/config/configuration";
+import { ACCOUNT_LINKING, GITHUB_PROVIDER_ID, githubProvider } from "./github.provider";
 
 /**
  * Where BetterAuth's own routes are mounted.
@@ -83,12 +84,16 @@ export interface AuthDependencies {
  * BetterAuth's options for this service.
  *
  * What is deliberately *absent* is as much of the specification as what is here. There is
- * no social provider ([#702](https://github.com/NobuData/ouroboros/issues/702) adds
- * GitHub), no session strategy ([#703](https://github.com/NobuData/ouroboros/issues/703)),
- * no organization plugin ([#704](https://github.com/NobuData/ouroboros/issues/704)) and no
- * email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)). This issue is
- * the foundation those four build on, and an option added here before the issue that owns
- * it would be a route this service serves that nothing tests.
+ * no session strategy ([#703](https://github.com/NobuData/ouroboros/issues/703)), no
+ * organization plugin ([#704](https://github.com/NobuData/ouroboros/issues/704)) and no
+ * email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)) — three issues
+ * each of which owns one option, and an option added here before the issue that owns it
+ * would be a route this service serves that nothing tests. `auth.options.spec.ts` pins the
+ * whole surface for exactly that reason.
+ *
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) added the two below it does own:
+ * the GitHub provider, and the account-linking policy that exists because of it. Both live
+ * in `github.provider.ts`, with the arguments for every value in them.
  *
  * @param dependencies - The configuration and the pool — see {@link AuthDependencies}.
  * @returns The options object, ready for `betterAuth()`. A fresh object each call: the
@@ -109,6 +114,21 @@ export function authOptions({ configuration, pool }: AuthDependencies): BetterAu
     // the same reason as the URL above, and redacted from every log by
     // `src/modules/config/redaction.ts`.
     secret: configuration.betterAuthSecret,
+
+    // **Continue with GitHub** — mockup 01's primary action, and the only way into this
+    // service until #705 adds a development password. The provider is keyed by the id that
+    // is also its callback path segment and its `account.providerId` value, so registering
+    // the OAuth App against `${BETTER_AUTH_URL}/api/auth/callback/github` and finding a
+    // back-filled identity are the same string agreeing with itself. See
+    // `github.provider.ts` for the scopes, the profile mapping and why they are stated
+    // rather than inherited.
+    socialProviders: { [GITHUB_PROVIDER_ID]: githubProvider(configuration) },
+
+    // When an arriving GitHub account is somebody already in the database. It is an
+    // `account`-level option rather than a provider-level one — it governs every provider
+    // there will ever be — but the policy exists because of this one, so it is argued for
+    // beside it.
+    account: { accountLinking: ACCOUNT_LINKING },
 
     // Decision **A2**: the built-in Kysely adapter, over the pool the service already has.
     // A `pg` pool given directly is how BetterAuth is told to build that adapter itself —

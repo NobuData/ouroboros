@@ -12,13 +12,19 @@ import { Monogram } from "./monogram";
  * signed in, because a numbered step that vanished once it was done would leave the second
  * card labelled "Step 2" with no step 1 above it.
  *
- * ### Why sign-in is a link
+ * ### Why sign-in is a link, and why it does not work yet
  *
- * `GET /api/v1/auth/github` answers `302` to github.com. The contract calls it "a
- * navigation, not a call" in as many words: a `fetch` would follow the redirect into a
- * consent page it cannot render and land nobody anywhere. So this is an anchor the browser
- * follows, and the whole handshake — `state`, the PKCE challenge, the short-lived
- * `ouro_oauth` cookie — belongs to `ouroboros-rest`.
+ * It was an anchor because the route behind it answered `302` to github.com: a `fetch`
+ * would have followed the redirect into a consent page it cannot render and landed nobody
+ * anywhere, and the whole handshake belonged to `ouroboros-rest`.
+ *
+ * The handshake still belongs to `ouroboros-rest` — but to **BetterAuth** inside it, since
+ * [#702](https://github.com/NobuData/ouroboros/issues/702), which deleted the hand-rolled
+ * flow this anchor pointed at. The library begins a social sign-in with a `POST` that
+ * *answers* with the github.com URL rather than redirecting to it, so an anchor is now the
+ * wrong shape and this control is temporarily inert in fact if not in markup.
+ * [#718](https://github.com/NobuData/ouroboros/issues/718) is the issue that replaces it
+ * with `authClient.signIn.social`, and it is where the card's shape is reconsidered.
  *
  * ### Why the SSO form is present but inert
  *
@@ -42,7 +48,8 @@ const SSO_UNAVAILABLE =
 /**
  * Step 1's card.
  *
- * @param props.signInHref Absolute URL of `GET /api/v1/auth/github` on `ouroboros-rest`.
+ * @param props.signInHref Absolute URL of BetterAuth's sign-in route on `ouroboros-rest`.
+ *   Not yet followable as a link — see this module's header, and #718.
  * @param props.user The signed-in person, or `null` while nobody is.
  * @returns The card: the sign-in control, or the identity it produced.
  */

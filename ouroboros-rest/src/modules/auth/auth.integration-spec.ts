@@ -7,35 +7,51 @@ import request from "supertest";
 
 import { configureApplication } from "../../application";
 import { bodyOf, integrationDatabaseUrl } from "../../testing/integration.fixture";
+import { GITHUB_PROVIDER_ID } from "../../auth/github.provider";
 import { AppModule } from "../app/app.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { AUTH_ERRORS } from "./auth.errors";
 import type { SessionResource } from "./auth.resources";
-import { GithubClient, type GithubProfile } from "./github";
-import { HANDSHAKE_COOKIE } from "./oauth";
-import { SESSION_COOKIE } from "./session";
+import { issueSession, SESSION_COOKIE } from "./session";
 
 /**
- * Sign-in, end to end, against a real migrated PostgreSQL — with github.com replaced and
- * nothing else.
+ * What is left of this module against a real migrated PostgreSQL, and the one thing #702
+ * added that a database is the only place to check.
  *
- * > *Full browser flow against a real GitHub OAuth app lands a session; `/auth/me` returns
- * > the seeded-or-created user with memberships.*
- * > *CSRF-safe (state verified); cookies httpOnly.*
- * > *Repeat login with the same GitHub identity reuses the same user row.*
+ * **This suite used to walk the whole browser sign-in.** #33's flow was this service's own,
+ * so replacing `GithubClient` with an object left every other moving part real — the
+ * handshake, the cookies, the identity upsert — and a Supertest run could assert the lot.
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) moved sign-in inside BetterAuth,
+ * and BetterAuth is the one dependency these suites do **not** load: it is published as ES
+ * modules, this service compiles to CommonJS, and `jest.integration.config.mjs` maps it to
+ * `src/auth/better-auth.fixture.ts` for the reason written down in `jest.esm-transform.cjs`.
+ * Asserting a sign-in against that stand-in would be asserting against a hundred lines this
+ * repository wrote, which is worth nothing.
  *
- * All three acceptance criteria are here, and each of them is a claim a unit suite cannot
- * settle. "The same user row is reused" is a statement about `user_identities`' unique
- * index; "somebody invited before they signed in keeps their membership" is a statement
- * about two tables agreeing; and the redirect-cookie-redirect-cookie sequence is a
- * statement about the whole pipeline — guard, pipe, filter, controller — rather than about
- * any one of them.
+ * So the flow's coverage moved rather than vanished, and it is worth saying where to:
  *
- * **Only `GithubClient` is replaced.** Everything else is the application the process runs:
- * the real module tree, the real global guard, the real cookies. The one thing this cannot
- * cover is github.com's own behaviour, which is why the criterion says *against a real
- * GitHub OAuth app* and the README says how to do that by hand.
+ *   * **The provider's configuration** — scopes, profile mapping, the account-linking
+ *     policy — is `src/auth/github.provider.spec.ts`, where it is ordinary data.
+ *   * **The four core tables and the back-fill into them** are
+ *     `ouroboros-db/tests/constraints.sql`, run against a live PostgreSQL by `ci/db`.
+ *   * **The full browser flow against a real GitHub OAuth app**, which is the issue's first
+ *     acceptance criterion, is a manual check — `README.md` § Signing in says how — and
+ *     [#715](https://github.com/NobuData/ouroboros/issues/715) is the issue that builds the
+ *     automated suite for it, once #705's development password makes a sign-in reachable
+ *     without github.com.
+ *
+ * What stays here is what this module still owns and a database still answers:
+ *
+ *   1. **The session the guard reads**, and everything `GET /api/v1/auth/me` joins to
+ *      answer — memberships, the tenant suggestion, and a session whose person has been
+ *      deleted since. #703 replaces the mechanism; the *answers* are this module's either
+ *      way.
+ *   2. **That a person who signed in under #33 is the same person to BetterAuth**, which is
+ *      the issue's second acceptance criterion and the one with a seeded pre-migration row
+ *      in it. It is asserted here rather than only in SQL because the value being matched
+ *      is `GITHUB_PROVIDER_ID` — a constant this service hands the library — and the point
+ *      is that the string in `src/auth/` and the string V004 wrote agree.
  *
  * It takes a database the way `tenancy.integration-spec.ts` does — from the
  * [#37](https://github.com/NobuData/ouroboros/issues/37) harness, which starts one:
@@ -51,34 +67,20 @@ const DATABASE_URL = integrationDatabaseUrl();
 /** What every row this suite creates is named with, so the cleanup can find it. */
 const TEST_PREFIX = "ouro-auth-it";
 
-/** The GitHub account this suite signs in as. */
-const PROFILE: GithubProfile = {
-  externalId: "990000001",
-  login: `${TEST_PREFIX}-login`,
-  displayName: "Integration Person",
-  email: `${TEST_PREFIX}-person@example.test`,
-  avatarUrl: "https://avatars.example/990000001",
-};
+/** The address the person in these tests holds. */
+const EMAIL = `${TEST_PREFIX}-person@example.test`;
+
+/** GitHub's immutable id for the account they signed in with under #33. */
+const EXTERNAL_ID = "990000001";
+
+/** The signing key the test configuration validates with, so an issued session verifies. */
+const SESSION_SECRET = testConfiguration().sessionSecret;
 
 /** A connection of this suite's own, for the setup and cleanup the application must not do. */
 const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
 /** The auth routes' base path. */
 const AUTH = "/api/v1/auth";
-
-/**
- * One named cookie's value out of a `Set-Cookie` list.
- *
- * @param response - What Supertest returned.
- * @param name - The cookie to find.
- * @returns Its value, or `undefined`.
- */
-function cookieValue(response: request.Response, name: string): string | undefined {
-  const headers = (response.headers["set-cookie"] ?? []) as unknown as string[];
-  const header = headers.find((candidate) => candidate.startsWith(`${name}=`));
-
-  return header?.slice(name.length + 1, header.indexOf(";"));
-}
 
 /**
  * The whole `Set-Cookie` header for one cookie.
@@ -93,23 +95,13 @@ function cookieHeader(response: request.Response, name: string): string {
   return headers.find((candidate) => candidate.startsWith(`${name}=`)) ?? "";
 }
 
-describe("signing in, for real", () => {
+describe("the auth surface, against a real database", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    // The only substitution: github.com. Everything the request passes through on its way
-    // to and from this double is the application the process builds.
-    const github: Pick<GithubClient, "exchangeCode" | "readProfile"> = {
-      exchangeCode: () => Promise.resolve("gho_integration_token"),
-      readProfile: () => Promise.resolve(PROFILE),
-    };
-
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule.forRoot(testConfiguration({ OURO_DATABASE_URL: DATABASE_URL }))],
-    })
-      .overrideProvider(GithubClient)
-      .useValue(github)
-      .compile();
+    }).compile();
 
     app = moduleRef.createNestApplication({ logger: false });
     // The same prefix, versioning, pipe and filter `createApplication` applies. Restating
@@ -127,187 +119,50 @@ describe("signing in, for real", () => {
 
   afterEach(cleanUp);
 
-  /** Remove everything this suite created. Identities and memberships cascade. */
+  /**
+   * Remove everything this suite created.
+   *
+   * Three deletes rather than two. `tenants` and `users` cascade through V002's tables as
+   * they always did; `"user"` needs its own, because V004 deliberately writes no foreign
+   * key between the two generations of user table — which is what lets
+   * [#708](https://github.com/NobuData/ouroboros/issues/708) drop the older pair. `account`
+   * cascades from `"user"`.
+   */
   async function cleanUp(): Promise<void> {
     await admin.query("delete from ouroboros.tenants where slug like $1", [`${TEST_PREFIX}-%`]);
     await admin.query("delete from ouroboros.users where email like $1", [`${TEST_PREFIX}-%`]);
+    await admin.query('delete from ouroboros."user" where "email" like $1', [`${TEST_PREFIX}-%`]);
   }
 
   /** The adapter's server, typed so Supertest can be handed it without an `any`. */
   const server = (): Server => app.getHttpServer() as Server;
 
   /**
-   * Walk the whole browser flow and come back with the session cookie.
+   * Create the person #33's flow would have created, and sign in as them.
    *
-   * @returns The `Cookie` header a signed-in browser would then send.
+   * The session is issued directly rather than walked to through a sign-in route, because
+   * there is no longer a sign-in route in this service to walk — see this file's header.
+   * That is honest about what is being tested: the *answers* below, not the mechanism, and
+   * #703 is what replaces the mechanism.
+   *
+   * @param displayName - What to call them.
+   * @returns Their id and the `Cookie` header a signed-in browser would send.
    */
-  async function signIn(): Promise<string> {
-    const started = await request(server()).get(`${AUTH}/github`).expect(302);
-
-    const state = new URL(started.headers.location).searchParams.get("state");
-    const handshake = cookieValue(started, HANDSHAKE_COOKIE);
-
-    const finished = await request(server())
-      .get(`${AUTH}/github/callback`)
-      .query({ code: "the-code", state })
-      .set("Cookie", `${HANDSHAKE_COOKIE}=${handshake}`)
-      .expect(302);
-
-    return `${SESSION_COOKIE}=${cookieValue(finished, SESSION_COOKIE)}`;
-  }
-
-  /** The user row behind a GitHub identity, read directly. */
-  async function storedUser(): Promise<{ id: string; email: string; display_name: string }> {
-    const { rows } = await admin.query<{ id: string; email: string; display_name: string }>(
-      "select u.id, u.email, u.display_name from ouroboros.users u " +
-        "join ouroboros.user_identities i on i.user_id = u.id " +
-        "where i.provider = 'github' and i.external_id = $1",
-      [PROFILE.externalId],
+  async function signedInPerson(
+    displayName = "Integration Person",
+  ): Promise<{ id: string; cookie: string }> {
+    const { rows } = await admin.query<{ id: string }>(
+      "insert into ouroboros.users (email, display_name) values ($1, $2) returning id",
+      [EMAIL, displayName],
     );
+    const id = rows[0].id;
 
-    return rows[0];
+    return { id, cookie: `${SESSION_COOKIE}=${issueSession(id, SESSION_SECRET, new Date())}` };
   }
-
-  describe("the handshake", () => {
-    it("sends the browser to GitHub and remembers the trip in an HttpOnly cookie", async () => {
-      const response = await request(server()).get(`${AUTH}/github`).expect(302);
-
-      expect(response.headers.location).toContain("https://github.com/login/oauth/authorize");
-      expect(cookieHeader(response, HANDSHAKE_COOKIE)).toContain("HttpOnly");
-      expect(cookieHeader(response, HANDSHAKE_COOKIE)).toContain("Path=/api/v1/auth");
-    });
-
-    it("refuses a callback whose state was not the one it issued", async () => {
-      // The CSRF defence, end to end: an attacker can put anything in the query string and
-      // cannot put anything in the cookie.
-      const started = await request(server()).get(`${AUTH}/github`).expect(302);
-
-      const response = await request(server())
-        .get(`${AUTH}/github/callback`)
-        .query({ code: "the-code", state: "a-state-nobody-issued" })
-        .set("Cookie", `${HANDSHAKE_COOKIE}=${cookieValue(started, HANDSHAKE_COOKIE)}`)
-        .expect(401);
-
-      expect(bodyOf<ErrorEnvelope>(response).code).toBe(AUTH_ERRORS.handshakeInvalid);
-    });
-
-    it("refuses a callback that carries no handshake cookie at all", async () => {
-      const started = await request(server()).get(`${AUTH}/github`).expect(302);
-      const state = new URL(started.headers.location).searchParams.get("state");
-
-      await request(server())
-        .get(`${AUTH}/github/callback`)
-        .query({ code: "the-code", state })
-        .expect(401);
-    });
-
-    it("refuses a callback with no code, before anything is spent on it", async () => {
-      const response = await request(server()).get(`${AUTH}/github/callback`).expect(422);
-
-      expect(bodyOf<ErrorEnvelope>(response).details).toHaveProperty("code");
-    });
-  });
-
-  describe("the session it lands", () => {
-    it("is HttpOnly and sent for every path", async () => {
-      const started = await request(server()).get(`${AUTH}/github`).expect(302);
-      const state = new URL(started.headers.location).searchParams.get("state");
-
-      const finished = await request(server())
-        .get(`${AUTH}/github/callback`)
-        .query({ code: "the-code", state })
-        .set("Cookie", `${HANDSHAKE_COOKIE}=${cookieValue(started, HANDSHAKE_COOKIE)}`)
-        .expect(302);
-
-      expect(cookieHeader(finished, SESSION_COOKIE)).toContain("HttpOnly");
-      expect(cookieHeader(finished, SESSION_COOKIE)).toContain("Path=/");
-      expect(cookieHeader(finished, SESSION_COOKIE)).toContain("SameSite=Lax");
-    });
-
-    it("clears the spent handshake in the same answer", async () => {
-      const started = await request(server()).get(`${AUTH}/github`).expect(302);
-      const state = new URL(started.headers.location).searchParams.get("state");
-
-      const finished = await request(server())
-        .get(`${AUTH}/github/callback`)
-        .query({ code: "the-code", state })
-        .set("Cookie", `${HANDSHAKE_COOKIE}=${cookieValue(started, HANDSHAKE_COOKIE)}`)
-        .expect(302);
-
-      expect(cookieHeader(finished, HANDSHAKE_COOKIE)).toContain("Max-Age=0");
-    });
-
-    it("sends the browser on to the UI", async () => {
-      const started = await request(server()).get(`${AUTH}/github`).expect(302);
-      const state = new URL(started.headers.location).searchParams.get("state");
-
-      const finished = await request(server())
-        .get(`${AUTH}/github/callback`)
-        .query({ code: "the-code", state })
-        .set("Cookie", `${HANDSHAKE_COOKIE}=${cookieValue(started, HANDSHAKE_COOKIE)}`);
-
-      expect(finished.headers.location).toBe("http://localhost:3000");
-    });
-  });
-
-  describe("who the person becomes", () => {
-    it("creates the person and the identity on a first sign-in", async () => {
-      await signIn();
-
-      const user = await storedUser();
-      expect(user.email).toBe(PROFILE.email);
-      expect(user.display_name).toBe(PROFILE.displayName);
-    });
-
-    it("reuses the same row on a repeat sign-in — the issue's third criterion", async () => {
-      await signIn();
-      const first = await storedUser();
-
-      await signIn();
-      const second = await storedUser();
-
-      expect(second.id).toBe(first.id);
-
-      const { rows } = await admin.query<{ count: string }>(
-        "select count(*) as count from ouroboros.users where email = $1",
-        [PROFILE.email],
-      );
-      expect(rows[0].count).toBe("1");
-    });
-
-    it("attaches the identity to the person an invitation created", async () => {
-      // The stub row `MembersRepository.createUser` writes so an invitation has something
-      // to point at. Signing in has to *become* that person, not create a second one — or
-      // the invitation is silently lost and there is nothing to notice it by.
-      const { rows } = await admin.query<{ id: string }>(
-        "insert into ouroboros.users (email, display_name) values ($1, $2) returning id",
-        [PROFILE.email, PROFILE.email],
-      );
-      const invited = rows[0].id;
-
-      await signIn();
-
-      expect((await storedUser()).id).toBe(invited);
-    });
-
-    it("refreshes the name GitHub reports without touching the address", async () => {
-      await admin.query("insert into ouroboros.users (email, display_name) values ($1, $2)", [
-        PROFILE.email,
-        "Whoever They Were",
-      ]);
-
-      await signIn();
-
-      const user = await storedUser();
-      expect(user.display_name).toBe(PROFILE.displayName);
-      expect(user.email).toBe(PROFILE.email);
-    });
-  });
 
   describe("reading the session back", () => {
     it("answers with the person and their memberships", async () => {
-      const cookie = await signIn();
-      const user = await storedUser();
+      const { id, cookie } = await signedInPerson();
 
       const { rows } = await admin.query<{ id: string }>(
         "insert into ouroboros.tenants (slug, display_name) values ($1, $2) returning id",
@@ -315,14 +170,14 @@ describe("signing in, for real", () => {
       );
       await admin.query(
         "insert into ouroboros.tenant_members (tenant_id, user_id, role) values ($1, $2, 'owner')",
-        [rows[0].id, user.id],
+        [rows[0].id, id],
       );
 
       const session = bodyOf<SessionResource>(
         await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(200),
       );
 
-      expect(session.user.email).toBe(PROFILE.email);
+      expect(session.user.email).toBe(EMAIL);
       expect(session.memberships).toEqual([
         expect.objectContaining({ slug: `${TEST_PREFIX}-acme`, role: "owner" }),
       ]);
@@ -330,7 +185,7 @@ describe("signing in, for real", () => {
     });
 
     it("suggests the tenant that owns the address's domain, when there are no memberships", async () => {
-      const cookie = await signIn();
+      const { cookie } = await signedInPerson();
 
       const { rows } = await admin.query<{ id: string }>(
         "insert into ouroboros.tenants (slug, display_name) values ($1, $2) returning id",
@@ -362,8 +217,8 @@ describe("signing in, for real", () => {
     it("refuses a session whose person has since been deleted", async () => {
       // The reason the cookie carries an id rather than a copy of the person: the signature
       // is still perfectly good and there is no row behind it.
-      const cookie = await signIn();
-      await admin.query("delete from ouroboros.users where email = $1", [PROFILE.email]);
+      const { cookie } = await signedInPerson();
+      await admin.query("delete from ouroboros.users where email = $1", [EMAIL]);
 
       await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
     });
@@ -371,7 +226,7 @@ describe("signing in, for real", () => {
 
   describe("signing out", () => {
     it("answers 204 and removes the cookie", async () => {
-      const cookie = await signIn();
+      const { cookie } = await signedInPerson();
 
       const response = await request(server())
         .post(`${AUTH}/logout`)
@@ -387,6 +242,21 @@ describe("signing in, for real", () => {
     });
   });
 
+  describe("the sign-in routes this service used to serve", () => {
+    // The issue's fourth acceptance criterion, as behaviour rather than as a `grep`:
+    // `auth.controller.ts` removed them rather than forwarding them, and a route that
+    // answered anything at all here would mean a second sign-in path had survived.
+    it.each([
+      ["beginning a sign-in", `${AUTH}/github`],
+      ["the callback", `${AUTH}/github/callback`],
+    ])(
+      "answers 404 for %s, because #702 removed it rather than forwarding it",
+      async (_what, path) => {
+        await request(server()).get(path).expect(404);
+      },
+    );
+  });
+
   describe("the rest of the API", () => {
     it("is closed to a request with no session", async () => {
       const response = await request(server()).get("/api/v1/tenants").expect(401);
@@ -394,10 +264,111 @@ describe("signing in, for real", () => {
       expect(bodyOf<ErrorEnvelope>(response).code).toBe(AUTH_ERRORS.unauthenticated);
     });
 
-    it("is open to one that signed in through the flow above", async () => {
-      const cookie = await signIn();
+    it("is open to one carrying a session the guard honours", async () => {
+      const { cookie } = await signedInPerson();
 
       await request(server()).get("/api/v1/tenants").set("Cookie", cookie).expect(200);
+    });
+  });
+
+  describe("a person who first signed in under the #33 flow", () => {
+    /**
+     * Seed the two rows #33's `resolveUser` wrote, and move them the way V004 does.
+     *
+     * The pre-migration state the acceptance criterion names: a `users` row and the
+     * `user_identities` row that made a repeat sign-in find it. `backfill_betterauth_core`
+     * is the migration's own function, called rather than reimplemented — a test that
+     * copied the columns itself would pass against a migration that had stopped doing so.
+     *
+     * @returns The legacy user's id.
+     */
+    async function seedPreMigrationIdentity(): Promise<string> {
+      const { rows } = await admin.query<{ id: string }>(
+        "insert into ouroboros.users (email, display_name, avatar_url) values ($1, $2, $3) returning id",
+        [EMAIL, "Integration Person", "https://avatars.example/990000001"],
+      );
+
+      await admin.query(
+        "insert into ouroboros.user_identities (user_id, provider, external_id) values ($1, 'github', $2)",
+        [rows[0].id, EXTERNAL_ID],
+      );
+      await admin.query("select * from ouroboros.backfill_betterauth_core()");
+
+      return rows[0].id;
+    }
+
+    it("is found by the pair BetterAuth looks a sign-in up by, and is the same person", async () => {
+      // `findOAuthUser(email, accountId, providerId)` reads `account` by (accountId,
+      // providerId) and joins the user. This is that query, with the provider id taken from
+      // the constant this service configures the library with — so a rename on either side
+      // fails here rather than at somebody's next sign-in.
+      const legacyId = await seedPreMigrationIdentity();
+
+      const { rows } = await admin.query<{ userId: string; email: string }>(
+        'select a."userId", u."email" from ouroboros.account a ' +
+          'join ouroboros."user" u on u."id" = a."userId" ' +
+          'where a."providerId" = $1 and a."accountId" = $2',
+        [GITHUB_PROVIDER_ID, EXTERNAL_ID],
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].userId).toBe(legacyId);
+      expect(rows[0].email).toBe(EMAIL);
+    });
+
+    it("keeps the memberships they already held, because the id did not change", async () => {
+      // What "the same person" is actually worth: `tenant_members.user_id` was written
+      // against `users.id`, and the back-fill preserved it — so the workspace they were
+      // invited to is still theirs after the move.
+      const legacyId = await seedPreMigrationIdentity();
+
+      const { rows } = await admin.query<{ id: string }>(
+        "insert into ouroboros.tenants (slug, display_name) values ($1, $2) returning id",
+        [`${TEST_PREFIX}-kept`, "Kept Workspace"],
+      );
+      await admin.query(
+        "insert into ouroboros.tenant_members (tenant_id, user_id, role) values ($1, $2, 'owner')",
+        [rows[0].id, legacyId],
+      );
+
+      const session = bodyOf<SessionResource>(
+        await request(server())
+          .get(`${AUTH}/me`)
+          .set("Cookie", `${SESSION_COOKIE}=${issueSession(legacyId, SESSION_SECRET, new Date())}`)
+          .expect(200),
+      );
+
+      expect(session.memberships).toEqual([
+        expect.objectContaining({ slug: `${TEST_PREFIX}-kept`, role: "owner" }),
+      ]);
+    });
+
+    it("arrives with a verified address, so account linking will attach to them", async () => {
+      // The flag BetterAuth's linking consults. #33 accepted only a verified GitHub primary
+      // address, so `true` is a fact about anybody holding an identity row — and if the
+      // back-fill wrote `false`, an existing person would sign in and be given a second
+      // account instead of their own.
+      await seedPreMigrationIdentity();
+
+      const { rows } = await admin.query<{ emailVerified: boolean; image: string | null }>(
+        'select "emailVerified", "image" from ouroboros."user" where "email" = $1',
+        [EMAIL],
+      );
+
+      expect(rows[0].emailVerified).toBe(true);
+      expect(rows[0].image).toBe("https://avatars.example/990000001");
+    });
+
+    it("is moved once and not again, however often the back-fill runs", async () => {
+      await seedPreMigrationIdentity();
+      await admin.query("select * from ouroboros.backfill_betterauth_core()");
+
+      const { rows } = await admin.query<{ count: string }>(
+        'select count(*) as count from ouroboros."user" where "email" = $1',
+        [EMAIL],
+      );
+
+      expect(rows[0].count).toBe("1");
     });
   });
 });

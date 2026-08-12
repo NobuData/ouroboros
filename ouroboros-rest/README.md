@@ -94,8 +94,8 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1`                                       | The heartbeat — service, build, uptime                                |
 | `GET /health/live`                                  | [Liveness](#health-and-readiness) — the process, and nothing else     |
 | `GET /health/ready`                                 | [Readiness](#health-and-readiness) — the process and its dependencies |
-| `GET /api/v1/auth/github`                           | [Sign in](#signing-in) — redirect to GitHub to authorize              |
-| `GET /api/v1/auth/github/callback`                  | Where GitHub returns; lands the session cookie                        |
+| `POST /api/auth/sign-in/social`                     | [Sign in](#signing-in) — BetterAuth's, outside the versioned API      |
+| `GET /api/auth/callback/github`                     | Where GitHub returns; BetterAuth's, and what an OAuth App registers   |
 | `GET /api/v1/auth/me`                               | Who is signed in, their memberships, and a tenant suggestion          |
 | `POST /api/v1/auth/logout`                          | Sign out — removes the session cookie                                 |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
@@ -292,7 +292,7 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   OURO_GITHUB_CLIENT_SECRET=[redacted]
   OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.12.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.13.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -677,71 +677,124 @@ version tracks the library's loosely.
 
 ## Signing in
 
-**GitHub's authorization code flow, and a signed cookie**
-([#33](https://github.com/NobuData/ouroboros/issues/33)). Four routes, all under
-`/api/v1/auth`:
+**BetterAuth's GitHub provider**
+([#702](https://github.com/NobuData/ouroboros/issues/702)). The library owns the whole
+handshake and serves its own routes under `/api/auth`, outside the versioned API — see
+[BetterAuth](#betterauth) for why they are mounted there and
+`src/auth/auth.routes.ts` for the full map:
 
-| Route                              | What it does                                                       |
-| ---------------------------------- | ------------------------------------------------------------------ |
-| `GET  /api/v1/auth/github`         | `302` to github.com, carrying state and a PKCE challenge           |
-| `GET  /api/v1/auth/github/callback`| Verifies the handshake, exchanges the code, lands the session      |
-| `GET  /api/v1/auth/me`             | The person, their memberships, and a tenant suggestion             |
-| `POST /api/v1/auth/logout`         | `204`, and a `Set-Cookie` that removes the session                 |
+| Route                                | What it does                                                        |
+| ------------------------------------ | ------------------------------------------------------------------- |
+| `POST /api/auth/sign-in/social`      | `{ "provider": "github" }` in, the github.com authorization URL out  |
+| `GET  /api/auth/callback/github`     | Where GitHub returns the browser; upserts `"user"` + `account`       |
+| `GET  /api/v1/auth/me`               | The person, their memberships, and a tenant suggestion               |
+| `POST /api/v1/auth/logout`           | `204`, and a `Set-Cookie` that removes the session                   |
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
+    participant B as Browser (/login)
     participant R as ouroboros-rest
     participant G as github.com
-    B->>R: GET /api/v1/auth/github
-    R->>B: 302 · Set-Cookie ouro_oauth {state, verifier}
-    B->>G: authorize (state, code_challenge)
-    G->>B: 302 …/auth/github/callback?code&state
-    B->>R: callback + ouro_oauth
-    R->>R: state matches?
-    R->>G: exchange code + code_verifier → profile, verified email
-    R->>R: upsert users / user_identities
-    R->>B: 302 OURO_UI_URL · Set-Cookie ouro_session
+    B->>R: POST /api/auth/sign-in/social {provider: github}
+    R->>B: 200 · { url } — github.com/login/oauth/authorize (state)
+    B->>G: authorize (read:user, user:email)
+    G->>B: 302 /api/auth/callback/github?code&state
+    B->>R: callback(code, state)
+    R->>R: state matches the one it issued?
+    R->>G: exchange code → profile + verified primary email
+    R->>R: upsert "user" + account · create session row
+    R->>B: Set-Cookie (session) · 302 back to the app
 ```
 
-Five decisions are worth knowing:
+Four decisions are this service's rather than the library's, and all four live in
+[`src/auth/github.provider.ts`](src/auth/github.provider.ts) with the argument for each:
 
-- **The `state` cookie is the CSRF defence.** The value this service generated is kept in
-  a signed, `HttpOnly`, ten-minute cookie scoped to `/api/v1/auth`, and the callback is
-  honoured only when the `state` in the query string matches it. An attacker can put
-  anything in a URL and nothing in that cookie. PKCE rides along beside it: the verifier
-  never leaves the cookie, so an intercepted `code` is worth nothing without it.
-- **The session is stateless.** `ouro_session` carries a user id and an issue time, signed
-  with `OURO_SESSION_SECRET` — no session table, nothing to evict. What that costs is
-  revocation: signing out clears the browser's copy, and a copy taken beforehand stays
-  valid for the remainder of its **seven days**. Rotating the secret ends every session at
-  once. The revocable design is recorded with
-  [#38](https://github.com/NobuData/ouroboros/issues/38).
-- **The cookie is an id, not a copy of the person.** The `users` row is read on every
-  request, so a renamed person is renamed immediately and a deleted one loses access
-  immediately — where a cookie carrying a name would be a cache with no invalidation.
-- **Signing in can *become* somebody who was invited.** Three outcomes: a known GitHub
-  identity reuses its `users` row; an unknown identity whose verified address already
-  exists attaches to that row — which is how somebody invited to a tenant before their
-  first sign-in arrives already holding the membership; and a new person is created. All
-  of it in one transaction.
-- **The address must be verified.** `ouroboros.users.email` is unique and is what an
-  invitation was addressed to, so an account offering no verified address is a `502` with
-  `github_email_unavailable` rather than a guess.
+- **The scopes are `read:user` and `user:email`, and the library's defaults are turned
+  off.** `user:email` is the one that matters: GitHub's default is a *private* primary
+  address, and without the scope somebody whose colleague invited them by that exact
+  address arrives as a stranger. Owning the list rather than inheriting it means a library
+  upgrade that widened its defaults cannot widen this service's consent screen on a deploy.
+  Nothing that grants repository access is asked for — that is `ouroboros-engine`'s GitHub
+  App, with its own installation grant.
+- **A profile becomes a person explicitly.** The name they have set, or their login when
+  they have not; their avatar, or nothing. `"user"."name"` is `not null`, and the library's
+  own default would write an empty string for an account with no name — a row that renders
+  as broken rather than a person who never filled in a field.
+- **Account linking is on, and is authorised by GitHub's verification rather than by
+  GitHub's name.** No provider is trusted by name, so an arriving account attaches to an
+  existing person only when the provider says the address is *verified* — which is the rule
+  #33 enforced by hand. The *local* `emailVerified` is deliberately not required, because
+  somebody invited to a workspace before they ever signed in has never had the chance to
+  verify anything, and requiring it would make the invitation flow unusable.
+- **Sessions are still #33's stateless cookie, for now.** BetterAuth signs people in and
+  [#703](https://github.com/NobuData/ouroboros/issues/703) is what makes it *remember* them
+  — database-backed, revocable sessions behind the library's own guard. Between the two
+  issues this service has BetterAuth sign-in and a hand-rolled session, which is why they
+  are meant to land close together.
 
-`user_identities` holds **no token and no secret**: the access token is used for the two
-profile reads and dropped. `ouroboros-db/tests/constraints.sql` fails if a column whose
-name looks like a credential ever appears on that table.
+### What #33 shipped, and where it went
+
+A complete hand-rolled GitHub sign-in existed before this — `oauth.ts` (state and PKCE over
+a signed handshake cookie), `github.ts` (`GithubClient`), and `auth.service.ts`'s
+`resolveUser`, a three-branch identity model writing `users` and `user_identities`. #702
+**deleted all of it**, rather than leaving a second sign-in path behind a flag. Where each
+piece went:
+
+| #33                                     | Now                                                            |
+| --------------------------------------- | -------------------------------------------------------------- |
+| `oauth.ts` — state, PKCE, `ouro_oauth`  | Inside BetterAuth                                              |
+| `github.ts` — `GithubClient`            | The library's GitHub provider                                  |
+| `resolveUser` branch 1 — known identity | `findOAuthUser` on `account(providerId, accountId)`            |
+| `resolveUser` branch 2 — invited stub   | The account-linking policy above                               |
+| `resolveUser` branch 3 — new person     | `createOAuthUser`                                              |
+| `users`, `user_identities`              | `"user"`, `account` — back-filled by V004, ids preserved       |
+| `GET /api/v1/auth/github{,/callback}`   | **Removed**, not forwarded — `auth.controller.ts` says why     |
+
+The back-fill is what makes a person who signed in under the old flow the same person under
+the new one: V004 ([#706](https://github.com/NobuData/ouroboros/issues/706)) copied
+`user_identities` into `account` preserving ids, so their next sign-in finds them by the
+pair BetterAuth looks a sign-in up by. `auth.integration-spec.ts` asserts that against a
+seeded pre-migration row.
+
+**The login page's GitHub button does not work until
+[#718](https://github.com/NobuData/ouroboros/issues/718)**, which re-points `ouroboros-ui`
+at `signIn.social`. That gap is deliberate: the alternative was keeping the old flow alive
+beside the new one.
 
 ### Signing in for real
 
-Register a GitHub OAuth application with the callback URL
-`http://localhost:4000/api/v1/auth/github/callback`, put its credentials in `.env`,
-comment out `OURO_AUTH_DEV_USER`, then:
+Register a GitHub OAuth application — **Settings → Developer settings → OAuth Apps** — with
+the callback URL below, put its client id and secret in `.env` as
+`OURO_GITHUB_CLIENT_ID`/`OURO_GITHUB_CLIENT_SECRET`, and comment out `OURO_AUTH_DEV_USER`:
 
-1. **Browse to** `http://localhost:4000/api/v1/auth/github` — GitHub's consent screen.
-2. **Authorize**; the browser returns to the callback and lands on `OURO_UI_URL`.
-3. **Browse to** `http://localhost:4000/api/v1/auth/me` — the user, created or matched.
+| Environment | Authorization callback URL                        |
+| ----------- | ------------------------------------------------- |
+| Development | `http://localhost:4000/api/auth/callback/github`   |
+| Production  | `${BETTER_AUTH_URL}/api/auth/callback/github`      |
+
+It is `BETTER_AUTH_URL` and not `OURO_REST_URL` that the library builds it from, and the
+two are the same origin spelled in two vocabularies — keep them in step. Then:
+
+```bash
+curl -sS -X POST http://localhost:4000/api/auth/sign-in/social \
+  -H 'content-type: application/json' \
+  -d '{"provider":"github","callbackURL":"http://localhost:3000"}'
+```
+
+1. **Open the `url` it answers with** in a browser — GitHub's consent screen, asking for
+   your profile and your email addresses and nothing else.
+2. **Authorize**; the browser returns to `/api/auth/callback/github` and on to the
+   `callbackURL`.
+3. **Look at the database.** A `"user"` row with your name, address and avatar, and an
+   `account` row with `providerId = 'github'`:
+
+   ```bash
+   psql -c 'select "name", "email", "emailVerified" from ouroboros."user";' \
+        -c 'select "providerId", "accountId" from ouroboros.account;'
+   ```
+
+`GET /api/v1/auth/me` will still answer `401` until #703 lands — it reads #33's
+`ouro_session` cookie, and BetterAuth sets its own.
 
 ### The development bypass
 
@@ -754,8 +807,12 @@ local work needs no GitHub OAuth application at all. The address must name a rea
 It is **off in production**, twice over: `loadConfiguration` drops the variable when
 `NODE_ENV=production`, so there is no value for anything to read, and the accessor the
 guard uses refuses one anyway. The boot log prints `OURO_AUTH_DEV_USER=` with nothing
-after it, which is the line to check. A real session cookie still wins over it, so the
-OAuth flow stays exercisable on a machine that has it set.
+after it, which is the line to check. A real session cookie still wins over it, so a real
+sign-in stays exercisable on a machine that has it set.
+
+It is [#705](https://github.com/NobuData/ouroboros/issues/705) that removes this, replacing
+it with BetterAuth's email/password provider enabled outside production — a mechanism the
+library supports natively, rather than a bypass that skips authentication entirely.
 
 ## The tenant context
 

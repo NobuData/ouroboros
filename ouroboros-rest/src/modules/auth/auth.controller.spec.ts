@@ -2,21 +2,26 @@ import { AppConfigService } from "../config/config.service";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { Configuration } from "../config/configuration";
 import type { User } from "../db/schema";
-import { AuthController, REDIRECT_STATUS } from "./auth.controller";
+import { AuthController } from "./auth.controller";
 import type { AuthService } from "./auth.service";
 import { parseCookies } from "./cookies";
 import type { AuthResponse } from "./http";
-import { HANDSHAKE_COOKIE } from "./oauth";
-import type { PrincipalRequest } from "./principal";
 import { SESSION_COOKIE } from "./session";
 
 /**
- * The four routes, and what they write to the response.
+ * The two routes, and what they write to the response.
  *
- * Three of them answer with something Nest's serialiser cannot produce — two redirects and
- * a `204` — so the assertions here are about *headers*, which is where the whole payload of
- * a sign-in lives. `http.ts` is what makes that readable: the response is an object literal
- * rather than a mocked framework class.
+ * One of them answers with something Nest's serialiser cannot produce — a `204` whose whole
+ * payload is a `Set-Cookie` — so the assertions here are about *headers*. `http.ts` is what
+ * makes that readable: the response is an object literal rather than a mocked framework
+ * class.
+ *
+ * **Two routes and their suites left with #33's OAuth flow.** `GET auth/github` and
+ * `GET auth/github/callback` were the browser-facing halves of a handshake this service no
+ * longer performs, and [#702](https://github.com/NobuData/ouroboros/issues/702) removed
+ * them rather than forwarding them — see `auth.controller.ts`, which is where that decision
+ * is argued. BetterAuth serves the replacement at `/api/auth/*`, outside Nest's router
+ * altogether, so there is no controller here to assert about.
  */
 
 const USER = {
@@ -94,11 +99,6 @@ function configFor(overrides: NodeJS.ProcessEnv = {}): AppConfigService {
 /** An auth service double whose every method is a mock. */
 function authDouble(): jest.Mocked<AuthService> {
   return {
-    startSignIn: jest.fn().mockReturnValue({
-      authorizeUrl: "https://github.com/login/oauth/authorize?x=1",
-      handshake: "handshake.signature",
-    }),
-    completeSignIn: jest.fn().mockResolvedValue("session.signature"),
     describe: jest.fn().mockResolvedValue({ user: {}, memberships: [], tenantSuggestion: null }),
   } as unknown as jest.Mocked<AuthService>;
 }
@@ -130,136 +130,6 @@ function cookieValue(response: Recorded, name: string): string | undefined {
 function cookieHeader(response: Recorded, name: string): string {
   return response.cookies().find((header) => header.startsWith(`${name}=`)) ?? "";
 }
-
-describe("beginning a sign-in", () => {
-  it("redirects to the URL the service built", () => {
-    const { controller, response } = harness();
-
-    controller.start(response);
-
-    expect(response.redirects).toEqual([
-      { status: REDIRECT_STATUS, url: "https://github.com/login/oauth/authorize?x=1" },
-    ]);
-    expect(REDIRECT_STATUS).toBe(302);
-  });
-
-  it("sets the handshake cookie", () => {
-    const { controller, response } = harness();
-
-    controller.start(response);
-
-    expect(cookieValue(response, HANDSHAKE_COOKIE)).toBe("handshake.signature");
-  });
-
-  it("scopes the handshake cookie to the auth routes and hides it from script", () => {
-    const { controller, response } = harness();
-
-    controller.start(response);
-
-    expect(cookieHeader(response, HANDSHAKE_COOKIE)).toContain("Path=/api/v1/auth");
-    expect(cookieHeader(response, HANDSHAKE_COOKIE)).toContain("HttpOnly");
-    expect(cookieHeader(response, HANDSHAKE_COOKIE)).toContain("SameSite=Lax");
-  });
-
-  it("builds the callback from configuration, not from the request", () => {
-    const { auth, controller, response } = harness();
-
-    controller.start(response);
-
-    expect(auth.startSignIn).toHaveBeenCalledWith(
-      "http://localhost:4000/api/v1/auth/github/callback",
-    );
-  });
-
-  it("marks the cookie Secure in production and not in development", () => {
-    const development = harness();
-    development.controller.start(development.response);
-    expect(cookieHeader(development.response, HANDSHAKE_COOKIE)).not.toContain("Secure");
-
-    const production = harness({ NODE_ENV: "production" });
-    production.controller.start(production.response);
-    expect(cookieHeader(production.response, HANDSHAKE_COOKIE)).toContain("Secure");
-  });
-});
-
-describe("finishing a sign-in", () => {
-  const request: PrincipalRequest = { headers: { cookie: `${HANDSHAKE_COOKIE}=handshake.value` } };
-
-  it("hands the service the code, the state and the handshake cookie", async () => {
-    const { auth, controller, response } = harness();
-
-    await controller.callback({ code: "the-code", state: "the-state" }, request, response);
-
-    expect(auth.completeSignIn).toHaveBeenCalledWith(
-      "the-code",
-      "the-state",
-      "handshake.value",
-      "http://localhost:4000/api/v1/auth/github/callback",
-    );
-  });
-
-  it("presents the same callback URL the authorize request carried", async () => {
-    // GitHub compares the two, and a difference of one character is a refused exchange.
-    const CALLBACK = "http://localhost:4000/api/v1/auth/github/callback";
-    const { auth, controller, response } = harness();
-
-    controller.start(response);
-    await controller.callback({ code: "c", state: "s" }, request, response);
-
-    expect(auth.startSignIn).toHaveBeenCalledWith(CALLBACK);
-    expect(auth.completeSignIn).toHaveBeenCalledWith("c", "s", expect.anything(), CALLBACK);
-  });
-
-  it("lands the session cookie", async () => {
-    const { controller, response } = harness();
-
-    await controller.callback({ code: "c", state: "s" }, request, response);
-
-    expect(cookieValue(response, SESSION_COOKIE)).toBe("session.signature");
-    expect(cookieHeader(response, SESSION_COOKIE)).toContain("HttpOnly");
-    expect(cookieHeader(response, SESSION_COOKIE)).toContain("Path=/");
-  });
-
-  it("clears the spent handshake in the same answer", async () => {
-    // A used handshake left in the browser is a value that outlives the trip it was for.
-    const { controller, response } = harness();
-
-    await controller.callback({ code: "c", state: "s" }, request, response);
-
-    expect(response.cookies()).toHaveLength(2);
-    expect(cookieHeader(response, HANDSHAKE_COOKIE)).toContain("Max-Age=0");
-  });
-
-  it("sends the browser to the UI", async () => {
-    const { controller, response } = harness();
-
-    await controller.callback({ code: "c", state: "s" }, request, response);
-
-    expect(response.redirects).toEqual([{ status: REDIRECT_STATUS, url: "http://localhost:3000" }]);
-  });
-
-  it("copes with a request carrying no cookies at all", async () => {
-    const { auth, controller, response } = harness();
-
-    await controller.callback({ code: "c", state: "s" }, {}, response);
-
-    expect(auth.completeSignIn).toHaveBeenCalledWith("c", "s", undefined, expect.anything());
-  });
-
-  it("writes nothing to the response when the service refuses", async () => {
-    // The failure has to reach the error filter as an envelope. A handler that had already
-    // sent headers would answer a redirect *and* a 401.
-    const { auth, controller, response } = harness();
-    auth.completeSignIn.mockRejectedValue(new Error("refused"));
-
-    await expect(
-      controller.callback({ code: "c", state: "s" }, request, response),
-    ).rejects.toThrow();
-
-    expect(response.cookies()).toHaveLength(0);
-    expect(response.redirects).toHaveLength(0);
-  });
-});
 
 describe("reading the session", () => {
   it("describes the person the guard established", async () => {

@@ -10,7 +10,10 @@
 > ([#20](https://github.com/NobuData/ouroboros/issues/20) onwards) — `V001` (tenants and
 > domains), `V002` (users, identities and membership) and `V003` (GitHub enablement) have
 > all landed, and [`tests/constraints.sql`](tests/constraints.sql) asserts what they
-> enforce. [#23](https://github.com/NobuData/ouroboros/issues/23) added the dev seed —
+> enforce. `V004` ([#706](https://github.com/NobuData/ouroboros/issues/706)) adds
+> BetterAuth's four core tables and back-fills them from `V002` — see
+> [The two generations of user table](#the-two-generations-of-user-table), and note that
+> `"user"` is quoted everywhere because it is a reserved word. [#23](https://github.com/NobuData/ouroboros/issues/23) added the dev seed —
 > [`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql), the demo tenant every
 > mockup is drawn around, in a development database and nowhere else. And
 > [#24](https://github.com/NobuData/ouroboros/issues/24) turned all of that into a gate:
@@ -494,6 +497,7 @@ ouroboros-db/
 │   ├── V001__tenants.sql             # tenants, tenant_domains — #20
 │   ├── V002__users_membership.sql    # users, user_identities, tenant_members — #21
 │   ├── V003__github_enablement.sql   # github_orgs, github_repos — #22
+│   ├── V004__betterauth_core.sql     # "user", session, account, verification — #706
 │   └── R__dev_seed.sql               # deterministic demo data, dev only — #23
 └── tests/
     ├── lib/
@@ -524,8 +528,57 @@ outside this module alters it.
 | `tenant_members` | `V002` | A person's role in one tenant — mockup 17's member list | `(tenant_id, user_id)` is the primary key, so a user cannot join a tenant twice; `role` CHECK-constrained to `owner\|admin\|member\|viewer`, with no default |
 | `github_orgs` | `V003` | GitHub orgs a tenant has enabled | `login` unique *per tenant*, stored lower-cased; `enabled` defaults false |
 | `github_repos` | `V003` | Repos within an org | `name` unique per org, stored lower-cased; `enabled` defaults false |
+| `"user"` | `V004` | The person, as BetterAuth holds them — the successor to `users` | `email` unique across the installation. **Quoted at every reference: `user` is a reserved word** |
+| `session` | `V004` | One row per live sign-in, which is what makes sign-out revoke rather than forget | `token` unique; `userId` cascades from `"user"` |
+| `account` | `V004` | How a person proves who they are: a provider, or a password | `(providerId, accountId)` unique, so one GitHub account is one person. **The one table here that holds credentials** |
+| `verification` | `V004` | Short-lived one-time values — email verification, password reset | Unused until [#705](https://github.com/NobuData/ouroboros/issues/705) |
 
-Four conventions run through these, and are worth knowing before adding a seventh:
+### The two generations of user table
+
+`V004` ([#706](https://github.com/NobuData/ouroboros/issues/706)) lands BetterAuth's four
+core tables beside the tenancy ones, which leaves the schema briefly holding **two tables
+that describe the same people**: `users` from `V002`, and `"user"` from `V004` — a
+difference of one letter. That is a transitional state with a defined end:
+[#708](https://github.com/NobuData/ouroboros/issues/708) drops `users` and
+`user_identities` once [#702](https://github.com/NobuData/ouroboros/issues/702) has retired
+the sign-in flow that writes them.
+
+Until then, `V004`'s back-fill is what keeps them agreeing. It copies `users` → `"user"`
+and `user_identities` → `account` **preserving ids**, so `tenant_members.user_id` and every
+other foreign key written against `users.id` still names the same person on both sides. It
+runs once, as part of the migration, and it is also a function you can call again:
+
+```sql
+select * from ouroboros.backfill_betterauth_core();   -- users_copied | accounts_copied
+```
+
+It is idempotent — a row already carried across is skipped, on either the id or the address
+— which matters for one ordinary case. Flyway applies repeatable migrations **last**, so a
+database created from empty runs `V004` before `R__dev_seed.sql` and the back-fill finds
+nothing to copy; the seed then fills the `V002` tables alone. Call the function afterwards
+to bring the demo people across until
+[#709](https://github.com/NobuData/ouroboros/issues/709) teaches the seed about these
+tables.
+
+> **`user` is a reserved word — quote it, always.** `ouroboros."user"` in every statement,
+> in every migration, in every hand-typed `psql` query. Unquoted, `ouroboros.user` parses
+> as the `user` keyword rather than as this table, and the mistake is one letter away from
+> `users`, which is a real table that will happily answer. `scripts/verify-dev-env.sh`
+> greps every migration for an unquoted `user` in a table position and fails `ci/db` before
+> PostgreSQL sees it.
+
+BetterAuth's own naming is kept exactly as its CLI emits it — singular table names, quoted
+camelCase columns like `"emailVerified"` and `"createdAt"` — which is roadmap decision
+**A4**. These are vendor-shaped tables, and renaming their columns would put this schema at
+war with every library upgrade and every plugin that reads them. The house snake_case style
+still governs `V001`–`V003`. Flyway remains the only thing that issues DDL (decision
+**A3**): BetterAuth ships a `migrate` command that would create these tables itself, it is
+never run, and `scripts/verify-dev-env.sh` asserts that nothing in the repository wires it
+up. The SQL in `V004` is a hand-port of `@better-auth/cli generate` — see
+`ouroboros-rest/README.md` § Generating the auth schema for the command.
+
+Four conventions run through the tenancy tables, and are worth knowing before adding
+another:
 
 1. **Case-folded on the way in, not at read time.** Domains, user emails, org logins and
    repo names are stored lower-cased and held there by a check constraint. That is what
@@ -542,13 +595,20 @@ Four conventions run through these, and are worth knowing before adding a sevent
    `V001` and attached by every table since, stamps from the server clock and overwrites
    whatever the statement supplied. One function means the behaviour cannot drift between
    tables.
-4. **No credential is stored in this schema.** `user_identities` records *which* external
-   account a person proved control of, never a token, refresh token or secret. Obtaining
-   a live GitHub session, encrypting it and revoking it is `ouroboros-rest`'s concern
-   ([#33](https://github.com/NobuData/ouroboros/issues/33)); a credential here would split
-   that responsibility across two modules and make every `select *` over the tenancy
-   schema a secret-bearing query. `tests/constraints.sql` asserts the absence by reading
-   `information_schema`, so a column added later is caught rather than merely discouraged.
+4. **No credential is stored in the tenancy tables.** `user_identities` records *which*
+   external account a person proved control of, never a token, refresh token or secret.
+   Obtaining a live GitHub session, encrypting it and revoking it is `ouroboros-rest`'s
+   concern ([#33](https://github.com/NobuData/ouroboros/issues/33)); a credential here
+   would split that responsibility across two modules and make every `select *` over the
+   tenancy schema a secret-bearing query. `tests/constraints.sql` asserts the absence by
+   reading `information_schema`, so a column added later is caught rather than merely
+   discouraged.
+
+   `V004`'s `account` is the deliberate exception, and the assertion is scoped to name it
+   as one. It is the library's table, its `accessToken`/`refreshToken`/`password` columns
+   are part of BetterAuth's contract, and the library encrypts the tokens with
+   `BETTER_AUTH_SECRET` before they are written. The rule above still governs every table
+   this module designed.
 
 Deleting a tenant cascades the whole way down — domains, memberships, orgs, and the orgs'
 repos — so nothing is left naming a tenant that is gone. It stops at the people: deleting
@@ -565,7 +625,9 @@ users & membership [#21](https://github.com/NobuData/ouroboros/issues/21) *(done
 GitHub enablement [#22](https://github.com/NobuData/ouroboros/issues/22) *(done)* ·
 dev seed [#23](https://github.com/NobuData/ouroboros/issues/23) *(done)* ·
 migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) *(done)* ·
-full epic [#3](https://github.com/NobuData/ouroboros/issues/3).
+BetterAuth core schema [#706](https://github.com/NobuData/ouroboros/issues/706) *(done)* ·
+full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
+auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
 follows and [`../README.md`](../README.md) for the module map.

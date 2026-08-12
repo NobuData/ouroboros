@@ -1,116 +1,72 @@
 /**
- * `/api/v1/auth` — sign in, find out who you are, sign out.
+ * `/api/v1/auth` — find out who you are, and sign out.
  *
  * The controller names routes and shapes and hands the rest to `AuthService`, exactly as
- * every tenancy controller does. What is different here, and worth stating, is that three
- * of the four routes are **not** the API's usual JSON-in, JSON-out shape:
+ * every tenancy controller does. `POST logout` is the one route here that is not the API's
+ * usual JSON-in, JSON-out shape: it answers `204`, because there is nothing to say and the
+ * `Set-Cookie` that removes the session is the whole of the answer.
  *
- *   * `GET github` and `GET github/callback` are pages a *browser* is navigated to, not
- *     calls a script makes. They answer `302`, and the cookie is the payload. A fetch from
- *     `ouroboros-ui` would be pointless — the browser has to visit github.com in its own
- *     address bar for a person to see the consent screen.
- *   * `POST logout` answers `204`. There is nothing to say; the `Set-Cookie` that removes
- *     the session is the whole of the answer.
+ * ---
  *
- * Three of the four are `@Public()`, and the fourth deliberately is not: `GET me` is the
+ * **Signing in is not here any more, and is not forwarded from here either.**
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) retired #33's flow, and this is
+ * where the issue's third bullet — *forward to `/api/auth/*`, or remove* — was decided:
+ * `GET github` and `GET github/callback` are **removed**. Two reasons, and the first is
+ * mechanical:
+ *
+ *   * **There is nothing to forward to.** BetterAuth begins a social sign-in at
+ *     `POST /api/auth/sign-in/social`, which answers `200` with the provider's authorization
+ *     URL in a JSON body for the caller to follow. A `GET` that `302`-ed to it would send a
+ *     browser to a route that does not answer `GET`, and one that redirected to github.com
+ *     itself would mean composing the `state` here — which is the handshake this issue
+ *     exists to stop implementing twice.
+ *   * **The callback is registered on github.com, not chosen by us.** It is
+ *     `${BETTER_AUTH_URL}/api/auth/callback/github` now. A shim under `/api/v1` would be a
+ *     URL nothing redirects to, kept alive so that a route table looks unchanged.
+ *
+ * So the sign-in surface moved wholesale, and `ouroboros-ui` re-points at it in
+ * [#718](https://github.com/NobuData/ouroboros/issues/718) — which is the interval in which
+ * the login page's GitHub button does not work. That is a real gap and it is deliberate:
+ * the alternative is two sign-in paths in one service, which is the failure mode #702 was
+ * written to prevent. `src/auth/auth.routes.ts` is where the replacement routes are
+ * written down.
+ *
+ * ---
+ *
+ * Of the two routes left, one is `@Public()` and one deliberately is not. `GET me` is the
  * route that answers *who is signed in*, so it is the one that must require being signed
- * in. Sign-in and sign-out cannot require a session — one has not got one yet and the
- * other is disposing of one that may already have expired.
+ * in; `POST logout` cannot require a session, because it is disposing of one that may
+ * already have expired.
  *
  * `GET me` is also `@TenantOptional()`, which is the other half of the same thought: it
  * needs a *person* and cannot need a *workspace*, because the workspaces are what it
  * answers with.
  */
 
-import { Controller, Get, HttpStatus, Post, Query, Req, Res } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Post, Res } from "@nestjs/common";
 
-import { API_BASE_PATH } from "../../application";
 import { AppConfigService } from "../config/config.service";
 import type { User } from "../db/schema";
 import { AuthService } from "./auth.service";
 import type { SessionResource } from "./auth.resources";
-import { GithubCallbackQuery } from "./auth.dto";
-import { expireCookie, parseCookies, serializeCookie } from "./cookies";
+import { expireCookie } from "./cookies";
 import { SET_COOKIE, type AuthResponse } from "./http";
-import { callbackUrl, handshakeCookieAttributes, HANDSHAKE_COOKIE } from "./oauth";
 import { TenantOptional } from "../tenancy/tenant.decorators";
-import { CurrentUser, type PrincipalRequest } from "./principal";
+import { CurrentUser } from "./principal";
 import { Public } from "./public.decorator";
 import { sessionCookieAttributes, SESSION_COOKIE } from "./session";
-
-/** The status every redirect here answers with. */
-export const REDIRECT_STATUS = HttpStatus.FOUND;
 
 @Controller("auth")
 export class AuthController {
   /**
-   * @param auth - The rules: the handshake, the identity upsert, the session.
-   * @param config - For this service's own origin and the UI's, and for whether `Secure`
-   *   goes on the cookies.
+   * @param auth - The rules: the session, and what a signed-in person is told about
+   *   themselves.
+   * @param config - For whether `Secure` goes on the cookie.
    */
   constructor(
     private readonly auth: AuthService,
     private readonly config: AppConfigService,
   ) {}
-
-  /**
-   * `GET /api/v1/auth/github` — begin sign-in.
-   *
-   * Answers a redirect to github.com carrying the client id, the scopes, the anti-CSRF
-   * state and the PKCE challenge, and sets the handshake cookie holding the state and the
-   * verifier. It is a `GET` because a browser is navigated to it by a link on the sign-in
-   * page; nothing is created until the callback.
-   *
-   * @param response - Where the cookie and the redirect are written.
-   */
-  @Public()
-  @Get("github")
-  start(@Res() response: AuthResponse): void {
-    const started = this.auth.startSignIn(this.callbackUri());
-
-    response.setHeader(
-      SET_COOKIE,
-      serializeCookie(
-        HANDSHAKE_COOKIE,
-        started.handshake,
-        handshakeCookieAttributes(this.config.isProduction),
-      ),
-    );
-    response.redirect(REDIRECT_STATUS, started.authorizeUrl);
-  }
-
-  /**
-   * `GET /api/v1/auth/github/callback` — finish sign-in.
-   *
-   * Verifies the handshake, exchanges the code, resolves the person and lands the session
-   * cookie, then sends the browser to `OURO_UI_URL`. The handshake cookie is cleared in
-   * the same answer: it has served its purpose, and a used one left in the browser is a
-   * value that outlives the trip it was for.
-   *
-   * @param query - GitHub's `code` and `state`, validated by the global pipe.
-   * @param request - For the handshake cookie.
-   * @param response - Where the cookies and the redirect are written.
-   */
-  @Public()
-  @Get("github/callback")
-  async callback(
-    @Query() query: GithubCallbackQuery,
-    @Req() request: PrincipalRequest,
-    @Res() response: AuthResponse,
-  ): Promise<void> {
-    const session = await this.auth.completeSignIn(
-      query.code,
-      query.state,
-      handshakeFrom(request),
-      this.callbackUri(),
-    );
-
-    response.setHeader(SET_COOKIE, [
-      serializeCookie(SESSION_COOKIE, session, sessionCookieAttributes(this.config.isProduction)),
-      expireCookie(HANDSHAKE_COOKIE, handshakeCookieAttributes(this.config.isProduction)),
-    ]);
-    response.redirect(REDIRECT_STATUS, this.config.uiUrl);
-  }
 
   /**
    * `GET /api/v1/auth/me` — who is signed in, and where they belong.
@@ -160,28 +116,4 @@ export class AuthController {
     );
     response.status(HttpStatus.NO_CONTENT).end();
   }
-
-  /**
-   * The absolute callback URL, built from configuration.
-   *
-   * Both routes need it and it must be *identical* in both: GitHub compares the
-   * `redirect_uri` presented at the exchange with the one the authorize request carried,
-   * and a difference of one character is a refused exchange.
-   *
-   * @returns The URL, from `OURO_REST_URL` and the API base path.
-   */
-  private callbackUri(): string {
-    return callbackUrl(this.config.restUrl, API_BASE_PATH);
-  }
-}
-
-/**
- * The handshake cookie's value out of a request.
- *
- * @param request - The request being handled.
- * @returns The value, or `undefined` when the browser sent none — which is what a callback
- *   somebody else composed looks like.
- */
-function handshakeFrom(request: PrincipalRequest): string | undefined {
-  return parseCookies(request.headers?.cookie).get(HANDSHAKE_COOKIE);
 }

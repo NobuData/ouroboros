@@ -217,6 +217,22 @@ DOC
 
   printf 'select 1;\n' > "$fixture/ouroboros-db/migrations/V000__bootstrap.sql"
 
+  # The BetterAuth core migration (#706), because two of the script's checks are about it:
+  # that `user` — a reserved word — is quoted at every reference, and that the migration
+  # creating it exists to be checked at all. Reduced to the one statement those two read,
+  # and carrying a comment mentioning "the user" in prose so the check's comment-stripping
+  # is exercised by the conforming tree rather than only by a break below.
+  cat > "$fixture/ouroboros-db/migrations/V004__betterauth_core.sql" <<'SQL'
+-- The person, as the library holds them. Prose about the user goes here.
+create table ouroboros."user" (
+  "id" text not null primary key
+);
+
+create table ouroboros.session (
+  "userId" text not null references ouroboros."user" ("id") on delete cascade
+);
+SQL
+
   # The Flyway project: the settings the compose stack no longer spells out, the overlay
   # that is the only way to a `clean`, and the overlay that is the only way to seed data.
   # What Flyway makes of them is exercised by the module's own suite; here they only have
@@ -349,6 +365,31 @@ check_break() {
     pass "$description"
   else
     fail "$description (status $status, no FAIL matching /$pattern/)"
+  fi
+}
+
+# check_holds DESCRIPTION MUTATION — the inverse: apply MUTATION to a fresh fixture and
+# assert the run still passes.
+#
+# For the checks that are patterns rather than exact matches. A regex written to catch an
+# unquoted `user` can just as easily catch `users`, `user_id` or the word in a sentence,
+# and a check that reports things that are fine is one somebody deletes. What must *not*
+# fail is worth a case of its own, beside what must.
+check_holds() {
+  description=$1
+  mutation=$2
+
+  root="$work/case"
+  rm -rf "$root"
+  make_fixture "$root"
+  eval "$mutation"
+
+  run_verify "$root"
+  if [ "$status" -eq 0 ]; then
+    pass "$description"
+  else
+    fail "$description (status $status)
+$(printf '%s\n' "$out" | grep -E '^  FAIL ' | sed 's/^/    /')"
   fi
 }
 
@@ -612,6 +653,64 @@ check_break 'an empty migrations directory is reported' \
 check_break 'a misnamed migration is reported' \
   'follows the migration naming rule' \
   'mv "$root/ouroboros-db/migrations/V000__bootstrap.sql" "$root/ouroboros-db/migrations/V1__Bootstrap.sql"'
+
+# `user` is a reserved word (#706), and the mistake it guards against is one letter from
+# `users`, which is a real table that would answer. Each spelling a migration could reach
+# for is broken separately, because the check is a regex and a regex that catches one
+# keyword and misses the next is the failure mode worth having a test for.
+check_break 'a table created under the unquoted reserved word is reported' \
+  'quotes every reference to the reserved-word table' \
+  'sed -i "s|create table ouroboros\\.\"user\"|create table ouroboros.user|" "$root/ouroboros-db/migrations/V004__betterauth_core.sql"'
+
+check_break 'a foreign key naming the unquoted reserved word is reported' \
+  'quotes every reference to the reserved-word table' \
+  'sed -i "s|references ouroboros\\.\"user\"|references ouroboros.user|" "$root/ouroboros-db/migrations/V004__betterauth_core.sql"'
+
+check_break 'a select from the unquoted reserved word is reported' \
+  'quotes every reference to the reserved-word table' \
+  'printf "select 1 from ouroboros.user;\n" >> "$root/ouroboros-db/migrations/V004__betterauth_core.sql"'
+
+# …and the rule must not fire on the things that merely look like it. `users` is V002's
+# table, `user_id` is its column, `"userId"` is BetterAuth's, and prose in a comment is
+# not SQL — a check that flagged any of these would be turned off within a week.
+check_holds 'the V002 table, the snake_case column and the camelCase one are left alone' \
+  'printf "select user_id from ouroboros.users;\nselect \"userId\" from ouroboros.session;\n-- a comment about the user table\n" >> "$root/ouroboros-db/migrations/V004__betterauth_core.sql"'
+
+# The rule above passes trivially on a tree whose migrations never mention the table, so
+# the migration that creates it has to be there to be checked.
+check_break 'a tree that has lost the BetterAuth migration is reported' \
+  'creates the BetterAuth user table under its quoted name' \
+  'rm "$root/ouroboros-db/migrations/V004__betterauth_core.sql"'
+
+# Roadmap decision A3: Flyway issues every DDL statement. BetterAuth''s own `migrate`
+# command would create these tables itself, and nothing may wire it up — in a package
+# script, a workflow, or one of ouroboros-db''s extensionless commands.
+check_break 'a package script that runs the library migrator is reported' \
+  'Flyway owns every DDL statement' \
+  'printf "{\n  \"scripts\": { \"db\": \"npx @better-auth/cli@1.4.21 migrate\" }\n}\n" > "$root/betterauth-wiring.json"'
+
+check_break 'a workflow that runs the library migrator behind flags is reported' \
+  'Flyway owns every DDL statement' \
+  'printf "run: npx @better-auth/cli --config src/auth/auth.config.ts migrate\n" > "$root/betterauth-wiring.yml"'
+
+check_break 'an extensionless script that runs the library migrator is reported' \
+  'Flyway owns every DDL statement' \
+  'printf "#!/bin/sh\nnpx @better-auth/cli migrate\n" > "$root/ouroboros-db/scripts/betterauth"'
+
+check_break 'a runner other than npx is reported too' \
+  'Flyway owns every DDL statement' \
+  'printf "pnpm dlx @better-auth/cli migrate\n" > "$root/ouroboros-db/scripts/betterauth"'
+
+# Prose naming both the CLI and the word `migrate` is how this repository *documents* the
+# rule — in this file, in `ouroboros-db/README.md` and in the roadmap — so flagging it
+# would make the rule unwritable. The runner is what tells the two apart.
+check_holds 'documentation saying the migrator is never run is left alone' \
+  'printf "Nothing may run @better-auth/cli migrate: it is for generate only — never migrate.\n" > "$root/docs/A3.md"'
+
+# `generate` is the command that *is* used, written down in ouroboros-rest/README.md with
+# the same runner and the same pin. Flagging it would ban the documented workflow.
+check_holds 'the generate command the schema is ported from is left alone' \
+  'printf "npx @better-auth/cli@1.4.21 generate --config src/auth/auth.config.ts\n" > "$root/docs/A3.md"'
 
 printf '\nFlyway project violations\n'
 
