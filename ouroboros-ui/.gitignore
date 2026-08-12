@@ -32,8 +32,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — real ones never enter git, the documented templates do. The negation is
+# load-bearing: `.env*` matches `.env.example` too, so without it this module's template
+# would be invisible to git and the file a developer is told to copy would not be there.
 .env*
+!.env.example
 
 # vercel
 .vercel

@@ -80,7 +80,19 @@ Development default port: **3000** (`PORT`).
 | `PORT` | HTTP listen port (unprefixed by convention — see [conventions](../docs/CONVENTIONS.md)) |
 | `OURO_REST_URL` | Base URL of `ouroboros-rest`, e.g. `http://localhost:4000` |
 
-Copy the repo-root `.env.example` and never commit a populated `.env`.
+Copy [`.env.example`](.env.example) — **this module's**, not the repo-root one — and never
+commit a populated `.env`:
+
+```bash
+cp ouroboros-ui/.env.example ouroboros-ui/.env
+```
+
+The other services read the repo-root `.env` and then their own
+([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)); this
+one reads neither by itself, because Next.js does the loading and loads `.env` files from
+the project directory only. `PORT` is the exception in the other direction: the `next` CLI
+resolves the listen port before it loads that file, so pass it on the command line
+(`PORT=3001 yarn dev`) rather than setting it there.
 
 [`app/env.ts`](app/env.ts) reads and validates `OURO_REST_URL` — absolute, `http`/`https`,
 trailing slash trimmed — and throws naming the variable when it is not. It is a function
