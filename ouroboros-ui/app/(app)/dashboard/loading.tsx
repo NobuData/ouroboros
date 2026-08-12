@@ -1,3 +1,5 @@
+import { Card } from "@/app/ui";
+
 import "@/app/dashboard/dashboard.css";
 
 /**
@@ -30,13 +32,16 @@ export default function Loading() {
 
       <div className="dash-grid" aria-hidden>
         {SPANS.map((span, index) => (
-          <div className={`dash-card dash-col--${span}`} key={index}>
+          // A plain card, not a region: it names nothing, and eight unnamed regions in the
+          // accessibility tree would be worse than the `aria-hidden` this grid already
+          // carries.
+          <Card className={`dash-col--${span}`} key={index}>
             <div className="dash-skeleton">
               <span className="dash-skeleton__bar dash-skeleton__bar--half" />
               <span className="dash-skeleton__bar dash-skeleton__bar--wide" />
               <span className="dash-skeleton__bar dash-skeleton__bar--half" />
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

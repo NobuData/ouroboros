@@ -1,3 +1,5 @@
+import { Button, type ButtonTone, Eyebrow } from "@/app/ui";
+
 import { type EmptyPanel, EmptyCard } from "./empty-card";
 import { StatCard } from "./stat-card";
 import { SystemCard } from "./system-card";
@@ -43,21 +45,15 @@ export function DashboardScreen({
     <main className="dash">
       <div className="dash__head">
         <div className="dash__headings">
-          <p className="dash__eyebrow">Mission Control</p>
+          <Eyebrow>Mission Control</Eyebrow>
           <h1 className="dash__title">{workspace.displayName}</h1>
           <p className="dash__sub">{pageSubline(workspace, user.displayName)}</p>
         </div>
         <div className="dash__actions">
           {ACTIONS.map((action) => (
-            <button
-              className={`dash-btn dash-btn--${action.tone}`}
-              key={action.id}
-              type="button"
-              aria-disabled="true"
-              title={action.why}
-            >
+            <Button key={action.id} tone={action.tone} reason={action.why}>
               {action.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -83,8 +79,12 @@ interface Action {
   /** What the control says. */
   readonly label: string;
   /** Which of the button treatments it takes. */
-  readonly tone: "ghost" | "primary";
-  /** Why it cannot act yet — its tooltip, and the whole of its honesty. */
+  readonly tone: Extract<ButtonTone, "ghost" | "primary">;
+  /**
+   * Why it cannot act yet — its tooltip, and the whole of its honesty. Passing it to
+   * {@link Button} as `reason` is what makes the control inert: there is no way to switch
+   * one off in this product without saying what is missing.
+   */
   readonly why: string;
 }
 

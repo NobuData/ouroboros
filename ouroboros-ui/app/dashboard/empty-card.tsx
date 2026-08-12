@@ -1,3 +1,5 @@
+import { Card, CardHead, EmptyState } from "@/app/ui";
+
 /**
  * A panel of the mockup that has no data source yet, drawn as a designed empty state.
  *
@@ -11,6 +13,10 @@
  * That is deliberately not the same thing as *zero*. "No loops have run" would be a claim
  * about the loop engine; "nothing here can tell you yet" is the truth. The copy each card
  * passes says the second.
+ *
+ * Both shapes are #46 primitives: the card and its head, and the empty state inside it.
+ * What this component contributes is the pairing and the column span, which are the
+ * dashboard's.
  */
 
 /** One future panel: what it is called, what it will hold, and what has to land first. */
@@ -37,19 +43,18 @@ export function EmptyCard({ panel }: Readonly<{ panel: EmptyPanel }>) {
   const titleId = `dash-${panel.id}-title`;
 
   return (
-    <section
-      className={`dash-card dash-col--${panel.span}`}
+    <Card
+      as="section"
+      fill
+      className={`dash-col--${panel.span}`}
       aria-labelledby={titleId}
     >
-      <header className="dash-card__head">
-        <h2 className="dash-card__title" id={titleId}>
-          {panel.title}
-        </h2>
-      </header>
-      <div className="dash-empty">
-        <p className="dash-empty__title">{panel.headline}</p>
-        <p className="dash-empty__note">{panel.note}</p>
-      </div>
-    </section>
+      <CardHead title={panel.title} titleId={titleId} />
+      {/*
+        `fill` on both: the grid stretches every card in a row to the tallest, so without it
+        the panel would be a short dashed box floating at the top of a tall card.
+      */}
+      <EmptyState title={panel.headline} note={panel.note} fill />
+    </Card>
   );
 }

@@ -15,6 +15,9 @@ import { describe, expect, it } from "vitest";
 const UI = join(import.meta.dirname, "..", "..");
 const SHEET = readFileSync(join(UI, "app", "login", "login.css"), "utf8");
 
+/** The sheet without its prose, so a rule cannot be found inside a comment. */
+const CODE = SHEET.replace(/\/\*[\s\S]*?\*\//g, " ");
+
 describe("the lockup's reserved box", () => {
   it("declares the aspect ratio of the asset it is reserving space for", () => {
     // The pair is absolutely stacked in one grid cell, so nothing in the flow measures them:
@@ -55,15 +58,44 @@ describe("the light/dark lockup pair", () => {
 });
 
 describe("the step nobody can act on yet", () => {
-  it("recedes by surface rather than by opacity, so its prose still clears AA", () => {
-    // The mockup drops this card to `opacity: 0.66`. Every contrast pair the token sheet
-    // publishes is measured against a surface, and a translucent layer is not one of them —
-    // so a card carrying sentences a signed-out visitor is meant to read cannot be dimmed.
-    const preview = /\.login-card--preview\s*\{([^}]*)\}/.exec(SHEET);
+  it("dims nothing anywhere on this screen", () => {
+    // The mockup drops step 2 to `opacity: 0.66` before sign-in. Every contrast pair the
+    // token sheet publishes is measured against a surface, and a translucent layer is not
+    // one of them — so a card carrying sentences a signed-out visitor is meant to read
+    // cannot be dimmed. Since #46 the recession is the `Card` primitive's `inset` surface,
+    // chosen in `app/login/workspace-card.tsx` and asserted in that component's suite; what
+    // this sheet owes is not to have reintroduced the dimming by another route.
+    // The one opacity on this screen is the lockup pair's cross-fade, which is how the
+    // brand mark follows the palette (above) rather than a surface being dimmed.
+    for (const [, selector] of CODE.matchAll(/([^{}]*)\{[^{}]*opacity:[^{}]*\}/g)) {
+      expect(selector).toContain("__mark");
+    }
+  });
+});
 
-    expect(preview).not.toBeNull();
-    expect(preview?.[1]).not.toMatch(/opacity/);
-    expect(preview?.[1]).toMatch(/background:\s*var\(--/);
+describe("what this sheet no longer owns", () => {
+  it("defines no card, button, chip, field, switch or empty state of its own", () => {
+    // #46 moved all six into `app/ui/ui.css`, and the value of that move is entirely in
+    // there being one definition rather than one per screen. What is left here is this
+    // screen's frame, its brand panel, its rows and its monogram — the shapes no other
+    // screen has.
+    for (const block of [
+      ".login-card",
+      ".login-btn",
+      ".login-pill",
+      ".login-field__",
+      ".login-switch ",
+      ".login-empty",
+    ]) {
+      expect(CODE, `${block} is the primitives' now`).not.toContain(block);
+    }
+  });
+
+  it("styles no primitive of the design system from here", () => {
+    // Reaching into `.ou-*` from a page sheet would fork the design system on one screen,
+    // in the file nobody would think to look in. A page places a primitive by passing its
+    // own class to it, never by restyling the primitive's own.
+    expect(CODE).not.toContain(".ou-");
   });
 });
 

@@ -1621,7 +1621,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | 5.5 | #43 | 🟢 Done | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
 | 5.6 | #44 | 🟢 Done | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
 | 5.7 | #45 | 🟢 Done | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
-| 5.8 | #46 | 🟡 Open | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
+| 5.8 | #46 | 🟢 Done | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.9 | #47 | 🟢 Done | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
 | 5.10 | #48 | 🟡 Open | ouroboros-ui: [5.10] Component workshop (Storybook/Ladle) | Isolated component playground with theme switching | v2, ui | N (after 5.8) | N | M | ouroboros-ui |
 | 5.11 | #49 | 🟡 Open | ouroboros-ui: [5.11] Placeholder routes for remaining mockup screens | Nav-complete stub pages for screens 03–21 | v2, ui | N (after 5.3) | N | S | ouroboros-ui |
@@ -1912,7 +1912,49 @@ openapi.json (4.8) ─ yarn api:sync ─▶ generated types ─▶ client wrappe
 
 ### Issue 5.8 — ouroboros-ui: [5.8] UI component primitives
 
-> **GitHub issue:** #46 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #46 · **Status:** 🟢 Done · **Parent epic:** #5
+>
+> Delivered: [`ouroboros-ui/app/ui/`](../ouroboros-ui/app/ui) — eight primitives over one
+> token-driven sheet ([`ui.css`](../ouroboros-ui/app/ui/ui.css)), and both existing screens
+> rebuilt on them. Button, Card (+ its head), Chip (+ the effort chip), Tag & Badge, Table,
+> TextField / SelectField / Toggle, EmptyState and Eyebrow: `docs/mockups/assets/ouroboros.css`
+> expressed in the #16 tokens, so the design system is one definition rather than one per
+> screen.
+>
+> **The decision the issue left open is plain CSS**, not CSS Modules and not
+> vanilla-extract. The module already had three token-driven global sheets, one naming
+> convention inside them and one test walking every `.css` file for a colour literal; a
+> fourth sheet in that shape keeps all of it true, while hashed class names would make the
+> design system unreadable in devtools and unassertable from the sheet tests this module
+> relies on. Every class is prefixed `ou-`, and a page places a primitive by passing its own
+> class rather than by restyling the primitive's.
+>
+> Two shapes joined the issue's list. **Eyebrow**, because both screens already had the
+> same seven declarations for the caption above a title — the duplication this issue exists
+> to stop. And **Table carries its own horizontal scroll container**, because the content
+> pane is the only scroll container in the product and one table without that wrapper is
+> enough to start the whole pane scrolling sideways; making it part of the primitive turns a
+> rule somebody has to remember into one nobody can forget.
+>
+> Three decisions are worth carrying forward. **A control that cannot act takes a
+> `reason`, not a boolean** — there is no way to switch a button off without saying what is
+> missing, and the primitive sets `aria-disabled` (not `disabled`, which would drop the
+> explanation out of the tab order) and suppresses the handler. **A badge never renders a
+> zero**, because a count of nothing is a claim that something is waiting. **An empty state
+> recedes by surface, never by opacity**, since every contrast pair the token sheet
+> publishes is measured against a surface.
+>
+> The tests are per primitive and in both palettes. What that can prove is stated in
+> [`__tests__/helpers/palettes.tsx`](../ouroboros-ui/__tests__/helpers/palettes.tsx): jsdom
+> applies no stylesheet, so a test cannot read a computed colour — what it *can* prove, and
+> does, is that a primitive expresses the theme entirely in CSS, rendering byte-identical
+> markup under both. Whether the dark palette is correct is
+> [`verify-tokens.sh`](../scripts/verify-tokens.sh)'s question, answered where the values
+> are.
+>
+> The shell's own primitives (ShellHeader, SidebarNav, ContentPane, StickyBar, PageSubnav)
+> join this set with CP.1/CP.2/CP.4 (#646); the isolated playground for all of them is
+> **#48**.
 
 - **Problem Statement:** Mockup styling lives in per-page CSS; the app needs a small
   reusable primitive set before screens multiply, or drift sets in immediately.

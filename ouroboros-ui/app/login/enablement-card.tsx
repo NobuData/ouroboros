@@ -1,6 +1,7 @@
 import type { Enablement, OrgEnablement } from "@/app/api/enablement";
 import { type Membership, isAdminRole } from "@/app/api/membership";
 import { DASHBOARD_PATH } from "@/app/paths";
+import { Button, Card, Chip, EmptyState, Eyebrow } from "@/app/ui";
 
 import { setOrgEnabled, setRepoEnabled } from "./actions";
 import { APP_NOTE, STEP_TWO_ID, STEP_TWO_LEDE, STEP_TWO_TITLE } from "./copy";
@@ -49,12 +50,12 @@ export function EnablementCard({
   const mayAdminister = isAdminRole(membership.role);
 
   return (
-    <section className="login-card" aria-labelledby={STEP_TWO_ID}>
-      <p className="login-card__eyebrow">Step 2 · {membership.slug}</p>
-      <h2 className="login-card__title login-card__title--sub" id={STEP_TWO_ID}>
+    <Card as="section" tone="ground" size="lg" aria-labelledby={STEP_TWO_ID}>
+      <Eyebrow>Step 2 · {membership.slug}</Eyebrow>
+      <h2 className="login-step__title login-step__title--sub" id={STEP_TWO_ID}>
         {STEP_TWO_TITLE}
       </h2>
-      <p className="login-card__lede">{STEP_TWO_LEDE}</p>
+      <p className="login-step__lede">{STEP_TWO_LEDE}</p>
 
       {!mayAdminister && (
         <p className="login-note login-note--faint" id={READ_ONLY_ID}>
@@ -63,11 +64,11 @@ export function EnablementCard({
       )}
 
       {enablement.orgs.length === 0 ? (
-        <p className="login-empty">
-          No GitHub organisations are recorded in {membership.displayName} yet. They arrive
-          with the GitHub App installation; until then this list is empty and the loop has
-          nothing to work in.
-        </p>
+        <EmptyState
+          variant="flush"
+          className="login-step__empty"
+          note={`No GitHub organisations are recorded in ${membership.displayName} yet. They arrive with the GitHub App installation; until then this list is empty and the loop has nothing to work in.`}
+        />
       ) : (
         <ul className="login-rows">
           {enablement.orgs.map((entry) => (
@@ -93,10 +94,10 @@ export function EnablementCard({
         guarantees the dashboard is rendered against the workspace cookie as it now stands
         rather than against a router entry seeded before the last toggle.
       */}
-      <a className="login-btn login-btn--primary" href={DASHBOARD_PATH}>
+      <Button tone="primary" size="lg" block href={DASHBOARD_PATH}>
         Enter mission control →
-      </a>
-    </section>
+      </Button>
+    </Card>
   );
 }
 
@@ -121,7 +122,7 @@ function OrgRow({
         <span className="login-row__meta">
           <span className="login-row__name">
             {org.login}
-            {org.enabled && <span className="login-pill login-pill--ok">on</span>}
+            {org.enabled && <Chip tone="ok">on</Chip>}
           </span>
           <span className="login-row__detail">{repoSummary(entry)}</span>
         </span>

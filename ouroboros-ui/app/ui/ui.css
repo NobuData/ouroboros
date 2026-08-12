@@ -1,0 +1,646 @@
+/*
+ * The UI component primitives (#46) — the mockups' design system as one stylesheet.
+ *
+ * `docs/mockups/assets/ouroboros.css` is where every screen in `docs/mockups` gets its
+ * buttons, chips, cards, tables and fields. It was drawn against the dark palette with
+ * literal colours and pixel sizes, so it is a *design source*, not a stylesheet to copy:
+ * each of its declarations is written here against the token that means the same thing
+ * (`--border` → `--line`, `--mut` → `--ink-mut`, `--glow` → `--accent-glow`, `13px` →
+ * `--t-sm`), which is what makes a theme swap a redefinition rather than a restyle.
+ *
+ * Three rules this file is held to, all of them checked:
+ *
+ * 1. **No colour literal.** `app/tokens.css` is the only file in the module that may write
+ *    a colour down — `__tests__/styles.test.ts` fails the build on any other
+ *    (`docs/CONVENTIONS.md` § 6).
+ * 2. **No font size in px, and no length in px that the reader's font-size preference
+ *    should scale.** Every size is a token or a rem. Hairlines stay in px, because a
+ *    border that grows with the type is a different border.
+ * 3. **Every rule here is reachable from a component in `app/ui/`.** A class nobody renders
+ *    is a class nobody keeps correct — `__tests__/ui/ui-styles.test.ts` walks the sheet
+ *    and the modules together.
+ *
+ * ### Why one global sheet rather than CSS Modules
+ *
+ * The issue leaves the choice open between CSS Modules and vanilla-extract, with runtime
+ * CSS-in-JS ruled out. This module already has three token-driven global sheets
+ * (`app/globals.css`, `app/shell/shell.css`, and the two screens'), one convention for
+ * naming inside them, and one test that walks every `.css` file under `app/` looking for a
+ * colour literal. A fourth sheet in the same shape costs nothing and keeps all of that
+ * true; CSS Modules would hash these names, which would make the design system unreadable
+ * in devtools and unassertable from the sheet tests this module already relies on, and
+ * vanilla-extract adds a build plugin for a set of primitives that needs no computed style
+ * at all. So: plain CSS, one file, every class prefixed `ou-` so a page's own sheet can
+ * never collide with it.
+ *
+ * The prefix is the whole of the scoping story and it is deliberate: a page passes its own
+ * class to a primitive when it needs to place one (`className`), and the two names cannot
+ * clash because a page's classes are prefixed with the page's name.
+ */
+
+/* ============================================================ eyebrow */
+
+/*
+ * The caption above a title — the mockup's `.eyebrow`.
+ *
+ * It is here rather than in either screen because both screens had it: the login card's
+ * `Step 1 · Sign in` and the dashboard's `Mission Control` were the same seven
+ * declarations written twice, which is exactly the drift this issue exists to stop.
+ */
+
+.ou-eyebrow {
+  margin: 0 0 var(--sp-3);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+/* For a head that must not compete with the one beside it — a step nobody can act on yet. */
+.ou-eyebrow--quiet {
+  color: var(--ink-faint);
+}
+
+/* ============================================================ button */
+
+/*
+ * The mockup's `.btn`, in the three treatments the design system names: the default, the
+ * primary fill, the ghost, and the destructive one.
+ *
+ * Sizes are the mockup's own — `md` is its `.btn`, `sm` its `.btn.sm`, and `lg` the taller
+ * form the login screen's full-width calls to action use.
+ */
+
+.ou-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-8);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/*
+ * Every hover is guarded on `aria-disabled`, because that — not `disabled` — is how a
+ * control that cannot act is marked in this product (`docs/DESIGN_SYSTEM_APP_SHELL.md`
+ * § 3.5): a `disabled` button leaves the tab order and takes the explanation of why it
+ * cannot act with it. An unguarded hover would leave an inert control lighting up under
+ * the pointer.
+ */
+.ou-btn:hover:not([aria-disabled="true"]) {
+  border-color: var(--line-control);
+}
+
+/*
+ * The primary fill, exactly as `docs/DESIGN_TOKENS.md` specifies it: the accent gradient
+ * from its light stop to its deep one, its own ink, and the glow the sheet reserves for
+ * live things. Both label pairs are measured against WCAG AA in that document's contrast
+ * table.
+ */
+.ou-btn--primary {
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--accent-lift), var(--accent-deep));
+  color: var(--accent-ink);
+  box-shadow: 0 0 1.125rem -0.125rem var(--accent-glow);
+}
+
+.ou-btn--primary:hover:not([aria-disabled="true"]) {
+  box-shadow: 0 0 1.625rem 0 var(--accent-glow);
+}
+
+.ou-btn--ghost {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+}
+
+.ou-btn--danger {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.ou-btn--sm {
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--r-sm);
+  font-size: var(--t-xs);
+}
+
+.ou-btn--lg {
+  padding: var(--sp-6) var(--sp-8);
+}
+
+/* A call to action that owns its column, as both of the login screen's do. */
+.ou-btn--block {
+  width: 100%;
+}
+
+/*
+ * What an inert control looks like. It keeps its shape — this is what the action *will* be
+ * — and loses the contrast that invites a press. The glow goes with it: that treatment is
+ * reserved for live things, and a button that cannot be pressed wearing it is the screen
+ * contradicting itself.
+ */
+.ou-btn[aria-disabled="true"] {
+  box-shadow: none;
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+/* A filled treatment has to give up its fill as well as its glow, or it still reads live. */
+.ou-btn--primary[aria-disabled="true"],
+.ou-btn--danger[aria-disabled="true"] {
+  border-color: var(--line-strong);
+  background: var(--raised);
+}
+
+/*
+ * An icon inside a label — the GitHub mark, a chevron.
+ *
+ * Selected by element rather than by a class the caller has to know: an icon passed as a
+ * child comes from a component that has no business naming a button's internals, and the
+ * one declaration it needs is that a flexible label must not squeeze it.
+ */
+.ou-btn > svg {
+  flex: none;
+}
+
+/* ============================================================ card */
+
+/*
+ * The mockup's `.card`: the raised plane every panel in the product is drawn on.
+ *
+ * Three surfaces rather than one, because a card is defined by what it sits *on*. On the
+ * page it is `--surface`; inside an already-raised panel — the login screen's auth column —
+ * it is `--ground`; and a card whose interior is waiting rather than filled is `--inset`,
+ * the sheet's surface for a container rather than a plane.
+ */
+
+.ou-card {
+  padding: var(--sp-8);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.ou-card--ground {
+  background: var(--ground);
+}
+
+.ou-card--inset {
+  background: var(--inset);
+}
+
+.ou-card--lg {
+  padding: var(--sp-9);
+}
+
+/*
+ * A card whose body should take the height the grid gives the card.
+ *
+ * It is opt-in rather than the default because a flex column does not collapse the margins
+ * between its children, and a card of ordinary prose laid out that way would space its
+ * paragraphs differently from every other block of prose in the product.
+ */
+.ou-card--fill {
+  display: flex;
+  flex-direction: column;
+}
+
+.ou-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-7);
+}
+
+.ou-card__title {
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* Pushes whatever follows it in the head to the trailing edge. */
+.ou-card__spacer {
+  flex: 1;
+}
+
+/* ============================================================ chip */
+
+/*
+ * The mockup's `.pill`, `.effort` and `.pill.model` in one primitive: a small labelled
+ * marker carrying a state in its hue.
+ *
+ * Each tone is the token sheet's published triple for that hue — text-capable ink, a 35%
+ * border, a 10–12% fill — so a chip is legible on every surface in both palettes and no
+ * tone is a colour invented here.
+ *
+ * **Hue is never the only signal.** The sheet's own rule (`docs/DESIGN_TOKENS.md`
+ * § Status): a status surface pairs the colour with a word or a glyph, because the light
+ * and dark hues differ in lightness as well as hue and no reader should have to separate
+ * two of them by colour alone. Every chip carries its state in words; the dot below adds a
+ * shape.
+ */
+
+.ou-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ou-chip--accent {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.ou-chip--ok {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.ou-chip--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.ou-chip--err {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.ou-chip--model {
+  border-color: var(--model-line);
+  background: var(--model-tint);
+  color: var(--model);
+}
+
+/* A value rather than a word — a model name, an identifier, a duration. */
+.ou-chip--mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The effort chip: the mockup's square estimate marker, on the same tones.
+ *
+ * `min-width` so `XS` and `XL` occupy the same box and a column of them does not ripple.
+ */
+.ou-chip--effort {
+  justify-content: center;
+  min-width: 2rem;
+  padding: var(--sp-1) var(--sp-4);
+  border-radius: var(--r-sm);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
+}
+
+/*
+ * The dot repeats the chip's state in shape as well as in hue, so states are
+ * distinguishable without colour vision. It inherits `currentColor`, which is what keeps
+ * that true in both palettes without a second set of rules.
+ */
+.ou-chip__dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border-radius: var(--r-round);
+  background: currentColor;
+}
+
+/* The second shape: a ring, for a state that is *unknown* rather than reported. */
+.ou-chip__dot--ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* ============================================================ tag & badge */
+
+/*
+ * The mockup's `.tag`: a square, monospaced scrap of metadata carrying no state — a branch
+ * name, a label, a key. It has no tones on purpose. A tag that could be red would be a chip.
+ */
+
+.ou-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+/*
+ * The mockup's `.nav-badge`: a count attached to something else, never a control of its own.
+ *
+ * `min-width` plus centred text is what keeps `1` and `12` the same shape, and the tabular
+ * figures stop the box resizing as a count ticks.
+ */
+.ou-badge {
+  display: inline-block;
+  min-width: var(--sp-9);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ou-badge--accent {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.ou-badge--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+/* ============================================================ table */
+
+/*
+ * The mockup's `.tbl`, plus the wrapper the app shell requires around it.
+ *
+ * `docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.3: the content pane is the only scroll container in
+ * the product, so wide content scrolls sideways **inside its own box** — one table without
+ * that wrapper is all it takes to start the whole pane scrolling sideways. Making the
+ * wrapper part of the primitive rather than a rule to remember is the point of the table
+ * being a component at all.
+ */
+
+.ou-table-scroll {
+  overflow-x: auto;
+}
+
+.ou-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+}
+
+.ou-table th {
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wider);
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ou-table td {
+  padding: var(--sp-6);
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+/* The last hairline would draw the card's own edge twice. */
+.ou-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ou-table tbody tr:hover {
+  background: var(--accent-wash);
+}
+
+/* The caption names the table for a reader moving by landmark; it is not a heading. */
+.ou-table__caption {
+  margin-bottom: var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  text-align: left;
+}
+
+.ou-table__cell--mono {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* A column of figures reads down its last digit, and does not reflow as one changes. */
+.ou-table__cell--end {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ============================================================ fields */
+
+/*
+ * The mockup's `.field` / `.input` / `.switch`.
+ *
+ * The focus treatment is the one difference from the mockup, and it is deliberate: the
+ * mockup sets `outline: none` and draws its own halo, while this product has one focus ring
+ * for everything (`app/globals.css`), on the element the keyboard actually reached. So the
+ * ring stays and the field adds the accent boundary under it, rather than replacing a
+ * technique that is already consistent across every control in the application.
+ */
+
+.ou-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.ou-field__label {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.ou-field__hint {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.ou-input {
+  width: 100%;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-md);
+}
+
+.ou-input:focus-visible {
+  border-color: var(--accent);
+}
+
+.ou-input::placeholder {
+  color: var(--ink-faint);
+}
+
+/*
+ * A disabled input carries the real `disabled` rather than `aria-disabled`, unlike a
+ * button: a text box that accepts typing and then discards it is worse than one that does
+ * not, and an input has no explanation to keep in the tab order — its field's hint does.
+ */
+.ou-input:disabled {
+  cursor: not-allowed;
+}
+
+/* An identifier, a domain, a key: a value that is read character by character. */
+.ou-input--mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The switch. Shape and behaviour from the mockup; the two colours are the pair
+ * `docs/DESIGN_TOKENS.md` measures for exactly this — `--accent-deep` as the on-track,
+ * `--accent-panel-ink` as the knob on it.
+ *
+ * The track and the knob are the one place in this sheet where a length is neither a token
+ * nor derived from one: they are the mockup's own pixels, in rem so they still follow the
+ * reader's font-size preference.
+ */
+.ou-switch {
+  position: relative;
+  width: 2.375rem;
+  height: 1.3125rem;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  cursor: pointer;
+}
+
+.ou-switch::after {
+  content: "";
+  position: absolute;
+  top: 0.15625rem;
+  left: 0.1875rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--r-round);
+  background: var(--ink-mut);
+}
+
+.ou-switch[aria-checked="true"] {
+  background: var(--accent-deep);
+}
+
+.ou-switch[aria-checked="true"]::after {
+  left: 1.1875rem;
+  background: var(--accent-panel-ink);
+}
+
+.ou-switch[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ou-switch::after {
+    transition:
+      left 150ms ease,
+      background-color 150ms ease;
+  }
+}
+
+/* ============================================================ empty state */
+
+/*
+ * A surface with nothing on it yet, designed rather than blank.
+ *
+ * `docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5: a surface that is not ready is *labelled*, never
+ * dead and never a blank region. The well is `--inset` and the boundary is dashed, so the
+ * card around it still reads as a card while its interior reads as waiting — and the
+ * recession is a surface change rather than an opacity, because every contrast pair the
+ * token sheet publishes is measured against a surface and a translucent layer is not one of
+ * them.
+ */
+
+.ou-empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-10) var(--sp-8);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+/* Centred under a card's heading — the shape a panel waiting for its data takes. */
+.ou-empty--center {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Takes the height the card has left, so an empty panel is not a short box in a tall card. */
+.ou-empty--fill {
+  flex: 1;
+  min-height: 8rem;
+}
+
+/* A paragraph of explanation in the flow of a card, rather than a panel of its own. */
+.ou-empty--flush {
+  padding: var(--sp-8);
+}
+
+/* `margin: 0` because these are paragraphs: a user-agent block margin would be added to the
+   flex gap above and read as an uneven one. */
+.ou-empty__title {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-lg);
+  font-weight: 600;
+}
+
+.ou-empty__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The measure belongs to the centred panel, where the line length is the design's to
+   choose. In the flush form the card around it is already the measure, and a second one
+   would only wrap the prose narrower than the box it sits in. */
+.ou-empty--center .ou-empty__note {
+  max-width: 44ch;
+}

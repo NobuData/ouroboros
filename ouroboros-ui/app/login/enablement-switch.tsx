@@ -1,5 +1,12 @@
+import { Toggle } from "@/app/ui";
+
 /**
  * The on/off switch beside an organisation or a repository.
+ *
+ * The control itself is the #46 {@link Toggle}: a `<button role="switch">` with the shape,
+ * the states and the read-only treatment the design system gives every switch in the
+ * product. What this component adds is the one thing that is the login screen's own — how
+ * the press reaches the server.
  *
  * ### It is a form, not a checkbox
  *
@@ -11,25 +18,21 @@
  * is in, so a stale render — a second tab, a back button — asks for something specific
  * instead of inverting whatever the flag has become since.
  *
- * `display: contents` on the form (login.css) keeps it out of the row's layout: it is the
+ * `display: contents` on the form (`login.css`) keeps it out of the row's layout: it is the
  * transport, and it must not become a box.
- *
- * ### It announces as a switch
- *
- * `role="switch"` plus `aria-checked` is what makes a button announce its state; the label
- * is a visually hidden span, because the shape is 34 pixels of track and carries no text.
- * The row beside it names the organisation, and this names the action — "Enable
- * acme-robotics" — because the name of a control should say what pressing it does.
  *
  * ### A switch that may not be pressed still renders
  *
  * `member` and `viewer` may read a workspace and not administer it (`openapi.yaml`: the
- * mutations are `owner` and `admin`), so for them every switch here is a read-only
- * indicator: same shape, same state, `aria-disabled`, and the reason in its tooltip and its
- * accessible description. That is the design system's § 3.3 permission-limited state and its
- * § 3.5 honesty rule in one control — hiding the switches would leave a list that looks like
- * it has no settings, and a `disabled` button would drop the explanation out of the tab
- * order along with the control.
+ * mutations are `owner` and `admin`), so for them the switch is a read-only indicator: same
+ * shape, same state, `aria-disabled`, and the reason in its tooltip and its accessible
+ * description. That is the design system's § 3.3 permission-limited state and its § 3.5
+ * honesty rule in one control — hiding the switches would leave a list that looks like it
+ * has no settings, and a `disabled` button would drop the explanation out of the tab order
+ * along with the control.
+ *
+ * Its form goes with it: a read-only switch renders bare, so there is no form for a press
+ * to submit even if one reached the button.
  */
 
 /** How a switch is told what to do, and what it may say about it. */
@@ -64,30 +67,18 @@ export function EnablementSwitch({
 }: EnablementSwitchProps) {
   if (reason !== undefined) {
     return (
-      <button
-        type="button"
-        className="login-switch"
-        role="switch"
-        aria-checked={enabled}
-        aria-disabled="true"
-        aria-describedby={describedBy}
-        title={reason}
-      >
-        <span className="sr-only">{label}</span>
-      </button>
+      <Toggle checked={enabled} label={label} reason={reason} describedBy={describedBy} />
     );
   }
 
   return (
-    <form className="login-switch__form" action={action}>
+    <form className="login-switch-form" action={action}>
       {Object.entries(fields).map(([name, value]) => (
         <input type="hidden" name={name} value={value} key={name} />
       ))}
       {/* The state to move to, not the state it is in. */}
       <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
-      <button type="submit" className="login-switch" role="switch" aria-checked={enabled}>
-        <span className="sr-only">{label}</span>
-      </button>
+      <Toggle checked={enabled} label={label} type="submit" />
     </form>
   );
 }
