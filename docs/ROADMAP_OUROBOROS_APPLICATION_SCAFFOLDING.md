@@ -2071,7 +2071,7 @@ nav item ─▶ /insights ─▶ [shell]│ComingSoon: thumbnail + "Merge rate, 
 | 6.1 | #50 | 🟢 Done | ouroboros-engine: [6.1] FastAPI service scaffold | Python 3.12 + uv + ruff + pytest skeleton | mvp, engine | N (after 1.1) | Y | S | ouroboros-engine |
 | 6.2 | #51 | 🟢 Done | ouroboros-engine: [6.2] Health, version & internal auth | `/healthz`, `/v0/status`, shared-secret middleware | mvp, engine | N (after 6.1) | Y | S | ouroboros-engine |
 | 6.3 | #52 | 🟢 Done | ouroboros-engine: [6.3] Internal API contract v0 | Versioned contract + task echo stub consumed by 4.9 | mvp, engine, rest | N (after 6.2) | Y | M | ouroboros-engine, ouroboros-rest |
-| 6.4 | #53 | 🟡 Open | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
+| 6.4 | #53 | 🟢 Done | ouroboros-engine: [6.4] Dockerfile & container build | Slim production image | mvp, engine, infra | N (after 6.2) | Y | S | ouroboros-engine |
 | 6.5 | #54 | 🟡 Open | ouroboros-engine: [6.5] Task execution skeleton (queue & worker model) | In-process task registry/queue shape for future loop work | v2, engine | N (after 6.3) | N | L | ouroboros-engine |
 
 ### Issue 6.1 — ouroboros-engine: [6.1] FastAPI service scaffold
@@ -2219,12 +2219,28 @@ REST 4.9 ──POST /v0/tasks/echo {task_kind, payload}──▶ engine
 
 ### Issue 6.4 — ouroboros-engine: [6.4] Dockerfile & container build
 
-> **GitHub issue:** #53 · **Status:** 🟡 Open · **Parent epic:** #6
+> **GitHub issue:** #53 · **Status:** 🟢 Done · **Parent epic:** #6
 
 - **Problem Statement:** Compose (7.1) needs the engine as a container.
 - **Solution/Scope:** Multi-stage uv-based Dockerfile (`python:3.12-slim`): locked
-  dependency install, non-root, `HEALTHCHECK` on `/healthz`, uvicorn entrypoint.
-- **Acceptance Criteria:** Builds; healthy in compose; image < 250 MB.
+  dependency install, non-root, `HEALTHCHECK` on `/healthz`, uvicorn entrypoint. What
+  moves between the stages is one directory — `/app/.venv` — built by `uv sync --locked
+  --no-dev`, first without the project so the dependency layer is keyed on the lockfile
+  alone, then with `--no-editable` so the project is *installed* rather than copied. That
+  last flag is what makes three documented behaviours true in the image: `__version__`
+  reads real distribution metadata, `openapi.json` is force-included beside the package
+  and served from there, and `settings._ENV_FILES` is empty — a container is configured
+  by its environment by construction, not merely because the ignore file kept `.env` out.
+  The runtime carries no package manager, owns its site-packages as root while running as
+  `engine`, and probes liveness with the interpreter it already has (`python:3.12-slim`
+  ships neither `curl` nor `wget`). The context is this module's own directory, per
+  § 5 — the first image in the repo for which that is true of a *service* rather than a
+  task. `tests/test_container.py` asserts every property decided in the repository,
+  reading the probe path, the port and the packaged files out of the code and the
+  manifest rather than restating them, because `ci/engine` cannot run a `docker build`.
+- **Acceptance Criteria:** Builds; healthy in compose; image < 250 MB. **Met:** built
+  and run — healthy, non-root (uid 999), `/healthz` open and `/v0/status` 401 without the
+  key — at 55 MB to pull and 233 MB unpacked. The compose leg is 7.1's to re-verify.
 - **Parallelism/Dependencies:** Needs 6.2. Blocks 7.1.
 - **Technical Stack:** Docker, uv, python:3.12-slim.
 - **Epic:** 6
@@ -2579,7 +2595,13 @@ written down in [`CONVENTIONS.md § 5`](CONVENTIONS.md#5-containers), and **#36*
 other workspace image — has since followed both: it is **done**, non-root, healthy on
 `/health/live`, 226 MB unpacked. It adds one rule of its own for every module with no
 bundler behind it, the production-only dependency tree built beside the full one out of
-the same lockfile, recorded in the same section. **#53** is a `uv` project and builds
-from its own directory. **#55** (full-stack compose) is what runs them.
+the same lockfile, recorded in the same section. **#53** is **done** and is the third
+image: a `uv` project, so it builds from its own directory rather than from the root,
+non-root, healthy on `/healthz`, 233 MB unpacked against a 250 MB budget. It adds the
+rule every Python module after it inherits — the project is *installed* into the venv the
+stages hand along, never copied in as a source tree, because that is what makes an
+installed engine's metadata, its packaged specification and its refusal to read an `.env`
+true in the image rather than only in a checkout. **#55** (full-stack compose) is what
+runs them.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

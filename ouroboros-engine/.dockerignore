@@ -1,0 +1,38 @@
+# ouroboros-engine — what the production image's build context may contain.
+#
+# The context is this directory (see Dockerfile), so this is the file BuildKit reads for
+# it — a `Dockerfile.dockerignore` would be read by nothing here, and a root
+# `.dockerignore` would apply to every image in the repository. ../docs/CONVENTIONS.md
+# § 5 names this module as one of the three that build from their own directory: nothing
+# in this image installs through the workspace lockfile at the root.
+#
+# An allow-list rather than a deny-list: `*` first, then the files the build reads. A
+# deny-list has to be extended every time something is added to this directory, and the
+# first thing it would let through is `.env` — a real shared secret, in a layer, in a
+# published image.
+#
+# Excluded by the `*` and worth naming for the reader: `.env` and `.env.example` (a
+# container is configured by its environment — Dockerfile, runtime stage), `.venv/` (a
+# host-resolved environment, and the image builds its own), `tests/` (they belong to CI,
+# not to a production image), `package.json` (the workspace adapter, which is `yarn dev`'s
+# way in and not this image's), and the caches `pytest` and `ruff` leave behind.
+
+*
+
+# The manifest and the lockfile — what `uv sync --locked` resolves and installs from.
+!pyproject.toml
+!uv.lock
+
+# The package itself. Installed as a wheel rather than copied into the runtime, so this
+# is read by the build stage alone.
+!src/
+
+# Declared as the project's readme in pyproject.toml, which makes it a file the wheel
+# build fails without rather than prose the image happens to carry.
+!README.md
+
+# The API specification. Both files are force-included into the package by the wheel
+# build: the JSON is what the service loads and serves at /openapi.json, and the YAML is
+# the authoritative document it was rendered from.
+!openapi.yaml
+!openapi.json
