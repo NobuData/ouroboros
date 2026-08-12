@@ -8,14 +8,14 @@
 > ([#42](https://github.com/NobuData/ouroboros/issues/42)), wrapped in the
 > [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)),
 > holding a [typed API client](#the-api-client) generated from the REST contract
-> ([#43](https://github.com/NobuData/ouroboros/issues/43)), and serving its
-> [first real screen](#sign-in--tenancy) — sign-in and workspace selection
-> ([#44](https://github.com/NobuData/ouroboros/issues/44)) —
+> ([#43](https://github.com/NobuData/ouroboros/issues/43)), serving
+> [sign-in and workspace selection](#sign-in--tenancy)
+> ([#44](https://github.com/NobuData/ouroboros/issues/44)) and, behind it, the
+> [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
-> ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders *inside* the
-> shell is still a placeholder: the dashboard
-> ([#45](https://github.com/NobuData/ouroboros/issues/45)) is the screen that replaces
-> it.
+> ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
+> page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
+> it is labelled *soon* rather than linked.
 
 ## Purpose
 
@@ -179,11 +179,15 @@ ouroboros-ui/
 │   │   ├── access.ts        #   the gate: currentAccess() / requireWorkspace()
 │   │   ├── tenants.ts       #   tenants.list() / tenants.read()
 │   │   ├── session.ts       #   session.read() — GET /auth/me
+│   │   ├── members.ts       #   members.list() — the dashboard's count
 │   │   ├── orgs.ts          #   orgs.list() / orgs.setEnabled()
 │   │   ├── repos.ts         #   repos.list() / repos.setEnabled()
-│   │   └── enablement.ts    #   the two composed into what one screen reads
+│   │   ├── enablement.ts    #   the two composed into what one screen reads
+│   │   ├── engine.ts        #   engine.status() — GET /engine/status
+│   │   └── health.ts        #   readReadiness() — the one read not via the client
 │   ├── shell/               # the app shell: header, sidebar, content pane
 │   ├── login/               # the sign-in & tenancy screen's components
+│   ├── dashboard/           # the dashboard's reader, decisions, components, sheet
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
@@ -197,7 +201,9 @@ ouroboros-ui/
 ```
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
-contribute nothing to the URL, so the dashboard is `/` and sign-in is `/login`. `(app)`
+contribute nothing to the URL, so the dashboard is `/dashboard` and sign-in is `/login`.
+`/` belongs to no module and is a redirect to the dashboard, kept so that everything
+already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
 a full-bleed screen would only have to undo any frame added there — see
 [Sign-in & tenancy](#sign-in--tenancy).
@@ -392,6 +398,94 @@ asks for something specific instead of inverting whatever the flag has become si
 - **The monogram is one treatment, not the mockup's three.** Per-identity hues would be three
   colour literals invented here and measured nowhere; the accent panel is the token pair that
   already exists for this, and its contrast is published.
+
+## Dashboard
+
+`/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45)) is
+[`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
+where a signed-in request with a chosen workspace lands. It renders **inside** the
+[app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
+(design system § 2).
+
+```
+MISSION CONTROL
+Acme Robotics                              [ Edit workflows ] [ ⟳ Pull next issue ]
+Ken Suenobu · owner of acme-robotics            ↑ both inert, and say why
+
+┌ LOOPS LIVE ─┐┌ MEMBERS ────┐┌ ORGANISATIONS ┐┌ REPOSITORIES ┐
+│      —      ││      3      ││       1       ││      1       │
+│ no run data ││ 1 owner ·  …││ of 1 recorded ││of 1 recorded │
+└─────────────┘└─────────────┘└───────────────┘└──────────────┘
+┌ ACTIVE LOOPS ──────────────────────┐┌ SYSTEM      ◐ operational ┐
+│    ┆ No loops yet                ┆ ││ REST API            [ up ]│
+│    ┆ …arrives with mockup 10     ┆ ││ Database            [ up ]│
+└────────────────────────────────────┘│ Engine              [ up ]│
+┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐└───────────────────────────┘
+```
+
+**Two kinds of card sit on the same grid, and the difference is the point.** The stat row
+and the system card are drawn from `/auth/me`, the members listing, the enablement lists,
+`/health/ready` and `/api/v1/engine/status` — every figure on them came from the service.
+The mockup's three loop panels have no source in the contract at all, so they keep their
+place as designed empty states naming what will fill them.
+
+The route is three lines: [`app/api/access.ts`](app/api/access.ts) returns the workspace,
+[`app/dashboard/data.ts`](app/dashboard/data.ts) turns it into everything the screen draws,
+and [`app/dashboard/dashboard-screen.tsx`](app/dashboard/dashboard-screen.tsx) draws it.
+Every decision in between — what a figure is, whether it is an em dash, which pill is green
+— is [`app/dashboard/view.ts`](app/dashboard/view.ts), which is pure, so each is a unit test
+on a function rather than a page to drive.
+
+### One failed read is one degraded card
+
+The four reads go out together and each is wrapped independently, so a members listing that
+fails leaves the enablement counts and the status pills intact. The wrapper catches an
+`ApiError` and **nothing else**: a `401` arrives here as Next.js's redirect signal rather
+than as an error, and a `catch` wide enough to hold it would swallow the navigation to the
+login screen and draw a dashboard captioned with the framework's internal message.
+
+While the reads are in flight, [`loading.tsx`](<app/(app)/dashboard/loading.tsx>) draws the
+same eight cards at the same column spans, so nothing moves when the data arrives.
+
+### The system card, and why one read skips the client
+
+`/health/ready` is the only read in this module that does not go through the typed client,
+and the reason is particular to it: **its failure is its answer.** The contract has it reply
+`200` when every dependency answered and `503` when one did not, carrying the *same body*
+either way — the `503` is the response that names which dependency is down and why. The
+client's middleware turns every non-`ok` response into a thrown `ApiError`, and a
+`HealthReport` is not the contract's error envelope, so a client call would convert the one
+response the card exists to render into a rejection carrying none of it. It costs nothing
+else: the route answers without authentication, so there is no session cookie to forward and
+no `401` to route. [`app/api/health.ts`](app/api/health.ts) says all of this at length.
+
+The probe decides every state; `/api/v1/engine/status` supplies the engine's build, and its
+state only when the probe does not name the engine at all. They are separate round trips and
+a service can stop between them, so the precedence is one-directional rather than a second
+opinion. Stop the engine and the engine's pill degrades while the database's does not.
+
+### What it does not pretend
+
+- **No loop is invented.** Nothing produces one yet, so the loop count is an em dash rather
+  than a zero — "zero loops are running" and "nothing can tell you how many are running" are
+  different facts — and the mockup's fifteen plausible rows are not copied.
+- **Both page-head actions are inert**, and say why in a tooltip. Neither destination exists
+  ([#49](https://github.com/NobuData/ouroboros/issues/49) holds their place), and a control
+  that appeared to pull an issue would be the one dishonest thing on the screen.
+  `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab order.
+- **A figure that could not be read is an em dash beside the reason**, never a zero.
+- **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
+  reads *degraded* rather than *operational* when any row is.
+- **Both flags, not one**, in the repository count: a repository is in scope only when its
+  own `enabled` and its organisation's are both true, so the ones held back by a disabled
+  organisation are counted separately and said out loud.
+- **The pills differ in shape as well as in hue**, so *operational* and *degraded* are
+  distinguishable without colour vision.
+
+The real dashboard is specified card by card under
+[#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I), and
+[#80](https://github.com/NobuData/ouroboros/issues/80) replaces this page's body. The route,
+the readers, the status logic and the redirect are what it builds on.
 
 ## App shell
 
@@ -660,6 +754,7 @@ theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
 typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
+dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

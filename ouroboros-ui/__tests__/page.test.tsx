@@ -1,125 +1,62 @@
-import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { membership } from "./helpers/login";
+import { DASHBOARD_PATH } from "@/app/paths";
 
 /**
- * The placeholder home page — the first screen in `(app)`, and so the first one behind the
- * gate (#44).
+ * The product's root, `app/(app)/page.tsx`.
  *
- * `requireWorkspace()` is the data-access layer, and the reason it is mocked here rather
- * than driven is that its own decisions have a suite of their own
- * (`__tests__/api/access.test.ts`). What this file holds is the page's half of the
- * arrangement: it asks the gate for the workspace, and it renders what the gate returned
- * rather than anything it made up.
+ * It stopped being a screen in #45: the dashboard moved to a segment of its own, and what
+ * is left here is a signpost. So what there is to assert is exactly what a signpost can get
+ * wrong — where it points, that it points *somewhere* rather than rendering, and that it
+ * does not do anything else on the way.
+ *
+ * The redirect target is asserted against `DASHBOARD_PATH` rather than against the string,
+ * which is the whole reason `app/paths.ts` exists: this file, the login screen's own
+ * redirect and the sidebar entry all have to name one route, and three copies of it are a
+ * redirect loop waiting for one of them to be renamed.
  */
 
-/** What the gate answers this case with, or the signal it throws instead. */
-const requireWorkspace = vi.fn();
+/** Where the page asked to be sent. */
+const redirect = vi.fn((path: string) => {
+  // The real `redirect` signals by throwing, and nothing after a call to it runs. A mock
+  // that returned would let a bug — markup after the redirect, a second call — pass
+  // unnoticed here and fail only in a browser.
+  throw new Error(`NEXT_REDIRECT ${path}`);
+});
 
-vi.mock("@/app/api/access", () => ({
-  requireWorkspace: () => requireWorkspace(),
-}));
+vi.mock("next/navigation", () => ({ redirect: (path: string) => redirect(path) }));
 
 const Page = (await import("@/app/(app)/page")).default;
 
-/** The session the gate hands back beside the workspace. */
-const SESSION = {
-  user: {
-    id: "5eed0003-0000-4000-8000-000000000001",
-    email: "ken@acme-robotics.dev",
-    displayName: "Ken Suenobu",
-    avatarUrl: null,
-    createdAt: "2026-08-11T10:20:23.114Z",
-    updatedAt: "2026-08-11T10:20:23.114Z",
-  },
-  memberships: [membership()],
-  tenantSuggestion: null,
-};
-
-/**
- * Render the page as the gate would let it render.
- *
- * @param over The membership to render for, if this case is about one in particular.
- * @returns Testing Library's result.
- */
-async function renderPage(over: Parameters<typeof membership>[0] = {}) {
-  requireWorkspace.mockResolvedValue({
-    session: SESSION,
-    membership: membership(over),
-  });
-
-  return render(await Page());
-}
-
 beforeEach(() => {
-  requireWorkspace.mockReset();
+  redirect.mockClear();
 });
 
-describe("the placeholder home page", () => {
-  it("renders one top-level heading", async () => {
-    await renderPage();
+describe("the product's root", () => {
+  it("sends the request to the dashboard", () => {
+    expect(() => Page()).toThrow(`NEXT_REDIRECT ${DASHBOARD_PATH}`);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Infinity in autonomy" }),
-    ).toBeInTheDocument();
+    expect(redirect).toHaveBeenCalledExactlyOnceWith(DASHBOARD_PATH);
   });
 
-  it("is a main landmark, so the shell (#41) has something to wrap", async () => {
-    // The shell contributes header, navigation and the content pane; `main` is the
-    // page's own landmark inside that pane.
-    await renderPage();
-
-    expect(screen.getByRole("main")).toBeInTheDocument();
+  it("points somewhere other than itself, so the redirect terminates", () => {
+    // The one way a signpost can be catastrophically wrong. `/` redirecting to `/` is a
+    // loop the browser gives up on rather than an error anybody sees.
+    expect(DASHBOARD_PATH).not.toBe("/");
   });
 
-  it("styles itself through classes only — no inline style survives review", async () => {
-    const { container } = await renderPage();
-    const main = container.querySelector("main");
-
-    expect(main).toHaveClass("placeholder");
-    expect(main?.getAttribute("style")).toBeNull();
-  });
-
-  it("names what lands next, so the placeholder explains itself", async () => {
-    await renderPage();
-
-    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toHaveLength(1);
-    expect(items.join(" ")).toContain("#45");
-    // The shell (#41) and the theme switcher (#42) have landed, so the list no longer
-    // promises either — this page is one issue away from being replaced outright.
-    expect(items.join(" ")).not.toMatch(/#41|#42/);
+  it("renders nothing at all — it is a redirect, not a page with a redirect in it", () => {
+    expect(() => Page()).toThrow();
   });
 });
 
-describe("the gate every screen in (app) goes through", () => {
-  it("is what the page asks before it renders anything", async () => {
-    // "Unauthenticated `(app)` routes redirect to the login screen" is true because of this
-    // call, not because of a check in the layout — see app/(app)/layout.tsx for why.
-    await renderPage();
-
-    expect(requireWorkspace).toHaveBeenCalledOnce();
-  });
-
-  it("supplies the workspace the page reports, rather than the page assuming one", async () => {
-    await renderPage({ slug: "acme-labs", displayName: "Acme Labs", role: "admin" });
-
-    expect(screen.getByText(/ouroboros-ui · acme-labs/)).toBeInTheDocument();
-    expect(screen.getByText(/in Acme Labs as admin/)).toBeInTheDocument();
-  });
-
-  it("names who is signed in, from the session the gate returned", async () => {
-    await renderPage();
-
-    expect(screen.getByText(/Signed in as Ken Suenobu/)).toBeInTheDocument();
-  });
-
-  it("renders nothing at all when the gate redirects instead of returning", async () => {
-    // `redirect()` signals by throwing, so a request with no session or no chosen workspace
-    // never reaches the markup below it.
-    requireWorkspace.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
-
-    await expect(Page()).rejects.toThrow("NEXT_REDIRECT /login");
+describe("the gate, which this route deliberately does not call", () => {
+  it("is not consulted, because there is nothing here to protect", () => {
+    // Every screen in `(app)` calls `requireWorkspace()` to obtain what it renders. This
+    // one renders nothing, so a check here would cost every request to `/` an extra
+    // `GET /auth/me` to reach the same place one redirect later — and the page it is sent
+    // to has the gate. A mock is not even needed for the page to run, which is the
+    // assertion: if it ever imports the gate, this suite fails on the server-only module.
+    expect(() => Page()).toThrow(`NEXT_REDIRECT ${DASHBOARD_PATH}`);
   });
 });

@@ -1620,7 +1620,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | 5.4 | #42 | 🟢 Done | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
 | 5.5 | #43 | 🟢 Done | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
 | 5.6 | #44 | 🟢 Done | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
-| 5.7 | #45 | 🟡 Open | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
+| 5.7 | #45 | 🟢 Done | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
 | 5.8 | #46 | 🟡 Open | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.9 | #47 | 🟢 Done | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
 | 5.10 | #48 | 🟡 Open | ouroboros-ui: [5.10] Component workshop (Storybook/Ladle) | Isolated component playground with theme switching | v2, ui | N (after 5.8) | N | M | ouroboros-ui |
@@ -1851,7 +1851,42 @@ openapi.json (4.8) ─ yarn api:sync ─▶ generated types ─▶ client wrappe
 
 ### Issue 5.7 — ouroboros-ui: [5.7] Dashboard placeholder
 
-> **GitHub issue:** #45 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #45 · **Status:** 🟢 Done · **Parent epic:** #5
+>
+> Delivered: [`ouroboros-ui/app/(app)/dashboard`](../ouroboros-ui/app/(app)/dashboard/page.tsx)
+> over [`app/dashboard/`](../ouroboros-ui/app/dashboard), rendering mockup 02's page head
+> and twelve-column grid inside the app shell in both palettes. The route is three lines —
+> the gate returns the workspace, a reader turns it into everything the screen draws, a
+> component draws it — so each of the screen's decisions is a unit test on a function
+> rather than a route to drive.
+>
+> **The dashboard also moved off `/`.** It has a segment of its own now, because the
+> sidebar highlights the entry whose route the URL is under and a module whose route is
+> `/` matches nothing or everything. `/` redirects, `app/paths.ts` holds the target, and
+> the scaffold's placeholder page and its stylesheet are gone.
+>
+> Three decisions are worth carrying forward. **One failed read is one degraded card**:
+> the four reads go out together and each is wrapped independently, so a members listing
+> that fails leaves the enablement counts and the status pills intact — and the wrapper
+> catches an `ApiError` and *nothing else*, so a `401`'s redirect signal still reaches the
+> login screen instead of being drawn as a caption. **The readiness probe does not go
+> through the typed client**, alone among the reads: its `503` carries the same body as its
+> `200` and is the response that names which dependency is down, which the client's
+> middleware would convert into a rejection carrying none of it. **The probe decides every
+> state and `/engine/status` supplies the build** — the two are separate round trips and a
+> service can stop between them, so their precedence is one-directional rather than a
+> second opinion.
+>
+> What the mockup asks for and the contract cannot supply is present and labelled rather
+> than invented. Nothing produces a loop yet, so the three loop panels are designed empty
+> states naming what will fill them, the loop count is an em dash rather than a zero, and
+> both page-head actions render inert with a tooltip saying why — `aria-disabled` rather
+> than `disabled`, so the explanation keeps its place in the tab order. Copying the
+> mockup's fifteen plausible rows would have made this a picture of a product rather than
+> a view of one.
+>
+> Superseded in scope by **#80** (Epic I), which replaces this page's frame card by card.
+> The route, the readers and the status logic are what it builds on.
 
 - **Problem Statement:** Post-login needs a destination that proves the shell, data
   fetching, and empty-state design — without building product features.

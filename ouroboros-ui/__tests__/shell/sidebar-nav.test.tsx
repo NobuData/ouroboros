@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DASHBOARD_PATH } from "@/app/paths";
 import { NAV_ITEMS } from "@/app/shell/nav";
 import { SidebarNav } from "@/app/shell/sidebar-nav";
 
@@ -11,12 +12,16 @@ import { SidebarNav } from "@/app/shell/sidebar-nav";
  * the tab order and says why.
  */
 
-const { path } = vi.hoisted(() => ({ path: { current: "/" } }));
+const { path } = vi.hoisted(() => ({ path: { current: "/dashboard" } }));
 
 vi.mock("next/navigation", () => ({ usePathname: () => path.current }));
 
+// The dashboard is the only built route, so it is the one a case starts on unless it says
+// otherwise. Taken from `app/paths.ts` rather than typed out, so a move of the route moves
+// this too — the string above is the one place the mock cannot read a constant, because
+// `vi.hoisted` runs before any import.
 beforeEach(() => {
-  path.current = "/";
+  path.current = DASHBOARD_PATH;
 });
 
 describe("the sidebar", () => {
@@ -50,7 +55,7 @@ describe("the sidebar", () => {
     // the product's primary navigation.
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(1);
-    expect(links[0]).toHaveAttribute("href", "/");
+    expect(links[0]).toHaveAttribute("href", DASHBOARD_PATH);
     expect(links[0]).toHaveAccessibleName(/Dashboard/);
   });
 

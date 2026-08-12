@@ -196,46 +196,8 @@ a {
 }
 
 /*
- * The scaffold's placeholder page, now rendered inside the shell's content pane.
- * Replaced wholesale by the dashboard (#45); until then it exists so `yarn dev` renders
- * something that proves the three faces loaded and both palettes resolve.
+ * The scaffold's placeholder page had its rules here, and they left with it: #45 replaced
+ * it with the dashboard, whose own sheet is app/dashboard/dashboard.css. Nothing took their
+ * place in this file, deliberately — a page's styles belong to the page, and this sheet is
+ * for what belongs to no component (the elements above, the theme fade, `.sr-only`).
  */
-
-.placeholder {
-  max-width: 34rem;
-  margin: 0 auto;
-  padding: var(--sp-12) var(--sp-10);
-}
-
-.placeholder__eyebrow {
-  margin: 0 0 var(--sp-4);
-  color: var(--ink-faint);
-  font-family: var(--f-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: var(--tr-widest);
-  text-transform: uppercase;
-}
-
-.placeholder__title {
-  font-size: var(--t-2xl);
-  font-weight: 700;
-  letter-spacing: var(--tr-tight);
-}
-
-.placeholder__body {
-  margin: var(--sp-8) 0 0;
-  color: var(--ink-dim);
-}
-
-.placeholder__next {
-  margin: var(--sp-10) 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--ink-mut);
-  font-family: var(--f-mono);
-  font-size: var(--t-sm);
-}
-
-.placeholder__next li + li {
-  margin-top: var(--sp-3);
-}

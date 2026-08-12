@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { DASHBOARD_PATH } from "@/app/paths";
 import { NAV_ITEMS, type NavItem, isActiveRoute, navGroup } from "@/app/shell/nav";
 
 /**
@@ -55,10 +56,12 @@ describe("the navigation list", () => {
 
   it("has exactly one built destination today: the dashboard", () => {
     // The list of live routes is what the sidebar turns into links. Until the
-    // placeholder routes (#49) land, `/` is the only page that exists — a second live
-    // entry here without a page behind it would ship a 404 in the navigation.
+    // placeholder routes (#49) land, the dashboard is the only page that exists — a
+    // second live entry here without a page behind it would ship a 404 in the
+    // navigation. Asserted against the constant rather than the string, so the entry
+    // and every redirect to it are the same fact (#45 moved it off `/`).
     expect(NAV_ITEMS.filter((item) => item.status === "live").map((item) => item.route)).toEqual(
-      ["/"],
+      [DASHBOARD_PATH],
     );
   });
 
@@ -88,11 +91,21 @@ describe("the navigation list", () => {
 });
 
 describe("isActiveRoute", () => {
-  it("matches the dashboard on the root and nowhere else", () => {
-    // A prefix rule on "/" would make the dashboard active on every page in the product.
+  it("matches the root on the root and nowhere else", () => {
+    // No entry claims "/" since #45 moved the dashboard to its own segment, but the rule
+    // stays: a prefix match on the root would make whichever entry claimed it the active
+    // one on every page in the product.
     expect(isActiveRoute("/", "/")).toBe(true);
     expect(isActiveRoute("/issues", "/")).toBe(false);
     expect(isActiveRoute("/models/routing", "/")).toBe(false);
+  });
+
+  it("keeps the dashboard highlighted on its own route and under it", () => {
+    // Where the entry actually points, and the reason it is a segment rather than "/":
+    // an entry owns everything below it, which the root could never do.
+    expect(isActiveRoute(DASHBOARD_PATH, DASHBOARD_PATH)).toBe(true);
+    expect(isActiveRoute(`${DASHBOARD_PATH}/anything`, DASHBOARD_PATH)).toBe(true);
+    expect(isActiveRoute("/", DASHBOARD_PATH)).toBe(false);
   });
 
   it("matches an entry on its own route", () => {
