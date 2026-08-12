@@ -90,8 +90,20 @@ and Docker. From a clean checkout:
 ```bash
 corepack enable      # Yarn 4, pinned by package.json
 yarn install         # every workspace, from the committed lockfile
+yarn setup           # the .env files, with a real secret in each
 yarn dev             # the whole application stack
 ```
+
+`yarn setup` ([`scripts/setup.sh`](scripts/setup.sh)) renders every module's committed
+`.env.example` into the `.env` beside it, keeping the prose that explains each variable
+and generating a strong value for every placeholder marked `…-change-me` — one value per
+variable, so the secret `ouroboros-rest` and `ouroboros-engine` compare on every internal
+call is identical on both sides. It never overwrites a `.env` you already have and adopts
+the secrets in the ones it finds, so it is safe to re-run after a `git pull` that adds a
+variable. `scripts/setup.sh --dry-run` reports what it would write without writing it, and
+`--db-port 55433` publishes PostgreSQL somewhere other than 5432, moving
+`OURO_DATABASE_URL` with it. The one thing it cannot do for you is register a GitHub OAuth
+application — and `yarn dev` signs in without one, through `OURO_AUTH_DEV_USER`.
 
 `yarn dev` starts PostgreSQL, waits for its healthcheck, applies every pending
 migration, and then brings the services up side by side, streaming all of their logs
@@ -234,11 +246,11 @@ path but `/healthz` requires the shared secret, and a process without one could 
 nothing. `ouroboros-rest` is the communications layer, and a boundary with no database, no
 engine, no signing key and no GitHub application is the same story
 ([#28](https://github.com/NobuData/ouroboros/issues/28)) — so both name the missing
-variables and exit `2` rather than starting into a wall of failed requests. Copy the
-template and `yarn dev` runs the whole stack:
+variables and exit `2` rather than starting into a wall of failed requests. `yarn setup`
+writes the files that answer them, and `yarn dev` runs the whole stack:
 
 ```bash
-cp .env.example .env          # already the development values; edit what you need
+yarn setup                    # every module's .env, from the committed templates
 yarn dev
 ```
 
@@ -257,8 +269,9 @@ all four are in the compose stack above
 
 Environment variables are prefixed `OURO_` (except `PORT` and platform standards), are
 validated at boot, and are documented with their development defaults in
-[`.env.example`](.env.example). Copy it to `.env` to override any of them; real `.env`
-files are never committed.
+[`.env.example`](.env.example). [`scripts/setup.sh`](scripts/setup.sh) turns that template
+and each module's into the `.env` files a checkout runs on; real `.env` files are never
+committed.
 
 Repository structure and GitHub configuration can be checked at any time, and the
 repo-level tooling has its own tests:

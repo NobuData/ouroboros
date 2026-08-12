@@ -15,6 +15,7 @@
     "ouroboros-ui"
   ],
   "scripts": {
+    "setup": "scripts/setup.sh",
     "dev": "turbo run dev",
     "dev:stop": "docker compose stop",
     "dev:reset": "docker compose down -v",
