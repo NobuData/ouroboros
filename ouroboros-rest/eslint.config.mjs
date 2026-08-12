@@ -140,11 +140,19 @@ export default tseslint.config(
   },
 
   {
-    // This file and jest.config.mjs are configuration, not application code: they are
-    // outside `tsconfig.json`'s `include`, so the type-aware rules have no program to
-    // read them against. They are still linted and still formatted — only the rules
-    // that need types are dropped.
-    files: ["**/*.mjs"],
+    // This file, the two jest configs and `jest.esm-transform.cjs` are configuration, not
+    // application code: they are outside `tsconfig.json`'s `include`, so the type-aware
+    // rules have no program to read them against. They are still linted and still
+    // formatted — only the rules that need types are dropped.
+    files: ["**/*.mjs", "**/*.cjs"],
     extends: [tseslint.configs.disableTypeChecked],
+  },
+
+  {
+    // `require` is what a `.cjs` file is for. Jest loads a transform synchronously, so
+    // `jest.esm-transform.cjs` cannot be an ES module and cannot import one — which is
+    // the same constraint the file exists to work around, seen from the other side.
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 );

@@ -29,12 +29,29 @@ export default {
 
   roots: ["<rootDir>/src"],
   testMatch: ["**/*.integration-spec.ts"],
-  moduleFileExtensions: ["ts", "js", "json"],
+  moduleFileExtensions: ["ts", "js", "mjs", "json"],
 
   // The same strict tsconfig the unit suite and `yarn typecheck` read, so an integration
   // test cannot compile under looser rules than the code it exercises. It transforms the
   // two hooks below as well, which is why they can be TypeScript at all.
-  transform: { "^.+\\.ts$": ["ts-jest", { tsconfig: "<rootDir>/tsconfig.json" }] },
+  transform: {
+    "^.+\\.ts$": ["ts-jest", { tsconfig: "<rootDir>/tsconfig.json" }],
+    "^.+\\.mjs$": "<rootDir>/jest.esm-transform.cjs",
+  },
+
+  // The same three settings as `jest.config.mjs`, for the same reason and with the same
+  // explanations: these suites build the real application through `createApplication`
+  // (`src/testing/harness.fixture.ts`), so they load everything the process loads —
+  // including the ES-module library #701 mounts. A real database does not make Jest's
+  // CommonJS runtime able to parse an ES module.
+  transformIgnorePatterns: [
+    "/node_modules/(?!@thallesp/nestjs-better-auth/)",
+    "\\.pnp\\.[^\\\\/]+$",
+  ],
+  moduleNameMapper: {
+    "^better-auth$": "<rootDir>/src/auth/better-auth.fixture.ts",
+    "^better-auth/(node|api)$": "<rootDir>/src/auth/better-auth.fixture.ts",
+  },
 
   setupFiles: ["reflect-metadata"],
 

@@ -292,7 +292,7 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   OURO_GITHUB_CLIENT_SECRET=[redacted]
   OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
-LOG [ouroboros-rest] ouroboros-rest 0.11.0 listening on http://127.0.0.1:4000/api/v1
+LOG [ouroboros-rest] ouroboros-rest 0.12.0 listening on http://127.0.0.1:4000/api/v1
 ```
 
 Adding a variable is four edits: the schema and the `Configuration` field beside it, a
@@ -547,29 +547,34 @@ See [The tenant context](#the-tenant-context).
 
 ## BetterAuth
 
-**The library is installed and configured; nothing is mounted yet**
-([#700](https://github.com/NobuData/ouroboros/issues/700)). What signs a person in today is
-still the hand-rolled flow described under [Signing in](#signing-in) —
-[#701](https://github.com/NobuData/ouroboros/issues/701) mounts BetterAuth's handler at
-`/api/auth/*`, [#702](https://github.com/NobuData/ouroboros/issues/702) moves GitHub onto
-it, and [#703](https://github.com/NobuData/ouroboros/issues/703) replaces the cookie
-session. This section is the foundation those three stand on.
+**The library is installed, configured and mounted; no provider is wired to it yet**
+([#700](https://github.com/NobuData/ouroboros/issues/700),
+[#701](https://github.com/NobuData/ouroboros/issues/701)). `/api/auth/*` answers —
+`GET /api/auth/ok` returns `{"ok": true}` against a running service — but what signs a
+person in today is still the hand-rolled flow described under
+[Signing in](#signing-in). [#702](https://github.com/NobuData/ouroboros/issues/702) moves
+GitHub onto BetterAuth and [#703](https://github.com/NobuData/ouroboros/issues/703)
+replaces the cookie session; this section is the foundation both stand on.
 
-[`src/auth/`](src/auth) is three files, and the split is about *who can load what*:
+[`src/auth/`](src/auth) is five files, and the split is about *who can load what*:
 
 | File               | What it is                                                                    |
 | ------------------ | ----------------------------------------------------------------------------- |
 | `auth.options.ts`  | the options object — every decision, and no dependency: it imports the library's *types* only |
 | `auth.factory.ts`  | `createAuth(dependencies)` — the one place `better-auth` is a value rather than a type |
 | `auth.config.ts`   | a standalone instance built from the environment, for `@better-auth/cli`       |
+| `auth.module.ts`   | the Nest wiring — the one file here that imports `@nestjs/*`                    |
+| `auth.routes.ts`   | the [route map](#the-route-map), and the paths the global prefix excludes       |
 
-Two constraints shape that. The library is **ES-module-only** and this service compiles to
-CommonJS, because Nest's dependency injection needs the decorator metadata that setting
-emits; Node 24 bridges the two with `require(esm)`, and Jest's CommonJS runtime does not —
-so the module that names `better-auth` as a value is kept to a single function, and the
-suites substitute it. And the configuration has to be loadable **with no Nest process at
-all**, because that is how [#706](https://github.com/NobuData/ouroboros/issues/706)
-generates the schema; nothing under `src/auth/` imports `@nestjs/*`.
+Two constraints shape the first three. The library is **ES-module-only** and this service
+compiles to CommonJS, because Nest's dependency injection needs the decorator metadata that
+setting emits; Node 24 bridges the two with `require(esm)`, and Jest's CommonJS runtime
+does not — so the module that names `better-auth` as a value is kept to a single function,
+and the suites substitute it (see [Testing the mount](#testing-the-mount)). And the
+configuration has to be loadable **with no Nest process at all**, because that is how
+[#706](https://github.com/NobuData/ouroboros/issues/706) generates the schema — which is
+why `auth.module.ts` is a separate file rather than a section of `auth.config.ts`: the CLI
+must never reach an injector.
 
 **One pool, not two.** `authOptions` takes a `pg.Pool` and puts *that object* into
 BetterAuth's `database` — decision **A2** of
@@ -578,6 +583,71 @@ BetterAuth's `database` — decision **A2** of
 one drain on `SIGTERM`, and one row in `pg_stat_activity`. It also carries the
 `search_path` this service connects with, which is what puts BetterAuth's tables in the
 Flyway-owned `ouroboros` schema without the library being taught the name.
+
+### The route map
+
+BetterAuth serves these itself, through `@thallesp/nestjs-better-auth`
+(roadmap decision **A1**). They are **not** Nest controllers — the library registers one
+handler on the HTTP adapter ahead of Nest's router — which is why they sit at `/api/auth`
+beside the versioned API rather than under `/api/v1`: the library versions its own routes,
+and a second version number in the path would be a promise this service is not the one
+keeping.
+
+| Route                             | What it is for                                                       |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `POST /api/auth/sign-in/social`   | begin a social sign-in; answers with the provider's authorization URL |
+| `GET\|POST /api/auth/callback/:id`| where the provider redirects back — GitHub's is `/api/auth/callback/github` |
+| `GET\|POST /api/auth/get-session` | the caller's session, or `null`                                       |
+| `POST /api/auth/sign-out`         | end the session and clear its cookie                                  |
+| `GET /api/auth/ok`                | the library answering for itself — no database, no session            |
+| `GET /api/auth/error`             | where a failed flow is redirected, with the reason in the query string |
+
+The same table is [`src/auth/auth.routes.ts`](src/auth/auth.routes.ts), as data, because
+[#711](https://github.com/NobuData/ouroboros/issues/711) publishes these paths and
+`ouroboros-ui`'s BetterAuth client calls them.
+
+Only `ok` and `error` do anything useful today: no provider is configured, so
+`sign-in/social` answers `PROVIDER_NOT_FOUND` and `get-session` answers `null`. **A route
+that answers is nevertheless the acceptance criterion of #701** — the handler is mounted,
+it escapes the global prefix, and it reads the raw request. #702, #703 and #705 are what
+fill it in, and each adds its own rows to that file.
+
+`GET /api/auth/ok` is not a health probe. It says nothing about this service's
+dependencies; [`/health/ready`](#health-and-readiness) stays the only readiness there is.
+
+### Nest parses no request body
+
+BetterAuth reads the **raw** request stream — it signs what it reads — so the application
+is created with Nest's body parser switched off (`applicationOptions` in
+[`src/application.ts`](src/application.ts)). Every other route still parses JSON, and by a
+different route than before: the library's module re-adds `express.json()` and
+`express.urlencoded()` as middleware for every path that is *not* under `/api/auth`.
+
+That indirection is the whole risk of this change — it is invisible until it stops working,
+and when it stops working every endpoint in the service quietly receives `undefined` where
+its DTO should be. So it is asserted rather than assumed, over every operation in
+`openapi.yaml` that carries a request body, in `application.spec.ts`.
+
+One consequence worth knowing before reaching for it: `NestApplicationOptions.rawBody` no
+longer does anything, because it is implemented *by* the parser that is now off. A route
+that needs the unparsed bytes asks the library's module for them instead, through its
+`bodyParser.rawBody` option.
+
+Two of the library's defaults are turned off in
+[`src/auth/auth.module.ts`](src/auth/auth.module.ts), and both are recorded there:
+its **global guard**, because this service already has one and #703 is what swaps them; and
+its **CORS policy**, because `permitBrowserOrigins` already answers that question over the
+same origin list.
+
+### Testing the mount
+
+The suites load `@thallesp/nestjs-better-auth` **for real** — `jest.esm-transform.cjs`
+converts that one package to CommonJS on the way in — and replace `better-auth` itself with
+`src/auth/better-auth.fixture.ts`. The seam is deliberate and it is where #701 ends: what
+the integration contributes is middleware ordering, so a stand-in for it would be a second
+implementation of the very thing under test, while what BetterAuth's routes *do* is #702's
+and #703's to prove. That the real library accepts these options is established outside
+Jest, by `@better-auth/cli generate` building an instance from `auth.config.ts` — see below.
 
 ### Generating the auth schema
 
@@ -916,12 +986,12 @@ The compose service that runs this image is
 ouroboros-rest/
 ├── src/
 │   ├── main.ts             # entry point: read the environment, listen, report
-│   ├── application.ts      # /api/v1 prefix, URI versioning, shutdown hooks, /api/docs
+│   ├── application.ts      # /api/v1 prefix, versioning, no body parser, shutdown, /api/docs
 │   ├── version.ts          # the running build, read from package.json
 │   ├── container.spec.ts   # the image, asserted from the files that define it  · #36
 │   ├── openapi/            # loads the committed spec — it is never generated
 │   ├── testing/            # the integration harness: container, app, sessions · #37
-│   ├── auth/               # BetterAuth: options, factory, the CLI's config    · #700
+│   ├── auth/               # BetterAuth: options, factory, CLI config, mount · #700 #701
 │   └── modules/
 │       ├── app/            # heartbeat — controller, service, root module
 │       ├── config/         # the zod schema, the typed service, redaction
@@ -939,6 +1009,7 @@ ouroboros-rest/
 ├── eslint.config.mjs       # flat config; Prettier runs as a lint rule
 ├── jest.config.mjs         # unit suite — src/**/*.spec.ts, starts nothing
 ├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, on a container it starts
+├── jest.esm-transform.cjs  # the one ES-module dependency the suites load for real · #701
 ├── nest-cli.json
 ├── tsconfig.json           # strict; what typecheck, ts-jest and the linter read
 └── tsconfig.build.json     # the same, minus the specs — what ships
@@ -1018,6 +1089,7 @@ data access [#30](https://github.com/NobuData/ouroboros/issues/30) ·
 tenancy API [#31](https://github.com/NobuData/ouroboros/issues/31) ·
 auth [#33](https://github.com/NobuData/ouroboros/issues/33) ·
 BetterAuth installation & configuration [#700](https://github.com/NobuData/ouroboros/issues/700) ·
+BetterAuth mounted in NestJS [#701](https://github.com/NobuData/ouroboros/issues/701) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·

@@ -4,7 +4,7 @@ import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
 
-import { configureApplication, createApplication } from "../../application";
+import { applicationOptions, configureApplication, createApplication } from "../../application";
 import { AppModule } from "../app/app.module";
 import { AuthService } from "../auth/auth.service";
 import { ConfigurationModule } from "../config/config.module";
@@ -63,7 +63,7 @@ async function applicationWith(engine: Partial<EngineClient>): Promise<INestAppl
     .useValue(engine)
     .compile();
 
-  const app = moduleRef.createNestApplication({ logger: false });
+  const app = moduleRef.createNestApplication(applicationOptions({ logger: false }));
   configureApplication(app);
   await app.init();
 
