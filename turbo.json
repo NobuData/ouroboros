@@ -11,6 +11,11 @@
 
   // A change to any of these invalidates every cached task, because any of them can
   // change what a build produces without appearing in a package's own inputs.
+  //
+  // Listing `.env` here puts it in the hash. It does not *load* it — turbo has no such
+  // behaviour, and reading it as though it did is the reason this comment exists. The
+  // services read it themselves (docs/CONVENTIONS.md § 4), which is what makes a plain
+  // `yarn dev` work against a checkout with nothing exported.
   "globalDependencies": [".env", ".env.example", ".editorconfig"],
 
   // turbo runs tasks in a *strict* environment by default: a variable that is not

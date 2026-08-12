@@ -1,11 +1,19 @@
 """Configuration is read from the environment, validated, and fails fast when wrong."""
 
+import pathlib
 import typing
 
 import pytest
 from pydantic import ValidationError
 
+from ouroboros_engine import settings as settings_module
 from ouroboros_engine.settings import LogLevel, Settings, SettingsError, load_settings
+
+#: The real ``settings._ENV_FILES``, captured at import — which is before the autouse
+#: ``clean_environment`` fixture replaces it with an empty tuple for the duration of
+#: every test. The two tests that assert on which files the service *would* read need
+#: the genuine value; everything else needs the isolation.
+REAL_ENV_FILES = settings_module._ENV_FILES
 
 
 def test_defaults_match_the_documented_development_values() -> None:
@@ -168,3 +176,94 @@ def test_the_underlying_pydantic_error_is_kept_as_the_cause(
         load_settings()
 
     assert isinstance(failure.value.__cause__, ValidationError)
+
+
+def _use_env_files(monkeypatch: pytest.MonkeyPatch, *files: pathlib.Path) -> None:
+    """Point :func:`load_settings` at the given files instead of the checkout's.
+
+    Args:
+        monkeypatch: The active patcher; the override is undone after the test.
+        files: Paths in lowest-precedence-first order, as ``settings._ENV_FILES`` is.
+    """
+    monkeypatch.setattr(settings_module, "_ENV_FILES", files)
+
+
+def test_a_value_is_read_from_an_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("OURO_LOG_LEVEL=debug\n", encoding="utf-8")
+    _use_env_files(monkeypatch, env_file)
+
+    assert load_settings().log_level == "debug"
+
+
+def test_a_mandatory_variable_can_come_from_an_env_file_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    # The point of the whole mechanism: writing the secret into ouroboros-engine/.env
+    # is enough to start the service, with nothing exported.
+    monkeypatch.delenv("OURO_ENGINE_SHARED_SECRET")
+    env_file = tmp_path / ".env"
+    env_file.write_text("OURO_ENGINE_SHARED_SECRET=from-the-file\n", encoding="utf-8")
+    _use_env_files(monkeypatch, env_file)
+
+    assert load_settings().shared_secret == "from-the-file"
+
+
+def test_the_process_environment_beats_an_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    # What keeps a container configured by exactly what it was started with, and what
+    # makes `OURO_LOG_LEVEL=debug uv run dev` work against a checkout that has a file.
+    env_file = tmp_path / ".env"
+    env_file.write_text("OURO_LOG_LEVEL=error\n", encoding="utf-8")
+    _use_env_files(monkeypatch, env_file)
+    monkeypatch.setenv("OURO_LOG_LEVEL", "debug")
+
+    assert load_settings().log_level == "debug"
+
+
+def test_the_module_env_file_beats_the_repo_root_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    # docs/CONVENTIONS.md § 4: the more specific file wins where both declare a variable.
+    root = tmp_path / "root.env"
+    root.write_text("OURO_LOG_LEVEL=error\nPORT=9001\n", encoding="utf-8")
+    module = tmp_path / "module.env"
+    module.write_text("OURO_LOG_LEVEL=debug\n", encoding="utf-8")
+    _use_env_files(monkeypatch, root, module)
+
+    settings = load_settings()
+
+    assert settings.log_level == "debug", "the module's file is the more specific one"
+    assert settings.port == 9001, "a variable only the root file declares is still read"
+
+
+def test_a_missing_env_file_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    # A container has neither file and is configured from its environment alone.
+    _use_env_files(monkeypatch, tmp_path / "does-not-exist.env")
+
+    assert load_settings().log_level == "info"
+
+
+def test_the_env_files_are_resolved_from_the_package_not_the_working_directory() -> (
+    None
+):
+    # `uv run dev` is run from the module directory, `nest`-style tooling from the repo
+    # root, and a reloader re-imports from wherever it likes.
+    assert REAL_ENV_FILES, "an editable checkout resolves both files"
+    assert all(path.is_absolute() for path in REAL_ENV_FILES)
+
+
+def test_the_env_files_are_the_repo_root_and_module_templates_siblings() -> None:
+    module_directory = pathlib.Path(settings_module.__file__).resolve().parents[2]
+    root, module = REAL_ENV_FILES
+
+    assert module == module_directory / ".env"
+    assert root == module_directory.parent / ".env"
+    assert (module_directory / ".env.example").is_file(), (
+        "the module template is what a developer copies to the file read above"
+    )

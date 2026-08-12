@@ -213,7 +213,11 @@ service never starts half-configured.
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
-table and that template fall out of step. `PORT` and `NODE_ENV` are the documented
+table and that template fall out of step. Those same variables — and only those, plus the
+`OURO_TEST_DATABASE_DISPOSABLE` this module's
+[integration harness](#running-the-integration-suite) reads — appear again in [`.env.example`](.env.example) here, for copying. The repo-root
+template stays the complete list and this one is a subset of it; the values in the two are
+identical. `PORT` and `NODE_ENV` are the documented
 unprefixed exceptions — container platforms set them, not Ouroboros
 ([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)).
 `NODE_ENV` also decides which interface is bound: every interface in production, where the
@@ -223,13 +227,16 @@ not answer to the network it is on.
 **This service does not start on defaults alone.** Nine variables have no default,
 because a communications layer without a database, an engine, a signing key or a GitHub
 application could serve nothing — so it names what is missing and exits rather than
-starting into a wall of 500s. There is no dotenv loading, matching `ouroboros-engine`:
-what a container is started with is exactly what the service runs with. Export the
-template before running it directly:
+starting into a wall of 500s. Configuration comes from the process environment layered
+over the repo-root `.env` and this module's own, later winning — the same two files in
+the same order as `ouroboros-engine`, so one `.env` configures both
+([`src/modules/config/dotenv.ts`](src/modules/config/dotenv.ts)). The process environment
+wins over either file, so what a container is started with is exactly what it runs with.
+Copy the template and it runs with nothing exported:
 
 ```console
-$ set -a && . ../.env && set +a && yarn dev     # or ../.env.example, unedited
-$ node dist/main.js                            # with nothing exported
+$ cp .env.example .env && yarn dev             # or ../.env.example to configure the stack
+$ node dist/main.js                            # with no .env and nothing exported
 ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (9 problems)
   OURO_DATABASE_URL: is required
   OURO_ENGINE_URL: is required

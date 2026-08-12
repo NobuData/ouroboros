@@ -2,7 +2,8 @@
 
 Every test runs against a known environment: the autouse fixture below replaces the
 variables this service reads with the suite's own, so a developer who exports
-``OURO_LOG_LEVEL=debug`` in their shell gets the same results as CI.
+``OURO_LOG_LEVEL=debug`` in their shell — or writes it into an ``.env`` — gets the same
+results as CI.
 
 Two clients are offered because the engine now has two kinds of caller. ``client``
 carries the internal key on every request and is what a test of a route uses;
@@ -17,6 +18,7 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 
+from ouroboros_engine import settings as settings_module
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER
 from ouroboros_engine.settings import Settings
 
@@ -45,13 +47,21 @@ os.environ.setdefault("OURO_ENGINE_SHARED_SECRET", INTERNAL_KEY)
 
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Put every test on the same environment: engine variables removed, secret set.
+    """Put every test on the same environment: no ``.env``, no engine variables, secret set.
+
+    The ``.env`` files go first, and they matter more than they look: a developer's
+    checkout normally *has* one, holding a real generated secret, so a suite that let
+    :func:`~ouroboros_engine.settings.load_settings` read it would find every mandatory
+    variable already satisfied. ``test_a_missing_shared_secret_is_rejected`` would pass
+    on that file rather than on the behaviour it names, and would keep passing if the
+    variable stopped being mandatory at all.
 
     The shared secret is the one variable that is set rather than removed, because it
     is mandatory — with it absent, every test that reads the environment would fail on
     the same missing variable instead of on what it was written to check. A test *about*
     the secret being absent removes it itself, which is the same thing said out loud.
     """
+    monkeypatch.setattr(settings_module, "_ENV_FILES", ())
     for name in _ENGINE_VARIABLES:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OURO_ENGINE_SHARED_SECRET", INTERNAL_KEY)

@@ -48,9 +48,9 @@ uv run pytest
 The shared secret is **mandatory** — without it the service would answer nothing but
 liveness, so it refuses to start rather than serve a wall of 401s. Any value works in
 development as long as `ouroboros-rest` is configured with the same one;
-[`.env.example`](../.env.example) documents the placeholder used above. Exporting it
-once (`export OURO_ENGINE_SHARED_SECRET=…`, or `set -a; . ../.env; set +a`) is what
-makes a bare `uv run dev` — and `yarn dev` from the repo root — work.
+[`.env.example`](../.env.example) documents the placeholder used above. Putting it in an
+`.env` once — `cp .env.example .env`, then edit — is what makes a bare `uv run dev` and
+`yarn dev` from the repo root work, with nothing exported.
 
 Those three, after `uv sync --locked`, are what `ci/engine` runs on every pull request
 touching this directory — see [conventions](../docs/CONVENTIONS.md#9-ci).
@@ -199,22 +199,33 @@ Development default port: **8000** (`PORT`).
 | `OURO_ENGINE_SHARED_SECRET` | Expected value of `X-Ouro-Internal-Key`; compared in constant time | **required** |
 | `OURO_LOG_LEVEL` | Log verbosity — `debug`, `info`, `warning` or `error` | `info` |
 
-Values are read from the **process environment only**; there is no dotenv loading, so
-what a container is started with is exactly what the service runs with. Every variable
-is documented with its development default in the repo-root
+Values come from the **process environment layered over `.env` files** — the repo-root
+one, then this module's, then the real environment, later winning
+([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)). Every
+variable is documented with its development default in the repo-root
 [`.env.example`](../.env.example), and those three — and only those three — again in
 [`.env.example`](.env.example) here, for copying:
 
 ```bash
 cp .env.example .env
-set -a; . ./.env; set +a     # the engine reads no file, so the copy is exported
-uv run dev
+uv run dev                   # the copy is read directly; nothing to export
 ```
 
-The repo-root template stays the complete list and this one is a subset of it
-([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)); the
-values in the two are identical. `yarn dev` from the repo root needs neither copy — turbo
-passes the `OURO_*` namespace through from the root `.env`.
+The repo-root template stays the complete list and this one is a subset of it; the values
+in the two are identical. `yarn dev` from the repo root reads the same files, so a
+checkout with either `.env` in place needs nothing exported.
+
+The process environment winning last is what keeps this honest in a container: what it is
+started with is exactly what it runs with, regardless of any file in its image. It is
+also how one run is overridden without editing anything:
+
+```bash
+OURO_LOG_LEVEL=debug uv run dev
+```
+
+The files are read by [`settings.py`](src/ouroboros_engine/settings.py), not by turbo —
+`turbo.json`'s `globalDependencies` only puts `.env` in the task hash, and `globalEnv`
+only decides which variables survive its strict environment filter. Neither loads a file.
 
 Configuration is validated while the application is being built, which happens at import
 of `ouroboros_engine.main` — so a bad value stops the process before it binds a port,

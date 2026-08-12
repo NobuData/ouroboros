@@ -13,6 +13,7 @@ import {
   loadConfiguration,
   type Configuration,
 } from "./modules/config/configuration";
+import { environmentWithDotenv } from "./modules/config/dotenv";
 import { describeConfiguration } from "./modules/config/redaction";
 import { SERVICE_NAME, serviceVersion } from "./version";
 
@@ -44,7 +45,12 @@ export interface MainLogger {
 
 /** Overrides {@link main} accepts. Every one of them exists so the function is testable. */
 export interface MainOptions {
-  /** Environment to configure from. Defaults to the process environment. */
+  /**
+   * Environment to configure from. Defaults to the process environment layered over the
+   * repo's `.env` files — see {@link environmentWithDotenv}. A caller that passes this
+   * gets exactly what it passed and no file is read, which is what keeps a test's
+   * environment its own.
+   */
   env?: NodeJS.ProcessEnv;
   /** Where the output goes. Defaults to a Nest `Logger` named for the service. */
   logger?: MainLogger;
@@ -95,7 +101,7 @@ export async function bootstrap(
  *   and swallowing it into an exit code would throw away the only diagnosis there is.
  */
 export async function main({
-  env = process.env,
+  env = environmentWithDotenv(process.env),
   logger = new Logger(SERVICE_NAME),
   start = bootstrap,
 }: MainOptions = {}): Promise<number> {

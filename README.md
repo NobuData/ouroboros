@@ -180,14 +180,18 @@ path but `/healthz` requires the shared secret, and a process without one could 
 nothing. `ouroboros-rest` is the communications layer, and a boundary with no database, no
 engine, no signing key and no GitHub application is the same story
 ([#28](https://github.com/NobuData/ouroboros/issues/28)) — so both name the missing
-variables and exit `2` rather than starting into a wall of failed requests. Export the
-template and `yarn dev` runs the whole stack as before:
+variables and exit `2` rather than starting into a wall of failed requests. Copy the
+template and `yarn dev` runs the whole stack:
 
 ```bash
 cp .env.example .env          # already the development values; edit what you need
-set -a && . ./.env && set +a
 yarn dev
 ```
+
+Both services read that file themselves — turbo does not load it — layering it under the
+real process environment, so a container is configured by what it was started with and a
+single run can be overridden with a plain `OURO_LOG_LEVEL=debug yarn dev`. See
+[conventions § 4](docs/CONVENTIONS.md#4-configuration--environment-variables).
 
 All four application modules are scaffolded — `ouroboros-ui`
 ([#39](https://github.com/NobuData/ouroboros/issues/39)), `ouroboros-rest`

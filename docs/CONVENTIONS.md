@@ -170,6 +170,31 @@ Configuration is **validated at boot and fails fast** — zod in the NestJS laye
 pydantic-settings in the engine. A missing or malformed variable exits non-zero naming
 the exact variable; it never surfaces as a stack trace on the first request.
 
+Configuration is read from **the process environment layered over `.env` files**, in this
+order — later wins:
+
+1. the repo-root `.env`,
+2. the module's own `.env` (the more specific file wins, as below),
+3. the real process environment.
+
+The process environment coming last is what makes the rest safe. A container is
+configured by exactly what it was started with, whatever files happen to be lying around
+its image; a single run can still be overridden without editing anything
+(`OURO_LOG_LEVEL=debug uv run dev`); and the files stay what they look like — defaults
+for a checkout, not a second source of truth competing with the platform. Copy the
+template, edit it, and `yarn dev` works with nothing exported.
+
+Both services implement exactly that list, deliberately in step:
+[`settings._ENV_FILES`](../ouroboros-engine/src/ouroboros_engine/settings.py) in the
+engine, [`ENV_FILES`](../ouroboros-rest/src/modules/config/dotenv.ts) in the NestJS
+layer. Neither reads a file a test hands it an environment — a suite whose result depends
+on what a developer has in their `.env` fails on one machine and passes on another.
+
+Note that `turbo` does **not** load `.env`. `globalDependencies` in `turbo.json` puts it
+in the task hash and `globalEnv` decides which variables survive turbo's strict
+environment filter; neither reads the file. That is precisely why the services read it
+themselves.
+
 Real `.env` files are never committed; the repo-root [`.env.example`](../.env.example)
 documents every `OURO_*` variable with its development default and is the file that is.
 A module may add its own `.env.example` for the variables only its tooling reads — as

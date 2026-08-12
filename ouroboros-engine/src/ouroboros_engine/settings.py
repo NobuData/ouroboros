@@ -5,8 +5,10 @@ development default, and follows the two rules in ``docs/CONVENTIONS.md`` § 4: 
 is unprefixed because that is what container platforms set, and everything
 Ouroboros-specific is prefixed ``OURO_``.
 
-Configuration is read from the process environment only — there is no dotenv loading —
-so what a container is started with is exactly what the service runs with.
+Configuration is read from the process environment, layered over the ``.env`` files
+described by :data:`_ENV_FILES`. The process environment always wins: a container is
+still configured by exactly what it was started with, and the files are how a developer
+configures a checkout without exporting anything.
 
 Validation happens at import of :mod:`ouroboros_engine.main`, which builds the
 application at module scope. A malformed value therefore stops the process before it
@@ -14,10 +16,36 @@ binds a port, and :func:`load_settings` turns pydantic's report into a message t
 names the offending environment variables rather than the Python attributes behind them.
 """
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: This module's directory, ``<repo>/ouroboros-engine/src/ouroboros_engine``.
+_PACKAGE_ROOT = Path(__file__).resolve().parent
+
+#: The ``.env`` files :func:`load_settings` reads, lowest precedence first: the repo-root
+#: template's sibling, then this module's own. The module's file wins where both declare
+#: a variable, which is ``docs/CONVENTIONS.md`` § 4's "the more specific file wins" rule
+#: expressed as an ordering rather than as prose.
+#:
+#: Both are optional — a missing file is skipped, not an error — because a container has
+#: neither and is configured entirely from its process environment.
+#:
+#: The paths are resolved from this module's own location rather than from the working
+#: directory, so ``uv run dev`` finds the same files wherever it is invoked from. They
+#: are empty when the package was installed as a copy rather than in editable mode: there
+#: is no checkout above ``site-packages`` to find a ``.env`` in, and guessing at one would
+#: mean an installed service reading a file that happened to sit near it.
+_ENV_FILES: tuple[Path, ...] = (
+    (
+        _PACKAGE_ROOT.parents[2] / ".env",
+        _PACKAGE_ROOT.parents[1] / ".env",
+    )
+    if _PACKAGE_ROOT.parent.name == "src"
+    else ()
+)
 
 #: Verbosity values ``OURO_LOG_LEVEL`` accepts, lower-case as documented in
 #: ``.env.example``. Anything else is a configuration error rather than a fallback to a
@@ -59,7 +87,12 @@ class Settings(BaseSettings):
         # Settings are read once and never mutated, so nothing can reconfigure the
         # service after it has started.
         frozen=True,
+        env_file_encoding="utf-8",
     )
+    # No `env_file` here on purpose. Which files to read is :func:`load_settings`'s
+    # decision, passed per call, so constructing `Settings(...)` directly — which the
+    # test suite does to build an application from named values — reads nothing from
+    # disk and cannot pick up whatever a developer left in their checkout.
 
     port: int = Field(default=8000, ge=1, le=65535, validation_alias="PORT")
     log_level: LogLevel = Field(default="info", validation_alias="OURO_LOG_LEVEL")
@@ -73,7 +106,13 @@ class Settings(BaseSettings):
 
 
 def load_settings() -> Settings:
-    """Read and validate the environment.
+    """Read and validate the environment, layered over the ``.env`` files.
+
+    Precedence is pydantic-settings' own, and it is the order that makes this safe to do
+    at all: a real environment variable beats any file. So a container is configured by
+    what it was started with even if an ``.env`` were ever to reach its image, and a
+    developer can still override one value for one run — ``OURO_LOG_LEVEL=debug uv run
+    dev`` — without editing the file the rest of the stack reads.
 
     Returns:
         The validated :class:`Settings`.
@@ -83,7 +122,9 @@ def load_settings() -> Settings:
             offending variable and the reason, one per line.
     """
     try:
-        return Settings()
+        # Read from the module global rather than closed over at import, so the test
+        # suite can point this at nothing and assert on a bare environment.
+        return Settings(_env_file=_ENV_FILES)
     except ValidationError as error:
         raise SettingsError(_describe(error)) from error
 

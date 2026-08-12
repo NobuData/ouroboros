@@ -14,6 +14,7 @@ import {
   testConfiguration,
   testEnvironment,
 } from "./modules/config/configuration.fixture";
+import { environmentWithDotenv } from "./modules/config/dotenv";
 import { REDACTED } from "./modules/config/redaction";
 import { CONFIGURATION_EXIT_CODE, bootstrap, main, runAsProgram } from "./main";
 import { SERVICE_NAME, serviceVersion } from "./version";
@@ -171,7 +172,12 @@ describe("main", () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it("reads the process environment when it is handed none", async () => {
+  it("reads the process environment over the .env files when it is handed none", async () => {
+    // The default is the layered environment, not a bare `process.env` — but the process
+    // wins every variable it sets, so a checkout that has an `.env` and one that does not
+    // both configure this run from `DEVELOPMENT_ENVIRONMENT` alone. What the files can
+    // still supply is a variable the process leaves unset, which is why the expectation
+    // is built the same way the default is rather than from `process.env` directly.
     const start = started("http://127.0.0.1:4000");
     Object.assign(process.env, DEVELOPMENT_ENVIRONMENT);
 
@@ -179,7 +185,10 @@ describe("main", () => {
       const code = await main({ logger: testLogger(), start });
 
       expect(code).toBe(0);
-      expect(start).toHaveBeenCalledWith(loadConfiguration(process.env));
+      expect(start).toHaveBeenCalledWith(loadConfiguration(environmentWithDotenv(process.env)));
+      for (const [name, value] of Object.entries(DEVELOPMENT_ENVIRONMENT)) {
+        expect(environmentWithDotenv(process.env)[name]).toBe(value);
+      }
     } finally {
       for (const name of Object.keys(DEVELOPMENT_ENVIRONMENT)) {
         delete process.env[name];
