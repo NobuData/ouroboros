@@ -2275,14 +2275,14 @@ POST /v0/tasks ─▶ [registry] ─▶ [asyncio queue] ─▶ worker ─▶ GET
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| 7.1 | #55 | 🟡 Open | ouroboros: [7.1] Full-stack docker-compose | db + flyway + engine + rest + ui, one command | mvp, infra | N (after 4.10, 5.9, 6.4, 1.3) | Y | M | repo root |
+| 7.1 | #55 | 🟢 Done | ouroboros: [7.1] Full-stack docker-compose | db + flyway + engine + rest + ui, one command | mvp, infra | N (after 4.10, 5.9, 6.4, 1.3) | Y | M | repo root |
 | 7.2 | #56 | 🟡 Open | ouroboros: [7.2] End-to-end smoke test | Scripted proof of the full chain against compose | mvp, ci | N (after 7.1, 5.6) | Y | M | repo root, .github |
 | 7.3 | #57 | 🟡 Open | ouroboros: [7.3] Image publishing to GHCR | Extend docker-publish to the three new services | v2, infra, ci | N (after 7.1) | N | S | .github |
 | 7.4 | #58 | 🟡 Open | ouroboros: [7.4] Deployment runbook | How to run the stack outside dev (single host) | v2, documentation | N (after 7.3) | N | S | docs |
 
 ### Issue 7.1 — ouroboros: [7.1] Full-stack docker-compose
 
-> **GitHub issue:** #55 · **Status:** 🟡 Open · **Parent epic:** #7
+> **GitHub issue:** #55 · **Status:** 🟢 Done · **Parent epic:** #7
 
 - **Problem Statement:** The MVP's definition of done is the whole stack from one
   command; the data-tier compose (1.3) must grow to all five services with correct
@@ -2290,10 +2290,32 @@ POST /v0/tasks ─▶ [registry] ─▶ [asyncio queue] ─▶ worker ─▶ GET
 - **Solution/Scope:** Extend root compose: `db` → `flyway` (run-to-completion) →
   `engine` → `rest` (depends_on healthy db + engine) → `ui`; internal network with
   only `ui:3000` and `rest:4000` published; env wiring from `.env`; profiles: `db`
-  (1.3 subset) and `full`. Document cold-start and rebuild flows.
+  (1.3 subset) and `full`. Document cold-start and rebuild flows. The data tier carries
+  **no** profile rather than a `db` one, which is what keeps a bare `docker compose up`
+  meaning what three documents already say it means and still puts a migrated database
+  under `--profile full`; `--profile db` names that subset for anyone who prefers to.
+  Three decisions the file makes beyond the brief: **the probe stays in the image** and
+  the stack contributes only `start_interval`, the cold-start rate, so a chain four deep
+  comes up in ten seconds rather than in 30-second image intervals; **addresses are
+  literals while credentials are interpolated**, because `OURO_DATABASE_URL` and
+  `OURO_ENGINE_URL` as `.env.example` documents them point at `localhost` and are the two
+  values that cannot work inside the network; and **`ui` shares `rest`'s network
+  namespace**, which is what makes one `OURO_REST_URL` — the address the UI fetches
+  through *and* the address it renders into "Continue with GitHub" — correct on both
+  sides of the browser boundary without inventing a second variable in the UI. The
+  checks moved with it: `scripts/lib/compose-service.awk` narrows an assertion to one
+  service's block, because a grep for `ports:` over a file with five services in it can
+  no longer say which of them publishes one.
 - **Acceptance Criteria:** `docker compose --profile full up` from clean checkout →
   all healthchecks green; UI at `localhost:3000` completes the 5.6 flow; engine port
-  unreachable from host (internal-only) — deliberate boundary check.
+  unreachable from host (internal-only) — deliberate boundary check. **Met:** all five
+  containers healthy in 19s cold (10s warm), `/health/ready` reporting database and
+  engine up, the seeded `acme-robotics` workspace in place, `/login` served at
+  `localhost:3000` with its sign-in link pointing at `http://localhost:4000`, and
+  `curl localhost:8000` refused while `exec rest wget http://engine:8000/healthz`
+  answers. One thing a reader should know rather than discover: these are production
+  images, so `ouroboros-rest` strips the `OURO_AUTH_DEV_USER` bypass and sign-in here is
+  the real GitHub handshake — the README says what to register.
 - **Parallelism/Dependencies:** Needs 1.3, 4.10, 5.9, 6.4. Blocks 7.2.
 - **Technical Stack:** Docker Compose profiles, healthcheck-gated depends_on.
 - **Epic:** 7
@@ -2601,7 +2623,11 @@ non-root, healthy on `/healthz`, 233 MB unpacked against a 250 MB budget. It add
 rule every Python module after it inherits — the project is *installed* into the venv the
 stages hand along, never copied in as a source tree, because that is what makes an
 installed engine's metadata, its packaged specification and its refusal to read an `.env`
-true in the image rather than only in a checkout. **#55** (full-stack compose) is what
-runs them.
+true in the image rather than only in a checkout. **#55** is **done** and is what runs all
+three: one compose file, the data tier in no profile and the services behind `full`, every
+edge a healthcheck or an exit status, and only the two ports a browser has to reach
+published — the engine's boundary is the topology rather than a rule. It adds no image of
+its own and one rule for the ones it starts: a service's probe belongs to its image, and
+what a stack may say about it is how fast to ask while it is still coming up.
 
 Status markers in this document (🟡 Open / 🟢 Done) are updated as issues close.

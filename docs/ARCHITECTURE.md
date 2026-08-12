@@ -609,12 +609,13 @@ stack or a module README, and `scripts/verify-architecture.sh` fails when it fal
 
 ### 7.1 Local development
 
-**Running for the data tier.** [`docker-compose.yml`](../docker-compose.yml) at the repo
-root brings up PostgreSQL 17 and applies every migration:
+**Running it.** [`docker-compose.yml`](../docker-compose.yml) at the repo root is the
+whole stack, split by profile so the data tier can come up without the rest of it:
 
 ```bash
-docker compose up            # database on :5432, migrations applied
-docker compose down -v       # reset — stops everything and drops the volume
+docker compose up                  # database on :5432, migrations applied
+docker compose --profile full up   # …and engine, rest and ui behind them
+docker compose down -v             # reset — stops everything and drops the volume
 ```
 
 It needs no `.env` at all: every value is interpolated with a development default, so a
@@ -623,9 +624,9 @@ being written into the file. The migrator waits on the database's healthcheck ra
 on a sleep, which is what stops the first migration racing the restart PostgreSQL performs
 at the end of its own initialisation.
 
-The remaining services join **this same file** — not a second one — in
-[#55](https://github.com/NobuData/ouroboros/issues/55), gated on healthchecks in dependency
-order:
+The application services join **this same file** — not a second one
+([#55](https://github.com/NobuData/ouroboros/issues/55)) — gated on healthchecks in
+dependency order, `ouroboros-rest` additionally on the migration pass having *succeeded*:
 
 ```mermaid
 flowchart LR
@@ -634,6 +635,20 @@ flowchart LR
     ENG["engine :8000<br/>internal"] -->|healthy| REST["rest :4000"]
     REST -->|healthy| UI["ui :3000"]
 ```
+
+Only `ui:3000` and `rest:4000` are published — the engine is reachable at `engine:8000`
+from inside the stack and at no address the host has, so § 8's boundary is a property of
+the topology rather than a rule to keep. The database is published too, on loopback, for
+the tooling on the host that migrates and inspects it.
+
+Two consequences of running the *images* rather than a checkout are worth knowing before
+the first sign-in. `ouroboros-rest` is a production build there, so the development bypass
+(`OURO_AUTH_DEV_USER`) is stripped and sign-in is the real GitHub handshake — the README
+says what to register. And `OURO_REST_URL` is one variable naming two views of one service
+(§ 6.2): the address `ouroboros-ui` fetches through, and the address it renders into
+"Continue with GitHub" for a browser to follow. A deployment gives both the same answer; a
+laptop does not, so the UI container shares `ouroboros-rest`'s network namespace and
+`localhost:4000` means the same thing on either side of the boundary.
 
 ### 7.2 Continuous integration
 

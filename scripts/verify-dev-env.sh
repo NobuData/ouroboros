@@ -1,12 +1,14 @@
 #!/usr/bin/env sh
 #
-# verify-dev-env.sh — assert the local development data tier established by issue #10.
+# verify-dev-env.sh — assert the local development stack established by issues #10 and #55.
 #
 # Checks the contract of the repo-root compose stack: that PostgreSQL is pinned and
 # healthchecked onto a named volume, that Flyway waits for it and migrates the checkout
-# read-only, that every credential is interpolated rather than written down, that
-# .env.example declares every variable anything in the repo actually reads, and that the
-# up / reset flow is documented where a developer will look for it.
+# read-only, that the three application services start behind those healthchecks and
+# publish only what a browser has to reach, that every credential is interpolated rather
+# than written down, that .env.example declares every variable anything in the repo
+# actually reads, and that the up / reset flow is documented where a developer will look
+# for it.
 #
 # It reads files and starts nothing: no Docker daemon, no network, no database. Whether
 # the stack really comes up is what `docker compose up` answers, and the README says how.
@@ -35,7 +37,7 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     -h | --help)
-      sed -n '2,22p' "$0" | cut -c 3-
+      sed -n '2,24p' "$0" | cut -c 3-
       exit 0
       ;;
     *)
@@ -58,6 +60,15 @@ FLYWAY_DEV_CONFIG=ouroboros-db/flyway.dev.toml
 FLYWAY_SEED_CONFIG=ouroboros-db/flyway.seed.toml
 DB_SCRIPTS=ouroboros-db/scripts
 PARSER="$SCRIPT_DIR/lib/parse-env-example.awk"
+EXTRACT="$SCRIPT_DIR/lib/compose-service.awk"
+
+# The three application images, and the file each one's contract is written in. They are
+# checked as a set because what makes the stack start in order is a property of all three
+# at once: compose reads the probe out of the image, so a service whose Dockerfile
+# declares no HEALTHCHECK is one nothing downstream of it can wait for.
+ENGINE_DOCKERFILE=ouroboros-engine/Dockerfile
+REST_DOCKERFILE=ouroboros-rest/Dockerfile
+UI_DOCKERFILE=ouroboros-ui/Dockerfile
 
 # The published migration image — the module in the form a deployment applies.
 ENTRYPOINT_NAME=docker-entrypoint.sh
@@ -68,6 +79,51 @@ ENTRYPOINT="ouroboros-db/$ENTRYPOINT_NAME"
 # Where the container sees the module. Both mounts and -workingDirectory name it, so the
 # relative locations inside flyway.toml resolve the same way on both sides.
 PROJECT=/flyway/project
+
+# Where the extracted service blocks are kept for the run. One compose file now describes
+# five services, and a grep over the whole of it answers about all five at once — so the
+# assertions below are made against one service's lines at a time (lib/compose-service.awk).
+BLOCKS=$(mktemp -d)
+trap 'rm -rf "$BLOCKS"' EXIT HUP INT TERM
+
+# service_block NAME — path to a file holding NAME's block of the compose file.
+#
+# Extracted once per service per run. A service that is not there leaves an empty file
+# rather than stopping the run, so every check about it fails and is reported, which is
+# the same shape as a missing file elsewhere in this script.
+service_block() {
+  block="$BLOCKS/$1.yml"
+  if [ ! -f "$block" ]; then
+    awk -v service="$1" -f "$EXTRACT" "$COMPOSE" > "$block" 2>/dev/null || :
+  fi
+  printf '%s' "$block"
+}
+
+# service_dependencies NAME — one `dependency:condition` line per depends_on entry.
+#
+# What `depends_on` is worth is the condition attached to each name, and the two are on
+# different lines: a stack can name every dependency and still start `rest` beside a
+# migration that has not run. Pairing them here is what lets a single check assert the
+# gate rather than only the edge.
+service_dependencies() {
+  awk '
+    /^    depends_on:$/ { depends = 1; next }
+    depends && /^    [a-z]/ { depends = 0 }
+    depends && /^      [A-Za-z0-9_.-]+:$/ { name = $1; sub(/:$/, "", name); next }
+    depends && /^        condition: / { print name ":" $2 }
+  ' "$(service_block "$1")"
+}
+
+# service_setting NAME KEY — the value of a `KEY: value` line in NAME's environment.
+#
+# Used where two services have to agree about a string — the address the UI renders into
+# a link and the origin `ouroboros-rest` builds its OAuth redirect_uri from are the same
+# address, and a stack where they differ is one whose sign-in lands nowhere.
+service_setting() {
+  awk -v key="$2" '
+    $1 == key ":" { sub(/^[^:]*:[ \t]*/, ""); print; exit }
+  ' "$(service_block "$1")"
+}
 
 printf '\nLocal development environment — %s\n\n' "$ROOT"
 
@@ -119,11 +175,116 @@ check_absent "$COMPOSE" '^ *- -(locations|createSchemas|validateMigrationNaming|
 # A migrator is a task: a restart policy would re-run it forever behind `up -d`.
 check_contains "$COMPOSE" '^    restart: "no"$' 'flyway does not restart after it succeeds'
 
+# ---------------------------------------------------------------------------
+# Application services (#55)
+# ---------------------------------------------------------------------------
+
+printf '\nStack shape\n'
+for service in engine rest ui; do
+  check_contains "$COMPOSE" "^  $service:\$" "$COMPOSE defines the $service service"
+done
+# The data tier is what a bare `docker compose up` means, in the README, in the
+# conventions and in this file's own header — which is true only while `db` and `flyway`
+# are in no profile at all. Putting either of them in one would silently turn that
+# command into a stack that starts nothing.
+for service in db flyway; do
+  check_absent "$(service_block "$service")" '^ *profiles:' \
+    "$service is in no profile, so the data tier is what a bare \`up\` starts"
+done
+for service in engine rest ui; do
+  check_contains "$(service_block "$service")" '^      - full$' \
+    "$service starts only under the full profile"
+done
+check_contains "$COMPOSE" '^networks:$' "$COMPOSE declares its networks"
+check_contains "$COMPOSE" '^  ouroboros:$' 'the services share one named network'
+
+printf '\nStartup order\n'
+# The chain the issue describes: db, then the migrations, then the engine, then the
+# service that needs all three, then the UI. Every edge is a healthcheck or an exit
+# status — never a sleep — and the conditions are what say so.
+check_matches "$(service_dependencies flyway)" '^db:service_healthy$' \
+  'flyway waits for the database to be healthy'
+check_matches "$(service_dependencies rest)" '^db:service_healthy$' \
+  'rest waits for the database to be healthy'
+# The one that would otherwise be a race with data in it: `service_started` here would
+# let the API answer requests against a schema this checkout has not migrated yet.
+check_matches "$(service_dependencies rest)" '^flyway:service_completed_successfully$' \
+  'rest waits for the migrations to have succeeded, not merely to have started'
+check_matches "$(service_dependencies rest)" '^engine:service_healthy$' \
+  'rest waits for the engine to be healthy'
+check_matches "$(service_dependencies ui)" '^rest:service_healthy$' \
+  'ui waits for rest to be healthy'
+
+# A `condition: service_healthy` is only as real as the probe behind it, and for these
+# three the probe is in the image — which is why each of them is checked for one here,
+# and why none of them restates the probe in the compose file.
+check_contains "$ENGINE_DOCKERFILE" '^HEALTHCHECK ' "$ENGINE_DOCKERFILE declares the probe compose waits on"
+check_contains "$REST_DOCKERFILE" '^HEALTHCHECK ' "$REST_DOCKERFILE declares the probe compose waits on"
+check_contains "$UI_DOCKERFILE" '^HEALTHCHECK ' "$UI_DOCKERFILE declares the probe compose waits on"
+for service in engine rest ui; do
+  check_absent "$(service_block "$service")" '^ *test:' \
+    "$service takes its probe from its image rather than restating it"
+  # Without it the first probe of a cold container is one image interval away — 30
+  # seconds per link, on a chain four deep.
+  check_contains "$(service_block "$service")" '^      start_interval: ' \
+    "$service is probed at a cold-start rate until it is up"
+done
+
+printf '\nPublished surface\n'
+# The boundary the issue asks to be checked deliberately: the engine is reachable at
+# engine:8000 from the network and at no address the host has.
+check_absent "$(service_block engine)" '^ *ports:' 'the engine publishes no port at all'
+check_absent "$COMPOSE" '^ *- "[0-9.:]*:8000"' 'nothing in the stack publishes the engine port'
+# The two a browser has to reach, on loopback for the same reason the database is: this
+# stack carries development secrets, and Docker's default is every interface.
+check_contains "$(service_block rest)" '^      - "127\.0\.0\.1:4000:4000"$' \
+  'rest publishes its own port on loopback only'
+check_contains "$(service_block rest)" '^      - "127\.0\.0\.1:3000:3000"$' \
+  "rest publishes the UI's port, which is the namespace it owns"
+# The UI shares that namespace, so both are settled above; declaring either here is what
+# compose refuses outright, and this is the check that says why before it is tried.
+check_contains "$(service_block ui)" '^    network_mode: "service:rest"$' \
+  "ui shares rest's network namespace, so one OURO_REST_URL is right on both sides of it"
+check_absent "$(service_block ui)" '^ *ports:' 'ui declares no port of its own'
+check_absent "$(service_block ui)" '^ *networks:' 'ui declares no network of its own'
+
+printf '\nService wiring\n'
+# An address inside this network is not a matter of opinion, and one on the host cannot
+# be reached from inside it: OURO_DATABASE_URL and OURO_ENGINE_URL as .env.example
+# documents them — pointing at localhost — are exactly the values that cannot work here.
+check_contains "$(service_block rest)" '^      OURO_DATABASE_URL: postgresql://[^@]*@db:5432/' \
+  'rest reaches the database at db:5432, the address inside the network'
+check_contains "$(service_block rest)" '^      OURO_ENGINE_URL: http://engine:8000$' \
+  'rest reaches the engine at engine:8000, which nothing outside the network can resolve'
+# And the reverse: the two values a *browser* is given have to be the host's view.
+check_matches "$(service_setting rest OURO_REST_URL)" '^http://localhost:4000$' \
+  "rest builds its OAuth redirect_uri from the browser's address, not a container's"
+check_matches "$(service_setting rest OURO_UI_URL)" '^http://localhost:3000$' \
+  "rest sends a signed-in browser to the browser's address"
+check_matches "$(service_setting rest OURO_CORS_ORIGINS)" '^http://localhost:3000$' \
+  "rest allows credentialed calls from the UI's origin"
+# The invariant the shared namespace exists to make keepable: the address the UI renders
+# into "Continue with GitHub" and the address rest registers with GitHub are one string.
+check_equals "$(service_setting rest OURO_REST_URL)" "$(service_setting ui OURO_REST_URL)" \
+  'ui and rest agree on the one address OURO_REST_URL names'
+# Both sides of the internal call read one variable: two would be a stack that answers
+# 401 to every engine request whenever a developer changed only one of them.
+for service in engine rest; do
+  check_contains "$(service_block "$service")" \
+    '^      OURO_ENGINE_SHARED_SECRET: \$\{OURO_ENGINE_SHARED_SECRET' \
+    "$service reads the shared secret from the one variable that names it"
+done
+
 printf '\nCredential handling\n'
 # Every credential must arrive by interpolation. A literal here would be a password in
 # git that also silently ignores whatever the developer put in .env.
 check_absent "$COMPOSE" '^ *POSTGRES_[A-Z_]+:[[:space:]]*[^$[:space:]]' 'no literal POSTGRES_* credential in the compose file'
 check_absent "$COMPOSE" '^ *- -(user|password|url)=[^$]*$' 'no literal Flyway credential in the compose file'
+# The application services brought four more of them, and the same rule: a value that
+# does not open with `$` is one somebody typed into a committed file, and one a developer
+# cannot change from their .env because nothing here would read it.
+check_absent "$COMPOSE" '^ *OURO_[A-Z_]*(SECRET|CLIENT_ID):[[:space:]]*[^$[:space:]]' \
+  'no literal OURO_* credential in the compose file'
 check_absent "$COMPOSE" '^ *env_file:' 'the stack does not depend on an uncommitted env_file to start'
 
 # ---------------------------------------------------------------------------
@@ -344,6 +505,14 @@ for doc in README.md ouroboros-db/README.md; do
   check_contains "$doc" 'docker compose up' "$doc documents bringing the stack up"
   check_contains "$doc" 'docker compose down -v' "$doc documents the reset flow"
 done
+# The whole-stack command, and the one that picks up a source change: compose builds an
+# image that is missing and never rebuilds one that is stale, so a developer who only
+# ever reads the first of these has a UI that silently stays at the commit they built it
+# from.
+check_contains README.md 'docker compose --profile full up' \
+  'README.md documents the cold start of the whole stack'
+check_contains README.md 'docker compose --profile full (up --build|build)' \
+  'README.md documents rebuilding an image after a source change'
 check_contains ouroboros-db/README.md 'flyway_schema_history' \
   'ouroboros-db/README.md says how to read the applied versions'
 

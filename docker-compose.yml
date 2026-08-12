@@ -1,21 +1,37 @@
-# Ouroboros — local development data tier.
+# Ouroboros — the local development stack.
 #
-# One command brings up PostgreSQL 17 and applies every Flyway migration in
-# ouroboros-db/migrations, so `ouroboros-rest` and `ouroboros-engine` development has a
-# real database with the current schema without a manual setup step:
+# One command brings up the whole application: PostgreSQL 17, every Flyway migration in
+# ouroboros-db/migrations, the engine, the communications layer and the product UI, in
+# that order, each waiting on the healthcheck of what it needs rather than on a sleep.
 #
-#   docker compose up            # database + migrations
-#   docker compose up db         # database only, no migration pass
-#   docker compose down -v       # reset — stops everything and drops the volume
+#   docker compose --profile full up          # the whole stack — ui on :3000, rest on :4000
+#   docker compose --profile full up --build  # …rebuilding the three images first
+#   docker compose up                         # the data tier alone: database + migrations
+#   docker compose up db                      # database only, no migration pass
+#   docker compose down                       # stop everything, keep the data
+#   docker compose down -v                    # reset — also drops the volume
 #
-# Every value is interpolated from the environment with a development default, so a
-# clean checkout with no .env file works as-is. Copy .env.example to .env to override
-# any of them; real .env files are git-ignored.
+# The first `--profile full up` builds three images from this checkout and takes a few
+# minutes; every later one reuses the layer cache. `--build` is what picks up a source
+# change, because compose builds a missing image but never rebuilds a stale one.
 #
-# This file is the data tier only. The full application stack — ui, rest, engine — is
-# issue #55; it extends this file rather than replacing it.
+# Two profiles, and one of them is the absence of a profile:
 #
-# Filed as issue #10.
+#   (none) / --profile db   the data tier — `db` and `flyway`, the subset issue #10
+#                           established. They carry no `profiles:` key, so they are in
+#                           every run: naming them is what makes `--profile full` start
+#                           a migrated database rather than an empty one, and it is why
+#                           a bare `docker compose up` still means what it has always
+#                           meant. `--profile db` is accepted and selects exactly this
+#                           set, since a profile nothing declares adds nothing to it.
+#   --profile full          the three application services on top.
+#
+# Every credential is interpolated from the environment with a development default, so a
+# clean checkout with no .env file works as-is. Copy .env.example to .env to override any
+# of them; real .env files are git-ignored. Addresses are *not* interpolated — see the
+# engine's environment block for why.
+#
+# Filed as issue #10 (the data tier) and issue #55 (the application services).
 
 name: ouroboros
 
@@ -41,6 +57,10 @@ services:
       #
       # The host port is configurable so a PostgreSQL already listening on 5432 does not
       # block the stack; the container port never moves.
+      #
+      # It is published at all because the tooling on the host needs it — psql,
+      # ouroboros-db/run.sh, and ouroboros-rest's integration harness. `rest` does not:
+      # it reaches this server over the network below, at the address it never publishes.
       - "127.0.0.1:${OURO_DB_PORT:-5432}:5432"
     volumes:
       - ouroboros-db-data:/var/lib/postgresql/data
@@ -56,6 +76,8 @@ services:
       timeout: 3s
       retries: 30
       start_period: 5s
+    networks:
+      - ouroboros
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -101,8 +123,196 @@ services:
       - -password=${OURO_DB_PASSWORD:-ouroboros}
       - -schemas=${OURO_DB_SCHEMA:-ouroboros}
       - migrate
+    networks:
+      - ouroboros
     # A migrator is a task, not a service: it must not come back after it succeeds.
     restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # ouroboros-engine — the Python backend (issue #53's image, port 8000).
+  #
+  # **It publishes nothing.** That is the boundary docs/ARCHITECTURE.md § 2 describes,
+  # made true by the topology rather than by a rule somebody has to remember: the engine
+  # is reachable at engine:8000 from the network below and at no address the host has, so
+  # `curl localhost:8000` fails on a laptop with the whole stack up. `rest` is the only
+  # thing that calls it, and it is the only thing that can.
+  #
+  # The build context is this module's own directory, not the repository root — it is a
+  # uv project rather than a Yarn workspace, so nothing it installs comes from the root
+  # lockfile (docs/CONVENTIONS.md § 5, and the Dockerfile says the same from its side).
+  #
+  # It declares no probe here because it carries one in its image: /healthz, shallow and
+  # open, the one path the internal-key guard lets through. Restating it in this file
+  # would be a second place to change when the path moves. `depends_on` reads the image's,
+  # which is what makes `condition: service_healthy` below mean anything.
+  # ---------------------------------------------------------------------------
+  engine:
+    build:
+      context: ./ouroboros-engine
+    environment:
+      # The key every route but liveness is checked against. `rest` is given the same
+      # value below, and a stack where the two disagree answers 401 to every internal
+      # call — which is why both read one variable rather than two.
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
+      OURO_LOG_LEVEL: ${OURO_LOG_LEVEL:-info}
+    # The image's HEALTHCHECK decides *what* is probed and how often once it is up; this
+    # adds the one thing a long-lived deployment does not need and a cold `up` does. The
+    # image probes every 30 seconds, which is right for a scheduler watching a service
+    # that has been running for a week and wrong for a chain of four `depends_on`s that
+    # would then take two minutes to start. `start_interval` is the probe rate *until*
+    # the first success, so the stack comes up in seconds and settles back to the image's
+    # interval afterwards, rather than probing once a second for as long as it is up.
+    #
+    # `test` is deliberately not restated: an unset field falls back to the image's, and
+    # the probe belongs beside the service it probes.
+    healthcheck:
+      start_period: 30s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  # ---------------------------------------------------------------------------
+  # ouroboros-rest — the communications layer (issue #36's image, port 4000).
+  #
+  # The one service a browser and a container both talk to, and the only one that holds
+  # the database credential. It starts when the database is healthy, the migrations have
+  # *succeeded*, and the engine is healthy: `service_completed_successfully` is the
+  # condition that matters most here, because a `rest` that came up beside a failed
+  # migration would answer requests against a schema that is not this checkout's.
+  #
+  # The build context is the repository root — this module installs from the root
+  # lockfile, so a context of its own directory could not run an immutable install at all
+  # (docs/CONVENTIONS.md § 5).
+  #
+  # NODE_ENV is not set here: the image already pins it to `production`, which is what
+  # makes the service bind 0.0.0.0 instead of a loopback nothing outside the container
+  # can reach. It is also what strips OURO_AUTH_DEV_USER before the schema sees it, so
+  # the development sign-in bypass is *off* in this stack however the .env is written —
+  # sign-in here is the real GitHub handshake, which is why the two OURO_GITHUB_* values
+  # below are worth setting. README.md § The whole stack in containers says how.
+  # ---------------------------------------------------------------------------
+  rest:
+    build:
+      context: .
+      dockerfile: ouroboros-rest/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      flyway:
+        condition: service_completed_successfully
+      engine:
+        condition: service_healthy
+    environment:
+      # Assembled from the same three variables the database itself is created from, so
+      # one edit moves both. The host and port are literal because inside this network
+      # they are not a matter of opinion: `db` is the service, 5432 is the port it serves
+      # on, and OURO_DB_PORT — which moves where the *host* sees it — must not follow.
+      #
+      # This is also why the addresses below are literals rather than ${...}: a container
+      # is configured by exactly what it was started with (docs/CONVENTIONS.md § 4), and
+      # the value that is right for a process on the host — OURO_DATABASE_URL pointing at
+      # localhost, which is what .env.example documents — is the one value that cannot
+      # work in here. Interpolating them would let a correct .env silently break the
+      # stack. Credentials are the opposite case and are interpolated throughout: they
+      # are the developer's to change, and none of them may be written down in this file.
+      OURO_DATABASE_URL: postgresql://${OURO_DB_USER:-ouroboros}:${OURO_DB_PASSWORD:-ouroboros}@db:5432/${OURO_DB_NAME:-ouroboros}
+      # This service's own *browser* origin, used to build the OAuth redirect_uri — so it
+      # is the address the person's browser reaches it at, published below, and not an
+      # address inside this network.
+      OURO_REST_URL: http://localhost:4000
+      # Where a browser is sent once it is signed in or out; likewise a browser's view.
+      OURO_UI_URL: http://localhost:3000
+      # The engine, which is a container's view: nothing else can resolve this name.
+      OURO_ENGINE_URL: http://engine:8000
+      OURO_ENGINE_SHARED_SECRET: ${OURO_ENGINE_SHARED_SECRET:-dev-engine-shared-secret-change-me}
+      OURO_SESSION_SECRET: ${OURO_SESSION_SECRET:-dev-session-secret-change-me}
+      OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID:-dev-github-client-id}
+      OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET:-dev-github-client-secret}
+      # The browser origins allowed to call this API with credentials — one, the UI's.
+      OURO_CORS_ORIGINS: http://localhost:3000
+    ports:
+      # Loopback only, for the same reason the database is: this stack carries
+      # development secrets, and Docker's default would publish them to every machine on
+      # whatever network the laptop is joined to.
+      #
+      # Two ports, and the second one is the UI's. `ui` shares this container's network
+      # namespace (see it below), so a port published for that service has to be declared
+      # here — there is one namespace between them, and this is the container that owns
+      # it. Nothing in `rest` listens on 3000; the UI does, and the host reaches it here.
+      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:3000:3000"
+    # As with the engine: the probe itself is the image's — /health/live, which depends
+    # on nothing but the process — and only the cold-start rate is local.
+    healthcheck:
+      start_period: 30s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  # ---------------------------------------------------------------------------
+  # ouroboros-ui — the product UI (issue #47's image, port 3000).
+  #
+  # The build context is the repository root, as `rest`'s is, and for the same reason.
+  #
+  # **It shares `rest`'s network namespace**, which is the one unusual line in this file
+  # and is worth the paragraph it takes to explain.
+  #
+  # `OURO_REST_URL` is read for two things that are normally the same address and are not
+  # the same address here. The UI *fetches* through it, from the server, which wants an
+  # address a container can resolve; and it renders "Continue with GitHub" as an href
+  # built from it (ouroboros-ui/app/api/session.ts), which is a navigation a person
+  # follows and so wants an address their browser can resolve. docs/ARCHITECTURE.md § 6.2
+  # lists one variable for both because in a deployment there is one answer: the service
+  # has a name, and everything resolves it. On a laptop the browser's answer is
+  # `localhost:4000` and a container's is `rest:4000`, and no single value is both.
+  #
+  # `network_mode: service:rest` makes one value both. The two containers share an
+  # interface, so `localhost:4000` inside this one *is* `rest` — the same string the
+  # browser is given, correct on both sides of the boundary, with nothing invented in the
+  # UI's configuration to paper over the difference.
+  #
+  # What it costs, which is small and is the reason it is written down:
+  #
+  # * this service declares no `ports:` and no `networks:` of its own — both belong to
+  #   the namespace's owner, so the UI's 3000 is published by `rest` above;
+  # * `docker compose restart rest` builds that namespace again and leaves this container
+  #   in the old one. The UI stops answering on 3000 while *both* containers still report
+  #   healthy — each probe reaches the process it is probing, over the interface it is
+  #   stranded on — and a plain `up` will not put it right either, because nothing has
+  #   changed for compose to act on. `docker compose --profile full restart ui`, once
+  #   `rest` is back, is what does.
+  # ---------------------------------------------------------------------------
+  ui:
+    build:
+      context: .
+      dockerfile: ouroboros-ui/Dockerfile
+    depends_on:
+      rest:
+        condition: service_healthy
+    environment:
+      # A browser's address, and — because of the shared namespace above — this
+      # container's too.
+      OURO_REST_URL: http://localhost:4000
+    # The image's probe is `/`, the route the application redirects from; only the
+    # cold-start rate is local, as with the two services above.
+    healthcheck:
+      start_period: 30s
+      start_interval: 1s
+    network_mode: "service:rest"
+    profiles:
+      - full
+
+networks:
+  # One network, named rather than left to compose's `default`, so what is on it is a
+  # decision this file makes. It is an ordinary bridge: the services must still reach the
+  # internet — GitHub's OAuth endpoints are the reason — so what makes the stack a closed
+  # system from the *host* is which containers publish a port, not a flag here.
+  ouroboros:
+    driver: bridge
 
 volumes:
   # Named rather than anonymous so `down -v` reclaims it and a plain `down` does not.

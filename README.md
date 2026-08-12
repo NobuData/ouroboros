@@ -75,7 +75,7 @@ ouroboros/
 ├── package.json       # the Yarn workspace and the repo-level verbs
 ├── turbo.json         # the task graph — what `yarn dev` starts, and in what order
 ├── yarn.lock          # one resolution for every workspace
-├── docker-compose.yml # local development data tier — PostgreSQL + Flyway
+├── docker-compose.yml # the local stack — PostgreSQL, Flyway and the three services
 ├── .env.example       # every OURO_* variable, with development defaults
 ├── .editorconfig      # repo-wide editor conventions
 └── .gitignore         # repo-wide ignores
@@ -116,10 +116,62 @@ Repo-level verbs fan the same task out across every module — `yarn build`, `ya
 second definition of what any of them means, and results are cached: a second
 `yarn test` with nothing changed replays rather than re-runs.
 
+### The whole stack in containers
+
+`yarn dev` runs the services from this checkout, with their reloaders. The same
+[`docker-compose.yml`](docker-compose.yml) runs them as the images they ship as, which is
+what answers whether a change works the way it will be deployed
+([#55](https://github.com/NobuData/ouroboros/issues/55)):
+
+```bash
+docker compose --profile full up             # the whole stack, in order
+docker compose --profile full up --build     # …rebuilding the three images first
+docker compose --profile full down           # stop it — the database keeps its data
+docker compose down -v                       # reset — drops the volume with it
+```
+
+| | |
+|---|---|
+| `ouroboros-ui` | http://localhost:3000 |
+| `ouroboros-rest` | http://localhost:4000/api/v1 |
+| `ouroboros-engine` | not published — `engine:8000`, reachable only from inside the stack |
+| `ouroboros-db` | `postgresql://ouroboros:ouroboros@localhost:5432/ouroboros` |
+
+**Cold start.** The first run builds three images from this checkout and takes a few
+minutes; after that the layer cache makes it about ten seconds. Nothing waits on a sleep:
+the migrations start when PostgreSQL's healthcheck passes, `ouroboros-rest` starts when
+they have *succeeded* and the engine is healthy, and `ouroboros-ui` starts behind that. A
+clean checkout with no `.env` works as-is — every credential has a development default.
+
+**Rebuilding.** `--build` is the flag that matters after a source change: compose builds
+an image that is missing but never rebuilds one that is stale, so without it you are
+looking at the commit you last built. `docker compose --profile full build ui` rebuilds
+one of them. One thing to know if you restart a single service: `ouroboros-ui` reaches
+the API through `ouroboros-rest`'s network namespace, so restarting `rest` on its own
+strands it — run `docker compose --profile full restart ui` after, and see the comment
+above the `ui` service for why.
+
+**Signing in.** These are production images, and `ouroboros-rest` strips the development
+bypass (`OURO_AUTH_DEV_USER`) when `NODE_ENV=production` — by design, and unlike
+`yarn dev`. Sign-in here is therefore the real GitHub handshake: register a development
+OAuth application whose callback is `http://localhost:4000/api/v1/auth/github/callback`,
+put its client id and secret in `.env`, and bring the stack up. The development seed
+([#23](https://github.com/NobuData/ouroboros/issues/23)) provides the `acme-robotics`
+workspace the tenancy step offers, and its three users at `acme-robotics.dev`.
+
+**The engine is not published**, which is the boundary
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes, made true by the topology
+rather than by a rule to remember:
+
+```bash
+curl http://localhost:8000/healthz                                    # refused — nothing is listening
+docker compose --profile full exec rest wget -qO- http://engine:8000/healthz   # {"status":"ok"}
+```
+
 ### The database on its own
 
-The data tier also comes up without the rest of the stack, which is what `yarn dev` uses
-underneath:
+The data tier also comes up without the rest of the stack — it is what a plain
+`docker compose up` means, and what `yarn dev` uses underneath:
 
 ```bash
 docker compose up            # PostgreSQL 17 on :5432, Flyway migrations applied
@@ -130,7 +182,8 @@ That is the whole setup: `up` starts PostgreSQL, waits for its healthcheck, appl
 every migration in [`ouroboros-db/migrations/`](ouroboros-db/migrations), and leaves the
 database listening. It needs no `.env` — every value has a development default — and
 is safe to repeat, because Flyway applies only what is pending. `docker compose up db`
-brings up the database alone, without a migration pass. See
+brings up the database alone, without a migration pass, and `--profile db` names this
+subset explicitly for anybody who prefers to say which half they meant. See
 [`ouroboros-db/README.md`](ouroboros-db/README.md) for how to connect and how to read
 the applied versions.
 
@@ -197,9 +250,9 @@ All four application modules are scaffolded — `ouroboros-ui`
 ([#39](https://github.com/NobuData/ouroboros/issues/39)), `ouroboros-rest`
 ([#27](https://github.com/NobuData/ouroboros/issues/27)), `ouroboros-engine`
 ([#50](https://github.com/NobuData/ouroboros/issues/50)) and `ouroboros-db`
-([#19](https://github.com/NobuData/ouroboros/issues/19)) — alongside `ouroboros-web`. The
-full-stack compose file that adds those services to this one is
-[#55](https://github.com/NobuData/ouroboros/issues/55).
+([#19](https://github.com/NobuData/ouroboros/issues/19)) — alongside `ouroboros-web`, and
+all four are in the compose stack above
+([#55](https://github.com/NobuData/ouroboros/issues/55)).
 
 Environment variables are prefixed `OURO_` (except `PORT` and platform standards), are
 validated at boot, and are documented with their development defaults in
