@@ -16,9 +16,9 @@
 -- CI step (issue #24 wires it into `ci/db`; the assertions themselves belong beside the
 -- migrations that must satisfy them).
 --
--- Covers V001 (#20), V002 (#21), V003 (#22) and V004 (#706). A migration that adds a rule
--- adds its assertion here in the same change. What R__dev_seed.sql (#23) *puts* in a
--- development database is seed.sql beside this file; what the schema refuses to let
+-- Covers V001 (#20), V002 (#21), V003 (#22), V004 (#706) and V005 (#707). A migration that
+-- adds a rule adds its assertion here in the same change. What R__dev_seed.sql (#23) *puts*
+-- in a development database is seed.sql beside this file; what the schema refuses to let
 -- anything put there is here.
 
 \set ON_ERROR_STOP on
@@ -51,16 +51,21 @@ begin;
 --
 -- Nothing is lost. This is inside the transaction the end of the script rolls back, so
 -- every row deleted here is restored on the way out — which is what keeps this safe to
--- run against a database somebody is using. Three deletes cover the schema: every other
--- table cascades from `tenants`, from `users`, or from `"user"`.
+-- run against a database somebody is using. Four deletes cover the schema: every other
+-- table cascades from `tenants`, from `users`, from `"user"`, or from `organization`.
 --
 -- `"user"` needs its own delete because nothing joins it to `users` — V004 copied the rows
 -- across and left no foreign key between the two, which is exactly what makes the old
 -- tables droppable in #708. Quoted, like every other reference to it in this repository.
+--
+-- `organization` needs its own for the mirror-image reason: V005's `member` and
+-- `invitation` cascade from `"user"` as well, so clearing the people empties both — but the
+-- organizations they named survive, and the V005 section below counts them.
 -- ---------------------------------------------------------------------------
 delete from ouroboros.tenants;
 delete from ouroboros.users;
 delete from ouroboros."user";
+delete from ouroboros.organization;
 
 -- ---------------------------------------------------------------------------
 -- Fixtures. Fixed uuids so an assertion can name a row without a lookup.
@@ -843,6 +848,243 @@ select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.users
    where id = '66666666-6666-6666-6666-666666666666'),
   'deleting a "user" leaves the V002 users row alone — the two tables carry no FK between them');
+
+-- ===========================================================================
+-- V005 — the organization plugin's schema, and the tenant pointer (#707)
+-- ===========================================================================
+--
+-- Three tables and one column, and the rules V005 adds to the ones the library emitted.
+-- The state this section starts from is what the V004 section left: `"user"` holds Maya
+-- (`7777…`), Jorge (`8888…`) and the throwaway (`aaaa…`), Ken having been deleted by the
+-- cascade assertions above. `organization`, `member` and `invitation` are empty — the
+-- header cleared them and nothing since has written one.
+--
+-- What is *not* asserted here is anything about roles. `member.role` is deliberately not
+-- CHECK-constrained (see the migration), so the vocabulary is ouroboros-rest's to enforce
+-- and #715's to assert; a test here would be testing a rule this schema does not make.
+
+-- --- the tables exist, with the library's names and casing --------------------
+select pg_temp.must_hold(
+  (select count(*) = 3 from information_schema.tables
+   where table_schema = 'ouroboros'
+     and table_name in ('organization', 'member', 'invitation')),
+  'V005 created all three organization-plugin tables');
+
+-- Roadmap decision A4, asserted rather than assumed, exactly as the V004 section asserts it
+-- for `"user"`. A migration that "tidied" `organizationId` into `organization_id` would
+-- apply cleanly and then fail on the first organization anybody created.
+select pg_temp.must_hold(
+  (select count(*) = 4 from information_schema.columns
+   where table_schema = 'ouroboros' and table_name = 'member'
+     and column_name in ('id', 'organizationId', 'userId', 'role')),
+  'member keeps BetterAuth''s camelCase column names');
+
+-- #724's column, present now rather than then — the acceptance criterion that this
+-- migration is what unblocks the invitation flow rather than merely preceding it.
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns
+   where table_schema = 'ouroboros' and table_name = 'invitation'
+     and column_name = 'expiresAt' and data_type = 'timestamp with time zone'),
+  'invitation.expiresAt is present, and is a timestamptz — #724 depends on it');
+
+-- --- fixtures ----------------------------------------------------------------
+--
+-- Two organizations and the memberships mockup 01 Step 2 renders: a personal one, and a
+-- shared one Maya and Jorge are both in. Text ids rather than uuids, because that is what
+-- the library mints — and asserting against the type the application actually writes is
+-- the point of these fixtures.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata") values
+  ('org-personal', 'Maya Chen',    'maya-chen',     now(), '{"personal": true}'),
+  ('org-acme',     'Acme Robotics', 'acme-robotics', now(), null);
+
+insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt") values
+  ('mem-personal', 'org-personal', '77777777-7777-7777-7777-777777777777', 'owner',  now()),
+  ('mem-acme-maya', 'org-acme',    '77777777-7777-7777-7777-777777777777', 'admin',  now()),
+  ('mem-acme-jorge', 'org-acme',   '88888888-8888-8888-8888-888888888888', 'viewer', now());
+
+-- --- metadata round-trips the `personal` flag --------------------------------
+--
+-- The acceptance criterion in its own words, and the thing mockup 01 Step 2's pill is
+-- rendered from. Read back through `::jsonb` because that is the question being asked —
+-- not "is this the string I wrote" but "is this JSON somebody can get the flag out of".
+select pg_temp.must_hold(
+  (select ("metadata"::jsonb ->> 'personal')::boolean
+   from ouroboros.organization where "id" = 'org-personal'),
+  'organization.metadata round-trips the personal flag');
+select pg_temp.must_hold(
+  (select "metadata" is null from ouroboros.organization where "id" = 'org-acme'),
+  'an organization with no metadata holds null rather than an empty object');
+
+-- The column is JSON text by contract, so a value that is not JSON is a row the library
+-- throws on the next time it reads the organization. This is the OURS constraint in the
+-- migration, and the failure it exists to catch is a hand-written insert rather than
+-- anything the plugin does.
+select pg_temp.must_reject(
+  $$insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+    values ('org-broken', 'Broken', 'broken', now(), 'personal: true')$$,
+  'organization.metadata refuses text that is not JSON', 'organization_metadata_is_json');
+
+-- And it is `is json`, not `is json object` — the text `null` is what the adapter writes
+-- when a caller clears the field, and rejecting it would be this constraint inventing a
+-- rule the library does not have.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-cleared', 'Cleared', 'cleared', now(), 'null');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.organization where "id" = 'org-cleared'),
+  'organization.metadata accepts the JSON null the adapter writes when clearing it');
+
+-- --- uniqueness ---------------------------------------------------------------
+--
+-- Each asserted by the statement it must refuse, naming the constraint that has to be the
+-- one to fire — without which a row rejected by some unrelated rule reads as a pass.
+select pg_temp.must_reject(
+  $$insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+    values ('org-impostor', 'Impostor', 'acme-robotics', now())$$,
+  'organization.slug is unique across the installation', 'organization_slug_key');
+
+-- The acceptance criterion, and the successor to `tenant_members`' composite primary key.
+-- The plugin refuses a second membership in application code; this is what makes the rule
+-- hold under two concurrent invitation accepts, which its read-then-write cannot close.
+select pg_temp.must_reject(
+  $$insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt")
+    values ('mem-twice', 'org-acme', '77777777-7777-7777-7777-777777777777', 'owner', now())$$,
+  'member(organizationId, userId) is unique — one person joins one organization once',
+  'member_organization_user_key');
+
+-- Scoped to the organization, which is the whole point: the same person holding a role in
+-- a second organization is the case mockup 01 Step 2 exists to render.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.member
+   where "userId" = '77777777-7777-7777-7777-777777777777'),
+  'one person may be a member of several organizations');
+
+-- --- referential integrity ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt")
+    values ('mem-orphan', 'no-such-org', '77777777-7777-7777-7777-777777777777', 'member', now())$$,
+  'member.organizationId references an existing organization', 'member_organizationId_fkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt")
+    values ('mem-orphan', 'org-acme', 'nobody', 'member', now())$$,
+  'member.userId references an existing "user"', 'member_userId_fkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.invitation
+      ("id", "organizationId", "email", "status", "expiresAt", "inviterId")
+    values ('inv-orphan', 'org-acme', 'new@acme-robotics.dev', 'pending',
+            now() + interval '7 days', 'nobody')$$,
+  'invitation.inviterId references an existing "user"', 'invitation_inviterId_fkey');
+
+-- --- the tenant pointer -------------------------------------------------------
+--
+-- OURS, all of it: the library emits a bare `text` column and clears it in application
+-- code. These are the three properties the acceptance criterion asks the *schema* for.
+
+-- Nullable, because a session exists from the moment somebody signs in — which is before
+-- they have chosen anything in mockup 01 Step 2.
+insert into ouroboros.session ("id", "userId", "token", "expiresAt", "updatedAt")
+  values ('session-nowhere', '77777777-7777-7777-7777-777777777777', 'token-nowhere',
+          now() + interval '7 days', now());
+select pg_temp.must_hold(
+  (select "activeOrganizationId" is null from ouroboros.session where "id" = 'session-nowhere'),
+  'a new session starts with no active organization, and the column permits it');
+
+-- A foreign key, so no session can point at an organization that does not exist. Without
+-- it, a delete issued by anything other than the plugin — #708''s migration, a support
+-- script, psql — leaves sessions resolving a tenant that cannot be read.
+select pg_temp.must_reject(
+  $$update ouroboros.session set "activeOrganizationId" = 'no-such-org'
+    where "id" = 'session-nowhere'$$,
+  'session.activeOrganizationId references an existing organization',
+  'session_activeOrganizationId_fkey');
+
+update ouroboros.session set "activeOrganizationId" = 'org-acme' where "id" = 'session-nowhere';
+select pg_temp.must_hold(
+  (select "activeOrganizationId" = 'org-acme' from ouroboros.session
+   where "id" = 'session-nowhere'),
+  'setting the active organization is an ordinary update once the id exists');
+
+-- --- indexes ------------------------------------------------------------------
+--
+-- The three reads the product actually makes, one per index that has to exist for them:
+-- mockup 01 Step 2's "which organizations is this person in", mockup 17's "who is in this
+-- organization", and the plugin's own `checkMembership` — the pair lookup behind every
+-- role decision, which is what the OURS unique constraint doubles as an index for.
+--
+-- As elsewhere in this file the planner is stopped from preferring a scan over a
+-- fixture-sized table; what is asserted is that a usable index exists at all.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select "organizationId" from ouroboros.member
+    where "userId" = '77777777-7777-7777-7777-777777777777'$$,
+  'member_userId_idx');
+select pg_temp.must_use_index(
+  $$select "userId" from ouroboros.member where "organizationId" = 'org-acme'$$,
+  'member_organizationId_idx');
+select pg_temp.must_use_index(
+  $$select "role" from ouroboros.member
+    where "organizationId" = 'org-acme'
+      and "userId" = '77777777-7777-7777-7777-777777777777'$$,
+  'member_organization_user_key');
+select pg_temp.must_use_index(
+  $$select "id" from ouroboros.organization where "slug" = 'acme-robotics'$$,
+  'organization_slug');
+
+-- Not a read this service makes — the pointer is reached from a session already in hand,
+-- by primary key. What needs it is the foreign key itself: without an index, every delete
+-- of an organization scans `session` in full to find the rows to null out.
+select pg_temp.must_use_index(
+  $$select "id" from ouroboros.session where "activeOrganizationId" = 'org-acme'$$,
+  'session_activeOrganizationId_idx');
+set local enable_seqscan = on;
+
+-- --- cascades, and the one that deliberately is not -----------------------------
+--
+-- Deleting an organization removes what belonged to it — the memberships in it, and the
+-- invitations to it — in the same statement.
+insert into ouroboros.invitation
+    ("id", "organizationId", "email", "role", "status", "expiresAt", "inviterId")
+  values ('inv-acme', 'org-acme', 'new@acme-robotics.dev', 'member', 'pending',
+          now() + interval '7 days', '77777777-7777-7777-7777-777777777777');
+
+delete from ouroboros.organization where "id" = 'org-acme';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.member where "organizationId" = 'org-acme'),
+  'deleting an organization cascades to its memberships');
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.invitation where "organizationId" = 'org-acme'),
+  'deleting an organization cascades to its invitations');
+
+-- **And it must not sign anybody out.** This is the difference between `set null` and
+-- `cascade`, and it is the acceptance criterion that would be most expensive to get wrong:
+-- a cascade here would delete the *session rows*, so deleting an organization would sign
+-- out everybody who happened to be acting in it — including people whose other
+-- memberships are untouched.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.session where "id" = 'session-nowhere'),
+  'deleting an organization does not delete the sessions that pointed at it');
+select pg_temp.must_hold(
+  (select "activeOrganizationId" is null from ouroboros.session where "id" = 'session-nowhere'),
+  'deleting an organization nulls the pointer — signed in, acting nowhere');
+
+-- The people survive too: a membership is deleted, the member is not. Same rule V002 held
+-- for `tenant_members`, which is what makes #708 a rename rather than a re-think.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros."user"
+   where "id" = '77777777-7777-7777-7777-777777777777'),
+  'deleting an organization leaves its members'' "user" rows alone');
+
+-- The cascade in the other direction: deleting a person takes their memberships with them
+-- and leaves the organizations standing, since an organization outlives any one member.
+delete from ouroboros."user" where "id" = '77777777-7777-7777-7777-777777777777';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.member
+   where "userId" = '77777777-7777-7777-7777-777777777777'),
+  'deleting a "user" cascades to their memberships');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.organization where "id" = 'org-personal'),
+  'deleting a "user" leaves the organizations they belonged to standing');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

@@ -539,10 +539,41 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 > the back-fill finds nothing to copy. **B.4 · #709** is what teaches the seed about these
 > tables; until then, calling the function by hand brings a seeded development database
 > across.
+>
+> **B.2 · #707 has shipped and has left the table below.**
+> [`ouroboros-db/migrations/V005__betterauth_organization.sql`](../ouroboros-db/migrations/V005__betterauth_organization.sql)
+> is the same hand-port for the organization plugin — `organization`, `member`,
+> `invitation` and `session."activeOrganizationId"` — and the port is **checked rather
+> than trusted**: re-running `generate` against a database carrying V005 prints *"Your
+> schema is already up to date"*.
+>
+> Four statements are ours and marked so. The `member(organizationId, userId)` unique
+> constraint the acceptance criteria name — the successor to `tenant_members`' composite
+> primary key, and the thing that makes the plugin's own read-then-write membership check
+> hold under two concurrent invitation accepts. A `check ("metadata" is null or "metadata"
+> is json)`, which constrains shape rather than vocabulary and so cannot be outdated by a
+> library upgrade. And the **foreign key on the tenant pointer**, with the index the
+> delete path needs: the library emits a bare `text` column and clears it in application
+> code, and the acceptance criterion asks the schema for the rule instead. It is
+> `on delete set null` rather than `cascade` — a cascade there would delete the *session
+> rows*, so deleting an organization would sign out everybody acting in it.
+>
+> Two things it deliberately did **not** do, both for the same reason: `member.role` and
+> `invitation.status` are **not** CHECK-constrained, unlike V002's `tenant_members.role`.
+> Those vocabularies are the plugin's configuration now — **A.5** defines `viewer` in an
+> access-control statement — and a check constraint one release out of date would reject a
+> value the application had just been configured to write. Both are documented in column
+> comments and asserted in `ouroboros-rest`, which is where they are decided. Worth
+> knowing for **E.3 · #724**: there is no `expired` status despite this roadmap's diagram
+> — expiry is the `expiresAt` timestamp, evaluated at accept time.
+>
+> `tests/constraints.sql` grew a V005 section covering all of it, and its fixture reset
+> grew a fourth delete: `member` and `invitation` cascade from `"user"` as well, so
+> clearing the people empties both, but the organizations they named survive. Its issue
+> section below is kept as the record of what was asked for.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| B.2 · #707 | ouroboros-db: [B.2] Organization plugin schema (Flyway V005) | `organization`, `member`, `invitation` + session active-org column | mvp, auth, db | N (after B.1) | Y | M | ouroboros-db |
 | B.3 · #708 | ouroboros-db: [B.3] Tenancy **data migration** — `tenants`→`organization`, extensions re-pointed | Live migration of 5 populated tables; drops `tenants`/`tenant_members`/`users`/`user_identities` | mvp, auth, db | N (after B.1, B.2) | Y | **L** ⚠ riskiest | ouroboros-db |
 | B.4 · #709 | ouroboros-db: [B.4] Auth-aware dev seed data | Seeded users (password + GitHub-shaped), orgs, domains, enablement | mvp, auth, db | N (after B.3) | Y | S | ouroboros-db |
 | B.5 · #710 | ouroboros-db: [B.5] Auth constraint & drift tests in ci/db | Constraint assertions + BetterAuth-schema drift check | mvp, auth, db, ci | N (after B.3, #24) | Y | S | ouroboros-db, .github |
@@ -621,6 +652,10 @@ erDiagram
 ```
 
 ### Issue B.2 (#707) — ouroboros-db: [B.2] Organization plugin schema (Flyway V005)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic B](#epic-b-696--auth-database-ouroboros-db) for what landed, and
+`ouroboros-db/README.md` § The tenant pointer for the column that matters most.
 
 - **Problem Statement:** The org plugin (A.5) adds tenancy tables and extends
   `session`; that DDL must land as a Flyway migration, not a CLI side effect.
@@ -1343,7 +1378,7 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ *(all shipped)* → (B.2 #707 → **B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ *(all shipped)* → (**B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
    *(**B.3 is the cutover.** It drops `tenants`, `tenant_members`, `users` and
    `user_identities` — every consumer of those tables must already be migrated or
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
@@ -1465,9 +1500,11 @@ row, the library's guard is what every route sits behind, and signing out revoke
 What is not yet true is that anybody can sign in **without github.com**. A.4 deleted the
 `OURO_AUTH_DEV_USER` bypass with the guard that read it, which is why #705 is next: it is
 what returns local development and the e2e gate to a working sign-in, and #709 is what gives
-the seeded people a BetterAuth identity to sign in as. #707 (B.2) is the next database step,
-#718 (D.3) makes the login page's button work, and #720 (D.5) re-points the UI's own gate,
-which still forwards #33's cookie.
+the seeded people a BetterAuth identity to sign in as. #707 (B.2) **has since landed** —
+`organization`, `member`, `invitation` and the session's tenant pointer exist, so #704 (A.5)
+is unblocked and **#708 (B.3) is the next database step**, and the riskiest one in the
+roadmap. #718 (D.3) makes the login page's button work, and #720 (D.5) re-points the UI's
+own gate, which still forwards #33's cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate
