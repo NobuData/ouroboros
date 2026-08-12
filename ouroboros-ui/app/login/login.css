@@ -1,0 +1,648 @@
+/*
+ * The sign-in & tenancy screen (#44) — `docs/mockups/01-login.html` as a working page.
+ *
+ * The mockup is the design source of truth for this screen's content and card anatomy
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 5 renders login *outside* the shell, so nothing here
+ * shares the shell's chrome). What it is not is a stylesheet to copy: it was drawn against
+ * the dark palette with literal colours, and every one of them has a token that means the
+ * same thing — `--bg0` is `--ground`, `--border` is `--line`, `--mut` is `--ink-mut`,
+ * `--glow` is `--accent-glow`. The two rules from docs/CONVENTIONS.md § 6 hold here as they
+ * do in shell.css, and `__tests__/styles.test.ts` fails the build on either: no colour
+ * literal outside app/tokens.css, and rem for every length the reader's font-size
+ * preference should scale. Hairlines and the grid dot stay in px, because a texture that
+ * grows with the type is a different texture.
+ *
+ * Sizes come from the mockup's pixels mapped onto the nearest token — the 24px brand lines
+ * are `--t-2xl`, the 20px card title is `--t-xl` — rather than being re-specified. Where
+ * the mockup has no token to map onto (the panel widths, the lockup, the switch) the value
+ * is the mockup's own, in rem.
+ */
+
+/* ---------- the frame ---------- */
+
+/*
+ * This screen's own scroll container.
+ *
+ * `html` and `body` are locked in globals.css so the shell's content pane is the only
+ * scrolling thing in the product, and a screen rendered outside the shell inherits that
+ * lock — so it has to bring its own, which app/(auth)/layout.tsx is where this is
+ * spelled out. Without it, a short viewport simply clips the second card.
+ */
+.login {
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.login__split {
+  display: flex;
+  min-height: 100%;
+}
+
+/* ---------- brand panel (55%) ---------- */
+
+/*
+ * The glow, the low corner wash and the dot grid the mockup layers over the page ground.
+ * `transparent` is a keyword rather than a colour, which is what lets a gradient stop be
+ * written here at all; every stop that carries a colour carries a token.
+ */
+.login-brand {
+  flex: 55 1 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-11);
+  padding: var(--sp-12) 7vw;
+  background:
+    radial-gradient(56.25rem 32.5rem at 60% 32%, var(--accent-tint), transparent 62%),
+    radial-gradient(43.75rem 25rem at -10% 110%, var(--accent-wash), transparent 60%),
+    radial-gradient(var(--grid-dot) 1px, transparent 1px) 0 0 / 1.625rem 1.625rem,
+    var(--ground);
+}
+
+/*
+ * Both lockups occupy one grid cell, stacked rather than sequential, so the column sees a
+ * single box however many images are inside it — the technique the header's mark pair uses
+ * (shell.css), for the same reason: the treatment follows the surface it sits on
+ * (docs/BRAND.md), the choice is made in CSS so the right one is painted before any
+ * JavaScript runs, and hiding by opacity rather than by `display` lets the pair cross-fade
+ * with the palette instead of snapping halfway through it.
+ *
+ * The aspect ratio is the asset's own (640×471), declared so the row reserves its height
+ * before the image decodes.
+ */
+.login-brand__lockup {
+  display: grid;
+  width: 22.5rem;
+  max-width: 100%;
+  aspect-ratio: 640 / 471;
+}
+
+.login-brand__mark {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 0 2rem var(--accent-glow));
+}
+
+.login-brand__mark--dark {
+  opacity: 0;
+}
+
+:root[data-theme="dark"] .login-brand__mark--light {
+  opacity: 0;
+}
+
+:root[data-theme="dark"] .login-brand__mark--dark {
+  opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .login-brand__mark--light {
+    opacity: 0;
+  }
+
+  :root:not([data-theme="light"]) .login-brand__mark--dark {
+    opacity: 1;
+  }
+}
+
+.login-brand__lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+  margin: 0;
+}
+
+.login-brand__line {
+  max-width: 22ch;
+  margin: 0;
+  font-family: var(--f-disp);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+/* Three lines, three depths of ink: the claim, its expansion, and the payoff in accent. */
+.login-brand__line:nth-child(2) {
+  color: var(--ink-dim);
+}
+
+.login-brand__line:nth-child(3) {
+  color: var(--accent);
+}
+
+.login-brand__trust {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+/* Separators between the claims, hidden from the accessibility tree by their own markup. */
+.login-brand__trust li + li::before {
+  content: "·";
+  margin-right: var(--sp-6);
+  color: var(--line-strong);
+}
+
+/* ---------- auth panel (45%) ---------- */
+
+.login-auth {
+  flex: 45 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-9);
+  padding: var(--sp-11) var(--sp-10);
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.login-auth__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-9);
+  width: 100%;
+  max-width: 23.75rem;
+}
+
+/* ---------- cards ---------- */
+
+.login-card {
+  padding: var(--sp-9);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--ground);
+}
+
+/*
+ * The step nobody can act on yet — recessed, but **not** dimmed.
+ *
+ * The mockup drops this card to `opacity: 0.66`, and that one declaration would take every
+ * measured pair on it below WCAG AA: the token sheet's contrast tables are computed against
+ * the surfaces here, and a translucent layer is a surface nobody measured. The design system
+ * § 3.4 asks for AA in both themes at every font scale, and this card carries real sentences
+ * a signed-out visitor is meant to read.
+ *
+ * So the recession is a surface change instead. It sits on the well rather than the page, its
+ * eyebrow is the quiet one (`.login-card__eyebrow--quiet`), and it holds no control at all.
+ * Between them those put it behind step 1 in exactly the way the mockup intends, with every
+ * pair still one of the published ones.
+ */
+.login-card--preview {
+  background: var(--inset);
+}
+
+.login-card__eyebrow {
+  margin: 0 0 var(--sp-3);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.login-card__eyebrow--quiet {
+  color: var(--ink-faint);
+}
+
+.login-card__title {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--t-xl);
+  font-weight: 600;
+  letter-spacing: var(--tr-tight);
+}
+
+.login-card__title--sub {
+  font-size: var(--t-lg);
+}
+
+.login-card__lede {
+  margin: 0 0 var(--sp-8);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.login-card__rule {
+  height: 1px;
+  margin: var(--sp-8) 0;
+  border: none;
+  background: var(--line);
+}
+
+/* ---------- notes ---------- */
+
+.login-note {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.login-note--faint {
+  color: var(--ink-faint);
+}
+
+/* The mockup's accent caret, which is decoration and is hidden from a screen reader. */
+.login-note__marker {
+  color: var(--accent);
+  font-family: var(--f-mono);
+}
+
+/* ---------- buttons ---------- */
+
+.login-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  width: 100%;
+  padding: var(--sp-6) var(--sp-8);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.login-btn:hover:not([aria-disabled="true"]) {
+  border-color: var(--line-control);
+}
+
+/*
+ * The primary fill, exactly as docs/DESIGN_TOKENS.md specifies it: the accent gradient
+ * from its light stop to its deep one, its own ink, and the glow reserved for live things.
+ * Both label pairs are measured against WCAG AA in that document's contrast table.
+ */
+.login-btn--primary {
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--accent-lift), var(--accent-deep));
+  color: var(--accent-ink);
+  box-shadow: 0 0 1.125rem -0.125rem var(--accent-glow);
+}
+
+.login-btn--primary:hover:not([aria-disabled="true"]) {
+  box-shadow: 0 0 1.625rem 0 var(--accent-glow);
+}
+
+.login-btn--ghost {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink-dim);
+}
+
+.login-btn[aria-disabled="true"] {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.login-btn__mark {
+  flex: none;
+}
+
+/* ---------- the "or enterprise SSO" divider ---------- */
+
+.login-or {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  margin: var(--sp-8) 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.login-or::before,
+.login-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ---------- the enterprise-domain field ---------- */
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+
+.login-field__label {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+.login-field__input {
+  width: 100%;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.login-field__input::placeholder {
+  color: var(--ink-faint);
+}
+
+.login-field__input:disabled {
+  cursor: not-allowed;
+}
+
+/* ---------- identity line, once somebody is signed in ---------- */
+
+.login-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  margin: 0;
+}
+
+.login-identity__who {
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.login-identity__mail {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 400;
+}
+
+/* ---------- rows: a workspace to choose, or an organisation to enable ---------- */
+
+.login-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.login-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  width: 100%;
+  padding: var(--sp-6) 0;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+/*
+ * Descendant rather than child: in the picker each row is wrapped in the form that submits
+ * it, so `> .login-row` would match the enablement list and quietly miss the picker — the one
+ * place the trailing hairline is most visible, sitting directly above the card's own note.
+ */
+.login-rows > li:last-child .login-row {
+  border-bottom: none;
+}
+
+/* A whole row that is itself the control — how a workspace is chosen. */
+button.login-row {
+  cursor: pointer;
+}
+
+button.login-row:hover {
+  background: var(--accent-wash);
+}
+
+.login-row__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.login-row__name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.login-row__detail {
+  display: block;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.login-row__go {
+  flex: none;
+  color: var(--accent);
+}
+
+/*
+ * One monogram treatment rather than the mockup's three gradients.
+ *
+ * The mockup tints each organisation differently, which needs a palette of per-identity
+ * hues — and the token sheet publishes none, so the three would be three colour literals
+ * invented here and measured nowhere. The accent panel is the token pair that already
+ * exists for exactly this (the header's avatar uses it), and its contrast is published.
+ * A per-identity palette is a token-sheet change, not a stylesheet one.
+ */
+.login-monogram {
+  display: grid;
+  place-items: center;
+  width: 2.125rem;
+  height: 2.125rem;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--accent-panel);
+  color: var(--accent-panel-ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 700;
+}
+
+.login-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.login-pill--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.login-pill--ok {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* ---------- repositories, indented under their organisation ---------- */
+
+.login-repos {
+  margin: 0 0 var(--sp-6);
+  padding: 0 0 0 var(--sp-11);
+  list-style: none;
+}
+
+.login-repo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-4) 0;
+}
+
+.login-repo__name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.login-repo__branch {
+  flex: none;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* ---------- the switch ---------- */
+
+/*
+ * Shape and behaviour from the mockup; the two colours are the pair
+ * docs/DESIGN_TOKENS.md measures for exactly this (`--accent-deep` as the on-track,
+ * `--accent-panel-ink` as the knob on it).
+ *
+ * It is a submit button inside a form rather than a checkbox, so the choice reaches the
+ * server without JavaScript — see app/login/enablement-switch.tsx. `role="switch"` and
+ * `aria-checked` are what make a button announce as one.
+ */
+.login-switch {
+  position: relative;
+  width: 2.375rem;
+  height: 1.3125rem;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+  cursor: pointer;
+}
+
+.login-switch::after {
+  content: "";
+  position: absolute;
+  top: 0.15625rem;
+  left: 0.1875rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--r-round);
+  background: var(--ink-mut);
+}
+
+.login-switch[aria-checked="true"] {
+  background: var(--accent-deep);
+}
+
+.login-switch[aria-checked="true"]::after {
+  left: 1.1875rem;
+  background: var(--accent-panel-ink);
+}
+
+.login-switch[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .login-switch::after {
+    transition:
+      left 150ms ease,
+      background-color 150ms ease;
+  }
+}
+
+/* The form is only the transport; it must not add a box to the row. */
+.login-switch__form {
+  display: contents;
+}
+
+/* ---------- footnotes and the way out ---------- */
+
+.login-summary {
+  margin: var(--sp-8) 0 var(--sp-6);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.login-empty {
+  margin: var(--sp-8) 0;
+  padding: var(--sp-8);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- responsive ---------- */
+
+/*
+ * The mockup's own breakpoint: below 900px the split stacks, the auth panel's left
+ * hairline becomes a top one, and the brand panel stops trying to fill a column.
+ */
+@media (max-width: 56.25rem) {
+  .login__split {
+    flex-direction: column;
+  }
+
+  .login-brand {
+    padding: var(--sp-11) 8vw;
+  }
+
+  .login-auth {
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+}

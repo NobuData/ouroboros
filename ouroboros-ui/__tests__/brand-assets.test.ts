@@ -19,27 +19,56 @@ import { describe, expect, it } from "vitest";
 const UI = join(import.meta.dirname, "..");
 const REPO = join(UI, "..");
 
-/** The marks the app shell renders, as `public/`-relative and `docs/`-relative pairs. */
-const COPIES = [
+/**
+ * The icon pair the app shell's header draws (#41), as `public/`- and `docs/`-relative names.
+ */
+const ICONS = [
   ["public/brand/icon-light.png", "docs/brand/icon-light.png"],
   ["public/brand/icon-dark.png", "docs/brand/icon-dark.png"],
 ] as const;
+
+/**
+ * The tagline-lockup pair the login screen's brand panel draws (#44).
+ *
+ * `docs/BRAND.md` nominates the lockup for exactly this — "Login, doc headers, marketing,
+ * slides" — and it is the one asset in the set that is not square, because the tagline is
+ * set under the mark rather than beside it.
+ */
+const LOCKUPS = [
+  ["public/brand/lockup-tagline-light.png", "docs/brand/lockup-tagline-light.png"],
+  ["public/brand/lockup-tagline-dark.png", "docs/brand/lockup-tagline-dark.png"],
+] as const;
+
+/** Every copy this module serves. */
+const COPIES = [...ICONS, ...LOCKUPS];
 
 describe("the brand marks served by the UI", () => {
   it.each(COPIES)("%s is byte-identical to %s", (copy, source) => {
     expect(readFileSync(join(UI, copy)).equals(readFileSync(join(REPO, source)))).toBe(true);
   });
 
-  it("keeps the light and dark marks the same size, so the header never moves", () => {
+  it("keeps the header's light and dark marks the same size, so the header never moves", () => {
     // docs/BRAND.md states this property of the asset pair; the shell depends on it,
     // because swapping treatments is a CSS opacity change over a stacked pair — both
     // marks are laid out at all times, so a mismatch would size the box by the larger.
-    const [light, dark] = COPIES.map(([copy]) => pngSize(readFileSync(join(UI, copy))));
+    const [light, dark] = ICONS.map(([copy]) => pngSize(readFileSync(join(UI, copy))));
 
     expect(light).toEqual(dark);
     // Square, and big enough that the 30px mark stays sharp on a HiDPI display.
     expect(light.width).toBe(light.height);
     expect(light.width).toBeGreaterThanOrEqual(60);
+  });
+
+  it("keeps the login lockups the same size, so the brand panel never reflows", () => {
+    // The same stacked-pair technique as the header (app/login/login.css), so the same
+    // requirement: both are laid out at all times and a mismatch would size the box by the
+    // larger. `aspect-ratio` in that sheet is this ratio, written down.
+    const [light, dark] = LOCKUPS.map(([copy]) => pngSize(readFileSync(join(UI, copy))));
+
+    expect(light).toEqual(dark);
+    // Wider than tall, and wide enough that the 360px lockup stays sharp on a HiDPI display.
+    expect(light.width).toBeGreaterThan(light.height);
+    expect(light.width).toBeGreaterThanOrEqual(640);
   });
 });
 

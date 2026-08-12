@@ -91,13 +91,13 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.3.0","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.3.1","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
     -d '{"task_kind":"echo","payload":{"note":"hello"}}' \
     localhost:8000/v0/tasks/echo && echo
-{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.3.0"}
+{"accepted":true,"echo":{"task_kind":"echo","payload":{"note":"hello"}},"engine_version":"0.3.1"}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -202,7 +202,19 @@ Development default port: **8000** (`PORT`).
 Values are read from the **process environment only**; there is no dotenv loading, so
 what a container is started with is exactly what the service runs with. Every variable
 is documented with its development default in the repo-root
-[`.env.example`](../.env.example).
+[`.env.example`](../.env.example), and those three — and only those three — again in
+[`.env.example`](.env.example) here, for copying:
+
+```bash
+cp .env.example .env
+set -a; . ./.env; set +a     # the engine reads no file, so the copy is exported
+uv run dev
+```
+
+The repo-root template stays the complete list and this one is a subset of it
+([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)); the
+values in the two are identical. `yarn dev` from the repo root needs neither copy — turbo
+passes the `OURO_*` namespace through from the root `.env`.
 
 Configuration is validated while the application is being built, which happens at import
 of `ouroboros_engine.main` — so a bad value stops the process before it binds a port,

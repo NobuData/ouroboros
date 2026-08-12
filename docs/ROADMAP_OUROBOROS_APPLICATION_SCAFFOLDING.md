@@ -1619,7 +1619,7 @@ edge: [CORS allow-list] → [headers] → [throttle 429] → routes · sessions:
 | 5.3 | #41 | 🟢 Done | ouroboros-ui: [5.3] App shell — header, sidebar navigation, content pane | The chrome every screen shares, per the shell specification | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.4 | #42 | 🟢 Done | ouroboros-ui: [5.4] Theme toggle control | Visible light/dark/system switcher in the top bar | mvp, ui | N (after 2.4, 5.3) | Y | XS | ouroboros-ui |
 | 5.5 | #43 | 🟢 Done | ouroboros-ui: [5.5] Typed API client from OpenAPI | Generated client + fetch wrapper (auth, errors, tenant header) | mvp, ui, rest | N (after 4.8) | Y | M | ouroboros-ui |
-| 5.6 | #44 | 🟡 Open | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
+| 5.6 | #44 | 🟢 Done | ouroboros-ui: [5.6] Login & tenancy screen | Mockup 01 as a working page: OAuth entry, org enablement | mvp, ui | N (after 5.5, 4.7) | Y | L | ouroboros-ui |
 | 5.7 | #45 | 🟡 Open | ouroboros-ui: [5.7] Dashboard placeholder | Mockup 02 layout skeleton with live health/tenant data + empty states | mvp, ui | N (after 5.6) | Y | M | ouroboros-ui |
 | 5.8 | #46 | 🟡 Open | ouroboros-ui: [5.8] UI component primitives | Buttons, chips, cards, tables, form fields from the design system | mvp, ui, design | N (after 5.2) | Y | M | ouroboros-ui |
 | 5.9 | #47 | 🟢 Done | ouroboros-ui: [5.9] Dockerfile & standalone build | Production image via Next standalone output | mvp, ui, infra | N (after 5.1) | Y | S | ouroboros-ui |
@@ -1799,7 +1799,33 @@ openapi.json (4.8) ─ yarn api:sync ─▶ generated types ─▶ client wrappe
 
 ### Issue 5.6 — ouroboros-ui: [5.6] Login & tenancy screen
 
-> **GitHub issue:** #44 · **Status:** 🟡 Open · **Parent epic:** #5
+> **GitHub issue:** #44 · **Status:** 🟢 Done · **Parent epic:** #5
+>
+> Delivered: [`ouroboros-ui/app/(auth)/login`](../ouroboros-ui/app/(auth)/login/page.tsx)
+> over [`app/login/`](../ouroboros-ui/app/login), rendering mockup 01 outside the app
+> shell in both palettes. The route is thin — it reads the request, hands three values to
+> a pure decision ([`app/login/view.ts`](../ouroboros-ui/app/login/view.ts)) and renders a
+> component — so each of the screen's five outcomes is a unit test rather than a route to
+> drive.
+>
+> Three decisions are worth carrying forward. **The gate is a data-access layer, not a
+> layout**: [`app/api/access.ts`](../ouroboros-ui/app/api/access.ts) is what every screen
+> in `(app)` calls to obtain its workspace, so the page that skipped the check is the page
+> with nothing to render — a check in `app/(app)/layout.tsx` would not re-run on a
+> client-side navigation and would not stop the segment beneath it rendering anyway.
+> **A session alone is not access**: every operation in the contract is workspace-scoped,
+> so `(app)` needs a chosen workspace as well, and the `ouro_tenant` cookie is matched
+> against the memberships `/auth/me` reports rather than believed. **The writes re-derive
+> their own authority**: a Server Action is a POST endpoint like any other, so each of the
+> three takes only the reference to what was pressed and reads who, which workspace and
+> which role from the session.
+>
+> What the mockup asks for and the contract cannot yet supply is present and inert rather
+> than absent: enterprise SSO has no endpoint to call, so the field and its button render
+> marked unavailable and say why, and the mockup's three example organisations are not
+> invented for a visitor who has not signed in. Repository switches are an addition to the
+> mockup, because "toggle a repo" is an acceptance criterion and the mockup draws only a
+> count. `member` and `viewer` see every switch in its real state, marked read-only.
 
 - **Problem Statement:** Mockup 01 (sign-in, tenant-by-domain, org enablement) is the
   front door — the first real screen proving design system + auth + API together.

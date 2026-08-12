@@ -6,14 +6,16 @@
 > ([#17](https://github.com/NobuData/ouroboros/issues/17)) from a
 > [visible control in the header](#theming)
 > ([#42](https://github.com/NobuData/ouroboros/issues/42)), wrapped in the
-> [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)), and
+> [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)),
 > holding a [typed API client](#the-api-client) generated from the REST contract
-> ([#43](https://github.com/NobuData/ouroboros/issues/43)) —
+> ([#43](https://github.com/NobuData/ouroboros/issues/43)), and serving its
+> [first real screen](#sign-in--tenancy) — sign-in and workspace selection
+> ([#44](https://github.com/NobuData/ouroboros/issues/44)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). What renders *inside* the
 > shell is still a placeholder: the dashboard
-> ([#45](https://github.com/NobuData/ouroboros/issues/45)) is the first screen to call
-> that client.
+> ([#45](https://github.com/NobuData/ouroboros/issues/45)) is the screen that replaces
+> it.
 
 ## Purpose
 
@@ -89,9 +91,9 @@ and calls it lazily for the same reason.
 
 Two pieces of per-browser state belong to this module rather than to configuration: the
 [theme choice](#theming), in `localStorage` under `ouro-theme`, and the
-[active workspace](#the-api-client), in an `HttpOnly` `ouro_tenant` cookie. The session
-cookie, `ouro_session`, is `ouroboros-rest`'s — this module forwards it and never writes
-it.
+[active workspace](#access--who-is-signed-in-and-where), in an `HttpOnly` `ouro_tenant`
+cookie that [the login screen](#sign-in--tenancy) writes. The session cookie,
+`ouro_session`, is `ouroboros-rest`'s — this module forwards it and never writes it.
 
 ## Container
 
@@ -166,14 +168,22 @@ ouroboros-ui/
 │   ├── theme.ts             # the theme engine: vocabulary, DOM ops, boot script
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
+│   ├── paths.ts             # the two routes this application redirects to
 │   ├── api/                 # the typed client for ouroboros-rest — server-side
 │   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
 │   │   ├── client.ts        #   the wrapper: cookie · X-Ouro-Tenant · ApiError
 │   │   ├── errors.ts        #   ApiError, and the envelope it is parsed from
 │   │   ├── tenant.ts        #   the active-workspace vocabulary
-│   │   ├── server.ts        #   api() — the wired client, and the workspace store
-│   │   └── tenants.ts       #   tenants.list() / tenants.read()
+│   │   ├── membership.ts    #   what a person holds in a workspace — framework-free
+│   │   ├── server.ts        #   api() / anonymousApi(), and the workspace store
+│   │   ├── access.ts        #   the gate: currentAccess() / requireWorkspace()
+│   │   ├── tenants.ts       #   tenants.list() / tenants.read()
+│   │   ├── session.ts       #   session.read() — GET /auth/me
+│   │   ├── orgs.ts          #   orgs.list() / orgs.setEnabled()
+│   │   ├── repos.ts         #   repos.list() / repos.setEnabled()
+│   │   └── enablement.ts    #   the two composed into what one screen reads
 │   ├── shell/               # the app shell: header, sidebar, content pane
+│   ├── login/               # the sign-in & tenancy screen's components
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
@@ -187,9 +197,10 @@ ouroboros-ui/
 ```
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
-contribute nothing to the URL, so the dashboard is `/` rather than `/app`. `(app)` renders
-its screens inside the [app shell](#app-shell); `(auth)` is still a pass-through, waiting
-for the sign-in frame (#44).
+contribute nothing to the URL, so the dashboard is `/` and sign-in is `/login`. `(app)`
+renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
+a full-bleed screen would only have to undo any frame added there — see
+[Sign-in & tenancy](#sign-in--tenancy).
 
 Tests live in `__tests__/` rather than beside the code they cover, so that no file under
 `app/` can ever be mistaken for a route segment. `yarn test` runs them once and exits;
@@ -232,8 +243,9 @@ turns a Client Component that reaches for it into a build error rather than a ru
 Screens therefore fetch in Server Components and pass data down, and a Client Component
 that needs to *write* calls a Server Action. The same fact decides where the active
 workspace lives: an `HttpOnly` `ouro_tenant` cookie, because the header is composed while a
-Server Component renders and nothing there can read `localStorage`. The login screen
-(#44) writes it with `setActiveTenant()`.
+Server Component renders and nothing there can read `localStorage`.
+[The login screen](#sign-in--tenancy) writes it with `setActiveTenant()`, from a Server
+Action.
 
 Three properties are worth knowing before changing any of it.
 
@@ -254,6 +266,132 @@ Three properties are worth knowing before changing any of it.
    is a header-injection attempt. An unreadable *workspace* cookie is treated as no choice
    at all rather than as an error — a bad cookie must not be able to stop the application
    rendering.
+
+Two clients are wired, not one. [`api()`](app/api/server.ts) turns a `401` into a redirect
+to `/login`; `anonymousApi()` is the same client with that one handler removed, for the one
+caller that must be able to *hear* a `401` — the login screen, which `api()` would send to
+itself once per render for every signed-out visitor.
+
+## Access — who is signed in, and where
+
+[`app/api/access.ts`](app/api/access.ts) is the **data-access layer**, and it is the one
+place a screen asks what it is allowed to render. Two rules come out of it, and the rest of
+the application inherits both.
+
+**A session alone is not access.** Every operation in the contract except the five public
+ones is scoped to a workspace, so *signed in* and *able to render the product* are different
+states — the second needs a chosen workspace this person still belongs to. `requireWorkspace()`
+returns both or redirects to [sign-in](#sign-in--tenancy); `currentAccess()` answers without
+redirecting, for the screen that has to ask.
+
+**The cookie is a claim, not a fact.** `ouro_tenant` is whatever the browser was last given,
+so it is resolved against the memberships `GET /api/v1/auth/me` reports *in the same request*
+([`app/api/membership.ts`](app/api/membership.ts)). A hand-edited cookie, one naming a
+workspace somebody has been removed from, and one naming a suspended workspace all resolve to
+*no choice* — and land on the login screen rather than on a screen of somebody else's data.
+
+```tsx
+// every screen in app/(app)
+const { session, membership } = await requireWorkspace();
+```
+
+Three things about the shape are deliberate.
+
+1. **It is not in a layout.** A layout does not re-render on a client-side navigation between
+   sibling routes, and it does not control whether the rest of the route renders at all — so a
+   check in one can be true when a page is first reached and stale when it is reached again
+   (`node_modules/next/dist/docs/01-app/02-guides/authentication.md` § Layouts and auth
+   checks). Calling the gate is instead how a page *gets* its workspace, which makes the page
+   that skipped the check the page with nothing to draw.
+2. **It is memoised per request** with React's `cache`, so a layout, a page and a Server Action
+   in the same request share one call to the service. That is what makes calling it freely the
+   right thing to do rather than a cost to count.
+3. **It declares that it needs a request.** `await connection()` is the first line, so
+   `next build` never tries to prerender a screen whose content depends on who is asking —
+   which would reach `OURO_REST_URL` on a machine that has no reason to know it.
+
+## Sign-in & tenancy
+
+`/login` ([#44](https://github.com/NobuData/ouroboros/issues/44)) is
+[`docs/mockups/01-login.html`](../docs/mockups/01-login.html) as a working page, and the first
+screen to prove the design system, the session and the API together. It renders **outside the
+app shell** — the design system § 5 puts login and the onboarding wizard there, because a
+visitor who has not signed in has no workspace for the shell to describe — so it owns its own
+scroll container, `html`/`body` being locked for the shell's benefit.
+
+```
+┌───────────────────────────────┬─────────────────────────┐
+│                               │  Step 1 · Sign in       │
+│      ◎ OUROBOROS              │  [ Continue with GitHub]│
+│      Infinity in Autonomy     │  ─ or enterprise SSO ─  │
+│                               │  Company domain  ▢      │
+│   Point it at your backlog.   ├─────────────────────────┤
+│   It plans, codes, builds…    │  Step 2 · acme-robotics │
+│   You watch the loop turn.    │  AR acme-robotics   [◉] │
+│                               │     helios-firmware [◉] │
+│   SOC 2 · SSO/SAML · self-…   │  [ Enter mission ctrl → ]│
+└───────────────────────────────┴─────────────────────────┘
+        55% brand panel                45% two cards
+```
+
+**One route, five outcomes**, decided by [`app/login/view.ts`](app/login/view.ts) from three
+values — the session, the resolved workspace, and a `?workspace=` slug — and nothing else.
+Keeping the decision pure is what makes each outcome a unit test rather than a route to drive:
+
+| The request | What it gets |
+|---|---|
+| no session | step 1 live, step 2 as the mockup's dimmed preview |
+| signed in, no workspace chosen | step 2 is the workspace picker |
+| signed in, `?workspace=` naming the chosen one | step 2 is the organisation & repository list |
+| signed in, belonging to no live workspace | step 2 explains, and names the domain match if the contract supplied one |
+| signed in and settled | redirect to the dashboard |
+
+The `?workspace=` parameter is the only unobvious part, and it exists because two of the
+issue's requirements pull against each other: an authenticated visitor "skips to the
+dashboard", and choosing a workspace is *followed by* enabling organisations in it — a second
+step on this same screen, reached when the choice has already been made. Without something in
+the request to tell them apart, the state that renders the enablement list is the state that
+redirects away from it. So choosing redirects to `/login?workspace=<slug>`, in the URL rather
+than in hidden state: it survives a refresh, it can be linked, and it is visible. It is never
+trusted — it is compared against a membership the service reported in the same request.
+
+### What it writes, and why each write re-checks
+
+Three Server Actions ([`app/login/actions.ts`](app/login/actions.ts)): choose the workspace,
+turn an organisation on or off, turn a repository on or off. A Server Action is a POST endpoint
+against the page that renders it, reachable by anyone who can send the same request, so
+rendering a form only for an owner is not a check. Each action therefore takes from the form
+only *the reference to what was pressed* — an organisation login, a repository name, the state
+to move to — and re-derives the rest: who from the session cookie, which workspace from
+`ouro_tenant` matched against the memberships, and which role from that membership. No form
+here carries a tenant id, so a hand-made POST cannot name somebody else's workspace at all.
+
+The switches are submit buttons in one-field forms rather than `useState` toggles, which is
+why this screen has **no client component on it anywhere**: it works before hydration and
+without JavaScript, and on the product's first screen over an unknown connection that is worth
+more than an optimistic animation. Each form carries the state to move *to*, so a stale render
+asks for something specific instead of inverting whatever the flag has become since.
+
+### What it does not pretend
+
+- **Enterprise SSO** has no endpoint to call — SAML and OIDC are v2 — so the mockup's field and
+  button render *marked unavailable, saying why* (design system § 3.5) rather than being
+  dropped. The button carries `aria-disabled` rather than `disabled`, so the explanation stays
+  in the tab order.
+- **The mockup's three example organisations** are not invented for a visitor who has not
+  signed in. The preview card says what the step will ask.
+- **`member` and `viewer`** see every switch, in its real state, marked read-only with the
+  reason — administering a workspace is `owner` or `admin`, and a list with the switches hidden
+  would look like a list with no settings.
+- **The counts are the service's own totals**, so a page holding fewer rows than exist says so
+  instead of presenting a hundred as all of them.
+- **Repository switches are an addition to the mockup**, which draws only a count: "toggle a
+  repo" is one of the issue's acceptance criteria. They are indented under their organisation
+  because a repository is in scope only when its own flag *and* its organisation's are both
+  true, and the summary line says so when the two disagree.
+- **The monogram is one treatment, not the mockup's three.** Per-identity hues would be three
+  colour literals invented here and measured nowhere; the accent panel is the token pair that
+  already exists for this, and its contrast is published.
 
 ## App shell
 
@@ -299,10 +437,12 @@ Four things are worth knowing before adding a screen to it.
    settings gear and the account menu. Of those the toggle is the only one that is
    finished; the tenant chip (#77), the search pill and ⌘K palette (#79), and the real
    needs-you count (#78) each have an issue. The account menu's interaction is built and
-   its contents are placeholders until sessions
-   ([#33](https://github.com/NobuData/ouroboros/issues/33)) and CP.3 (#645) fill them —
-   including the profile menu's own theme control, which the design system § 1.1 puts
-   there and which will drive this same `useTheme()`.
+   its contents are placeholders until CP.3 (#645) fills them — the session behind them
+   now exists ([#33](https://github.com/NobuData/ouroboros/issues/33)), and
+   [`requireWorkspace()`](#access--who-is-signed-in-and-where) is where a page already
+   holds the person and the workspace to pass in — including the profile menu's own theme
+   control, which the design system § 1.1 puts there and which will drive this same
+   `useTheme()`.
 
 Responsive collapse below 1024px is CSS, not state: the sidebar becomes a 64px icon rail
 and every name becomes its tooltip. The user-controlled collapse, its per-account
@@ -519,6 +659,7 @@ theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
 theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
 typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
+sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

@@ -170,6 +170,25 @@ issue level.
 > BetterAuth is confirmed — the guard, the `5eed…` id convention and both test files
 > carry over unchanged.
 
+> **`4.7` · `#33` GitHub OAuth sign-in & sessions and `5.6` · `#44` Login & tenancy
+> screen were listed here and are not dropped — both shipped in P1, as specified.**
+>
+> For the third time and the same reason: the supersession assumed no scaffolding work
+> had begun, and by the time P1 reached them the identity schema (`#21`), the tenancy API
+> (`#31`), the tenant middleware (`#32`) and the typed client (`#43`) had all landed in
+> their original shape. A login screen built against BetterAuth would have had no service
+> to call.
+>
+> `#44` is `ouroboros-ui/app/(auth)/login` plus `app/login/`, against `/api/v1/auth/me`
+> and the `#31` enablement endpoints. What `D.2`–`D.5` become if BetterAuth is confirmed
+> is smaller than they were written to be: `D.2` (the split layout and brand panel) and
+> `D.4` (the org rows and switches) are **built** and unaffected — neither touches the
+> auth provider; `D.3` reduces to re-pointing "Continue with GitHub" at the BetterAuth
+> handler and filling in the SSO half that ships inert today; and `D.5`'s guards exist as
+> `app/api/access.ts`, whose one BetterAuth-shaped change would be reading the active
+> workspace from the session's `activeOrganizationId` rather than from the `ouro_tenant`
+> cookie — the same amendment `C.3` already records for `#32`.
+
 **Deferred out of P1 into P2 — implement once, in BetterAuth shape:**
 
 | Ref | Issue | Amendment |

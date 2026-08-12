@@ -29,15 +29,20 @@ import { redirect } from "next/navigation";
 import { type ApiClient, SESSION_COOKIE, createApiClient } from "@/app/api/client";
 import { ACTIVE_TENANT_COOKIE, assertTenantReference, isTenantReference } from "@/app/api/tenant";
 import { restUrl } from "@/app/env";
+import { LOGIN_PATH } from "@/app/paths";
 
 /**
- * Where a request with no usable session is sent.
+ * Where a request with no usable session is sent — the login screen
+ * ([#44](https://github.com/NobuData/ouroboros/issues/44)).
  *
- * The route is [#44](https://github.com/NobuData/ouroboros/issues/44)'s; until it lands,
- * a `401` lands on a 404 rather than on a loop, which is the better of the two failures
- * while the screen does not exist.
+ * Re-exported from `app/paths.ts`, which is where the routes this application redirects to
+ * are written down, because a pure module (`app/login/view.ts`) needs the same string and
+ * cannot import this server-only one.
+ *
+ * That screen must not be sent to itself, which is what {@link anonymousApi} exists for:
+ * it reads a `401` as *nobody is signed in* rather than as *go and sign in*.
  */
-export const LOGIN_PATH = "/login";
+export { LOGIN_PATH };
 
 /** How long the active-workspace cookie lives, in seconds — one year. */
 export const ACTIVE_TENANT_MAX_AGE = 60 * 60 * 24 * 365;
@@ -106,6 +111,9 @@ async function sessionToken(): Promise<string | undefined> {
  */
 let client: ApiClient | undefined;
 
+/** The same, for the one caller that must be allowed to hear a `401`. */
+let anonymous: ApiClient | undefined;
+
 /**
  * The client for `ouroboros-rest`, wired to this request's cookies.
  *
@@ -129,7 +137,34 @@ export function api(): ApiClient {
 }
 
 /**
- * Forget the memoised client.
+ * The same client, minus the redirect.
+ *
+ * The login screen has to ask *whether* anybody is signed in, and for it a `401` is an
+ * answer rather than an accident: {@link api}'s handler would send the request to
+ * {@link LOGIN_PATH}, which is the page asking — a redirect to itself, once per render,
+ * for every signed-out visitor.
+ *
+ * Nothing else about it differs. It forwards the same session cookie and the same
+ * workspace header, so a screen that uses it while a session *does* exist sees exactly
+ * what {@link api} would have seen; a `401` simply rejects with the `ApiError` the
+ * contract describes and the caller decides what it means
+ * (`app/api/access.ts`).
+ *
+ * @returns The typed client. Every call resolves with the body the contract describes or
+ *   rejects with an `ApiError`, `401` included.
+ * @throws {Error} From {@link restUrl}, when `OURO_REST_URL` is unset or unusable.
+ */
+export function anonymousApi(): ApiClient {
+  anonymous ??= createApiClient({
+    baseUrl: restUrl(),
+    tenant: activeTenant,
+    session: sessionToken,
+  });
+  return anonymous;
+}
+
+/**
+ * Forget the memoised clients.
  *
  * Exported for tests, which need each case to build one against its own environment.
  * Production code has no reason to call it: the base URL of a running process does not
@@ -137,4 +172,5 @@ export function api(): ApiClient {
  */
 export function resetApiClient(): void {
   client = undefined;
+  anonymous = undefined;
 }
