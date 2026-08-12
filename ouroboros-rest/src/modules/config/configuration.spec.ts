@@ -65,9 +65,6 @@ describe("the development defaults", () => {
       betterAuthUrl: "http://localhost:4000",
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
-      // The fixture leaves `OURO_AUTH_DEV_USER` out where `.env.example` sets it; see the
-      // fixture's header for why the suite must not be signed in by default.
-      authDevUser: null,
       corsOrigins: ["http://localhost:3000"],
     });
   });

@@ -101,9 +101,11 @@ WORKDIR /app
 # NODE_ENV=production is load-bearing twice over, which is why it is set here rather than
 # left to whoever runs the image. It is what makes `listenHost` bind 0.0.0.0
 # (src/modules/config/configuration.ts) — a process bound to loopback inside a container
-# is a process nothing outside it can reach — and it is what strips OURO_AUTH_DEV_USER
-# out of the environment before the schema ever sees it, so an image started with a
-# development .env is a service that ignores the bypass rather than one that trusts it.
+# is a process nothing outside it can reach — and, since issue #705, it is the single flag
+# that decides whether the development email/password sign-in exists at all
+# (src/auth/password.provider.ts). Pinning it in the image is what makes "there is no
+# password route in production" a property of this artefact rather than of whoever starts
+# it: an image run with a development .env still has no way in but the GitHub handshake.
 #
 # PORT is the documented unprefixed exception (docs/CONVENTIONS.md § 4) and 4000 is this
 # module's port in the map there. It is also this service's default when unset, so the

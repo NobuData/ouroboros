@@ -23,16 +23,19 @@ import { AuthService } from "./auth.service";
  *
  * **And the session half went the same way.**
  * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the stateless cookie
- * with the library's database-backed session and its guard, so `authenticate` and the
- * `OURO_AUTH_DEV_USER` bypass are gone and so are their suites. What each of them covered
- * is still covered, somewhere it can be checked against the mechanism that replaced it:
+ * with the library's database-backed session and its guard, so `authenticate` and #33's
+ * development bypass are gone and so are their suites. What each of them covered is still
+ * covered, somewhere it can be checked against the mechanism that replaced it:
  *
  *   * *a valid session names a person* is `guard.surface.spec.ts` and
  *     `auth.integration-spec.ts`, over a real `session` row;
  *   * *a session this service will not honour authenticates nobody* is the same two, with
  *     the row deleted or expired instead of the signature wrong;
- *   * *the bypass is off in production* is `configuration.spec.ts`, which is where the
- *     variable is dropped — the check that outlived the reader.
+ *   * *there is no way in without a credential in production* is
+ *     `src/auth/password.provider.spec.ts`, which asserts that
+ *     [#705](https://github.com/NobuData/ouroboros/issues/705)'s email/password sign-in — the
+ *     bypass's replacement, and a real credential rather than a way around one — is off
+ *     there.
  *
  * What is left is one question, and it is not about authentication at all: given a person,
  * where do they belong.

@@ -411,13 +411,18 @@ Session expiry and refresh — the values, and where they are argued
 | `Secure` | over HTTPS | Set by the library from `BETTER_AUTH_URL`'s scheme; a development stack has no TLS |
 | Signing key | `BETTER_AUTH_SECRET` | Signs the token and the cached snapshot. Rotating it invalidates every open session |
 
-**Local development has no bypass.** #33's `OURO_AUTH_DEV_USER` signed every request in as
-a named address; #703 removed the guard that read it, because a bypass is a branch inside
-an authentication decision this service no longer makes.
-[#705](https://github.com/NobuData/ouroboros/issues/705) replaces it with a development
-email/password sign-in — a credential rather than a way around one — and removes the
-variable. Until it lands, signing in locally means a real GitHub OAuth application; see
-`ouroboros-rest/README.md` § Signing in.
+**Local development has no bypass — it has a credential.** #33 shipped a variable naming
+one address, and a branch in the guard that signed every request in as that person; #703
+removed the guard that read it, because a bypass is a branch inside an authentication
+decision this service no longer makes, and
+[#705](https://github.com/NobuData/ouroboros/issues/705) removed the variable along with
+delivering the replacement: BetterAuth's **email/password sign-in, enabled whenever
+`NODE_ENV` is not `production` and by nothing else**
+(`ouroboros-rest/src/auth/password.provider.ts`). It hashes, compares, refuses a wrong
+answer and writes a session row, none of which a bypass did. In production both routes
+answer `400` — the library leaves them mounted and makes the handlers refuse — so the
+property that matters, *no password can be exchanged for a session there*, holds without a
+second switch to keep in step.
 
 The guard is the library's own `AuthGuard`, registered globally, so **every route requires
 a session unless it opts out** with `@AllowAnonymous()`: the heartbeat, the two probes and
@@ -653,7 +658,6 @@ checkout runs with:
 | `BETTER_AUTH_URL` | `ouroboros-rest` | The origin BetterAuth builds its own URLs from — the same address as `OURO_REST_URL`, in the library's vocabulary. Nothing derives one from the other | `http://localhost:4000` |
 | `OURO_GITHUB_CLIENT_ID` | `ouroboros-rest` | GitHub OAuth application, client id | `dev-github-client-id` |
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
-| `OURO_AUTH_DEV_USER` | `ouroboros-rest` | #33's development sign-in bypass. **Read by nothing since [#703](https://github.com/NobuData/ouroboros/issues/703)**, which removed the guard that consulted it; [#705](https://github.com/NobuData/ouroboros/issues/705) removes the variable along with delivering what replaces it. Still dropped before validation when `NODE_ENV=production` | `ken@acme-robotics.dev` |
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 | `OURO_TEST_DATABASE_DISPOSABLE` | `ouroboros-rest` tests | Whether `yarn test:integration` may empty the database between tests. The harness normally starts a throwaway PostgreSQL, which is disposable by definition; this is consulted only when `OURO_DATABASE_URL` points the suite at somebody else's, where truncation would take the development seed with it | `false` |
@@ -705,9 +709,11 @@ the topology rather than a rule to keep. The database is published too, on loopb
 the tooling on the host that migrates and inspects it.
 
 Two consequences of running the *images* rather than a checkout are worth knowing before
-the first sign-in. `ouroboros-rest` is a production build there, so the development bypass
-(`OURO_AUTH_DEV_USER`) is stripped and sign-in is the real GitHub handshake — the README
-says what to register. And `OURO_REST_URL` is one variable naming two views of one service
+the first sign-in. `ouroboros-rest` is a production build there, so § 4.1.1's development
+email/password sign-in does not exist and sign-in is the real GitHub handshake — the README
+says what to register. Overriding `NODE_ENV` in compose does not change that usefully: the
+same variable moves the listen address back to loopback, and a container bound to loopback
+publishes nothing. And `OURO_REST_URL` is one variable naming two views of one service
 (§ 6.2): the address `ouroboros-ui` fetches through, and the address it renders into
 "Continue with GitHub" for a browser to follow. A deployment gives both the same answer; a
 laptop does not, so the UI container shares `ouroboros-rest`'s network namespace and

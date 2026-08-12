@@ -410,7 +410,7 @@ that roadmap's "Existing issues affected" section.
 > **Two deviations, both recorded on the issue.** The dashboard leg used to sign in by
 > minting a session with `ouroboros-rest`'s own `issueSession`, because the amendment below
 > — *the real BetterAuth flow, not a bypass* — had no flow to use yet, and the compose
-> stack's production image strips the `OURO_AUTH_DEV_USER` bypass the issue body assumed.
+> stack's production image strips the dev-user bypass the issue body assumed.
 > **That is now parked rather than deviating**:
 > [#703](https://github.com/NobuData/ouroboros/issues/703) made a session a database row,
 > so there is nothing left for a suite outside the stack to mint. The legs that need one

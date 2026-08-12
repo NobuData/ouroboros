@@ -210,7 +210,6 @@ service never starts half-configured.
 | `BETTER_AUTH_URL`           | The origin BetterAuth builds its own URLs from           |        yes         | an origin, as above — BetterAuth appends its own `/api/auth`                |
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
-| `OURO_AUTH_DEV_USER`        | [#33's sign-in bypass](#the-development-bypass) — read by nothing since #703 |         no         | an email address; dropped in production                                     |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 
 Every one of them is documented with a development default in the repo-root
@@ -269,10 +268,10 @@ all of it lives in [`src/modules/config/`](src/modules/config):
 - **Secrets are redacted, by construction.** The service logs its configuration at boot,
   and [`src/modules/config/redaction.ts`](src/modules/config/redaction.ts) is the only
   renderer there is: the four secrets become `[redacted]`, and the connection string
-  keeps its host and database while its password is masked in place. `OURO_AUTH_DEV_USER`
-  is deliberately *not* redacted — printing it is how an operator confirms the development
-  bypass is off, and a redacted line would look the same either way. Real `.env` files are
-  never committed.
+  keeps its host and database while its password is masked in place. `NODE_ENV` is
+  deliberately *not* redacted — it is the line an operator reads to confirm whether the
+  [development sign-in](#the-development-sign-in) exists in a deployment, and that is the
+  only thing gating it. Real `.env` files are never committed.
 
 ```console
 $ yarn start
@@ -288,7 +287,6 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   BETTER_AUTH_URL=http://localhost:4000
   OURO_GITHUB_CLIENT_ID=dev-github-client-id
   OURO_GITHUB_CLIENT_SECRET=[redacted]
-  OURO_AUTH_DEV_USER=ken@acme-robotics.dev
   OURO_CORS_ORIGINS=http://localhost:3000
 LOG [ouroboros-rest] ouroboros-rest 0.14.0 listening on http://127.0.0.1:4000/api/v1
 ```
@@ -837,9 +835,12 @@ beside the new one.
 
 ### Signing in for real
 
+Only needed to exercise the GitHub path itself — for ordinary local work, the
+[development sign-in](#the-development-sign-in) is already there and needs no setup.
+
 Register a GitHub OAuth application — **Settings → Developer settings → OAuth Apps** — with
-the callback URL below, put its client id and secret in `.env` as
-`OURO_GITHUB_CLIENT_ID`/`OURO_GITHUB_CLIENT_SECRET`, and comment out `OURO_AUTH_DEV_USER`:
+the callback URL below, and put its client id and secret in `.env` as
+`OURO_GITHUB_CLIENT_ID`/`OURO_GITHUB_CLIENT_SECRET`:
 
 | Environment | Authorization callback URL                        |
 | ----------- | ------------------------------------------------- |
@@ -907,23 +908,53 @@ surface is the heartbeat, the two probes and sign-out — the same four routes #
 `src/modules/auth/guard.surface.spec.ts` enumerates the guard's decision for every route in
 the table and fails if one gains or loses an exemption.
 
-### The development bypass
+### The development sign-in
 
-**There is not one any more.** `OURO_AUTH_DEV_USER` treated every request as coming from
-the person with that address, so local work needed no GitHub OAuth application at all.
-[#703](https://github.com/NobuData/ouroboros/issues/703) removed the guard that read it: a
-bypass is a branch inside an authentication decision, and this service no longer makes one
-— BetterAuth does.
+**There is no bypass, and there is no longer a reason to want one.**
+[#33](https://github.com/NobuData/ouroboros/issues/33) shipped one: a variable naming an
+address, and a branch in the guard that treated every request as coming from whoever it
+named. [#703](https://github.com/NobuData/ouroboros/issues/703) deleted the
+guard that read it, and [#705](https://github.com/NobuData/ouroboros/issues/705) deleted the
+variable along with delivering what replaces it —
+[BetterAuth's email/password sign-in](https://better-auth.com/docs/authentication/email-password),
+configured in [`src/auth/password.provider.ts`](src/auth/password.provider.ts).
 
-So **signing in locally means a real GitHub OAuth application** until
-[#705](https://github.com/NobuData/ouroboros/issues/705) lands the development
-email/password sign-in, which is a credential the library supports natively rather than a
-way around authentication. See [Signing in for real](#signing-in-for-real) above; it takes
-about two minutes.
+The difference is the point. A bypass is a way *around* authentication; a password is a way
+*through* it. The routes below hash, compare, refuse a wrong answer, write a `session` row
+and leave an `account` row recording how somebody proved who they were — all of which the
+variable did none of.
 
-The variable is still in `.env.example` and still validated, because #705 removes it in the
-same change that delivers its replacement. Nothing reads it, and it is still dropped
-outright when `NODE_ENV=production`.
+**It is enabled by `NODE_ENV !== "production"`, and by nothing else.** There is deliberately
+no `OURO_` variable of its own: a second switch is a second thing to get wrong, and the
+failure mode of getting it wrong is a password route on the public API. The service's
+Dockerfile pins `NODE_ENV=production`, so the off position is what any deployment inherits
+without being told.
+
+| Route                             | What it does                                             |
+| --------------------------------- | -------------------------------------------------------- |
+| `POST /api/auth/sign-in/email`    | `{ email, password }` → a session cookie                  |
+| `POST /api/auth/sign-up/email`    | Creates an account and signs it in (`autoSignIn`)          |
+
+Passwords are between 12 and 128 characters — the floor is this service's, above the
+library's default of eight — and hashing is the library's own scrypt, deliberately not
+overridden, because [#709](https://github.com/NobuData/ouroboros/issues/709)'s seed has to
+write hashes the same verifier accepts.
+
+**In production both routes answer `400`** with `EMAIL_PASSWORD_DISABLED` and
+`EMAIL_PASSWORD_SIGN_UP_DISABLED`. That is the library's behaviour rather than the `404` the
+issue's wording suggests: the routes stay mounted and their handlers refuse.
+`src/auth/password.provider.spec.ts` asserts the option this service decides rather than the
+status code the library owns.
+
+Two consequences worth knowing:
+
+- **The compose stack has no password sign-in.** It runs this module's production image, so
+  `docker compose --profile full up` is GitHub-only. Overriding `NODE_ENV` there does not
+  help — the same value moves `listenHost` back to loopback, and a container bound to
+  loopback publishes nothing. Use `yarn dev` for password sign-in.
+- **The e2e suite is affected by the same thing.** `tests/e2e/support/session.ts` now calls
+  the sign-in route for real, and its signed-in legs stay parked until the seed writes
+  credentials (#709) and the suite has a non-production `rest` to talk to.
 
 ## The tenant context
 
@@ -1126,9 +1157,9 @@ workspace hoists it.
 
 `NODE_ENV=production` is set in the image and is load-bearing twice: it is what makes
 `listenHost` bind every interface — a process bound to loopback inside a container is a
-process nothing can route to — and it is what strips `OURO_AUTH_DEV_USER` before the schema
-sees it, so an image started with an inherited development environment ignores the bypass
-rather than trusting it.
+process nothing can route to — and it is the single flag that decides whether the
+[development sign-in](#the-development-sign-in) exists, so an image started with an
+inherited development environment still has no password route.
 
 No `OURO_*` or `BETTER_AUTH_*` variable is set anywhere in the image. Each is either an
 address that differs

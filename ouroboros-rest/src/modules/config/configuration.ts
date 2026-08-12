@@ -84,7 +84,17 @@ export const MINIMUM_SECRET_LENGTH = 16;
 export interface Configuration {
   /** TCP port to listen on. From `PORT`, {@link DEFAULT_PORT} when unset. */
   readonly port: number;
-  /** Which environment this is. From `NODE_ENV`, `development` when unset. */
+  /**
+   * Which environment this is. From `NODE_ENV`, `development` when unset.
+   *
+   * Two things turn on it, and since
+   * [#705](https://github.com/NobuData/ouroboros/issues/705) one of them is a security
+   * boundary rather than a deployment detail: {@link listenHost} picks the interface to
+   * bind, and `src/auth/password.provider.ts` enables the development email/password
+   * sign-in **only when this is not `production`**. `ouroboros-rest`'s Dockerfile pins it to
+   * `production` in the image, so the off position is what any deployment inherits without
+   * having to be told.
+   */
   readonly nodeEnv: NodeEnvironment;
   /** PostgreSQL connection string for `ouroboros-db`. From `OURO_DATABASE_URL`. */
   readonly databaseUrl: string;
@@ -138,26 +148,6 @@ export interface Configuration {
   /** GitHub OAuth application, client secret. From `OURO_GITHUB_CLIENT_SECRET`. */
   readonly githubClientSecret: string;
   /**
-   * The address every request used to be treated as signed in by, for local work without a
-   * GitHub OAuth application. From `OURO_AUTH_DEV_USER`; `null` when unset.
-   *
-   * **Nothing reads it any more.**
-   * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the hand-rolled guard
-   * with BetterAuth's, and a bypass is a branch inside an authentication decision this
-   * service no longer makes. The variable outlives its reader by exactly one issue:
-   * [#705](https://github.com/NobuData/ouroboros/issues/705) removes it from here, from
-   * `.env.example` and from the compose files in the same change that delivers what
-   * replaces it — a development email/password sign-in, which is a credential rather than
-   * a way around one.
-   *
-   * It is still **always `null` in production, whatever the environment says**, and that is
-   * kept rather than tidied away: it costs four lines, and the day somebody wires a reader
-   * back up in the interval, the production-safety it depends on is already there. See
-   * {@link loadConfiguration}, where the variable is dropped rather than validated when
-   * `NODE_ENV=production`.
-   */
-  readonly authDevUser: string | null;
-  /**
    * Browser origins allowed to call this API with credentials — the origins the session
    * cookie is permitted to travel to. From `OURO_CORS_ORIGINS`, which is a comma-separated
    * list; never empty, and never a wildcard, because a credentialed request cannot use one.
@@ -184,7 +174,6 @@ export const VARIABLES = {
   betterAuthUrl: "BETTER_AUTH_URL",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
-  authDevUser: "OURO_AUTH_DEV_USER",
   corsOrigins: "OURO_CORS_ORIGINS",
 } as const satisfies Record<keyof Configuration, string>;
 
@@ -300,18 +289,6 @@ const environmentSchema = z.object({
   OURO_GITHUB_CLIENT_ID: z.string({ error: "is required" }),
   OURO_GITHUB_CLIENT_SECRET: z.string({ error: "is required" }),
 
-  // Optional, and the only variable here that is. Unset is the normal case: it is read
-  // only by the development bypass, and `withoutProductionDevBypass` has already removed
-  // it when this schema runs in production — so what is validated here is a value somebody
-  // deliberately set on a machine where it can have an effect.
-  OURO_AUTH_DEV_USER: z
-    .string()
-    .refine(
-      (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-      "expected the email address of a user in the database, such as ken@acme-robotics.dev",
-    )
-    .optional(),
-
   OURO_CORS_ORIGINS: z
     .string({ error: "is required" })
     .transform((value) =>
@@ -353,40 +330,6 @@ function withoutBlanks(env: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 /**
- * Remove the development bypass when this is production.
- *
- * The issue asks for a bypass that is *provably* off in a production build, and this is
- * the proof: in production the variable never reaches the schema, so there is no value
- * for {@link Configuration.authDevUser} to be, and no code path — however it is later
- * reached — that can be handed one. A deployment that inherited a development `.env` gets
- * a service that ignores it rather than one that trusts it.
- *
- * It is removed rather than rejected deliberately. Refusing to boot would turn a stale
- * line in an inherited environment into an outage, and the *safe* reading of "this is set
- * and must not be honoured" is to not honour it. The boot log says so out loud:
- * `redaction.ts` prints `OURO_AUTH_DEV_USER=` with nothing after it, which is what an
- * operator checking the acceptance criterion reads.
- *
- * `NODE_ENV` is compared as a raw string rather than after validation, because this runs
- * before the schema does. An unrecognised value fails validation a moment later and never
- * reaches a running service, so the only two outcomes are "production, and stripped" and
- * "not a service that starts".
- *
- * @param env - The environment, already stripped of blanks.
- * @returns The same variables, minus the bypass when `NODE_ENV` is `production`.
- */
-function withoutProductionDevBypass(env: Record<string, string>): Record<string, string> {
-  if (env.NODE_ENV !== "production") {
-    return env;
-  }
-
-  const permitted = { ...env };
-  delete permitted[VARIABLES.authDevUser];
-
-  return permitted;
-}
-
-/**
  * Render a validation failure as advice about environment variables.
  *
  * zod reports the key it was parsing, and every key in {@link environmentSchema} is an
@@ -425,7 +368,7 @@ function describeFailure(error: z.ZodError): string {
  *   every offending variable and the reason, one per line.
  */
 export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
-  const result = environmentSchema.safeParse(withoutProductionDevBypass(withoutBlanks(env)));
+  const result = environmentSchema.safeParse(withoutBlanks(env));
   if (!result.success) {
     throw new ConfigurationError(describeFailure(result.error));
   }
@@ -443,10 +386,6 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     betterAuthUrl: values.BETTER_AUTH_URL,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
-    // `?? null` rather than left undefined: an optional property and a property that is
-    // explicitly nothing read the same at a call site and serialise differently, and this
-    // one is read by a guard where "absent" and "empty" must not be two states.
-    authDevUser: values.OURO_AUTH_DEV_USER ?? null,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
   });
 }

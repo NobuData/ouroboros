@@ -61,7 +61,7 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 |---|---|---|
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
 | **`ouroboros-rest`** | `modules/auth/`, `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app`; `auth/` (BetterAuth) | **Done.** A.3 deleted `oauth.ts`/`github.ts`; A.4 deleted `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts`, and rewrote `principal.ts` against BetterAuth's `@Session()` shape. |
-| **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, `OURO_AUTH_DEV_USER=ken@acme-robotics.dev`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. `OURO_AUTH_DEV_USER` is still declared and is read by nothing — A.6 removes it with the change that replaces it. |
+| **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, #33's dev-user bypass key, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. **A.6 has since removed the dev-user key** from both templates, the #28 zod schema and the compose comments, in the change that delivered its replacement. |
 | **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2 is largely **done**; D.3's SSO half is **built and waiting for C.2**; D.4's cards exist and need re-pointing at C.4. Epic D shrinks accordingly. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
@@ -84,7 +84,7 @@ un-inert the form.
 | A5 | **Tenancy = BetterAuth organization plugin.** `organization`/`member`/`invitation` replace the planned `tenants`/`tenant_members`; `tenant_domains`, `github_orgs`, `github_repos` remain custom extension tables keyed to `organization.id` | Session-integrated `activeOrganizationId`, role model (owner/admin/member + custom roles), invitation lifecycle, and hooks come for free — exactly what mockup 01 step 2 and mockup 17 need. |
 | A6 | **Sessions are database-backed** (BetterAuth `session` table) with cookie cache enabled | Real revocation (supersedes the stateless-cookie compromise in #33/#38); the session row also carries `activeOrganizationId`. |
 | A7 | **MVP auth method is GitHub social login.** Enterprise SSO (SAML/OIDC via the `@better-auth/sso` plugin) is v2, but the **domain-discovery endpoint and the mockup's SSO form ship in MVP** returning a graceful "SSO not configured for this domain" state | The mockup gives SSO equal visual weight, so the UI must exist; standing up samlify/OIDC provider registration is real scope that doesn't gate the loop. |
-| A8 | **Dev sign-in without GitHub credentials: BetterAuth email/password provider enabled only when `NODE_ENV !== 'production'`** | Replaces #33's `OURO_AUTH_DEV_USER` bypass with a mechanism BetterAuth natively supports, still hard-off in production. |
+| A8 | **Dev sign-in without GitHub credentials: BetterAuth email/password provider enabled only when `NODE_ENV !== 'production'`** | Replaces #33's dev-user bypass with a mechanism BetterAuth natively supports, still hard-off in production. **Shipped in A.6 · #705.** |
 | A9 | Env names: BetterAuth's standard `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` join the `OURO_*` set in `.env.example` and the #28 zod schema | Fighting a library's canonical env names buys nothing. |
 
 ## Architecture Overview
@@ -252,16 +252,18 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > old cookie is answered `401` and told to drop it —
 > `src/modules/auth/legacy.cookie.ts`, which is dated for deletion a week after the deploy.
 >
-> Three things it deliberately did **not** do. **The `OURO_AUTH_DEV_USER` bypass is gone**
-> and the variable is not: A.4 deleted the guard that read it, and **A.6 · #705** removes
-> the variable in the change that delivers the development email/password sign-in replacing
-> it — so local work needs a real GitHub OAuth app in the interval. **The UI still forwards
+> Three things it deliberately did **not** do. **The dev-user bypass is gone**
+> and the variable was not: A.4 deleted the guard that read it, and **A.6 · #705** has since
+> removed the variable in the change that delivered the development email/password sign-in
+> replacing it — so the interval in which local work needed a real GitHub OAuth app is over. **The UI still forwards
 > `ouro_session`**, which is **D.5 · #720**'s to re-point, exactly as that issue's body
 > predicted. And **the e2e suite's sign-in is parked**: it minted a stateless cookie with
 > `issueSession`, which no longer exists, and it cannot mint a row from outside the stack —
-> the legs that need one carry `test.fixme` naming **B.4 · #709** (seed writes the `"user"`
-> rows) and **A.6 · #705** (a sign-in a script can perform). Every leg that needs no session
-> still runs. Its issue section below is kept as the record of what was asked for.
+> the legs that need one carry `test.fixme`. **A.6 · #705 has since supplied the sign-in a
+> script can perform** — `support/session.ts` calls it for real — so what they now wait on is
+> **B.4 · #709** (the seed writes the `"user"` and `account` rows) and a stack whose
+> `ouroboros-rest` is not the production image. Every leg that needs no session still runs.
+> Its issue section below is kept as the record of what was asked for.
 
 > **A.5 · #704 has shipped and has left the table below.** Tenancy is the organization
 > plugin (decision **A5**), registered in `src/auth/auth.factory.ts` from options three new
@@ -303,9 +305,40 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > there is no `expired` status to wait for: expiry is `expiresAt`, evaluated at accept time.
 > Its issue section below is kept as the record of what was asked for.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| A.6 · #705 | ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`) | Local/e2e auth without GitHub, hard-off in production, bypass deleted | mvp, auth, rest | N (after A.4) | Y | **M** ⬆ | ouroboros-rest |
+> **A.6 · #705 has shipped, and Epic A's table is now empty — every issue in it has
+> landed.** Development sign-in is BetterAuth's `emailAndPassword` (decision **A8**), decided
+> in [`password.provider.ts`](../ouroboros-rest/src/auth/password.provider.ts) and gated on
+> `NODE_ENV !== "production"` **and on nothing else**. A second switch would be a second
+> thing to get wrong, and this module's Dockerfile already pins `NODE_ENV=production`, so the
+> off position is what a deployment inherits.
+>
+> **The bypass is gone from the repository, not merely unused** — the acceptance criterion
+> that shaped most of the diff. The variable left both `.env.example` templates, the #28 zod
+> schema, `Configuration`, `AppConfigService` (both the field and the `devUserEmail` accessor
+> that guarded it), the redaction rules, `docker-compose.yml`, the Dockerfile, `setup.sh`,
+> three READMEs, `ARCHITECTURE.md` and three roadmaps. Grepping for its name returns nothing.
+>
+> **Two corrections to this issue's own wording**, both recorded because a test written to
+> the letter of either would assert something untrue:
+>
+> * **"the endpoint returns 404/disabled" — it is 400, not 404.** BetterAuth leaves the
+>   routes mounted and makes the handlers refuse: `EMAIL_PASSWORD_DISABLED` on sign-in,
+>   `EMAIL_PASSWORD_SIGN_UP_DISABLED` on sign-up. `password.provider.spec.ts` therefore
+>   asserts the option this service decides rather than a status code the library owns.
+> * **"e2e (#56) passes using the new path" — it cannot yet, and not for want of this
+>   issue.** The compose stack runs this module's *production* image, which is exactly what
+>   the gate turns off. Overriding `NODE_ENV` there does not help: the same variable moves
+>   `listenHost` back to loopback, and a container bound to loopback publishes nothing.
+>   `tests/e2e/support/session.ts` has been re-pointed at `signIn.email` and is finished —
+>   the "one function" it spent two issues predicting — but its legs stay parked on **B.4 ·
+>   #709** and on a non-production `rest` for the suite to talk to. Giving it one is a stack
+>   decision for **#56** or **C.5 · #715**.
+>
+> Sign-**up** is enabled in development too, which the issue did not ask for: a developer
+> whose database predates #709's seed otherwise has no way into the product at all, and the
+> surface is unreachable in production because one flag gates both routes. The password floor
+> is twelve characters, above the library's eight, and hashing is deliberately *not*
+> overridden — #709's seed has to write hashes the same scrypt verifier accepts.
 
 ### Issue A.1 (#700) — ouroboros-rest: [A.1] BetterAuth installation & configuration module
 
@@ -516,25 +549,29 @@ erDiagram
     }
 ```
 
-### Issue A.6 (#705) — ouroboros-rest: [A.6] Dev email/password sign-in (replacing `OURO_AUTH_DEV_USER`)
+### Issue A.6 (#705) — ouroboros-rest: [A.6] Dev email/password sign-in (replacing the dev-user bypass)
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic A](#epic-a-695--betterauth-foundation-ouroboros-rest) for what landed, including the
+two corrections to the acceptance criteria below.
 
 - **Problem Statement:** Local dev and the e2e suite need sign-in without live GitHub
   credentials. #33's bypass is **live, not hypothetical**: `.env.example` ships
-  `OURO_AUTH_DEV_USER=ken@acme-robotics.dev`, `auth.service.ts` logs when the bypass
+  the dev-user key set to `ken@acme-robotics.dev`, `auth.service.ts` logs when the bypass
   activates, and the closed e2e smoke test (#56) signs in through it. Decision A8
   replaces it with a mechanism BetterAuth supports natively — which means the bypass
   must be **removed in the same change that lands its replacement**, or the two
   coexist and the dev-only escape hatch outlives its guard.
 - **Solution/Scope:** Enable `emailAndPassword` only when `NODE_ENV !== 'production'`;
   seed dev users with known passwords (B.4); the login page shows the dev form only in
-  dev builds (D.3). Delete the `OURO_AUTH_DEV_USER` branch from `auth.service.ts`, the
+  dev builds (D.3). Delete the dev-user branch from `auth.service.ts`, the
   key from `.env.example`, the #28 zod schema and the compose files; re-point #56's
   login leg at `signIn.email`. Production build provably rejects password sign-in.
 - **Acceptance Criteria:**
   - Dev: `signIn.email` with seeded credentials lands a session.
   - Production build: the endpoint returns 404/disabled; config test asserts it.
-  - `rg OURO_AUTH_DEV_USER` returns nothing across the repo — env files, compose,
-    docs and specs included.
+  - Grepping the repository for the dev-user variable's name returns nothing — env
+    files, compose, docs and specs included.
   - e2e (#56 amendment) passes using the new path, with the old bypass gone rather
     than merely unused.
 - **Parallelism/Dependencies:** Needs A.4, B.4. Feeds C.5 and the e2e gate; amends #56.
@@ -1427,20 +1464,21 @@ Ordered checklist (⊕ = parallelizable within its phase):
    ready to be, in the same PR chain. Take a database snapshot before it and rehearse
    it against a seeded copy; it is the one step in this roadmap that cannot be
    reverted by redeploying the previous build.)*
-3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ ⊕ ~~A.5 #704~~ *(all shipped)*
-   → A.6 #705
-   *(**A.6 is now the urgent one.** A.4 deleted the `OURO_AUTH_DEV_USER` bypass along with
-   the guard that read it, so signing in locally means a real GitHub OAuth application and
-   the e2e suite's login legs are parked. A.6's development email/password sign-in is what
-   ends both — and B.4 #709, which teaches the seed to write BetterAuth's `"user"` rows, is
-   what the e2e suite needs beside it.)*
+3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ ⊕ ~~A.5 #704~~ ⊕ ~~A.6 #705~~
+   *(**Epic A is complete.**)*
+   *(**A.6 has shipped.** A.4 deleted the dev-user bypass along with the guard that read
+   it; A.6 removed the variable itself and delivered the development email/password sign-in
+   that replaces it, so local work needs no GitHub OAuth application. The e2e suite's login
+   legs remain parked on two things outside A.6: B.4 #709, which teaches the seed to write
+   BetterAuth's `"user"` and `account` rows, and a stack whose `ouroboros-rest` is not the
+   production image — the password routes are gated on exactly that.)*
 4. **Phase 3 — REST services:** { C.1 #711 ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
    *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
    creates.)*
 5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719
    *(MVP for this roadmap is complete when D.4 passes against the compose stack —
    feeding the scaffolding roadmap's e2e gate #56, whose login leg switches from
-   `OURO_AUTH_DEV_USER` to A.6's `signIn.email`.)*
+   the dev-user bypass to A.6's `signIn.email`.)*
 6. **v2:** E.1 #722 → E.2 #723; E.3 #724 ⊕ E.4 #725 in any order.
 
 ## Totals
@@ -1534,20 +1572,24 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #705 (A.6), with #709 (B.4) beside it.** #700 (A.1), #701 (A.2), #706 (B.1),
-#702 (A.3) and #703 (A.4) **have landed** — BetterAuth is configured, its handler answers at
-`/api/auth/*`, its four core tables exist with the shipped identities back-filled into them,
-its GitHub provider signs people in, and the service now *remembers* people: a session is a
-row, the library's guard is what every route sits behind, and signing out revokes.
+**Start here: #708 (B.3), with #709 (B.4) behind it.** **Epic A is complete**: #700 (A.1),
+#701 (A.2), #702 (A.3), #703 (A.4), #704 (A.5) and #705 (A.6) **have all landed**, along with
+#706 (B.1) and #707 (B.2) — BetterAuth is configured, its handler answers at `/api/auth/*`,
+its core and organization tables exist with the shipped identities back-filled into them, its
+GitHub provider signs people in, development signs in with a password, and the service now
+*remembers* people: a session is a row, the library's guard is what every route sits behind,
+and signing out revokes.
 
-What is not yet true is that anybody can sign in **without github.com**. A.4 deleted the
-`OURO_AUTH_DEV_USER` bypass with the guard that read it, which is why #705 is next: it is
-what returns local development and the e2e gate to a working sign-in, and #709 is what gives
-the seeded people a BetterAuth identity to sign in as. #707 (B.2) and #704 (A.5) **have
-since landed** — `organization`, `member`, `invitation` and the session's tenant pointer
-exist, the plugin is enabled with a `viewer` role asserted against the library, and a first
-sign-in yields a personal organization. **#708 (B.3) is the next database step**, and the
-riskiest one in the roadmap. #718 (D.3) makes the login page's button work, and #720 (D.5)
+Signing in **without github.com** works again outside production: A.4 deleted the dev-user
+bypass with the guard that read it, and **#705 (A.6) has since landed** the email/password
+sign-in that replaces it, removing the variable in the same change. #709 is what gives the
+seeded people a BetterAuth identity to sign in *as*, and the e2e gate additionally needs a
+non-production `ouroboros-rest` to talk to. `organization`, `member`, `invitation` and the session's tenant
+pointer exist, the plugin is enabled with a `viewer` role asserted against the library, and a
+first sign-in yields a personal organization. **#708 (B.3) is the next step in the whole
+roadmap**, and the riskiest one in it — note that its chain reaches further than its own
+body suggests: it drops four populated tables that `modules/tenancy` still reads, so #713
+(C.3) and #714 (C.4) belong in the same PR chain if `main` is to stay green. #718 (D.3) makes the login page's button work, and #720 (D.5)
 re-points the UI's own gate, which still forwards #33's cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12

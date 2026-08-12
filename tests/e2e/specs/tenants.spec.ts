@@ -50,7 +50,7 @@ test.describe("tenant CRUD roundtrip", () => {
   test("create → read → update → list → suspend", async ({ request }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
     const headers = asUser(token);
     const slug = ephemeralSlug("crud");
 
@@ -136,7 +136,7 @@ test.describe("tenant CRUD roundtrip", () => {
   test("a duplicate slug is refused", async ({ request }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
     const headers = asUser(token);
 
     // The seed's own slug: the uniqueness constraint is enforced across the installation,
@@ -153,7 +153,7 @@ test.describe("tenant CRUD roundtrip", () => {
   test("a malformed slug is refused before anything is written", async ({ request }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
 
     const response = await request.post(restUrl("/api/v1/tenants"), {
       headers: asUser(token),
@@ -166,7 +166,7 @@ test.describe("tenant CRUD roundtrip", () => {
   test("an unknown property is refused rather than ignored", async ({ request }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
 
     // Request schemas are closed (`CreateTenantRequest.additionalProperties: false`),
     // which is what shuts mass assignment for every route at once. It is asserted here

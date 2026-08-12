@@ -31,6 +31,7 @@ import type { Pool } from "pg";
 import type { Configuration } from "../modules/config/configuration";
 import { activeOrganizationHooks } from "./active.organization";
 import { ACCOUNT_LINKING, GITHUB_PROVIDER_ID, githubProvider } from "./github.provider";
+import { passwordProvider } from "./password.provider";
 import { sessionOptions } from "./session.options";
 
 /**
@@ -85,11 +86,9 @@ export interface AuthDependencies {
 /**
  * BetterAuth's options for this service.
  *
- * What is deliberately *absent* is as much of the specification as what is here. There is
- * no email/password ([#705](https://github.com/NobuData/ouroboros/issues/705)) — an issue
- * that owns one option, and an option added here before the issue that owns it would be a
- * route this service serves that nothing tests. `auth.options.spec.ts` pins the whole
- * surface for exactly that reason.
+ * What is deliberately *absent* is as much of the specification as what is here: an option
+ * added ahead of the issue that owns it would be a route this service serves that nothing
+ * tests, and `auth.options.spec.ts` pins the whole surface for exactly that reason.
  *
  * [#702](https://github.com/NobuData/ouroboros/issues/702) added the two it does own: the
  * GitHub provider, and the account-linking policy that exists because of it. Both live in
@@ -98,6 +97,9 @@ export interface AuthDependencies {
  * strategy, which lives in `session.options.ts` for the same reason.
  * [#704](https://github.com/NobuData/ouroboros/issues/704) added the fourth, the session
  * hook that resolves the active organization, which lives in `active.organization.ts`.
+ * [#705](https://github.com/NobuData/ouroboros/issues/705) added the fifth, the development
+ * email/password sign-in, which lives in `password.provider.ts` — and which is the one
+ * option here whose *value* depends on the environment rather than only its contents.
  *
  * **The organization plugin itself is not here**, and that is not an omission: `plugins`
  * takes values built by `better-auth`, and this module names no value from that library.
@@ -123,14 +125,24 @@ export function authOptions({ configuration, pool }: AuthDependencies): BetterAu
     // `src/modules/config/redaction.ts`.
     secret: configuration.betterAuthSecret,
 
-    // **Continue with GitHub** — mockup 01's primary action, and the only way into this
-    // service until #705 adds a development password. The provider is keyed by the id that
+    // **Continue with GitHub** — mockup 01's primary action, and the only way into a
+    // production deployment of this service. The provider is keyed by the id that
     // is also its callback path segment and its `account.providerId` value, so registering
     // the OAuth App against `${BETTER_AUTH_URL}/api/auth/callback/github` and finding a
     // back-filled identity are the same string agreeing with itself. See
     // `github.provider.ts` for the scopes, the profile mapping and why they are stated
     // rather than inherited.
     socialProviders: { [GITHUB_PROVIDER_ID]: githubProvider(configuration) },
+
+    // The way in that does not involve github.com — decision **A8**, and #705's. It is
+    // enabled by `NODE_ENV !== "production"` and by nothing else, so the off position is
+    // what a deployment inherits: `ouroboros-rest`'s image pins `NODE_ENV=production` in the
+    // image itself. It replaces #33's dev-user bypass, whose variable #705 deleted from
+    // every file it appeared in — a password is a way *through* authentication, where that
+    // variable was a way around it. See `password.provider.ts` for that argument in full,
+    // for what "disabled" actually answers, and for why the key is present-and-false in
+    // production rather than absent.
+    emailAndPassword: passwordProvider(configuration),
 
     // How long a sign-in lasts, when using it renews it, and how the per-request cost of
     // asking is kept to nothing. Decision **A6**: the session is a row in

@@ -103,10 +103,10 @@ the secrets in the ones it finds, so it is safe to re-run after a `git pull` tha
 variable. `scripts/setup.sh --dry-run` reports what it would write without writing it, and
 `--db-port 55433` publishes PostgreSQL somewhere other than 5432, moving
 `OURO_DATABASE_URL` with it. The one thing it cannot do for you is register a GitHub OAuth
-application, and since [#703](https://github.com/NobuData/ouroboros/issues/703) that is the
-only way to sign in: the `OURO_AUTH_DEV_USER` bypass went with the guard that read it.
-[#705](https://github.com/NobuData/ouroboros/issues/705) restores a local sign-in — an
-email and a password rather than a way around authentication — and until it lands
+application — and since [#705](https://github.com/NobuData/ouroboros/issues/705) it does not
+have to. Running outside production enables BetterAuth's email/password sign-in, so
+`yarn dev` offers a local way in that is a real credential rather than a way around the
+check. Register an OAuth application when you want to exercise the GitHub path itself;
 `ouroboros-rest/README.md` § Signing in for real is the two-minute setup.
 
 `yarn dev` starts PostgreSQL, waits for its healthcheck, applies every pending
@@ -168,10 +168,12 @@ the API through `ouroboros-rest`'s network namespace, so restarting `rest` on it
 strands it — run `docker compose --profile full restart ui` after, and see the comment
 above the `ui` service for why.
 
-**Signing in.** Sign-in is the real GitHub handshake, performed by BetterAuth
-([#702](https://github.com/NobuData/ouroboros/issues/702)) — here and, since
-[#703](https://github.com/NobuData/ouroboros/issues/703) removed the `OURO_AUTH_DEV_USER`
-bypass, under `yarn dev` too. Register a development OAuth
+**Signing in.** In *this* stack, sign-in is the real GitHub handshake performed by BetterAuth
+([#702](https://github.com/NobuData/ouroboros/issues/702)), and it is the only way in: the
+compose stack runs `ouroboros-rest`'s production image, and
+[#705](https://github.com/NobuData/ouroboros/issues/705)'s email/password sign-in is off
+wherever `NODE_ENV=production`. Under `yarn dev` you get the password route instead and need
+none of what follows. Register a development OAuth
 application whose authorization callback is
 `http://localhost:4000/api/auth/callback/github`, put its client id and secret in `.env`,
 and bring the stack up. The development seed

@@ -33,8 +33,8 @@
 # ouroboros-web reads no environment at all, has no template, and gets no file.
 #
 # What it deliberately does not do: invent a GitHub OAuth application. Those two values
-# stay as the templates leave them, and `yarn dev` signs in without them through
-# OURO_AUTH_DEV_USER; the closing notes say so.
+# stay as the templates leave them, and `yarn dev` signs in without them through issue
+# #705's development email/password route; the closing notes say so.
 #
 # Usage:
 #   scripts/setup.sh                      # create whatever is missing
@@ -372,10 +372,16 @@ cat <<'EOF'
       docker compose up      PostgreSQL, migrated, with the development seed
       yarn dev               the application stack — UI :3000, API :4000, engine :8000
 
-  Sign-in works out of the box: OURO_AUTH_DEV_USER puts you in as a seeded user, and no
-  GitHub OAuth application is involved. To use the real handshake instead, register a
-  development app whose callback is http://localhost:4000/api/v1/auth/github/callback,
-  put its credentials in OURO_GITHUB_CLIENT_ID and OURO_GITHUB_CLIENT_SECRET, and comment
-  OURO_AUTH_DEV_USER out.
+  Sign-in works out of the box under `yarn dev`: running outside production enables an
+  email/password route, and the development seed's people have passwords. No GitHub OAuth
+  application is involved, and there is no variable to set — there is also no bypass, so
+  what you sign in with is a real credential the service checks.
+
+  To exercise the real handshake instead, register a development app whose callback is
+  http://localhost:4000/api/auth/callback/github and put its credentials in
+  OURO_GITHUB_CLIENT_ID and OURO_GITHUB_CLIENT_SECRET.
+
+  The compose stack (`docker compose --profile full up`) runs the production image, where
+  the password route does not exist — GitHub is the only way in there.
 
 EOF

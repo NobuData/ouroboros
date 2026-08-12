@@ -1356,9 +1356,9 @@ request ─▶ middleware ─▶ SessionGuard ─▶ TenantContextGuard ─▶ R
   *resolution* stays in 4.6. Credentialed CORS for `OURO_CORS_ORIGINS` is enabled here
   because the session cannot otherwise be used by the client it exists for; helmet, rate
   limiting and the hardening review remain 4.12. The dev-mode bypass
-  (`OURO_AUTH_DEV_USER`) is off in production twice over — the variable is dropped before
-  validation when `NODE_ENV=production`, and the accessor the guard reads refuses one
-  anyway — and it loses to a real session, so the OAuth flow stays exercisable with it
+  (since removed outright by #705, along with the variable that named it) was off in
+  production twice over — the variable was dropped before validation when
+  `NODE_ENV=production`, and the accessor the guard read refused one anyway — and it loses to a real session, so the OAuth flow stays exercisable with it
   set. 249 unit tests over the new module plus 19 integration tests that walk the whole
   browser flow against a migrated PostgreSQL with only github.com replaced.
 - **Acceptance Criteria:**
@@ -1499,7 +1499,8 @@ UI ─▶ /api/v1/engine/status ─▶ [auth guard] ─▶ EngineClient ──X-
 > `__dirname`: `dist/`, `package.json` (version.ts reads `../package.json`),
 > `openapi.json` and `openapi.yaml` (specification.ts reads `../../`). `NODE_ENV=production`
 > is set in the image and is load-bearing twice — it binds every interface, and it strips
-> `OURO_AUTH_DEV_USER` before the schema sees it. No `OURO_*` variable is baked into any
+> the dev-user bypass variable before the schema sees it (#705 has since deleted that
+> variable; the same flag now gates the development password routes instead). No `OURO_*` variable is baked into any
 > layer: a missing one is named at boot and exits 2, verified.
 >
 > The roadmap text below says `node:22-alpine`; it predates #13, which moved the
@@ -2314,8 +2315,10 @@ POST /v0/tasks ─▶ [registry] ─▶ [asyncio queue] ─▶ worker ─▶ GET
   `localhost:3000` with its sign-in link pointing at `http://localhost:4000`, and
   `curl localhost:8000` refused while `exec rest wget http://engine:8000/healthz`
   answers. One thing a reader should know rather than discover: these are production
-  images, so `ouroboros-rest` strips the `OURO_AUTH_DEV_USER` bypass and sign-in here is
-  the real GitHub handshake — the README says what to register.
+  images, so `ouroboros-rest` strips the dev-user bypass and sign-in here is
+  the real GitHub handshake — the README says what to register. (#705 has since replaced
+  that bypass with development password routes, gated off in production images for the
+  same reason, so this stack is still GitHub-only.)
 - **Parallelism/Dependencies:** Needs 1.3, 4.10, 5.9, 6.4. Blocks 7.2.
 - **Technical Stack:** Docker Compose profiles, healthcheck-gated depends_on.
 - **Epic:** 7
