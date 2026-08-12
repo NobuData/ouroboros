@@ -221,46 +221,40 @@ Two ways to apply them, both live today: the repo-root
 running — the compose one, a PostgreSQL installed on the machine, or a server across the
 network.
 
-The tenancy schema itself lands over
-[#20](https://github.com/NobuData/ouroboros/issues/20)–[#23](https://github.com/NobuData/ouroboros/issues/23):
-
-```mermaid
-erDiagram
-    tenants ||--o{ tenant_domains : "resolves sign-in via"
-    tenants ||--o{ tenant_members : "grants membership through"
-    tenants ||--o{ github_orgs : "enables"
-    github_orgs ||--o{ github_repos : "scopes"
-    users ||--o{ tenant_members : "belongs to tenants via"
-    users ||--o{ user_identities : "signs in with"
-```
-
-Every table above the identity layer hangs off `tenants`, which is what makes a single
-tenant predicate sufficient to isolate a customer — and what makes row-level security
-([#25](https://github.com/NobuData/ouroboros/issues/25)) a later addition rather than a
-redesign.
-
-`V004` ([#706](https://github.com/NobuData/ouroboros/issues/706)) adds BetterAuth's four
-core tables beside them — `"user"`, `session`, `account`, `verification` — and back-fills
-the identity layer into the first two of those, preserving ids:
+The tenancy schema landed over
+[#20](https://github.com/NobuData/ouroboros/issues/20)–[#23](https://github.com/NobuData/ouroboros/issues/23),
+BetterAuth's tables over
+[#706](https://github.com/NobuData/ouroboros/issues/706)/[#707](https://github.com/NobuData/ouroboros/issues/707),
+and [#708](https://github.com/NobuData/ouroboros/issues/708)'s `V006` completed the
+cut-over between the two generations. What is applied today:
 
 ```mermaid
 erDiagram
     user ||--o{ session : "is signed in through"
     user ||--o{ account : "authenticates with"
-    users ||..|| user : "back-filled into, id for id"
-    user_identities ||..|| account : "back-filled into, id for id"
+    organization ||--o{ member : "grants membership through"
+    user ||--o{ member : "belongs to organizations via"
+    organization ||--o{ invitation : "asks people in via"
+    organization ||--o{ tenant_domains : "resolves sign-in via"
+    organization ||--o{ github_orgs : "enables"
+    github_orgs ||--o{ github_repos : "scopes"
+    session }o--|| organization : "acts in (activeOrganizationId)"
 ```
 
-That leaves the schema holding two tables for the same people — `users` and `"user"`,
-which differ by one letter — and it is a transitional state on purpose:
-[#708](https://github.com/NobuData/ouroboros/issues/708) drops the older pair once
-[#702](https://github.com/NobuData/ouroboros/issues/702) has retired the sign-in flow that
-writes them, and until then a revert is redeploying rather than restoring. Two rules travel
-with these tables and are asserted rather than remembered — `user` is a reserved word and
-is quoted at every reference, and Flyway still issues every DDL statement, which means
-BetterAuth's own `migrate` command is wired into nothing. `scripts/verify-dev-env.sh`
-checks both on every `ci/db` run; `ouroboros-db/README.md` § The two generations of user
-table is the longer account.
+Every tenancy table hangs off `organization`, which is what makes a single tenant
+predicate sufficient to isolate a customer — and what makes row-level security
+([#25](https://github.com/NobuData/ouroboros/issues/25)) a later addition rather than a
+redesign. The schema briefly held two tables for the same people — `V002`'s `users` and
+BetterAuth's `"user"`, which differ by one letter — a transitional state `V004`'s
+id-preserving back-fill kept coherent and `V006` ended: `tenants`, `tenant_members`,
+`users` and `user_identities` are dropped, their rows moved into `organization`, `member`
+and the BetterAuth pair, and `ci/db` both rehearses that migration against a populated
+copy on every run and asserts the dropped tables stay gone. Two rules travel with these
+tables and are asserted rather than remembered — `user` is a reserved word and is quoted
+at every reference, and Flyway still issues every DDL statement, which means BetterAuth's
+own `migrate` command is wired into nothing. `scripts/verify-dev-env.sh` checks both on
+every `ci/db` run; `ouroboros-db/README.md` § The two generations of user table is the
+longer account.
 
 ### 2.5 `ouroboros-web` — the marketing site
 

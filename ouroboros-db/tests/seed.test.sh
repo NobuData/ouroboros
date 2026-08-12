@@ -103,14 +103,15 @@ check_equals "$inserts" "$conflicts" 'every insert in the seed ends `on conflict
 # generated one would differ per machine and per reset.
 check_absent "$BODY" 'gen_random_uuid' 'the seed generates no ids — every one is a literal'
 check_contains "$BODY" '5eed0001-0000-4000-8000-000000000001' \
-  'the demo tenant has the documented id'
+  'the demo organization has the documented id'
 
-# Ten rows, ten ids, all of them recognisable on sight. Distinct ids are counted rather
-# than occurrences: an id reused between two tables would still satisfy a total, and
-# would give two different rows the same name in every log and URL that carries one.
+# Thirteen rows, thirteen ids, all of them recognisable on sight. Distinct ids are
+# counted rather than occurrences: an id reused between two tables would still satisfy a
+# total, and would give two different rows the same name in every log and URL that
+# carries one. (The BetterAuth tables hold them as text; the shape is the same.)
 seed_ids=$(grep -Eo "'5eed[0-9a-f]{4}-0000-4000-8000-[0-9a-f]{12}'" "$BODY" | sort -u | wc -l)
-check_equals 10 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
-  'the seed uses ten distinct 5eed… uuids, one per row it creates'
+check_equals 13 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
+  'the seed uses thirteen distinct 5eed… ids, one per row it creates'
 
 # The seed writes to the tenancy tables and to nothing else — not to Flyway's own
 # history, not to a table another module owns.
@@ -120,8 +121,9 @@ check_absent "$BODY" 'flyway_schema_history' \
   'the seed does not touch Flyway'"'"'s history table'
 
 # A seed is where a credential is most tempting to put and least likely to be noticed.
-# V002 stores none and tests/constraints.sql asserts the columns do not exist; this
-# asserts no statement here tries to write one, whatever the schema later grows.
+# The `account` table *can* hold the library's encrypted tokens and a password hash, and
+# the seed deliberately writes none of those columns (tests/seed.sql asserts the rows
+# stay null); this asserts no statement here even names one, whatever the schema grows.
 for secret in token secret password credential api_key; do
   check_absent "$BODY" "$secret" "the seed writes no $secret"
 done

@@ -651,10 +651,33 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 > grew a fourth delete: `member` and `invitation` cascade from `"user"` as well, so
 > clearing the people empties both, but the organizations they named survive. Its issue
 > section below is kept as the record of what was asked for.
+>
+> **B.3 · #708 has shipped and has left the table below — the cut-over is done.**
+> [`ouroboros-db/migrations/V006__tenancy_extensions.sql`](../ouroboros-db/migrations/V006__tenancy_extensions.sql)
+> moves `tenants` → `organization` and `tenant_members` → `member` with ids preserved as
+> text and roles verbatim, re-parents `tenant_domains` and `github_orgs` onto a
+> snake_case `organization_id` (decision **A4** — our tables, our style; V001's
+> one-primary partial unique index re-scoped with them), and only then drops `tenants`,
+> `tenant_members`, `users`, `user_identities` and the V004 back-fill function.
+> Everything it assumes is **asserted before anything is written** — an id or slug
+> collision with a plugin-minted organization, a role outside the V002 vocabulary, a
+> membership whose person the back-fill skipped — so a failed run rolls back whole.
+> Its step 0 re-runs V004's back-fill first, which is what carries a development
+> database whose seed landed *after* V004 across without hand-holding.
+>
+> The migration cannot be reverted by redeploying, so `ci/db` now **rehearses it on
+> every run** rather than having rehearsed it once: `tests/rehearsal/pre.sql` rebuilds a
+> populated V005 database (the pre-migration seed's rows, plus a suspended tenant, a
+> `viewer` and an un-accepted invitation — the states the seed never contained) and
+> `post.sql` asserts every domain, org and repo still resolves to the same logical
+> tenant, by spot value rather than exit code. `R__dev_seed.sql` writes the BetterAuth
+> shape now, `tests/constraints.sql` was rebuilt around the surviving schema, and its
+> V006 section asserts the four dropped tables **stay** gone — a migration that
+> recreated one fails `ci/db`. `modules/tenancy` still reads the old names; that is
+> **C.3 · #713 / C.4 · #714**, and `ci/rest` stays red until they land.
 
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| B.3 · #708 | ouroboros-db: [B.3] Tenancy **data migration** — `tenants`→`organization`, extensions re-pointed | Live migration of 5 populated tables; drops `tenants`/`tenant_members`/`users`/`user_identities` | mvp, auth, db | N (after B.1, B.2) | Y | **L** ⚠ riskiest | ouroboros-db |
 | B.4 · #709 | ouroboros-db: [B.4] Auth-aware dev seed data | Seeded users (password + GitHub-shaped), orgs, domains, enablement | mvp, auth, db | N (after B.3) | Y | S | ouroboros-db |
 | B.5 · #710 | ouroboros-db: [B.5] Auth constraint & drift tests in ci/db | Constraint assertions + BetterAuth-schema drift check | mvp, auth, db, ci | N (after B.3, #24) | Y | S | ouroboros-db, .github |
 
@@ -759,6 +782,10 @@ V005: organization ──< member >── user        invitation(status: pending
 ```
 
 ### Issue B.3 (#708) — ouroboros-db: [B.3] Tenancy data migration — `tenants`→`organization`, extensions re-pointed
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic B](#epic-b-696--auth-database-ouroboros-db) for what landed, and
+`ouroboros-db/tests/rehearsal/` for the standing rehearsal the migration is proven by.
 
 - **Problem Statement:** The scaffolding roadmap **built** `tenants`/`tenant_domains`
   (#20, `V001`), `tenant_members` (#21, `V002`) and `github_orgs`/`github_repos`
@@ -1458,12 +1485,13 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ *(all shipped)* → (**B.3 #708** → { B.4 #709 ⊕ B.5 #710 })
-   *(**B.3 is the cutover.** It drops `tenants`, `tenant_members`, `users` and
-   `user_identities` — every consumer of those tables must already be migrated or
-   ready to be, in the same PR chain. Take a database snapshot before it and rehearse
-   it against a seeded copy; it is the one step in this roadmap that cannot be
-   reverted by redeploying the previous build.)*
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ ⊕ ~~B.3 #708~~ *(all shipped)* → { B.4 #709 ⊕ B.5 #710 }
+   *(**B.3 — the cutover — has shipped.** `tenants`, `tenant_members`, `users` and
+   `user_identities` are gone, and `ci/db` rehearses the migration against a populated
+   V005 copy on every run rather than trusting the one that was recorded on its PR.
+   `modules/tenancy` still reads the dropped names, so **`ci/rest` is red until
+   C.3 #713 / C.4 #714 land** — the "same PR chain" this note used to warn about is
+   now the debt those two issues retire.)*
 3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ ⊕ ~~A.5 #704~~ ⊕ ~~A.6 #705~~
    *(**Epic A is complete.**)*
    *(**A.6 has shipped.** A.4 deleted the dev-user bypass along with the guard that read
@@ -1572,11 +1600,12 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #708 (B.3), with #709 (B.4) behind it.** **Epic A is complete**: #700 (A.1),
-#701 (A.2), #702 (A.3), #703 (A.4), #704 (A.5) and #705 (A.6) **have all landed**, along with
-#706 (B.1) and #707 (B.2) — BetterAuth is configured, its handler answers at `/api/auth/*`,
-its core and organization tables exist with the shipped identities back-filled into them, its
-GitHub provider signs people in, development signs in with a password, and the service now
+**Start here: #713 (C.3) and #714 (C.4), which un-red `ci/rest`; #709 (B.4) and #710 (B.5)
+run in parallel.** **Epic A is complete**: #700 (A.1), #701 (A.2), #702 (A.3), #703 (A.4),
+#704 (A.5) and #705 (A.6) **have all landed**, along with #706 (B.1), #707 (B.2) and now
+**#708 (B.3)** — BetterAuth is configured, its handler answers at `/api/auth/*`, its core and
+organization tables exist with the shipped identities back-filled into them, its GitHub
+provider signs people in, development signs in with a password, and the service now
 *remembers* people: a session is a row, the library's guard is what every route sits behind,
 and signing out revokes.
 
@@ -1586,11 +1615,15 @@ sign-in that replaces it, removing the variable in the same change. #709 is what
 seeded people a BetterAuth identity to sign in *as*, and the e2e gate additionally needs a
 non-production `ouroboros-rest` to talk to. `organization`, `member`, `invitation` and the session's tenant
 pointer exist, the plugin is enabled with a `viewer` role asserted against the library, and a
-first sign-in yields a personal organization. **#708 (B.3) is the next step in the whole
-roadmap**, and the riskiest one in it — note that its chain reaches further than its own
-body suggests: it drops four populated tables that `modules/tenancy` still reads, so #713
-(C.3) and #714 (C.4) belong in the same PR chain if `main` is to stay green. #718 (D.3) makes the login page's button work, and #720 (D.5)
-re-points the UI's own gate, which still forwards #33's cookie.
+first sign-in yields a personal organization. **#708 (B.3) — the cut-over, and the riskiest
+step in this roadmap — has now landed too**: `tenants`, `tenant_members`, `users` and
+`user_identities` are dropped, the extension tables hang off `organization_id`, and `ci/db`
+rehearses the migration against a populated V005 copy on every run. What it knowingly left
+behind is the debt this paragraph used to warn about: `modules/tenancy` still queries the
+dropped tables, so **`ci/rest`'s integration suite is red until #713 (C.3) and #714 (C.4)
+rework it** — which is why they are the front of the queue. #718 (D.3) makes the login
+page's button work, and #720 (D.5) re-points the UI's own gate, which still forwards #33's
+cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

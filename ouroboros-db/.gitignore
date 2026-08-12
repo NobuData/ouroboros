@@ -1,0 +1,6 @@
+# ouroboros-db — module-specific ignores (repo-wide ones live in the root .gitignore).
+
+# Transient copy of the versioned migrations that the #708 rehearsal step migrates a
+# scratch database with (see .github/workflows/db.yml). Created and removed by the step
+# itself — or by a developer reproducing it by hand — never committed.
+migrations/rehearsal-v005/
