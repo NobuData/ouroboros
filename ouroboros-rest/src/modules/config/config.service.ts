@@ -83,19 +83,6 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("githubClientSecret");
   }
 
-  /**
-   * The address the development bypass used to sign every request in as —
-   * `OURO_AUTH_DEV_USER`. Read by nothing since
-   * [#703](https://github.com/NobuData/ouroboros/issues/703); see `configuration.ts`.
-   *
-   * `getOrThrow` is wrong for this one and `get` is right: it is the only field that is
-   * legitimately nothing, and `loadConfiguration` has already forced it to `null` in
-   * production.
-   */
-  get authDevUser(): string | null {
-    return this.config.get<string | null>("authDevUser") ?? null;
-  }
-
   /** Browser origins allowed to call this API with credentials — `OURO_CORS_ORIGINS`. */
   get corsOrigins(): readonly string[] {
     return this.config.getOrThrow<readonly string[]>("corsOrigins");
@@ -107,26 +94,15 @@ export class AppConfigService {
    * The one derived flag worth naming, because it is asked in several places and asking
    * it as `nodeEnv === "production"` in each of them is how one of them ends up spelling
    * it `"prod"`. It gates the `Secure` attribute on the legacy cookie eviction
-   * (`src/modules/auth/legacy.cookie.ts`) and the refusal below.
+   * (`src/modules/auth/legacy.cookie.ts`).
+   *
+   * The development email/password sign-in turns on the same question, but asks it of the
+   * validated configuration rather than of this provider — `src/auth/password.provider.ts`
+   * is loaded by `@better-auth/cli` with no Nest process anywhere, so it can name no
+   * injectable. The two agree because both read `nodeEnv`.
    */
   get isProduction(): boolean {
     return this.nodeEnv === "production";
-  }
-
-  /**
-   * The address a development bypass would be allowed to sign a request in as, or `null`.
-   *
-   * The second of the two independent checks the bypass was behind: `loadConfiguration`
-   * drops the variable in production, and this refuses it again from a configuration that
-   * somehow carries one. Two, because a single check being wrong is authentication turned
-   * off for a deployment.
-   *
-   * Nothing calls it today — #703 deleted the guard that did — and it is kept beside the
-   * field it guards until [#705](https://github.com/NobuData/ouroboros/issues/705) removes
-   * both, so that the safety and the value never live in different commits.
-   */
-  get devUserEmail(): string | null {
-    return this.isProduction ? null : this.authDevUser;
   }
 
   /** Which interface to bind — see `listenHost` in `configuration.ts`. */
@@ -153,7 +129,6 @@ export class AppConfigService {
       betterAuthUrl: this.betterAuthUrl,
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
-      authDevUser: this.authDevUser,
       corsOrigins: this.corsOrigins,
     };
   }

@@ -284,10 +284,11 @@ describe("the Dockerfile", () => {
 
   it("declares itself production, which is what binds every interface", () => {
     // `listenHost` binds loopback outside production, and a process bound to loopback
-    // inside a container is a process nothing can route to. It is also what strips
-    // OURO_AUTH_DEV_USER before the schema sees it, so this one line is both the reason
-    // the image answers at all and the reason it cannot be talked into trusting a
-    // development bypass.
+    // inside a container is a process nothing can route to. Since
+    // [#705](https://github.com/NobuData/ouroboros/issues/705) it is load-bearing a second
+    // time: `src/auth/password.provider.ts` gates the development email/password sign-in on
+    // this exact value, so pinning it in the image is what makes "off in production" a
+    // property of the artefact rather than of whoever runs it.
     expect(stage("runtime")).toMatch(/^(?:ENV\s+|\s+)NODE_ENV=production(?:\s|\\|$)/m);
   });
 

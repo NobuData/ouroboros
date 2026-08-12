@@ -28,11 +28,13 @@ export const REDACTED_PASSWORD = "***";
  * redirect every browser follows, so hiding it would cost a useful diagnostic and protect
  * nothing. `OURO_DATABASE_URL` is not among them either, because it is redacted more
  * precisely — see {@link redactDatabaseUrl}. Nor is `BETTER_AUTH_URL`, which is an address
- * a browser is redirected to. Nor is `OURO_AUTH_DEV_USER`, and that one is the point of
- * the output rather than an omission from it: it is an address, it is a credential only in
- * the sense that a bypass *is* one, and printing it is how an operator confirms the bypass
- * is off ([#33](https://github.com/NobuData/ouroboros/issues/33)). Redacting it would make
- * "off" and "on, as somebody" print the same line.
+ * a browser is redirected to.
+ *
+ * `NODE_ENV` is the line an operator now reads to confirm that the development
+ * email/password sign-in is off, since that is the only thing gating it
+ * ([#705](https://github.com/NobuData/ouroboros/issues/705),
+ * `src/auth/password.provider.ts`). It is printed for the same reason everything unredacted
+ * here is: a deployment's posture should be legible from its own boot log.
  */
 export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   VARIABLES.engineSharedSecret,
@@ -96,10 +98,15 @@ export function redactedEnvironment(configuration: Configuration): Record<string
     const value = configuration[field as keyof Configuration];
 
     if (value === null || value === undefined) {
-      // Printed with nothing after the `=`, which is how an env file spells "not set" —
-      // and, for `OURO_AUTH_DEV_USER`, is the line an operator reads to confirm the
-      // development bypass is off in a deployment (#33). Checked before the secret rule,
-      // because a secret that is absent should say so rather than claim to be redacted.
+      // Printed with nothing after the `=`, which is how an env file spells "not set".
+      // Checked before the secret rule, because a secret that is absent should say so
+      // rather than claim to be redacted.
+      //
+      // No field is nullable today — the last one went with #705's removal of the
+      // development bypass — so this branch is unreachable from `loadConfiguration`'s
+      // output. It is kept because {@link redactedEnvironment} takes a `Configuration` from
+      // any caller, and the day an optional variable comes back the safe rendering should
+      // already be here rather than be remembered.
       redacted[variable] = "";
     } else if (SECRET_VARIABLES.has(variable)) {
       redacted[variable] = REDACTED;

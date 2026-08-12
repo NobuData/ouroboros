@@ -188,10 +188,17 @@ services:
   #
   # NODE_ENV is not set here: the image already pins it to `production`, which is what
   # makes the service bind 0.0.0.0 instead of a loopback nothing outside the container
-  # can reach. It is also what strips OURO_AUTH_DEV_USER before the schema sees it, so
-  # the development sign-in bypass is *off* in this stack however the .env is written —
-  # sign-in here is the real GitHub handshake, which is why the two OURO_GITHUB_* values
-  # below are worth setting. README.md § The whole stack in containers says how.
+  # can reach. It is also what decides that issue #705's development email/password
+  # sign-in does not exist in this stack — so sign-in here is the real GitHub handshake,
+  # which is why the two OURO_GITHUB_* values below are worth setting. README.md § The
+  # whole stack in containers says how.
+  #
+  # **Overriding it to `development` to get the password routes would not work**, and the
+  # reason is the first sentence above: the same variable moves the listen address back to
+  # loopback, and a container bound to loopback publishes nothing. The two are deliberately
+  # one flag (see src/auth/password.provider.ts on why the sign-in has no switch of its
+  # own), so a stack that wants password sign-in is `yarn dev` against the data tier rather
+  # than this one.
   # ---------------------------------------------------------------------------
   rest:
     build:

@@ -8,6 +8,7 @@ import { DatabaseService } from "../modules/db/db.service";
 import { activeOrganizationHooks, stampActiveOrganization } from "./active.organization";
 import { AUTH_APP_NAME, AUTH_BASE_PATH, authOptions } from "./auth.options";
 import { ACCOUNT_LINKING, githubProvider, GITHUB_PROVIDER_ID } from "./github.provider";
+import { passwordProvider } from "./password.provider";
 import { sessionOptions } from "./session.options";
 
 /**
@@ -105,7 +106,8 @@ describe("authOptions", () => {
   // Listing the whole surface is how that stays true: an option added here — rather than in
   // the issue that owns it, with the migration and the tests that go with it — fails this
   // test. #702 added the two it owns, `socialProviders` and `account`, #703 the one it
-  // owns, `session`, and #704 the one it owns, `databaseHooks`; #705 is still to come.
+  // owns, `session`, #704 the one it owns, `databaseHooks`, and #705 the last one,
+  // `emailAndPassword`.
   //
   // **`plugins` is deliberately not here.** #704's organization plugin is registered in
   // `auth.factory.ts`, because `organization()` is a value from `better-auth` and this
@@ -121,12 +123,28 @@ describe("authOptions", () => {
       "baseURL",
       "database",
       "databaseHooks",
+      "emailAndPassword",
       "secret",
       "session",
       "socialProviders",
       "telemetry",
       "trustedOrigins",
     ]);
+  });
+
+  it("carries the same surface in production, with the development sign-in turned off", () => {
+    // The key list must not move with the environment. `emailAndPassword` is present and
+    // `enabled: false` in production rather than omitted (`password.provider.ts` says why),
+    // and asserting that here is what makes the pin above a statement about this service's
+    // options rather than about the one environment the fixture happens to default to.
+    const production = authOptions({
+      configuration: testConfiguration({ NODE_ENV: "production" }),
+      pool: fakePool(),
+    });
+    const development = authOptions({ configuration: testConfiguration(), pool: fakePool() });
+
+    expect(Object.keys(production).sort()).toEqual(Object.keys(development).sort());
+    expect(production.emailAndPassword?.enabled).toBe(false);
   });
 
   it("carries the active-organization hook #704 owns", () => {
@@ -138,6 +156,19 @@ describe("authOptions", () => {
 
     expect(databaseHooks).toEqual(activeOrganizationHooks());
     expect(databaseHooks?.session?.create?.before).toBe(stampActiveOrganization);
+  });
+
+  it("carries the development sign-in #705 owns", () => {
+    // The values themselves, and the argument for each, are `password.provider.spec.ts`.
+    // What is asserted here is that they reach the library at all — an options object that
+    // omitted them would leave `emailAndPassword` at the library's default, which is off,
+    // and local development back to needing a real GitHub OAuth application.
+    const { emailAndPassword } = authOptions({
+      configuration: testConfiguration(),
+      pool: fakePool(),
+    });
+
+    expect(emailAndPassword).toEqual(passwordProvider(testConfiguration()));
   });
 
   it("carries the session strategy #703 owns", () => {
@@ -153,9 +184,10 @@ describe("authOptions", () => {
 
 describe("the GitHub provider", () => {
   it("is configured, and is the only one", () => {
-    // Mockup 01's primary action, and the only way into this service until #705 adds a
-    // development password. A second provider appearing here without an issue behind it is
-    // a consent screen nobody designed.
+    // Mockup 01's primary action, and the only *social* provider there is — #705's
+    // development password is `emailAndPassword`, which is not one of these. A second
+    // provider appearing here without an issue behind it is a consent screen nobody
+    // designed.
     const { socialProviders } = authOptions({
       configuration: testConfiguration(),
       pool: fakePool(),

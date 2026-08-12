@@ -1,4 +1,4 @@
-import { VARIABLES } from "./configuration";
+import { VARIABLES, type Configuration } from "./configuration";
 import { testConfiguration } from "./configuration.fixture";
 import {
   REDACTED,
@@ -93,27 +93,23 @@ describe("redactedEnvironment", () => {
   it("prints an unset variable with nothing after the equals sign", () => {
     // Which is how an env file spells "not set". `undefined` or `null` printed literally
     // would read as a value somebody had configured.
-    expect(redactedEnvironment(testConfiguration())[VARIABLES.authDevUser]).toBe("");
+    //
+    // No variable is optional since #705 removed the development bypass, so this exercises
+    // the branch through a hand-built configuration rather than through one the schema can
+    // produce. The rendering is what is under test; that nothing reaches it today is the
+    // reason the object is written out here instead of coming from `testConfiguration`.
+    const withNothingSet = { ...testConfiguration(), engineUrl: null } as unknown as Configuration;
+
+    expect(redactedEnvironment(withNothingSet)[VARIABLES.engineUrl]).toBe("");
   });
 
-  it("prints the development bypass rather than redacting it", () => {
-    // This line is the acceptance criterion an operator reads: the bypass is off when it is
-    // empty and on when it names somebody. Redacting it would make both print the same.
-    const redacted = redactedEnvironment(
-      testConfiguration({ OURO_AUTH_DEV_USER: "ken@acme-robotics.dev" }),
-    );
-
-    expect(redacted[VARIABLES.authDevUser]).toBe("ken@acme-robotics.dev");
-  });
-
-  it("prints it empty in production even when the environment set it", () => {
-    // `loadConfiguration` drops the variable there, so there is nothing to print — which is
-    // what makes "provably off in a production build" something a boot log states.
-    const redacted = redactedEnvironment(
-      testConfiguration({ OURO_AUTH_DEV_USER: "ken@acme-robotics.dev", NODE_ENV: "production" }),
-    );
-
-    expect(redacted[VARIABLES.authDevUser]).toBe("");
+  it("prints NODE_ENV, which is what says whether the development sign-in is on", () => {
+    // #705 gates the email/password routes on this one value and on nothing else, so this
+    // line is the acceptance criterion an operator reads in a boot log. Redacting it would
+    // make a production deployment and a development one print the same.
+    expect(
+      redactedEnvironment(testConfiguration({ NODE_ENV: "production" }))[VARIABLES.nodeEnv],
+    ).toBe("production");
   });
 });
 

@@ -10,15 +10,12 @@
  * validating, every suite that builds an application fails — so a clean checkout that
  * cannot start is caught here rather than by the developer who copied the template.
  *
- * **One deliberate divergence.** `.env.example` still carries `OURO_AUTH_DEV_USER`, which
- * signed a fresh checkout in against the development seed without a GitHub OAuth
- * application ([#33](https://github.com/NobuData/ouroboros/issues/33)); this fixture leaves
- * it unset. That mattered while something read it — a suite whose every request arrived
- * pre-authenticated could not assert that a route is protected, and would go on passing if
- * the guard were removed — and it is kept unset now that
- * [#703](https://github.com/NobuData/ouroboros/issues/703) has left nothing reading it at
- * all, because a fixture that supplies a value nothing consumes is a value somebody has to
- * work out the meaning of.
+ * **`NODE_ENV` is deliberately left unset**, so every configuration built here is a
+ * `development` one — which is the environment a developer runs and therefore the one worth
+ * defaulting to. It matters more than it used to:
+ * [#705](https://github.com/NobuData/ouroboros/issues/705) gates the email/password sign-in
+ * on this value, so a suite asserting the *production* posture has to ask for it by name
+ * (`testConfiguration({ NODE_ENV: "production" })`), and `password.provider.spec.ts` does.
  *
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs, so
  * nothing under `dist/` carries these strings.

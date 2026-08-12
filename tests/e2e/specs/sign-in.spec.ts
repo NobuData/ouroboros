@@ -8,13 +8,15 @@
  *
  * ## About the session
  *
- * **The signed-in half of this leg is parked.**
- * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the stateless cookie
- * this suite used to mint with a database-backed session row, which cannot be produced from
- * outside the stack — `support/session.ts` sets out what has to land first
- * ([#709](https://github.com/NobuData/ouroboros/issues/709) and
- * [#705](https://github.com/NobuData/ouroboros/issues/705)) and why the alternatives were
- * rejected. Those tests carry `test.fixme` and say so in the report.
+ * **The signed-in half of this leg is parked, but no longer for want of a mechanism.**
+ * [#705](https://github.com/NobuData/ouroboros/issues/705) landed the development
+ * email/password sign-in, and `support/session.ts`'s {@link signIn} is now a real call to a
+ * real route — the "one function" that file spent two issues predicting. What is still
+ * missing is the data and the deployment: the seed does not yet write BetterAuth's `account`
+ * rows ([#709](https://github.com/NobuData/ouroboros/issues/709)), and the compose stack
+ * runs `ouroboros-rest`'s production image, which is exactly what #705 gates the password
+ * routes off on. `support/session.ts` sets both out. Those tests carry `test.fixme` and say
+ * so in the report.
  *
  * **The signed-*out* half still runs**, and it is the half that was keeping the other one
  * honest: a visitor with no session is sent to the login screen, and a cookie naming no

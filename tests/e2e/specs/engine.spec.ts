@@ -44,7 +44,7 @@ test.describe("the engine answers through the gateway", () => {
   }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
 
     const response = await request.get(restUrl("/api/v1/engine/status"), {
       headers: asUser(token),
@@ -66,7 +66,7 @@ test.describe("the engine answers through the gateway", () => {
   test("the answer is narrower than what the engine reported", async ({ request }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
 
     const status = await expectJson<Record<string, unknown>>(
       await request.get(restUrl("/api/v1/engine/status"), { headers: asUser(token) }),
@@ -93,7 +93,7 @@ test.describe("the engine answers through the gateway", () => {
   test("the gateway exposes no path-forwarding proxy", async ({ request }) => {
     test.fixme(true, SESSION_PARKED);
 
-    const { token } = mintSession(SEED_OWNER.id);
+    const { token } = await mintSession(SEED_OWNER.id);
     const headers = asUser(token);
 
     // The invariant, asserted from outside: there is no route that takes a path, a method

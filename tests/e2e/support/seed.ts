@@ -40,13 +40,58 @@ export const SEED_TENANT = {
  * signs in as somebody else first would have to sign in twice.
  */
 export const SEED_OWNER = {
-  /** `ouroboros.users.id` — the `sub` claim of the minted session. */
+  /** `ouroboros."user".id` — literal in the migration, and what a `session` row names. */
   id: "5eed0003-0000-4000-8000-000000000001",
-  /** The address `.env.example` suggests for `OURO_AUTH_DEV_USER`. */
+  /** The address `support/session.ts` presents to the development sign-in route. */
   email: "ken@acme-robotics.dev",
   /** What the shell's user menu renders. */
   displayName: "Ken Suenobu",
 } as const;
+
+/**
+ * The password every seeded person signs in with.
+ *
+ * One value for all of them, because this is demo data on a development machine and a
+ * different string per person would be three things to look up rather than one. It is not a
+ * secret in any sense that matters: it is written down here, in
+ * `ouroboros-db/migrations/R__dev_seed.sql`, and in the README — and the seed it belongs to
+ * cannot be applied to anything but a development database, because every statement in that
+ * migration is gated on the `ouro_dev_seed` placeholder that only `flyway.seed.toml` sets.
+ *
+ * **[#709](https://github.com/NobuData/ouroboros/issues/709) is what has to write it**, as
+ * an `account` row with `providerId = 'credential'` and a hash BetterAuth's own scrypt
+ * verifier accepts. Two constraints on that seed come from this constant: the hash must be
+ * of exactly this string, and the string must clear `PASSWORD_MIN_LENGTH` in
+ * `ouroboros-rest/src/auth/password.provider.ts`, which is twelve characters.
+ */
+export const SEED_PASSWORD = "ouroboros-dev-password";
+
+/** Every person the seed creates, by id — what {@link seededUser} looks up. */
+const SEEDED_USERS = [SEED_OWNER] as const;
+
+/**
+ * Find a seeded person by id.
+ *
+ * A lookup rather than a bare export because `support/session.ts` is handed an id — that is
+ * what the specs already pass — and needs the address that goes with it.
+ *
+ * @param userId - The id, as one of the constants above spells it.
+ * @returns The person.
+ * @throws {Error} If no seeded person carries that id, which is a spec naming somebody the
+ *   seed does not create. Failing here names the id; failing later names a missing heading.
+ */
+export function seededUser(userId: string): (typeof SEEDED_USERS)[number] {
+  const person = SEEDED_USERS.find((candidate) => candidate.id === userId);
+
+  if (person === undefined) {
+    throw new Error(
+      `no seeded user has id ${userId} — support/seed.ts knows ` +
+        `${SEEDED_USERS.map((each) => each.id).join(", ")}`,
+    );
+  }
+
+  return person;
+}
 
 /**
  * A slug for a workspace this run creates, unique to the run.

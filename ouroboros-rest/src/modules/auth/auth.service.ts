@@ -24,14 +24,12 @@
  * **And the session half has gone the same way.**
  * [#703](https://github.com/NobuData/ouroboros/issues/703) replaced the stateless cookie
  * with database-backed sessions and the library's own guard, so `authenticate` — the
- * guard's whole question — went with `SessionGuard`, and the `OURO_AUTH_DEV_USER`
- * development bypass went with it, because a bypass is a branch inside an authentication
- * decision and this service no longer makes one. Local work without a GitHub OAuth
- * application is [#705](https://github.com/NobuData/ouroboros/issues/705)'s email/password
- * sign-in, which replaces the bypass with a real credential rather than a way around one.
- * That interval is a deliberate cost, the same shape as the login button #702 left broken
- * until #718: the alternative is a second way to be signed in, kept alive beside the one
- * that is now real.
+ * guard's whole question — went with `SessionGuard`, and #33's development bypass went with
+ * it, because a bypass is a branch inside an authentication decision and this service no
+ * longer makes one. Local work without a GitHub OAuth application is
+ * [#705](https://github.com/NobuData/ouroboros/issues/705)'s email/password sign-in
+ * (`src/auth/password.provider.ts`), which replaces the bypass with a real credential rather
+ * than a way around one.
  *
  * What is left is one question — *who are you, and where do you belong* — and it is asked
  * of a session the guard has already resolved rather than of a cookie.

@@ -74,35 +74,6 @@ describe("AppConfigService", () => {
 
       await production.close();
     });
-
-    it("offers no development user when none is configured", () => {
-      expect(config.authDevUser).toBeNull();
-      expect(config.devUserEmail).toBeNull();
-    });
-
-    it("offers the configured one outside production", async () => {
-      const bypassed = await moduleWith(
-        testConfiguration({ OURO_AUTH_DEV_USER: "ken@acme-robotics.dev" }),
-      );
-
-      expect(bypassed.get(AppConfigService).devUserEmail).toBe("ken@acme-robotics.dev");
-
-      await bypassed.close();
-    });
-
-    it("refuses one in production even when the configuration carries it", async () => {
-      // The second of the two independent checks — `loadConfiguration` has already dropped
-      // the variable, and this refuses a configuration that somehow holds one anyway. Two,
-      // because one of them being wrong is authentication turned off for a deployment.
-      const production = await moduleWith({
-        ...testConfiguration({ NODE_ENV: "production" }),
-        authDevUser: "ken@acme-robotics.dev",
-      });
-
-      expect(production.get(AppConfigService).devUserEmail).toBeNull();
-
-      await production.close();
-    });
   });
 });
 
