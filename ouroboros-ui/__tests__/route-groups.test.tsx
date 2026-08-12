@@ -4,9 +4,11 @@ import { describe, expect, it } from "vitest";
 import AuthLayout from "@/app/(auth)/layout";
 
 /**
- * The `(auth)` layout is the pass-through the sign-in frame (#44) will fill. What is
- * worth asserting now is the property that makes it safe to fill: it renders its
- * segment and adds nothing of its own.
+ * The `(auth)` layout is a pass-through, and stayed one when the sign-in screen (#44)
+ * landed inside it: `/login` is a full-bleed split, so a frame here would be a frame that
+ * screen has to undo. What the group shares is a rule rather than markup — a screen
+ * outside the shell owns its own scroll container, which `app/login/login.css` is where
+ * #44 does it and `__tests__/login/login-styles.test.ts` is where that is held.
  *
  * Its counterpart, `(app)`, stopped being a pass-through when the shell (#41) landed —
  * it is covered by `__tests__/shell/app-shell.test.tsx`.

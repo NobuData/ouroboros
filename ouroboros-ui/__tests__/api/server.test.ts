@@ -50,6 +50,7 @@ const {
   ACTIVE_TENANT_MAX_AGE,
   LOGIN_PATH,
   activeTenant,
+  anonymousApi,
   api,
   clearActiveTenant,
   resetApiClient,
@@ -231,5 +232,56 @@ describe("api", () => {
       }),
     ).rejects.toBeInstanceOf(ApiError);
     expect(redirect).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The second client, for the one screen that has to be able to hear a `401`.
+ *
+ * Everything about it is {@link api}'s except the handling of that one status, and the two
+ * cases below are exactly that difference: the credentials still travel, and the failure
+ * arrives as an error rather than as a redirect to the page that asked.
+ */
+describe("anonymousApi", () => {
+  it("forwards the same session and workspace as the wired client does", async () => {
+    jar.set(SESSION_COOKIE, "signed.value");
+    jar.set(ACTIVE_TENANT_COOKIE, "acme");
+    respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
+
+    await anonymousApi().GET("/api/v1/tenants");
+
+    expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBe("acme");
+  });
+
+  it("lets a 401 reject as an ApiError instead of redirecting to the login screen", async () => {
+    // The login screen is the caller. `api()`'s handler would send it to LOGIN_PATH — which
+    // is itself — once per render, for every signed-out visitor.
+    respondWith(
+      new Response(
+        JSON.stringify({ code: "unauthenticated", message: "Sign in.", details: {} }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const caught: unknown = await anonymousApi()
+      .GET("/api/v1/auth/me")
+      .catch((error: unknown) => error);
+
+    expect(caught).toBeInstanceOf(ApiError);
+    expect((caught as ApiError).isUnauthenticated).toBe(true);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("builds one client and keeps it, separately from the wired one", () => {
+    expect(anonymousApi()).toBe(anonymousApi());
+    expect(anonymousApi()).not.toBe(api());
+  });
+
+  it("is forgotten by resetApiClient too, so a suite can rebuild both", () => {
+    const before = anonymousApi();
+    resetApiClient();
+
+    expect(anonymousApi()).not.toBe(before);
   });
 });

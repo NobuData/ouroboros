@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.3.0
+  version: 0.3.1
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.3.0
+                version: 0.3.1
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.3.0
+                version: 0.3.1
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.3.0
+                engine_version: 0.3.1
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":

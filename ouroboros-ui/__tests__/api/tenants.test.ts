@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createApiClient } from "@/app/api/client";
 import { ApiError } from "@/app/api/errors";
 // Types only, so this import is erased and nothing loads before the mocks below.
 import type { Tenant, TenantPage } from "@/app/api/tenants";
+
+import { clientAnswering } from "../helpers/api";
 
 // The facade sits on the server-side client, so importing it pulls in the same three
 // server-only modules `server.test.ts` answers. Nothing here calls the wired client —
@@ -38,30 +39,6 @@ const ACME = {
 
 /** A page carrying it. */
 const PAGE = { items: [ACME], total: 1, limit: 25, offset: 0 };
-
-/**
- * A client answering every call with one body, recording what it was asked.
- *
- * @param body What the service answers with.
- * @param status The status to answer with. Defaults to `200`.
- * @returns The client and the requests it made.
- */
-function clientAnswering(body: unknown, status = 200) {
-  const requests: Request[] = [];
-  const client = createApiClient({
-    baseUrl: "http://rest.test:4000",
-    fetch: (request) => {
-      requests.push(request);
-      return Promise.resolve(
-        new Response(JSON.stringify(body), {
-          status,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    },
-  });
-  return { client, requests };
-}
 
 describe("tenants.list", () => {
   it("calls the listing operation and returns the page itself", async () => {

@@ -114,7 +114,7 @@ export function ThemeToggle() {
         Not inside the button: the button's name is its aria-label, and a live region is
         a place a reader is sent, not part of the control they are on.
       */}
-      <span className="shell-sr-only" role="status">
+      <span className="sr-only" role="status">
         {announcement}
       </span>
     </>
