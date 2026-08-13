@@ -1,40 +1,60 @@
 "use client";
 
-import { CircleUser } from "lucide-react";
+import { CircleUser, Monitor, Moon, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { organization, unwrap, useListOrganizations, useSession } from "@/app/api/auth-client";
+import { FONT_SCALES, setFontScale } from "@/app/font-scale";
 // The person's monogram, and the one rule this side of the wire still keeps. It lives with
 // the login screen's tile because that is where the *workspace* monogram question was
 // settled — the service computes those, so nothing here may re-derive them — and the
 // signed-in person is the single case it does not describe (`app/login/monogram.tsx`). The
 // shell draws the same person, so it reads the same function rather than a second copy of it.
 import { initials } from "@/app/login/monogram";
+import { describeTheme, resolveTheme, type Theme } from "@/app/theme";
+import { useTheme } from "@/app/theme-provider";
+import { useFontScale } from "@/app/use-font-scale";
 
 import { type AccountView, type MenuWorkspace, accountMenuLabel, accountView } from "./account";
 import { signOutOfSession } from "./actions";
+import { saveFontScale } from "./preference-actions";
+import { ShortcutsSheet } from "./shortcuts-sheet";
 
 /**
- * The account menu in the top-right corner of the header — **the signed-in session, at last**
- * ([#721](https://github.com/NobuData/ouroboros/issues/721)).
+ * The account menu in the top-right corner of the header — the full § 1.1 shape, at last
+ * (CP.3, [#645](https://github.com/NobuData/ouroboros/issues/645)).
  *
- * What shipped with the shell (#41) was this interaction around three placeholders: *Not
- * signed in*, a settings item that could not act, and a *Sign out* that explained it was
- * waiting for sessions to exist. Sessions exist. What replaces the placeholders is the shape
- * the design system asks the profile menu for (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1) minus
- * the parts other issues own — the font-size stepper is CQ.1/CP.3 and the settings screen is
- * #491, so both stay marked rather than mocked:
+ * What shipped with the shell (#41) was the interaction around placeholders; #721 filled in
+ * the session; this issue fills in the rest — the font-size stepper (over #649's engine),
+ * the theme control (a second surface over the #17 engine, moved in from the header row as
+ * the roadmap promised), the person's role in the acting workspace, and the
+ * keyboard-shortcuts sheet. The one placeholder left standing is *Workspace settings*,
+ * because `/settings` is #491's to build and a link to a 404 is worse than an honest wait:
  *
  * ```
  * [ (avatar) ▾ ]
- *      ├─ Ken Suenobu · ken@acme-robotics.dev
- *      ├─ Workspace  acme-robotics  ▸ ─┬─ ● acme-robotics
- *      │                               ├─ ○ acme-labs
- *      │                               └─ ○ kensuenobu
+ *      ├─ Ken Suenobu · ken@acme-robotics.dev · owner
+ *      ├─ Font size  [A−] ▪▪▪▫▫ [A+]      ← live, persisted through #649
+ *      ├─ Theme      ○ Light ○ Dark ● System
+ *      ├─ Switch workspace  ▸ ─┬─ ● acme-robotics
+ *      │                       ├─ ○ acme-labs
+ *      │                       └─ ○ kensuenobu
  *      ├─ Workspace settings           (#491)
+ *      ├─ Keyboard shortcuts ─▶ sheet over the pane
  *      └─ Sign out ─▶ session row deleted ─▶ /login
  * ```
+ *
+ * ### The two controls hold no state of their own
+ *
+ * The stepper reads `useFontScale()` and writes through `setFontScale` — the store #649
+ * built, and the same one Settings → Appearance (#492) will subscribe to, which is the
+ * whole of how the two stay in sync — then persists through the `saveFontScale` Server
+ * Action, quietly: the step already applied, and a reader mid-squint is not interested in
+ * why the durable half is slow. The theme radios read `useTheme()` and call `setTheme`,
+ * so the engine, the persistence and the no-flash boot are all #17's; three
+ * `menuitemradio`s rather than the header's old cycling button because a menu row has room
+ * for the three states the cycle had to fold into one icon.
  *
  * ### It reads the browser's session, and it is the only thing in the product that does
  *
@@ -75,6 +95,60 @@ export function UserMenu() {
   const router = useRouter();
   const session = useSession();
   const workspaces = useListOrganizations();
+  const scale = useFontScale();
+  const { theme, resolved, setTheme } = useTheme();
+
+  const activeOrganizationId = session.data?.session.activeOrganizationId ?? null;
+
+  /**
+   * `member.role` for a workspace, raw, remembered *with* the workspace it was asked for.
+   *
+   * Fetched apart from the session because the listing the menu renders from is the
+   * plugin's `organization.list`, whose adapter discards the role on the way out —
+   * `GET /api/v1/orgs` exists for screens that need roles *per workspace*, but this menu
+   * needs one word for one workspace, and `get-active-member-role` is the plugin's own
+   * one-request answer, called through the client BetterAuth routes are always called
+   * through (the two-client rule).
+   *
+   * The pairing is the staleness rule: `activeRole` below is derived by comparing the
+   * stored workspace against the acting one, so an answer that arrives after a switch —
+   * or survives one — is void the moment it no longer describes where the session is,
+   * with no state to remember to reset (and no reset for a lint rule to object to).
+   */
+  const [memberRole, setMemberRole] = useState<{
+    organizationId: string;
+    role: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (activeOrganizationId === null) return;
+
+    let cancelled = false;
+
+    organization
+      .getActiveMemberRole()
+      .then((answer) => {
+        if (cancelled) return;
+        const member = unwrap(answer, "/organization/get-active-member-role");
+        if (typeof member?.role === "string") {
+          setMemberRole({ organizationId: activeOrganizationId, role: member.role });
+        }
+      })
+      .catch(() => {
+        // Nothing honest to say: the identity block simply does not name a role, which is
+        // the same rendering as "not answered yet" because it is the same knowledge.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeOrganizationId]);
+
+  /** The raw role text, exactly while it describes the acting workspace. */
+  const activeRole =
+    memberRole !== null && memberRole.organizationId === activeOrganizationId
+      ? memberRole.role
+      : null;
 
   const view = accountView({
     user: session.data?.user,
@@ -82,9 +156,10 @@ export function UserMenu() {
     // way: BetterAuth leaves the field off the base session and the plugin widens it, so a
     // build typed without the organization plugin would report every session as acting
     // nowhere rather than failing to compile.
-    activeOrganizationId: session.data?.session.activeOrganizationId ?? null,
+    activeOrganizationId,
     organizations: workspaces.data,
     pending: session.isPending,
+    activeRole,
   });
 
   const [open, setOpen] = useState(false);
@@ -92,8 +167,10 @@ export function UserMenu() {
   /** The workspace a `set-active` is in flight for, so the row can say it is working. */
   const [moving, setMoving] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  /** What to tell a screen reader about a switch that has just happened. */
+  /** What to tell a screen reader about a press that has just changed something. */
   const [announcement, setAnnouncement] = useState("");
+  /** Whether the shortcuts sheet is showing — it outlives the menu that opened it. */
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const wrapper = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -208,6 +285,51 @@ export function UserMenu() {
   }
 
   /**
+   * Step the font scale one notch in either direction, live.
+   *
+   * The order is the design's "live preview as you step": `setFontScale` stamps `<html>`
+   * before this function returns, so the press *is* the preview — and only then is the
+   * durable half asked for, quietly, because the reader is already reading at the size
+   * they chose and a failed PATCH must not take that away or interrupt it.
+   *
+   * @param direction `1` for larger, `-1` for smaller.
+   */
+  function step(direction: 1 | -1): void {
+    const next = FONT_SCALES[FONT_SCALES.indexOf(scale) + direction];
+    if (next === undefined) return;
+
+    setFontScale(next);
+    setAnnouncement(`Font size ${next}%.`);
+    void saveFontScale(next);
+  }
+
+  /**
+   * Choose a theme, through the #17 engine.
+   *
+   * @param choice The choice the radio names.
+   */
+  function pickTheme(choice: Theme): void {
+    setTheme(choice);
+    // resolveTheme rather than the hook's `resolved`, which still describes the palette
+    // being left behind: this render happens before the state change is applied.
+    setAnnouncement(`Theme: ${describeTheme(choice, resolveTheme(choice))}.`);
+  }
+
+  /**
+   * Open the shortcuts sheet, from the menu item that names it.
+   *
+   * The menu closes first — a sheet over a still-open menu would be two layers of "Escape
+   * closes which?" — and without restoring focus, because the sheet is about to take it.
+   * When the sheet closes, focus comes back to the avatar rather than to the menu item,
+   * which no longer exists; the overlay's own restoration checks `isConnected` and would
+   * otherwise drop focus on the body.
+   */
+  function openShortcuts(): void {
+    close(false);
+    setShortcutsOpen(true);
+  }
+
+  /**
    * Keyboard handling for the open menu.
    *
    * One handler on the menu container — the submenu is inside it, so its keys bubble here —
@@ -316,6 +438,92 @@ export function UserMenu() {
             ref={menu}
             onKeyDown={onKeyDown}
           >
+            {/*
+              The font-size stepper (§ 1.1, over #649's engine). role="none" on the row is
+              the <li role="none"> of the ARIA menu pattern: the two buttons are the menu's
+              items, the label and the dots are furniture. The buttons stay in the tab-less
+              roving ring like every other item — `items()` reads roles, not markup shape.
+            */}
+            <div role="none" className="shell-menu__row" title={`Font size ${scale}%`}>
+              <span className="shell-menu__label">Font size</span>
+              <div role="none" className="shell-menu__stepper">
+                <button
+                  type="button"
+                  className="shell-menu__item shell-menu__step"
+                  role="menuitem"
+                  tabIndex={-1}
+                  // aria-disabled at the end of the range, never `disabled`: the house rule
+                  // (§ 3.5) — a control out of the tab order takes its explanation with it,
+                  // and here it would also break the arrow ring mid-walk.
+                  aria-disabled={scale === FONT_SCALES[0] || undefined}
+                  aria-label="Smaller text"
+                  onClick={() => step(-1)}
+                >
+                  A−
+                </button>
+                {/*
+                  Which of the five steps is on. Decoration beside two buttons that already
+                  say what they do; the live region announces the value a press lands on,
+                  and the row's title carries it for a hovering pointer.
+                */}
+                <span className="shell-menu__dots" aria-hidden>
+                  {FONT_SCALES.map((mark) => (
+                    <span
+                      key={mark}
+                      className={
+                        FONT_SCALES.indexOf(mark) <= FONT_SCALES.indexOf(scale)
+                          ? "shell-menu__dot shell-menu__dot--on"
+                          : "shell-menu__dot"
+                      }
+                    />
+                  ))}
+                </span>
+                <button
+                  type="button"
+                  className="shell-menu__item shell-menu__step"
+                  role="menuitem"
+                  tabIndex={-1}
+                  aria-disabled={scale === FONT_SCALES[FONT_SCALES.length - 1] || undefined}
+                  aria-label="Larger text"
+                  onClick={() => step(1)}
+                >
+                  A+
+                </button>
+              </div>
+            </div>
+
+            {/*
+              The theme, as three radios over the #17 engine — the control the header row
+              gave up to this menu. role="group" rather than role="none", which is the ARIA
+              menu pattern's own container for a menuitemradio set: it is what makes a
+              screen reader say "Theme, group" before "Light, radio item, 1 of 3".
+            */}
+            <div role="group" aria-label="Theme" className="shell-menu__row">
+              <span className="shell-menu__label">Theme</span>
+              <div role="none" className="shell-menu__themes">
+                {THEME_CHOICES.map(({ choice, label, icon: Icon }) => (
+                  <button
+                    key={choice}
+                    type="button"
+                    className="shell-menu__item shell-menu__theme"
+                    role="menuitemradio"
+                    tabIndex={-1}
+                    aria-checked={theme === choice}
+                    // The one choice whose consequence is not in its name: what "System"
+                    // renders as depends on the OS, so the title resolves it the way the
+                    // old toggle's tooltip did.
+                    title={
+                      choice === "system" ? `Follows the system — ${resolved} right now.` : undefined
+                    }
+                    onClick={() => pickTheme(choice)}
+                  >
+                    <Icon size={14} aria-hidden />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {showSwitcher && (
               // role="none" so the submenu below is a child of the menu in the accessibility
               // tree rather than of a generic box, which is the <li role="none"> of the ARIA
@@ -394,6 +602,16 @@ export function UserMenu() {
               Workspace settings
             </button>
 
+            <button
+              type="button"
+              className="shell-menu__item"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={openShortcuts}
+            >
+              Keyboard shortcuts
+            </button>
+
             {/*
               A form, because signing out is a write only the server can finish — see
               `app/shell/actions.ts`. role="none" keeps the transport out of the
@@ -418,6 +636,19 @@ export function UserMenu() {
       )}
 
       {/*
+        Outside the panel, because it outlives it: the menu item that opens the sheet closes
+        the menu behind itself. Focus returns to the avatar on close — the overlay's own
+        restoration would find its opener unmounted.
+      */}
+      <ShortcutsSheet
+        open={shortcutsOpen}
+        onClose={() => {
+          setShortcutsOpen(false);
+          trigger.current?.focus();
+        }}
+      />
+
+      {/*
         Outside the panel, and always mounted: the menu closes on a successful switch, and a
         live region that is removed at the moment its text is set announces nothing at all.
       */}
@@ -427,6 +658,20 @@ export function UserMenu() {
     </div>
   );
 }
+
+/**
+ * The three theme choices, in the order the row draws them — the two explicit palettes,
+ * then the default that follows the OS. Module-scope so the row's map never rebuilds it.
+ */
+const THEME_CHOICES: readonly {
+  readonly choice: Theme;
+  readonly label: string;
+  readonly icon: typeof Sun;
+}[] = [
+  { choice: "light", label: "Light", icon: Sun },
+  { choice: "dark", label: "Dark", icon: Moon },
+  { choice: "system", label: "System", icon: Monitor },
+];
 
 /**
  * Who is signed in, above the menu's items.
@@ -451,7 +696,18 @@ function Identity({ view }: Readonly<{ view: AccountView }>) {
   return (
     <p className="shell-menu__identity">
       <span className="shell-menu__who">{view.person.name}</span>
-      <span className="shell-menu__mail">{view.person.email}</span>
+      <span className="shell-menu__mail">
+        {view.person.email}
+        {/*
+          The role in the acting workspace — "ken@… · owner", § 1.1's line. Rendered only
+          once it is *known* (§ 3.5): while the fetch is out, or when the session acts
+          nowhere, the address stands alone rather than beside a guess. It changes with the
+          acting organization because the effect that feeds it is keyed on exactly that.
+        */}
+        {view.person.role !== null && (
+          <span className="shell-menu__role"> · {view.person.role}</span>
+        )}
+      </span>
     </p>
   );
 }

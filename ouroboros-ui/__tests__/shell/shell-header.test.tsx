@@ -35,6 +35,13 @@ vi.mock("@/app/api/auth-client", async () =>
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
 
+// The menu's stepper persists through a Server Action over the server-only client — same
+// mock, same reason as `actions` above. What it does is the menu suite's to assert.
+vi.mock("@/app/shell/preference-actions", () => ({
+  readFontScale: vi.fn().mockResolvedValue("100"),
+  saveFontScale: vi.fn().mockResolvedValue(true),
+}));
+
 const { ShellHeader } = await import("@/app/shell/shell-header");
 
 beforeEach(() => {
@@ -165,28 +172,15 @@ describe("the shell header", () => {
     }
   });
 
-  it("keeps the settings control reachable and explains why it does nothing", () => {
+  it("carries neither a theme toggle nor a settings gear, which moved into the menu", () => {
+    // CP.3 (#645) folded both into the profile menu, exactly as § 1.1 places them and as
+    // the header's own docstring promised while they waited here. Drawn twice, a control
+    // is a state that can be read twice differently — so the row must stay clean of them,
+    // and this is the assertion that keeps a convenient "just one more icon" out.
     renderThemed(<ShellHeader />);
 
-    // aria-disabled rather than disabled: a control removed from the tab order takes
-    // its own explanation with it.
-    const gear = screen.getByRole("button", { name: /Workspace settings/ });
-    expect(gear).toHaveAttribute("aria-disabled", "true");
-    expect(gear).not.toBeDisabled();
-    expect(gear).toHaveAccessibleName(/#491/);
-  });
-
-  it("mounts the theme toggle in the cluster, between the pill and the gear", () => {
-    renderThemed(<ShellHeader />);
-
-    const pill = screen.getByTitle(/Needs-you counts arrive/);
-    const toggle = screen.getByRole("button", { name: /^Theme:/ });
-    const gear = screen.getByRole("button", { name: /Workspace settings/ });
-
-    // Position rather than child index: the toggle brings a visually hidden live region
-    // with it, and where that span sits is not a fact about the header's order.
-    expect(pill.compareDocumentPosition(toggle)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(toggle.compareDocumentPosition(gear)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(screen.queryByRole("button", { name: /^Theme:/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Workspace settings/ })).toBeNull();
   });
 
   it("offers the account menu, naming who it is for", () => {

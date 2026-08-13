@@ -162,3 +162,44 @@ describe("whether there is anywhere to switch to", () => {
     expect(view).toMatchObject({ switchable: false, workspaces: [], active: undefined });
   });
 });
+
+describe("the role beside the address (#645)", () => {
+  /** A signed-in view, narrowed — these cases are all about `person`, which only it has. */
+  function signedInView(over: Partial<Parameters<typeof accountView>[0]> = {}) {
+    const view = accountView(reading(over));
+    if (view.state !== "signed-in") throw new Error(`expected signed-in, got ${view.state}`);
+    return view;
+  }
+
+  it("is null while nothing has answered — never a guess", () => {
+    // § 3.5: while the fetch is out the address stands alone. Both spellings of "not
+    // known" read the same, because they are the same knowledge.
+    expect(signedInView().person.role).toBeNull();
+    expect(signedInView({ activeRole: null }).person.role).toBeNull();
+  });
+
+  it("is the plugin's word once it has answered", () => {
+    expect(signedInView({ activeRole: "admin" }).person.role).toBe("admin");
+  });
+
+  it("collapses a multi-role membership to the strongest word", () => {
+    // The plugin's addMember accepts an array and joins it, so the column can hold
+    // "admin,member" — and somebody who is an admin and a member may do everything an
+    // admin may. primaryRole's collapse, the same one the dashboard subline makes.
+    expect(signedInView({ activeRole: "member, admin" }).person.role).toBe("admin");
+  });
+
+  it("reads only-unknown words as viewer, which is what primaryRole grants an empty list", () => {
+    // The service granted *something*; the least is the only safe reading of words this
+    // build does not know.
+    expect(signedInView({ activeRole: "superuser" }).person.role).toBe("viewer");
+  });
+
+  it("names no role when the session acts nowhere, whatever the text says", () => {
+    // A role is a role *in* somewhere. A stale answer arriving after a switch to acting
+    // nowhere must not dress the identity block with it.
+    expect(
+      signedInView({ activeOrganizationId: null, activeRole: "owner" }).person.role,
+    ).toBeNull();
+  });
+});

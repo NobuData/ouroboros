@@ -9,6 +9,7 @@ import {
   THEME_STORAGE_KEY,
   type Theme,
   beginThemeFade,
+  describeTheme,
   endThemeFade,
   parseTheme,
   readStoredTheme,
@@ -362,5 +363,22 @@ describe("the inline bootstrap script", () => {
     // It is parser-blocking by design. The number is a ceiling, not a target: it exists
     // so that "keep it tiny" survives the next edit.
     expect(THEME_BOOTSTRAP.length).toBeLessThan(300);
+  });
+});
+
+describe("describeTheme", () => {
+  // Moved here from the header toggle's suite when CP.3 (#645) replaced that control with
+  // the account menu's radio group — the sentence belongs to the vocabulary, and so does
+  // its proof.
+  it("names an explicit choice as itself", () => {
+    expect(describeTheme("light", "light")).toBe("light");
+    expect(describeTheme("dark", "dark")).toBe("dark");
+  });
+
+  it("resolves system rather than leaving it ambiguous", () => {
+    // "system" alone does not tell a reader which of the two palettes is on the screen,
+    // which is the whole reason the function exists.
+    expect(describeTheme("system", "light")).toBe("system (light)");
+    expect(describeTheme("system", "dark")).toBe("system (dark)");
   });
 });
