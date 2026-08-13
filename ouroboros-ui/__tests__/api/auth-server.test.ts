@@ -29,6 +29,8 @@ vi.mock("server-only", () => ({}));
 const jar = new Map<string, string>();
 /** Cookies deleted while serving it. */
 const deleted: string[] = [];
+/** The headers of the request under test — `origin` is the one this module reads. */
+const incoming = new Headers();
 
 vi.mock("next/headers", () => ({
   cookies: () =>
@@ -40,6 +42,7 @@ vi.mock("next/headers", () => ({
         jar.delete(name);
       },
     }),
+  headers: () => Promise.resolve(incoming),
 }));
 
 /** Where the request was sent, if it was. */
@@ -165,9 +168,13 @@ function serviceAnswering(answers: {
   return { urls, headers, methods, bodies };
 }
 
+/** The browser origin a Server Action's request carries — `OURO_CORS_ORIGINS`'s one entry. */
+const BROWSER = "http://localhost:3000";
+
 beforeEach(() => {
   jar.clear();
   deleted.length = 0;
+  incoming.set("origin", BROWSER);
   redirectedTo = undefined;
   resetRestUrlCache();
   resetApiClient();
@@ -260,6 +267,31 @@ describe("readSession", () => {
     await readSession();
 
     expect(stub.headers[0].get("cookie")).toBeNull();
+  });
+
+  it("forwards the browser's origin, because a server composes none of its own", async () => {
+    // BetterAuth answers `403 Missing or null Origin` to any cookie-carrying request that
+    // arrives without an `Origin` or a `Referer`, which is every request a *server*
+    // composes. The value forwarded is the browser's, which is both the truthful answer to
+    // what the check asks and the origin `OURO_CORS_ORIGINS` already declares trusted.
+    jar.set("better-auth.session_token", "token-value");
+    const stub = serviceAnswering({});
+
+    await readSession();
+
+    expect(stub.headers[0].get("origin")).toBe(BROWSER);
+  });
+
+  it("sends none at all when the request being served carried none", async () => {
+    // An ordinary `GET` render. BetterAuth runs no origin check on one, and a header
+    // invented here would be a claim nothing asked for — and one the service would refuse
+    // as `Invalid origin` if it ever did look.
+    incoming.delete("origin");
+    const stub = serviceAnswering({});
+
+    await readSession();
+
+    expect(stub.headers[0].has("origin")).toBe(false);
   });
 
   it("sends nothing of this application's own cookies", async () => {
@@ -452,6 +484,19 @@ describe("setActiveOrganization", () => {
     expect(stub.headers[0].get("cookie")).toBe("better-auth.session_token=token-value");
   });
 
+  it("carries an origin, without which the write is refused before it reaches the route", async () => {
+    // The failure this covers is the one **Enter mission control →** met: a `POST` carrying
+    // cookies and no `Origin` is `403 Missing or null Origin`, and BetterAuth reports it in
+    // the value rather than by rejecting — so it surfaced as an `AuthError` out of `unwrap`
+    // rather than as anything naming CSRF.
+    jar.set("better-auth.session_token", "token-value");
+    const stub = serviceAnswering({});
+
+    await setActiveOrganization(ACME.id);
+
+    expect(stub.headers[0].get("origin")).toBe(BROWSER);
+  });
+
   it("lets a refusal reach the caller, because it is the membership check", async () => {
     // A `403` here means the caller does not belong to the workspace they named. Swallowing
     // it would leave a screen showing a workspace the session is not actually acting in.
@@ -472,6 +517,19 @@ describe("signOutSession", () => {
 
     expect(stub.urls).toEqual([`${REST}/api/auth/sign-out`]);
     expect(stub.methods[0]).toBe("POST");
+  });
+
+  it("carries an origin, so the revocation is not refused and then swallowed", async () => {
+    // This call's failures are deliberately caught — the cookies below are what the request
+    // can act on either way — so a `403 Missing or null Origin` here would have been silent:
+    // a person pressing *sign out* whose session row stayed open. It is the same header and
+    // the same reason as the switch above.
+    jar.set("better-auth.session_token", "token-value");
+    const stub = serviceAnswering({});
+
+    await signOutSession().catch(() => undefined);
+
+    expect(stub.headers[0].get("origin")).toBe(BROWSER);
   });
 
   it("clears both auth cookies and the step-2 hint", async () => {

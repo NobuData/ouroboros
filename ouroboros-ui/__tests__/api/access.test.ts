@@ -39,6 +39,10 @@ vi.mock("next/headers", () => ({
       set: () => {},
       delete: () => {},
     }),
+  // The request's own headers. `app/api/auth-server.ts` reads the origin off them and
+  // forwards it, which is what keeps BetterAuth's origin check satisfied on a call a
+  // server composes rather than a browser.
+  headers: () => Promise.resolve(new Headers({ origin: "http://localhost:3000" })),
 }));
 
 /** What `redirect()` does: signal by throwing, so nothing after it runs. */
