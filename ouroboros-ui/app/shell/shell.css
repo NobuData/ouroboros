@@ -23,8 +23,26 @@
  * `height: 100%` against the locked <html>/<body> in globals.css is what contains the
  * scroll: the grid is exactly the viewport, so only a cell that asks to scroll does.
  * The pane below is the one that asks.
+ *
+ * The first column is `auto` — the specification's own grid (§ 1.3) — so it is whatever the
+ * sidebar is, and the sidebar is one custom property. The three widths § 1.2 names are
+ * declared here rather than written into the rules that use them, because CP.2 (issue 644,
+ * written without its hash for the reason the collapse rule at the foot of this file gives)
+ * moves between them: a collapse control, its per-user persistence, and the overlay drawer
+ * are that issue's, and all three amount to redefining `--shell-sidebar`. The grid holds at
+ * every one of them without changing, which is what makes the slot a slot.
+ *
+ * `--shell-sidebar-drawer` is zero because a drawer is *out of flow*: the sidebar floats over
+ * the pane rather than beside it, so the column it left behind has no width. It is declared
+ * and not yet selected — CP.2 brings the hamburger that opens the drawer, and a sidebar with
+ * no way to open it is navigation nobody can reach.
  */
 .app-shell {
+  --shell-sidebar-wide: 15rem;
+  --shell-sidebar-rail: 4rem;
+  --shell-sidebar-drawer: 0rem;
+  --shell-sidebar: var(--shell-sidebar-wide);
+
   display: grid;
   grid-template-rows: auto 1fr;
   grid-template-columns: auto 1fr;
@@ -46,6 +64,22 @@
   overflow-x: hidden;
   scrollbar-gutter: stable;
   background: var(--ground);
+}
+
+/*
+ * The pane while an overlay holds it (§ 1.3's last clause).
+ *
+ * `overflow-y: hidden` is the lock, and the padding is what pays for it. The gutter reserved
+ * by `scrollbar-gutter: stable` above only exists for an overflow of `scroll` or `auto`, so
+ * the moment this rule applies the pane's content box grows by the scrollbar's width and
+ * every line in it reflows *underneath the dialog that was just opened over it*. The width is
+ * measured before the class lands and handed back here as padding, so nothing moves.
+ * `app/shell/pane-scroll.ts` sets the property and explains the measurement; on a platform
+ * with overlay scrollbars it is zero and this changes nothing.
+ */
+.app-shell__pane--locked {
+  overflow-y: hidden;
+  padding-inline-end: var(--shell-pane-gutter, 0px);
 }
 
 /* The measure every page is laid out against (§ 2): 1440px, centred in the pane. */
@@ -160,11 +194,82 @@
   color: var(--accent);
 }
 
+/*
+ * The tenant chip, immediately right of the brand (§ 1.1).
+ *
+ * `min-width: 0` with the ellipsis below is what keeps a long slug from pushing the cluster
+ * off the right edge: the chip gives way before the session controls do, because a truncated
+ * workspace name is legible and a missing account menu is not.
+ */
+.shell-tenant {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+.shell-tenant__value {
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .shell-header__cluster {
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: var(--sp-4);
+  flex: none;
+}
+
+/*
+ * The search pill (§ 1.1, first of the cluster). Wider than it needs to be for its word,
+ * because the mockups draw it as a field rather than as a button — it is the shape a palette
+ * opens out of.
+ */
+.shell-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 12rem;
+  padding: var(--sp-3) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--inset);
+  color: var(--ink-faint);
+  font: inherit;
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.shell-search:hover {
+  border-color: var(--line-control);
+  color: var(--ink-dim);
+}
+
+.shell-search__icon {
+  flex: none;
+}
+
+.shell-search__label {
+  margin-right: auto;
+}
+
+/* The key cap, in the treatment `app/globals.css` gives every <kbd> plus a box to sit in. */
+.shell-search__key {
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
 }
 
 .shell-pill {
@@ -183,6 +288,19 @@
 .shell-pill__count {
   color: var(--ink-faint);
   font-family: var(--f-mono);
+}
+
+/*
+ * The live-loops dot — the accent-and-glow treatment docs/DESIGN_TOKENS.md reserves for a
+ * thing that is running, which is the same one the sidebar's active entry wears.
+ */
+.shell-pill__dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border-radius: var(--r-round);
+  background: var(--accent);
+  box-shadow: 0 0 0.375rem 0 var(--accent-glow);
 }
 
 .shell-icon-button,
@@ -510,7 +628,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
-  width: 15rem;
+  width: var(--shell-sidebar);
   padding: var(--sp-6) var(--sp-5);
   overflow-y: auto;
   border-right: 1px solid var(--line);
@@ -599,8 +717,14 @@ a.shell-nav__item--active:hover {
  * be blunt about it.
  */
 @media (max-width: 64rem) {
+  /* The slot, not the sidebar: the grid's first column is `auto`, so redefining the width the
+     sidebar reads is the whole of the change — which is also the move CP.2's collapse control
+     makes, from script rather than from a media query. */
+  .app-shell {
+    --shell-sidebar: var(--shell-sidebar-rail);
+  }
+
   .shell-nav {
-    width: 4rem;
     padding-inline: var(--sp-4);
   }
 
@@ -616,14 +740,119 @@ a.shell-nav__item--active:hover {
   }
 }
 
-/* The narrowest phones: the pill is the first thing to go, so the brand and the
-   session controls keep their room. */
+/*
+ * The narrowest phones: the pills are the first thing to go, so the brand and the session
+ * controls keep their room. They carry no information yet and will carry a count when they
+ * do — a number that is legible in the sidebar's badge (CP.2) as well.
+ *
+ * The search pill stays, because ⌘K is not reachable on a phone and the pill is the only way
+ * in; it loses its word and its key cap and becomes the icon button it already looks like.
+ */
 @media (max-width: 48rem) {
   .shell-pill {
+    display: none;
+  }
+
+  .shell-search {
+    min-width: 0;
+  }
+
+  .shell-search__label,
+  .shell-search__key {
     display: none;
   }
 
   .shell-header {
     padding-inline: var(--sp-5);
   }
+}
+
+/* ---------- the overlay layer ---------- */
+
+/*
+ * The mount point dialogs, sheets and the command palette portal into (§ 1.3).
+ *
+ * `display: contents` is the whole rule, and it is load-bearing: the layer is a grid child,
+ * so a layer that generated a box would be a fourth cell in a grid with three, and an empty
+ * one covering the page if it were positioned instead. It is an address, not a surface —
+ * each overlay below positions itself against the viewport.
+ */
+.shell-overlays {
+  display: contents;
+}
+
+/*
+ * One overlay: the ground it dims, and the frame it centres.
+ *
+ * `position: fixed` rather than `absolute`, so the panel is placed against the viewport and
+ * not against the shell grid — which is the same size today and would stop being so the
+ * moment anything about the frame changed. --scrim is the token the design system reserves
+ * for chrome over content, at the one opacity it is defined with.
+ *
+ * The z-index sits above the account menu's panel (60) and the skip link (70), which is the
+ * order the three want: a dialog covers a menu, and covers a skip link that leads into a page
+ * the reader cannot reach while it is open.
+ */
+.shell-overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-10);
+  background: var(--scrim);
+}
+
+/*
+ * The panel. It scrolls its own contents, and that is not a breach of the one-scroll-container
+ * rule: § 1.3 is about the *page* — the pane is the only thing that scrolls behind an overlay,
+ * and it is held still while this is open. A dialog taller than the viewport has to scroll
+ * somewhere, and the alternative is a panel with a button below the fold.
+ *
+ * No drop shadow, for the reason the account menu's panel gives: the token sheet publishes
+ * none, and a shadow drawn from an opaque surface token is a block rather than a shadow.
+ */
+.shell-overlay__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  width: min(34rem, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--sp-10);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+.shell-overlay__title {
+  font-size: var(--t-xl);
+}
+
+.shell-overlay__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The dismissal. `align-self: start` rather than a full-width button: the panel is a column,
+ * and a stretched control would read as the primary action of a dialog that has none.
+ */
+.shell-overlay__close {
+  align-self: start;
+  padding: var(--sp-4) var(--sp-8);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.shell-overlay__close:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

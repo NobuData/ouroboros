@@ -1,6 +1,8 @@
 import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DASHBOARD_PATH } from "@/app/paths";
+
 import { signedIn } from "../helpers/account";
 import { renderThemed } from "../helpers/theme";
 
@@ -8,11 +10,17 @@ import { renderThemed } from "../helpers/theme";
  * The header. Its scope is defined as much by what it does *not* carry as by what it
  * does: no navigation links (they moved to the sidebar), and no invented numbers.
  *
- * It is rendered through `renderThemed` because it now carries the theme toggle (#42),
- * which is a `useTheme()` consumer — as it is in production, where the root layout puts
- * the provider above every screen.
+ * CP.1 ([#643](https://github.com/NobuData/ouroboros/issues/643)) is what completed the row —
+ * every slot design system § 1.1 names, in the order it names them — so the suite grew a
+ * group about that order. Each slot's own behaviour is its own suite
+ * (`search-pill.test.tsx`, `tenant-chip.test.tsx`); what is here is that the header offers it
+ * and offers it in the right place.
  *
- * The account menu it mounts reads the browser's session
+ * It is rendered through `renderThemed` because it carries the theme toggle (#42), which is a
+ * `useTheme()` consumer — as it is in production, where the root layout puts the provider
+ * above every screen.
+ *
+ * The account menu and the tenant chip both read the browser's session
  * ([#721](https://github.com/NobuData/ouroboros/issues/721)), which is why a header suite
  * has an auth stub in it: the hooks would otherwise reach for `fetch`, and a router that
  * does not exist. What the menu *is* is `__tests__/shell/user-menu.test.tsx`; all this suite
@@ -43,7 +51,10 @@ describe("the shell header", () => {
     renderThemed(<ShellHeader />);
 
     const brand = screen.getByRole("link", { name: /OUROBOROS/ });
-    expect(brand).toHaveAttribute("href", "/");
+    // `/dashboard`, not `/`. The specification says "links to Dashboard" (§ 1.1) and since #45
+    // that is a segment of its own — `/` only redirects there, so linking to it would spend a
+    // round trip on every press of the brand.
+    expect(brand).toHaveAttribute("href", DASHBOARD_PATH);
   });
 
   it("carries both brand treatments, so CSS can pick one before any script runs", () => {
@@ -74,6 +85,68 @@ describe("the shell header", () => {
     const pill = screen.getByTitle(/Needs-you counts arrive/);
     expect(pill).toHaveTextContent("—");
     expect(pill.textContent).not.toMatch(/\d/);
+  });
+
+  it("shows an em dash for the live-loops count too", () => {
+    renderThemed(<ShellHeader />);
+
+    const pill = screen.getByTitle(/Live loop counts arrive/);
+    expect(pill).toHaveTextContent("—");
+    expect(pill).toHaveTextContent("loops live");
+    // The count is #78's to fill. A hard-coded "3" — the number the specification's own
+    // sketch draws — is a number a reader would believe.
+    expect(pill.textContent).not.toMatch(/\d/);
+  });
+
+  it("keeps the notifications affordance reachable and explains itself", () => {
+    renderThemed(<ShellHeader />);
+
+    const bell = screen.getByRole("button", { name: /^Notifications/ });
+    expect(bell).toHaveAttribute("aria-disabled", "true");
+    expect(bell).not.toBeDisabled();
+  });
+
+  it("offers the search pill the shortcut is wired to", () => {
+    renderThemed(<ShellHeader />);
+
+    // What it opens is `__tests__/shell/search-pill.test.tsx`; that the header has one is
+    // this suite's, because § 1.1 puts it first in the cluster.
+    expect(screen.getByRole("button", { name: /Search/ })).toHaveAttribute(
+      "aria-haspopup",
+      "dialog",
+    );
+  });
+
+  it("names the workspace between the brand and the cluster", () => {
+    renderThemed(<ShellHeader />);
+
+    const brand = screen.getByRole("link", { name: /OUROBOROS/ });
+    const chip = screen.getByTitle(/#77/);
+    const search = screen.getByRole("button", { name: /Search/ });
+
+    expect(brand.compareDocumentPosition(chip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(chip.compareDocumentPosition(search)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("puts the cluster in the order the specification lists it", () => {
+    // § 1.1: search pill, live-loops pill, notifications, then the profile menu. The two
+    // controls between them — the theme toggle and the settings gear — are items CP.3 (#645)
+    // moves *into* the profile menu; until it does they stay in the row.
+    renderThemed(<ShellHeader />);
+
+    const order = [
+      screen.getByRole("button", { name: /Search/ }),
+      screen.getByTitle(/Live loop counts arrive/),
+      screen.getByTitle(/Needs-you counts arrive/),
+      screen.getByRole("button", { name: /^Notifications/ }),
+      screen.getByRole("button", { name: /^Account menu/ }),
+    ];
+
+    for (let index = 1; index < order.length; index += 1) {
+      expect(order[index - 1].compareDocumentPosition(order[index])).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    }
   });
 
   it("keeps the settings control reachable and explains why it does nothing", () => {

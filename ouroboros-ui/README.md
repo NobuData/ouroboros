@@ -230,7 +230,7 @@ ouroboros-ui/
 │   │   ├── eyebrow.tsx      #   Eyebrow — the caption above a title
 │   │   ├── class-names.ts   #   cx(), the one class-list join
 │   │   └── index.ts         #   the barrel: `import { Button } from "@/app/ui"`
-│   ├── shell/               # the app shell: header, sidebar, content pane
+│   ├── shell/               # the app shell: header, sidebar, pane, overlay layer
 │   ├── login/               # the sign-in & tenancy screen's components
 │   ├── dashboard/           # the dashboard's reader, decisions, components, sheet
 │   ├── (app)/               # signed-in screens — inside the shell
@@ -740,32 +740,37 @@ the readers, the status logic and the redirect are what it builds on.
 ## App shell
 
 Every signed-in screen renders inside the shell
-([#41](https://github.com/NobuData/ouroboros/issues/41)), specified in
+([#41](https://github.com/NobuData/ouroboros/issues/41), completed by
+[CP.1 #643](https://github.com/NobuData/ouroboros/issues/643)), specified in
 [`../docs/DESIGN_SYSTEM_APP_SHELL.md`](../docs/DESIGN_SYSTEM_APP_SHELL.md) § 1 — which
 supersedes the top-bar navigation the mockups were drawn with.
 
 ```
-┌──────────────────────────────────────────────────┐
-│ ◎ OUROBOROS            [Needs you —] [⚙] [KS ▾]  │  header — no nav links
-├───────────────┬──────────────────────────────────┤
-│ ▦ Dashboard   │                                  │
-│ ◉ Issues soon │   {page}                       ░ │  ← the only scrollbar
-│ …             │                                ░ │
-│ ───────────   │                                  │
-│ ▣ Needs You   │                                  │
-│ ⚙ Settings    │                                  │
-└───────────────┴──────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│ ◎ OUROBOROS [acme-robotics]                                      │  header —
+│           [Search ⌘K] [● — loops live] [Needs you —] [🔔][◐][⚙][KS ▾] │  no nav links
+├───────────────┬──────────────────────────────────────────────────┤
+│ ▦ Dashboard   │                                                  │
+│ ◉ Issues soon │   {page}                                       ░ │  ← the only
+│ …             │                                                ░ │    scrollbar
+│ ───────────   │                                                  │
+│ ▣ Needs You   │                                                  │
+│ ⚙ Settings    │                                                  │
+└───────────────┴──────────────────────────────────────────────────┘
+        overlays portal here — beside the pane, never inside it
 ```
 
-Four things are worth knowing before adding a screen to it.
+Five things are worth knowing before adding a screen to it.
 
 1. **The pane is the only scroll container.** `html` and `body` are locked in
    `globals.css`; [`app/shell/app-shell.tsx`](app/shell/app-shell.tsx) is a grid of
    exactly the viewport, and the content pane owns `overflow-y`. So a page never sets
    `position: fixed` to keep something visible, and wide content (tables, diffs,
    timelines) scrolls sideways **inside its own `overflow-x` wrapper** — one page without
-   that wrapper is all it takes to start the pane scrolling sideways. A screen rendered
-   *outside* the shell inherits the lock and owns its own scroll container.
+   that wrapper is all it takes to start the pane scrolling sideways. The pane carries
+   `data-shell-pane` so CP.5 ([#647](https://github.com/NobuData/ouroboros/issues/647))
+   can audit exactly that, per route. A screen rendered *outside* the shell inherits the
+   lock and owns its own scroll container.
 2. **Navigation is data.** [`app/shell/nav.ts`](app/shell/nav.ts) is the list the sidebar
    renders and the rule that decides which entry a URL belongs to: `/` matches only `/`,
    and every other entry owns its route and everything under it, so `/models/routing`
@@ -776,17 +781,37 @@ Four things are worth knowing before adding a screen to it.
    so their rows render as labelled *soon* text — not links, not in the tab order, each
    naming the issue that will build it. Building one means flipping its `status` to
    `"live"` in the same pull request as the route.
-4. **What is a slot, not an omission.** The header cluster holds the needs-you pill, the
-   [theme toggle](#theming) ([#42](https://github.com/NobuData/ouroboros/issues/42)), the
-   settings gear and the [account menu](#the-account-menu). The toggle and the menu are
-   finished; the tenant chip (#77), the search pill and ⌘K palette (#79), and the real
-   needs-you count (#78) each have an issue, as does the settings screen the gear will
-   link to (#491). The font-size stepper the design system § 1.1 puts in the profile menu
-   is CQ.1/CP.3 (#645), and is marked in the menu rather than mocked up.
+4. **What is a slot, not an omission.** The bar carries every slot § 1.1 names, in its
+   order: the tenant chip beside the brand, then search · live-loops · needs-you ·
+   notifications · [theme toggle](#theming)
+   ([#42](https://github.com/NobuData/ouroboros/issues/42)) · settings gear ·
+   [account menu](#the-account-menu). The toggle, the menu and the chip's *reading* are
+   finished; what fills the rest has an issue each — switching workspace from the chip
+   (#77), the ⌘K palette behind the search pill (#79), real counts in both pills (#78),
+   the settings screen the gear will link to (#491). Nothing shows a number nobody
+   computed: an unfilled count is an em dash, which is the design system's honesty rule
+   (§ 3.5). The theme toggle and the gear are on their way *into* the profile menu with
+   CP.3 ([#645](https://github.com/NobuData/ouroboros/issues/645)), along with the
+   font-size stepper.
+5. **Overlays render beside the pane, not inside it.**
+   [`app/shell/overlay.tsx`](app/shell/overlay.tsx) portals into a layer that is a sibling
+   of the pane, so a dialog can cover the header instead of being clipped by the grid cell
+   it was opened from — and it **locks the pane's scroll** while it is up, restoring the
+   position on close. The lock is
+   [`app/shell/pane-scroll.ts`](app/shell/pane-scroll.ts), which is worth reading before
+   changing: `scrollbar-gutter: stable` reserves the scrollbar's width only for an
+   `overflow` of `scroll` or `auto`, so locking with `hidden` un-reserves it and the pane's
+   contents reflow underneath the dialog unless the measured width is handed back as
+   padding. Anything full-viewport — a sheet, a confirmation, the palette — builds on this
+   rather than on a `position: fixed` of its own.
 
-Responsive collapse below 1024px is CSS, not state: the sidebar becomes a 64px icon rail
-and every name becomes its tooltip. The user-controlled collapse, its per-account
-persistence, and the overlay drawer below 768px are CP.2.
+Responsive collapse below 1024px is CSS, not state: `--shell-sidebar` moves from
+`--shell-sidebar-wide` to `--shell-sidebar-rail`, the sidebar becomes a 64px icon rail and
+every name becomes its tooltip. All three widths § 1.2 names are declared on the shell, and
+the grid's first column is `auto`, so moving between them is a one-property change — which
+is how CP.2 adds the user-controlled collapse, its per-account persistence, and the overlay
+drawer below 768px (the drawer width is declared; the hamburger that opens it is that
+issue's).
 
 ### The account menu
 

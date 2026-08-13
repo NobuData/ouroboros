@@ -1691,6 +1691,14 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 > search pill (#79), the real needs-you count (#78), and the profile menu's contents
 > (CP.3, #645); the registry behind the sidebar, its persisted collapse control and the
 > overlay drawer below 768px are CP.2 (#644).
+>
+> **CP.1 (#643) has since completed the re-scope.** The slots this issue left empty are all
+> in the bar — the tenant chip naming the workspace the session is acting in, the search
+> pill with ⌘K wired to it, the live-loops pill and the notifications affordance — and each
+> still points at the issue that fills it with counts, results or a switcher. What that
+> issue added beyond the row is the part #41 had no occasion to build: the sidebar's width
+> as a slot CP.2 drives, and the overlay layer that lets a dialog render outside the
+> content pane and hold its scroll while it is open.
 
 - **Problem Statement:** All 21 mockup screens share one chrome (top bar with glyph +
   nav + status pills, footer with prev/next); the shell is the highest-leverage single

@@ -32,6 +32,7 @@ vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
 
 const { default: AppLayout } = await import("@/app/(app)/layout");
 const { AppShell, CONTENT_ID } = await import("@/app/shell/app-shell");
+const { OVERLAY_LAYER_ID, PANE_ATTRIBUTE } = await import("@/app/shell/regions");
 
 beforeEach(() => {
   signedIn();
@@ -84,6 +85,40 @@ describe("the app shell", () => {
     // -1 is what lets the skip link land focus there; anything ≥ 0 would put an empty
     // container into the tab order.
     expect(document.getElementById(CONTENT_ID)).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("marks the pane so #647 can audit it per route", () => {
+    // The hook CP.5 enforces horizontal containment through: one selector that keeps meaning
+    // *the scroll container* even if the skip link's target is ever renamed. See
+    // `app/shell/regions.ts`.
+    renderThemed(
+      <AppShell>
+        <p>page</p>
+      </AppShell>,
+    );
+
+    const marked = document.querySelectorAll(`[${PANE_ATTRIBUTE}]`);
+
+    expect(marked).toHaveLength(1);
+    expect(marked[0]).toBe(document.getElementById(CONTENT_ID));
+  });
+
+  it("carries an overlay layer, and carries it outside the pane", () => {
+    // The structural half of § 1.3's last clause. A dialog rendered inside the pane is clipped
+    // by the pane's overflow and cannot cover the header; that it *portals* there is
+    // `__tests__/shell/overlay.test.tsx`, and that it is a sibling is this.
+    renderThemed(
+      <AppShell>
+        <p>page</p>
+      </AppShell>,
+    );
+
+    const layer = document.getElementById(OVERLAY_LAYER_ID);
+    const pane = document.getElementById(CONTENT_ID);
+
+    expect(layer).not.toBeNull();
+    expect(pane).not.toContainElement(layer);
+    expect(layer?.parentElement).toBe(pane?.parentElement);
   });
 });
 
