@@ -33,6 +33,13 @@
 > [Continuous integration](#continuous-integration). What that pass proves is now also
 > what ships: [`Dockerfile`](Dockerfile) is this module as a one-shot migration task, and
 > `publish/db` pushes it once `ci/db` is green on `main` — see [The image](#the-image).
+> Two product tables have landed on that base since the cut-over: `V007`
+> ([#649](https://github.com/NobuData/ouroboros/issues/649)) adds `user_preferences`, the
+> per-person font scale, and `V008`
+> ([#64](https://github.com/NobuData/ouroboros/issues/64)) adds `runs` — the first table
+> of the **dashboard read-model**, and the entity mockup 02's stat row, *Active loops* and
+> *Recently closed* cards are all views over. Each carries its own section in
+> [`tests/constraints.sql`](tests/constraints.sql).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -56,7 +63,8 @@
 The **tenancy database** — the PostgreSQL schema every other module hangs off, and the
 Flyway migrations that own it. Organizations and their sign-in domains, people and the
 accounts they authenticate with, per-organization membership roles, sessions, and GitHub
-org/repo enablement live here.
+org/repo enablement live here — and, since `V008`, the **read-model** the product renders
+over that boundary: what the loop has been doing, one row per run.
 
 Flyway is the **sole owner of DDL**. No application module creates or alters tables;
 `ouroboros-rest` reads and writes through Kysely against a schema this module defines.
@@ -572,6 +580,8 @@ ouroboros-db/
 │   ├── V004__betterauth_core.sql     # "user", session, account, verification — #706
 │   ├── V005__betterauth_organization.sql # organization, member, invitation — #707
 │   ├── V006__tenancy_extensions.sql  # the cut-over: rows move, extensions re-point, V001/V002 drop — #708
+│   ├── V007__user_preferences.sql    # user_preferences — the font scale — #649
+│   ├── V008__dashboard_runs.sql      # runs — the loop lifecycle read-model — #64
 │   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, reshaped by #708
 └── tests/
     ├── lib/
@@ -608,6 +618,8 @@ outside this module alters it.
 | `tenant_domains` | `V001`, re-parented `V006` | Email domains that resolve an organization at sign-in | Domain unique across *all* organizations and stored lower-cased; at most one `is_primary` per organization |
 | `github_orgs` | `V003`, re-parented `V006` | GitHub orgs an organization has enabled | `login` unique *per organization*, stored lower-cased; `enabled` defaults false |
 | `github_repos` | `V003` | Repos within an org | `name` unique per org, stored lower-cased; `enabled` defaults false |
+| `user_preferences` | `V007` | Per-person product preferences — today the font scale | One row per person, absent while every setting is at its default; `font_scale` is one of § 4's five steps; cascades from `"user"` |
+| `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization |
 
 `V001`'s `tenants`, `V002`'s `users`, `user_identities` and `tenant_members` are **gone**:
 `V006` ([#708](https://github.com/NobuData/ouroboros/issues/708)) moved their rows into

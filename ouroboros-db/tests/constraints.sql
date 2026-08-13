@@ -23,6 +23,8 @@
 -- and V001's `tenants`, no longer exist, and the last section asserts they stay gone.
 -- What V006 *did to the rows it found* is asserted where it can be observed:
 -- tests/rehearsal/, which applies it to a database seeded with the pre-migration seed.
+-- The two product tables added since stand on that base and have a section each:
+-- `user_preferences` (V007, #649) and `runs` (V008, #64).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -914,6 +916,412 @@ select pg_temp.must_hold(
   (select tgname = 'user_preferences_touch_updated_at' from pg_trigger
    where tgrelid = 'ouroboros.user_preferences'::regclass and not tgisinternal),
   'user_preferences carries the touch_updated_at trigger');
+
+-- ===========================================================================
+-- V008 — runs, the loop lifecycle read-model (#64)
+-- ===========================================================================
+--
+-- The first table of the dashboard read-model, and the one three of mockup 02's six
+-- surfaces are views over. Nothing writes it yet — the loop engine is v2 (#54) — so
+-- every rule a reader depends on is a database constraint rather than an application
+-- invariant, and this section is where those constraints are held to their word.
+--
+-- Its own fixtures, rather than the ones above. By this point `org-acme` has been
+-- deleted by the cascade assertions and `org-globex`'s repositories went with the org
+-- that was deleted under it, so there is no organization-with-a-repository pair left to
+-- hang a run off. Two fresh workspaces are also what the cross-tenant assertion needs:
+-- one to own the run, and one to own a repository the run must not be allowed to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-loop',  'Loop Works',   'loop-works',   now()),
+  ('org-other', 'Other Works',  'other-works',  now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('e0000000-0000-0000-0000-00000000000a', 'org-loop',  'loop-works',  true),
+  ('e0000000-0000-0000-0000-00000000000b', 'org-other', 'other-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('efff0000-0000-0000-0000-00000000000a', 'e0000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('efff0000-0000-0000-0000-00000000000b', 'e0000000-0000-0000-0000-00000000000b',
+   'other-firmware',  true, 'main');
+
+-- --- an active loop, exactly as the c-8 card renders one ----------------------
+-- Mockup 02's first row: `#482 Fix flaky CAN-bus telemetry test`, `standard-fix`,
+-- `Implementing · 4/6`, `claude-fable-5`, `coding`. No finish time, no pull request and
+-- no checks, because none of those exist while a run is still coding.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('e1000000-0000-0000-0000-000000000482', 'org-loop',
+          'efff0000-0000-0000-0000-00000000000a', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implementing', 4, 6, now() - interval '12 minutes');
+
+select pg_temp.must_hold(
+  (select finished_at is null and pr_number is null and checks_total is null
+     from ouroboros.runs where id = 'e1000000-0000-0000-0000-000000000482'),
+  'an active run is representable with no finish time, pull request or checks');
+
+-- --- the status vocabulary is closed ------------------------------------------
+--
+-- Acceptance criterion: the status CHECK rejects an unknown value. Everything
+-- downstream partitions rows by this column, so a seventh value is a row that appears
+-- in neither card — invisible rather than wrong, which is worse.
+select pg_temp.must_reject(
+  $$update ouroboros.runs set status = 'queued'
+    where id = 'e1000000-0000-0000-0000-000000000482'$$,
+  'runs.status rejects a value outside the six F2 names', 'runs_status');
+
+-- And all six are storable — the CHECK is a vocabulary, not a subset of one. The three
+-- terminal ones are exercised below, where they can carry the finish time they require.
+update ouroboros.runs set status = 'building', stage_label = 'Build farm', stage_index = 5
+  where id = 'e1000000-0000-0000-0000-000000000482';
+update ouroboros.runs set status = 'review', stage_label = 'Self-review', stage_index = 6
+  where id = 'e1000000-0000-0000-0000-000000000482';
+update ouroboros.runs set status = 'coding', stage_label = 'Implementing', stage_index = 4
+  where id = 'e1000000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select status = 'coding' from ouroboros.runs
+   where id = 'e1000000-0000-0000-0000-000000000482'),
+  'every non-terminal status F2 names is storable');
+
+-- --- terminal rows have finished, active rows have not ------------------------
+--
+-- Acceptance criterion: terminal-status-requires-finished_at, enforced at the database
+-- level. Asserted in both directions, because F2 makes the two facts one fact: the
+-- status is what puts a row in the *recently closed* card and `finished_at` is when
+-- that happened, so either half without the other is a contradiction.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total, pr_number)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 900,
+            'Merged with no finish time', 'standard-fix', 'claude-fable-5',
+            'merged', 'Merged', 6, 6, 900)$$,
+  'a terminal run must carry finished_at', 'runs_terminal_finished_at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set finished_at = now()
+    where id = 'e1000000-0000-0000-0000-000000000482'$$,
+  'a non-terminal run must not carry finished_at', 'runs_terminal_finished_at');
+
+-- The other arithmetic the *Cycle* column depends on: a run cannot finish before it
+-- started, which would render as a negative cycle time.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total, started_at, finished_at,
+       pr_number, checks_passed, checks_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 901,
+            'Finished before it started', 'standard-fix', 'claude-fable-5',
+            'merged', 'Merged', 6, 6, now(), now() - interval '1 hour', 901, 1, 1)$$,
+  'runs.finished_at cannot precede started_at', 'runs_finished_after_started');
+
+-- --- the move between the two cards is one UPDATE ------------------------------
+--
+-- Decision F2's whole claim, exercised: the same row leaves *Active loops* and joins
+-- *Recently closed* by changing its status, with no second table and nothing to sync.
+update ouroboros.runs
+   set status = 'merged', stage_label = 'Merged', stage_index = 6,
+       finished_at = now(), pr_number = 512, checks_passed = 14, checks_total = 14
+ where id = 'e1000000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs
+   where organization_id = 'org-loop' and status in ('coding', 'building', 'review')),
+  'a run that reaches a terminal status leaves the active-loops query');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs
+   where organization_id = 'org-loop' and finished_at is not null),
+  'and joins the completions query, with no second table involved');
+
+-- --- the stage meter is renderable ---------------------------------------------
+--
+-- `stage_index / stage_total` is a bar width. A total of zero divides by zero and an
+-- index above the total draws a bar wider than its track.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 902, 'No stages at all',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 0, 0)$$,
+  'runs.stage_total must be at least one', 'runs_stage_total_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 903, 'Past the end',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 7, 6)$$,
+  'runs.stage_index cannot exceed stage_total', 'runs_stage_index_in_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 904, 'No stage label',
+            'standard-fix', 'claude-fable-5', 'coding', '   ', 1, 6)$$,
+  'runs.stage_label must say something — it captions the meter', 'runs_stage_label_present');
+
+-- Zero is deliberately legal: a run that has started but not entered its first stage.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total)
+  values ('e1000000-0000-0000-0000-000000000479', 'org-loop',
+          'efff0000-0000-0000-0000-00000000000a', 479,
+          'Add OTA rollback on failed checksum', 'feature-loop', 'claude-sonnet-5',
+          'coding', 'Starting', 0, 7);
+select pg_temp.must_hold(
+  (select stage_index = 0 from ouroboros.runs
+   where id = 'e1000000-0000-0000-0000-000000000479'),
+  'a run that has not entered its first stage is representable as 0/7');
+
+-- --- decision F8: the opaque strings are opaque, not unchecked -----------------
+--
+-- No vocabulary: the model registry is mockup 06/21's and workflow entities are mockup
+-- 04's, so anything the engine recorded must store — including an identifier nobody has
+-- seen before, which is the case a CHECK enumerating today's models would break.
+insert into ouroboros.runs
+    (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total)
+  values
+  ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 910, 'Opaque model A',
+   'standard-fix', 'ollama/qwen3-coder',     'coding', 'Implementing', 1, 6),
+  ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 911, 'Opaque model B',
+   'deps-refresh', 'copilot/gpt-5-codex',    'coding', 'Implementing', 1, 6),
+  ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 912, 'Opaque model C',
+   'nobody-has-filed-this-workflow-yet', 'some-vendor/model-nobody-has-shipped:v9',
+   'coding', 'Implementing', 1, 6);
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.runs where issue_number between 910 and 912),
+  'runs.model and runs.workflow_tag take any identifier — decision F8, no catalog here');
+
+-- Bounded and non-blank all the same: opaque is not the same as unchecked, and a table
+-- cell is not a place for whitespace or a megabyte.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 913, 'Blank model',
+            'standard-fix', '  ', 'coding', 'Implementing', 1, 6)$$,
+  'runs.model must not be blank', 'runs_model_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 914, 'Blank tag',
+            '', 'claude-fable-5', 'coding', 'Implementing', 1, 6)$$,
+  'runs.workflow_tag must not be blank', 'runs_workflow_tag_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 915, ' ',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6)$$,
+  'runs.issue_title must not be blank', 'runs_issue_title_present');
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 916, 'Runaway model',
+            'standard-fix', repeat('m', 201), 'coding', 'Implementing', 1, 6)$$,
+  'runs.model is bounded', 'runs_model_present');
+
+-- --- the numbers GitHub gave us -------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 0, 'There is no issue 0',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6)$$,
+  'runs.issue_number is a positive counter', 'runs_issue_number_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set pr_number = 0
+    where id = 'e1000000-0000-0000-0000-000000000479'$$,
+  'runs.pr_number is a positive counter', 'runs_pr_number_positive');
+
+-- --- checks are a pair, or neither ------------------------------------------------
+--
+-- `14/14` needs both halves; a numerator with no denominator has nothing to divide by,
+-- and a passed count above the total is not a fraction the *Checks* column can render.
+select pg_temp.must_reject(
+  $$update ouroboros.runs set checks_passed = 14
+    where id = 'e1000000-0000-0000-0000-000000000479'$$,
+  'runs.checks_passed without checks_total is refused', 'runs_checks_paired');
+select pg_temp.must_reject(
+  $$update ouroboros.runs set checks_passed = 15, checks_total = 14
+    where id = 'e1000000-0000-0000-0000-000000000479'$$,
+  'more checks passed than exist is refused', 'runs_checks_in_range');
+
+-- Zero of zero is legal and distinct from both-null: a repository with no checks
+-- configured is a fact, and not knowing yet is a different one.
+update ouroboros.runs set checks_passed = 0, checks_total = 0
+  where id = 'e1000000-0000-0000-0000-000000000479';
+select pg_temp.must_hold(
+  (select checks_total = 0 from ouroboros.runs
+   where id = 'e1000000-0000-0000-0000-000000000479'),
+  'a run with no checks configured is 0/0, not null');
+
+-- --- a merged run has a pull request ------------------------------------------------
+--
+-- The *Issue → PR* column reads `#474 → PR #512` from two columns; a merged row with no
+-- `pr_number` has no second half to render. The other two terminal statuses are
+-- deliberately free of this — a run can fail, or stop for a human, before opening one.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total, finished_at)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 917, 'Merged into what?',
+            'standard-fix', 'claude-fable-5', 'merged', 'Merged', 6, 6, now())$$,
+  'a merged run must name the pull request it merged', 'runs_merged_has_pr');
+
+insert into ouroboros.runs
+    (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, finished_at)
+  values
+  ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 918, 'Stopped for a person',
+   'standard-fix', 'claude-sonnet-5', 'needs_human', 'Self-review', 6, 6, now()),
+  ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 919, 'Never got that far',
+   'standard-fix', 'claude-sonnet-5', 'failed', 'Build farm', 3, 6, now());
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runs where issue_number in (918, 919)),
+  'needs_human and failed close without a pull request, as a stalled run does');
+
+-- --- the same issue may be run more than once -----------------------------------
+--
+-- Deliberately no unique key on (organization_id, issue_number): a run that failed and
+-- was retried is two runs, and the completions card is a history rather than a set.
+-- (F.2's `queue_items`, #65, is where an issue appears at most once.)
+insert into ouroboros.runs
+    (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total)
+  values ('org-loop', 'efff0000-0000-0000-0000-00000000000a', 919, 'Never got that far',
+          'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6);
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runs
+   where organization_id = 'org-loop' and issue_number = 919),
+  'an issue that was retried has two runs — the table is a history, not a set');
+
+-- --- both parents must exist, and must agree ----------------------------------------
+--
+-- The workspace is refused by the *trigger* rather than by its foreign key, and that is
+-- not an accident of ordering worth working around: a BEFORE trigger runs ahead of the
+-- foreign key's AFTER check, and every organization the trigger will accept is one that
+-- exists — it reads the owning organization out of `github_orgs` and demands equality.
+-- So for any row naming a real repository, "the organization exists" is implied by "the
+-- two parents agree", and the stricter rule is the one that fires. The foreign key is
+-- still what carries the cascade, and its existence and its `on delete cascade` are
+-- asserted from the catalogue below, with the cascade itself exercised at the foot of
+-- this section.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('no-such-org', 'efff0000-0000-0000-0000-00000000000a', 920, 'Orphan run',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6)$$,
+  'a run naming an organization that does not exist is refused',
+  'runs_repo_in_organization');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from pg_constraint
+    where conrelid = 'ouroboros.runs'::regclass and contype = 'f'
+      and confdeltype = 'c'
+      and conname in ('runs_organization_id_fkey', 'runs_github_repo_id_fkey')),
+  'both of runs'' foreign keys exist and cascade on delete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-0000000000ff', 921, 'Orphan run',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6)$$,
+  'runs.github_repo_id references an existing repository', 'runs_github_repo_id_fkey');
+
+-- The rule two foreign keys cannot express, and the one that matters most: a run scoped
+-- to one workspace must not target another workspace's repository. Getting this wrong is
+-- not a broken join — it is one tenant's issue titles rendering on another's dashboard.
+select pg_temp.must_reject(
+  $$insert into ouroboros.runs
+      (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+       model, status, stage_label, stage_index, stage_total)
+    values ('org-loop', 'efff0000-0000-0000-0000-00000000000b', 922, 'Somebody else''s repo',
+            'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6)$$,
+  'a run cannot target a repository belonging to another organization',
+  'runs_repo_in_organization');
+
+-- And the same rule on the way through: a run cannot be *moved* onto another
+-- workspace's repository either, which is why the trigger fires on UPDATE as well.
+select pg_temp.must_reject(
+  $$update ouroboros.runs set github_repo_id = 'efff0000-0000-0000-0000-00000000000b'
+    where id = 'e1000000-0000-0000-0000-000000000479'$$,
+  'a run cannot be updated onto another organization''s repository',
+  'runs_repo_in_organization');
+
+-- --- the indexes the two cards need -------------------------------------------------
+--
+-- Acceptance criterion: `EXPLAIN` shows index use for the active-loops query and for the
+-- seven-day completions window. Sequential scans are off for the same reason as every
+-- other plan assertion in this file — a handful of fixture rows is genuinely cheaper to
+-- scan, and what is being asserted is that a usable index exists at production size.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select issue_number, stage_index, stage_total from ouroboros.runs
+     where organization_id = 'org-loop'
+       and status in ('coding', 'building', 'review')$$,
+  'runs_organization_status_idx');
+
+select pg_temp.must_use_index(
+  $$select issue_number, pr_number from ouroboros.runs
+     where organization_id = 'org-loop'
+       and finished_at >= now() - interval '7 days'
+     order by finished_at desc$$,
+  'runs_organization_finished_at_idx');
+
+-- Not a read path: `github_repos` cascades into this table, and an unindexed referencing
+-- column makes every repository deletion a full scan of the runs history.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.runs
+     where github_repo_id = 'efff0000-0000-0000-0000-00000000000a'$$,
+  'runs_github_repo_id_idx');
+
+set local enable_seqscan = on;
+
+-- --- updated_at moves on its own -------------------------------------------------
+-- Once the engine writes this table, "when was this run last heard from" is what
+-- separates a loop that is working from one that stopped without saying so.
+update ouroboros.runs set updated_at = '2000-01-01T00:00:00Z'
+  where id = 'e1000000-0000-0000-0000-000000000479';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.runs
+   where id = 'e1000000-0000-0000-0000-000000000479'),
+  'runs.updated_at is stamped from the server clock by its touch trigger');
+
+-- --- the cascades, in both directions ------------------------------------------------
+--
+-- Deleting a repository takes its runs with it: a run whose *Issue* column links into a
+-- repository nobody can reach is not history, it is a broken row.
+delete from ouroboros.github_repos where id = 'efff0000-0000-0000-0000-00000000000a';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs
+   where github_repo_id = 'efff0000-0000-0000-0000-00000000000a'),
+  'deleting a github_repo cascades to the runs that targeted it');
+
+-- And the workspace cascade, end to end — organization → github_orgs → github_repos →
+-- runs, one statement and every hop.
+insert into ouroboros.runs
+    (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total)
+  values ('org-other', 'efff0000-0000-0000-0000-00000000000b', 930, 'Doomed with its org',
+          'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6);
+
+delete from ouroboros.organization where "id" = 'org-other';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where organization_id = 'org-other'),
+  'deleting an organization cascades through its orgs and repos to their runs');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

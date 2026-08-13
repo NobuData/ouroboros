@@ -161,7 +161,7 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| F.1 | #64 | 🟡 Open | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| F.1 | #64 | 🟢 Done | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | F.2 | #65 | 🟡 Open | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.3 | #66 | 🟡 Open | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.4 | #67 | 🟡 Open | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
@@ -170,7 +170,46 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 
 ### Issue F.1 — ouroboros-db: [F.1] Runs table — loop lifecycle read-model
 
-> **GitHub issue:** #64 · **Status:** 🟡 Open · **Parent epic:** #59
+> **GitHub issue:** #64 · **Status:** 🟢 Done · **Parent epic:** #59
+
+> **Shipped.** [`V008__dashboard_runs.sql`](../ouroboros-db/migrations/V008__dashboard_runs.sql)
+> creates `ouroboros.runs` with the column set below, both indexes, and its rules as named
+> CHECK constraints; the assertions are a new section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db` runs them
+> against a database migrated from empty on every pull request. The version number is
+> `V008` — the BetterAuth chain ends at `V006` and `V007` is #649's `user_preferences`.
+>
+> **The terminal rule is a biconditional, not an implication.** The criterion asks that a
+> terminal status require `finished_at`; what `runs_terminal_finished_at` enforces is that
+> a terminal status require it *and a non-terminal status forbid it*. F2 makes those one
+> fact rather than two — the status is what moves a row between the two cards and
+> `finished_at` is when that happened — so a `coding` row carrying a finish time is a
+> contradiction, and it is the exact shape that would put a live loop in *Recently closed*
+> (whose query is `finished_at is not null`). It also earns the completions index: nulls
+> are the active rows, so the seven-day window is an index scan on `finished_at` with no
+> `status` filter and no sort node. Both plans are asserted, and were checked by hand
+> against 60 000 rows.
+>
+> **Two parents that must agree.** `runs` names an organization *and* a repository, and
+> nothing about two foreign keys makes them the same workspace — a mismatch is not a
+> broken join, it is one tenant's issue titles rendering on another's dashboard. The
+> composite key that would prevent it does not exist, because V003 deliberately hung
+> `github_repos` off `github_orgs` rather than storing the workspace twice. So the rule is
+> a `before insert or update` trigger, `runs_repo_in_organization`, raising class 23 under
+> its own constraint name so callers meet it exactly as they meet every other rule here.
+> One consequence worth knowing: it fires ahead of the organization foreign key's own
+> check, and subsumes it — every organization the trigger accepts is one that exists.
+>
+> **`model` and `workflow_tag` are bounded, not enumerated** (decision F8). A CHECK naming
+> today's models would be this table inventing the catalog mockups 06/21 own, and would
+> reject a run the engine legitimately performed; the constraints assert non-blank and a
+> length, and the tests prove an unheard-of identifier stores.
+>
+> **Not in this ticket, by the roadmap's own split:** no seed rows (F.5, #68 — the runs the
+> mockup draws), no Kysely types or endpoints (G.2/G.3, #71/#72), and no `queue_items` or
+> usage events (F.2/F.3). `runs` also has no unique key on `(organization_id,
+> issue_number)` — deliberately, and asserted: a retried issue is two runs, and the
+> completions card is a history rather than a set. That uniqueness belongs to F.2's queue.
 
 - **Problem Statement:** Three of the six dashboard surfaces (stat row, active loops,
   recently closed — see [`docs/mockups/02-dashboard.html`](mockups/02-dashboard.html))
@@ -1113,7 +1152,12 @@ epic relationships and issue types set, and the amendment comments are posted on
 Execution follows the work order above, but note the standing prerequisite: this
 roadmap's Phase 0 still depends on the **BetterAuth roadmap**
 ([`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`](ROADMAP_LOGIN_PAGE_BETTERAUTH.md)) whose issues
-are **not yet filed**. Its BA-B.3 (organization + repo tables), BA-C.3 (tenant
-context), BA-C.4 (enabled repos), BA-D.1 (org switching) and BA-D.5 (auth guard) are
-referenced by name in the filed issues and must be filed and landed before Epic F can
-start in earnest. File that roadmap next, then begin with #64 ([F.1] Runs table).
+are **not yet filed**. Its BA-C.3 (tenant context), BA-C.4 (enabled repos), BA-D.1 (org
+switching) and BA-D.5 (auth guard) are referenced by name in the filed issues and must
+be filed and landed before Epic G can start in earnest.
+
+**BA-B.3 is the exception, and it has landed** — under the mockup-01 roadmap rather than
+this one. `organization` exists (`V005`, #707), the extension tables were re-parented onto
+it (`V006`, #708), and `github_repos` has been there since `V003` (#22). That is the whole
+of what F.1 needed, so **#64 shipped on 2026-08-13** (`V008__dashboard_runs.sql`) and Epic
+F is unblocked: F.2 (#65), F.3 (#66) and F.4 (#67) are next, and can go in parallel.
