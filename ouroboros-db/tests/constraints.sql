@@ -771,6 +771,67 @@ select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.organization where "id" = 'org-personal'),
   'deleting a "user" leaves the organizations they belonged to standing');
 
+-- ===========================================================================
+-- The vendor surface the drift check cannot see (#710)
+-- ===========================================================================
+--
+-- `scripts/betterauth-schema.mjs --applied` asks the library what the applied schema is
+-- missing, and that covers tables and columns exactly. It does **not** cover indexes:
+-- the library plans an index only for a table it is already creating or a column it is
+-- already adding, so an index dropped from a table that otherwise still fits is invisible
+-- to it — the check reports "nothing missing" and means it.
+--
+-- That is the gap this section closes, and it is the one worth closing: every index below
+-- is on the read path of a request that happens on every page. A dropped one is not an
+-- error anywhere, it is a sequential scan that only shows up as latency once the table is
+-- production-sized — which is exactly the failure a schema test exists to catch before
+-- it ships.
+--
+-- Existence by name rather than `must_use_index`, deliberately. The three lookups worth
+-- proving *usable* already have their plan asserted in the V004 and V005 sections above,
+-- against fixtures those sections build. The rest are here as a complete census of what
+-- betterauth-schema.sql lists, so the two files can be read against each other: every
+-- `create index` in the snapshot is a line here, and adding one there without one here
+-- leaves an index nothing asserts.
+--
+-- `to_regclass` answers null rather than raising, so a missing index is a named failure
+-- instead of an aborted script. Index names are quoted inside the string because the
+-- library's are camelCase, which PostgreSQL folds without the quotes.
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."session_userId_idx"') is not null),
+  'session_userId_idx exists — every session lookup by person is served by it');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."account_userId_idx"') is not null),
+  'account_userId_idx exists — listing a person''s linked accounts is served by it');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros.verification_identifier_idx') is not null),
+  'verification_identifier_idx exists — a token is found by its identifier');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."member_organizationId_idx"') is not null),
+  'member_organizationId_idx exists — a workspace''s member list is served by it');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."member_userId_idx"') is not null),
+  'member_userId_idx exists — the organizations a person belongs to are served by it');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."invitation_organizationId_idx"') is not null),
+  'invitation_organizationId_idx exists — a workspace''s pending invitations are served by it');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros.invitation_email_idx') is not null),
+  'invitation_email_idx exists — #724 finds an invitation by the address it was sent to');
+select pg_temp.must_hold(
+  (select to_regclass('ouroboros."session_activeOrganizationId_idx"') is not null),
+  'session_activeOrganizationId_idx exists — V005''s own addition, on the tenant pointer');
+
+-- `verification` is the one core table no fixture in this file touches — nothing signs in
+-- here, so nothing writes a token — which left its shape asserted nowhere. The drift
+-- check does cover these columns, and this is the backstop for the case that check cannot
+-- reach: a database nobody has run it against.
+select pg_temp.must_hold(
+  (select count(*) = 4 from information_schema.columns
+   where table_schema = 'ouroboros' and table_name = 'verification'
+     and column_name in ('id', 'identifier', 'value', 'expiresAt')),
+  'verification keeps BetterAuth''s camelCase column names');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

@@ -201,6 +201,19 @@ check_route ouroboros-web/app/page.tsx 'docker-publish.yml'
 check_route ouroboros-db/migrations/V001__tenants.sql 'db.yml rest.yml'
 check_route ouroboros-db/flyway.toml 'db.yml rest.yml'
 
+# The fourth exception, and the mirror image of the third (#710). ci/db's drift check
+# compares the applied schema against what BetterAuth expects, and the expectation is
+# decided in ouroboros-rest: by the plugins `src/auth` enables, and by the version
+# `package.json` pins. Either can move the expected schema without touching a file under
+# ouroboros-db/, so both have to reach ci/db as well as ci/rest — otherwise the one check
+# that would catch the change is the one the change does not run.
+check_route ouroboros-rest/src/auth/auth.config.ts 'db.yml rest.yml'
+check_route ouroboros-rest/package.json 'db.yml rest.yml'
+
+# …and no further. The rest of the module is ci/rest's business alone, which is what
+# keeps the data tier out of every controller change.
+check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'
+
 # Documentation and repo tooling affect no module's build, so they queue nothing.
 check_route docs/CONVENTIONS.md ''
 check_route README.md ''
@@ -361,6 +374,23 @@ check_contains "$DB_WORKFLOW" 'flyway\.seed\.toml' \
   'db.yml migrates a second database with the dev-seed overlay'
 check_contains "$DB_WORKFLOW" 'tests/seed\.sql' \
   'db.yml asserts what the seed put there'
+
+# The drift check's two halves (#710). Neither is redundant: the first asks whether the
+# applied schema still satisfies the library, the second whether the library still wants
+# what the committed snapshot says. A repository that ran only the first would pass every
+# day until an upgrade landed and then fail with no record of what changed.
+check_contains "$DB_WORKFLOW" 'betterauth-schema\.mjs --applied' \
+  'db.yml asserts the applied schema still satisfies BetterAuth'
+check_contains "$DB_WORKFLOW" 'betterauth-schema\.mjs --check' \
+  'db.yml asserts the committed snapshot still describes what BetterAuth expects'
+
+# It reads the library out of the installed dependency, so the job has to install and
+# build. Without the build the check cannot load the configuration that decides the
+# schema, and would fail for a reason that has nothing to do with drift.
+check_contains "$DB_WORKFLOW" '^        run: yarn install --immutable$' \
+  'db.yml installs the workspace the drift check reads the library from'
+check_contains "$DB_WORKFLOW" '^        run: yarn workspace ouroboros-rest build$' \
+  'db.yml builds the auth configuration the drift check loads'
 
 # The live pass's connection parameters must not be in job scope. OURO_DB_* present in
 # the environment is the last word in run.sh's precedence, and the module's tooling suite

@@ -694,9 +694,37 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 > hold exactly the three documented password hashes and never a token or the
 > plaintext.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| B.5 · #710 | ouroboros-db: [B.5] Auth constraint & drift tests in ci/db | Constraint assertions + BetterAuth-schema drift check | mvp, auth, db, ci | N (after B.3, #24) | Y | S | ouroboros-db, .github |
+> **B.5 · #710 has shipped, and Epic B's table is now empty — every issue in it has
+> landed.** The five constraint assertions the issue named were already in
+> `tests/constraints.sql`, put there by the migrations that made the rules (#706, #707,
+> #708) rather than deferred to this one; what #710 found missing was the surface *no*
+> check covered, and it closed that instead. `ouroboros-db/scripts/betterauth-schema.mjs`
+> asks BetterAuth's own schema planner what it expects and answers two questions with it:
+> `--applied` asserts the schema Flyway actually applied still holds everything the
+> library wants, and `--check` asserts the library still wants what
+> `ouroboros-db/betterauth-schema.sql` — committed beside the migrations, not among them —
+> describes. `ci/db` runs both, and its path filter now carries `ouroboros-rest/src/auth/`
+> and that module's `package.json`, because a version bump touches no file under
+> `ouroboros-db/` and is exactly what the check exists to catch.
+>
+> **Two corrections to this issue's own wording**, both recorded because a check written
+> to the letter of either would prove less than it appears to:
+>
+> - **It does not shell out to `@better-auth/cli generate`.** `npx` installs the CLI's own
+>   copy of `better-auth` — its latest release carries 1.4.x against this repository's
+>   pinned 1.6.26 — so the core tables would be checked against a version the service does
+>   not run, and the acceptance criterion *"bumping the better-auth version turns the drift
+>   step red"* would quietly stop holding. The two copies already disagree: 1.4.x emits
+>   `organization_slug_uidx` and 1.6.26 does not. Importing the planner out of the
+>   installed dependency is the same work against the version that actually ships, and
+>   `V005`'s note about keeping that index for this check can now be read as settled.
+> - **The drift check cannot see indexes**, and no wording in the issue implies it can. The
+>   planner plans an index only for a table it is creating or a column it is adding, so one
+>   dropped from a table that otherwise still fits is invisible — the check reports
+>   "nothing missing" and means it. Every index the snapshot lists is therefore asserted by
+>   name in `tests/constraints.sql`, and `tests/betterauth-schema.test.sh` fails if the two
+>   lists ever stop agreeing. Spot-verified both ways: dropping `session_userId_idx` leaves
+>   the drift check green and turns `constraints.sql` red.
 
 ### Issue B.1 (#706) — ouroboros-db: [B.1] BetterAuth core schema (Flyway V004)
 
@@ -905,6 +933,11 @@ R__dev_seed ─▶ acme-robotics (domain, 4 repos ✓) · acme-labs (0) · kensu
 ```
 
 ### Issue B.5 (#710) — ouroboros-db: [B.5] Auth constraint & drift tests in ci/db
+
+**🔴 Shipped.** Kept as the record of what was asked for; see the note under
+[Epic B](#epic-b-696--auth-database-ouroboros-db) for what landed — including the two
+places this wording was corrected — and `ouroboros-db/README.md` § The drift check for
+how it is used.
 
 - **Problem Statement:** Two failure classes need PR-time detection: broken auth
   constraints, and **schema drift** — a BetterAuth upgrade changing its expected
@@ -1506,7 +1539,7 @@ flowchart TB
 Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** #8 → #19 ⊕ (#27 → #28) ⊕ (#39 → #40) ⊕ #14 ⊕ #46
-2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ ⊕ ~~B.3 #708~~ ⊕ ~~B.4 #709~~ *(all shipped)* → { B.5 #710 }
+2. **Phase 1 — Foundation & schema:** ~~A.1 #700~~ ⊕ ~~A.2 #701~~ ⊕ ~~B.1 #706~~ ⊕ ~~B.2 #707~~ ⊕ ~~B.3 #708~~ ⊕ ~~B.4 #709~~ ⊕ ~~B.5 #710~~ *(all shipped — **Phase 1 is complete**, and with it Epics A and B)*
    *(**B.3 — the cutover — has shipped.** `tenants`, `tenant_members`, `users` and
    `user_identities` are gone, and `ci/db` rehearses the migration against a populated
    V005 copy on every run rather than trusting the one that was recorded on its PR.
@@ -1621,14 +1654,19 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #713 (C.3) and #714 (C.4), which un-red `ci/rest`; #710 (B.5) runs in
-parallel.** **Epic A is complete**: #700 (A.1), #701 (A.2), #702 (A.3), #703 (A.4),
-#704 (A.5) and #705 (A.6) **have all landed**, along with #706 (B.1), #707 (B.2),
-**#708 (B.3)** and now **#709 (B.4)** — BetterAuth is configured, its handler answers at
-`/api/auth/*`, its core and organization tables exist with the shipped identities
-back-filled into them, its GitHub provider signs people in, development signs in with a
-password, and the service now *remembers* people: a session is a row, the library's guard
-is what every route sits behind, and signing out revokes.
+**Start here: #713 (C.3) and #714 (C.4), which un-red `ci/rest` — and they are now the
+whole front of the queue.** **Epics A and B are both complete**: #700 (A.1), #701 (A.2),
+#702 (A.3), #703 (A.4), #704 (A.5) and #705 (A.6) **have all landed**, along with
+#706 (B.1), #707 (B.2), **#708 (B.3)**, **#709 (B.4)** and now **#710 (B.5)** — BetterAuth
+is configured, its handler answers at `/api/auth/*`, its core and organization tables exist
+with the shipped identities back-filled into them, its GitHub provider signs people in,
+development signs in with a password, and the service now *remembers* people: a session is
+a row, the library's guard is what every route sits behind, and signing out revokes.
+**#710 (B.5) closed the epic** by making the hand-port checkable rather than trusted:
+`ci/db` now asserts both that the applied schema still holds everything BetterAuth expects
+and that the library still expects what the committed snapshot describes, and it runs when
+`ouroboros-rest/src/auth/` or the `package.json` pinning the library moves — which is the
+only way a version bump could ever have reached the check that exists to catch it.
 
 Signing in **without github.com** works again outside production: A.4 deleted the dev-user
 bypass with the guard that read it, and **#705 (A.6) has since landed** the email/password

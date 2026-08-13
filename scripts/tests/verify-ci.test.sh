@@ -190,6 +190,8 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - ".github/workflows/db.yml"
+      - "ouroboros-rest/src/auth/**"
+      - "ouroboros-rest/package.json"
   push:
     branches: [main]
     paths:
@@ -197,6 +199,8 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - ".github/workflows/db.yml"
+      - "ouroboros-rest/src/auth/**"
+      - "ouroboros-rest/package.json"
   workflow_dispatch:
 
 permissions:
@@ -229,6 +233,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build the service whose auth configuration decides the schema
+        run: yarn workspace ouroboros-rest build
+
       - name: Migration & data-tier contract
         run: scripts/verify-dev-env.sh
 
@@ -256,6 +274,12 @@ jobs:
         run: |
           docker run --rm --network=host "$POSTGRES_IMAGE" \
             psql -v ON_ERROR_STOP=1 -f /tests/constraints.sql
+
+      - name: Assert the applied schema still satisfies BetterAuth
+        run: ouroboros-db/scripts/betterauth-schema.mjs --applied
+
+      - name: Assert the committed snapshot still describes what BetterAuth expects
+        run: ouroboros-db/scripts/betterauth-schema.mjs --check
 
       - name: Seed a second database
         run: ouroboros-db/scripts/migrate --config flyway.seed.toml
@@ -740,6 +764,38 @@ check_break 'a seeded leg migrated without the overlay is reported' \
 check_break 'a pass that never asserts the seed is reported' \
   'what the seed put there' \
   'sed -i "s|/tests/seed.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+# The drift check (#710), both halves and the toolchain they need. Each is dropped on its
+# own, because a job that runs one of the two is the failure worth naming: the applied
+# check alone passes every day until an upgrade lands, and the snapshot check alone can be
+# satisfied by a snapshot no database was ever compared against.
+check_break 'a pass that never checks the applied schema against BetterAuth is reported' \
+  'applied schema still satisfies BetterAuth' \
+  'sed -i "/betterauth-schema.mjs --applied/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never checks the snapshot for drift is reported' \
+  'snapshot still describes what BetterAuth expects' \
+  'sed -i "/betterauth-schema.mjs --check/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a drift check with no workspace installed under it is reported' \
+  'installs the workspace' \
+  'sed -i "s|^        run: yarn install --immutable$|        run: true|" "$root/.github/workflows/db.yml"'
+
+check_break 'a drift check with no auth configuration built for it is reported' \
+  'builds the auth configuration' \
+  'sed -i "s|^        run: yarn workspace ouroboros-rest build$|        run: true|" "$root/.github/workflows/db.yml"'
+
+# The routing half of the same feature. A drift check that never runs when the library
+# version moves is the one arrangement that reads as passing while proving nothing, so the
+# filters that carry ouroboros-rest's two schema-deciding paths into ci/db are asserted
+# the same way the steps are.
+check_break 'a db workflow blind to the auth configuration is reported' \
+  'runs db.yml rest.yml' \
+  'sed -i "/ouroboros-rest\/src\/auth/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a db workflow blind to the manifest that pins better-auth is reported' \
+  'runs db.yml rest.yml' \
+  'sed -i "/ouroboros-rest\/package.json/d" "$root/.github/workflows/db.yml"'
 
 # The pin, in all three places it has to agree. CI proving a PostgreSQL nobody develops
 # against is worth less than the minute it costs.
