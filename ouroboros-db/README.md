@@ -301,14 +301,64 @@ A passing run prints one line; a failure names the rule and exits non-zero, whic
 makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
 into `ci/db`, below. A migration that adds a rule adds its assertion in the same change.
 
+### The drift check
+
+Every table BetterAuth uses is hand-ported into a `V###__*.sql` migration here, because
+Flyway is the only thing allowed to change this schema and the library is never allowed to
+change it itself. That is the right arrangement, and it is exactly what makes **drift**
+possible: a `better-auth` upgrade, or a plugin added to `ouroboros-rest/src/auth`, can
+move what the library expects while this copy stands still. Nothing about that is visible
+until a query in production names a column that does not exist.
+
+[`scripts/betterauth-schema.mjs`](scripts/betterauth-schema.mjs) is what makes it visible
+on the pull request instead ([#710](https://github.com/NobuData/ouroboros/issues/710)). It
+asks BetterAuth's own schema planner what it wants, and answers two different questions
+depending on which database it is pointed at:
+
+```bash
+# does the applied schema still hold everything the library expects?
+ouroboros-db/scripts/betterauth-schema.mjs --applied   # against a migrated database
+
+# has what the library expects changed since the snapshot was rendered?
+ouroboros-db/scripts/betterauth-schema.mjs --check     # against an empty schema
+ouroboros-db/scripts/betterauth-schema.mjs --write     # …and re-render it
+```
+
+Both need `OURO_DATABASE_URL`, and both refuse the other's database rather than answering
+the wrong question. The service's own `.env` supplies the rest, as it does for
+`ouroboros-rest` itself; `--check` and `--write` want a scratch database whose `ouroboros`
+schema is empty, because the planner reports what a database is *missing* and only an
+empty one draws the whole picture. Both read `ouroboros-rest/dist`, so
+`yarn workspace ouroboros-rest build` comes first.
+
+[`betterauth-schema.sql`](betterauth-schema.sql) is the committed rendering — beside the
+migrations rather than among them, because Flyway would otherwise try to apply it, and it
+is a description of what the library wants rather than a migration. Committing it is what
+turns an upgrade into a reviewable diff, and the diff is the DDL the new migration has to
+apply. Neither mode ever writes to a database.
+
+> Two things the check deliberately does not do. It does not shell out to
+> `@better-auth/cli`, which brings its own copy of `better-auth` — the CLI's latest release
+> carries 1.4.x while this repository pins 1.6.26 — so the core tables would be checked
+> against a version the service does not run, and the two copies already disagree about
+> `organization_slug_uidx`. And it cannot see **indexes**: the planner plans one only for a
+> table it is creating or a column it is adding, so an index dropped from a table that
+> otherwise still fits is invisible to it. That gap is closed in `tests/constraints.sql`,
+> which asserts every index the snapshot lists, by name — and the suite that reads this
+> file checks the two lists still agree.
+
 ## Continuous integration
 
 [`ci/db`](../.github/workflows/db.yml) is what runs all of the above on a pull request
-that touches this directory, the compose file, `.env.example` or the workflow itself
+that touches this directory, the compose file, `.env.example`, the workflow itself, or the
+two things in `ouroboros-rest` that decide what BetterAuth expects — `src/auth/` and the
+`package.json` that pins the library
 ([#11](https://github.com/NobuData/ouroboros/issues/11) set the routing;
-[#24](https://github.com/NobuData/ouroboros/issues/24) added the live pass). It runs in
-two halves, cheap first — a misnamed migration is worth reporting before a database is
-waited on.
+[#24](https://github.com/NobuData/ouroboros/issues/24) added the live pass;
+[#710](https://github.com/NobuData/ouroboros/issues/710) added the last two, because a
+version bump touches no file in this directory and is exactly what the drift check exists
+to catch). It runs in two halves, cheap first — a misnamed migration is worth reporting
+before a database is waited on.
 
 | Step | What it proves | Needs a database |
 |---|---|---|
@@ -317,8 +367,15 @@ waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
+| `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
+| `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
 | `tests/seed.sql` | The demo tenant is there, exactly once, with the ids the documentation publishes | yes (that one) |
+
+The drift check is the one step that needs a Node toolchain, which is why the job installs
+the workspace and builds `ouroboros-rest`: the configuration deciding the expected schema
+is that module's, and reading it is the whole point — a plugin enabled there changes the
+answer the same way an upgrade does, and neither has to be remembered.
 
 The database is a `postgres:17-alpine` service container — **the same image
 [`../docker-compose.yml`](../docker-compose.yml) pins**, so what a pull request proves is

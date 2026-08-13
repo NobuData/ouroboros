@@ -4,6 +4,15 @@ name: ouroboros-db · ci
 # checks below assert the whole data tier: the migrations, the compose stack that
 # applies them, and the environment template that configures both. A change to any of
 # the three can break it, so a change to any of the three has to run it.
+#
+# The last two entries are #710's, and they are the same argument one module further out.
+# The drift check compares what Flyway applied against what BetterAuth expects, and the
+# expectation is decided in `ouroboros-rest/src/auth` — by which plugins are enabled — and
+# in `ouroboros-rest/package.json`, which pins the library version exactly. A bump there
+# touches no file under `ouroboros-db/`, so without these it would merge without the check
+# that exists to catch it ever running. `yarn.lock` is deliberately *not* watched: the pin
+# is exact, so the lockfile cannot move `better-auth` on its own, and watching it would
+# run the whole data tier for every unrelated dependency change.
 
 on:
   pull_request:
@@ -13,6 +22,8 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - ".github/workflows/db.yml"
+      - "ouroboros-rest/src/auth/**"
+      - "ouroboros-rest/package.json"
   push:
     branches: [main]
     paths:
@@ -20,6 +31,8 @@ on:
       - "docker-compose.yml"
       - ".env.example"
       - ".github/workflows/db.yml"
+      - "ouroboros-rest/src/auth/**"
+      - "ouroboros-rest/package.json"
   workflow_dispatch:
 
 permissions:
@@ -66,6 +79,35 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Node is here for one reason: #710's drift check reads BetterAuth's own schema
+      # planner out of the installed dependency, so it needs the workspace installed and
+      # ouroboros-rest built. It is set up before the file-read checks rather than beside
+      # the step that uses it because the tooling suite exercises the check's
+      # argument handling, which is JavaScript too.
+      #
+      # Pinned to the same Node the TypeScript pipeline pins — scripts/verify-ci.sh
+      # asserts the two agree.
+      - name: Install Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable corepack (Yarn 4)
+        run: corepack enable
+
+      # --immutable fails the run when the lockfile does not match package.json, rather
+      # than quietly resolving something the developer never committed — the same reason
+      # .github/actions/node-module gives.
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      # The auth configuration that decides the expected schema is TypeScript with
+      # extensionless imports, which no runtime loads directly; the drift check reads the
+      # built copy. Only this module is built — the whole workspace would drag in a
+      # Next.js build that nothing here reads.
+      - name: Build the service whose auth configuration decides the schema
+        run: yarn workspace ouroboros-rest build
 
       # What can be asserted without a database: migration naming (the rule Flyway's own
       # -validateMigrationNaming enforces at run time), the pinned images and
@@ -121,6 +163,9 @@ jobs:
             echo "SEED_DB_NAME=ouroboros_seed"
             # The third, which rehearses #708's cut-over from a populated V005 state.
             echo "REHEARSAL_DB_NAME=ouroboros_rehearsal"
+            # The fourth, left with an empty schema so #710's drift check can ask the
+            # library to describe what it expects from nothing.
+            echo "DRIFT_DB_NAME=ouroboros_drift"
             # The assertion files are plain SQL, so they need a psql — and this is the
             # one image the job has already pulled. Taking it from here rather than from
             # the runner's apt set means the client is pinned to the server's major
@@ -161,6 +206,53 @@ jobs:
             "$POSTGRES_IMAGE" \
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$OURO_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/constraints.sql
+
+      # ---------------------------------------------------------------------------
+      # The drift check (#710). Everything above asks what the applied schema enforces;
+      # this asks whether it is still the schema BetterAuth expects. Decision A3 makes
+      # Flyway the only migration authority, so nothing but this notices when the library
+      # starts wanting something the hand-port does not have.
+      # ---------------------------------------------------------------------------
+
+      # ouroboros-rest loads its settings from .env exactly as a developer's checkout
+      # does, and the template is what a developer copies — so copying it is the same
+      # act, and the check runs against the configuration the service really builds.
+      # Only the database is overridden, per step below.
+      - name: Configure the service the way a checkout does
+        run: cp .env.example .env
+
+      # Half one: does the schema Flyway applied still hold everything the library
+      # expects? Against the database migrated above. Anything missing is a hand-port
+      # that lost something, and the failure prints the DDL that closes the gap.
+      #
+      # The URL is built from the parameters already in the environment rather than
+      # written out again, so there is one statement of which database this job uses. The
+      # search_path is the load-bearing part: BetterAuth never qualifies a table name, so
+      # without it the check would introspect `public`, find nothing, and report the
+      # entire schema as missing.
+      - name: Assert the applied schema still satisfies BetterAuth
+        run: |
+          export OURO_DATABASE_URL="postgresql://$OURO_DB_USER:$OURO_DB_PASSWORD@$OURO_DB_HOST:$OURO_DB_PORT/$OURO_DB_NAME?options=-c%20search_path%3D$OURO_DB_SCHEMA%2Cpublic"
+          ouroboros-db/scripts/betterauth-schema.mjs --applied
+
+      # Half two: has what the library expects changed since the snapshot was rendered?
+      # This one needs an *empty* schema — the library reports what a database is missing,
+      # so only an empty one draws the whole picture — which is why it gets a database of
+      # its own rather than reusing any above. A `better-auth` bump that moves a column
+      # fails here, and the diff is the DDL the new migration has to apply.
+      - name: Assert the committed snapshot still describes what BetterAuth expects
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            "$POSTGRES_IMAGE" \
+            createdb -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" "$DRIFT_DB_NAME"
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$DRIFT_DB_NAME" \
+              -v ON_ERROR_STOP=1 -c "create schema $OURO_DB_SCHEMA"
+          export OURO_DATABASE_URL="postgresql://$OURO_DB_USER:$OURO_DB_PASSWORD@$OURO_DB_HOST:$OURO_DB_PORT/$DRIFT_DB_NAME?options=-c%20search_path%3D$OURO_DB_SCHEMA%2Cpublic"
+          ouroboros-db/scripts/betterauth-schema.mjs --check
 
       # The dev seed (#23) gets a database of its own, because the one above has to go
       # on proving what a production migration does: apply R__dev_seed.sql and insert
