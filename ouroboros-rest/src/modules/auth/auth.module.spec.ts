@@ -14,6 +14,8 @@ import type { ErrorEnvelope } from "../errors/error.envelope";
 import { AuthController } from "./auth.controller";
 import { AUTH_ERRORS } from "./auth.errors";
 import { AuthModule } from "./auth.module";
+import { DiscoveryRepository } from "./discovery.repository";
+import { DiscoveryService } from "./discovery.service";
 import { LegacySessionCookieMiddleware } from "./legacy.cookie";
 
 /**
@@ -33,12 +35,14 @@ import { LegacySessionCookieMiddleware } from "./legacy.cookie";
  * What this module contributes instead is one piece of middleware, and it is the other
  * thing asserted here: a browser still holding `ouro_session` is told to drop it.
  *
- * **And the database is not here either, since
- * [#711](https://github.com/NobuData/ouroboros/issues/711).** `AuthService` and
- * `AuthRepository` existed to answer `GET /api/v1/auth/me`, which that issue deleted along
- * with them; nothing left in this module issues a statement, so the `DbModule` import went
- * too. That is asserted rather than assumed below — an import that came back would be this
- * module quietly acquiring a reason to reach the database again.
+ * **And the database is here again, for one table.**
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) removed the `DbModule` import
+ * along with `AuthService` and `AuthRepository`, which existed to answer
+ * `GET /api/v1/auth/me`; [#712](https://github.com/NobuData/ouroboros/issues/712) puts it
+ * back for `POST /api/v1/auth/discover`, whose whole job is a read of `tenant_domains`. The
+ * import is asserted rather than assumed below, in both directions — it is this module's
+ * written answer to *who may reach the schema*, and `DbModule` is deliberately not global
+ * so that the answer cannot be acquired by accident.
  */
 
 describe("the auth module", () => {
@@ -67,26 +71,32 @@ describe("the auth module", () => {
     expect(moduleRef.get(AuthController)).toBeInstanceOf(AuthController);
   });
 
-  it("imports the database for no reason of its own", () => {
-    // The inverse of the assertion this replaced. `DbModule` was imported for the two reads
-    // that answered `GET /api/v1/auth/me`, and #711 deleted both — so an import that came
-    // back would be this module acquiring a reason to reach the database that its code no
-    // longer has.
-    //
-    // Read from the decorator rather than from the injector, and that distinction is the
-    // whole of what can honestly be claimed: `DatabaseService` is still *resolvable* here,
-    // because `BetterAuthModule` imports `DbModule` so the library's adapter can share the
-    // pool. What is gone is this module asking for it.
-    const imports = (Reflect.getMetadata("imports", AuthModule) ?? []) as unknown[];
+  it("resolves domain discovery, both layers of it", async () => {
+    const moduleRef = await compile();
 
-    expect(imports).not.toContain(DbModule);
-    expect(imports).toEqual([BetterAuthModule]);
+    expect(moduleRef.get(DiscoveryService)).toBeInstanceOf(DiscoveryService);
+    expect(moduleRef.get(DiscoveryRepository)).toBeInstanceOf(DiscoveryRepository);
   });
 
-  it("still resolves the database through the library's own import", async () => {
-    // The other half, stated so the assertion above is not read as "nothing in this graph
-    // can reach the database". BetterAuth's adapter issues its statements over the pool
-    // `DbModule` owns, and that is why signing out works at all.
+  it("imports the database, and says so in its own imports rather than borrowing one", () => {
+    // #711 removed this import when the two reads behind `GET /api/v1/auth/me` went, and
+    // #712 restores it for the one read behind `POST /api/v1/auth/discover`.
+    //
+    // Read from the decorator rather than from the injector, and that distinction is the
+    // whole point: `DatabaseService` would be *resolvable* here either way, because
+    // `BetterAuthModule` imports `DbModule` so the library's adapter can share the pool. A
+    // module that reached the schema through somebody else's import would be one whose
+    // dependency on it nobody can read off the `imports` list.
+    const imports = (Reflect.getMetadata("imports", AuthModule) ?? []) as unknown[];
+
+    expect(imports).toEqual([BetterAuthModule, DbModule]);
+  });
+
+  it("shares the one pool rather than opening a second", async () => {
+    // Two importers of `DbModule` in this graph — this module and the library's — and one
+    // `DatabaseService` between them, because a Nest module's providers are singletons per
+    // container. That is what keeps the auth tables and `tenant_domains` on the same ten
+    // connections, counted once against `max_connections`.
     const moduleRef = await compile();
 
     expect(moduleRef.get(DatabaseService, { strict: false })).toBeInstanceOf(DatabaseService);
@@ -144,6 +154,20 @@ describe("the authentication this module's routes sit behind", () => {
     // had to port rather than merely keep: it is what makes an *expired* session disposable,
     // since requiring one would refuse the request for carrying the thing it came to remove.
     await request(server()).post("/api/v1/auth/logout").expect(204);
+  });
+
+  it("leaves domain discovery alone as well", async () => {
+    // The module's second anonymous route, and the reason is different from signing out's:
+    // this one is called by a browser that has *never* had a session, from the login page,
+    // before anybody has signed in.
+    //
+    // The `422` is the honest assertion here — no database is running, so a well-formed
+    // request would reach the pool and fail there. What it proves is which layer answered:
+    // the validation pipe runs after the guard, so a body refused by the pipe is a request
+    // the guard let through.
+    const response = await request(server()).post("/api/v1/auth/discover").send({ domain: "" });
+
+    expect(response.status).toBe(422);
   });
 
   it("tells a browser still holding #33's cookie to drop it", async () => {

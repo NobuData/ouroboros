@@ -1,16 +1,27 @@
+import { HTTP_CODE_METADATA } from "@nestjs/common/constants";
 import type { AuthService as BetterAuth } from "@thallesp/nestjs-better-auth";
 
 import type { Auth } from "../../auth/auth.factory";
 import { SESSION_COOKIE, SESSION_DATA_COOKIE } from "../../auth/session.options";
+import { ALLOW_ANONYMOUS } from "./anonymous";
 import { AuthController } from "./auth.controller";
+import type { DiscoverBody } from "./discovery.dto";
+import { NO_SSO_MESSAGE, type DiscoveryResource, type DiscoveryService } from "./discovery.service";
 import { SET_COOKIE, type AuthResponse } from "./http";
 
 /**
- * The one route, and what it hands on.
+ * The two routes, and what each of them hands on.
  *
  * `POST logout` is a forward to the library rather than a cookie this service composed, so
  * the assertions here are about what leaves the controller: which headers reach the
  * library, which reach the browser, and the `204` that says there is nothing else.
+ *
+ * `POST discover` ([#712](https://github.com/NobuData/ouroboros/issues/712)) is a forward
+ * too, one layer down: the rules that make it safe to serve anonymously live in
+ * `discovery.service.ts` and are asserted beside it. What is asserted *here* is the part
+ * that is genuinely the route's — that it is exempt from the session guard, that it answers
+ * `200` rather than a `POST`'s default `201`, and that it changes nothing about the body on
+ * its way past.
  *
  * **Three routes and their suites have left this controller.** `GET auth/github` and
  * `GET auth/github/callback` were the browser-facing halves of a handshake this service no
@@ -91,29 +102,83 @@ function betterAuthDouble() {
   return { double: { api: { signOut } } as unknown as BetterAuth<Auth>, signOut };
 }
 
-/** The controller, its double, and a fresh response. */
+/**
+ * A discovery service that answers as the real one does, and records what it was asked.
+ *
+ * Its rules — the uniform answer, the timing floor, the lookup that happens anyway — are
+ * asserted in `discovery.service.spec.ts`, where they belong. What the controller is
+ * responsible for is handing the validated body over and returning what came back, and that
+ * is all this double is here to observe.
+ */
+function discoveryDouble() {
+  const answer: DiscoveryResource = { ssoAvailable: false, message: NO_SSO_MESSAGE };
+  const discover = jest.fn((_body: DiscoverBody) => Promise.resolve(answer));
+
+  return { double: { discover } as unknown as DiscoveryService, discover, answer };
+}
+
+/** The controller, its doubles, and a fresh response. */
 function harness() {
   const { double, signOut } = betterAuthDouble();
+  const { double: discovery, discover, answer } = discoveryDouble();
 
   return {
     signOut,
-    controller: new AuthController(double),
+    discover,
+    answer,
+    controller: new AuthController(double, discovery),
     response: recordingResponse(),
   };
 }
 
 describe("the controller's surface", () => {
-  it("serves signing out and nothing else", () => {
-    // #711 deleted `GET me` and nothing under `/api/v1` replaced it. A second handler
+  it("serves signing out and domain discovery, and nothing else", () => {
+    // #711 deleted `GET me` and nothing under `/api/v1` replaced it. A *third* handler
     // appearing here is the failure this guards: the session question belongs to
     // BetterAuth's routes, and a route added here would be the duplicate the issue's
     // acceptance criterion forbids. `openapi.spec.ts` asserts the same thing about the
     // published contract; this asserts it about the class.
+    //
+    // `discover` is the one addition since, and it is not that duplicate: it answers *is
+    // there a workspace at this domain*, from this service's own `tenant_domains`, for a
+    // caller who has no session to ask about.
     const handlers = Object.getOwnPropertyNames(AuthController.prototype).filter(
       (name) => name !== "constructor",
     );
 
-    expect(handlers).toEqual(["logout"]);
+    expect(handlers.toSorted()).toEqual(["discover", "logout"]);
+  });
+});
+
+describe("discovering a domain", () => {
+  it("hands the validated body to the service and answers with what it returned", async () => {
+    const { controller, discover, answer } = harness();
+
+    await expect(controller.discover({ domain: "acme.ouroboros.dev" })).resolves.toBe(answer);
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the domain through untouched", async () => {
+    // The controller normalises nothing. `discovery.dto.ts` has already done it, and doing
+    // it twice is how two rules drift apart.
+    const { controller, discover } = harness();
+
+    await controller.discover({ domain: "acme.ouroboros.dev" });
+
+    expect(discover.mock.calls[0][0]).toEqual({ domain: "acme.ouroboros.dev" });
+  });
+
+  it("answers 200 rather than the 201 a POST would default to", () => {
+    // Nothing is created — this is a question, and the verb is protecting the domain from
+    // the request line and from a shared cache rather than describing a write.
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, AuthController.prototype.discover)).toBe(200);
+  });
+
+  it("is reachable without a session", () => {
+    // The one property of this route that is not the service's: its caller is a browser on
+    // the login page, which by definition holds no session. `guard.surface.spec.ts` is where
+    // the same fact is asserted across the whole route table.
+    expect(Reflect.getMetadata(ALLOW_ANONYMOUS, AuthController.prototype.discover)).toBe(true);
   });
 });
 

@@ -344,10 +344,18 @@ describe("the body parser every other route depends on", () => {
    * service quietly receives `undefined` where its DTO should be.
    *
    * Each case is a pair, and it is the pair that carries the proof. Well-formed JSON gets
-   * past the parser and is refused by the session guard, which is a `401` and means the
-   * body was read and handed on. Malformed JSON never reaches the guard at all, because
-   * the parser refuses it first — so a `401` for *both* is precisely what a service with
-   * no parser installed would answer, and is the failure this catches.
+   * past the parser and is refused by whatever runs after it; malformed JSON never gets
+   * that far, because the parser refuses it first with a `400`. A service with no parser
+   * installed answers the *same* thing to both — the body simply arrives as `undefined` —
+   * so it is the difference between the two that is the assertion.
+   *
+   * What refuses the well-formed one depends on the route, and both answers are accounted
+   * for rather than collapsed. Every authenticated route is a `401` from the session guard,
+   * which runs before the pipe. `POST /api/v1/auth/discover` is the exception
+   * ([#712](https://github.com/NobuData/ouroboros/issues/712)): it is `@AllowAnonymous()`,
+   * so there is no guard to stop the request and the validation pipe answers `422` about a
+   * body full of fields it does not declare — which is the stronger of the two proofs, since
+   * only something that *read* the body can complain about what is in it.
    */
   it.each(routesTakingBodies())(
     "parses a JSON body on %s %s, and refuses one that will not parse",
@@ -355,9 +363,8 @@ describe("the body parser every other route depends on", () => {
       const send = (): request.Test =>
         request(server())[method as "post" | "patch"](path).set("Content-Type", "application/json");
 
-      await send()
-        .send(JSON.stringify({ slug: "ouro-parse" }))
-        .expect(401);
+      const wellFormed = await send().send(JSON.stringify({ slug: "ouro-parse" }));
+      expect([401, 422]).toContain(wellFormed.status);
 
       const malformed = await send().send('{"slug":');
       expect(malformed.status).toBe(400);
