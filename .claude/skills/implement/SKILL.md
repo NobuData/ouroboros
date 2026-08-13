@@ -123,7 +123,11 @@ gh pr create \
 - How to test
 - Risk/notes
 - Issue link: `Closes #<number>` (or `Fixes #<number>`)
-- Notate: `Made with <agent name> using model <model name>`
+- Notate:
+```
+Made with <agent name> using model <model name>
+Orchestrated through **Ouroboros**
+```
 
 ## Phase 8: Explain How to Test
 
