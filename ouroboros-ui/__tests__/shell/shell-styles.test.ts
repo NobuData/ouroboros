@@ -197,12 +197,56 @@ describe("the shell frame", () => {
     expect(SHEET).toMatch(/@media \(max-width: 48rem\)[\s\S]*?\.shell-burger\s*\{\s*display:\s*grid/);
   });
 
+  it("slides the sidebar between its two widths rather than cutting to the new one", () => {
+    // The chevron changes a custom property, and a property change lands in a single frame: the
+    // sidebar arrives at the width it was collapsed to without having travelled there, and the
+    // pane's edge jumps with it. `width` is the property because the grid's first column is
+    // `auto` — a transform would paint the sidebar somewhere it does not occupy and leave the
+    // pane where it was.
+    expect(rule(".app-shell")).toMatch(/--shell-sidebar-slide:\s*160ms/);
+    expect(SHEET).toMatch(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.shell-nav\s*\{\s*transition:\s*width var\(--shell-sidebar-slide\)/,
+    );
+
+    // Ordered before the drawer's own transition, which replaces this one below 768px where
+    // there is no width to interpolate. The other order would hand the drawer a width
+    // transition instead of a slide, which is a drawer that appears rather than arrives.
+    expect(SHEET.indexOf("var(--shell-sidebar-slide)")).toBeLessThan(
+      SHEET.indexOf("var(--shell-drawer-slide)"),
+    );
+
+    // And the sidebar clips what outruns it, so the scrollbar `overflow-y: auto` would
+    // otherwise offer a `nowrap` label mid-collapse never appears.
+    expect(rule(".shell-nav")).toMatch(/overflow-x:\s*hidden/);
+  });
+
   it("keeps the drawer's slide behind the reduced-motion preference", () => {
     // The same guard the theme's cross-fade keeps: a reader who has asked for less motion
     // gets the drawer instantly, which is the behaviour that was there before the transition.
     expect(SHEET).toMatch(
       /@media \(max-width: 48rem\) and \(prefers-reduced-motion: no-preference\)/,
     );
+  });
+
+  it("draws an unbuilt row as one that cannot be pressed", () => {
+    const soon = rule(".shell-nav__item--soon");
+
+    // The inert pair every other control in the product takes from `[aria-disabled="true"]`:
+    // the faint ink, and a cursor that says the row is not going anywhere.
+    expect(soon).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(soon).toMatch(/cursor:\s*not-allowed/);
+
+    // The icon recedes with it, and has to: on the rail the label is sr-only, which leaves the
+    // icon as the only thing a sighted reader has to tell an unreachable row from a live one.
+    // The badge goes too — a count urging a press on a row that cannot be pressed.
+    expect(SHEET).toMatch(
+      /\.shell-nav__item--soon \.shell-nav__icon,\s*\.shell-nav__item--soon \.shell-nav__badge\s*\{\s*opacity:/,
+    );
+
+    // And the label is not dimmed with them. § 3.5's "'soon' surfaces are labelled, never dead"
+    // is the sentence that forbids taking the one part that has to stay readable down as well,
+    // which is what an opacity on the row entire would do.
+    expect(soon).not.toMatch(/opacity:/);
   });
 
   it("takes the header's height from the shell rather than restating it", () => {

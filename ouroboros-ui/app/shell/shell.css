@@ -60,6 +60,7 @@
   --shell-sidebar-choice: var(--shell-sidebar-wide);
   --shell-sidebar: var(--shell-sidebar-choice);
   --shell-drawer-slide: 160ms;
+  --shell-sidebar-slide: 160ms;
 
   display: grid;
   grid-template-rows: auto 1fr;
@@ -695,6 +696,13 @@
   width: var(--shell-sidebar);
   padding: var(--sp-6) var(--sp-5);
   overflow-y: auto;
+  /*
+   * Stated, because the pair `overflow-y: auto` leaves behind is `visible`, which computes to
+   * `auto` beside it — a horizontal scrollbar, offered for the width or two that a `nowrap`
+   * label outruns the sidebar mid-collapse and withdrawn again when it lands. Nothing static
+   * overflows here: expanded the labels fit, and on the rail they are a 1px box in the corner.
+   */
+  overflow-x: hidden;
   border-right: 1px solid var(--line);
   background: var(--surface);
 }
@@ -753,9 +761,43 @@ a.shell-nav__item--active:hover {
     0 0 0.75rem 0 var(--accent-glow);
 }
 
+/*
+ * A row whose surface is not built yet (§ 3.5: "'soon' surfaces are labelled, never dead").
+ *
+ * Labelled it already was — the chip at its end and the tooltip both say what it awaits. What
+ * these rules add is that it must not *look* like the rows around it: the sidebar should
+ * separate into what can be pressed and what cannot before the reader has read a word of it,
+ * and `--ink-faint` against the `--ink-mut` of an idle live row is a difference of about a
+ * quarter of a step — nothing at a glance.
+ *
+ * The ink and the cursor are the product's own inert pair, the one `.ou-btn` and
+ * `.shell-menu__item` take from `[aria-disabled="true"]` at the head of this sheet. The
+ * attribute itself is deliberately not on the element and would be wrong there: the row is a
+ * `<span>` with no href (`app/shell/sidebar-nav.tsx`), so there is no control to mark as one
+ * that cannot act.
+ *
+ * The icon and the count recede rather than the whole row, which is two decisions:
+ *
+ * - The **label** holds its documented contrast (`--ink-faint` on `--surface`, measured in
+ *   docs/DESIGN_TOKENS.md). Dimming a row entire is the usual way to draw a disabled thing and
+ *   it would take the one part that has to stay readable down with it — "labelled, never dead"
+ *   is exactly the sentence that forbids it.
+ * - The **icon** is where the signal has to live, because on the rail the label is `sr-only`
+ *   and the icon is then the only thing a sighted reader has to tell an unreachable row from a
+ *   live one.
+ * - A **count** is the loudest mark in the sidebar, and it goes with them: a warn chip urging
+ *   a press, on a row that cannot be pressed, is the screen contradicting itself. It applies
+ *   only while the surface is unbuilt — the day the module ships it is `"live"`, this modifier
+ *   is gone, and the badge is at full strength on a row that leads somewhere.
+ */
 .shell-nav__item--soon {
   color: var(--ink-faint);
-  cursor: default;
+  cursor: not-allowed;
+}
+
+.shell-nav__item--soon .shell-nav__icon,
+.shell-nav__item--soon .shell-nav__badge {
+  opacity: 0.5;
 }
 
 .shell-nav__icon {
@@ -956,6 +998,36 @@ a.shell-nav__item--active:hover {
 
   .shell-header {
     padding-inline: var(--sp-5);
+  }
+}
+
+/*
+ * The collapse control's slide, between the rail and 240px.
+ *
+ * The chevron changes one custom property, so bare, the width the sidebar reads changes in a
+ * single frame: it arrives at its new size without ever having travelled there, and the pane's
+ * edge jumps with it. Transitioning `width` interpolates that same property change instead —
+ * the grid's first column is `auto` and is therefore sized by whatever the sidebar's used width
+ * is *this* frame, so the pane follows the slide rather than snapping after it.
+ *
+ * `width` and not `transform`, which is the cheaper property and the wrong one here: a
+ * transform paints the sidebar somewhere it does not occupy, leaving the column behind it at
+ * the old width, and the pane would not move at all. This is a layout change by definition, and
+ * it is one element wide.
+ *
+ * The rail treatment is not animated with it and does not need to be. Its trigger is the
+ * container query above, which flips at 8rem *during* the travel, and it lands where it has to:
+ * the icon sits within a pixel of the same place on either side of the flip — 12px of row
+ * padding out from an expanded sidebar's edge, centred in the 4rem one — so the labels clear
+ * away mid-slide while the icons hold their line.
+ *
+ * Below 768px the block that follows replaces this transition wholesale, which is right: the
+ * drawer is 240px wide at every viewport, so there is no width to interpolate down there, only
+ * the transform that carries it on and off the screen.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .shell-nav {
+    transition: width var(--shell-sidebar-slide) ease;
   }
 }
 
