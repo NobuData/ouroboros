@@ -46,6 +46,7 @@ import {
   type SessionCookies,
   createApiClient,
 } from "@/app/api/client";
+import { loginDestination } from "@/app/api/request";
 import { ACTIVE_TENANT_COOKIE, assertTenantReference, isTenantReference } from "@/app/api/tenant";
 import { restUrl } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
@@ -182,10 +183,16 @@ export function api(): ApiClient {
   client ??= createApiClient({
     baseUrl: restUrl(),
     session: sessionCookies,
-    onUnauthenticated: () => {
+    onUnauthenticated: async () => {
+      // Awaited, and the handler is `async` for that one reason: where the request was
+      // going is a header read ([#720](https://github.com/NobuData/ouroboros/issues/720)),
+      // so the screen a person came for survives the round trip through the login page
+      // instead of being replaced by the dashboard. `createApiClient` awaits this handler
+      // before it throws, which is what makes the redirect below reachable at all.
+      //
       // `redirect` signals by throwing, and that throw is the one that reaches Next.js —
       // which is the whole of "401 responses route to login". Nothing here catches it.
-      redirect(LOGIN_PATH);
+      redirect(await loginDestination());
     },
   });
   return client;

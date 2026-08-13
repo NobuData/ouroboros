@@ -66,7 +66,12 @@ describe("what the client addresses", () => {
     // `proxy.ts` writes the string out again — a matcher is read statically at build time, so
     // it cannot import a constant. This is the check that keeps the two copies one string:
     // change the prefix in one place and the browser's calls stop being forwarded at all.
-    expect(proxyConfig.matcher).toBe(`${AUTH_BASE_PATH}/:path*`);
+    //
+    // `toContain` rather than `toBe` since
+    // [#720](https://github.com/NobuData/ouroboros/issues/720): the matcher is a list now,
+    // because that file also stamps every page request with its own address. What this holds
+    // is the forwarder's entry; `__tests__/proxy.test.ts` holds the rest of the list.
+    expect(proxyConfig.matcher).toContain(`${AUTH_BASE_PATH}/:path*`);
   });
 
   it("names the same session cookies as the generated client", () => {

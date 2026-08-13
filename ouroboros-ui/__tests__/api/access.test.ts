@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Membership } from "@/app/api/membership";
+import { REQUEST_PATH_HEADER } from "@/app/api/request";
 import { resetRestUrlCache } from "@/app/env";
-import { LOGIN_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, LOGIN_PATH, RETURN_TO_PARAM } from "@/app/paths";
 
 import { authAnswer, isAuthUrl, orgsAnswer, requestedUrl } from "../helpers/auth";
 import { membership } from "../helpers/login";
@@ -31,6 +32,18 @@ import { membership } from "../helpers/login";
 /** The cookies of the request under test. */
 const jar = new Map<string, string>();
 
+/**
+ * The request's own headers. Two of them matter to this layer, and neither is the browser's
+ * doing alone:
+ *
+ *   * `origin`, which `app/api/auth-server.ts` forwards so BetterAuth's origin check is
+ *     satisfied on a call a server composes rather than a browser;
+ *   * `x-ouro-path`, which `proxy.ts` stamps with the address this request was made for
+ *     ([#720](https://github.com/NobuData/ouroboros/issues/720)) — the value the gate turns
+ *     into `?next=` so a deep link survives the round trip through the login screen.
+ */
+const incoming = new Headers({ origin: "http://localhost:3000" });
+
 vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({
   cookies: () =>
@@ -39,10 +52,7 @@ vi.mock("next/headers", () => ({
       set: () => {},
       delete: () => {},
     }),
-  // The request's own headers. `app/api/auth-server.ts` reads the origin off them and
-  // forwards it, which is what keeps BetterAuth's origin check satisfied on a call a
-  // server composes rather than a browser.
-  headers: () => Promise.resolve(new Headers({ origin: "http://localhost:3000" })),
+  headers: () => Promise.resolve(incoming),
 }));
 
 /** What `redirect()` does: signal by throwing, so nothing after it runs. */
@@ -83,6 +93,7 @@ let calls: number;
 
 beforeEach(() => {
   jar.clear();
+  incoming.delete(REQUEST_PATH_HEADER);
   redirect.mockClear();
   resetApiClient();
   resetRestUrlCache();
@@ -233,6 +244,60 @@ describe("requireWorkspace", () => {
 
     expect(caught).toBeInstanceOf(RedirectSignal);
     expect((caught as RedirectSignal).to).toBe(LOGIN_PATH);
+  });
+});
+
+/**
+ * The round trip [#720](https://github.com/NobuData/ouroboros/issues/720) is about: a deep
+ * link to a screen in `(app)` while signed out lands on that screen afterwards, rather than
+ * on the dashboard.
+ *
+ * It used to arrive there by coincidence and only for one route. The gate redirected to a
+ * bare `/login`, the login screen defaults to `DASHBOARD_PATH`, and `/dashboard` therefore
+ * "survived" while every other screen in the group did not. What makes it a property rather
+ * than a coincidence is the address `proxy.ts` stamps — the value a Server Component has no
+ * other way to learn.
+ */
+describe("the deep link a signed-out request was making", () => {
+  it("comes back after signing in", async () => {
+    memberships = null;
+    incoming.set(REQUEST_PATH_HEADER, "/runs?status=failed");
+
+    await expect(requireWorkspace()).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith(
+      `${LOGIN_PATH}?${RETURN_TO_PARAM}=%2Fruns%3Fstatus%3Dfailed`,
+    );
+  });
+
+  it("comes back for a signed-in request with no workspace too", async () => {
+    // The other half of the gate. Both send a visitor to the same screen, so both owe them
+    // the same way back.
+    acting = null;
+    incoming.set(REQUEST_PATH_HEADER, DASHBOARD_PATH);
+
+    await expect(requireWorkspace()).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith(
+      `${LOGIN_PATH}?${RETURN_TO_PARAM}=${encodeURIComponent(DASHBOARD_PATH)}`,
+    );
+  });
+
+  it("is a bare login path when the proxy never saw the request", async () => {
+    // Which is what every redirect from here sent before this issue, so a context the
+    // matcher does not cover is no worse off than it was.
+    memberships = null;
+
+    await expect(requireWorkspace()).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
+  });
+
+  it("is refused when it names somewhere off this origin", async () => {
+    // The header is one a caller can send. `proxy.ts` overwrites it on every path it
+    // matches; `safeReturnTo` is what holds on the paths it does not.
+    memberships = null;
+    incoming.set(REQUEST_PATH_HEADER, "https://evil.test/dashboard");
+
+    await expect(requireWorkspace()).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 });
 

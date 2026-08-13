@@ -62,7 +62,7 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
 | **`ouroboros-rest`** | `modules/auth/`, `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app`; `auth/` (BetterAuth) | **Done.** A.3 deleted `oauth.ts`/`github.ts`; A.4 deleted `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts`, and rewrote `principal.ts` against BetterAuth's `@Session()` shape. |
 | **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, #33's dev-user bypass key, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. **A.6 has since removed the dev-user key** from both templates, the #28 zod schema and the compose comments, in the change that delivered its replacement. |
-| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2, D.3 and D.4 are all **done**: the audit ran, step 1 signs in, and step 2 is re-pointed at C.4's row model with the tenancy authority on the session. Epic D shrank as predicted, and D.5/D.6 are what is left. |
+| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2–D.5 are all **done**: the audit ran, step 1 signs in, step 2 is re-pointed at C.4's row model with the tenancy authority on the session, and the route guards carry a return-to without an edge gate. Epic D shrank as predicted, and **D.6 is what is left**. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
 mockup's entire enterprise-SSO half** — the "or enterprise SSO" divider, the
@@ -259,9 +259,13 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > Three things it deliberately did **not** do. **The dev-user bypass is gone**
 > and the variable was not: A.4 deleted the guard that read it, and **A.6 · #705** has since
 > removed the variable in the change that delivered the development email/password sign-in
-> replacing it — so the interval in which local work needed a real GitHub OAuth app is over. **The UI still forwards
-> `ouro_session`**, which is **D.5 · #720**'s to re-point, exactly as that issue's body
-> predicted. And **the e2e suite's sign-in is parked**: it minted a stateless cookie with
+> replacing it — so the interval in which local work needed a real GitHub OAuth app is over. **The UI forwarded
+> `ouro_session` for a while afterwards**, which this note recorded as **D.5 · #720**'s to
+> re-point; it was in fact fixed out of band, in `bdee480`, which renamed
+> `app/api/client.ts`'s `SESSION_COOKIE` to `better-auth.session_token` and credited #720 for
+> it in the comment that still stands there. **The cookie gap was therefore closed before
+> D.5 opened**, and D.5 found the re-point already done — see its own note under Epic D.
+> And **the e2e suite's sign-in is parked**: it minted a stateless cookie with
 > `issueSession`, which no longer exists, and it cannot mint a row from outside the stack —
 > the legs that need one carry `test.fixme`. **A.6 · #705 has since supplied the sign-in a
 > script can perform** — `support/session.ts` calls it for real — and **B.4 · #709 has since
@@ -1330,7 +1334,9 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > to a reader and a host to a browser — the browser's client fills `?next=` with where it was,
 > and `app/(auth)/login/page.tsx` honours it. The *server* sends no `next=`: a Server
 > Component cannot read the URL it renders for, and the request-wide matcher that would tell
-> it is the middleware decision **D.5 · #720** owns.
+> it is the middleware decision **D.5 · #720** owns. **D.5 has since landed and wired the
+> other half** — `proxy.ts` gained that matcher, and it stamps the address rather than gating
+> on it.
 >
 > One thing it did not do: no `"use server"` wrapper for `signOutSession()`. A Server Action
 > nothing submits to is a POST endpoint published for nobody, so the form belongs to
@@ -1487,9 +1493,67 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > compose stack runs a production `ouroboros-rest`, which gates off the password routes —
 > which is the last thing standing between this roadmap and its own exit gate.
 
+> **D.5 · #720 has shipped and has left the table below. The middleware decision is: no
+> edge gate — `proxy.ts` carries a fact instead of making a decision.** The argument is in
+> that file, under § *Why this file is not the auth gate*, and it rests on four things. There
+> is no flash to prevent, which was this issue's original justification and was already
+> satisfied by the server-component gate. A check at the edge could only be *optimistic* —
+> proxy runs on every prefetch, so it may not call the service, and *a session cookie is
+> present* is strictly weaker than *this person is a member of the workspace this screen
+> renders*; it would refuse nothing `requireWorkspace()` does not. It would need a list of
+> protected routes, and `(app)` is a route group, so the filesystem already has one that
+> cannot drift. And nothing in `(app)` is static — `currentAccess()` opens with
+> `connection()` — so the one case the framework keeps edge checks for does not exist here.
+>
+> **What proxy does instead is the half of D.1 that was left open.** D.1's own note above
+> says the server sends no `?next=` because "a Server Component cannot read the URL it renders
+> for, and the request-wide matcher that would tell it is the middleware decision D.5 owns".
+> The matcher was added; the gate was not. `proxy.ts` stamps `x-ouro-path` with the request's
+> address, `app/api/request.ts` reads it back, and the three server-side redirects —
+> `requireWorkspace()`, and the `401` handlers in `app/api/server.ts` and `auth-server.ts` —
+> compose the same `?next=` the browser's client already composed from `window.location`.
+> Nothing consults the header to decide whether a request may proceed, and a forged one is
+> filtered by the `safeReturnTo` guard D.1 shipped.
+>
+> **Two of the issue's premises were already out of date, and neither cost anything.**
+> *"There is no `middleware.ts` in the UI at all"* — there is: Next.js 16 renamed the
+> convention to `proxy.ts`, and this module has had one since D.1, forwarding `/api/auth/*`.
+> So the question was never *add middleware* but *widen the matcher it already has*. And
+> *"both read the #33 session cookie, so both break when #703 lands"* — the cookie was
+> renamed out of band in `bdee480` (see A.4's note), and D.1/D.3/D.4 finished re-pointing the
+> gates at BetterAuth's session, so **the re-point half of this issue was already done when it
+> opened**. What was left was the return-to and the decision.
+>
+> **One acceptance criterion needed correcting rather than implementing.** *"Signed-in visit
+> to `/login` with an active org → dashboard immediately"* is not what the screen does, and
+> deliberately: **D.4 · #719** established that `ouroboros-rest` stamps every session with an
+> active organization *at creation*, so the pointer cannot also be the evidence that somebody
+> was asked where the loop runs — a screen reading it that way would send everybody past the
+> question it exists to ask. The discriminator is the `ouro_tenant` hint, and the criterion
+> reads correctly as *signed-in **and settled** → dashboard*. `loginView()` and
+> `view.test.ts` were left exactly as D.4 shipped them, which the issue also asked for.
+>
+> **The exclusion in the matcher names file extensions rather than "any dot", and that was
+> found by a test rather than by reading.** Next.js appends its own transport suffixes to
+> whatever source a matcher declares, so a client-side navigation to `/dashboard` arrives as
+> `/dashboard.rsc` — which a blanket dot-exclusion refuses, quietly dropping proxy out of
+> every navigation after the first. `__tests__/proxy.test.ts` compiles the matcher with
+> `getMiddlewareMatchers`, Next.js's own function, rather than trusting a regular expression
+> by eye.
+>
+> **What a running stack showed that no unit test could.** A signed-out deep link to
+> `/dashboard` reaches `/login?next=%2Fdashboard` as required — but as a **200 carrying a
+> streamed redirect, not a 307**, because `dashboard/loading.tsx` opens a Suspense boundary
+> and Next.js flushes the app shell and the skeleton before the gate resolves. The criterion
+> *no protected content in the HTML stream before the auth check* still holds — the flushed
+> prefix is shell chrome and a skeleton, and `page.tsx` composes no reading until
+> `requireWorkspace()` has returned — but the shape is worth recording, because it is the one
+> thing an edge gate would genuinely have improved, and only for a visitor carrying no cookie
+> at all. A visitor whose cookie has merely expired streams the same prefix either way, which
+> is what settled the decision: the case an edge gate fixes is the rarer one.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| D.5 · #720 | ouroboros-ui: [D.5] Auth route guards & session-aware redirects | Re-point the **shipped** layout gate + `loginView()` at the new session; middleware decision | mvp, auth, ui | N (after D.1) | Y | S | ouroboros-ui |
 | D.6 · #721 | ouroboros-ui: [D.6] Signed-in session UI in the app shell | Avatar menu (user, active org, switch org, sign out) in #41's top bar | mvp, auth, ui | N (after D.1, #41) | Y | S | ouroboros-ui |
 
 ### Issue D.1 (#716) — ouroboros-ui: [D.1] BetterAuth client & session store
@@ -1690,6 +1754,10 @@ After sign-in · Step 2 — Choose where the loop runs
 ```
 
 ### Issue D.5 (#720) — ouroboros-ui: [D.5] Auth route guards & session-aware redirects
+
+> **Shipped.** Kept as the record of what was asked for — see the note above the table for
+> the middleware decision, for the two premises that had gone stale, and for the acceptance
+> criterion that was corrected rather than implemented.
 
 - **Problem Statement:** `(app)` routes must require a session; `/login` must skip
   already-authenticated users (straight to Step 2 or the dashboard); deep links must
@@ -1932,10 +2000,11 @@ Ordered checklist (⊕ = parallelizable within its phase):
    the suite that certifies the lot. C.5 turned out to be the phase's last *bug fix* as well
    as its last test: the first time a workspace was created the way a person creates one, every
    route beneath it answered `422` — see its section above.)*
-5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719 ✅
+5. **Phase 4 — Login page UI:** ~~D.1 #716~~ → { ~~D.2 #717~~ ⊕ ~~D.5 #720~~ ⊕ D.6 #721 } → ~~D.3 #718~~ → ~~D.4 #719~~ ✅
    *(MVP for this roadmap is complete when D.4 passes against the compose stack —
    feeding the scaffolding roadmap's e2e gate #56, whose login leg switches from
-   the dev-user bypass to A.6's `signIn.email`.)*
+   the dev-user bypass to A.6's `signIn.email`. **D.5 has since landed** and left
+   **D.6 #721** as the phase's only open issue.)*
 6. **v2:** E.1 #722 → E.2 #723; E.3 #724 ⊕ E.4 #725 in any order.
 
 ## Totals
@@ -1970,7 +2039,8 @@ got easier (its components exist).
 | ~~D.1 · #716~~ | S | **M** | *Shipped.* Replaced `app/api/session.ts` and its callers |
 | ~~D.2 · #717~~ | M | **S** | *Shipped.* An audit, and it read as one: eight divergences, five fixed, three accepted |
 | ~~D.3 · #718~~ | M | **M** | *Shipped.* Rated right: wiring, but three components' worth of it |
-| D.4 · #719 | L | **M** | The step-2 cards already ship — this re-points their data source |
+| ~~D.4 · #719~~ | L | **M** | *Shipped.* The step-2 cards already shipped — this re-pointed their data source |
+| ~~D.5 · #720~~ | S | **S** | *Shipped.* Rated right, and smaller than rated: the re-point was already done, so what was left was one header and a decision |
 
 ## References
 
@@ -2031,9 +2101,9 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #720 (D.5).** **#716 (D.1) has landed**, so Epic D's remaining
-issues are unblocked: the UI reads its session through BetterAuth's own client, signs out
-through it, and `app/api/session.ts` is gone. **Epic C is complete**: #711 (C.1), #712
+**Start here: #721 (D.6)** — the last open issue in this roadmap's MVP. **#716 (D.1) has
+landed**, so Epic D's remaining issues are unblocked: the UI reads its session through
+BetterAuth's own client, signs out through it, and `app/api/session.ts` is gone. **Epic C is complete**: #711 (C.1), #712
 (C.2), #713 (C.3), #714 (C.4) and now **#715 (C.5)** have all landed — the tenant context
 reads the session's active organization, `modules/tenancy` is rewritten against
 `organization`/`member`, `GET /api/v1/orgs` serves mockup 01 Step 2's row model in one
@@ -2072,8 +2142,12 @@ a development email/password form outside production. **#719 (D.4) has now lande
 step 2 is the mockup's single card, sourced from `GET /api/v1/orgs`, and the workspace a
 request acts in is `session."activeOrganizationId"` rather than a cookie the browser holds —
 so **mockup 01 works end to end** and what stands between this roadmap and its exit gate is
-a compose stack whose `ouroboros-rest` is not `NODE_ENV=production`. #720 (D.5) is the
-middleware decision, and #721 (D.6) the account menu.
+a compose stack whose `ouroboros-rest` is not `NODE_ENV=production`. **#720 (D.5) has now
+landed and the middleware decision is recorded: no edge gate.** `proxy.ts` grew a
+request-wide matcher, but it stamps the request's own address on a header rather than
+deciding anything with it — `requireWorkspace()` stays the single authority, and what the
+header buys is a deep link that survives the round trip through the login screen. That
+leaves **#721 (D.6)**, the account menu, as this roadmap's only open MVP issue.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

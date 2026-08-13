@@ -77,6 +77,7 @@ import {
 } from "@/app/api/auth-client";
 import type { ApiClient } from "@/app/api/client";
 import type { Session } from "@/app/api/identity";
+import { loginDestination } from "@/app/api/request";
 import { WORKSPACE_LIMIT, tenants } from "@/app/api/tenants";
 import { anonymousApi, forgetWorkspace } from "@/app/api/server";
 import { restUrl } from "@/app/env";
@@ -351,12 +352,17 @@ export async function signOutSession(fetchImpl: typeof fetch = fetch): Promise<v
  * Read one answer, sending a `401` to the login screen on the way.
  *
  * The server half of "a `401` routes to `/login`", and the counterpart of the browser-side
- * handler in `app/api/auth-client.ts`. It carries **no return-to**: a Server Component
- * cannot read the URL it is rendering for, and the framework publishes no header that says
- * so. What fills the parameter today is the browser — which knows exactly where it was — and
- * `app/(auth)/login/page.tsx`, which honours whatever arrives. Giving the server the same
- * knowledge is a request-wide `proxy.ts` matcher, which is the middleware decision
- * [#720](https://github.com/NobuData/ouroboros/issues/720) owns.
+ * handler in `app/api/auth-client.ts`. **It carries a return-to since
+ * [#720](https://github.com/NobuData/ouroboros/issues/720)**, which is the note this comment
+ * used to hold open: a Server Component still cannot read the URL it is rendering for, so
+ * `proxy.ts` publishes it as a header and `app/api/request.ts` reads it back. The browser's
+ * client fills the same parameter from `window.location`, and
+ * `app/(auth)/login/page.tsx` honours whichever of the two composed it.
+ *
+ * A `401` raised *while rendering the login screen* still lands on a bare `/login`, and
+ * that costs nothing to arrange: `safeReturnTo` refuses a return-to naming that screen, so
+ * the guard against a page redirecting to itself is the same one that refuses
+ * `//evil.test`.
  *
  * @param call The client method's promise.
  * @param path The route, relative to `AUTH_BASE_PATH`, for the message.
@@ -374,7 +380,7 @@ export async function authRead<T>(
     if (error instanceof AuthError && error.status === 401) {
       // `redirect` signals by throwing, and that throw is the one that reaches Next.js.
       // Nothing here catches it.
-      redirect(loginPath());
+      redirect(await loginDestination());
     }
     throw error;
   }
