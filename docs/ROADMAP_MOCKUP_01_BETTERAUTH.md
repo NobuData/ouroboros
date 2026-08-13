@@ -1334,9 +1334,52 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > alone — `signIn.social` can make that call now, and re-pointing the button at it is
 > **D.3 · #718**.
 
+> **D.2 · #717 has shipped and has left the table below.** The audit was run against a
+> browser rather than against the source: the shipped `LoginScreen` was rendered to static
+> HTML, dressed in `app/globals.css` + `app/ui/ui.css` + `app/login/login.css`, and
+> photographed beside `mockups/01-login.html` at 1440×900 and 900×1200, in both palettes,
+> and again at the 150% step of the font-size preference (§ 4, CQ.2) that nothing reads yet.
+> **The page matches**, and the eight divergences below are now a list rather than a
+> suspicion — which was this issue's actual deliverable.
+>
+> **Two of the issue's own premises were wrong, and neither cost anything.** *"Land the
+> light theme if the shipped page is dark-only"* — it never was. #44 built the sheet out of
+> tokens and the lockup as a light/dark pair, so the light rendering was already there and
+> already correct, and the audit's job on that criterion was to confirm it rather than to
+> land it. And the divergence that mattered most was not one the issue anticipated: the page
+> was faithful to a part of the mockup it should not have copied.
+>
+> | # | The mockup, or the rule | What shipped | Disposition |
+> |---|---|---|---|
+> | 1 | `.lockup { filter: drop-shadow(0 0 34px var(--glow)) }` | kept, as `drop-shadow(0 0 2rem var(--accent-glow))` | **Fixed — removed.** The drop-shadow and the `mix-blend-mode: screen` beside it are one workaround, not two effects: the mockup's crop was cut with its ground attached, so it had to be blended onto the panel and then given back the halo the blend flattened. `BRAND.md` § Rules bans both on these assets by name — no filter, no shadow behind the mark — and #14's pair is de-grounded and carries its own glow. #44 dropped the blend and kept the shadow, which in the light palette is a teal smear behind a navy wordmark. |
+> | 2 | `.brand-lines p:nth-child(3) { text-shadow: 0 0 24px var(--glow-soft) }` | absent | **Fixed — restored** as `0 0 1.5rem var(--accent-tint)`. The one piece of the brand panel the port had lost. The token settles both palettes without a second rule: 12% cyan on the dark ground is the mockup's halo, and 10% of a deep teal blurred behind dark text on a light one is nothing at all. |
+> | 3 | `@media (max-width: 900px) { .panel-brand { padding: 56px 8vw } }` | `--sp-11` (32px) `8vw` | **Fixed** → `--sp-12` (64px) `8vw`. 56 is not on the scale; `--sp-12` is 8px over it where the step below is 24px under. The stacked layout had half the mockup's padding on the viewport with the least room to spare it. |
+> | 4 | `.panel-auth { padding: 56px 32px }` | `--sp-11 --sp-10` (32/24) | **Fixed** → `--sp-12 --sp-11` (64/32), the same rounding; the horizontal is now exact. The inert `gap` on that rule — one child, so it spaced nothing — went with it. |
+> | 5 | dot grid, `1px` dots on a `26px` tile | `--grid-dot` `1px` on a `1.625rem` tile | **Fixed** → `26px`. Identical at the reference scale and wrong above it: grow the tile with the type and the dots stay the size they were while the grid spreads, which is the "texture that grows with the type is a different texture" the sheet's own opening rule refuses. The two glow ellipses stay rem on purpose — they light the lockup and the lines, and light that stayed put while its subject grew would slide off it. |
+> | 6 | `.panel-brand` ground is `--bg0` (⇒ `--ground-deep`) | `--ground` | **Accepted, and this is the one that shows.** `--ground-deep` is the sheet's gutter-and-backdrop colour and `DESIGN_TOKENS.md` measures no text against it. `awk -f scripts/lib/contrast.awk -v fg='#5c6f7a' -v bg='#e6edf1'` says why: **4.43:1** for the trust row in the light palette, against a 4.5 minimum, on the one surface this panel exists to carry words on. (Dark gains from it — 5.68 against the published 5.40 — but a ground chosen per palette forks the sheet, which is the thing tokens exist to prevent.) This epic's own rule settles the rest: *"colors come from the #16 tokens so both themes work (the mockup is dark-only; the light rendering follows the token sheet)."* Taking `--bg0` means measuring `--ground-deep` as a text surface first, which is a #16 change and not a stylesheet one — the same answer the monogram's three gradients got in #44. The cost is a softer seam between the panels in light and one step less depth in dark, both visible in the renders and neither load-bearing. |
+> | 7 | lockup `margin-bottom: 44px`, `.brand-lines margin-bottom: 52px` | one `gap: --sp-11` (32px) | **Accepted.** Neither is on the scale, and rounding each to its nearest step gives 32 and 64 — an 8px difference in the drawing turned into a 32px one on the page. A uniform 32 keeps the mockup's rhythm, a little tighter than it draws it. |
+> | 8 | corner wash `rgba(23, 147, 196, 0.08)` (`--accent-deep` at 8%) | `--accent-wash` (4%) | **Accepted.** The sheet publishes no accent at 8%, and `--accent-wash` is the only step below the `--accent-tint` the main glow already takes. Dimmer than the mockup, which is the right direction to be wrong in on the layer furthest from the type. |
+>
+> Everything else the criteria name was already true and is now asserted rather than
+> assumed: the 55/45 proportions, the seam, the collapse at the mockup's 900px, the three
+> lines' ink/dim/accent, the four background layers, the trust row's faint uppercase mono
+> and its CSS-drawn separators, and both palettes throughout. The breakpoint is `56.25rem`
+> and stays 900px — a media query resolves `rem` against the *initial* font size, not the
+> one `:root` declares — which is why the font-size preference cannot move it and a reader
+> who has raised their *browser's* base size still gets the column sooner.
+>
+> **The audit also found two things that were not about the mockup.** The lockup's
+> drop-shadow above is the first. The second is in the guard rail: `__tests__/styles.test.ts`
+> matched its colour-literal pattern against the *file*, prose included, and three hex digits
+> and a three-digit issue number are the same string — so a stylesheet that named the ticket
+> it was written for (`#717`, `#698`, every issue in this epic) failed the no-colour-literal
+> rule. It now matches against the declarations, which is all that rule was ever about. Its
+> sibling from `CONVENTIONS.md` § 6 — *"px font sizes are lint-banned"* — was cited by three
+> files and enforced by none, so it is now a check over every sheet in the module rather than
+> a claim in a comment; the module passed it on the first run.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| D.2 · #717 | ouroboros-ui: [D.2] Login route & brand panel — mockup-fidelity audit | Audit the **shipped** split/panel against mockup 01, land the light theme, fix divergences | mvp, auth, ui, design | N (after #40, #14) | Y | **S** ⬇ | ouroboros-ui |
 | D.3 · #718 | ouroboros-ui: [D.3] Step 1 card — wire GitHub sign-in & activate the shipped SSO form | Re-point button at `signIn.social`; un-inert the **already-built** SSO form onto C.2; dev form | mvp, auth, ui, design | N (after D.1, D.2, C.2) | Y | M | ouroboros-ui |
 | D.4 · #719 | ouroboros-ui: [D.4] Step 2 card — re-point tenancy cards at the org API | **Shipped** cards re-sourced from C.4; `ouro_tenant` cookie → `setActive` as authority | mvp, auth, ui, design | N (after D.3, C.4) | Y | **M** ⬇ | ouroboros-ui |
 | D.5 · #720 | ouroboros-ui: [D.5] Auth route guards & session-aware redirects | Re-point the **shipped** layout gate + `loginView()` at the new session; middleware decision | mvp, auth, ui | N (after D.1) | Y | S | ouroboros-ui |
@@ -1378,6 +1421,11 @@ createAuthClient({plugins:[organizationClient()]})
 ```
 
 ### Issue D.2 (#717) — ouroboros-ui: [D.2] Login route & brand panel — mockup-fidelity audit
+
+> **Shipped.** Kept as the record of what was asked for — see the note above the table for
+> the diff-list it produced, and for the two premises in it that turned out to be wrong.
+> The diagram's `bg0` is one of them: the panel paints `--ground`, deliberately, and the
+> note is where that is argued.
 
 - **Problem Statement:** The login page's frame — the 55/45 split with the branded
   left panel — **already exists**: `app/(auth)/login/page.tsx` renders
@@ -1798,7 +1846,7 @@ got easier (its components exist).
 | B.3 · #708 | L | **L ⚠** | Unchanged chip, but re-rated **riskiest issue in the roadmap** — irreversible |
 | C.4 · #714 | M | **L** | Rewrites #31's shipped module rather than writing a new one |
 | ~~D.1 · #716~~ | S | **M** | *Shipped.* Replaced `app/api/session.ts` and its callers |
-| D.2 · #717 | M | **S** | The split layout and brand panel already ship — this is an audit |
+| ~~D.2 · #717~~ | M | **S** | *Shipped.* An audit, and it read as one: eight divergences, five fixed, three accepted |
 | D.4 · #719 | L | **M** | The step-2 cards already ship — this re-points their data source |
 
 ## References
@@ -1840,7 +1888,7 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| D.2 · #717 | Renders standalone outside the shell; honors the CQ.2 font-scale local mirror; post-login redirect lands in the shell |
+| ~~D.2 · #717~~ | *Shipped.* Renders standalone outside the shell; post-login redirect lands in the shell. **CQ.2 does not exist yet** — there is no font-scale mirror to honour, and the audit's finding is that there will be nothing to do when it lands: every length on this screen is already rem or a token, and the page was photographed at the 150% step with nothing clipped, in both palettes, at 900px and 1440px |
 | D.1, D.3, D.4, D.5, D.6 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | #56 | Gains a check that post-login navigation lands inside the shell with the sidebar present, and a font-scale render check on the login screen |
 
