@@ -476,7 +476,7 @@ that roadmap's "Existing issues affected" section.
 
 ## P4 — Dashboard — the First Real Screen
 
-> **25 issues** · 60 complexity points · order **#68–#92** · 7 dependency waves
+> **24 issues** · 57 complexity points · order **#68–#92**, less `69` · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_02_DASHBOARD.md` (Epics F–I)
 
 **Goal.** Build the dashboard read-model, its org-scoped REST endpoints with ETag polling, the mission-control topbar chrome (tenant switcher, live and needs-you pills, ⌘K palette), and mockup 02 as the real landing page.
@@ -487,10 +487,31 @@ that roadmap's "Existing issues affected" section.
 
 **Parallel:** the `F` (read-model) and `H` (topbar chrome) tracks are independent for their first three issues; `G` (services) and `I` (page UI) then pipeline behind them.
 
+> **`F.1` · `#64` Runs table shipped, and row `69` has left the table below** — which is
+> why its order numbers step from `68` to `70`.
+>
+> Its blockers were both already met, and one of them under another roadmap's name: `3.1`
+> is the Flyway scaffold (`#19`), and `B.3` — the organization and repo tables — is
+> `organization` (`V005`, `#707`) plus `github_repos`, which has been there since `V003`
+> (`#22`) and was re-parented by `V006` (`#708`). So `#64` did not have to wait on the
+> unfiled BetterAuth tail the rest of this phase's `G` track still does.
+>
+> [`V008__dashboard_runs.sql`](../ouroboros-db/migrations/V008__dashboard_runs.sql) is one
+> `runs` table covering both dashboard surfaces (decision `F2` — non-terminal rows are the
+> active list, terminal rows the completions list), with the statuses, the stage meter, the
+> opaque model identifier and the terminal-requires-`finished_at` rule as named CHECK
+> constraints, and a trigger holding the run's repository to the run's organization —
+> the composite foreign key `github_repos` cannot offer, because `V003` reaches the
+> workspace through `github_orgs` rather than storing it twice. Its assertions are a
+> section in [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db`
+> runs them against a database migrated from empty on every pull request.
+>
+> **`F.2` (`#65`), `F.3` (`#66`) and `F.5` (`#68`) are unblocked by it** and are the next
+> rows of this phase that can move.
+
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 68 | **H.3** | #79 | Search pill & ⌘K navigation palette | ouroboros-ui | M | 5.3 |
-| 69 | **F.1** | #64 | Runs table — loop lifecycle read-model | ouroboros-db | M | 3.1, B.3 |
 | 70 | **F.4** | #67 | Workspace settings table | ouroboros-db | XS | B.3 |
 | 71 | **F.2** | #65 | Queue items table | ouroboros-db | S | F.1 |
 | 72 | **F.3** | #66 | Token usage events table | ouroboros-db | S | F.1 |
