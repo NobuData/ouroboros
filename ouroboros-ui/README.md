@@ -114,15 +114,16 @@ cookie **named the active workspace** until
 `session."activeOrganizationId"` now, so what is left of it authorizes nothing. The session
 cookies are `ouroboros-rest`'s — this module forwards them and never writes them.
 
-**Which cookies get forwarded now depends on which client is calling**, and the two do not
-agree yet. [`app/api/auth-server.ts`](app/api/auth-server.ts) forwards BetterAuth's
-`better-auth.session_token` and `better-auth.session_data`, so the session read works;
-[`app/api/client.ts`](app/api/client.ts) still forwards `ouro_session`, which
-[#703](https://github.com/NobuData/ouroboros/issues/703) made wrong — a session is a row now,
-and that cookie names nothing. Re-pointing the generated client and the route gates at
-BetterAuth's is [#720](https://github.com/NobuData/ouroboros/issues/720), which owns them
-together because they have to move in one step. Until it lands, a completed sign-in reaches
-the session read and no further.
+**Both clients forward the same pair**, and for a while they did not.
+[`app/api/auth-server.ts`](app/api/auth-server.ts) and
+[`app/api/client.ts`](app/api/client.ts) each send BetterAuth's `better-auth.session_token`
+and `better-auth.session_data` — the second because the service answers a session from that
+signed snapshot without a database lookup, so a client that dropped it would turn every call
+into a query. The generated client forwarded `ouro_session` until it was re-pointed, which
+[#703](https://github.com/NobuData/ouroboros/issues/703) had made wrong — a session is a row
+now, and that cookie names nothing. The gap cost a redirect loop, and `client.ts` records the
+shape of it: two clients disagreeing about a credential is not a failed request, it is a
+screen that renders for somebody the API then refuses.
 
 ## Container
 
@@ -208,6 +209,7 @@ ouroboros-ui/
 │   │   ├── identity.ts      #   Session / SessionUser — framework-free
 │   │   ├── membership.ts    #   what a person holds in a workspace — framework-free
 │   │   ├── server.ts        #   api() / anonymousApi(), and the step-2 hint
+│   │   ├── request.ts       #   where this request was going, as proxy.ts stamped it
 │   │   ├── access.ts        #   the gate: currentAccess() / requireWorkspace()
 │   │   ├── tenants.ts       #   tenants.list() — step 2's row model, and a session's
 │   │   ├── members.ts       #   members.list() — the dashboard's count
@@ -236,6 +238,7 @@ ouroboros-ui/
 ├── __tests__/          # Vitest suites, mirroring app/
 ├── scripts/            # api-sync.mjs — the generator behind `yarn api:sync`
 ├── public/             # brand assets, favicons
+├── proxy.ts            # forwards /api/auth/* — and stamps every page request's address
 ├── Dockerfile          # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore   # …and the context that image is built from
 ├── eslint.config.mjs   # ESLint flat config
@@ -347,14 +350,41 @@ a form to it is [#721](https://github.com/NobuData/ouroboros/issues/721).
 
 ### Where a `401` goes
 
-Both clients route one to [the login screen](#sign-in--tenancy), and the browser's carries
-`?next=` — where it was — which [`page.tsx`](<app/(auth)/login/page.tsx>) honours once the
+Both clients route one to [the login screen](#sign-in--tenancy), and both carry `?next=` —
+where the request was — which [`page.tsx`](<app/(auth)/login/page.tsx>) honours once the
 visitor is settled. The value is never trusted: `safeReturnTo` in
 [`app/paths.ts`](app/paths.ts) accepts only a path on this origin, because a link carrying
 `?next=https://evil.test` would otherwise hand a freshly signed-in visitor to somebody else's
-page. The server side sends no `next=` at all — a Server Component cannot read the URL it is
-rendering for, and giving it that knowledge is the middleware decision
-[#720](https://github.com/NobuData/ouroboros/issues/720) owns.
+page.
+
+Where the two differ is only in how they *learn* where they are. The browser reads
+`window.location`; a Server Component cannot read the URL it is rendering for at all, so
+[`proxy.ts`](proxy.ts) stamps it on a request header and
+[`app/api/request.ts`](app/api/request.ts) reads it back
+([#720](https://github.com/NobuData/ouroboros/issues/720)). One call —
+`loginDestination()` — composes it for all three server-side redirects:
+[`requireWorkspace()`](app/api/access.ts) and the `401` handlers in
+[`app/api/server.ts`](app/api/server.ts) and
+[`app/api/auth-server.ts`](app/api/auth-server.ts).
+
+### The proxy is not the auth gate, and that is a decision
+
+[`proxy.ts`](proxy.ts) is Next.js 16's name for middleware, and it runs on every page
+request. It **does not check whether a request may proceed** — [`app/api/access.ts`](app/api/access.ts)
+is the only answer to that — and the file argues the case at length under *Why this file is
+not the auth gate*. In short: there is no protected content to flash, because a page in
+`(app)` composes nothing until the gate has returned; an edge check could only be
+optimistic, since proxy runs on every prefetch and so may not call the service; it would
+need a list of protected routes when `(app)` is already one; and nothing in `(app)` is
+static. So what proxy carries upstream is a fact — the request's own address — and never a
+decision.
+
+The one thing an edge gate *would* improve is recorded there too rather than glossed: a
+signed-out deep link is answered as a `200` carrying a streamed redirect rather than a bare
+`307`, because [`loading.tsx`](<app/(app)/dashboard/loading.tsx>) opens a Suspense boundary
+and the shell flushes before the gate resolves. It would not improve the commoner case — a
+visitor whose session merely expired still carries a cookie, and an optimistic check passes
+them through to the same stream.
 
 ## The generated client
 
@@ -378,16 +408,16 @@ and no call should repeat:
 | | |
 |---|---|
 | **Base URL** | `OURO_REST_URL`, via [`app/env.ts`](app/env.ts) |
-| **Session** | the session cookie of the request being served, forwarded — and only that cookie. Still named `ouro_session`; #720 re-points it at BetterAuth's. The **auth** client already forwards BetterAuth's two, which is why the session read works and these calls do not yet |
+| **Session** | BetterAuth's two cookies from the request being served, forwarded — and only those. The same pair the **auth** client sends: `better-auth.session_token`, plus the `better-auth.session_data` snapshot that saves the service a query per call |
 | **Workspace** | nothing. The session carries it (#719) — see below |
-| **Failure** | the contract's `{code, message, details}` envelope, parsed into a thrown `ApiError`; a `401` redirects to `/login` first |
+| **Failure** | the contract's `{code, message, details}` envelope, parsed into a thrown `ApiError`; a `401` redirects to `/login?next=…` first |
 
 So a call has two outcomes rather than three: it resolves with the body the contract
 describes, or it rejects with an `ApiError` carrying the `code` to branch on. There is no
 `{data, error}` to unpack at the call site.
 
-**It runs on the server.** `OURO_REST_URL` carries no `NEXT_PUBLIC_` prefix and
-`ouro_session` is `HttpOnly`, so a browser could neither address the service nor
+**It runs on the server.** `OURO_REST_URL` carries no `NEXT_PUBLIC_` prefix and the session
+cookies are `HttpOnly`, so a browser could neither address the service nor
 authenticate to it; [`app/api/server.ts`](app/api/server.ts) imports `server-only`, which
 turns a Client Component that reaches for it into a build error rather than a runtime one.
 Screens therefore fetch in Server Components and pass data down, and a Client Component
@@ -1063,6 +1093,7 @@ theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
 typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
 BetterAuth client & session store [#716](https://github.com/NobuData/ouroboros/issues/716) ·
+route guards & session-aware redirects [#720](https://github.com/NobuData/ouroboros/issues/720) ·
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).

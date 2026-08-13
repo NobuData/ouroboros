@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // module under test cannot, because the mocks below have to be in place first.
 import { SESSION_CACHE_COOKIE, SESSION_COOKIE } from "@/app/api/client";
 import { ApiError } from "@/app/api/errors";
+import { REQUEST_PATH_HEADER } from "@/app/api/request";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
+import { RETURN_TO_PARAM } from "@/app/paths";
 
 // `app/api/server.ts` is server-only three times over, and each has to be answered before
 // it can be imported here at all:
@@ -25,6 +27,16 @@ const jar = new Map<string, string>();
 const setCookie = vi.fn<(name: string, value: string, options: unknown) => void>();
 const deleteCookie = vi.fn<(name: string) => void>();
 
+/**
+ * The headers of the request under test.
+ *
+ * `proxy.ts` stamps the request's own address onto one of them
+ * ([#720](https://github.com/NobuData/ouroboros/issues/720)), which is what the `401`
+ * handler reads to say *come back here afterwards*. Empty by default, because a request the
+ * proxy never saw is the case every other test in this file is.
+ */
+const incoming = new Headers();
+
 vi.mock("next/headers", () => ({
   cookies: () =>
     Promise.resolve({
@@ -32,6 +44,7 @@ vi.mock("next/headers", () => ({
       set: setCookie,
       delete: deleteCookie,
     }),
+  headers: () => Promise.resolve(incoming),
 }));
 
 /** What `redirect()` does: signal by throwing, so nothing after it runs. */
@@ -86,6 +99,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jar.clear();
+  incoming.delete(REQUEST_PATH_HEADER);
   setCookie.mockClear();
   deleteCookie.mockClear();
   redirect.mockClear();
@@ -258,6 +272,41 @@ describe("api", () => {
     await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
     expect(LOGIN_PATH).toBe("/login");
+  });
+
+  it("sends it back to the screen the request came from", async () => {
+    // [#720](https://github.com/NobuData/ouroboros/issues/720). The handler is `async` for
+    // this one line: the address is a header `proxy.ts` stamped, because a Server Component
+    // cannot read the URL it renders for, and `createApiClient` awaits the handler before
+    // it throws — which is what makes the redirect below reachable rather than a promise
+    // nobody waited on.
+    incoming.set(REQUEST_PATH_HEADER, "/runs?status=failed");
+    respondWith(
+      new Response(
+        JSON.stringify({ code: "unauthenticated", message: "Sign in.", details: {} }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith(
+      `${LOGIN_PATH}?${RETURN_TO_PARAM}=%2Fruns%3Fstatus%3Dfailed`,
+    );
+  });
+
+  it("refuses a return-to naming another origin, however it got into the header", async () => {
+    // `proxy.ts` overwrites the header on every path it matches, so this is the second
+    // guard rather than the first — and the one that holds for a path it does not match.
+    incoming.set(REQUEST_PATH_HEADER, "//evil.test");
+    respondWith(
+      new Response(
+        JSON.stringify({ code: "unauthenticated", message: "Sign in.", details: {} }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 
   it("leaves every other failure to the caller, as an ApiError", async () => {

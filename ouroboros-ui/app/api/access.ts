@@ -43,7 +43,7 @@ import { connection } from "next/server";
 import { cache } from "react";
 
 import { type Membership, activeMembership } from "@/app/api/membership";
-import { LOGIN_PATH } from "@/app/api/server";
+import { loginDestination } from "@/app/api/request";
 import { readSession } from "@/app/api/auth-server";
 import type { Session } from "@/app/api/identity";
 
@@ -116,6 +116,15 @@ export const currentAccess = cache(async (): Promise<Access> => {
  * Both halves send a visitor to the same place, because the login screen is where both are
  * resolved: it signs somebody in, and then it asks which workspace the loop should run in.
  *
+ * **And it says where they were going**, since
+ * [#720](https://github.com/NobuData/ouroboros/issues/720). A deep link to a screen in this
+ * group used to arrive back at the dashboard whatever it had asked for, because the redirect
+ * carried no return-to; `loginDestination()` is where the screen this request wanted is
+ * read — off the header `proxy.ts` stamps, since a Server Component cannot read its own URL —
+ * and the login screen has honoured `?next=` since
+ * [#716](https://github.com/NobuData/ouroboros/issues/716). A request the proxy never saw
+ * still lands on a bare `/login`, which is what this did for every request before.
+ *
  * @returns The session and the active workspace, both present.
  * @throws Next.js's redirect signal, when there is no session or no chosen workspace.
  */
@@ -123,7 +132,7 @@ export async function requireWorkspace(): Promise<Workspace> {
   const { session, membership } = await currentAccess();
 
   if (session === null || membership === undefined) {
-    redirect(LOGIN_PATH);
+    redirect(await loginDestination());
   }
 
   return { session, membership };

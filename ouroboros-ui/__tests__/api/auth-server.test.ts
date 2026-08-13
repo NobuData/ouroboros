@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuthError } from "@/app/api/auth-client";
+import { REQUEST_PATH_HEADER } from "@/app/api/request";
 import { resetRestUrlCache } from "@/app/env";
-import { LOGIN_PATH } from "@/app/paths";
+import { LOGIN_PATH, RETURN_TO_PARAM } from "@/app/paths";
 
 import { requestedUrl } from "../helpers/auth";
 
@@ -29,7 +30,12 @@ vi.mock("server-only", () => ({}));
 const jar = new Map<string, string>();
 /** Cookies deleted while serving it. */
 const deleted: string[] = [];
-/** The headers of the request under test — `origin` is the one this module reads. */
+/**
+ * The headers of the request under test. Two are read through this module: `origin`, which
+ * it forwards so BetterAuth's origin check is satisfied, and `x-ouro-path`, which
+ * `proxy.ts` stamps and the `401` handler turns into `?next=`
+ * ([#720](https://github.com/NobuData/ouroboros/issues/720)).
+ */
 const incoming = new Headers();
 
 vi.mock("next/headers", () => ({
@@ -175,6 +181,7 @@ beforeEach(() => {
   jar.clear();
   deleted.length = 0;
   incoming.set("origin", BROWSER);
+  incoming.delete(REQUEST_PATH_HEADER);
   redirectedTo = undefined;
   resetRestUrlCache();
   resetApiClient();
@@ -452,15 +459,41 @@ describe("readSession", () => {
     expect(redirectedTo).toBe(LOGIN_PATH);
   });
 
-  it("carries no return-to, because a Server Component cannot read the URL it renders for", async () => {
-    // The parameter is filled in by the browser, which knows exactly where it was, and by
-    // the login route, which honours whatever arrives. Giving the server the same knowledge
-    // is the middleware decision #720 owns.
+  it("carries a return-to, now that the proxy tells the server where it was", async () => {
+    // This case was the inverse until
+    // [#720](https://github.com/NobuData/ouroboros/issues/720), and the limitation it named
+    // is still true: a Server Component cannot read the URL it renders for. What changed is
+    // that `proxy.ts` publishes it as a header, which `app/api/request.ts` reads back — so
+    // the server fills the same parameter the browser's client already filled from
+    // `window.location`.
+    incoming.set(REQUEST_PATH_HEADER, "/runs?status=failed");
     serviceAnswering({ session: { body: null, status: 401 } });
 
     await readSession().catch(() => undefined);
 
-    expect(redirectedTo).not.toContain("?");
+    expect(redirectedTo).toBe(
+      `${LOGIN_PATH}?${RETURN_TO_PARAM}=%2Fruns%3Fstatus%3Dfailed`,
+    );
+  });
+
+  it("carries none when the proxy never saw the request", async () => {
+    serviceAnswering({ session: { body: null, status: 401 } });
+
+    await readSession().catch(() => undefined);
+
+    expect(redirectedTo).toBe(LOGIN_PATH);
+  });
+
+  it("carries none for a 401 raised while rendering the login screen", async () => {
+    // Which is the loop this would otherwise be: the screen redirecting to itself, once per
+    // render, for every signed-out visitor. `safeReturnTo` refuses a return-to naming
+    // `/login`, so the same guard that refuses `//evil.test` is what stops it.
+    incoming.set(REQUEST_PATH_HEADER, `${LOGIN_PATH}?workspace=acme-robotics`);
+    serviceAnswering({ session: { body: null, status: 401 } });
+
+    await readSession().catch(() => undefined);
+
+    expect(redirectedTo).toBe(LOGIN_PATH);
   });
 });
 
