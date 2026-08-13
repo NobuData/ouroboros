@@ -489,10 +489,13 @@ Workflows are **path-filtered** so a PR only runs the checks it can affect
 
 ```
 ouroboros-ui/**     ─▶ ci/ui      lint · typecheck · test · build
+                    ─▶ publish/ui     the product UI image, pushed from main
 ouroboros-rest/**   ─▶ ci/rest    lint · typecheck · test · build
+                    ─▶ publish/rest   the service image, pushed from main
 ouroboros-engine/** ─▶ ci/engine  ruff · pytest
+                    ─▶ publish/engine the engine image, pushed from main
 ouroboros-db/**     ─▶ ci/db      flyway migrate · validate · constraints
-                    ─▶ publish/db the migration image, pushed from main
+                    ─▶ publish/db     the migration image, pushed from main
 
 package.json        ─▶ ci/ui + ci/rest   the workspace both resolve through
 yarn.lock
@@ -547,15 +550,31 @@ migrated twice with the dev-seed overlay and asserted by
 [`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which is both the seed's content
 check and its idempotency check — every assertion in it says *exactly one*.
 
-**The published artefact**: `db.yml` carries a second job, `publish/db`, which builds
-[`ouroboros-db/Dockerfile`](../ouroboros-db/Dockerfile) — the migration image (§ 5) — and
-pushes it as `ouroboros-db:latest` and `ouroboros-db:<sha>`. It `needs: ci`, which is the
-reason it lives in this workflow rather than one of its own: the image is the SQL the job
-above applied to a real PostgreSQL, validated and asserted against, so a red run
-publishes nothing. The build itself runs on every event and needs no credential, so a
-Dockerfile that stops building fails the pull request that broke it; only the login and
-the push are held back to a push on `main`, which is also what makes the job safe on a
-fork's pull request, where there are no secrets to push with.
+**The published artefacts**: every one of the four workflows carries a second job —
+`publish/ui`, `publish/rest`, `publish/engine`, `publish/db` — which builds that module's
+`Dockerfile` (§ 5) and pushes it as `ouroboros-<module>:latest` and
+`ouroboros-<module>:<sha>`.
+
+Each one `needs: ci`, and that is the reason a publish job lives in its module's workflow
+rather than in one of its own: the image is exactly the checkout the job above proved. For
+`ouroboros-db` that is SQL applied to a real PostgreSQL, validated and asserted against;
+for `ouroboros-rest` it is a service that answered over a socket against a migrated
+database; for the other two it is a linted, tested, building module. A red run publishes
+nothing, and a second workflow watching the same directory would publish on a schedule
+nothing orders against the checks.
+
+The build itself runs on every event and needs no credential, so a Dockerfile that stops
+building fails the pull request that broke it; only the login and the push are held back
+to a push on `main`, which is also what makes the job safe on a fork's pull request, where
+there are no secrets to push with. The two Yarn workspaces build from the **repository
+root** and the other two from their **module directory**, for the reason § 5 gives — which
+is also why `ouroboros-ui` and `ouroboros-rest` carry a `Dockerfile.dockerignore` and
+`ouroboros-db` and `ouroboros-engine` a plain `.dockerignore`.
+
+`ouroboros-web` is the one image published from elsewhere:
+[`docker-publish.yml`](../.github/workflows/docker-publish.yml) is its whole pipeline,
+because the marketing site is not a workspace and has no `ci/` check of its own to hang a
+`needs:` on.
 
 Two things about the live pass are worth stating, because they are what make it worth
 running. It uses the module's own `scripts/` commands rather than a `flyway` invocation
@@ -591,7 +610,7 @@ Repo-level checks are dependency-free POSIX shell and safe to run locally at any
 | [`verify-layout.sh`](../scripts/verify-layout.sh) | Module directories, README sections, root docs, `.editorconfig` coverage |
 | [`verify-github-config.sh`](../scripts/verify-github-config.sh) | Label definitions parse and cover the taxonomy; issue forms and PR template carry their required sections |
 | [`verify-dev-env.sh`](../scripts/verify-dev-env.sh) | Compose stack pins, healthchecks and interpolates its credentials; `.env.example` declares every variable read; migrations are named to the rule; the migration image pins the same Flyway, drops root, allow-lists its context and carries neither a credential nor the `clean` overlay |
-| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold; `ci/db` still starts a database, migrates it, validates it and runs both `.sql` suites, against the PostgreSQL the development stack pins; and that `publish/db` still builds the migration image on every event and pushes it only behind a green `ci/db` |
+| [`verify-ci.sh`](../scripts/verify-ci.sh) | Status-check names; path filters route each change to exactly the workflows it can affect; toolchain pins live in one place; every step waits for its scaffold; `ci/db` still starts a database, migrates it, validates it and runs both `.sql` suites, against the PostgreSQL the development stack pins; and that every module still carries a `publish/<module>` job which builds its image on every event, from the context § 5 gives it, and pushes it only behind a green `ci/<module>` |
 | [`verify-workspace.sh`](../scripts/verify-workspace.sh) | The decisions in [`DECISION_WORKSPACE_TOOLING.md`](DECISION_WORKSPACE_TOOLING.md) still hold: the roster is these four modules with `ouroboros-web` outside it, one lockfile, both versions pinned exactly, every repo-level verb reaching a declared task and every task a verb, nothing Docker-facing cached, and every script that reads above its own package declaring it in that task's inputs |
 | [`verify-brand.sh`](../scripts/verify-brand.sh) | [`BRAND.md`](BRAND.md) and [`brand/`](brand) agree: every asset is a PNG with an alpha channel, at the size the document publishes, named and linked by it |
 | [`verify-tokens.sh`](../scripts/verify-tokens.sh) | [`design/tokens.css`](design/tokens.css) parses to exactly three palette blocks with no literal outside them, both dark blocks are identical, every colour is themed in both palettes, the dark palette still matches the mockups' sheet, the preview page carries no literal, and every contrast ratio [`DESIGN_TOKENS.md`](DESIGN_TOKENS.md) publishes is the recomputed one, at or above its minimum |

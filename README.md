@@ -316,12 +316,17 @@ only the checks it can affect:
 
 | Change | Status check | What runs |
 |---|---|---|
-| `ouroboros-ui/**` | `ci/ui` | `yarn install --immutable` → lint → typecheck → test → build |
-| `ouroboros-rest/**` | `ci/rest` | the same pipeline, against `ouroboros-rest` |
-| `ouroboros-engine/**` | `ci/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
-| `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass; the migration image is built on every run and pushed once `ci/db` is green on `main` |
+| `ouroboros-ui/**` | `ci/ui` → `publish/ui` | `yarn install --immutable` → lint → typecheck → test → build |
+| `ouroboros-rest/**` | `ci/rest` → `publish/rest` | the same pipeline, against `ouroboros-rest`, then the integration suite against a migrated PostgreSQL |
+| `ouroboros-engine/**` | `ci/engine` → `publish/engine` | `uv sync --locked` → `ruff check` → `ruff format --check` → `pytest` |
+| `ouroboros-db/**` | `ci/db` → `publish/db` | the migration and data-tier contract, then the module's tooling tests, then a live migration pass |
 | `ouroboros-web/**` | `ouroboros-web · build & publish` | the marketing site's own build and image push |
 | `package.json`, `yarn.lock`, `turbo.json`, `.yarnrc.yml` | `ci/ui` + `ci/rest` | the workspace both TypeScript modules resolve through |
+
+Each `publish/<module>` job builds that module's image on every run — so a Dockerfile that
+stops building fails the pull request that broke it — and pushes it as
+`ouroboros-<module>:latest` and `ouroboros-<module>:<sha>` only once its `ci/` job is green
+on `main`.
 
 A change to `docs/` or to `scripts/` queues none of them; a change to the pipeline the
 TypeScript modules share queues both of the modules that run it, and so does a change to

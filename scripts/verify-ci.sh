@@ -8,8 +8,9 @@
 # others; that the Node and Python versions are pinned in one place rather than per
 # workflow; that a module whose scaffold has not landed yet is skipped deliberately
 # instead of failing; that each pipeline runs the verbs docs/CONVENTIONS.md § 3 promises
-# for its toolchain; and that `ci/db` still carries the live migration pass (#24) against
-# the PostgreSQL the development stack pins.
+# for its toolchain; that `ci/db` still carries the live migration pass (#24) against
+# the PostgreSQL the development stack pins; and that each module still publishes its
+# image from its own workflow, behind its own green `ci/` job.
 #
 # It reads files and starts nothing: no runner, no network, no GitHub. Whether a
 # workflow passes is what a pull request answers; what this answers is whether the right
@@ -263,14 +264,31 @@ check_contains docs/CONVENTIONS.md 'Python 3\.12' 'docs/CONVENTIONS.md documents
 # Scaffold gating
 # ---------------------------------------------------------------------------
 
-# check_gated FILE INDENT UNGATED DESCRIPTION — assert every step of FILE past the
+# check_gated TEXT INDENT UNGATED DESCRIPTION — assert every step in TEXT past the
 # UNGATED leading ones carries the scaffold condition. Steps are counted rather than
 # listed, so a step added later without the condition fails this instead of silently
 # running against a module that does not exist.
+#
+# It takes the text rather than a file because the gate is a property of *one job*: the
+# publish job below runs a Docker build that has nothing to do with a module's manifest,
+# so counting its steps here would demand a condition that would be wrong on them. See
+# {@link ci_job}, which is what the workflow caller narrows with.
 check_gated() {
-  gated_total=$(grep -cE "^$2- (uses|name):" "$1" 2>/dev/null || true)
-  gated_count=$(grep -cF "if: steps.gate.outputs.scaffolded == 'true'" "$1" 2>/dev/null || true)
+  gated_total=$(printf '%s\n' "$1" | grep -cE "^$2- (uses|name):" || true)
+  gated_count=$(printf '%s\n' "$1" | grep -cF "if: steps.gate.outputs.scaffolded == 'true'" || true)
   check_equals "$((gated_total - $3))" "$gated_count" "$4"
+}
+
+# ci_job FILE — print a workflow's `ci:` job, without the jobs that follow it.
+#
+# The next line at the same indentation ends it, which is what a sibling job looks like.
+# Anything deeper — a step, a `with:` block, a comment inside the job — is part of it.
+ci_job() {
+  awk '
+    /^  ci:$/ { inside = 1; print; next }
+    inside && /^  [^ #]/ { inside = 0 }
+    inside { print }
+  ' "$1" 2>/dev/null || true
 }
 
 # check_no_expression FILE DESCRIPTION — assert the shell script FILE ends with, opened
@@ -296,11 +314,13 @@ check_no_expression "$GATE_ACTION" 'the gate never splices an input into its scr
 
 check_contains "$NODE_ACTION" '^        manifest: package\.json$' \
   'the TypeScript pipeline activates on a package.json'
-check_gated "$NODE_ACTION" '    ' 1 'every TypeScript step waits for the scaffold'
+check_gated "$(cat "$NODE_ACTION" 2>/dev/null || true)" '    ' 1 \
+  'every TypeScript step waits for the scaffold'
 
 check_contains "$WORKFLOWS/engine.yml" '^          manifest: pyproject\.toml$' \
   'engine.yml activates on a pyproject.toml'
-check_gated "$WORKFLOWS/engine.yml" '      ' 2 'every engine step waits for the scaffold'
+check_gated "$(ci_job "$WORKFLOWS/engine.yml")" '      ' 2 \
+  'every engine step waits for the scaffold'
 
 # ouroboros-db is scaffolded already — its migrations run today — so ci/db is not gated.
 check_absent "$WORKFLOWS/db.yml" 'scaffold-gate' 'db.yml is not gated: its migrations exist'
@@ -420,60 +440,94 @@ check_equals "$compose_image" "$db_client_image" \
   'db.yml runs the assertion suites from that same image'
 
 # ---------------------------------------------------------------------------
-# The database's published image
+# The published images
 # ---------------------------------------------------------------------------
 
-# ci/db proves these migrations apply; the publish job turns the ones that did into the
-# image a deployment runs. What matters is the order between the two — and that a pull
-# request still builds the image without needing a credential to do it, because a
-# Dockerfile that stopped building is worth reporting on the change that broke it.
+# Every application module ships an image, and every one of them is published by its own
+# `ci/<module>` workflow rather than by a pipeline of its own. That placement is the whole
+# contract: `needs: ci` is what makes a tag mean *this passed*, and a second workflow
+# watching the same directory would publish on a schedule nothing orders against the
+# checks. `ci/db` proves the migrations apply, `ci/rest` runs the service against a
+# migrated PostgreSQL, `ci/ui` and `ci/engine` lint, test and build — and in each case the
+# job below turns exactly that checkout into the artefact a deployment runs.
 #
-# What the image *is* — the pinned Flyway, the project directory, the overlays that stay
-# inert, root dropped — is scripts/verify-dev-env.sh's half of this.
+# The other half is that a pull request still *builds* the image without needing a
+# credential to do it, because a Dockerfile that stopped building is worth reporting on
+# the change that broke it rather than on the merge that publishes it.
+#
+# What each image *is* — the pinned base, the dropped root, the ignore file that governs
+# its context — is scripts/verify-dev-env.sh's half of this for `ouroboros-db`, and each
+# module's own container test's for the rest.
 
-printf '\nDatabase image\n'
+printf '\nPublished images\n'
 
-check_exists ouroboros-db/Dockerfile 'the module has an image to publish'
-check_contains "$DB_WORKFLOW" '^  publish:$' 'db.yml publishes it'
-check_contains "$DB_WORKFLOW" '^    name: publish/db$' 'the publish job reports as publish/db'
-# The gate. Without it a red ci/db still ships a tag, which is a schema nothing ran.
-check_contains "$DB_WORKFLOW" '^    needs: ci$' 'nothing is published until ci/db has passed'
-check_contains "$DB_WORKFLOW" '^          file: ouroboros-db/Dockerfile$' \
-  'db.yml builds that Dockerfile'
-# The module directory, so ouroboros-db/.dockerignore is the allow-list that governs the
-# context. A root context would take its ignores from a file this module does not own.
-check_contains "$DB_WORKFLOW" '^          context: ouroboros-db$' \
-  'db.yml builds it from the module, not from the repository root'
+# Where each image is built from, which is the one thing that differs between them.
+# `ouroboros-ui` and `ouroboros-rest` are Yarn workspaces: the lockfile they install from
+# is at the repository root, so a context of the module alone could not run an immutable
+# install, and BuildKit reads their `Dockerfile.dockerignore` in preference to the root's.
+# The other two install nothing through the workspace, so their context is the module
+# directory and their own `.dockerignore` is the allow-list. See docs/CONVENTIONS.md § 5.
+image_context() {
+  case $1 in
+    ui | rest) printf '.\n' ;;
+    *) printf 'ouroboros-%s\n' "$1" ;;
+  esac
+}
 
-# A push on a pull request is a tag moved by a change nobody has merged — and on a fork's
-# pull request there are no credentials to push with in the first place. Every step that
-# needs a secret carries the condition, and there are exactly as many conditions as there
-# are such steps: a step added later without one fails this rather than running.
-publish_secret_steps=$(sed -n '/^  publish:$/,$p' "$DB_WORKFLOW" 2>/dev/null |
-  grep -c 'secrets\.DOCKER_' || true)
-publish_guarded=$(sed -n '/^  publish:$/,$p' "$DB_WORKFLOW" 2>/dev/null |
-  grep -cF "if: github.event_name != 'pull_request'" || true)
-check_matches "$publish_secret_steps" '^[1-9]' 'the publish job authenticates to a registry'
-check_equals 2 "$publish_guarded" 'both of its credentialed steps stop on a pull request'
-# The build itself is not among them: it runs on every event, which is what makes a
-# broken Dockerfile a pull request failure rather than a merge failure.
-check_contains "$DB_WORKFLOW" '^          push: false$' 'db.yml builds the image on a pull request too'
+for module in $MODULES; do
+  workflow="$WORKFLOWS/$module.yml"
+  image="ouroboros-$module"
+  context=$(image_context "$module")
 
-# `latest` is what a deployment tracking main pulls; the commit is what a rollback names.
-# The schema is versioned by its migrations rather than by a release number, so the sha
-# is the only tag that says exactly which migrations are inside.
-check_contains "$DB_WORKFLOW" '/ouroboros-db:latest$' 'the published image is tagged latest'
-check_contains "$DB_WORKFLOW" '/ouroboros-db:\$\{\{ github\.sha \}\}$' \
-  'and with the commit that built it, which is the tag that cannot move'
-# Which registry this goes to is the deployment's business, not the repository's, and a
-# hostname written down here is one that a fork of this repository would authenticate to
-# and publish to. Both ends of that are checked: what it logs in to, and what it tags —
-# the second anchored past any `#`, so the workflow may name an example registry while a
-# tag built from one still fails.
-check_absent "$DB_WORKFLOW" '^ *registry: *[^$[:space:]]' \
-  'the registry it logs in to comes from a secret'
-check_absent "$DB_WORKFLOW" '^[^#]*[a-z0-9-]+\.[a-z]{2,}/ouroboros-db' \
-  'the registry it pushes to is not written into the workflow'
+  check_exists "$image/Dockerfile" "$image has an image to publish"
+  check_contains "$workflow" '^  publish:$' "$module.yml publishes it"
+  check_contains "$workflow" "^    name: publish/$module\$" \
+    "the publish job reports as publish/$module"
+  # The gate. Without it a red ci/<module> still ships a tag, which is an artefact that
+  # nothing has run.
+  check_contains "$workflow" '^    needs: ci$' \
+    "nothing is published until ci/$module has passed"
+  check_contains "$workflow" "^          file: $image/Dockerfile\$" \
+    "$module.yml builds that Dockerfile"
+  # The `.` is escaped for the match: an unescaped one is an extended-regex wildcard, and
+  # a check that passed on any single-character context would not be checking anything.
+  check_contains "$workflow" "^          context: $(printf '%s' "$context" | sed 's/\./\\./g')\$" \
+    "$module.yml builds it from $context"
+
+  # A push on a pull request is a tag moved by a change nobody has merged — and on a
+  # fork's pull request there are no credentials to push with in the first place. Every
+  # step that needs a secret carries the condition, and there are exactly as many
+  # conditions as there are such steps: a step added later without one fails this rather
+  # than running.
+  publish_secret_steps=$(sed -n '/^  publish:$/,$p' "$workflow" 2>/dev/null |
+    grep -c 'secrets\.DOCKER_' || true)
+  publish_guarded=$(sed -n '/^  publish:$/,$p' "$workflow" 2>/dev/null |
+    grep -cF "if: github.event_name != 'pull_request'" || true)
+  check_matches "$publish_secret_steps" '^[1-9]' \
+    "$module.yml's publish job authenticates to a registry"
+  check_equals 2 "$publish_guarded" \
+    "both of its credentialed steps stop on a pull request"
+  # The build itself is not among them: it runs on every event, which is what makes a
+  # broken Dockerfile a pull request failure rather than a merge failure.
+  check_contains "$workflow" '^          push: false$' \
+    "$module.yml builds the image on a pull request too"
+
+  # `latest` is what a deployment tracking main pulls; the commit is what a rollback
+  # names. These modules are versioned independently and none of them tags a release, so
+  # the sha is the only identifier that says exactly what is inside.
+  check_contains "$workflow" "/$image:latest\$" "the published image is tagged latest"
+  check_contains "$workflow" "/$image:\\\$\\{\\{ github\\.sha \\}\\}\$" \
+    'and with the commit that built it, which is the tag that cannot move'
+  # Which registry this goes to is the deployment's business, not the repository's, and a
+  # hostname written down here is one that a fork of this repository would authenticate
+  # to and publish to. Both ends of that are checked: what it logs in to, and what it
+  # tags — the second anchored past any `#`, so the workflow may name an example registry
+  # in a comment while a tag built from one still fails.
+  check_absent "$workflow" '^ *registry: *[^$[:space:]]' \
+    "the registry $module.yml logs in to comes from a secret"
+  check_absent "$workflow" "^[^#]*[a-z0-9-]+\\.[a-z]{2,}/$image" \
+    "the registry it pushes to is not written into $module.yml"
+done
 
 # ---------------------------------------------------------------------------
 # Documentation

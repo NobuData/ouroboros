@@ -102,7 +102,47 @@ jobs:
         with:
           module: ouroboros-$module
           scaffolded-by: "#0"
+
+  publish:
+    name: publish/$module
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ouroboros-$module/Dockerfile
+          push: false
+
+      - name: Log in to registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: \${{ secrets.DOCKER_HOSTNAME }}
+          username: \${{ secrets.DOCKER_USERNAME }}
+          password: \${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push the image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ouroboros-$module/Dockerfile
+          push: true
+          tags: |
+            \${{ secrets.DOCKER_HOSTNAME }}/ouroboros-$module:latest
+            \${{ secrets.DOCKER_HOSTNAME }}/ouroboros-$module:\${{ github.sha }}
 YAML
+
+    # The image each of those jobs publishes. Only its presence is this script's
+    # business — what is inside it is the module's own container test's.
+    mkdir -p "$fixture/ouroboros-$module"
+    printf 'FROM node:24-alpine\n' > "$fixture/ouroboros-$module/Dockerfile"
   done
 
   cat > "$fixture/.github/workflows/engine.yml" <<'YAML'
@@ -177,7 +217,46 @@ jobs:
         shell: bash
         working-directory: ouroboros-engine
         run: uv run pytest
+
+  publish:
+    name: publish/engine
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-engine
+          file: ouroboros-engine/Dockerfile
+          push: false
+
+      - name: Log in to registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_HOSTNAME }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Push the image
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: ouroboros-engine
+          file: ouroboros-engine/Dockerfile
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_HOSTNAME }}/ouroboros-engine:latest
+            ${{ secrets.DOCKER_HOSTNAME }}/ouroboros-engine:${{ github.sha }}
 YAML
+
+  # The image that job publishes — see the note beside the TypeScript modules'.
+  mkdir -p "$fixture/ouroboros-engine"
+  printf 'FROM python:3.12-slim\n' > "$fixture/ouroboros-engine/Dockerfile"
 
   cat > "$fixture/.github/workflows/db.yml" <<'YAML'
 name: ouroboros-db · ci
@@ -683,9 +762,12 @@ check_break 'a TypeScript step that skips the gate is reported' \
   'every TypeScript step waits for the scaffold' \
   'sed -i "/- name: Lint/{n;d}" "$root/.github/actions/node-module/action.yml"'
 
+# Into the `ci:` job, which is the only job the gate governs — appending to the file would
+# now land the step in `publish:`, where a scaffold condition would be wrong rather than
+# missing. That the publish job needs no gate is what the conforming fixture already says.
 check_break 'an engine step added without the gate is reported' \
   'every engine step waits for the scaffold' \
-  'printf "\n      - name: Extra\n        run: true\n" >> "$root/.github/workflows/engine.yml"'
+  'sed -i "s|^  publish:$|      - name: Extra\n        run: true\n\n  publish:|" "$root/.github/workflows/engine.yml"'
 
 check_break 'a pipeline that activates on the wrong manifest is reported' \
   'activates on a package\.json' \
@@ -819,15 +901,20 @@ check_break 'a development stack that pins no PostgreSQL at all is reported' \
   'sed -i "s|^    image: postgres:17-alpine$|    image: postgres|" "$root/docker-compose.yml"'
 
 # ---------------------------------------------------------------------------
-# The database's published image
+# The published images
 # ---------------------------------------------------------------------------
 
-# The image is the module in the form something other than a laptop applies, so the two
-# things worth breaking are the order — nothing ships that ci/db has not proved — and the
-# rule that a pull request builds it without a credential. Everything else about the
-# image is scripts/verify-dev-env.sh'"'"'s subject and is broken in that suite.
+# An image is its module in the form something other than a laptop runs, so the two things
+# worth breaking are the order — nothing ships that ci/<module> has not proved — and the
+# rule that a pull request builds it without a credential. Everything else about an image
+# is scripts/verify-dev-env.sh'"'"'s subject, or its module'"'"'s own container test'"'"'s,
+# and is broken in those suites.
+#
+# db.yml is the workflow most of these break, because it is the one with the longest-
+# standing publish job; the cases that break another module are the ones that would pass
+# against a check written for db.yml alone.
 
-printf '\nDatabase image violations\n'
+printf '\nPublished image violations\n'
 
 check_break 'a module with no image to publish is reported' \
   'an image to publish' \
@@ -836,6 +923,15 @@ check_break 'a module with no image to publish is reported' \
 check_break 'a workflow that publishes nothing is reported' \
   'db\.yml publishes it' \
   'sed -i "s|^  publish:$|  x-publish:|" "$root/.github/workflows/db.yml"'
+
+# The same, one module over. Without it the loop could be checking db.yml four times.
+check_break 'a TypeScript module that publishes nothing is reported' \
+  'ui\.yml publishes it' \
+  'sed -i "s|^  publish:$|  x-publish:|" "$root/.github/workflows/ui.yml"'
+
+check_break 'an engine image published without waiting for ci/engine is reported' \
+  'until ci/engine has passed' \
+  'sed -i "/^    needs: ci$/d" "$root/.github/workflows/engine.yml"'
 
 check_break 'a publish job under another name is reported' \
   'reports as publish/db' \
@@ -852,8 +948,15 @@ check_break 'a build of some other Dockerfile is reported' \
   'sed -i "s|file: ouroboros-db/Dockerfile|file: Dockerfile|" "$root/.github/workflows/db.yml"'
 
 check_break 'a build context of the whole repository is reported' \
-  'not from the repository root' \
+  'db\.yml builds it from ouroboros-db' \
   'sed -i "s|^          context: ouroboros-db$|          context: .|" "$root/.github/workflows/db.yml"'
+
+# The mirror of it, and the reason the context is checked per module rather than pinned to
+# the module directory for all four: ouroboros-rest is a Yarn workspace, so the root *is*
+# its context and a module-directory build could not run an immutable install at all.
+check_break 'a workspace image built from its own directory is reported' \
+  'rest\.yml builds it from \.' \
+  'sed -i "s|^          context: \.$|          context: ouroboros-rest|" "$root/.github/workflows/rest.yml"'
 
 # A fork'"'"'s pull request carries no secrets, so a credentialed step that runs on one
 # cannot succeed — and on any pull request it would move a tag nobody has merged.
@@ -876,7 +979,7 @@ check_break 'an image published without an immutable tag is reported' \
   'sed -i "/ouroboros-db:\${{ github.sha }}/d" "$root/.github/workflows/db.yml"'
 
 check_break 'an image tagged for a registry written into the workflow is reported' \
-  'not written into the workflow' \
+  'not written into db\.yml' \
   'sed -i "s|\${{ secrets.DOCKER_HOSTNAME }}/ouroboros-db:latest|registry.example.com/ouroboros-db:latest|" "$root/.github/workflows/db.yml"'
 
 check_break 'a login to a registry written into the workflow is reported' \
