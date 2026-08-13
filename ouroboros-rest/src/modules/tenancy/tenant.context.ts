@@ -39,21 +39,36 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { Tenant, TenantRole, User } from "../db/schema";
+import type { Organization, OrganizationRole, User } from "../db/schema";
 
 /**
- * The membership that authorized this request, joined to the person holding it.
+ * The membership that authorized this request.
  *
- * `MemberRow` (`resources.ts`) is the same join, and this is deliberately not that type:
+ * `MemberRow` (`resources.ts`) is a similar shape, and this is deliberately not that type:
  * that one describes what a *listing* selects and is rendered into a resource, and this
  * describes what an authorization decision is made from. They will drift, and when they do
  * the drift should be free.
  */
 export interface ActiveMembership {
-  /** The tenant. */
-  readonly tenant: Tenant;
-  /** What this person may do in it. */
-  readonly role: TenantRole;
+  /**
+   * The workspace this request is operating in.
+   *
+   * An `ouroboros.organization` row since
+   * [#713](https://github.com/NobuData/ouroboros/issues/713) — the field keeps the name
+   * `tenant` because `@CurrentTenant()` keeps its name, and the two should read as one thing.
+   * The tenant *is* the organization; #708 moved the rows and #714 finishes the vocabulary.
+   */
+  readonly tenant: Organization;
+  /**
+   * What this person may do in it.
+   *
+   * **A list, not a word.** `member.role` is un-CHECK-constrained text holding a
+   * comma-separated list where somebody holds more than one role (V005), so a single-role
+   * field would be a claim the database does not make — and would read `"admin,member"` as a
+   * role nothing grants. Ordinarily this holds exactly one entry. It may hold none: see
+   * `organization.repository.ts` on a membership whose every word is unrecognised.
+   */
+  readonly roles: readonly OrganizationRole[];
 }
 
 /** Everything one request knows about who it is and where. */
@@ -116,9 +131,10 @@ export function setTenantContext(values: TenantContextStore): void {
 /**
  * The tenant this request is operating in.
  *
- * @returns The tenant, or `undefined` on a route that needs none — see `@TenantOptional()`.
+ * @returns The workspace, or `undefined` on a route that needs none — see
+ *   `@TenantOptional()`.
  */
-export function currentTenant(): Tenant | undefined {
+export function currentTenant(): Organization | undefined {
   return tenantContext()?.membership?.tenant;
 }
 

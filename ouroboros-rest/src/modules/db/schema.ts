@@ -63,6 +63,23 @@ export const SCHEMA_NAME = "ouroboros";
  */
 export type Stamped = ColumnType<Date, Date | undefined, never>;
 
+/**
+ * The tables BetterAuth owns, which this service reads and does not write.
+ *
+ * `V004` and `V005` are the library's own DDL, and the library is the only thing that writes
+ * those rows — through its adapter, which mints ids, maps field names and converts dates the
+ * way its own routes expect. A hand-written `insert` into `organization` or `member` would be
+ * a second implementation of all three, and the first one to drift would drift silently.
+ *
+ * It is a rule rather than a type, deliberately, after the type was tried: a column of
+ * `ColumnType<T, never, never>` makes Kysely's `Insertable` resolve to `{}`, which accepts
+ * *any* object literal rather than refusing every one — a guarantee that reads as airtight in
+ * the schema and holds nothing at the call site. `organization.repository.spec.ts` enforces
+ * the rule where it can actually be enforced: it reads this module's own source and fails on
+ * a write verb naming either table.
+ */
+export const LIBRARY_OWNED_TABLES = ["organization", "member"] as const;
+
 /** `tenants.status` — the values `tenants_status_valid` admits (V001). */
 export type TenantStatus = "active" | "suspended" | "deleted";
 
@@ -71,6 +88,23 @@ export type TenantRole = "owner" | "admin" | "member" | "viewer";
 
 /** `user_identities.provider` — the values `user_identities_provider_valid` admits (V002). */
 export type IdentityProvider = "github";
+
+/**
+ * `member.role` — what a person may do in one organization (V005).
+ *
+ * The same four words `tenant_members.role` held, which is what made
+ * [#708](https://github.com/NobuData/ouroboros/issues/708) a rename rather than a re-think.
+ * The difference is where the vocabulary is *decided*: V002 pinned it with a check
+ * constraint, and V005 deliberately does not — the list is the organization plugin's
+ * configuration, and `src/auth/organization.roles.ts` is where this service states it.
+ * `organization.roles.spec.ts` asserts the two agree, which is what keeps this union from
+ * becoming a third opinion.
+ *
+ * Because nothing in the database enforces it, a value outside this union is *possible* in a
+ * row — a plugin upgrade, a hand-written insert — and the tenancy code treats one as a role
+ * it does not recognise rather than assuming it away. See `organization.repository.ts`.
+ */
+export type OrganizationRole = "owner" | "admin" | "member" | "viewer";
 
 /**
  * `ouroboros.tenants` — an isolated customer workspace (V001).
@@ -167,6 +201,71 @@ export interface TenantMembersTable {
 }
 
 /**
+ * `ouroboros.organization` — a workspace, as the organization plugin holds one (V005).
+ *
+ * The successor to {@link TenantsTable}: #708 moved every tenant into this table with its id
+ * preserved, and dropped the old one. Names are the *library's* — camelCase, quoted — for
+ * the reason V004's header gives, and this file's rule about mirroring rather than
+ * translating applies with more force here than anywhere: these are the names a
+ * `@better-auth/cli generate` emits, and a drift check that compared translated ones would
+ * compare nothing.
+ *
+ * There is no `status` and no `updated_at`. V001 had both; the plugin's schema has neither,
+ * and adding them would be columns the library never writes and every future `generate`
+ * would report as drift ([#710](https://github.com/NobuData/ouroboros/issues/710)).
+ */
+export interface OrganizationTable {
+  /** The workspace's id. Text, because the library mints its own; V006 preserved uuids. */
+  id: string;
+  /** What a human reads — V001's `display_name` under the library's name for it. */
+  name: string;
+  /** URL- and CLI-safe handle, unique across the installation. */
+  slug: string;
+  /** The workspace's avatar as a URL, or null when none is set. */
+  logo: string | null;
+  /** When it came into being. No `updatedAt` counterpart — the plugin declares none. */
+  createdAt: Date;
+  /**
+   * JSON held as **text**, and `organization_metadata_is_json` keeps it parseable.
+   *
+   * Carries `{"personal": true}` for the organization made for somebody at their first
+   * sign-in — see `src/auth/active.organization.ts`, which is the only thing that writes it.
+   */
+  metadata: string | null;
+}
+
+/**
+ * `ouroboros.member` — a person's role in one organization (V005).
+ *
+ * The successor to {@link TenantMembersTable}, and the table every tenant-scoped request is
+ * authorized against ([#713](https://github.com/NobuData/ouroboros/issues/713)). The
+ * difference from V002 is the key: a membership has a surrogate `id` here, because the
+ * plugin's `removeMember` and `updateMemberRole` address one by a single value, and the
+ * `(organizationId, userId)` pair it used to be keyed on is a unique constraint instead.
+ */
+export interface MemberTable {
+  /** Surrogate key, minted by the library. */
+  id: string;
+  /** The organization. Half of `member_organization_user_key`. `on delete cascade`. */
+  organizationId: string;
+  /** The person — `"user".id`. The other half. `on delete cascade`. */
+  userId: string;
+  /**
+   * What they may do here.
+   *
+   * Typed as text rather than as {@link OrganizationRole} because the column is *not*
+   * check-constrained and holds a **comma-separated list** for a member holding more than
+   * one role (V005's column comment). Narrowing it to the union in the type would be this
+   * file claiming a guarantee the database does not make; `organization.repository.ts` is
+   * where the text becomes roles, and where a word this service does not recognise is
+   * dropped rather than trusted.
+   */
+  role: string;
+  /** When the membership was created. The plugin's only timestamp on it. */
+  createdAt: Date;
+}
+
+/**
  * `ouroboros.github_orgs` — GitHub organisations a tenant has enabled (V003).
  *
  * With {@link GithubReposTable}, the boundary of where Ouroboros may operate: a repo is in
@@ -218,6 +317,8 @@ export interface Database {
   users: UsersTable;
   user_identities: UserIdentitiesTable;
   tenant_members: TenantMembersTable;
+  organization: OrganizationTable;
+  member: MemberTable;
   github_orgs: GithubOrgsTable;
   github_repos: GithubReposTable;
 }
@@ -239,6 +340,8 @@ export const TABLE_COLUMNS = {
   users: ["id", "email", "display_name", "avatar_url", "created_at", "updated_at"],
   user_identities: ["id", "user_id", "provider", "external_id", "created_at", "updated_at"],
   tenant_members: ["tenant_id", "user_id", "role", "invited_at", "joined_at", "updated_at"],
+  organization: ["id", "name", "slug", "logo", "createdAt", "metadata"],
+  member: ["id", "organizationId", "userId", "role", "createdAt"],
   github_orgs: ["id", "tenant_id", "login", "enabled", "installed_at", "created_at", "updated_at"],
   github_repos: ["id", "org_id", "name", "enabled", "default_branch", "created_at", "updated_at"],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
@@ -272,6 +375,24 @@ export type NewUserIdentity = Insertable<UserIdentitiesTable>;
 export type TenantMember = Selectable<TenantMembersTable>;
 /** The columns an `insert` into `ouroboros.tenant_members` may carry. */
 export type NewTenantMember = Insertable<TenantMembersTable>;
+
+/**
+ * A row of `ouroboros.organization`, as a `select` returns it.
+ *
+ * The workspace a request operates in — what `@CurrentTenant()` hands a handler since
+ * [#713](https://github.com/NobuData/ouroboros/issues/713). There is deliberately no
+ * `NewOrganization`: the table is one of {@link LIBRARY_OWNED_TABLES} and nothing here
+ * inserts into it.
+ */
+export type Organization = Selectable<OrganizationTable>;
+
+/**
+ * A row of `ouroboros.member`, as a `select` returns it.
+ *
+ * `role` is the column's raw text — see {@link MemberTable.role}. Nothing outside
+ * `organization.repository.ts` should read it without going through the parse there.
+ */
+export type Member = Selectable<MemberTable>;
 
 /** A row of `ouroboros.github_orgs`, as a `select` returns it. */
 export type GithubOrg = Selectable<GithubOrgsTable>;

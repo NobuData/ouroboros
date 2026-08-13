@@ -90,6 +90,23 @@ export interface SessionRecord {
   readonly userId: string;
   /** When this session stops being honoured, whether or not anybody signs out. */
   readonly expiresAt: Date;
+  /**
+   * `session."activeOrganizationId"` — the workspace this session is acting in (V005).
+   *
+   * The organization plugin adds the column to the session model and returns it with the
+   * session, `active.organization.ts` stamps it when the row is created, and the plugin's
+   * `setActiveOrganization` is the only thing that changes it. That is what makes it *server*
+   * state rather than a client assertion, and it is why
+   * [#713](https://github.com/NobuData/ouroboros/issues/713) resolves the tenant from here in
+   * preference to the `X-Ouro-Tenant` header.
+   *
+   * `null` on a session that is signed in and acting nowhere — somebody who belongs to no
+   * workspace, or whose workspace has since been deleted (V005 nulls the pointer on delete
+   * rather than leaving it dangling). Optional as well as nullable because a session read
+   * from a service configured without the plugin would carry no such field at all, and a
+   * guard that treated the absence as a type error would fail on a state the library permits.
+   */
+  readonly activeOrganizationId?: string | null;
 }
 
 /**
@@ -170,6 +187,22 @@ export function userRow(user: SessionUser): User {
     created_at: user.createdAt,
     updated_at: user.updatedAt,
   };
+}
+
+/**
+ * The workspace a session is acting in.
+ *
+ * A function rather than a property read at three call sites, because "acting nowhere" has
+ * two spellings the library uses interchangeably — the column is `null` and the field is
+ * absent when nothing set it — and code that branches on which one it got would be branching
+ * on nothing.
+ *
+ * @param principal - The session, or nothing on an anonymous route.
+ * @returns The active organization's id, or `undefined` when there is none. One answer for
+ *   both spellings, and for no session at all.
+ */
+export function activeOrganizationOf(principal: Principal | null | undefined): string | undefined {
+  return principal?.session.activeOrganizationId ?? undefined;
 }
 
 /**

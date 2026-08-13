@@ -3,7 +3,7 @@ import { ROUTE_ARGS_METADATA } from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 
 import { AuthController } from "../auth/auth.controller";
-import type { Tenant } from "../db/schema";
+import { FIXTURE_ORGANIZATION } from "./organization.fixture";
 import { CurrentMember, CurrentTenant, TENANT_OPTIONAL, TenantOptional } from "./tenant.decorators";
 import { runWithTenantContext, setTenantContext } from "./tenant.context";
 import { TenantsController } from "./tenants.controller";
@@ -16,14 +16,7 @@ import { TenantsController } from "./tenants.controller";
  * appearing in a diff nobody read.
  */
 
-const TENANT: Tenant = {
-  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  slug: "acme",
-  display_name: "Acme, Inc.",
-  status: "active",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+const TENANT = FIXTURE_ORGANIZATION;
 
 const reflector = new Reflector();
 
@@ -77,14 +70,14 @@ describe("@CurrentTenant()", () => {
 
   it("answers with the tenant the guard established", () => {
     runWithTenantContext(() => {
-      setTenantContext({ membership: { tenant: TENANT, role: "owner" } });
+      setTenantContext({ membership: { tenant: TENANT, roles: ["owner"] } });
 
       expect(currentTenant(undefined, CONTEXT)).toEqual(TENANT);
     });
   });
 
   it("throws on a route with no tenant, rather than handing back undefined", () => {
-    // A handler given `undefined` typed as a `Tenant` is how a query ends up filtered by
+    // A handler given `undefined` typed as a row is how a query ends up filtered by
     // nothing at all. This is a programming mistake and it fails loudly.
     expect(() => currentTenant(undefined, CONTEXT)).toThrow(/no tenant context/);
   });
@@ -93,11 +86,11 @@ describe("@CurrentTenant()", () => {
 describe("@CurrentMember()", () => {
   const currentMember = factoryOf(CurrentMember);
 
-  it("answers with the tenant and the role together", () => {
+  it("answers with the workspace and the roles together", () => {
     runWithTenantContext(() => {
-      setTenantContext({ membership: { tenant: TENANT, role: "admin" } });
+      setTenantContext({ membership: { tenant: TENANT, roles: ["admin"] } });
 
-      expect(currentMember(undefined, CONTEXT)).toEqual({ tenant: TENANT, role: "admin" });
+      expect(currentMember(undefined, CONTEXT)).toEqual({ tenant: TENANT, roles: ["admin"] });
     });
   });
 

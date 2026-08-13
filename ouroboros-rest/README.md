@@ -1048,6 +1048,14 @@ Two consequences worth knowing:
 ([#32](https://github.com/NobuData/ouroboros/issues/32)), and that is resolved once, in one
 place, rather than re-implemented per controller.
 
+**Where that workspace comes from changed in
+[#713](https://github.com/NobuData/ouroboros/issues/713).** #32 let the client assert it with
+a header, checked against `tenant_members`; the session now carries an active organization
+([#704](https://github.com/NobuData/ouroboros/issues/704)) and
+[#708](https://github.com/NobuData/ouroboros/issues/708) dropped the table the old check
+read. So the session is the source of truth, the header is an override, and membership is
+checked against `member`.
+
 ```
 request ─▶ middleware ─▶ AuthGuard ─▶ TenantContextGuard ─▶ RolesGuard ─▶ handler
            opens the      who is        which workspace,      may they
@@ -1060,16 +1068,32 @@ request ─▶ middleware ─▶ AuthGuard ─▶ TenantContextGuard ─▶ Role
 Three sources, most specific first:
 
 1. **The `{tenantId}` in the path**, on the routes that have one.
-2. **The `X-Ouro-Tenant` header** — a slug or a uuid. This is how a workspace switcher names
-   the active workspace on a route with no workspace in its path, which is every route the
-   epic adds after this one.
-3. **A sole membership.** Somebody who belongs to exactly one workspace is unambiguously
-   operating in it. Somebody who belongs to several is asked to say which, with a `422` and
-   `code: "tenant_required"`.
+2. **The `X-Ouro-Tenant` header** — a slug or a uuid, and an explicit per-request *override*.
+   It is how one request steps outside the active workspace without changing where every
+   other request in flight is acting.
+3. **The session's `activeOrganizationId`.** The ordinary case, and what carries every
+   request a browser makes. It is server state: `POST /api/auth/organization/set-active`
+   writes it, session creation stamps it (`src/auth/active.organization.ts`), and no header
+   can assert it.
 
 A path and a header that name **different** workspaces are a `422` with
 `code: "tenant_mismatch"` rather than a silent preference for either — a client holding a
-stale workspace in a header would otherwise quietly act on another one.
+stale workspace in a header would otherwise quietly act on another one. A header and a
+*session* that disagree are not a conflict: that is what an override is.
+
+A session acting **nowhere**, on a request that names no workspace either, is a `400` with
+`code: "organization_required"` — *choose a workspace*, which is what mockup 01 Step 2 and
+the workspace switcher are for. Three states reach it and all three have the same remedy: a
+person who belongs to nothing yet, one whose workspace was deleted (V005 nulls the pointer),
+and one who was removed from the workspace they were acting in. It replaces #32's
+`422 tenant_required`; nothing is inferred from how many workspaces somebody belongs to any
+more, because the choice is now made once and stored.
+
+The **role** comes from `member.role`, which V005 deliberately leaves un-CHECK-constrained —
+the vocabulary is the organization plugin's configuration (`src/auth/organization.roles.ts`)
+rather than the schema's. Two consequences are handled in `organization.repository.ts`: the
+column holds a comma-separated list where somebody holds more than one role, and a word this
+service does not recognise grants nothing rather than being trusted.
 
 ### What an outsider is told
 

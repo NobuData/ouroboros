@@ -20,7 +20,12 @@ import { Injectable, type CanActivate, type ExecutionContext } from "@nestjs/com
 import { Reflector } from "@nestjs/core";
 
 import { isAnonymous } from "../auth/anonymous";
-import { principalOf, userRow, type PrincipalRequest } from "../auth/principal";
+import {
+  activeOrganizationOf,
+  principalOf,
+  userRow,
+  type PrincipalRequest,
+} from "../auth/principal";
 import { setTenantContext } from "./tenant.context";
 import { TENANT_OPTIONAL } from "./tenant.decorators";
 import {
@@ -59,9 +64,11 @@ export class TenantContextGuard implements CanActivate {
    * @returns `true` — always, when it returns at all. A guard's `false` is a bare `403` with
    *   no envelope and nothing to act on, so every refusal here is a thrown `DomainError`
    *   that `error.filter.ts` renders like any other failure.
-   * @throws {NotFoundError} `404 tenant_not_found` — no such tenant, or none this caller may
-   *   know about. The issue's first acceptance criterion, and one answer for both cases.
-   * @throws {InvalidRequestError} `422 tenant_required` or `422 tenant_mismatch`.
+   * @throws {NotFoundError} `404 tenant_not_found` — no such workspace, or none this caller
+   *   may know about. The issue's first acceptance criterion, and one answer for both cases.
+   * @throws {InvalidRequestError} `422 tenant_mismatch`.
+   * @throws {BadRequestError} `400 organization_required` — the session is acting nowhere and
+   *   the request named nothing.
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (isAnonymous(this.reflector, context)) {
@@ -101,7 +108,16 @@ export class TenantContextGuard implements CanActivate {
       return true;
     }
 
-    const membership = await this.resolver.resolve(user, request.headers, request.params);
+    const membership = await this.resolver.resolve({
+      userId: user.id,
+      // The session's own pointer, which is the primary source since
+      // [#713](https://github.com/NobuData/ouroboros/issues/713). It is read here rather than
+      // in the resolver because this is the one stage that holds the request: the resolver is
+      // given facts, not a request, so a spec can state a session without building one.
+      activeOrganizationId: activeOrganizationOf(principal),
+      headers: request.headers,
+      params: request.params,
+    });
 
     setTenantContext({ membership });
 

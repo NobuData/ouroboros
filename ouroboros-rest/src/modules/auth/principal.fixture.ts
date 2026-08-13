@@ -32,18 +32,36 @@ export const FIXTURE_USER: SessionUser = {
 };
 
 /**
+ * The workspace a fixture session is acting in — `session."activeOrganizationId"` (V005).
+ *
+ * A uuid spelled as text, because that is what a real pointer holds: V006 carried
+ * `tenants.id` into `organization."id"` unchanged. `tenancy/organization.fixture.ts` builds
+ * its workspace with this same value, so a session and the row it points at agree across the
+ * two suites that use both — which is the thing a resolver test would otherwise assert by
+ * coincidence.
+ */
+export const FIXTURE_ACTIVE_ORGANIZATION = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
+
+/**
  * A session, as the guard resolved it.
  *
  * @param user - Whose. Defaults to {@link FIXTURE_USER}.
+ * @param activeOrganizationId - Where it is acting. Defaults to
+ *   {@link FIXTURE_ACTIVE_ORGANIZATION}; pass `null` for the signed-in-and-acting-nowhere
+ *   session that [#713](https://github.com/NobuData/ouroboros/issues/713) answers `400` for.
  * @returns The principal a `@Session()` parameter would be handed.
  */
-export function principalFor(user: SessionUser = FIXTURE_USER): Principal {
+export function principalFor(
+  user: SessionUser = FIXTURE_USER,
+  activeOrganizationId: string | null = FIXTURE_ACTIVE_ORGANIZATION,
+): Principal {
   return {
     session: {
       id: "5e551000-0000-4000-8000-000000000001",
       token: "a-session-token",
       userId: user.id,
       expiresAt: new Date("2026-08-18T10:20:23.114Z"),
+      activeOrganizationId,
     },
     user,
   };

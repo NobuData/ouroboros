@@ -5,7 +5,8 @@ import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 
 import { SESSION_PROPERTY, userRow } from "../auth/principal";
 import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
-import type { Tenant, User } from "../db/schema";
+import type { User } from "../db/schema";
+import { FIXTURE_ORGANIZATION, membershipIn } from "./organization.fixture";
 import { currentMembership, currentUser, runWithTenantContext } from "./tenant.context";
 import { TenantOptional } from "./tenant.decorators";
 import { TenantContextGuard, type TenantRequest } from "./tenant.guard";
@@ -20,14 +21,10 @@ import type { TenantResolver } from "./tenant.resolver";
  * for a resolution.
  */
 
-const TENANT: Tenant = {
-  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  slug: "acme",
-  display_name: "Acme, Inc.",
-  status: "active",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+const TENANT = FIXTURE_ORGANIZATION;
+
+/** The membership the resolver answers with, unless a test says otherwise. */
+const MEMBERSHIP = membershipIn(["member"]);
 
 /** The person the session names, in the shape the tenancy code reads them. */
 const USER: User = userRow(FIXTURE_USER);
@@ -81,7 +78,7 @@ function signedInRequest(extra: Partial<TenantRequest> = {}): TenantRequest {
 /** A resolver that answers with a membership in {@link TENANT}. */
 function resolverDouble(): jest.Mocked<TenantResolver> {
   return {
-    resolve: jest.fn().mockResolvedValue({ tenant: TENANT, role: "member" }),
+    resolve: jest.fn().mockResolvedValue(MEMBERSHIP),
   } as unknown as jest.Mocked<TenantResolver>;
 }
 
@@ -97,11 +94,11 @@ describe("a route with neither opt-out", () => {
         contextFor(ScopedController, ScopedController.prototype.handler, signedInRequest()),
       );
 
-      expect(currentMembership()).toEqual({ tenant: TENANT, role: "member" });
+      expect(currentMembership()).toEqual(MEMBERSHIP);
     });
   });
 
-  it("hands the resolver the person, the headers and the parameters", async () => {
+  it("hands the resolver the person, the session's workspace, the headers and the parameters", async () => {
     const resolver = resolverDouble();
     const guard = new TenantContextGuard(new Reflector(), resolver);
     const request = signedInRequest({
@@ -113,7 +110,48 @@ describe("a route with neither opt-out", () => {
       guard.canActivate(contextFor(ScopedController, ScopedController.prototype.handler, request)),
     );
 
-    expect(resolver.resolve).toHaveBeenCalledWith(USER, request.headers, request.params);
+    expect(resolver.resolve).toHaveBeenCalledWith({
+      userId: USER.id,
+      activeOrganizationId: TENANT.id,
+      headers: request.headers,
+      params: request.params,
+    });
+  });
+
+  it("reads the workspace off the session, which is where the plugin keeps it", async () => {
+    // The primary source since #713, and the whole reason the header could be demoted: this
+    // value is written by `setActiveOrganization` and by session creation, so a client cannot
+    // assert it.
+    const resolver = resolverDouble();
+    const guard = new TenantContextGuard(new Reflector(), resolver);
+    const request = signedInRequest({
+      [SESSION_PROPERTY]: principalFor(FIXTURE_USER, FIXTURE_ORGANIZATION.id),
+    });
+
+    await runWithTenantContext(() =>
+      guard.canActivate(contextFor(ScopedController, ScopedController.prototype.handler, request)),
+    );
+
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ activeOrganizationId: FIXTURE_ORGANIZATION.id }),
+    );
+  });
+
+  it("passes a session acting nowhere along as nothing, rather than refusing here", async () => {
+    // "No active workspace" is a state the session column exists to hold, and what to answer
+    // for it is the resolver's decision — a `400` a client can act on, not a guard's silent
+    // `false`.
+    const resolver = resolverDouble();
+    const guard = new TenantContextGuard(new Reflector(), resolver);
+    const request = signedInRequest({ [SESSION_PROPERTY]: principalFor(FIXTURE_USER, null) });
+
+    await runWithTenantContext(() =>
+      guard.canActivate(contextFor(ScopedController, ScopedController.prototype.handler, request)),
+    );
+
+    expect(resolver.resolve).toHaveBeenCalledWith(
+      expect.objectContaining({ activeOrganizationId: undefined }),
+    );
   });
 
   it("lets the resolver's refusal through unchanged", async () => {

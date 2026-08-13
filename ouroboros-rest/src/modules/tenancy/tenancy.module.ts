@@ -9,6 +9,7 @@ import { DomainsService } from "./domains.service";
 import { MembersController } from "./members.controller";
 import { MembersRepository } from "./members.repository";
 import { MembersService } from "./members.service";
+import { OrganizationRepository } from "./organization.repository";
 import { OrgsController } from "./orgs.controller";
 import { RolesGuard } from "./roles.guard";
 import { TenantContextGuard } from "./tenant.guard";
@@ -78,6 +79,10 @@ import { TenantsService } from "./tenants.service";
     TenantsRepository,
     DomainsRepository,
     MembersRepository,
+    // The one repository the tenant context reads through — `organization` and `member`, the
+    // tables #708 moved tenancy into. The three above it still name the tables #708 dropped;
+    // reconciling them is #714's, which is the issue that rewrites their callers.
+    OrganizationRepository,
     OrgsRepository,
     TenantsService,
     DomainsService,

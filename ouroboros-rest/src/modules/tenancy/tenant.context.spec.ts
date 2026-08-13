@@ -1,4 +1,5 @@
-import type { Tenant, User } from "../db/schema";
+import type { Organization, User } from "../db/schema";
+import { FIXTURE_ORGANIZATION, FIXTURE_OTHER_ORGANIZATION } from "./organization.fixture";
 import {
   currentMembership,
   currentTenant,
@@ -18,16 +19,9 @@ import {
  * from two overlapping requests at once.
  */
 
-const TENANT: Tenant = {
-  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  slug: "acme",
-  display_name: "Acme, Inc.",
-  status: "active",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+const TENANT = FIXTURE_ORGANIZATION;
 
-const OTHER: Tenant = { ...TENANT, id: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94", slug: "globex" };
+const OTHER = FIXTURE_OTHER_ORGANIZATION;
 
 const USER: User = {
   id: "5eed0003-0000-4000-8000-000000000001",
@@ -63,11 +57,11 @@ describe("inside a request", () => {
 
   it("holds what the guard wrote", () => {
     runWithTenantContext(() => {
-      setTenantContext({ user: USER, membership: { tenant: TENANT, role: "owner" } });
+      setTenantContext({ user: USER, membership: { tenant: TENANT, roles: ["owner"] } });
 
       expect(currentUser()).toEqual(USER);
       expect(currentTenant()).toEqual(TENANT);
-      expect(currentMembership()).toEqual({ tenant: TENANT, role: "owner" });
+      expect(currentMembership()).toEqual({ tenant: TENANT, roles: ["owner"] });
     });
   });
 
@@ -75,7 +69,7 @@ describe("inside a request", () => {
     // The guard writes the person first, and the membership only if the route needs one.
     runWithTenantContext(() => {
       setTenantContext({ user: USER });
-      setTenantContext({ membership: { tenant: TENANT, role: "viewer" } });
+      setTenantContext({ membership: { tenant: TENANT, roles: ["viewer"] } });
 
       expect(currentUser()).toEqual(USER);
       expect(currentTenant()).toEqual(TENANT);
@@ -92,7 +86,7 @@ describe("across asynchrony", () => {
     // The property the whole design rests on. Without it, a service reading `currentTenant()`
     // after its first query would read nothing.
     await runWithTenantContext(async () => {
-      setTenantContext({ membership: { tenant: TENANT, role: "owner" } });
+      setTenantContext({ membership: { tenant: TENANT, roles: ["owner"] } });
 
       await Promise.resolve();
       await new Promise((resolve) => setTimeout(resolve, 1));
@@ -102,15 +96,15 @@ describe("across asynchrony", () => {
   });
 
   it("survives arbitrary call depth", async () => {
-    async function third(): Promise<Tenant | undefined> {
+    async function third(): Promise<Organization | undefined> {
       await Promise.resolve();
       return currentTenant();
     }
-    const second = (): Promise<Tenant | undefined> => third();
-    const first = (): Promise<Tenant | undefined> => second();
+    const second = (): Promise<Organization | undefined> => third();
+    const first = (): Promise<Organization | undefined> => second();
 
     await runWithTenantContext(async () => {
-      setTenantContext({ membership: { tenant: TENANT, role: "owner" } });
+      setTenantContext({ membership: { tenant: TENANT, roles: ["owner"] } });
 
       expect(await first()).toEqual(TENANT);
     });
@@ -120,9 +114,9 @@ describe("across asynchrony", () => {
     // Two requests are in flight at once on one process constantly. A store that leaked
     // between them would be one tenant's data answered into another's request, which is the
     // single worst failure this module could have.
-    const request = async (tenant: Tenant): Promise<string | undefined> =>
+    const request = async (tenant: Organization): Promise<string | undefined> =>
       runWithTenantContext(async () => {
-        setTenantContext({ membership: { tenant, role: "owner" } });
+        setTenantContext({ membership: { tenant, roles: ["owner"] } });
         await new Promise((resolve) => setTimeout(resolve, tenant === TENANT ? 5 : 1));
         return currentTenant()?.slug;
       });
@@ -132,7 +126,7 @@ describe("across asynchrony", () => {
 
   it("does not leak out of the request that opened it", async () => {
     await runWithTenantContext(async () => {
-      setTenantContext({ membership: { tenant: TENANT, role: "owner" } });
+      setTenantContext({ membership: { tenant: TENANT, roles: ["owner"] } });
       await Promise.resolve();
     });
 

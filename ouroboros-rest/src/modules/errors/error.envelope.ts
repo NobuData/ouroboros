@@ -56,8 +56,9 @@ export interface ErrorEnvelope {
 /**
  * An error this service raised on purpose, carrying the envelope a client will read.
  *
- * Subclass rather than construct: {@link UnauthenticatedError}, {@link ForbiddenError},
- * {@link NotFoundError}, {@link ConflictError}, {@link InvalidRequestError} and
+ * Subclass rather than construct: {@link BadRequestError}, {@link UnauthenticatedError},
+ * {@link ForbiddenError}, {@link NotFoundError}, {@link ConflictError},
+ * {@link InvalidRequestError} and
  * {@link UpstreamError} are the statuses this API answers with, and naming one at a call
  * site is what makes the status readable there. A caller that needs another adds a subclass
  * here rather than passing a number through a service.
@@ -157,6 +158,26 @@ export class ForbiddenError extends DomainError {
 export class NotFoundError extends DomainError {
   constructor(code: string, message: string, details: ErrorDetails = {}) {
     super(HttpStatus.NOT_FOUND, code, message, details);
+  }
+}
+
+/**
+ * `400` — the request cannot be acted on as it stands, and the caller has to change
+ * something *about the request* before it can be.
+ *
+ * Deliberately narrow, and distinct from {@link InvalidRequestError} on the axis that file's
+ * `422` is chosen for: a `422` says *this value is not acceptable* and names the field, while
+ * this says *the request is missing a thing no field of it carries*. The one case today is
+ * [#713](https://github.com/NobuData/ouroboros/issues/713)'s `organization_required` — the
+ * session names no active workspace and the request named none either, so there is no field
+ * to complain about and nothing about the body is wrong. A `422` there would send a UI
+ * looking for `details.fields` that will never be populated; a `404` would be a lie about
+ * something existing. The action is *choose a workspace*, and `400` with a code that says so
+ * is the answer a client can act on.
+ */
+export class BadRequestError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.BAD_REQUEST, code, message, details);
   }
 }
 
