@@ -60,7 +60,7 @@ const refresh = vi.fn();
 
 vi.mock("next/cache", () => ({ refresh: () => refresh() }));
 
-const { chooseWorkspace, setOrgEnabled, setRepoEnabled } = await import(
+const { chooseWorkspace, discoverDomain, setOrgEnabled, setRepoEnabled } = await import(
   "@/app/login/actions"
 );
 const { resetApiClient } = await import("@/app/api/server");
@@ -68,11 +68,23 @@ const { resetApiClient } = await import("@/app/api/server");
 /** The base URL every request below is expected to be built against. */
 const BASE_URL = "http://rest.test:4000";
 
+/** The one public route on this screen — #712's domain discovery. */
+const DISCOVER_PATH = "/api/v1/auth/discover";
+
 /** Every request the stubbed global `fetch` was handed. */
 let requests: Request[] = [];
 
 /** What this person belongs to, for this case. `null` is nobody signed in. */
 let memberships: Membership[] | null = [membership()];
+
+/** What `POST /api/v1/auth/discover` answers, for this case. */
+let discovery: { status: number; body: unknown } = {
+  status: 200,
+  body: {
+    ssoAvailable: false,
+    message: "Enterprise SSO is not configured yet — sign in with GitHub for now.",
+  },
+};
 
 /**
  * A form carrying exactly the named fields.
@@ -93,6 +105,13 @@ beforeEach(() => {
   refresh.mockClear();
   requests = [];
   memberships = [membership()];
+  discovery = {
+    status: 200,
+    body: {
+      ssoAvailable: false,
+      message: "Enterprise SSO is not configured yet — sign in with GitHub for now.",
+    },
+  };
   resetApiClient();
   resetRestUrlCache();
   process.env.OURO_REST_URL = BASE_URL;
@@ -103,6 +122,17 @@ beforeEach(() => {
   vi.stubGlobal("fetch", (input: Request | URL | string) => {
     const url = requestedUrl(input);
     if (input instanceof Request) requests.push(input);
+
+    // The discovery route answers per case, because it is the one call here whose *body* is
+    // the thing under test rather than the request that produced it.
+    if (url.includes(DISCOVER_PATH)) {
+      return Promise.resolve(
+        new Response(JSON.stringify(discovery.body), {
+          status: discovery.status,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }
 
     const body = isAuthUrl(url) ? authAnswer(url, memberships) : { id: "row", enabled: true };
 
@@ -358,5 +388,155 @@ describe("setRepoEnabled", () => {
     );
 
     expect(writes()[0]?.url).toContain("/repos/docs.site-v2");
+  });
+});
+
+/**
+ * The one submission that reads rather than writes.
+ *
+ * Its cases are shaped by the criterion that made it exist: *known seeded domain and unknown
+ * domain both render designed states, driven by the response, not a constant*. So what is
+ * asserted is that the sentence comes back from the service in every branch, that the branch
+ * itself is the service's `ssoAvailable` and not this application's opinion, and that a
+ * failure is a state to render rather than an error boundary over a sign-in screen.
+ *
+ * The `waiting` state is what `useActionState` is initialised with and never what this
+ * returns, so every case here passes it in and expects something else.
+ */
+describe("discoverDomain", () => {
+  /** The state the form is rendered in before anything has been submitted. */
+  const WAITING = { status: "waiting" } as const;
+
+  it("submits the domain to the public discovery route", async () => {
+    await discoverDomain(WAITING, form({ domain: "acme-robotics.dev" }));
+
+    const asked = writes().find((request) => request.url.includes(DISCOVER_PATH));
+
+    expect(asked?.method).toBe("POST");
+    expect(await asked?.clone().json()).toEqual({ domain: "acme-robotics.dev" });
+  });
+
+  it("renders the service's own sentence for a domain a workspace holds", async () => {
+    // The seeded domain (`ouroboros-db/migrations/R__dev_seed.sql`). The endpoint answers the
+    // same body for it as for anything else, deliberately — that uniformity is what stops it
+    // being a way to ask *is this company a customer* — so what the card can say is what came
+    // back, and this is the case that pins it.
+    await expect(
+      discoverDomain(WAITING, form({ domain: "acme-robotics.dev" })),
+    ).resolves.toEqual({
+      status: "answered",
+      ssoAvailable: false,
+      message: "Enterprise SSO is not configured yet — sign in with GitHub for now.",
+    });
+  });
+
+  it("renders the same state for a domain nothing has ever heard of", async () => {
+    await expect(
+      discoverDomain(WAITING, form({ domain: "nobody.example" })),
+    ).resolves.toMatchObject({ status: "answered", ssoAvailable: false });
+  });
+
+  it("takes the flag from the answer, so #722 needs no change here", async () => {
+    discovery = {
+      status: 200,
+      body: { ssoAvailable: true, message: "Taking you to your identity provider…" },
+    };
+
+    await expect(
+      discoverDomain(WAITING, form({ domain: "acme-robotics.dev" })),
+    ).resolves.toEqual({
+      status: "answered",
+      ssoAvailable: true,
+      message: "Taking you to your identity provider…",
+    });
+  });
+
+  it("follows the identity provider when the answer names one", async () => {
+    discovery = {
+      status: 200,
+      body: {
+        ssoAvailable: true,
+        message: "Taking you to your identity provider…",
+        redirectUrl: "/api/auth/sso/saml2/acme",
+      },
+    };
+
+    await expect(
+      discoverDomain(WAITING, form({ domain: "acme-robotics.dev" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
+    expect(redirect).toHaveBeenCalledWith("/api/auth/sso/saml2/acme");
+  });
+
+  it("goes nowhere for a destination a browser would execute", async () => {
+    // The service is trusted and this is still refused: a compromised one sending
+    // `javascript:` must not find a client that follows it.
+    discovery = {
+      status: 200,
+      body: {
+        ssoAvailable: true,
+        message: "Taking you to your identity provider…",
+        redirectUrl: "javascript:alert(1)",
+      },
+    };
+
+    await expect(
+      discoverDomain(WAITING, form({ domain: "acme-robotics.dev" })),
+    ).resolves.toMatchObject({ status: "answered", ssoAvailable: true });
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("names the field when the service refuses the value", async () => {
+    discovery = {
+      status: 422,
+      body: {
+        code: "validation_failed",
+        message: "The request is not valid. See `details` for each field.",
+        details: { domain: ["domain must be a company domain, such as acme.ouroboros.dev"] },
+      },
+    };
+
+    await expect(discoverDomain(WAITING, form({ domain: "not a domain" }))).resolves.toEqual({
+      status: "refused",
+      message: "domain must be a company domain, such as acme.ouroboros.dev",
+    });
+  });
+
+  it("returns a refusal rather than throwing, so the screen survives a bad domain", async () => {
+    // A throw from a Server Action reaches the route's error boundary, which would replace
+    // the sign-in screen with an error page over a typo in one field.
+    discovery = {
+      status: 500,
+      body: { code: "internal_error", message: "The service failed.", details: {} },
+    };
+
+    await expect(
+      discoverDomain(WAITING, form({ domain: "acme-robotics.dev" })),
+    ).resolves.toMatchObject({ status: "refused" });
+  });
+
+  it("refuses a blank submission without spending a request on it", async () => {
+    // The browser's `required` catches this first; a form posted by hand does not.
+    await expect(discoverDomain(WAITING, form({ domain: "   " }))).resolves.toMatchObject({
+      status: "refused",
+      message: expect.stringContaining("company domain"),
+    });
+    expect(writes().filter((request) => request.url.includes(DISCOVER_PATH))).toHaveLength(0);
+  });
+
+  it("refuses a form with no domain field at all", async () => {
+    await expect(discoverDomain(WAITING, form({}))).resolves.toMatchObject({
+      status: "refused",
+    });
+  });
+
+  it("asks without a session, because the endpoint is public and its caller has none", async () => {
+    // The whole point of `anonymousApi()`: `api()`'s `401` handler would send this request to
+    // the login screen, which is the page asking.
+    memberships = null;
+
+    await expect(
+      discoverDomain(WAITING, form({ domain: "acme-robotics.dev" })),
+    ).resolves.toMatchObject({ status: "answered" });
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

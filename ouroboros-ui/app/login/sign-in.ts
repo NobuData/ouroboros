@@ -1,49 +1,74 @@
 /**
- * How a sign-in *begins* — the one request, and what its answer means.
+ * How a sign-in *begins* — the one call, and what its answer means.
  *
- * **This is the shape [#702](https://github.com/NobuData/ouroboros/issues/702) changed, and
- * the reason the login screen had to be re-wired.** #33's flow was a `GET` that answered
- * `302` to github.com, so an `<a href>` was the whole implementation. BetterAuth's is a
- * `POST` that answers `{ url }` and lets the caller decide what to do with it, so beginning a
- * sign-in is now a request with a body — and something has to make it.
+ * **This is BetterAuth's own client since
+ * [#718](https://github.com/NobuData/ouroboros/issues/718).** The module it replaces was a
+ * hand-written `POST` to `/api/auth/sign-in/social`, written in
+ * [#702](https://github.com/NobuData/ouroboros/issues/702) when that flow arrived and
+ * `app/api/auth-client.ts` did not yet exist; it composed the path, the body, the
+ * `credentials` and the failure envelope itself, and every one of those is now the library's.
+ * The reason for the move is the reason #716 configured the client at all: `signIn.social` is
+ * typed against the route table the service actually mounts, so a route that changes shape is
+ * a compile error here rather than a `404` a person meets after pressing the button.
  *
  * ### Why this is a shape rather than a function per provider
  *
  * The card offers GitHub today and is drawn around offering more: the mockup gives enterprise
- * SSO equal weight, and [#712](https://github.com/NobuData/ouroboros/issues/712) is the
- * domain-discovery endpoint behind it. Those do not all arrive on one route — BetterAuth's
- * social providers share `POST /sign-in/social` and distinguish themselves in the *body*,
- * while its SSO plugin answers on a route of its own. So what is written down here is the
- * **request**, not the provider: a path and a body. {@link socialSignIn} builds one for any
- * configured social provider, a second builder is what an SSO route needs, and
- * {@link beginSignIn} — the part with the failure handling in it — never learns which is
- * which.
+ * SSO equal weight, and the SSO plugin answers on a route of its own rather than on this one.
+ * So what is written down here is a {@link SignInStart} — *which sign-in*, as a value — and
+ * not a provider: {@link socialSignIn} builds one, an SSO builder is a second function
+ * returning a second `kind`, {@link beginSignIn} is the one place that turns either into a
+ * call, and `sign-in-button.tsx` never learns which is which.
  *
  * That is what "compatible with additional SSO types" means concretely: adding Google, or
- * GitLab, or the SSO plugin, is a builder and a button, and nothing in this file's
+ * GitLab, or the SSO plugin is a `kind`, a branch and a button, and nothing in this file's
  * error handling, navigation or suites moves.
  *
- * ### Why it is not typed against the generated client
+ * **It is a value rather than a thunk, and that is a hard constraint rather than a taste.**
+ * The card is a Server Component and the button is a Client Component, so whatever passes
+ * between them is serialised — *"functions cannot be passed directly to Client Components"*,
+ * which is a `500` on the login route rather than a type error, and is what a first run of
+ * this issue's rewrite produced. It was a `{path, body}` pair before #718 for exactly this
+ * reason; the pair is now a `kind` because the transport moved from a path to a method call,
+ * but the property that made it work is unchanged.
  *
- * The auth family is excluded from code generation
- * ([#711](https://github.com/NobuData/ouroboros/issues/711)) — `app/api/schema.d.ts` has no
- * entry for these paths — and this one is called from the *browser*, where
- * `app/api/auth-server.ts` cannot go: that module is `server-only`, because it forwards
- * `HttpOnly` cookies and knows the service's address. This travels same-origin through
- * `proxy.ts` instead and needs neither.
+ * ### Why the redirect is refused and then made here
  *
- * **BetterAuth's client can now make this call itself** —
- * [#716](https://github.com/NobuData/ouroboros/issues/716) landed `signIn.social` in
- * `app/api/auth-client.ts`, on the same path and with the same body. Re-pointing the button
- * at it, and retiring this module with the shape it was written to prove, is
- * [#718](https://github.com/NobuData/ouroboros/issues/718)'s work rather than #716's.
+ * BetterAuth's client ships a `redirect` plugin that assigns `window.location.href` itself
+ * whenever an answer carries `{url, redirect: true}` (`better-auth/dist/client/fetch-plugins.mjs`),
+ * inside a `try {} catch {}` that swallows whatever goes wrong. Two navigations for one press
+ * is the least of what that costs: a departure nothing can observe is a departure the button
+ * cannot report having failed, and the pending state it leaves behind would be a lie.
  *
- * Framework-free on purpose, the way `app/api/membership.ts` is: the rules are testable
- * without a DOM, and `sign-in-button.tsx` is left holding nothing but the press.
+ * So every call here sends `disableRedirect: true` — the library's own option for exactly
+ * this — which makes the service answer `{url, redirect: false}` and send no `Location`
+ * header, and the plugin then does nothing. The one navigation is `sign-in-button.tsx`'s, on
+ * a value this module returned, past a seam a suite can hold.
+ *
+ * Framework-free apart from the client, the way `app/api/membership.ts` is: the rules are
+ * testable without a DOM, and `sign-in-button.tsx` is left holding nothing but the press.
  */
 
-/** Where BetterAuth begins a social sign-in. Same-origin — `proxy.ts` forwards it. */
+import { signIn } from "@/app/api/auth-client";
+
+/**
+ * Where BetterAuth begins a social sign-in, same-origin — `proxy.ts` forwards it.
+ *
+ * Not used to compose a request any more; the client does that. It is kept because it is the
+ * route this module is *about*, and because `sign-in.test.ts` asserts the client addresses it
+ * — the check that would catch a base path or a proxy matcher drifting apart.
+ */
 export const SOCIAL_SIGN_IN_PATH = "/api/auth/sign-in/social";
+
+/**
+ * Which providers `signIn.social` accepts, read off the client rather than restated.
+ *
+ * BetterAuth validates `provider` against an enum of the social providers it knows
+ * (`better-auth/dist/api/routes/sign-in.mjs`), and the client is typed from it. Deriving the
+ * type here means a provider this build has no support for is a compile error at the call
+ * site instead of a `400` at the end of a press.
+ */
+export type SocialProvider = Parameters<typeof signIn.social>[0]["provider"];
 
 /**
  * The GitHub provider's id, as `ouroboros-rest` configures it.
@@ -53,47 +78,28 @@ export const SOCIAL_SIGN_IN_PATH = "/api/auth/sign-in/social";
  * than shared because the two modules do not build together; the string is part of the wire
  * contract, like the path above it.
  */
-export const GITHUB_PROVIDER = "github";
+export const GITHUB_PROVIDER = "github" satisfies SocialProvider;
 
 /**
- * One request that begins a sign-in.
+ * Which sign-in to begin — everything {@link beginSignIn} needs, and nothing that cannot
+ * cross the Server/Client boundary.
  *
- * @property path Same-origin, beginning with a slash.
- * @property body What distinguishes this sign-in from another on the same path — `provider`
- *   for a social one, and whatever an SSO route asks for when there is one.
+ * A union of one today. That is deliberate rather than premature: the discriminator is what
+ * lets the SSO plugin's route arrive as a second member without `SignInButton`'s prop type
+ * moving, and a second member is where the shape stops looking like an over-wrapped string.
  */
-export interface SignInRequest {
-  readonly path: string;
-  readonly body: Readonly<Record<string, string>>;
-}
-
-/**
- * Begin a social sign-in with a configured provider.
- *
- * @param provider The provider's id — {@link GITHUB_PROVIDER} today, and any other the
- *   service configures. An id `ouroboros-rest` has no provider for is a `400` from
- *   BetterAuth rather than an error here: which providers exist is the service's fact, and a
- *   list duplicated in the browser would be one more thing that can disagree.
- * @returns The request to make.
- */
-export function socialSignIn(provider: string): SignInRequest {
-  return { path: SOCIAL_SIGN_IN_PATH, body: { provider } };
-}
-
-/** What BetterAuth answers a sign-in request with. */
-interface SignInAnswer {
-  /** Where to send the browser. Absent when the flow does not begin with a navigation. */
-  url?: string;
-  /** Whether the caller is expected to follow {@link url}. */
-  redirect?: boolean;
-}
+export type SignInStart =
+  /** A configured social provider — BetterAuth's `POST /sign-in/social`. */
+  { readonly kind: "social"; readonly provider: SocialProvider };
 
 /**
  * A sign-in that did not begin.
  *
  * Carries a message fit to show a person, because that is what the button does with it: the
  * design system (§ 3.5) asks that a control which cannot act say why, and a press that failed
- * is that case arriving late.
+ * is that case arriving late. Separate from `AuthError` for that reason alone — that class
+ * composes `"/api/auth/… answered 503"` when the service sent no message of its own, which is
+ * a log line rather than a sentence.
  *
  * @property status The HTTP status, or `0` when the request never got an answer.
  */
@@ -109,73 +115,89 @@ export class SignInError extends Error {
 }
 
 /**
- * Make the request, and produce the URL to send the browser to.
+ * Begin a social sign-in with a configured provider.
+ *
+ * @param provider The provider's id — {@link GITHUB_PROVIDER} today, and any other the
+ *   service configures. An id `ouroboros-rest` has no provider for is a `400` from
+ *   BetterAuth rather than an error here: which providers exist is the service's fact, and a
+ *   list duplicated in the browser would be one more thing that can disagree.
+ * @returns The sign-in to begin, as a value a Server Component may hand to a button. Nothing
+ *   is requested until {@link beginSignIn} is called with it, so composing one during a
+ *   render costs nothing and reaches nowhere.
+ */
+export function socialSignIn(provider: SocialProvider): SignInStart {
+  return { kind: "social", provider };
+}
+
+/** The half of BetterAuth's sign-in answer this module reads. */
+interface SignInAnswer {
+  /** Where to send the browser. Absent when the flow does not begin with a navigation. */
+  readonly url?: string | null;
+}
+
+/** What every method on BetterAuth's client resolves with, narrowed to what is read here. */
+interface SignInResult {
+  readonly data?: SignInAnswer | null;
+  readonly error?: { readonly status?: number; readonly message?: string } | null;
+}
+
+/**
+ * Make the call one {@link SignInStart} describes, and produce the URL to send the browser to.
+ *
+ * The three outcomes BetterAuth's client can produce collapse to two here — a URL, or a
+ * {@link SignInError} with something to say — because a control that has just been pressed
+ * needs one answer and not a result object to branch on.
  *
  * It does **not** navigate. Navigation is `window.location`, which is the one part of this
  * that cannot be tested without a browser, so it stays in the component and this stays a
  * function with a return value.
  *
- * @param request What {@link socialSignIn} — or a future SSO builder — produced.
- * @param fetchImpl The fetch to call through. Defaults to the runtime's; the parameter is
- *   what lets a suite answer without a socket, the same way `app/api/auth-server.ts` takes one.
+ * @param start Which sign-in to begin. The `switch` is the whole of what a second kind costs.
  * @returns The absolute URL of the provider's consent page.
  * @throws {SignInError} When the service refused, when the network did, or when the answer
  *   carried no URL to follow — the last being a real possibility rather than a defensive
- *   check, since `redirect: false` is a shape BetterAuth uses for flows that complete
- *   without leaving the origin.
+ *   check, since `redirect: false` is also the shape of a flow that completes without leaving
+ *   the origin (an `idToken` sign-in, for instance).
  */
-export async function beginSignIn(
-  request: SignInRequest,
-  fetchImpl: typeof fetch = fetch,
-): Promise<string> {
-  let response: Response;
+export async function beginSignIn(start: SignInStart): Promise<string> {
+  let result: SignInResult;
 
   try {
-    response = await fetchImpl(request.path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request.body),
-      // The answer sets `better-auth.state`, the five-minute cookie the callback is checked
-      // against. Same-origin sends cookies by default; this says so out loud because the
-      // handshake fails at the last hop with `state_mismatch` if it ever stops being true.
-      credentials: "same-origin",
-    });
+    result = await call(start);
   } catch {
+    // better-fetch reports a refusal in the value but still *throws* when the request never
+    // happened at all — it is only configured to catch its own errors with `catchAllError`,
+    // which BetterAuth does not set. So a dropped connection arrives here rather than below.
     throw new SignInError(0, "Could not reach the sign-in service. Check your connection.");
   }
 
-  const answer = (await readJson(response)) as SignInAnswer | null;
-
-  if (!response.ok) {
-    const failure = (answer ?? {}) as { message?: string };
+  const failure = result.error;
+  if (failure !== null && failure !== undefined) {
     throw new SignInError(
-      response.status,
-      failure.message ?? `Sign-in was refused (${response.status}).`,
+      failure.status ?? 0,
+      failure.message ?? `Sign-in was refused (${failure.status ?? "no answer"}).`,
     );
   }
 
-  if (typeof answer?.url !== "string" || answer.url === "") {
-    throw new SignInError(response.status, "Sign-in did not return somewhere to go.");
+  const url = result.data?.url;
+  if (typeof url !== "string" || url === "") {
+    throw new SignInError(200, "Sign-in did not return somewhere to go.");
   }
 
-  return answer.url;
+  return url;
 }
 
 /**
- * Parse a body that may not be JSON.
+ * Ask BetterAuth's client for the one sign-in this start names.
  *
- * A refusal from something in front of the service — a proxy, a gateway — is HTML often
- * enough to be worth surviving: the status is the fact worth reporting, and a parse error
- * thrown here would replace it with a `SyntaxError` naming a character position.
- *
- * @param response The answer.
- * @returns The parsed body, or `null` when it is empty or not JSON.
+ * @param start Which sign-in to begin.
+ * @returns The client's own result, refusals and all.
  */
-async function readJson(response: Response): Promise<unknown> {
-  try {
-    const text = await response.text();
-    return text === "" ? null : JSON.parse(text);
-  } catch {
-    return null;
+function call(start: SignInStart): Promise<SignInResult> {
+  switch (start.kind) {
+    case "social":
+      // `disableRedirect` on every call — see the note at the top of this file for the
+      // navigation it suppresses and why the button's own is worth more.
+      return signIn.social({ provider: start.provider, disableRedirect: true });
   }
 }

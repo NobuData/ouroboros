@@ -12,6 +12,11 @@ vi.mock("@/app/login/actions", () => ({
   chooseWorkspace: vi.fn(),
   setOrgEnabled: vi.fn(),
   setRepoEnabled: vi.fn(),
+  // Step 1's SSO half runs this through `useActionState`, so the mock has to answer with a
+  // `DiscoveryState`. What it answers is `sso-form.test.tsx`'s subject, not this file's.
+  discoverDomain: vi.fn(() =>
+    Promise.resolve({ status: "answered", ssoAvailable: false, message: "not asked here" }),
+  ),
 }));
 
 const { LoginScreen } = await import("@/app/login/login-screen");

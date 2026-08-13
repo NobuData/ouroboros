@@ -1,10 +1,10 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import { Button, type ButtonSize, type ButtonTone } from "@/app/ui";
 
-import { type SignInRequest, beginSignIn } from "./sign-in";
+import { type SignInStart, beginSignIn } from "./sign-in";
 
 /**
  * The control that begins a sign-in — the press, and nothing else.
@@ -16,7 +16,10 @@ import { type SignInRequest, beginSignIn } from "./sign-in";
  * URL rather than redirecting to it, so something has to make the call and *then* navigate.
  * A Server Action could make the call, but the navigation that follows leaves the origin
  * entirely, and `redirect()` to github.com through an action is a round trip to ask the
- * server for a URL the browser already has.
+ * server for a URL the browser already has. It is also the only place the *session cookie*
+ * can be set from: BetterAuth's `Set-Cookie` reaches a browser only on a request the browser
+ * itself made, which `app/api/auth-server.ts` records for sign-out and which is equally true
+ * of every sign-in on this screen.
  *
  * Everything above the press is `sign-in.ts` — which request, and what its answer means —
  * so this file holds the two things that genuinely need a browser: `window.location`, and
@@ -30,8 +33,7 @@ import { type SignInRequest, beginSignIn } from "./sign-in";
  * consent screen. A control that acts is a button — the same rule, applied to what the
  * control now does.
  *
- * @see sign-in.ts — the request, the failures, and why they are a shape rather than a
- *   provider.
+ * @see sign-in.ts — the call, the failures, and why they are a shape rather than a provider.
  */
 
 /**
@@ -48,10 +50,11 @@ const leaveFor = (url: string) => window.location.assign(url);
 /**
  * A sign-in control.
  *
- * @param props.request What to send — {@link socialSignIn}'s output for a social provider,
- *   and whatever an SSO route's builder returns when there is one. Taken as a prop rather
- *   than composed here, so this component is provider-agnostic and a second one is a second
- *   `<SignInButton>` with a different request.
+ * @param props.begin Which sign-in — {@link socialSignIn}'s output for a social provider, and
+ *   whatever an SSO route's builder returns when there is one. Taken as a prop rather than
+ *   composed here, so this component is provider-agnostic and a second one is a second
+ *   `<SignInButton>` with a different start. **A value, not a function**: it crosses the
+ *   Server/Client boundary and is therefore serialised — `sign-in.ts` says what that cost.
  * @param props.tone Which treatment, as `app/ui/button.tsx` defines them.
  * @param props.size How large.
  * @param props.block Whether it fills its column.
@@ -62,14 +65,14 @@ const leaveFor = (url: string) => window.location.assign(url);
  * @returns The button, and — after a failure — the reason under it.
  */
 export function SignInButton({
-  request,
+  begin,
   tone = "primary",
   size = "lg",
   block = true,
   children,
   navigate = leaveFor,
 }: Readonly<{
-  request: SignInRequest;
+  begin: SignInStart;
   tone?: ButtonTone;
   size?: ButtonSize;
   block?: boolean;
@@ -83,6 +86,17 @@ export function SignInButton({
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
+  /**
+   * What this button's failure text is called, so the button can point at it while it is
+   * there.
+   *
+   * `useId()` rather than a module constant, which is what it was while the screen had one
+   * sign-in control. It has more than one now — a second social provider, and the SSO half
+   * — and two elements sharing an id make `aria-describedby` resolve to whichever the
+   * document reached first, which is to say to somebody else's failure.
+   */
+  const failureId = useId();
+
   async function press() {
     // A second press mid-flight would begin a second handshake and issue a second `state`
     // cookie, invalidating the first — so the one already in flight would fail at the
@@ -94,7 +108,7 @@ export function SignInButton({
     setFailure(null);
 
     try {
-      navigate(await beginSignIn(request));
+      navigate(await beginSignIn(begin));
     } catch (error) {
       setFailure(
         error instanceof Error ? error.message : "Sign-in could not be started.",
@@ -111,7 +125,7 @@ export function SignInButton({
         block={block}
         onClick={() => void press()}
         aria-busy={pending || undefined}
-        aria-describedby={failure === null ? undefined : FAILURE_ID}
+        aria-describedby={failure === null ? undefined : failureId}
       >
         {children}
       </Button>
@@ -120,13 +134,10 @@ export function SignInButton({
         // `role="alert"` because it appears in answer to a press: a person who has just
         // pressed a button and been given nothing needs to be told, whatever they are
         // reading the screen with.
-        <p className="login-note login-note--error" id={FAILURE_ID} role="alert">
+        <p className="login-note login-note--error" id={failureId} role="alert">
           {failure}
         </p>
       )}
     </>
   );
 }
-
-/** What the failure text is called, so the button can point at it while it is there. */
-const FAILURE_ID = "login-sign-in-failure";

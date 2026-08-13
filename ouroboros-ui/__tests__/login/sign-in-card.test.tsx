@@ -1,24 +1,36 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SignInCard } from "@/app/login/sign-in-card";
+import type { DiscoveryState } from "@/app/login/sso";
 
 import { sessionUser } from "../helpers/login";
 
 /**
  * Step 1 of the mockup, in both of its shapes.
  *
- * The two properties worth holding here are the ones that would be easy to break and hard to
- * notice: "Continue with GitHub" is a **button** and not a link, and the SSO half is present,
- * inert, and says why — which is the design system's rule for a control that cannot act, and
- * the opposite of quietly dropping it.
+ * The card composes three controls and owns none of them, so what is asserted here is the
+ * composition: that every piece of the mockup is on the card, in the mockup's own words, and
+ * that the signed-in shape stops offering all three at once. The controls themselves have
+ * suites of their own — `sign-in-button.test.tsx`, `sso-form.test.tsx`,
+ * `dev-sign-in.test.tsx`.
  *
- * **The first of those was the opposite assertion until #702's flow landed**, and the reason
- * is worth keeping: #33's route answered `302` to github.com, so a link was the honest
- * element and a `fetch` would have landed nobody anywhere. BetterAuth's answers `POST` only,
- * so the anchor became a `GET` at a route that has none — a `404` from the service. What the
- * element *is* follows what the operation *does*, and the operation changed.
+ * **Two of these cases were the opposite assertion, and both changed for the same kind of
+ * reason.** "Continue with GitHub" was asserted to be a *link* until #702 turned sign-in into
+ * a `POST`; the SSO half was asserted to be *disabled* until
+ * [#712](https://github.com/NobuData/ouroboros/issues/712) gave it an endpoint. What an
+ * element *is* follows what the operation *does*, and in both cases the operation changed.
  */
+
+vi.mock("@/app/login/actions", () => ({
+  discoverDomain: (): Promise<DiscoveryState> =>
+    Promise.resolve({ status: "answered", ssoAvailable: false, message: "not asked here" }),
+}));
+
+const { SignInCard } = await import("@/app/login/sign-in-card");
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("<SignInCard>, signed out", () => {
   it("offers GitHub sign-in as a button, which is what a POST needs", () => {
@@ -38,33 +50,44 @@ describe("<SignInCard>, signed out", () => {
   it("carries the mockup's enterprise-domain field, with its example domain", () => {
     render(<SignInCard user={null} />);
 
-    const field = screen.getByLabelText("Company domain");
-
-    expect(field).toHaveAttribute("placeholder", "acme.ouroboros.dev");
+    expect(screen.getByLabelText("Company domain")).toHaveAttribute(
+      "placeholder",
+      "acme.ouroboros.dev",
+    );
   });
 
-  it("disables that field rather than accepting typing it would discard", () => {
-    render(<SignInCard user={null} />);
-
-    expect(screen.getByLabelText("Company domain")).toBeDisabled();
-  });
-
-  it("keeps the SSO button reachable and marks it unavailable, with the reason", () => {
-    // `aria-disabled` rather than `disabled`: a disabled button leaves the tab order and
-    // takes its explanation with it.
+  it("lets the SSO half act, because there is an endpoint behind it now", () => {
+    // *Asserts disabled* became *asserts submits* — #718's acceptance criterion, and the
+    // reason `SSO_UNAVAILABLE` no longer exists to gate this.
     render(<SignInCard user={null} />);
 
     const button = screen.getByRole("button", { name: /continue with sso/i });
 
-    expect(button).toHaveAttribute("aria-disabled", "true");
-    expect(button).not.toBeDisabled();
-    expect(button).toHaveAccessibleDescription(/not configured yet/i);
+    expect(screen.getByLabelText("Company domain")).not.toBeDisabled();
+    expect(button).not.toHaveAttribute("aria-disabled");
+    expect(button).toHaveAttribute("type", "submit");
   });
 
-  it("keeps the mockup's SSO and isolation copy", () => {
+  it("claims nothing about SSO of its own before anything has been asked", () => {
+    // The whole of the deleted constant: the card used to say "not configured yet" to a
+    // visitor who had typed nothing, which is an answer to a question nobody put — and which
+    // would have gone on being said after #722 made it false.
     render(<SignInCard user={null} />);
 
-    expect(screen.getByText(/SAML 2\.0 and OIDC/)).toBeInTheDocument();
+    expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the mockup's SSO and isolation copy, verbatim", () => {
+    // Verbatim matters on the first of these: while the constant existed it was appended to
+    // this sentence, turning the one paragraph the mockup writes into a paragraph and a
+    // disclaimer.
+    render(<SignInCard user={null} />);
+
+    expect(
+      screen.getByText(
+        "SAML 2.0 and OIDC via your identity provider — Okta, Entra ID, Google Workspace.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Each domain is an isolated tenant/)).toBeInTheDocument();
     expect(screen.getByText(/or enterprise SSO/i)).toBeInTheDocument();
   });
@@ -76,6 +99,39 @@ describe("<SignInCard>, signed out", () => {
   });
 });
 
+describe("the development sign-in", () => {
+  it("is on the card outside production, because there is no other way in locally", () => {
+    render(<SignInCard user={null} />);
+
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("is not composed at all in a production build", () => {
+    // The gate that matters to a person looking at the screen. The component refuses to
+    // render one too — see `dev-sign-in.test.tsx` — and the service refuses the route
+    // whatever any client does, which is the actual security boundary.
+    vi.stubEnv("NODE_ENV", "production");
+
+    render(<SignInCard user={null} />);
+
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^sign in$/i })).not.toBeInTheDocument();
+  });
+
+  it("leaves the mockup's own controls alone in a production build", () => {
+    // The gate is around the development form and nothing else. A build that quietly lost
+    // the GitHub button or the SSO field would pass the case above.
+    vi.stubEnv("NODE_ENV", "production");
+
+    render(<SignInCard user={null} />);
+
+    expect(screen.getByRole("button", { name: /continue with github/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Company domain")).toBeInTheDocument();
+  });
+});
+
 describe("<SignInCard>, signed in", () => {
   it("states who is signed in, by name and address", () => {
     render(<SignInCard user={sessionUser()} />);
@@ -84,13 +140,14 @@ describe("<SignInCard>, signed in", () => {
     expect(screen.getByText("ken@acme-robotics.dev")).toBeInTheDocument();
   });
 
-  it("stops offering to sign in, and stops offering SSO with it", () => {
+  it("stops offering every way to sign in at once", () => {
     render(<SignInCard user={sessionUser()} />);
 
     expect(
       screen.queryByRole("button", { name: /continue with github/i }),
     ).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Company domain")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 
   it("stays a numbered step, so step 2 is not left without a step above it", () => {

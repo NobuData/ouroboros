@@ -1,8 +1,8 @@
 "use server";
 
 /**
- * The three things the login screen writes: the chosen workspace, an organisation's flag,
- * and a repository's.
+ * What the login screen submits: the chosen workspace, an organisation's flag, a
+ * repository's, and the company domain step 1 asks about.
  *
  * ### Every action here re-derives its own authority
  *
@@ -25,27 +25,49 @@
  * repository name, and the state to move to — and every one of those is validated before it
  * is used.
  *
- * ### Why nothing here returns a message
+ * **{@link discoverDomain} is the exception to all of the above, and deliberately so.** It
+ * takes no authority, checks none, and is the only action here that can be called by somebody
+ * with no session — because the endpoint behind it is public
+ * ([#712](https://github.com/NobuData/ouroboros/issues/712)) and its caller is a visitor who
+ * has not signed in yet. What keeps *that* safe is not a check here but the contract: the
+ * service answers the same body, in the same time, for a domain a workspace holds and one
+ * nothing does, so there is nothing this endpoint can tell a stranger that it does not tell
+ * everybody. `app/api/discovery.ts` is where that is written down.
  *
- * These are toggles. The truthful report of a toggle is the switch itself, so each action
- * mutates and then re-renders: `refresh()` for the enablement flags, because the data lives
- * behind an uncached `fetch` rather than in the Data Cache and it is the *route* that has to
- * be read again; nothing at all for the workspace choice, because writing a cookie
- * re-renders the current page by itself and this one redirects on top of that. A failure
- * from the service rejects, and the route's error boundary is what shows it — which is the
- * same path every other call in this module takes.
+ * ### Why three of the four return nothing, and the fourth returns a state
+ *
+ * The first three are toggles and a choice. The truthful report of a toggle is the switch
+ * itself, so each mutates and then re-renders: `refresh()` for the enablement flags, because
+ * the data lives behind an uncached `fetch` rather than in the Data Cache and it is the
+ * *route* that has to be read again; nothing at all for the workspace choice, because writing
+ * a cookie re-renders the current page by itself and this one redirects on top of that. A
+ * failure from the service rejects, and the route's error boundary is what shows it.
+ *
+ * {@link discoverDomain} is a **read** whose whole purpose is the sentence it comes back
+ * with, and there is nowhere on the page for a re-render to put it. So it returns a
+ * {@link DiscoveryState} for `useActionState` to render, and its failures are values rather
+ * than throws: a domain typed wrong is a person's mistake to correct in place, not an error
+ * boundary replacing the screen they are signing in on.
  */
 
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { currentAccess } from "@/app/api/access";
+import { type Discovery, discover } from "@/app/api/discovery";
 import { activeMembership, isAdminRole } from "@/app/api/membership";
 import { orgs } from "@/app/api/orgs";
 import { repos } from "@/app/api/repos";
 import { setActiveTenant } from "@/app/api/server";
 import { LOGIN_PATH } from "@/app/paths";
 
+import {
+  DOMAIN_FIELD,
+  DOMAIN_REQUIRED,
+  type DiscoveryState,
+  refusalMessage,
+  ssoDestination,
+} from "./sso";
 import { enablementPath } from "./view";
 
 /**
@@ -60,6 +82,9 @@ const FIELDS = {
   login: "login",
   repo: "repo",
   enabled: "enabled",
+  // Read from `sso.ts` rather than typed out again: the form that submits it is a Client
+  // Component, so this name is the only thing the two sides share.
+  domain: DOMAIN_FIELD,
 } as const;
 
 /**
@@ -135,6 +160,56 @@ export async function setRepoEnabled(formData: FormData): Promise<void> {
   );
 
   refresh();
+}
+
+/**
+ * Ask what a company domain signs in with, and say what to render.
+ *
+ * The one action here that reads rather than writes, and the one that returns a value: see
+ * the note at the top of this file for both. It takes no authority and checks none, because
+ * the endpoint is public and built not to be a tenant-enumeration oracle.
+ *
+ * Everything it decides is `app/login/sso.ts`, which is framework-free, so what is left here
+ * is the two things only a Server Action can do — call a `server-only` client, and redirect.
+ *
+ * @param _previous What the last submission produced. Unread: each submission is a fresh
+ *   question about whatever domain is in the field now, so nothing carries forward. The
+ *   parameter exists because `useActionState` passes it.
+ * @param formData The submitted form. Reads `domain`: the company domain, as typed. It is
+ *   **not** normalised here — the service trims, lower-cases and strips the scheme and path
+ *   before it validates, and a second normaliser in this application would be a second set of
+ *   rules to keep in step with the one that decides.
+ * @returns The state to render — the service's answer, or the reason there is not one.
+ * @throws Next.js's redirect signal, when the domain signs in through an identity provider
+ *   and the service named somewhere to send the browser. Never in this release: #722 is what
+ *   starts answering `ssoAvailable: true`.
+ */
+export async function discoverDomain(
+  _previous: DiscoveryState,
+  formData: FormData,
+): Promise<DiscoveryState> {
+  const domain = (field(formData, FIELDS.domain) ?? "").trim();
+
+  if (domain === "") {
+    return { status: "refused", message: DOMAIN_REQUIRED };
+  }
+
+  let answer: Discovery;
+  try {
+    answer = await discover(domain);
+  } catch (error) {
+    return { status: "refused", message: refusalMessage(error) };
+  }
+
+  // Outside the `try`, deliberately: `redirect()` signals by throwing, and a `catch` around
+  // it would read the framework's own control flow as a discovery that failed — leaving a
+  // person on the card being told the service could not be reached, having reached it.
+  const destination = ssoDestination(answer);
+  if (destination !== undefined) {
+    redirect(destination);
+  }
+
+  return { status: "answered", ssoAvailable: answer.ssoAvailable, message: answer.message };
 }
 
 /**
