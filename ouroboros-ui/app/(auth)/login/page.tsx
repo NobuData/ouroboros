@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { currentAccess } from "@/app/api/access";
-import { readEnablement } from "@/app/api/enablement";
-import { LoginScreen, type LoginScreenState } from "@/app/login/login-screen";
-import { WORKSPACE_PARAM, type LoginView, loginView } from "@/app/login/view";
+import { workspaceHint } from "@/app/api/server";
+import { LoginScreen } from "@/app/login/login-screen";
+import { WORKSPACE_PARAM, loginView } from "@/app/login/view";
 import { DASHBOARD_PATH, RETURN_TO_PARAM, safeReturnTo } from "@/app/paths";
 
 /**
@@ -12,9 +12,16 @@ import { DASHBOARD_PATH, RETURN_TO_PARAM, safeReturnTo } from "@/app/paths";
  *
  * The route is thin on purpose, the way `app/(app)/layout.tsx` is: it reads the request,
  * hands the three values that decide anything to a pure function
- * (`app/login/view.ts`), fetches only for the one step that needs data, and renders a
- * component (`app/login/login-screen.tsx`). Everything with a decision in it is therefore
- * testable without a router, and everything with markup in it without a request.
+ * (`app/login/view.ts`), and renders a component (`app/login/login-screen.tsx`). Everything
+ * with a decision in it is therefore testable without a router, and everything with markup
+ * in it without a request.
+ *
+ * **It fetches nothing of its own since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719)**, where it used to read the
+ * chosen workspace's organisations and repositories for step 2. The workspace rows are part
+ * of the session now — `GET /api/v1/orgs` answers them with the counts and roles together
+ * (`app/api/auth-server.ts`) — so the decision and the data arrive in the same read, and the
+ * three values below are the whole of the request's state.
  *
  * It is a Server Component because every *read* this screen makes is server-side by
  * construction (`app/api/server.ts`): the session cookie is `HttpOnly` and the service's
@@ -73,18 +80,18 @@ export default async function LoginPage({
   searchParams,
 }: Readonly<{ searchParams: SearchParams }>) {
   const parameters = await searchParams;
-  const { session, membership } = await currentAccess();
+  const { session } = await currentAccess();
   const view = loginView({
     session,
-    membership,
     workspace: single(parameters[WORKSPACE_PARAM]),
+    settled: (await workspaceHint()) !== undefined,
   });
 
   if (view.step === "dashboard") {
     redirect(safeReturnTo(single(parameters[RETURN_TO_PARAM])) ?? DASHBOARD_PATH);
   }
 
-  return <LoginScreen state={await state(view)} user={session?.user ?? null} />;
+  return <LoginScreen state={view} user={session?.user ?? null} />;
 }
 
 /**
@@ -99,28 +106,4 @@ export default async function LoginPage({
  */
 function single(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
-}
-
-/**
- * Turn the decided view into the screen's state, fetching for the one step that needs it.
- *
- * The enablement step is the only one that reads anything beyond the session, and it reads
- * it *after* the workspace has been resolved against the session's memberships — so the
- * tenant id in those requests came from the service in this same request rather than from
- * the URL.
- *
- * @param view What `loginView` decided, never the `dashboard` outcome.
- * @returns The screen's state, complete.
- * @throws {ApiError} What `ouroboros-rest` answered to the enablement read.
- */
-async function state(view: Exclude<LoginView, { step: "dashboard" }>): Promise<LoginScreenState> {
-  if (view.step !== "enable") {
-    return view;
-  }
-
-  return {
-    step: "enable",
-    membership: view.membership,
-    enablement: await readEnablement(view.membership.tenantId),
-  };
 }

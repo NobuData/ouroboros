@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   ADMIN_ROLES,
-  type Membership,
+  ROLES,
   activeMembership,
   isAdminRole,
-  selectableMemberships,
+  mayAdminister,
+  primaryRole,
 } from "@/app/api/membership";
+
+import { membership } from "../helpers/login";
 
 /**
  * The membership rules, which are the whole of "which workspace did they mean" and "may they
@@ -14,24 +17,15 @@ import {
  *
  * Nothing here touches a cookie or the network — that is the point of the module being
  * framework-free — so every case is the rule itself rather than a route exercising it.
- */
-
-/**
- * One membership, with the fields a case cares about overridden.
  *
- * @param over What this case is about.
- * @returns A complete membership.
+ * *`selectableMemberships` and its three cases were here* until
+ * [#719](https://github.com/NobuData/ouroboros/issues/719). It filtered a workspace's
+ * lifecycle, and the row model the memberships are read from now
+ * ([#714](https://github.com/NobuData/ouroboros/issues/714)) publishes none: the organization
+ * plugin has no lifecycle column, so every workspace the listing returns is one you can work
+ * in and there is nothing left to filter. The rule was not relaxed; the state it excluded
+ * cannot be reported any more.
  */
-function membership(over: Partial<Membership> = {}): Membership {
-  return {
-    tenantId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-    slug: "acme-robotics",
-    displayName: "Acme Robotics",
-    status: "active",
-    role: "owner",
-    ...over,
-  };
-}
 
 describe("isAdminRole", () => {
   it("admits the two roles the contract lets administer a workspace", () => {
@@ -51,28 +45,41 @@ describe("isAdminRole", () => {
   });
 });
 
-describe("selectableMemberships", () => {
-  it("keeps the live workspaces in the order the service returned them", () => {
-    const list = [
-      membership({ slug: "one", tenantId: "1" }),
-      membership({ slug: "two", tenantId: "2" }),
-    ];
-
-    expect(selectableMemberships(list).map((one) => one.slug)).toEqual(["one", "two"]);
+describe("mayAdminister", () => {
+  it("admits a membership holding an administering role", () => {
+    expect(mayAdminister(["owner"])).toBe(true);
+    expect(mayAdminister(["viewer", "admin"])).toBe(true);
   });
 
-  it("drops a suspended workspace, because it is not somewhere to operate", () => {
-    const list = [
-      membership({ slug: "live", tenantId: "1" }),
-      membership({ slug: "held", tenantId: "2", status: "suspended" }),
-      membership({ slug: "gone", tenantId: "3", status: "deleted" }),
-    ];
-
-    expect(selectableMemberships(list).map((one) => one.slug)).toEqual(["live"]);
+  it("refuses one holding only roles that may read", () => {
+    expect(mayAdminister(["member"])).toBe(false);
+    expect(mayAdminister(["member", "viewer"])).toBe(false);
   });
 
-  it("returns nothing for somebody who belongs nowhere", () => {
-    expect(selectableMemberships([])).toEqual([]);
+  it("refuses an empty list rather than reading it as unrestricted", () => {
+    // The contract admits one: "possibly none, for a membership carrying only roles this
+    // service does not recognise". A screen that guessed high would render a control the
+    // service then refuses.
+    expect(mayAdminister([])).toBe(false);
+  });
+});
+
+describe("primaryRole", () => {
+  it("names the strongest role held, because that is what the person may do", () => {
+    expect(primaryRole(["member", "owner"])).toBe("owner");
+    expect(primaryRole(["viewer", "admin"])).toBe("admin");
+  });
+
+  it("names the only one when there is only one", () => {
+    expect(primaryRole(["member"])).toBe("member");
+  });
+
+  it("degrades an empty list to the least this API grants", () => {
+    expect(primaryRole([])).toBe("viewer");
+  });
+
+  it("reads the published order rather than one of its own", () => {
+    expect([...ROLES]).toEqual(["owner", "admin", "member", "viewer"]);
   });
 });
 
@@ -83,8 +90,8 @@ describe("activeMembership", () => {
     expect(activeMembership([acme], "acme-robotics")).toBe(acme);
   });
 
-  it("resolves a uuid, which is the other form the contract accepts", () => {
-    expect(activeMembership([acme], acme.tenantId)).toBe(acme);
+  it("resolves an id, which is the other form the contract accepts", () => {
+    expect(activeMembership([acme], acme.id)).toBe(acme);
   });
 
   it("resolves nothing when there is no reference to resolve", () => {
@@ -92,16 +99,14 @@ describe("activeMembership", () => {
   });
 
   it("resolves nothing for a workspace this person does not belong to", () => {
-    // The property that makes an edited `ouro_tenant` cookie inert: the reference is
-    // matched against what the service just said, not trusted.
+    // The property that makes a form field naming a workspace inert: the reference is
+    // matched against what the service just said, not trusted. It is the same check that
+    // made an edited `ouro_tenant` cookie inert before #719 moved the reference's source.
     expect(activeMembership([acme], "someone-elses-workspace")).toBeUndefined();
   });
 
-  it("resolves nothing for a suspended workspace they do belong to", () => {
-    const held = membership({ slug: "held", tenantId: "2", status: "suspended" });
-
-    expect(activeMembership([held], "held")).toBeUndefined();
-    expect(activeMembership([held], held.tenantId)).toBeUndefined();
+  it("resolves nothing out of an empty list, whatever is asked for", () => {
+    expect(activeMembership([], acme.id)).toBeUndefined();
   });
 
   it("does not match a slug case-insensitively or as a prefix", () => {

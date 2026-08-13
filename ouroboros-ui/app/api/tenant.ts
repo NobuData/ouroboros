@@ -1,37 +1,40 @@
 /**
- * The active workspace: how it is named on the wire, where it is kept, and what a valid
- * reference to one looks like.
+ * How a workspace is named on the wire, and what a valid reference to one looks like.
  *
- * A request to `ouroboros-rest` says which workspace it means with the `X-Ouro-Tenant`
- * header, carrying either a slug (`acme`) or a uuid — the contract accepts both, because
+ * A request to `ouroboros-rest` may say which workspace it means with the `X-Ouro-Tenant`
+ * header, carrying either a slug (`acme`) or an id — the contract accepts both, because
  * a slug is what a person types (`ouroboros-rest/openapi.yaml` §
- * `components.parameters.TenantHeader`). Operations with a `{tenantId}` in the path do not
- * need it; the ones without it — and everything the epic adds after this — do, unless the
- * caller belongs to exactly one workspace.
+ * `components.parameters.TenantHeader`).
+ *
+ * **Nothing in this application sends it since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719).** The header is an *override* of
+ * the session's active organization ([#713](https://github.com/NobuData/ouroboros/issues/713))
+ * rather than the way a request names a workspace, and an override this application never
+ * means to exercise is one it should not be sending — `app/api/server.ts` says what a stale
+ * one costs. `app/api/client.ts` keeps the capability, and this is the vocabulary it would
+ * use.
  *
  * Everything here is framework-free so that the same constants drive three things that
- * must not disagree: the client that sends the header ({@link file://./client.ts}), the
- * server-side store that reads it from a cookie ({@link file://./server.ts}), and the
- * tests. The store's *reads and writes* live in `server.ts` because they touch
- * `next/headers`; the vocabulary lives here because nothing about it is server-only.
+ * must not disagree: the client that *can* send the header ({@link file://./client.ts}), the
+ * server-side cookie that carries a workspace reference ({@link file://./server.ts}), and the
+ * tests. The reads and writes live in `server.ts` because they touch `next/headers`; the
+ * vocabulary lives here because nothing about it is server-only.
  *
- * The choice is persisted as a cookie rather than in `localStorage` for one reason: it is
- * read while a Server Component renders, which is where every call to the API is made
- * (see `server.ts`). Nothing on the server can read `localStorage`, so a choice kept
- * there would be a choice the first render cannot honour.
- *
- * Selecting a workspace is [#44](https://github.com/NobuData/ouroboros/issues/44)'s
- * screen; this is the store it writes into.
+ * {@link isTenantReference} still guards a real boundary in both places: a value on its way
+ * into an HTTP header, and a value on its way into a cookie this application writes.
  */
 
 /** The header naming the workspace a request operates in. */
 export const TENANT_HEADER = "X-Ouro-Tenant";
 
 /**
- * The cookie holding the active workspace between requests.
+ * The cookie carrying a workspace reference between requests.
  *
- * `ouro_` prefixed like `ouro_session`, and named for what it is rather than for the
- * header it becomes, because the header is one of the things read from it.
+ * `ouro_` prefixed like `ouro_session`. It held the *active* workspace until
+ * [#719](https://github.com/NobuData/ouroboros/issues/719) and is a note about the login
+ * flow now — see `app/api/server.ts`'s `workspaceHint`, which is the only thing that reads
+ * it. The name is unchanged because it is a value already in browsers, and renaming it would
+ * ask every one of them to be asked step 2 again for nothing.
  */
 export const ACTIVE_TENANT_COOKIE = "ouro_tenant";
 

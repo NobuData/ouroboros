@@ -3,24 +3,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Membership } from "@/app/api/membership";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 import { resetRestUrlCache } from "@/app/env";
-import { LOGIN_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, LOGIN_PATH } from "@/app/paths";
 
-import { authAnswer, isAuthUrl, requestedUrl } from "../helpers/auth";
-import { TENANT_ID, membership } from "../helpers/login";
+import { authAnswer, isAuthUrl, isOrgsUrl, orgsAnswer, requestedUrl } from "../helpers/auth";
+import { TENANT_ID, membership, seededWorkspaces } from "../helpers/login";
 
 /**
  * The three writes the login screen makes — and the security boundary they are.
  *
  * A Server Action is a POST endpoint against the page that renders it, reachable by anybody
  * who can send the same request. Rendering a form only for an owner is therefore not a check;
- * these cases are the checks. Each of the three re-derives who is asking from the session
- * cookie and which workspace from the `ouro_tenant` cookie, matched against the memberships
- * the service reports in that same request, and takes nothing else from the form but the
- * smallest reference to what was pressed.
+ * these cases are the checks. Each re-derives who is asking from the session cookie, and
+ * resolves the workspace the form names against the memberships the service reports in that
+ * same request.
  *
- * So the interesting cases are all the ones somebody would compose by hand: a slug they do
- * not belong to, a workspace they may read but not administer, an organisation login carrying
- * a path separator, a missing flag.
+ * **The form carries a workspace since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719)**, where it used to be implied by
+ * the `ouro_tenant` cookie — the card lists every workspace at once now, so there is no
+ * single current one for a request to mean. That is a change of *which untrusted place the
+ * reference arrives from* and not a loosening: a cookie is as forgeable as a form field, and
+ * the check that made one safe is the check that makes the other safe. The cases below are
+ * the ones somebody would compose by hand — a slug they do not belong to, a workspace they
+ * may read but not administer, a missing flag.
  */
 
 /** The cookies of the request under test, and what the action wrote back. */
@@ -60,7 +64,7 @@ const refresh = vi.fn();
 
 vi.mock("next/cache", () => ({ refresh: () => refresh() }));
 
-const { chooseWorkspace, discoverDomain, setOrgEnabled, setRepoEnabled } = await import(
+const { discoverDomain, enterMissionControl, setWorkspaceEnabled } = await import(
   "@/app/login/actions"
 );
 const { resetApiClient } = await import("@/app/api/server");
@@ -73,6 +77,9 @@ const DISCOVER_PATH = "/api/v1/auth/discover";
 
 /** Every request the stubbed global `fetch` was handed. */
 let requests: Request[] = [];
+
+/** Every URL it was handed, whichever family composed it. */
+let urls: string[] = [];
 
 /** What this person belongs to, for this case. `null` is nobody signed in. */
 let memberships: Membership[] | null = [membership()];
@@ -104,6 +111,7 @@ beforeEach(() => {
   redirect.mockClear();
   refresh.mockClear();
   requests = [];
+  urls = [];
   memberships = [membership()];
   discovery = {
     status: 200,
@@ -121,6 +129,7 @@ beforeEach(() => {
   // answered here, which is what the two-client rule costs a suite that spans both.
   vi.stubGlobal("fetch", (input: Request | URL | string) => {
     const url = requestedUrl(input);
+    urls.push(url);
     if (input instanceof Request) requests.push(input);
 
     // The discovery route answers per case, because it is the one call here whose *body* is
@@ -134,7 +143,11 @@ beforeEach(() => {
       );
     }
 
-    const body = isAuthUrl(url) ? authAnswer(url, memberships) : { id: "row", enabled: true };
+    const body = isAuthUrl(url)
+      ? authAnswer(url, memberships)
+      : isOrgsUrl(url)
+        ? orgsAnswer(memberships)
+        : { id: "row", enabled: true };
 
     return Promise.resolve(
       new Response(body === null ? "null" : JSON.stringify(body), {
@@ -153,54 +166,70 @@ afterEach(() => {
 });
 
 /**
- * The writes.
+ * The writes — every request that is not one of the two reads a session costs.
  *
- * `requests` already holds only what the *generated* client sent — the auth client is
- * answered by the same stub but hands it a URL rather than a `Request`, so the session read
- * never lands here. The filter is kept anyway, so a session read that came back through the
- * generated family would be visible rather than counted as a write.
+ * `GET /api/v1/orgs` is a read the *generated* client makes, so unlike before #719 it does
+ * land in `requests`; filtering it out here is what keeps each case counting what it pressed
+ * rather than what rendering cost.
  */
 function writes(): Request[] {
-  return requests.filter((request) => !isAuthUrl(request.url));
+  return requests.filter(
+    (request) => !isAuthUrl(request.url) && !isOrgsUrl(request.url),
+  );
 }
 
-describe("chooseWorkspace", () => {
-  it("remembers the workspace and moves on to the enablement step", async () => {
-    await expect(chooseWorkspace(form({ workspace: "acme-robotics" }))).rejects.toBeInstanceOf(
-      RedirectSignal,
-    );
+describe("enterMissionControl", () => {
+  it("makes the workspace active on the session and lands on the dashboard", async () => {
+    await expect(
+      enterMissionControl(form({ workspace: "acme-robotics" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
+
+    expect(urls).toContain(`${BASE_URL}/api/auth/organization/set-active`);
+    expect(redirect).toHaveBeenCalledWith(DASHBOARD_PATH);
+  });
+
+  it("writes the step-2 hint, so the next visit to /login goes on through", async () => {
+    await expect(
+      enterMissionControl(form({ workspace: "acme-robotics" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
 
     expect(setCookie).toHaveBeenCalledWith(
       ACTIVE_TENANT_COOKIE,
-      "acme-robotics",
+      TENANT_ID,
       expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/" }),
     );
-    expect(redirect).toHaveBeenCalledWith("/login?workspace=acme-robotics");
+  });
+
+  it("writes the id rather than the slug, so the cookie cannot be refused after the switch", async () => {
+    // `rememberWorkspace` throws on a reference the header grammar would not accept, and a
+    // slug is whatever created the workspace called it. Throwing there would mean an error
+    // page over a session that had in fact already moved.
+    memberships = [membership({ slug: "acme_robotics" })];
+
+    await expect(
+      enterMissionControl(form({ workspace: "acme_robotics" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
+
+    expect(setCookie).toHaveBeenCalledWith(ACTIVE_TENANT_COOKIE, TENANT_ID, expect.anything());
+    expect(redirect).toHaveBeenCalledWith(DASHBOARD_PATH);
   });
 
   it("refuses a slug this person does not belong to, and writes nothing", async () => {
     // The form is a POST endpoint; a hand-made one naming somebody else's workspace must not
-    // be able to point this browser at it.
+    // be able to make it this session's.
     await expect(
-      chooseWorkspace(form({ workspace: "someone-elses-workspace" })),
+      enterMissionControl(form({ workspace: "someone-elses-workspace" })),
     ).rejects.toBeInstanceOf(RedirectSignal);
 
+    expect(urls).not.toContain(`${BASE_URL}/api/auth/organization/set-active`);
     expect(setCookie).not.toHaveBeenCalled();
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 
-  // *Refuses a suspended workspace they do belong to* was here, and is not any more. The
-  // case cannot be composed at this level after
-  // [#711](https://github.com/NobuData/ouroboros/issues/711): a membership is built from
-  // BetterAuth's organization listing now, and an organization has no lifecycle column for
-  // the service to report `suspended` in — see `app/api/auth-server.ts`. The rule the case was
-  // covering is `selectableMemberships`, which still filters and is still asserted directly
-  // in `__tests__/api/membership.test.ts`; what is gone is the *route* to it, and
-  // [#714](https://github.com/NobuData/ouroboros/issues/714) is what restores one by
-  // putting the workspace row model back in the generated family.
-
   it("refuses a form with no workspace in it at all", async () => {
-    await expect(chooseWorkspace(form({}))).rejects.toBeInstanceOf(RedirectSignal);
+    // What a browser submits when nothing is selected — and what the card is built not to
+    // produce, since one row always starts checked.
+    await expect(enterMissionControl(form({}))).rejects.toBeInstanceOf(RedirectSignal);
 
     expect(setCookie).not.toHaveBeenCalled();
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
@@ -213,35 +242,42 @@ describe("chooseWorkspace", () => {
     // failure it might retry past.
     memberships = null;
 
-    await expect(chooseWorkspace(form({ workspace: "acme-robotics" }))).rejects.toBeInstanceOf(
-      RedirectSignal,
-    );
+    await expect(
+      enterMissionControl(form({ workspace: "acme-robotics" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
 
     expect(setCookie).not.toHaveBeenCalled();
   });
 
-  it("writes the slug rather than whatever the form said, so the cookie is canonical", async () => {
-    // The uuid is the other form the contract accepts, and a person can put it in a URL. What
-    // is stored is the membership's own slug either way.
-    await expect(chooseWorkspace(form({ workspace: TENANT_ID }))).rejects.toBeInstanceOf(
+  it("enters the workspace named by id, which is the other form the contract accepts", async () => {
+    await expect(enterMissionControl(form({ workspace: TENANT_ID }))).rejects.toBeInstanceOf(
+      RedirectSignal,
+    );
+
+    expect(setCookie).toHaveBeenCalledWith(ACTIVE_TENANT_COOKIE, TENANT_ID, expect.anything());
+  });
+
+  it("enters the one the form named, not the one the session was already acting in", async () => {
+    // The whole point of the radio: a person in three workspaces may enter any of them, and
+    // the session's own pointer is where they were rather than where they are going.
+    const seeded = seededWorkspaces();
+    memberships = seeded;
+
+    await expect(enterMissionControl(form({ workspace: "kensuenobu" }))).rejects.toBeInstanceOf(
       RedirectSignal,
     );
 
     expect(setCookie).toHaveBeenCalledWith(
       ACTIVE_TENANT_COOKIE,
-      "acme-robotics",
+      seeded[2].id,
       expect.anything(),
     );
   });
 });
 
-describe("setOrgEnabled", () => {
-  beforeEach(() => {
-    jar.set(ACTIVE_TENANT_COOKIE, "acme-robotics");
-  });
-
-  it("patches the organisation in the workspace the cookie named, then re-reads", async () => {
-    await setOrgEnabled(form({ login: "acme-robotics", enabled: "false" }));
+describe("setWorkspaceEnabled", () => {
+  it("patches every GitHub organisation under the workspace, then re-reads", async () => {
+    await setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "false" }));
 
     const [write] = writes();
 
@@ -251,25 +287,50 @@ describe("setOrgEnabled", () => {
     expect(refresh).toHaveBeenCalledOnce();
   });
 
-  it("takes the workspace from the session rather than from the form", async () => {
-    // Even a form that names another workspace outright changes nothing about where the
-    // request goes: the id in the path came from `/auth/me`.
-    await setOrgEnabled(
-      form({
-        login: "acme-robotics",
-        enabled: "true",
-        tenantId: "00000000-0000-4000-8000-000000000000",
+  it("moves all of them, because the row's switch summarises all of them", async () => {
+    // `OrgRow.enabled` is "whether **any** of this workspace's GitHub organisations is
+    // switched on", so a switch that moved only the first would leave the row reading `on`
+    // straight after somebody turned it off.
+    memberships = [
+      membership({
+        githubOrgs: [
+          { login: "acme-robotics", enabled: true, repoCounts: { enabled: 4, total: 4 } },
+          { login: "acme-tooling", enabled: true, repoCounts: { enabled: 1, total: 1 } },
+        ],
       }),
-    );
+    ];
 
-    expect(writes()[0]?.url).toContain(`/orgs/${TENANT_ID}/`);
+    await setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "false" }));
+
+    expect(writes().map((request) => request.url)).toEqual([
+      `${BASE_URL}/api/v1/orgs/${TENANT_ID}/github-orgs/acme-robotics`,
+      `${BASE_URL}/api/v1/orgs/${TENANT_ID}/github-orgs/acme-tooling`,
+    ]);
+  });
+
+  it("acts in the workspace the form named, and in no other", async () => {
+    memberships = seededWorkspaces();
+
+    await setWorkspaceEnabled(form({ workspace: "kensuenobu", enabled: "false" }));
+
+    expect(writes()).toHaveLength(1);
+    expect(writes()[0]?.url).toContain("/github-orgs/kensuenobu");
+  });
+
+  it("refuses a workspace this person does not belong to", async () => {
+    await expect(
+      setWorkspaceEnabled(form({ workspace: "someone-elses-workspace", enabled: "true" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
+
+    expect(writes()).toHaveLength(0);
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("refuses a role that may read the workspace but not administer it", async () => {
-    memberships = [membership({ role: "viewer" })];
+    memberships = [membership({ roles: ["viewer"] })];
 
     await expect(
-      setOrgEnabled(form({ login: "acme-robotics", enabled: "false" })),
+      setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "false" })),
     ).rejects.toBeInstanceOf(RedirectSignal);
 
     expect(writes()).toHaveLength(0);
@@ -277,117 +338,63 @@ describe("setOrgEnabled", () => {
   });
 
   it("refuses a member, who may only read it too", async () => {
-    memberships = [membership({ role: "member" })];
+    memberships = [membership({ roles: ["member"] })];
 
     await expect(
-      setOrgEnabled(form({ login: "acme-robotics", enabled: "false" })),
+      setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "false" })),
+    ).rejects.toBeInstanceOf(RedirectSignal);
+
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("refuses a membership carrying no recognised role at all", async () => {
+    memberships = [membership({ roles: [] })];
+
+    await expect(
+      setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "true" })),
     ).rejects.toBeInstanceOf(RedirectSignal);
 
     expect(writes()).toHaveLength(0);
   });
 
   it("allows an admin, which is the other role the contract lets administer", async () => {
-    memberships = [membership({ role: "admin" })];
+    memberships = [membership({ roles: ["admin"] })];
 
-    await setOrgEnabled(form({ login: "acme-robotics", enabled: "true" }));
+    await setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "true" }));
 
     expect(writes()).toHaveLength(1);
   });
 
-  it("refuses when no workspace has been chosen at all", async () => {
-    jar.delete(ACTIVE_TENANT_COOKIE);
+  it("refuses when there is no session at all", async () => {
+    memberships = null;
 
     await expect(
-      setOrgEnabled(form({ login: "acme-robotics", enabled: "true" })),
+      setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "true" })),
     ).rejects.toBeInstanceOf(RedirectSignal);
 
     expect(writes()).toHaveLength(0);
   });
 
-  it("refuses a login carrying a path separator", async () => {
-    // The value is interpolated into a request path, so this is a safety property rather
-    // than politeness about input.
-    await expect(
-      setOrgEnabled(form({ login: "../../tenants", enabled: "true" })),
-    ).rejects.toThrow(/login field/);
+  it("writes nothing for a workspace with no organisations recorded", async () => {
+    // The card renders this switch read-only for the same reason: there is nothing under it
+    // for a press to move.
+    memberships = [membership({ githubOrgs: [] })];
+
+    await setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "true" }));
 
     expect(writes()).toHaveLength(0);
-  });
-
-  it("refuses a login that is absent", async () => {
-    await expect(setOrgEnabled(form({ enabled: "true" }))).rejects.toThrow(/login field/);
   });
 
   it("refuses a flag that is neither true nor false, rather than guess a direction", async () => {
     // A toggle whose direction was guessed is a toggle that sometimes does the opposite of
     // what was pressed.
-    await expect(setOrgEnabled(form({ login: "acme-robotics", enabled: "on" }))).rejects.toThrow(
+    await expect(
+      setWorkspaceEnabled(form({ workspace: "acme-robotics", enabled: "on" })),
+    ).rejects.toThrow(/enabled field/);
+    await expect(setWorkspaceEnabled(form({ workspace: "acme-robotics" }))).rejects.toThrow(
       /enabled field/,
     );
-    await expect(setOrgEnabled(form({ login: "acme-robotics" }))).rejects.toThrow(
-      /enabled field/,
-    );
     expect(writes()).toHaveLength(0);
-  });
-});
-
-describe("setRepoEnabled", () => {
-  beforeEach(() => {
-    jar.set(ACTIVE_TENANT_COOKIE, "acme-robotics");
-  });
-
-  it("patches the repository under its organisation, then re-reads the route", async () => {
-    await setRepoEnabled(
-      form({ login: "acme-robotics", repo: "helios-firmware", enabled: "true" }),
-    );
-
-    const [write] = writes();
-
-    expect(write?.url).toBe(
-      `${BASE_URL}/api/v1/orgs/${TENANT_ID}/github-orgs/acme-robotics/repos/helios-firmware`,
-    );
-    expect(await write?.json()).toEqual({ enabled: true });
-    expect(refresh).toHaveBeenCalledOnce();
-  });
-
-  it("sends only the flag, so an enable does not forget the default branch", async () => {
-    await setRepoEnabled(
-      form({ login: "acme-robotics", repo: "helios-firmware", enabled: "false" }),
-    );
-
-    expect(await writes()[0]?.json()).toEqual({ enabled: false });
-  });
-
-  it("refuses a role that may only read", async () => {
-    memberships = [membership({ role: "viewer" })];
-
-    await expect(
-      setRepoEnabled(form({ login: "acme-robotics", repo: "helios-firmware", enabled: "true" })),
-    ).rejects.toBeInstanceOf(RedirectSignal);
-
-    expect(writes()).toHaveLength(0);
-  });
-
-  it("refuses a repository name carrying a path separator", async () => {
-    await expect(
-      setRepoEnabled(form({ login: "acme-robotics", repo: "a/../b", enabled: "true" })),
-    ).rejects.toThrow(/repo field/);
-
-    expect(writes()).toHaveLength(0);
-  });
-
-  it("refuses a repository name that is absent", async () => {
-    await expect(
-      setRepoEnabled(form({ login: "acme-robotics", enabled: "true" })),
-    ).rejects.toThrow(/repo field/);
-  });
-
-  it("accepts the dots and hyphens a real repository name carries", async () => {
-    await setRepoEnabled(
-      form({ login: "acme-robotics", repo: "docs.site-v2", enabled: "true" }),
-    );
-
-    expect(writes()[0]?.url).toContain("/repos/docs.site-v2");
   });
 });
 

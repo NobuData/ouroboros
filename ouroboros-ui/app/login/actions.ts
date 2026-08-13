@@ -1,8 +1,8 @@
 "use server";
 
 /**
- * What the login screen submits: the chosen workspace, an organisation's flag, a
- * repository's, and the company domain step 1 asks about.
+ * What the login screen submits: a workspace's switch, the workspace to enter, and the
+ * company domain step 1 asks about.
  *
  * ### Every action here re-derives its own authority
  *
@@ -13,17 +13,22 @@
  * these trust the form for anything but *what the person wants changed*:
  *
  * - **Who** comes from the session cookie, read through `currentAccess()`.
- * - **Which workspace** comes from the `ouro_tenant` cookie, matched against the
- *   memberships the service reported in this same request. The form never carries a tenant
- *   id — if it did, a hand-made POST could name somebody else's workspace and the only
- *   thing standing in the way would be the service's own check.
+ * - **Which workspace** comes from the form — and is immediately resolved against the
+ *   memberships the service reported in this same request (`app/api/membership.ts`'s
+ *   `activeMembership`). A reference naming a workspace this person does not belong to
+ *   resolves to nothing, and the action refuses before it has a workspace to act in.
  * - **Which role** comes from that membership. `ouroboros-rest` is the authority and would
  *   answer `403 insufficient_role` anyway; checking here is what keeps the failure a
  *   *refusal* rather than an unhandled rejection rendered as an error page.
  *
- * The form therefore carries the smallest possible reference — an organisation login, a
- * repository name, and the state to move to — and every one of those is validated before it
- * is used.
+ * **The form carries a workspace now, where it used to carry only what to change inside
+ * one.** That is [#719](https://github.com/NobuData/ouroboros/issues/719)'s doing and it is
+ * not a loosening: the active workspace used to come from the `ouro_tenant` cookie, which is
+ * a value the browser holds and can edit, and the check that made *that* safe is the same
+ * check that makes this safe — the reference is matched against the session's own
+ * memberships either way. What changed is only which untrusted place the reference arrives
+ * from, and the screen it arrives from now lists every workspace at once, so there is no
+ * single "current" one for it to be implied by.
  *
  * **{@link discoverDomain} is the exception to all of the above, and deliberately so.** It
  * takes no authority, checks none, and is the only action here that can be called by somebody
@@ -34,14 +39,14 @@
  * nothing does, so there is nothing this endpoint can tell a stranger that it does not tell
  * everybody. `app/api/discovery.ts` is where that is written down.
  *
- * ### Why three of the four return nothing, and the fourth returns a state
+ * ### Why two of the three return nothing, and the third returns a state
  *
- * The first three are toggles and a choice. The truthful report of a toggle is the switch
- * itself, so each mutates and then re-renders: `refresh()` for the enablement flags, because
- * the data lives behind an uncached `fetch` rather than in the Data Cache and it is the
- * *route* that has to be read again; nothing at all for the workspace choice, because writing
- * a cookie re-renders the current page by itself and this one redirects on top of that. A
- * failure from the service rejects, and the route's error boundary is what shows it.
+ * The first is a toggle and the second is a departure. The truthful report of a toggle is
+ * the switch itself, so {@link setWorkspaceEnabled} mutates and then re-renders — `refresh()`
+ * rather than a cache tag, because the data lives behind an uncached `fetch` and it is the
+ * *route* that has to be read again. {@link enterMissionControl} returns nothing because it
+ * redirects. A failure from the service rejects, and the route's error boundary is what
+ * shows it.
  *
  * {@link discoverDomain} is a **read** whose whole purpose is the sentence it comes back
  * with, and there is nowhere on the page for a re-render to put it. So it returns a
@@ -54,13 +59,14 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { currentAccess } from "@/app/api/access";
+import { setActiveOrganization } from "@/app/api/auth-server";
 import { type Discovery, discover } from "@/app/api/discovery";
-import { activeMembership, isAdminRole } from "@/app/api/membership";
+import { type Membership, activeMembership, mayAdminister } from "@/app/api/membership";
 import { orgs } from "@/app/api/orgs";
-import { repos } from "@/app/api/repos";
-import { setActiveTenant } from "@/app/api/server";
-import { LOGIN_PATH } from "@/app/paths";
+import { rememberWorkspace } from "@/app/api/server";
+import { DASHBOARD_PATH, LOGIN_PATH } from "@/app/paths";
 
+import { ENABLED_FIELD, WORKSPACE_FIELD } from "./enablement";
 import {
   DOMAIN_FIELD,
   DOMAIN_REQUIRED,
@@ -68,7 +74,6 @@ import {
   refusalMessage,
   ssoDestination,
 } from "./sso";
-import { enablementPath } from "./view";
 
 /**
  * What a login form may say. Anything else in the payload is ignored.
@@ -76,88 +81,95 @@ import { enablementPath } from "./view";
  * `enabled` is the *desired* state rather than the current one, so a stale form — a second
  * tab, a back button — asks for something specific instead of inverting whatever the flag
  * has become since it was rendered.
+ *
+ * All three names are read from the pure modules the components import them from rather than
+ * typed out again: a `"use server"` module may export nothing but async functions, so this
+ * file cannot be where either side of a form agreement is written down.
  */
 const FIELDS = {
-  workspace: "workspace",
-  login: "login",
-  repo: "repo",
-  enabled: "enabled",
-  // Read from `sso.ts` rather than typed out again: the form that submits it is a Client
-  // Component, so this name is the only thing the two sides share.
+  workspace: WORKSPACE_FIELD,
+  enabled: ENABLED_FIELD,
   domain: DOMAIN_FIELD,
 } as const;
 
 /**
- * Remember which workspace the loop runs in, and move on to enabling organisations in it.
+ * Enter the product, in the workspace step 2 was left on.
  *
- * The slug in the form is checked against this person's memberships before it is written,
- * so the cookie can only ever name a live workspace they belong to. A slug that names
- * anything else — a workspace they have left, a suspended one, or one they were never in —
- * sends them back to the choice rather than being written and rejected later.
+ * The mockup's **Enter mission control →**, and the one place the active workspace is
+ * written: `POST /api/auth/organization/set-active` puts it on the session row, which is
+ * what `ouroboros-rest` scopes every later request by
+ * ([#713](https://github.com/NobuData/ouroboros/issues/713)). Nothing about the destination
+ * is carried in a cookie or a header — the browser is simply sent to the dashboard, and the
+ * dashboard reads the session.
  *
- * @param formData The submitted form. Reads `workspace`: the slug to make active.
- * @throws Next.js's redirect signal, always — to the enablement step on success, and back
- *   to the login screen when the slug resolves to nothing.
+ * The `ouro_tenant` hint is written beside it, and it decides one thing only: that this
+ * browser has been asked where the loop runs, so the next visit to `/login` goes on through
+ * (`app/login/view.ts`). See `app/api/server.ts` for what it stopped being.
+ *
+ * **The hint carries the id rather than the slug**, and the reason is the order of the two
+ * writes. `rememberWorkspace` refuses a reference the contract's header grammar would not
+ * accept — letters, digits and hyphens — because writing a cookie is this application's own
+ * doing and a bad value there is a bug to surface. A slug is whatever created the workspace
+ * chose to call it, and one carrying an underscore would throw *after* `set-active` had
+ * already succeeded: an error page over a session that had in fact moved. An id always
+ * satisfies the grammar (`openapi.yaml` § `orgId` — a uuid or 32 alphanumerics), and nothing
+ * reads the value back, so there is nothing to trade for the safety.
+ *
+ * @param formData The submitted form. Reads `workspace`: the slug or id to enter.
+ * @throws Next.js's redirect signal, always — to the dashboard on success, and back to the
+ *   login screen when the reference resolves to nothing.
+ * @throws {AuthError} What `set-active` answered — a `403` for a workspace the caller is not
+ *   a member of, which the resolution above should already have refused.
  */
-export async function chooseWorkspace(formData: FormData): Promise<void> {
-  const { session } = await currentAccess();
-  const requested = field(formData, FIELDS.workspace);
+export async function enterMissionControl(formData: FormData): Promise<void> {
+  const chosen = await chosenWorkspace(formData);
 
-  const chosen =
-    session === null ? undefined : activeMembership(session.memberships, requested);
+  await setActiveOrganization(chosen.id);
+  await rememberWorkspace(chosen.id);
 
-  if (chosen === undefined) {
-    // No session, or a slug that resolves to nothing. Both are answered by rendering the
-    // login screen again, which is where the truth about either is already worked out.
-    redirect(LOGIN_PATH);
-  }
-
-  await setActiveTenant(chosen.slug);
-  redirect(enablementPath(chosen.slug));
+  redirect(DASHBOARD_PATH);
 }
 
 /**
- * Turn one GitHub organisation on or off in the active workspace.
+ * Turn one workspace's GitHub organisations on or off.
  *
- * @param formData The submitted form. Reads `login` (the organisation) and `enabled` (the
+ * **The row's switch is a summary, so setting it is a loop.** `OrgRow.enabled` is "whether
+ * any of this workspace's GitHub organisations is switched on" rather than a flag of its own
+ * (`openapi.yaml` § `OrgRow`), and there is nothing else for a switch on that row to mean:
+ * moving it to `on` turns every organisation under it on, and to `off` turns every one off.
+ * A workspace with no organisations recorded has nothing to move, and the card renders its
+ * switch read-only rather than sending a request that would change nothing.
+ *
+ * Turning an organisation off suspends everything under it **without** discarding the
+ * per-repository choices underneath — which is why the contract has two flags rather than
+ * one, and why this touches only the organisation's.
+ *
+ * @param formData The submitted form. Reads `workspace` (which workspace) and `enabled` (the
  *   state to move to, `"true"` or `"false"`).
  * @throws {ApiError} What `ouroboros-rest` answered — including `403 insufficient_role` if
  *   the role changed between the render and the press.
- * @throws Next.js's redirect signal, when this request may no longer administer anything.
+ * @throws Next.js's redirect signal, when this request may no longer administer the
+ *   workspace it named.
  */
-export async function setOrgEnabled(formData: FormData): Promise<void> {
-  const { membership } = await administerable();
+export async function setWorkspaceEnabled(formData: FormData): Promise<void> {
+  const chosen = await chosenWorkspace(formData);
 
-  await orgs.setEnabled(
-    membership.tenantId,
-    reference(formData, FIELDS.login),
-    flag(formData, FIELDS.enabled),
-  );
+  if (!mayAdminister(chosen.roles)) {
+    // The card renders this switch read-only, so reaching here means a hand-made request or
+    // a role that changed since the render. Both are answered by rendering the screen again,
+    // which is where the truth about either is already worked out.
+    redirect(LOGIN_PATH);
+  }
 
-  refresh();
-}
+  const enabled = flag(formData, FIELDS.enabled);
 
-/**
- * Turn one repository on or off in the active workspace.
- *
- * A repository is in scope only when its own flag **and** its organisation's are both true;
- * this sets only its own, which is what the contract's two flags are for. The screen says so
- * beside the switches.
- *
- * @param formData The submitted form. Reads `login` (the organisation), `repo` (the
- *   repository, without the owner prefix) and `enabled`.
- * @throws {ApiError} What `ouroboros-rest` answered.
- * @throws Next.js's redirect signal, when this request may no longer administer anything.
- */
-export async function setRepoEnabled(formData: FormData): Promise<void> {
-  const { membership } = await administerable();
-
-  await repos.setEnabled(
-    membership.tenantId,
-    reference(formData, FIELDS.login),
-    reference(formData, FIELDS.repo),
-    flag(formData, FIELDS.enabled),
-  );
+  // Sequentially rather than together: these are writes to one workspace's rows, and a
+  // service refusing the third of them should not have been asked for the fourth. The list
+  // is one or two logins in practice — a workspace's own organisation, and whatever else has
+  // been installed into it.
+  for (const githubOrg of chosen.githubOrgs) {
+    await orgs.setEnabled(chosen.id, githubOrg.login, enabled);
+  }
 
   refresh();
 }
@@ -213,24 +225,30 @@ export async function discoverDomain(
 }
 
 /**
- * The workspace this request may *change*, or a redirect to the login screen.
+ * The workspace this submission names, resolved against the session — or a redirect.
  *
- * Stricter than `requireWorkspace()` by one condition — the role — and separate from it
- * because reading a workspace and administering one are different permissions in the
- * contract, and this is the only place in the UI that needs the second.
+ * The single seam every write on this screen goes through, and the reason it is one function
+ * rather than a line in each: "the form says which workspace" is safe **only** while the
+ * saying is checked, and a check written twice is a check that will one day be written once.
  *
- * @returns The active membership, whose role is `owner` or `admin`.
- * @throws Next.js's redirect signal, when there is no session, no active workspace, or the
- *   role may only read it.
+ * @param formData The submitted form. Reads `workspace`.
+ * @returns The membership it names, straight from the service's own listing.
+ * @throws Next.js's redirect signal, when there is no session, or when the reference names
+ *   nothing this person belongs to. Both are answered by rendering the login screen again,
+ *   which is where the truth about either is already worked out.
  */
-async function administerable() {
-  const { session, membership } = await currentAccess();
+async function chosenWorkspace(formData: FormData): Promise<Membership> {
+  const { session } = await currentAccess();
+  const requested = field(formData, FIELDS.workspace);
 
-  if (session === null || membership === undefined || !isAdminRole(membership.role)) {
+  const chosen =
+    session === null ? undefined : activeMembership(session.memberships, requested);
+
+  if (chosen === undefined) {
     redirect(LOGIN_PATH);
   }
 
-  return { session, membership };
+  return chosen;
 }
 
 /**
@@ -247,41 +265,6 @@ async function administerable() {
 function field(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);
   return typeof value === "string" ? value : undefined;
-}
-
-/**
- * What a GitHub login or repository name may contain.
- *
- * The contract's own patterns are narrower per field (`openapi.yaml` §
- * `components.parameters.OrgLogin` and `RepoName`); this is the shape both share, and it is
- * here as a **safety property** rather than as validation: these values are interpolated
- * into a request path, so a value carrying a slash, a `..` or a control character is a
- * path-traversal attempt and must not reach the client that would send it. The service
- * refuses anything else it does not like.
- */
-const REFERENCE_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
-
-/**
- * Read one field as a GitHub login or repository name.
- *
- * @param formData The submitted form.
- * @param name The field to read.
- * @returns Its value, unchanged.
- * @throws {Error} When the field is absent or is not a name a path may carry. The message
- *   quotes the field rather than the value: this runs on rejected input, and a rejected
- *   value is the last thing to interpolate into a string that may reach a log.
- */
-function reference(formData: FormData, name: string): string {
-  const value = field(formData, name);
-
-  if (value === undefined || !REFERENCE_PATTERN.test(value)) {
-    throw new Error(
-      `The ${name} field must be a GitHub login or repository name — letters, digits, ` +
-        `dot, underscore and hyphen, 1 to 100 characters.`,
-    );
-  }
-
-  return value;
 }
 
 /**

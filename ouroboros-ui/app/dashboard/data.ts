@@ -58,7 +58,7 @@ export const MEMBER_LIMIT = 100;
  *   a session that expired between the gate and these calls still reaches the login screen.
  */
 export async function readDashboard(access: Workspace): Promise<DashboardReadings> {
-  const tenantId = access.membership.tenantId;
+  const tenantId = access.membership.id;
 
   const [memberPage, enablement, readiness, engineStatus] = await Promise.all([
     attempt(() => members.list(tenantId, { limit: MEMBER_LIMIT })),

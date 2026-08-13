@@ -58,6 +58,7 @@ vi.mock("next/navigation", () => ({
 const { readSession, setActiveOrganization, signOutSession } = await import(
   "@/app/api/auth-server"
 );
+const { resetApiClient } = await import("@/app/api/server");
 
 const REST = "http://rest.test:4000";
 
@@ -74,12 +75,33 @@ const SIGNED_IN = {
   },
 };
 
-/** One organization, as `organization/list` returns it — note the absent role. */
+/**
+ * One workspace, as `GET /api/v1/orgs` returns it — roles, counts and all.
+ *
+ * The listing this module reads memberships from since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719). It used to be
+ * `organization/list`, which answers three fields and *no role*, and the role was a further
+ * call per workspace; the row model carries everything a workspace switcher and mockup 01
+ * Step 2 need, so there is one call and no join.
+ */
 const ACME = {
   id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  name: "Acme, Inc.",
   slug: "acme",
+  name: "Acme, Inc.",
+  monogram: "AI",
+  personal: false,
+  roles: ["admin"],
+  enabled: true,
+  repoCounts: { enabled: 4, total: 4 },
+  featuredRepo: "helios-firmware",
+  githubOrgs: [{ login: "acme", enabled: true, repoCounts: { enabled: 4, total: 4 } }],
+  createdAt: "2026-08-11T10:20:23.114Z",
 };
+
+/** One page of the listing, around whichever rows a case is about. */
+function page(items: unknown[], total = items.length) {
+  return { items, total, limit: 100, offset: 0 };
+}
 
 /** What each route answered, and what was asked of it. */
 interface Stub {
@@ -103,8 +125,7 @@ interface Answer {
  */
 function serviceAnswering(answers: {
   session?: Answer;
-  list?: Answer;
-  role?: Answer;
+  orgs?: Answer;
   setActive?: Answer;
   signOut?: Answer;
 }): Stub {
@@ -115,17 +136,21 @@ function serviceAnswering(answers: {
 
   const pick = (url: string): Answer => {
     if (url.includes("/get-session")) return answers.session ?? { body: SIGNED_IN };
-    if (url.includes("/organization/list")) return answers.list ?? { body: [] };
+    if (url.includes("/api/v1/orgs")) return answers.orgs ?? { body: page([]) };
     if (url.includes("/organization/set-active")) return answers.setActive ?? { body: ACME };
     if (url.includes("/sign-out")) return answers.signOut ?? { body: { success: true } };
-    return answers.role ?? { body: { role: "owner" } };
+    return { body: {} };
   };
 
+  // Two clients reach this stub and they hand `fetch` different things: BetterAuth's passes
+  // a `URL` and an init, the generated one passes a composed `Request`. Reading both is what
+  // lets one stub answer the two families a session is now composed from.
   vi.stubGlobal("fetch", (input: Request | URL | string, init?: RequestInit) => {
     const url = requestedUrl(input);
+    const composed = input instanceof Request ? input : undefined;
     urls.push(url);
-    headers.push(new Headers(init?.headers));
-    methods.push(init?.method);
+    headers.push(new Headers(composed?.headers ?? init?.headers));
+    methods.push(composed?.method ?? init?.method);
     bodies.push(typeof init?.body === "string" ? init.body : undefined);
 
     const { body, status = 200 } = pick(url);
@@ -145,6 +170,7 @@ beforeEach(() => {
   deleted.length = 0;
   redirectedTo = undefined;
   resetRestUrlCache();
+  resetApiClient();
   process.env.OURO_REST_URL = REST;
 });
 
@@ -152,32 +178,54 @@ afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.OURO_REST_URL;
   resetRestUrlCache();
+  resetApiClient();
 });
 
 describe("readSession", () => {
-  it("asks the three routes the contract publishes for the question", async () => {
-    // The acceptance criterion of #711, from the consumer's side: who you are, where you
-    // belong, and what you hold there. A fourth call to anything under `/api/v1` would be
-    // the duplicate the issue exists to prevent.
-    const stub = serviceAnswering({ list: { body: [ACME] } });
+  it("asks two routes — who you are, and where you belong", async () => {
+    // #711's acceptance criterion, as #719 leaves it. It was three calls and one of them
+    // was *per workspace*, because `organization/list` discards the role; the row model
+    // carries roles and counts together, so the fan-out is gone.
+    const stub = serviceAnswering({ orgs: { body: page([ACME]) } });
 
     await readSession();
 
     expect(stub.urls).toEqual([
       `${REST}/api/auth/get-session`,
-      `${REST}/api/auth/organization/list`,
-      `${REST}/api/auth/organization/get-active-member-role?organizationId=${ACME.id}`,
+      `${REST}/api/v1/orgs?limit=100`,
     ]);
   });
 
-  it("reaches nothing under the versioned API", async () => {
-    const stub = serviceAnswering({ list: { body: [ACME] } });
+  it("costs the same two calls however many workspaces there are", async () => {
+    // The property the fan-out did not have, and the reason for the move: a person in
+    // twenty workspaces used to cost twenty-two requests to render a login screen.
+    const stub = serviceAnswering({
+      orgs: { body: page([ACME, { ...ACME, id: "b", slug: "b" }, { ...ACME, id: "c", slug: "c" }]) },
+    });
 
     await readSession();
 
-    for (const url of stub.urls) {
-      expect(url).not.toContain("/api/v1/");
-    }
+    expect(stub.urls).toHaveLength(2);
+  });
+
+  it("reaches the auth family for the session and the generated one for the rows", async () => {
+    // The two-client rule, from the one module that spans it: auth routes through the auth
+    // client, everything else through the generated one. A workspace listing composed out
+    // of `/api/auth` calls is what this replaced.
+    const stub = serviceAnswering({ orgs: { body: page([ACME]) } });
+
+    await readSession();
+
+    expect(stub.urls[0]).toContain("/api/auth/");
+    expect(stub.urls[1]).toContain("/api/v1/");
+  });
+
+  it("asks for the contract's maximum page, so a switcher is not silently truncated", async () => {
+    const stub = serviceAnswering({ orgs: { body: page([ACME]) } });
+
+    await readSession();
+
+    expect(new URL(stub.urls[1]).searchParams.get("limit")).toBe("100");
   });
 
   it("addresses the service rather than this origin", async () => {
@@ -250,42 +298,73 @@ describe("readSession", () => {
     expect((await readSession())?.user.avatarUrl).toBe("https://a.test/k");
   });
 
-  it("joins each organization to the role held in it", async () => {
-    // The listing carries no role — the plugin's adapter discards it — so the join is this
-    // module's work and is the reason the third call exists at all.
-    serviceAnswering({ list: { body: [ACME] }, role: { body: { role: "admin" } } });
+  it("carries the service's rows through unchanged, field for field", async () => {
+    // A *grouping* rather than a second contract: the row model is what mockup 01 Step 2 is
+    // drawn from, so a field reshaped on the way through here would be a field the screen
+    // and the service disagree about.
+    serviceAnswering({ orgs: { body: page([ACME]) } });
 
-    expect((await readSession())?.memberships).toEqual([
-      {
-        tenantId: ACME.id,
-        slug: "acme",
-        displayName: "Acme, Inc.",
-        status: "active",
-        role: "admin",
-      },
-    ]);
+    expect((await readSession())?.memberships).toEqual([ACME]);
   });
 
-  it("keeps a `viewer`, which the client's own types have no name for", async () => {
+  it("keeps a `viewer`, which the auth client's own types have no name for", async () => {
     // `ouroboros-rest` configures a fourth role the organization plugin's default typing
-    // does not know about. Widening it back is `asRole`'s job, and this is the join that
-    // would otherwise silently downgrade every read-only member of a workspace.
-    serviceAnswering({ list: { body: [ACME] }, role: { body: { role: "viewer" } } });
+    // does not know about. It arrives through the *generated* client now, typed from the
+    // contract that publishes all four, so there is nothing left to widen.
+    serviceAnswering({ orgs: { body: page([{ ...ACME, roles: ["viewer"] }]) } });
 
-    expect((await readSession())?.memberships[0].role).toBe("viewer");
+    expect((await readSession())?.memberships[0].roles).toEqual(["viewer"]);
   });
 
-  it("degrades an unreadable role to the least this API grants", async () => {
-    // A screen that guessed high would render a control the service then refuses.
-    serviceAnswering({ list: { body: [ACME] }, role: { body: null } });
+  it("carries an empty role list rather than inventing one", async () => {
+    // The contract admits it: "possibly none, for a membership carrying only roles this
+    // service does not recognise". `mayAdminister` is what refuses such a row a switch.
+    serviceAnswering({ orgs: { body: page([{ ...ACME, roles: [] }]) } });
 
-    expect((await readSession())?.memberships[0].role).toBe("viewer");
+    expect((await readSession())?.memberships[0].roles).toEqual([]);
+  });
+
+  it("reports where the session is acting", async () => {
+    // The tenancy authority since #719, and the reason this field is carried at all:
+    // `app/api/access.ts` resolves it against the memberships beside it.
+    serviceAnswering({ orgs: { body: page([ACME]) } });
+
+    expect((await readSession())?.activeOrganizationId).toBe(ACME.id);
+  });
+
+  it("reports a session acting nowhere as null rather than as absent", async () => {
+    serviceAnswering({
+      session: { body: { ...SIGNED_IN, session: { activeOrganizationId: null } } },
+    });
+
+    expect((await readSession())?.activeOrganizationId).toBeNull();
+  });
+
+  it("carries the listing's own total, so a screen can say what it left out", async () => {
+    serviceAnswering({ orgs: { body: page([ACME], 340) } });
+
+    const read = await readSession();
+
+    expect(read?.memberships).toHaveLength(1);
+    expect(read?.membershipTotal).toBe(340);
   });
 
   it("returns the memberships as a list, empty rather than absent", async () => {
-    serviceAnswering({ list: { body: [] } });
+    serviceAnswering({ orgs: { body: page([]) } });
 
     expect((await readSession())?.memberships).toEqual([]);
+  });
+
+  it("lets the listing's own failure reject as an ApiError", async () => {
+    // The other family's error shape, reaching a caller that also handles BetterAuth's.
+    // That is the real cost of the two-client rule rather than something to paper over —
+    // and a `401` here is deliberately *not* a redirect, because the screen most likely to
+    // be rendering is the login screen itself.
+    serviceAnswering({
+      orgs: { body: { code: "internal_error", message: "no", details: {} }, status: 500 },
+    });
+
+    await expect(readSession()).rejects.toMatchObject({ name: "ApiError", status: 500 });
   });
 
   it("answers null for nobody, rather than throwing", async () => {
@@ -298,6 +377,7 @@ describe("readSession", () => {
   });
 
   it("asks nothing further once there is nobody to ask about", async () => {
+    // Including the workspace listing: it is scoped to the caller, and there is no caller.
     const stub = serviceAnswering({ session: { body: null } });
 
     await readSession();
@@ -394,7 +474,7 @@ describe("signOutSession", () => {
     expect(stub.methods[0]).toBe("POST");
   });
 
-  it("clears both auth cookies and the chosen workspace", async () => {
+  it("clears both auth cookies and the step-2 hint", async () => {
     // The service's own `Set-Cookie` arrives *here* rather than at the browser, because this
     // call is made by the server — so the deletion has to be made on the response being
     // composed. `ouro_tenant` is this application's own and nothing else would clear it.

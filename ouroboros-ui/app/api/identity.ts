@@ -62,5 +62,34 @@ export interface TenantSuggestion {
 export interface Session {
   user: SessionUser;
   memberships: Membership[];
+  /**
+   * How many workspaces this person belongs to in total, which may exceed the number
+   * {@link Session.memberships} holds.
+   *
+   * The listing behind it is a page ([#714](https://github.com/NobuData/ouroboros/issues/714)),
+   * and a screen that showed a page as if it were the whole would be lying quietly. It is
+   * carried rather than derived so the one screen that lists workspaces can say "showing 100
+   * of 340" — the rule `app/api/enablement.ts` sets out, applied to the other listing.
+   */
+  membershipTotal: number;
+  /**
+   * The workspace this session is **acting in** — `session."activeOrganizationId"`, written
+   * by `POST /api/auth/organization/set-active` and by nothing else.
+   *
+   * **This is the tenancy authority since
+   * [#719](https://github.com/NobuData/ouroboros/issues/719)**, and it is server state: the
+   * `ouro_tenant` cookie used to be what named the active workspace, and a value the browser
+   * holds is a value the browser can edit. `ouroboros-rest` reads this same pointer to scope
+   * a request ([#713](https://github.com/NobuData/ouroboros/issues/713)), so the service and
+   * the screens now agree about which workspace a request is in by construction rather than
+   * by both being told.
+   *
+   * `null` is possible — a session pointing nowhere — even though every session is stamped
+   * with one at creation (`ouroboros-rest/src/auth/active.organization.ts`): a person who
+   * belongs to nothing gets no pointer, and `set-active` clears it for a workspace they have
+   * since been removed from. It is a reference rather than a fact, so it is resolved against
+   * {@link Session.memberships} before anything is rendered for it.
+   */
+  activeOrganizationId: string | null;
   tenantSuggestion: TenantSuggestion | null;
 }

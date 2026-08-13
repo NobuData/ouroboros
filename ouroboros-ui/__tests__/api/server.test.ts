@@ -49,12 +49,12 @@ vi.mock("next/navigation", () => ({ redirect: (to: string) => redirect(to) }));
 const {
   ACTIVE_TENANT_MAX_AGE,
   LOGIN_PATH,
-  activeTenant,
   anonymousApi,
   api,
-  clearActiveTenant,
+  forgetWorkspace,
+  rememberWorkspace,
   resetApiClient,
-  setActiveTenant,
+  workspaceHint,
 } = await import("@/app/api/server");
 const { REST_URL_VAR, resetRestUrlCache } = await import("@/app/env");
 
@@ -95,39 +95,46 @@ afterEach(() => {
   resetRestUrlCache();
 });
 
-describe("activeTenant", () => {
+/**
+ * What is left of `ouro_tenant` since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719): a note that this browser has
+ * been through step 2, and nothing else. It named the active workspace and became the
+ * `X-Ouro-Tenant` header; the session carries that now, so what these cases assert is a
+ * cookie that is written, read back and forgotten — never one that decides access.
+ */
+describe("workspaceHint", () => {
   it("reads the workspace the browser was last given", async () => {
     jar.set(ACTIVE_TENANT_COOKIE, "acme");
-    await expect(activeTenant()).resolves.toBe("acme");
+    await expect(workspaceHint()).resolves.toBe("acme");
   });
 
-  it("is undefined when nothing has been chosen", async () => {
-    await expect(activeTenant()).resolves.toBeUndefined();
+  it("is undefined when this browser has not been through step 2", async () => {
+    await expect(workspaceHint()).resolves.toBeUndefined();
   });
 
-  it("treats an unreadable cookie as no choice rather than as an error", async () => {
+  it("treats an unreadable cookie as no hint rather than as an error", async () => {
     // A cookie is whatever the browser was last given. An edited one must not be able to
-    // stop the application rendering: without the header the service either infers the
-    // caller's sole workspace or answers 422 tenant_required, and both are recoverable.
+    // stop the application rendering — and since it authorizes nothing, the worst it can
+    // now cost is being asked where the loop runs one more time.
     jar.set(ACTIVE_TENANT_COOKIE, "acme robotics; drop table");
-    await expect(activeTenant()).resolves.toBeUndefined();
+    await expect(workspaceHint()).resolves.toBeUndefined();
   });
 
-  it("treats an empty cookie as no choice", async () => {
+  it("treats an empty cookie as no hint", async () => {
     jar.set(ACTIVE_TENANT_COOKIE, "");
-    await expect(activeTenant()).resolves.toBeUndefined();
+    await expect(workspaceHint()).resolves.toBeUndefined();
   });
 });
 
-describe("setActiveTenant", () => {
-  it("writes the choice where the next request will read it", async () => {
-    await setActiveTenant("acme");
+describe("rememberWorkspace", () => {
+  it("writes the note where the next request will read it", async () => {
+    await rememberWorkspace("acme");
 
     expect(setCookie).toHaveBeenCalledWith(ACTIVE_TENANT_COOKIE, "acme", expect.anything());
   });
 
   it("keeps the cookie out of script's reach and off cross-site requests", async () => {
-    await setActiveTenant("acme");
+    await rememberWorkspace("acme");
 
     const [, , options] = setCookie.mock.calls[0] as [string, string, Record<string, unknown>];
     expect(options).toMatchObject({
@@ -139,21 +146,21 @@ describe("setActiveTenant", () => {
   });
 
   it("does not require TLS in development, where there is none to require", async () => {
-    await setActiveTenant("acme");
+    await rememberWorkspace("acme");
 
     const [, , options] = setCookie.mock.calls[0] as [string, string, Record<string, unknown>];
     expect(options).toMatchObject({ secure: false });
   });
 
   it("refuses a reference the contract would not accept, because a write is our own doing", async () => {
-    await expect(setActiveTenant("acme robotics")).rejects.toThrow(/X-Ouro-Tenant/);
+    await expect(rememberWorkspace("acme robotics")).rejects.toThrow(/X-Ouro-Tenant/);
     expect(setCookie).not.toHaveBeenCalled();
   });
 });
 
-describe("clearActiveTenant", () => {
-  it("removes the choice", async () => {
-    await clearActiveTenant();
+describe("forgetWorkspace", () => {
+  it("removes the note", async () => {
+    await forgetWorkspace();
 
     expect(deleteCookie).toHaveBeenCalledWith(ACTIVE_TENANT_COOKIE);
   });
@@ -175,15 +182,27 @@ describe("api", () => {
     expect(() => api()).toThrow(REST_URL_VAR);
   });
 
-  it("forwards this request's session and workspace", async () => {
+  it("forwards this request's session", async () => {
+    jar.set(SESSION_COOKIE, "signed.value");
+    respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
+
+    await api().GET("/api/v1/orgs");
+
+    expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
+  });
+
+  it("sends no X-Ouro-Tenant, whatever the hint cookie holds", async () => {
+    // #719: the header is an *override* of the session's active organization (#713), and an
+    // override this application never means to exercise is one it should not send. A stale
+    // hint beside a path naming another workspace is `422 tenant_mismatch` on a request
+    // that would otherwise have succeeded. `client.test.ts` still covers the capability.
     jar.set(SESSION_COOKIE, "signed.value");
     jar.set(ACTIVE_TENANT_COOKIE, "acme");
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
 
     await api().GET("/api/v1/orgs");
 
-    expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
-    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBe("acme");
+    expect(requests[0]?.headers.has("X-Ouro-Tenant")).toBe(false);
   });
 
   it("forwards both of BetterAuth's cookies when the browser sent both", async () => {
@@ -266,7 +285,7 @@ describe("api", () => {
  * arrives as an error rather than as a redirect to the page that asked.
  */
 describe("anonymousApi", () => {
-  it("forwards the same session and workspace as the wired client does", async () => {
+  it("forwards the same credentials as the wired client does", async () => {
     jar.set(SESSION_COOKIE, "signed.value");
     jar.set(ACTIVE_TENANT_COOKIE, "acme");
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
@@ -274,7 +293,7 @@ describe("anonymousApi", () => {
     await anonymousApi().GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
-    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBe("acme");
+    expect(requests[0]?.headers.has("X-Ouro-Tenant")).toBe(false);
   });
 
   it("lets a 401 reject as an ApiError instead of redirecting to the login screen", async () => {

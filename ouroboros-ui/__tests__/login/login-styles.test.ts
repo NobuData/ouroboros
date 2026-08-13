@@ -275,3 +275,34 @@ describe("the screen's own scroll container", () => {
     expect(login?.[1]).toMatch(/overflow-y:\s*auto/);
   });
 });
+
+describe("the step-2 row, as the mockup draws it", () => {
+  it("puts the mockup's tick in the token that means healthy", () => {
+    // `<span style="color:var(--ok)">✓</span>` beside an enabled org row in the drawing.
+    // Hue is never the only signal (docs/DESIGN_TOKENS.md § Status) — the switch on the
+    // same row announces the state, and the tick is `aria-hidden` decoration beside it.
+    expect(rule(".login-row__check")).toMatch(/color:\s*var\(--ok\)/);
+  });
+
+  it("gives the choosing half of a row the pointer and the hover the whole row used to take", () => {
+    // The row was itself a button until #719 split it in two: this label chooses which
+    // workspace to enter, and the switch beside it enables one. A control that looks
+    // pressable and is not, or the reverse, is the failure this guards.
+    expect(rule("label.login-row__choice")).toMatch(/cursor:\s*pointer/);
+    expect(rule("label.login-row__choice:hover")).toMatch(/background:\s*var\(--accent-wash\)/);
+  });
+
+  it("tints the platform's own radio rather than drawing one", () => {
+    // `accent-color` is the one property that colours a native control without replacing
+    // it — which is what keeps the group arrow-navigable, announced as "1 of 3", and
+    // submittable with the form it is associated with by `form=`.
+    expect(rule(".login-row__radio")).toMatch(/accent-color:\s*var\(--accent\)/);
+  });
+
+  it("owns no repository styles, because the row model carries counts rather than rows", () => {
+    // `GET /api/v1/orgs` answers `repoCounts` and `featuredRepo`; the mockup draws no
+    // repository rows, and the indented list this sheet used to style is gone with the
+    // `1 + n` fetch that filled it (#719).
+    expect(CODE).not.toContain(".login-repo");
+  });
+});

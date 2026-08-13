@@ -20,20 +20,74 @@ import type { SessionUser } from "@/app/api/identity";
 export const TENANT_ID = "5eed0001-0000-4000-8000-000000000001";
 
 /**
- * One workspace this person belongs to.
+ * One workspace this person belongs to — `GET /api/v1/orgs`'s row, as the seed writes it.
+ *
+ * The defaults are the mockup's first row and the seed's first workspace: `acme-robotics`,
+ * owned, switched on, four repositories enabled including `helios-firmware`. A case that is
+ * about a `member`'s greyed-out switch says `membership({ roles: ["member"] })` and nothing
+ * else.
  *
  * @param over The fields this case is about.
  * @returns A complete membership.
  */
 export function membership(over: Partial<Membership> = {}): Membership {
   return {
-    tenantId: TENANT_ID,
+    id: TENANT_ID,
     slug: "acme-robotics",
-    displayName: "Acme Robotics",
-    status: "active",
-    role: "owner",
+    name: "Acme Robotics",
+    monogram: "AR",
+    personal: false,
+    roles: ["owner"],
+    enabled: true,
+    repoCounts: { enabled: 4, total: 4 },
+    featuredRepo: "helios-firmware",
+    githubOrgs: [{ login: "acme-robotics", enabled: true, repoCounts: { enabled: 4, total: 4 } }],
+    createdAt: "2026-08-11T10:20:23.114Z",
     ...over,
   };
+}
+
+/**
+ * The mockup's three rows, exactly as `docs/mockups/01-login.html` draws them and the
+ * development seed (#709) writes them.
+ *
+ * The acceptance criterion this exists for is *"seeded data reproduces the mockup's three
+ * rows exactly — counts, pill, switch states"*, and a suite asserting that should be able to
+ * say which drawing it is asserting against rather than rebuilding it row by row.
+ *
+ * @returns The three workspaces, oldest first — the listing's own order.
+ */
+export function seededWorkspaces(): Membership[] {
+  return [
+    membership(),
+    membership({
+      id: "5eed0001-0000-4000-8000-000000000002",
+      slug: "acme-labs",
+      name: "Acme Labs",
+      monogram: "AL",
+      roles: ["member"],
+      enabled: false,
+      repoCounts: { enabled: 0, total: 0 },
+      featuredRepo: null,
+      githubOrgs: [
+        { login: "acme-labs", enabled: false, repoCounts: { enabled: 0, total: 0 } },
+      ],
+      createdAt: "2026-08-11T10:20:24.221Z",
+    }),
+    membership({
+      id: "5eed0001-0000-4000-8000-000000000003",
+      slug: "kensuenobu",
+      name: "Ken Suenobu",
+      monogram: "KS",
+      personal: true,
+      repoCounts: { enabled: 2, total: 2 },
+      featuredRepo: "dotfiles",
+      githubOrgs: [
+        { login: "kensuenobu", enabled: true, repoCounts: { enabled: 2, total: 2 } },
+      ],
+      createdAt: "2026-08-11T10:20:25.007Z",
+    }),
+  ];
 }
 
 /**

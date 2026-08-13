@@ -1,7 +1,9 @@
 import { Toggle } from "@/app/ui";
 
+import { ENABLED_FIELD } from "./enablement";
+
 /**
- * The on/off switch beside an organisation or a repository.
+ * The on/off switch beside a workspace.
  *
  * The control itself is the #46 {@link Toggle}: a `<button role="switch">` with the shape,
  * the states and the read-only treatment the design system gives every switch in the
@@ -23,13 +25,14 @@ import { Toggle } from "@/app/ui";
  *
  * ### A switch that may not be pressed still renders
  *
- * `member` and `viewer` may read a workspace and not administer it (`openapi.yaml`: the
- * mutations are `owner` and `admin`), so for them the switch is a read-only indicator: same
- * shape, same state, `aria-disabled`, and the reason in its tooltip and its accessible
- * description. That is the design system's § 3.3 permission-limited state and its § 3.5
- * honesty rule in one control — hiding the switches would leave a list that looks like it
- * has no settings, and a `disabled` button would drop the explanation out of the tab order
- * along with the control.
+ * Two reasons a switch cannot move, and the control is the same for both. `member` and
+ * `viewer` may read a workspace and not administer it (`openapi.yaml`: the mutations are
+ * `owner` and `admin`); and a workspace with no GitHub organisations recorded has nothing
+ * for a switch to act on at all. Either way it is a read-only indicator: same shape, same
+ * state, `aria-disabled`, and the reason in its tooltip and its accessible description. That
+ * is the design system's § 3.3 permission-limited state and its § 3.5 honesty rule in one
+ * control — hiding the switches would leave a list that looks like it has no settings, and a
+ * `disabled` button would drop the explanation out of the tab order along with the control.
  *
  * Its form goes with it: a read-only switch renders bare, so there is no form for a press
  * to submit even if one reached the button.
@@ -77,7 +80,7 @@ export function EnablementSwitch({
         <input type="hidden" name={name} value={value} key={name} />
       ))}
       {/* The state to move to, not the state it is in. */}
-      <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
+      <input type="hidden" name={ENABLED_FIELD} value={enabled ? "false" : "true"} />
       <Toggle checked={enabled} label={label} type="submit" />
     </form>
   );

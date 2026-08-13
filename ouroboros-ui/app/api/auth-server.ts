@@ -23,29 +23,32 @@ import "server-only";
  * than a bug: `OURO_REST_URL` carries no `NEXT_PUBLIC_` prefix and the session cookies are
  * `HttpOnly`, so a browser could neither address the service nor authenticate to it.
  *
- * ### Who is signed in is three calls, and there is no fourth
+ * ### Who is signed in is two calls, and it used to be one more per workspace
  *
  * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted `GET /api/v1/auth/me`,
  * which had been answering *who is signed in* beside BetterAuth's own session route: two
  * answers that could disagree, and the one built over `tenant_members` and `tenants` was
  * already answering nothing at all, because `V006__tenancy_extensions.sql` had dropped both
- * tables ([#708](https://github.com/NobuData/ouroboros/issues/708)). What replaces it is the
- * three routes the contract publishes, and they divide the question the way BetterAuth
- * models it:
+ * tables ([#708](https://github.com/NobuData/ouroboros/issues/708)). What replaced it was
+ * three of BetterAuth's own routes — `getSession`, `organization.list`, and a
+ * `getActiveMemberRole` **per workspace**, because the plugin's listing discards the role on
+ * the way out of its adapter and no one call answered both.
+ *
+ * [#719](https://github.com/NobuData/ouroboros/issues/719) is what retired the fan-out. The
+ * question now divides in two, and neither half grows with how many workspaces somebody
+ * belongs to:
  *
  * | Call | Answers |
  * |---|---|
- * | `organization.list` | the workspaces they belong to |
- * | `organization.getActiveMemberRole` | what they hold in one of them |
  * | `getSession` | the person, and which organization the session is acting in |
+ * | `GET /api/v1/orgs` | every workspace they belong to — roles, counts, monogram and all |
  *
- * The second is a call *per workspace*, and that is a cost worth naming: the plugin's
- * listing discards the role on the way out of the adapter, so there is no one request that
- * answers both. It is a handful of small reads on a login screen rather than a fan-out on a
- * hot path, and [#714](https://github.com/NobuData/ouroboros/issues/714)'s
- * `GET /api/v1/orgs` — the Step 2 row model, with counts and roles together — is the single
- * call that replaces them. [#719](https://github.com/NobuData/ouroboros/issues/719) is what
- * re-points this module at it.
+ * The second is [#714](https://github.com/NobuData/ouroboros/issues/714)'s, and it is the one
+ * read `/api/v1` offers that the auth family cannot: a join and a grouped count over three
+ * tables the organization plugin serves one of. It is called through the *generated* client
+ * (`app/api/tenants.ts`), which is the contract's own rule — auth routes through the auth
+ * client, everything else through the generated one — so this module reaches across the line
+ * exactly once, to compose the one value both families describe.
  *
  * `app/api/access.ts` is what reads this on behalf of a screen; `app/api/identity.ts` is the
  * vocabulary the answer is composed into. What a membership *means* — which one a reference
@@ -69,13 +72,13 @@ import {
   AUTH_COOKIES,
   AuthError,
   type AuthResult,
-  asRole,
   isoTimestamp,
   unwrap,
 } from "@/app/api/auth-client";
+import type { ApiClient } from "@/app/api/client";
 import type { Session } from "@/app/api/identity";
-import type { Membership } from "@/app/api/membership";
-import { clearActiveTenant } from "@/app/api/server";
+import { WORKSPACE_LIMIT, tenants } from "@/app/api/tenants";
+import { anonymousApi, forgetWorkspace } from "@/app/api/server";
 import { restUrl } from "@/app/env";
 import { loginPath } from "@/app/paths";
 
@@ -160,34 +163,45 @@ export async function authFetchOptions(
 }
 
 /**
- * The current session, composed from the three calls that answer it.
+ * The current session, composed from the two calls that answer it.
  *
- * One function, because a screen has one question. That it is three requests is this
- * module's business and nobody else's.
+ * One function, because a screen has one question. That it is two requests — one to each
+ * family — is this module's business and nobody else's.
+ *
+ * The workspace listing is read through {@link anonymousApi} rather than through `api()`,
+ * and the difference is the `401` handler: `api()` sends one to the login screen, and the
+ * caller most likely to be here *is* the login screen. A session that `get-session` just
+ * answered for cannot ordinarily be refused by the request after it — both carry the same
+ * cookies — but "ordinarily" is not a property to hang a redirect loop on, so a refusal
+ * rejects with the `ApiError` the contract describes and the route's error boundary shows
+ * it.
  *
  * @param fetchImpl The fetch to call through. Defaults to the runtime's; the parameter is
  *   what lets a suite answer without a socket.
+ * @param client The client the workspace listing is read through. Defaults to the wired
+ *   server-side one; tests pass a client over a stub `fetch`.
  * @returns The session, or **`null` when nobody is signed in**. `null` rather than a throw,
  *   because that is what `get-session` itself answers: the absence of a session is the
  *   answer a login screen is asking for, not a failure. This changed with
  *   [#711](https://github.com/NobuData/ouroboros/issues/711) — the route it replaced
  *   answered `401`, which every caller then had to translate.
- * @throws {AuthError} Any other refusal. A service that is failing is not a signed-out
- *   visitor, and rendering a sign-in screen for one would hide an outage behind a login
- *   form.
- * @throws Next.js's redirect signal, when the service answered `401` — see
+ * @throws {AuthError} Any other refusal from the auth family. A service that is failing is
+ *   not a signed-out visitor, and rendering a sign-in screen for one would hide an outage
+ *   behind a login form.
+ * @throws {ApiError} What `ouroboros-rest` answered to the workspace listing.
+ * @throws Next.js's redirect signal, when an auth route answered `401` — see
  *   {@link authRead}.
  */
-export async function readSession(fetchImpl: typeof fetch = fetch): Promise<Session | null> {
+export async function readSession(
+  fetchImpl: typeof fetch = fetch,
+  client: ApiClient = anonymousApi(),
+): Promise<Session | null> {
   const fetchOptions = await authFetchOptions(fetchImpl);
 
   const current = await authRead(authApi.getSession({ fetchOptions }), "/get-session");
   if (current === null) return null;
 
-  const organizations = (await authRead(
-    authApi.organization.list({ fetchOptions }),
-    "/organization/list",
-  )) ?? [];
+  const workspaces = await tenants.list({ limit: WORKSPACE_LIMIT }, client);
 
   return {
     user: {
@@ -198,9 +212,12 @@ export async function readSession(fetchImpl: typeof fetch = fetch): Promise<Sess
       createdAt: isoTimestamp(current.user.createdAt),
       updatedAt: isoTimestamp(current.user.updatedAt),
     },
-    memberships: await Promise.all(
-      organizations.map((organization) => membershipOf(organization, fetchOptions)),
-    ),
+    memberships: workspaces.items,
+    membershipTotal: workspaces.total,
+    // BetterAuth's own types leave the field off the base session and the plugin widens it,
+    // so it is read defensively rather than asserted: a build whose client is typed without
+    // the organization plugin would otherwise report every session as acting nowhere.
+    activeOrganizationId: current.session.activeOrganizationId ?? null,
     tenantSuggestion: null,
   };
 }
@@ -208,13 +225,15 @@ export async function readSession(fetchImpl: typeof fetch = fetch): Promise<Sess
 /**
  * Make one workspace the session's active organization.
  *
- * **This is the service's own record of the choice, and it is not yet the one this
- * application reads.** The active workspace is the `ouro_tenant` cookie today
- * (`app/api/server.ts`), matched against the memberships the service reports in the same
- * request; BetterAuth keeps its own `session.activeOrganizationId`, which is what scopes the
- * plugin's member and invitation routes. Setting both is what keeps the two from disagreeing
- * while [#719](https://github.com/NobuData/ouroboros/issues/719) makes `setActive` the sole
- * authority and retires the cookie.
+ * **This is the authority, since [#719](https://github.com/NobuData/ouroboros/issues/719).**
+ * It was one of two records of the same choice: this pointer, which scopes the plugin's own
+ * routes, and the `ouro_tenant` cookie, which is what `app/api/access.ts` used to resolve a
+ * workspace from. Two records that can disagree is one too many, and the one that could be
+ * edited by whoever holds the browser was the wrong one to keep. So this writes
+ * `session."activeOrganizationId"`, `ouroboros-rest` scopes a request from that same column
+ * ([#713](https://github.com/NobuData/ouroboros/issues/713)), and the cookie is a hint about
+ * *where somebody got to in the sign-in flow* rather than a claim about which workspace they
+ * are in (`app/api/server.ts`).
  *
  * @param organizationId The workspace's id. **Resolve it against the caller's own
  *   memberships before calling** — `app/api/membership.ts`'s `activeMembership` — because an
@@ -248,10 +267,12 @@ export async function setActiveOrganization(
  * application's own, so nothing but this deletes it.
  *
  * 1. The session row, by calling `sign-out`. A session that is only forgotten by the browser
- *    is a session a copied cookie still opens.
+ *    is a session a copied cookie still opens. The active organization goes with it: the
+ *    pointer lives *on* that row (`session."activeOrganizationId"`), so signing out is what
+ *    forgets which workspace this browser was in.
  * 2. Both auth cookies, from this response.
- * 3. The active workspace, so the next person to sign in on this browser does not inherit a
- *    choice they never made.
+ * 3. The step-2 hint, so the next person to sign in on this browser is asked where the loop
+ *    runs rather than being sent straight past the question.
  *
  * Callable only where Next.js allows a cookie to be written — a Server Action or a Route
  * Handler — which is where signing out is triggered from anyway. The account menu that binds
@@ -275,16 +296,9 @@ export async function signOutSession(fetchImpl: typeof fetch = fetch): Promise<v
   for (const name of AUTH_COOKIES) {
     jar.delete(name);
   }
-  await clearActiveTenant();
+  await forgetWorkspace();
 
   redirect(loginPath());
-}
-
-/** One entry of `organization.list` — `openapi.yaml` § `Organization`. */
-export interface AuthOrganization {
-  id: string;
-  name: string;
-  slug: string;
 }
 
 /**
@@ -318,43 +332,4 @@ export async function authRead<T>(
     }
     throw error;
   }
-}
-
-/**
- * One organization, as the workspace switcher needs it.
- *
- * `status` is `active` for every row, and that is the plugin's model rather than a
- * placeholder: an organization has no lifecycle column. `tenants.status` did — `active`,
- * `suspended`, `deleted` — and `V006__tenancy_extensions.sql` did not carry it across,
- * because BetterAuth has nowhere to put it. So *every workspace the list returns is one you
- * can work in*, which is what `selectableMemberships` was filtering for; the filter stays,
- * because the field is still in the contract that
- * [#714](https://github.com/NobuData/ouroboros/issues/714) will re-introduce it from, and a
- * screen that stopped checking would be one that has to learn to again.
- *
- * @param organization One entry of the organization listing.
- * @param fetchOptions What every call in this request carries.
- * @returns The membership, with the role read for this workspace specifically.
- */
-async function membershipOf(
-  organization: AuthOrganization,
-  fetchOptions: AuthFetchOptions,
-): Promise<Membership> {
-  const held = await authRead(
-    authApi.organization.getActiveMemberRole({
-      query: { organizationId: organization.id },
-      fetchOptions,
-    }),
-    "/organization/get-active-member-role",
-  );
-
-  return {
-    tenantId: organization.id,
-    slug: organization.slug,
-    displayName: organization.name,
-    status: "active",
-    // A role nobody could read degrades to `viewer` — see `asRole`, which is also what
-    // widens the client's three defaults back to the four the contract publishes.
-    role: asRole(held?.role),
-  };
 }

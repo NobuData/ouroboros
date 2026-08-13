@@ -48,6 +48,18 @@ export type RepoCounts = components["schemas"]["RepoCounts"];
 export type TenantListQuery = NonNullable<operations["listOrgs"]["parameters"]["query"]>;
 
 /**
+ * How many workspaces one read of the listing asks for.
+ *
+ * The contract's maximum, not its default of 25: the caller is `app/api/auth-server.ts`
+ * composing a session, and a workspace switcher that stopped at twenty-five would silently
+ * hide the twenty-sixth. The ceiling is the service's and is not negotiable from here —
+ * "without it, a `limit` of a million is a client's way of asking this service to hold a
+ * table in memory". What is read beyond it is nobody's guess: the page's `total` travels
+ * with the session (`app/api/identity.ts`) so the screen can say how many it left out.
+ */
+export const WORKSPACE_LIMIT = 100;
+
+/**
  * The workspaces the signed-in person belongs to.
  *
  * The method takes the client as an optional last argument, defaulting to the wired

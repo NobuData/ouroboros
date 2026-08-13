@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Membership } from "@/app/api/membership";
-import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 import { resetRestUrlCache } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
 
-import { authAnswer, requestedUrl } from "../helpers/auth";
+import { authAnswer, isAuthUrl, orgsAnswer, requestedUrl } from "../helpers/auth";
+import { membership } from "../helpers/login";
 
 /**
  * The data-access layer: who is signed in, which workspace they are in, and the gate every
@@ -13,13 +13,19 @@ import { authAnswer, requestedUrl } from "../helpers/auth";
  *
  * This is the security-relevant half of #44, so what is tested is not which routes it calls
  * but the four decisions it makes about the answer: *nobody signed in* is a state rather
- * than a failure, a `500` is not that state, the cookie is a claim rather than a fact, and a
- * request without both halves does not get to render.
+ * than a failure, a `500` is not that state, **the session's pointer is a reference rather
+ * than a fact**, and a request without both halves does not get to render.
+ *
+ * The third of those is where [#719](https://github.com/NobuData/ouroboros/issues/719)
+ * changed the subject and not the rule. The active workspace was the `ouro_tenant` cookie,
+ * and the cases below said so; it is `session."activeOrganizationId"` now — server state,
+ * written only by `set-active` — and it is still resolved against the memberships the
+ * service reported in the same request rather than believed. What the cookie can still do is
+ * asserted in `server.test.ts` and `view.test.ts`, where what is left of it lives.
  *
  * The environment it needs is the same one `server.test.ts` builds — a cookie jar, a
- * redirect that signals by throwing — plus a `fetch` for the auth family the layer reads
- * through since [#711](https://github.com/NobuData/ouroboros/issues/711). What that family
- * answers is `helpers/auth.ts`; what is decided about it is here.
+ * redirect that signals by throwing — plus a `fetch` answering both families the layer reads
+ * through. What they answer is `helpers/auth.ts`; what is decided about it is here.
  */
 
 /** The cookies of the request under test. */
@@ -56,17 +62,14 @@ vi.mock("next/server", () => ({ connection: () => Promise.resolve() }));
 const { currentAccess, requireWorkspace } = await import("@/app/api/access");
 const { resetApiClient } = await import("@/app/api/server");
 
-/** One membership, with the fields a case cares about overridden. */
-const ACME: Membership = {
-  tenantId: "5eed0001-0000-4000-8000-000000000001",
-  slug: "acme-robotics",
-  displayName: "Acme Robotics",
-  status: "active",
-  role: "owner",
-};
+/** The workspace every case is about, unless it says otherwise. */
+const ACME: Membership = membership();
 
 /** What this person belongs to. `null` is nobody signed in. */
 let memberships: Membership[] | null;
+
+/** Where the session is acting. `undefined` means "the first workspace", as a new one is. */
+let acting: string | null | undefined;
 
 /** A failure to answer every call with instead, when a case is about one. */
 let failure: { body: unknown; status: number } | undefined;
@@ -82,13 +85,17 @@ beforeEach(() => {
   process.env.OURO_REST_URL = "http://rest.test:4000";
 
   memberships = [ACME];
+  acting = undefined;
   failure = undefined;
   calls = 0;
 
   vi.stubGlobal("fetch", (input: Request | URL | string) => {
     calls += 1;
     const url = requestedUrl(input);
-    const body = failure === undefined ? authAnswer(url, memberships) : failure.body;
+    const answered = isAuthUrl(url)
+      ? authAnswer(url, memberships, acting === undefined ? undefined : acting)
+      : orgsAnswer(memberships);
+    const body = failure === undefined ? answered : failure.body;
 
     return Promise.resolve(
       new Response(body === null ? "null" : JSON.stringify(body), {
@@ -126,6 +133,8 @@ describe("currentAccess, with no session", () => {
   });
 
   it("asks nothing further, because there is nobody to ask about", async () => {
+    // Including the workspace listing: a listing scoped to the caller has nothing to say
+    // about a request that carries no caller.
     memberships = null;
 
     await currentAccess();
@@ -143,54 +152,58 @@ describe("currentAccess, with no session", () => {
 });
 
 describe("currentAccess, with a session", () => {
-  it("resolves the workspace the cookie names", async () => {
-    jar.set(ACTIVE_TENANT_COOKIE, ACME.slug);
-
+  it("resolves the workspace the session's pointer names", async () => {
     const access = await currentAccess();
 
     expect(access.session?.user.email).toBe("ken@acme-robotics.dev");
     expect(access.membership?.slug).toBe(ACME.slug);
   });
 
-  it("treats no cookie as no choice — a step to complete rather than an error", async () => {
+  it("carries the memberships and the total the listing reported", async () => {
+    // The rows are the session's since #719, so a screen drawing step 2 needs no read of
+    // its own — and the total is what lets it say how many it left out.
+    const { session } = await currentAccess();
+
+    expect(session?.memberships).toHaveLength(1);
+    expect(session?.membershipTotal).toBe(1);
+    expect(session?.activeOrganizationId).toBe(ACME.id);
+  });
+
+  it("treats a session acting nowhere as no choice — a step to complete, not an error", async () => {
+    acting = null;
+
     const access = await currentAccess();
 
     expect(access.session).not.toBeNull();
     expect(access.membership).toBeUndefined();
   });
 
-  it("treats a cookie naming a workspace they do not belong to as no choice", async () => {
-    // The property that matters: the cookie is whatever the browser was last given, so it is
-    // matched against what the service just said rather than believed.
-    jar.set(ACTIVE_TENANT_COOKIE, "someone-elses-workspace");
+  it("treats a pointer naming a workspace they do not belong to as no choice", async () => {
+    // The property that matters, and the one the cookie used to carry: the reference is
+    // matched against what the service just said rather than believed. A session may point
+    // at a workspace somebody has since been removed from.
+    acting = "5eed0001-0000-4000-8000-00000000dead";
 
     expect((await currentAccess()).membership).toBeUndefined();
   });
 
-  it("treats an unreadable cookie as no choice rather than as a reason to fail", async () => {
-    // `activeTenant()` refuses a value that is not a workspace reference at all; a bad
-    // cookie must not be able to stop the application rendering.
-    jar.set(ACTIVE_TENANT_COOKIE, "not a reference\r\n");
+  it("resolves nothing at all for somebody who belongs nowhere", async () => {
+    memberships = [];
+    acting = null;
 
-    expect((await currentAccess()).membership).toBeUndefined();
+    const access = await currentAccess();
+
+    expect(access.session?.memberships).toEqual([]);
+    expect(access.membership).toBeUndefined();
   });
-
-  // *Treats a suspended workspace as no choice* was here. It cannot be composed through the
-  // service after #711 — BetterAuth's organizations have no lifecycle column, so
-  // `app/api/auth-server.ts` reports every one of them as `active`. The rule is unchanged and is
-  // asserted where it lives, in `__tests__/api/membership.test.ts`;
-  // [#714](https://github.com/NobuData/ouroboros/issues/714) is what gives the service a way
-  // to say `suspended` again.
 });
 
 describe("requireWorkspace", () => {
   it("returns the session and the workspace when both are there", async () => {
-    jar.set(ACTIVE_TENANT_COOKIE, ACME.slug);
-
-    const { session: current, membership } = await requireWorkspace();
+    const { session: current, membership: workspace } = await requireWorkspace();
 
     expect(current.user.displayName).toBe("Ken Suenobu");
-    expect(membership.tenantId).toBe(ACME.tenantId);
+    expect(workspace.id).toBe(ACME.id);
   });
 
   it("sends a request with no session to the login screen", async () => {
@@ -200,14 +213,18 @@ describe("requireWorkspace", () => {
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 
-  it("sends a signed-in request with no chosen workspace to the login screen too", async () => {
+  it("sends a signed-in request with no active workspace to the login screen too", async () => {
     // A session alone is not access: every operation the product needs is scoped to a
     // workspace, and the login screen is where one is chosen.
+    acting = null;
+
     await expect(requireWorkspace()).rejects.toBeInstanceOf(RedirectSignal);
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 
   it("signals by throwing, so nothing after a failed check runs", async () => {
+    acting = null;
+
     const caught: unknown = await requireWorkspace().catch((error: unknown) => error);
 
     expect(caught).toBeInstanceOf(RedirectSignal);
@@ -221,8 +238,6 @@ describe("repeated calls in one request", () => {
     // outside a render scope it is a pass-through, so the number of calls to the service is
     // the framework's guarantee rather than something this suite can observe. What it can
     // observe is the part that would break either way — that two calls agree.
-    jar.set(ACTIVE_TENANT_COOKIE, ACME.slug);
-
     const [first, second] = await Promise.all([currentAccess(), currentAccess()]);
 
     expect(first).toEqual(second);

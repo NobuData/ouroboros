@@ -18,7 +18,7 @@ import type { Enablement } from "@/app/api/enablement";
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { MemberPage } from "@/app/api/members";
-import type { Membership, Role } from "@/app/api/membership";
+import { type Membership, type Role, primaryRole } from "@/app/api/membership";
 import type { SessionUser } from "@/app/api/identity";
 
 /**
@@ -414,15 +414,17 @@ export function statRow(
 /**
  * The line under the page's heading: who is looking, and at what.
  *
- * The workspace's own lifecycle is named only when it is not `active`, because a heading
- * that says "active" on every screen it can be reached from says nothing — and a suspended
- * one is the case somebody needs to be told about.
+ * **One role rather than the list the contract carries**, because there is room for a word
+ * and the truthful word is the strongest one held — `app/api/membership.ts`'s
+ * `primaryRole`. The workspace's lifecycle was named here too, when it was not `active`;
+ * `OrgRow` publishes no lifecycle ([#719](https://github.com/NobuData/ouroboros/issues/719)),
+ * so every workspace a session can reach is one you can work in and there is nothing left
+ * for the line to warn about.
  *
  * @param workspace The active workspace, as the gate resolved it.
  * @param displayName The signed-in person's name.
  * @returns The subline.
  */
 export function pageSubline(workspace: Membership, displayName: string): string {
-  const lifecycle = workspace.status === "active" ? "" : ` · workspace ${workspace.status}`;
-  return `${displayName} · ${workspace.role} of ${workspace.slug}${lifecycle}`;
+  return `${displayName} · ${primaryRole(workspace.roles)} of ${workspace.slug}`;
 }

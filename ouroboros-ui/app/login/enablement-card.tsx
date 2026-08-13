@@ -1,161 +1,229 @@
-import type { Enablement, OrgEnablement } from "@/app/api/enablement";
-import { type Membership, isAdminRole } from "@/app/api/membership";
-import { DASHBOARD_PATH } from "@/app/paths";
-import { Button, Card, Chip, EmptyState, Eyebrow } from "@/app/ui";
+import { type Membership, mayAdminister } from "@/app/api/membership";
+import { Button, Card, Chip, Eyebrow } from "@/app/ui";
 
-import { setOrgEnabled, setRepoEnabled } from "./actions";
+import { enterMissionControl, setWorkspaceEnabled } from "./actions";
 import { APP_NOTE, STEP_TWO_ID, STEP_TWO_LEDE, STEP_TWO_TITLE } from "./copy";
-import { repoSummary } from "./enablement";
+import { WORKSPACE_FIELD, repoSummary } from "./enablement";
 import { EnablementSwitch } from "./enablement-switch";
 import { Monogram } from "./monogram";
 
 /**
- * Step 2 in its working form: the organisations of the chosen workspace, the repositories
- * under each, and the way out to the dashboard.
+ * Step 2 in its working form — `docs/mockups/01-login.html`'s second card, row for row.
  *
- * This is the mockup's second card with one addition the mockup does not have and the issue
- * requires: the repositories themselves, each with its own switch ("toggle a repo" is an
- * acceptance criterion). They are indented under their organisation because that is what
- * they are — a repository is in scope only when its own flag and its organisation's are
- * **both** true, and the summary line says so when they disagree.
+ * ```
+ * [AR] acme-robotics ✓        4 repos enabled · incl. helios-firmware   (on)
+ * [AL] acme-labs              0 repos enabled                           (off)
+ * [KS] kensuenobu (personal)  2 repos enabled                           (on)
+ * "Ouroboros installs as a GitHub App with least-privilege scopes…"
+ * [ Enter mission control → ]
+ * ```
  *
- * Two things this card is careful about:
+ * **The rows are workspaces**, not the GitHub organisations inside one, and that is
+ * [#719](https://github.com/NobuData/ouroboros/issues/719)'s change of source rather than a
+ * change of design: `GET /api/v1/orgs` is "mockup 01 Step 2's row model, in one request"
+ * ([#714](https://github.com/NobuData/ouroboros/issues/714)), and every part of the drawing
+ * above is a field of it — `monogram`, `slug`, `personal`, `enabled`, `repoCounts` and
+ * `featuredRepo`. What this card used to render was one chosen workspace's organisations and
+ * their repositories, reached through a separate *pick a workspace* step; the mockup has
+ * three workspaces on one card and one button under them, and now so does this.
  *
- * 1. **Who may press anything.** Administering a workspace is `owner` or `admin`; `member`
- *    and `viewer` may read it. For them every switch renders in the same place, in the same
+ * ### Two controls per row, and neither is nested inside the other
+ *
+ * A row asks two different questions, so it carries two different controls:
+ *
+ * | Control | Question | Where it goes |
+ * |---|---|---|
+ * | the radio | *which workspace do I enter?* | the CTA's form, by `form=` |
+ * | the switch | *may Ouroboros work in this one?* | its own one-field form |
+ *
+ * The radio is associated with the **Enter mission control →** form by its `form` attribute
+ * rather than by being inside it, and that is a hard requirement rather than a preference: a
+ * form may not be nested inside another form, and each switch is already a form of its own.
+ * `form=` is how HTML says "this control belongs to that form" for exactly this case, and it
+ * keeps the whole card working before hydration and without JavaScript — which for the first
+ * screen of the product on an unknown connection is worth more than an optimistic animation.
+ *
+ * **A person who belongs to one workspace gets a hidden field instead of a radio.** A radio
+ * group of one is a control that cannot be changed, and the design system's honesty rule
+ * (§ 3.5) is against drawing one; the form still carries the workspace, so the action is
+ * unchanged.
+ *
+ * ### What it is careful about
+ *
+ * 1. **Who may press a switch.** Administering a workspace is `owner` or `admin`; `member`
+ *    and `viewer` may read it. For them the switch renders in the same place, in the same
  *    state, and explains why it cannot move (design system § 3.3, § 3.5) — a list with the
- *    switches hidden would look like a list with no settings.
- * 2. **What it does not claim.** The counts are the service's own totals, and when a page
- *    holds fewer rows than the total the line says so rather than presenting a hundred as
- *    all of them.
+ *    switches hidden would look like a list with no settings. The roles are the
+ *    organization plugin's, read per row, because a person may own one workspace and be a
+ *    viewer in the next.
+ * 2. **What it does not claim.** The count is the service's own `total`, so a page holding
+ *    fewer rows than there are workspaces says so rather than presenting a hundred as all of
+ *    them.
  */
 
 /** Why a switch will not move, for a role that may only read. Also its `title`. */
 const READ_ONLY = "Only an owner or admin can change what Ouroboros may work in.";
 
+/** Why a switch will not move when there is nothing under it to move. */
+const NOTHING_TO_ENABLE =
+  "No GitHub organisations are recorded in this workspace yet. They arrive with the GitHub " +
+  "App installation; until then there is nothing here for the loop to work in.";
+
 /** The id the read-only switches point their description at, once. */
 const READ_ONLY_ID = "login-read-only";
 
+/** The id the rows' radios point their `form` attribute at. */
+const ENTER_FORM_ID = "login-enter";
+
 /**
- * The enablement card.
+ * The step-2 card.
  *
- * @param props.membership The chosen workspace, whose role decides whether anything moves.
- * @param props.enablement Its organisations and their repositories.
- * @returns The card: the rows, the note, and "Enter mission control".
+ * @param props.memberships The workspaces to draw, oldest first — the service's own order.
+ * @param props.active Which row starts selected. `undefined` only when there is no row.
+ * @param props.total How many workspaces exist, which may exceed the number drawn.
+ * @returns The card: the rows, the note, and **Enter mission control →**.
  */
 export function EnablementCard({
-  membership,
-  enablement,
-}: Readonly<{ membership: Membership; enablement: Enablement }>) {
-  const mayAdminister = isAdminRole(membership.role);
+  memberships,
+  active,
+  total,
+}: Readonly<{
+  memberships: readonly Membership[];
+  active: Membership | undefined;
+  total: number;
+}>) {
+  const readOnlyAnywhere = memberships.some((one) => !mayAdminister(one.roles));
 
   return (
     <Card as="section" tone="ground" size="lg" aria-labelledby={STEP_TWO_ID}>
-      <Eyebrow>Step 2 · {membership.slug}</Eyebrow>
+      <Eyebrow>After sign-in · Step 2</Eyebrow>
       <h2 className="login-step__title login-step__title--sub" id={STEP_TWO_ID}>
         {STEP_TWO_TITLE}
       </h2>
       <p className="login-step__lede">{STEP_TWO_LEDE}</p>
 
-      {!mayAdminister && (
+      {readOnlyAnywhere && (
         <p className="login-note login-note--faint" id={READ_ONLY_ID}>
-          You are a {membership.role} in {membership.displayName}. {READ_ONLY}
+          {READ_ONLY}
         </p>
       )}
 
-      {enablement.orgs.length === 0 ? (
-        <EmptyState
-          variant="flush"
-          className="login-step__empty"
-          note={`No GitHub organisations are recorded in ${membership.displayName} yet. They arrive with the GitHub App installation; until then this list is empty and the loop has nothing to work in.`}
-        />
-      ) : (
-        <ul className="login-rows">
-          {enablement.orgs.map((entry) => (
-            <li key={entry.org.id}>
-              <OrgRow entry={entry} mayAdminister={mayAdminister} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="login-rows">
+        {memberships.map((membership) => (
+          <li key={membership.id}>
+            <WorkspaceRow
+              membership={membership}
+              selected={membership.id === active?.id}
+              only={memberships.length === 1}
+            />
+          </li>
+        ))}
+      </ul>
 
-      {enablement.orgTotal > enablement.orgs.length && (
+      {total > memberships.length && (
         <p className="login-summary">
-          Showing {enablement.orgs.length} of {enablement.orgTotal} organisations.
+          Showing {memberships.length} of {total} workspaces.
         </p>
       )}
 
       <p className="login-note login-note--faint">{APP_NOTE}</p>
 
       {/*
-        A plain anchor rather than `next/link`, and deliberately: this screen has no client
-        component on it anywhere, and a prefetching link would be the first — for one
-        navigation, made once, that leaves the sign-in flow behind. A full load also
-        guarantees the dashboard is rendered against the workspace cookie as it now stands
-        rather than against a router entry seeded before the last toggle.
+        The form the radios above belong to. It holds the button and nothing else — every
+        value it submits is declared in a row, which is what lets the rows carry two forms'
+        worth of controls without one form ever containing another.
+
+        A submit button rather than the link this used to be: the press is what writes the
+        session's active organization (`actions.ts`), and the navigation is that action's
+        redirect. A link could not have written anything, which is why the workspace had to
+        be chosen a step earlier and kept in a cookie until it was needed.
       */}
-      <Button tone="primary" size="lg" block href={DASHBOARD_PATH}>
-        Enter mission control →
-      </Button>
+      <form id={ENTER_FORM_ID} action={enterMissionControl}>
+        <Button type="submit" tone="primary" size="lg" block>
+          Enter mission control →
+        </Button>
+      </form>
     </Card>
   );
 }
 
 /**
- * One organisation: its monogram, its name, its summary line, its switch — and its
- * repositories under it.
+ * One workspace: its monogram, its name, its summary line, and its switch.
  *
- * @param props.entry The organisation and its repositories.
- * @param props.mayAdminister Whether this role may change a flag.
- * @returns The row and the list beneath it.
+ * @param props.membership The workspace, as the service's row model describes it.
+ * @param props.selected Whether this is the row **Enter mission control →** would enter.
+ * @param props.only Whether it is the only workspace there is — see the card's note on why
+ *   that replaces the radio with a hidden field.
+ * @returns The row.
  */
-function OrgRow({
-  entry,
-  mayAdminister,
-}: Readonly<{ entry: OrgEnablement; mayAdminister: boolean }>) {
-  const { org } = entry;
+function WorkspaceRow({
+  membership,
+  selected,
+  only,
+}: Readonly<{ membership: Membership; selected: boolean; only: boolean }>) {
+  const administers = mayAdminister(membership.roles);
+  const nothingToEnable = membership.githubOrgs.length === 0;
+
+  const reason = nothingToEnable ? NOTHING_TO_ENABLE : administers ? undefined : READ_ONLY;
+
+  const name = (
+    <>
+      <Monogram letters={membership.monogram} />
+      <span className="login-row__meta">
+        <span className="login-row__name">
+          {membership.slug}
+          {/* The mockup's tick, and decoration: the switch beside it already announces the
+              state, and a second reading of it would be noise. */}
+          {membership.enabled && (
+            <span className="login-row__check" aria-hidden>
+              ✓
+            </span>
+          )}
+          {membership.personal && <Chip>personal</Chip>}
+        </span>
+        <span className="login-row__detail">{repoSummary(membership)}</span>
+      </span>
+    </>
+  );
 
   return (
-    <>
-      <span className="login-row">
-        <Monogram name={org.login} />
-        <span className="login-row__meta">
-          <span className="login-row__name">
-            {org.login}
-            {org.enabled && <Chip tone="ok">on</Chip>}
-          </span>
-          <span className="login-row__detail">{repoSummary(entry)}</span>
-        </span>
-        <EnablementSwitch
-          action={setOrgEnabled}
-          fields={{ login: org.login }}
-          enabled={org.enabled}
-          label={`${org.enabled ? "Disable" : "Enable"} the ${org.login} organisation`}
-          reason={mayAdminister ? undefined : READ_ONLY}
-          describedBy={mayAdminister ? undefined : READ_ONLY_ID}
-        />
-      </span>
-
-      {entry.repos.length > 0 && (
-        <ul className="login-repos">
-          {entry.repos.map((repo) => (
-            <li className="login-repo" key={repo.id}>
-              <span className="login-repo__name">{repo.name}</span>
-              {repo.defaultBranch !== null && (
-                <span className="login-repo__branch">{repo.defaultBranch}</span>
-              )}
-              <EnablementSwitch
-                action={setRepoEnabled}
-                fields={{ login: org.login, repo: repo.name }}
-                enabled={repo.enabled}
-                label={`${repo.enabled ? "Disable" : "Enable"} ${org.login}/${repo.name}`}
-                reason={mayAdminister ? undefined : READ_ONLY}
-                describedBy={mayAdminister ? undefined : READ_ONLY_ID}
-              />
-            </li>
-          ))}
-        </ul>
+    <span className="login-row">
+      {only ? (
+        <>
+          <input
+            form={ENTER_FORM_ID}
+            type="hidden"
+            name={WORKSPACE_FIELD}
+            value={membership.slug}
+          />
+          <span className="login-row__choice">{name}</span>
+        </>
+      ) : (
+        // The label wraps the radio and everything that names it, so the monogram and the
+        // workspace's name are both part of its hit area and its accessible name. The switch
+        // stays outside it: a control inside another control's label is a press that does
+        // two things.
+        <label className="login-row__choice">
+          <input
+            className="login-row__radio"
+            form={ENTER_FORM_ID}
+            type="radio"
+            name={WORKSPACE_FIELD}
+            value={membership.slug}
+            defaultChecked={selected}
+          />
+          {name}
+        </label>
       )}
-    </>
+
+      <EnablementSwitch
+        action={setWorkspaceEnabled}
+        fields={{ [WORKSPACE_FIELD]: membership.slug }}
+        enabled={membership.enabled}
+        label={`${membership.enabled ? "Disable" : "Enable"} Ouroboros in ${membership.slug}`}
+        reason={reason}
+        describedBy={reason === READ_ONLY ? READ_ONLY_ID : undefined}
+      />
+    </span>
   );
 }

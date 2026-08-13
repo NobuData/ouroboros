@@ -1,35 +1,33 @@
-import type { Membership } from "@/app/api/membership";
 import type { TenantSuggestion } from "@/app/api/identity";
-import { Card, Chip, EmptyState, Eyebrow } from "@/app/ui";
+import { Card, EmptyState, Eyebrow } from "@/app/ui";
 
-import { chooseWorkspace } from "./actions";
 import { APP_NOTE, STEP_TWO_ID, STEP_TWO_LEDE, STEP_TWO_TITLE } from "./copy";
-import { Monogram } from "./monogram";
 
 /**
- * Step 2 of the mockup, in the three shapes that come before an organisation can be
- * enabled: the preview a signed-out visitor sees, the workspace picker, and the explanation
- * for somebody who belongs nowhere.
+ * Step 2 in the two shapes that have no workspaces to draw: the preview a signed-out
+ * visitor sees, and the explanation for somebody who belongs nowhere.
  *
- * The fourth shape — the organisation and repository list itself — is
- * `app/login/enablement-card.tsx`, because it is the only one of the four that fetches
- * anything.
+ * The third shape — the workspace rows themselves — is `app/login/enablement-card.tsx`,
+ * because it is the only one of the three with anything to list, anything to press, or
+ * anywhere to go.
  *
- * All three share a head, and it is the mockup's: the eyebrow, "Choose where the loop
+ * **The workspace *picker* used to be here too, and it is gone**
+ * ([#719](https://github.com/NobuData/ouroboros/issues/719)). It existed because choosing a
+ * workspace and enabling organisations inside it were two steps: the picker wrote the
+ * `ouro_tenant` cookie and sent the browser on to a second card. `GET /api/v1/orgs` answers
+ * both questions in one row model — every workspace, with the counts and the switch state
+ * beside it — which is the mockup's own card, three rows and one button under them. Choosing
+ * is now the radio on a row rather than a screen of its own, so there is no second step to
+ * pick your way to.
+ *
+ * Both shapes here share a head, and it is the mockup's: the eyebrow, "Choose where the loop
  * runs", and the least-privilege GitHub App note at the foot. The card that cannot act yet
  * recedes where the mockup dims it — onto the well surface, with the quiet eyebrow, holding
  * no control — which says the same thing without taking its prose below AA (`login.css`).
  *
- * Every shape here is drawn with the #46 primitives: the card, the eyebrow, the chips
- * beside a name, and the empty state that explains a workspace nobody has.
+ * Both are drawn with the #46 primitives: the card, the eyebrow, and the empty state that
+ * explains a workspace nobody has.
  */
-
-/** What a workspace's lifecycle is called when it is not `active`. */
-const STATUS_LABEL: Record<Membership["status"], string> = {
-  active: "active",
-  suspended: "suspended",
-  deleted: "closed",
-};
 
 /**
  * The step-2 card as a signed-out visitor sees it: what will be asked, not a list of
@@ -59,86 +57,31 @@ export function WorkspacePreview() {
 }
 
 /**
- * The step-2 card as somebody who belongs to at least one live workspace sees it: pick one.
- *
- * Each row is itself the control — a submit button spanning the row, in a form of one hidden
- * field — so choosing is one press and needs no JavaScript. The action re-checks the slug
- * against this person's memberships before it writes anything, because the form is a POST
- * endpoint like any other (`app/login/actions.ts`).
- *
- * @param props.memberships The workspaces to offer. Only live ones belong here; the caller
- *   (`app/login/view.ts`) has already filtered them.
- * @returns The picker card.
- */
-export function WorkspacePicker({
-  memberships,
-}: Readonly<{ memberships: readonly Membership[] }>) {
-  return (
-    <Card as="section" tone="ground" size="lg" aria-labelledby={STEP_TWO_ID}>
-      <Eyebrow>Step 2 · Workspace</Eyebrow>
-      <h2 className="login-step__title login-step__title--sub" id={STEP_TWO_ID}>
-        {STEP_TWO_TITLE}
-      </h2>
-      <p className="login-step__lede">
-        {memberships.length === 1
-          ? "Confirm the workspace this browser operates in."
-          : "Pick the workspace this browser operates in. You can change it later."}
-      </p>
-
-      <ul className="login-rows">
-        {memberships.map((membership) => (
-          <li key={membership.tenantId}>
-            <form action={chooseWorkspace}>
-              <input type="hidden" name="workspace" value={membership.slug} />
-              <button type="submit" className="login-row">
-                <Monogram name={membership.displayName || membership.slug} />
-                <span className="login-row__meta">
-                  <span className="login-row__name">
-                    {membership.displayName}
-                    <Chip>{membership.role}</Chip>
-                  </span>
-                  <span className="login-row__detail">{membership.slug}</span>
-                </span>
-                <span className="login-row__go" aria-hidden>
-                  →
-                </span>
-              </button>
-            </form>
-          </li>
-        ))}
-      </ul>
-
-      <p className="login-note login-note--faint">{APP_NOTE}</p>
-    </Card>
-  );
-}
-
-/**
- * The step-2 card for somebody signed in who belongs to no live workspace.
+ * The step-2 card for somebody signed in who belongs to no workspace.
  *
  * Two situations, and they are told apart because the contract tells them apart. A
  * `tenantSuggestion` means the domain of this person's address is one some workspace has
  * registered — which grants nothing, and is named so this screen can say "your organisation
  * is already here, ask an owner to add you" instead of dropping a new signee into an empty
  * product. No suggestion means genuinely nowhere, and there is nothing this screen can do
- * about that except say so; creating a workspace is `POST /api/v1/tenants` and a screen for
- * it is not #44's.
+ * about that except say so.
  *
- * Memberships that exist but are not live are listed with their status, because "you belong
- * to nothing" and "the one thing you belong to is suspended" are different facts and only
- * one of them is a reason to talk to somebody.
+ * **It is a state the service goes out of its way to prevent**, which is why this card lists
+ * nothing rather than listing what did not qualify. A first sign-in creates a personal
+ * workspace ([#704](https://github.com/NobuData/ouroboros/issues/704)), so reaching this card
+ * means either that creation failed or that somebody has since been removed from everything
+ * they belonged to — and neither is a list to render. The membership rows this used to draw
+ * beside the explanation were workspaces held in a lifecycle the switcher would not offer,
+ * and the organization plugin has no lifecycle: `OrgRow` carries no `status`, so a workspace
+ * the listing returns is one you can work in, and a workspace it does not return is not this
+ * screen's to describe.
  *
  * @param props.suggestion The workspace this person's email domain points at, or `null`.
- * @param props.memberships Every membership the session reported, live or not.
  * @returns The explanatory card.
  */
 export function NoWorkspaceCard({
   suggestion,
-  memberships,
-}: Readonly<{
-  suggestion: TenantSuggestion | null;
-  memberships: readonly Membership[];
-}>) {
+}: Readonly<{ suggestion: TenantSuggestion | null }>) {
   return (
     <Card as="section" tone="ground" size="lg" aria-labelledby={STEP_TWO_ID}>
       <Eyebrow>Step 2 · Workspace</Eyebrow>
@@ -164,25 +107,6 @@ export function NoWorkspaceCard({
             </>
           }
         />
-      )}
-
-      {memberships.length > 0 && (
-        <ul className="login-rows">
-          {memberships.map((membership) => (
-            <li key={membership.tenantId}>
-              <span className="login-row">
-                <Monogram name={membership.displayName || membership.slug} />
-                <span className="login-row__meta">
-                  <span className="login-row__name">
-                    {membership.displayName}
-                    <Chip tone="warn">{STATUS_LABEL[membership.status]}</Chip>
-                  </span>
-                  <span className="login-row__detail">{membership.slug}</span>
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
       )}
 
       <p className="login-note login-note--faint">{APP_NOTE}</p>

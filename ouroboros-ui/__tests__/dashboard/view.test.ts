@@ -342,20 +342,25 @@ describe("pageSubline", () => {
     );
   });
 
-  it("says nothing about a lifecycle that is the normal one", () => {
-    // A heading that says "active" on every screen it can be reached from says nothing.
-    expect(pageSubline(membership(), "Ken Suenobu")).not.toContain("active");
-  });
-
-  it("names a lifecycle that is not, because that is the case somebody must be told", () => {
-    expect(pageSubline(membership({ status: "suspended" }), "Ken Suenobu")).toBe(
-      "Ken Suenobu · owner of acme-robotics · workspace suspended",
-    );
+  it("says nothing about a lifecycle, because the contract publishes none", () => {
+    // *Names a lifecycle that is not the normal one* was here. `OrgRow` carries no `status`
+    // ([#719](https://github.com/NobuData/ouroboros/issues/719)) — the organization plugin
+    // has no lifecycle column — so every workspace a session can reach is one you can work
+    // in, and there is nothing left for this line to warn about.
+    expect(pageSubline(membership(), "Ken Suenobu")).not.toContain("workspace");
   });
 
   it("reports the role the gate resolved rather than assuming one", () => {
-    expect(pageSubline(membership({ role: "viewer" }), "Maya Chen")).toContain(
+    expect(pageSubline(membership({ roles: ["viewer"] }), "Maya Chen")).toContain(
       "viewer of acme-robotics",
+    );
+  });
+
+  it("names the strongest role held, where the contract carries a list", () => {
+    // There is room for a word and the truthful word is the strongest: somebody who is an
+    // owner and a member may do everything an owner may.
+    expect(pageSubline(membership({ roles: ["member", "owner"] }), "Ken Suenobu")).toContain(
+      "owner of",
     );
   });
 });
