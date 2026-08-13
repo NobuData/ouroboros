@@ -290,6 +290,25 @@ export const authClient = createAuthClient({
  * Server Action writes and `app/(auth)/login/page.tsx` documents why; a hook is the right
  * answer only where a component is already a Client Component for some other reason — the
  * account menu in the app shell ([#721](https://github.com/NobuData/ouroboros/issues/721))
- * being the case this is here for.
+ * being the case this is here for, and the case that took the export list below to its
+ * present length.
+ *
+ * ### `useListOrganizations` is the plugin's own hook, and it is not `GET /api/v1/orgs`
+ *
+ * Two listings of the same workspaces exist and they answer different questions, so which one
+ * a surface reads is a decision rather than a preference:
+ *
+ * | | `useListOrganizations()` | `GET /api/v1/orgs` (`app/api/tenants.ts`) |
+ * |---|---|---|
+ * | **Fields** | id, name, slug, logo | those **plus** roles, repository counts, the monogram, `personal` |
+ * | **Where** | the browser, from a store `setActive` invalidates | the server, per render |
+ * | **For** | *which workspace am I in, and what may I move to* | *what is in each of them* |
+ *
+ * The account menu asks the first question and nothing else — it names the active workspace
+ * and offers the others — so it reads the plugin's listing, which is also the one that
+ * refreshes itself the moment `organization.setActive` returns. The login screen's step 2
+ * asks the second and reads the contract's ([#719](https://github.com/NobuData/ouroboros/issues/719)).
+ * Neither is a fallback for the other.
  */
-export const { useSession, getSession, signIn, signOut, organization } = authClient;
+export const { useSession, useListOrganizations, getSession, signIn, signOut, organization } =
+  authClient;

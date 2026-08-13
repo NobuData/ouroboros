@@ -1,8 +1,7 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ShellHeader } from "@/app/shell/shell-header";
-
+import { signedIn } from "../helpers/account";
 import { renderThemed } from "../helpers/theme";
 
 /**
@@ -12,7 +11,26 @@ import { renderThemed } from "../helpers/theme";
  * It is rendered through `renderThemed` because it now carries the theme toggle (#42),
  * which is a `useTheme()` consumer — as it is in production, where the root layout puts
  * the provider above every screen.
+ *
+ * The account menu it mounts reads the browser's session
+ * ([#721](https://github.com/NobuData/ouroboros/issues/721)), which is why a header suite
+ * has an auth stub in it: the hooks would otherwise reach for `fetch`, and a router that
+ * does not exist. What the menu *is* is `__tests__/shell/user-menu.test.tsx`; all this suite
+ * asks of it is that the header offers it.
  */
+
+vi.mock("@/app/api/auth-client", async () =>
+  (await import("../helpers/account")).authClientModule(),
+);
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
+
+const { ShellHeader } = await import("@/app/shell/shell-header");
+
+beforeEach(() => {
+  signedIn();
+});
 
 describe("the shell header", () => {
   it("is a banner landmark", () => {
@@ -82,9 +100,12 @@ describe("the shell header", () => {
     expect(toggle.compareDocumentPosition(gear)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
-  it("offers the account menu", () => {
+  it("offers the account menu, naming who it is for", () => {
     renderThemed(<ShellHeader />);
 
-    expect(screen.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
+    // The name grew a session in #721 and still begins with the same two words, so the
+    // control is findable by one name in every state — signed in, signed out, or still
+    // asking.
+    expect(screen.getByRole("button", { name: /^Account menu/ })).toBeInTheDocument();
   });
 });

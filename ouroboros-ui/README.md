@@ -345,8 +345,10 @@ All three are needed and only the first is BetterAuth's: the library's own `Set-
 reach the browser from a server-side call — the header arrives at this process and stops — and
 `ouro_tenant` is this application's own, so nothing else deletes it. The active workspace
 goes with the row: the pointer lives *on* it. A session merely forgotten by the browser is a
-session a copied cookie still opens. The account menu that binds
-a form to it is [#721](https://github.com/NobuData/ouroboros/issues/721).
+session a copied cookie still opens. The form that binds a press to it is
+[`app/shell/actions.ts`](app/shell/actions.ts) — the `"use server"` wrapper #716
+deliberately left unwritten until there was a menu to submit it
+([#721](https://github.com/NobuData/ouroboros/issues/721)).
 
 ### Where a `401` goes
 
@@ -776,19 +778,54 @@ Four things are worth knowing before adding a screen to it.
    `"live"` in the same pull request as the route.
 4. **What is a slot, not an omission.** The header cluster holds the needs-you pill, the
    [theme toggle](#theming) ([#42](https://github.com/NobuData/ouroboros/issues/42)), the
-   settings gear and the account menu. Of those the toggle is the only one that is
+   settings gear and the [account menu](#the-account-menu). The toggle and the menu are
    finished; the tenant chip (#77), the search pill and ⌘K palette (#79), and the real
-   needs-you count (#78) each have an issue. The account menu's interaction is built and
-   its contents are placeholders until CP.3 (#645) fills them — the session behind them
-   now exists ([#33](https://github.com/NobuData/ouroboros/issues/33)), and
-   [`requireWorkspace()`](#access--who-is-signed-in-and-where) is where a page already
-   holds the person and the workspace to pass in — including the profile menu's own theme
-   control, which the design system § 1.1 puts there and which will drive this same
-   `useTheme()`.
+   needs-you count (#78) each have an issue, as does the settings screen the gear will
+   link to (#491). The font-size stepper the design system § 1.1 puts in the profile menu
+   is CQ.1/CP.3 (#645), and is marked in the menu rather than mocked up.
 
 Responsive collapse below 1024px is CSS, not state: the sidebar becomes a 64px icon rail
 and every name becomes its tooltip. The user-controlled collapse, its per-account
 persistence, and the overlay drawer below 768px are CP.2.
+
+### The account menu
+
+[`app/shell/user-menu.tsx`](app/shell/user-menu.tsx) is the one surface in this module that
+reads the session **client-side** ([#721](https://github.com/NobuData/ouroboros/issues/721)).
+It is a Client Component because it is a menu, and once it was one anyway the hook is the
+honest source: a layout does not re-render on a client-side navigation between siblings, and
+awaiting a session there would hold up the shell a route's `loading.tsx` is drawn inside.
+
+```
+[ (avatar) ▾ ]
+     ├─ Ken Suenobu · ken@acme-robotics.dev
+     ├─ Switch workspace  acme-robotics  ▸ ─┬─ ● acme-robotics
+     │                                      ├─ ○ acme-labs
+     │                                      └─ ○ kensuenobu
+     ├─ Workspace settings                  (#491)
+     └─ Sign out ─▶ session row deleted ─▶ /login
+```
+
+**The two writes go opposite ways, and which side of the wire can write the cookie is why.**
+Switching workspace is `organization.setActive` called from the browser — that is the call
+whose answer carries BetterAuth's refreshed `session_data` cookie *to* the browser, and it is
+what invalidates the plugin's own session and listing stores, so the menu redraws itself.
+`router.refresh()` then re-renders the route's Server Components against the workspace the
+session now names, with no navigation. Signing out is a Server Action, because script cannot
+delete an `HttpOnly` cookie and `ouro_tenant` is this application's own.
+
+**It reads the plugin's listing, not `GET /api/v1/orgs`.** `useListOrganizations()` answers
+*which workspace am I in and what may I move to*; the contract's row model answers *what is in
+each of them* — roles, counts, the monogram — which is [step 2's card](#sign-in--tenancy).
+Neither is a fallback for the other, and
+[`app/api/auth-client.ts`](app/api/auth-client.ts) states the split.
+
+**A chooser with one option is drawn as a statement.** When there is no workspace the session
+is not already in, the row states the name and holds no control — the design system's honesty
+rule (§ 3.5), and the same call step 2 makes when it replaces a radio group of one with a
+hidden field. What the menu decides is
+[`app/shell/account.ts`](app/shell/account.ts), which is pure, so each outcome — pending,
+signed out, signed in, nowhere to switch — is a case rather than a query selector.
 
 ## UI primitives
 

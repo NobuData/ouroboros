@@ -1,9 +1,7 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import AppLayout from "@/app/(app)/layout";
-import { AppShell, CONTENT_ID } from "@/app/shell/app-shell";
-
+import { signedIn } from "../helpers/account";
 import { renderThemed } from "../helpers/theme";
 
 /**
@@ -14,9 +12,30 @@ import { renderThemed } from "../helpers/theme";
  * `__tests__/styles.test.ts` for the token rule, and the shell e2e leg (CP.5, #647) for
  * "only the pane moved". What is assertable here is the structure containment depends
  * on: the page renders *inside* the pane, not beside it.
+ *
+ * The header's account menu reads the browser's session
+ * ([#721](https://github.com/NobuData/ouroboros/issues/721)), so the shell cannot be mounted
+ * without an answer for it — see `__tests__/shell/user-menu.test.tsx` for what that answer
+ * is worth asserting about.
  */
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+vi.mock("@/app/api/auth-client", async () =>
+  (await import("../helpers/account")).authClientModule(),
+);
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
+vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
+
+const { default: AppLayout } = await import("@/app/(app)/layout");
+const { AppShell, CONTENT_ID } = await import("@/app/shell/app-shell");
+
+beforeEach(() => {
+  signedIn();
+});
 
 describe("the app shell", () => {
   it("renders the three regions", () => {
