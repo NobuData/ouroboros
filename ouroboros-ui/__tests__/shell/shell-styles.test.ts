@@ -60,6 +60,9 @@ describe("the shell's components and its stylesheet", () => {
     "shell/sidebar-nav.tsx",
     "shell/app-shell.tsx",
     "shell/theme-toggle.tsx",
+    "shell/overlay.tsx",
+    "shell/search-pill.tsx",
+    "shell/tenant-chip.tsx",
   ])("%s asks for no class the sheet does not define", (file) => {
     expect(classesOf(file).filter((name) => !DEFINED.has(name))).toEqual([]);
   });
@@ -68,6 +71,119 @@ describe("the shell's components and its stylesheet", () => {
     // Without this the rule above would pass just as well against a component whose classes
     // stopped being readable, and say nothing at all.
     expect(classesOf("shell/user-menu.tsx")).toContain("shell-menu__submenu");
+  });
+});
+
+/**
+ * The frame CP.1 ([#643](https://github.com/NobuData/ouroboros/issues/643)) is accountable
+ * for, read from the sheet.
+ *
+ * Scroll containment is CSS and nothing else — there is no component to render and assert
+ * against, because the whole point of decision S2 is that the *layout* holds the rule rather
+ * than any page inside it. jsdom computes no styles, so the honest unit-level assertion is
+ * that the declarations are written down; that a browser then does what they say is the e2e
+ * leg's (CP.5, #647), which is what the issue means by "e2e-assertable".
+ *
+ * Each of these is a rule somebody could delete without a rendering test going red, and each
+ * one deleted is a different way the shell stops containing anything.
+ */
+describe("the shell frame", () => {
+  /**
+   * One rule's declarations.
+   *
+   * @param selector The selector, as it is written in the sheet.
+   * @returns What is between its braces, or `""` when the sheet has no such rule — which
+   *   fails the assertion that follows rather than passing it vacuously.
+   */
+  function rule(selector: string): string {
+    const pattern = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`);
+    return SHEET.match(pattern)?.[1] ?? "";
+  }
+
+  it("is a grid of exactly the viewport, so only a cell that asks can scroll", () => {
+    const shell = rule(".app-shell");
+
+    // § 1.3's grid, and the lock it depends on: `html`/`body` are held at 100% with overflow
+    // hidden in app/globals.css, and this is the element that fills them.
+    expect(shell).toMatch(/grid-template-rows:\s*auto 1fr/);
+    expect(shell).toMatch(/grid-template-columns:\s*auto 1fr/);
+    expect(shell).toMatch(/height:\s*100%/);
+    expect(shell).toMatch(/overflow:\s*hidden/);
+  });
+
+  it("declares the sidebar slot's three widths, and drives the sidebar from one property", () => {
+    // The acceptance criterion "the grid holds at every breakpoint with the sidebar slot at
+    // 240px, 64px and drawer widths": all three are values of one custom property, so CP.2
+    // (#644) moves between them without touching the grid.
+    const shell = rule(".app-shell");
+
+    expect(shell).toMatch(/--shell-sidebar-wide:\s*15rem/);
+    expect(shell).toMatch(/--shell-sidebar-rail:\s*4rem/);
+    expect(shell).toMatch(/--shell-sidebar-drawer:\s*0rem/);
+    expect(shell).toMatch(/--shell-sidebar:\s*var\(--shell-sidebar-wide\)/);
+
+    // And the sidebar reads it rather than restating a width of its own.
+    expect(rule(".shell-nav")).toMatch(/width:\s*var\(--shell-sidebar\)/);
+  });
+
+  it("moves the slot to the rail width rather than resizing the sidebar", () => {
+    // Below 1024px. Written as the property because that is the same move the collapse
+    // control makes from script — one mechanism, two triggers.
+    expect(SHEET).toMatch(
+      /@media \(max-width: 64rem\)\s*\{\s*\.app-shell\s*\{\s*--shell-sidebar:\s*var\(--shell-sidebar-rail\)/,
+    );
+  });
+
+  it("gives the pane vertical scroll, a stable gutter, and no way to scroll sideways", () => {
+    const pane = rule(".app-shell__pane");
+
+    expect(pane).toMatch(/overflow-y:\s*auto/);
+    // The acceptance criterion "no horizontal scrollbar appears on the pane at 1280–3840px":
+    // a wide widget scrolls in its own wrapper (CP.4), and the pane refuses outright.
+    expect(pane).toMatch(/overflow-x:\s*hidden/);
+    // And the one that stops a short page and a long page being laid out at different widths.
+    expect(pane).toMatch(/scrollbar-gutter:\s*stable/);
+  });
+
+  it("centres the measure the design system gives every page", () => {
+    // § 2: max content width 1440px, centred. 90rem is that at the 100% font step, and moves
+    // with the reader's preference because it is rem.
+    const measure = rule(".app-shell__measure");
+
+    expect(measure).toMatch(/max-width:\s*90rem/);
+    expect(measure).toMatch(/margin:\s*0 auto/);
+  });
+
+  it("pays back the gutter the lock takes away", () => {
+    // The whole subtlety of `app/shell/pane-scroll.ts`, as a rule: `scrollbar-gutter: stable`
+    // reserves a gutter only for an overflow of scroll or auto, so locking with `hidden`
+    // un-reserves it and the pane's contents reflow under the dialog. The measured width comes
+    // back as padding, and the property is what carries it.
+    const locked = rule(".app-shell__pane--locked");
+
+    expect(locked).toMatch(/overflow-y:\s*hidden/);
+    expect(locked).toMatch(/padding-inline-end:\s*var\(--shell-pane-gutter/);
+  });
+
+  it("keeps the overlay layer from being a box", () => {
+    // It is a grid child. A layer that generated one would be a fourth cell in a three-cell
+    // grid — or, positioned, an invisible sheet over the whole product.
+    expect(rule(".shell-overlays")).toMatch(/display:\s*contents/);
+  });
+
+  it("stacks an overlay above the menu panel and the skip link", () => {
+    // A dialog covers a menu, and covers a skip link leading into a page the reader cannot
+    // reach while it is open.
+    const layers = (selector: string) => Number(rule(selector).match(/z-index:\s*(\d+)/)?.[1]);
+
+    expect(layers(".shell-overlay")).toBeGreaterThan(layers(".shell-skip"));
+    expect(layers(".shell-skip")).toBeGreaterThan(layers(".shell-menu__panel"));
+  });
+
+  it("places the overlay against the viewport rather than against the frame", () => {
+    // `fixed`, not `absolute`: the shell grid is the same size as the viewport today and would
+    // stop being so the moment anything about the frame changed.
+    expect(rule(".shell-overlay")).toMatch(/position:\s*fixed/);
   });
 });
 

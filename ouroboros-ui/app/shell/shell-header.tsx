@@ -1,42 +1,79 @@
-import { Settings } from "lucide-react";
+import { Bell, Settings } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { DASHBOARD_PATH } from "@/app/paths";
+
+import { SearchPill } from "./search-pill";
+import { TenantChip } from "./tenant-chip";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
 /**
- * The fixed header: brand on the left, session controls on the right.
+ * The fixed header: brand and workspace on the left, session controls on the right.
  *
  * It carries **no navigation links** — navigation is the sidebar's job
- * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1, which supersedes the top-bar nav the
- * mockups were drawn with). A Server Component: nothing here needs the browser except
- * the theme toggle and the account menu, each its own Client Component.
+ * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1, which supersedes the top-bar nav the mockups were
+ * drawn with). A Server Component: nothing in the bar itself needs the browser, and each part
+ * that does is its own Client Component.
  *
- * Three slots the specification puts in this bar are deliberately absent rather than
- * mocked up, because each has an issue that will fill it with something true: the
- * tenant chip (#77), the search pill and ⌘K palette (#79), and the live-loops pill with
- * real counts (#78).
+ * ### The bar is a set of slots, and CP.1 is what put them all in it
+ *
+ * [#643](https://github.com/NobuData/ouroboros/issues/643) is the issue that owns the *shape*
+ * of this row — every slot § 1.1 names, in the order it names them:
+ *
+ * ```
+ * [◎ OUROBOROS] [acme-robotics]        [Search ⌘K] [● — loops live] [Needs you —] [🔔] [◐] [⚙] [KS ▾]
+ * ```
+ *
+ * What fills each one is somebody else's issue, and the ones still waiting say so rather than
+ * showing a number nobody computed — the design system's honesty rule (§ 3.5). The counts are
+ * [#78](https://github.com/NobuData/ouroboros/issues/78); the palette behind the search pill
+ * is [#79](https://github.com/NobuData/ouroboros/issues/79); switching workspace from the chip
+ * is [#77](https://github.com/NobuData/ouroboros/issues/77); the settings screen is
+ * [#491](https://github.com/NobuData/ouroboros/issues/491).
+ *
+ * Two controls here are on their way *out* of the bar rather than into it. The theme toggle
+ * (#42) and the settings gear are both items the specification puts inside the profile menu,
+ * and CP.3 ([#645](https://github.com/NobuData/ouroboros/issues/645)) is the issue that moves
+ * them there along with the font-size stepper. They stay in the cluster until it does,
+ * because a control that works is worth more than a tidy row.
  *
  * @returns The header row.
  */
 export function ShellHeader() {
   return (
     <header className="shell-header">
-      <Link className="shell-brand" href="/">
+      {/*
+        To the dashboard, not to `/`. § 1.1 says "links to Dashboard", and since #45 moved it
+        to a segment of its own that is a different URL — `/` only redirects there, so linking
+        to it would spend a round trip on every press of the brand.
+      */}
+      <Link className="shell-brand" href={DASHBOARD_PATH}>
         <BrandMark />
         <span className="shell-brand__wordmark">
           OURO<span className="shell-brand__wordmark-accent">BOROS</span>
         </span>
       </Link>
 
+      <TenantChip />
+
       <div className="shell-header__cluster">
+        <SearchPill />
+
         {/*
-          The needs-you indicator, as a placeholder — this issue's scope, and #78's to
-          replace with the real count once the dashboard aggregate (#70) exists. The
-          count is an em dash because the design system forbids inventing one (§ 3.5):
-          a hard-coded "3" is a number a reader would believe.
+          The live-loops pill. The dot is the treatment docs/DESIGN_TOKENS.md reserves for a
+          live thing, and the count is an em dash because the design system forbids inventing
+          one (§ 3.5): a hard-coded "3" is a number a reader would believe.
         */}
+        <span
+          className="shell-pill"
+          title="Live loop counts arrive with #78, once the dashboard aggregate (#70) can be asked for one."
+        >
+          <span className="shell-pill__dot" aria-hidden />
+          <span className="shell-pill__count">—</span> loops live
+        </span>
+
         <span
           className="shell-pill"
           title="Needs-you counts arrive with #78, once there is a count to show."
@@ -44,13 +81,24 @@ export function ShellHeader() {
           Needs you <span className="shell-pill__count">—</span>
         </span>
 
+        {/*
+          The notifications affordance § 1.1 asks for. aria-disabled rather than disabled, the
+          same way the gear below is: a control removed from the tab order takes its own
+          explanation with it, and the explanation is the only thing this one has to offer
+          until the needs-you inbox exists to feed it.
+        */}
+        <button
+          type="button"
+          className="shell-icon-button"
+          aria-disabled="true"
+          aria-label="Notifications — arrive with the needs-you inbox (mockup 16)"
+          title="Notifications arrive with the needs-you inbox roadmap (mockup 16)."
+        >
+          <Bell size={16} aria-hidden />
+        </button>
+
         <ThemeToggle />
 
-        {/*
-          aria-disabled, not disabled: the gear stays reachable by keyboard so its
-          accessible name can say why it does nothing, and it has no handler, so it
-          does nothing. #491 turns it into a link to /settings.
-        */}
         <button
           type="button"
           className="shell-icon-button"
@@ -70,19 +118,19 @@ export function ShellHeader() {
 /**
  * The brand mark, in the treatment its ground calls for.
  *
- * Both files are rendered and CSS shows one, mirroring the token sheet's three palette
- * blocks (light, explicit dark, dark-from-the-OS) in `shell.css`. Choosing in
- * JavaScript instead would pick after hydration — a visible swap of the logo on every
- * load, which is the same flash the theme bootstrap (#17) exists to avoid.
+ * Both files are rendered and CSS shows one, mirroring the token sheet's three palette blocks
+ * (light, explicit dark, dark-from-the-OS) in `shell.css`. Choosing in JavaScript instead
+ * would pick after hydration — a visible swap of the logo on every load, which is the same
+ * flash the theme bootstrap (#17) exists to avoid.
  *
  * The two are stacked in one grid cell and the hidden one is transparent rather than
  * `display: none`, so a theme change cross-fades the mark along with everything else it
  * changes instead of snapping it mid-fade. Stacked, neither can move the row.
  *
- * It is the **icon**, not the glyph `docs/BRAND.md` nominates for the app shell,
- * because the glyph stops reading below 96px wide and the header is 56px tall — a
- * case that document answers itself: under that width, use the icon. The pair is
- * pixel-identical, so the swap never moves the row.
+ * It is the **icon**, not the glyph `docs/BRAND.md` nominates for the app shell, because the
+ * glyph stops reading below 96px wide and the header is 56px tall — a case that document
+ * answers itself: under that width, use the icon. The pair is pixel-identical, so the swap
+ * never moves the row.
  *
  * @returns The two marks, one of which is visible.
  */

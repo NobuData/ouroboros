@@ -126,7 +126,7 @@ Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CP.1 | #643 | 🟡 Open | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
+| CP.1 | #643 | 🟢 Done | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
 | CP.2 | #644 | 🟡 Open | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
 | CP.3 | #645 | 🟡 Open | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
 | CP.4 | #646 | 🟡 Open | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
@@ -134,7 +134,59 @@ Complexity chips: **XS · S · M · L**.
 
 ### Issue CP.1 — ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment
 
-> **GitHub issue:** #643 · **Status:** 🟡 Open · **Parent epic:** #640
+> **GitHub issue:** #643 · **Status:** 🟢 Done · **Parent epic:** #640
+
+> **Shipped.** The frame is
+> [`app/shell/app-shell.tsx`](../ouroboros-ui/app/shell/app-shell.tsx) over
+> [`app/shell/shell.css`](../ouroboros-ui/app/shell/shell.css), and the re-scope #41 began
+> is finished: header, sidebar slot, content pane, and — new with this issue — an overlay
+> layer beside the pane rather than inside it.
+>
+> **The grid was already the specification's**, so the work here was the three things it
+> was still missing. First, the sidebar's width became **one custom property**:
+> `--shell-sidebar`, declared on the shell with all three of § 1.2's widths beside it
+> (`15rem` expanded, `4rem` rail, `0` drawer, because a drawer is out of flow and the
+> column it left has no width). The grid's first column stays `auto`, so CP.2 moves the
+> sidebar between them by redefining one value and touching no layout. The rail is
+> selected by the existing 1024px query; the **drawer is declared and not selected**,
+> deliberately — CP.2 brings the hamburger that opens it, and a sidebar with no way to
+> open it is navigation nobody can reach.
+>
+> Second, the header became **every slot § 1.1 names, in its order**: the brand (now
+> linking to `/dashboard` rather than `/`, which since #45 only redirects there), the
+> tenant chip, then search · live-loops · needs-you · notifications · profile menu. The
+> chip and the pills draw what is true and no more — the chip names the workspace the
+> session is acting in and an em dash when nothing is known, the counts stay em dashes
+> for #78 — and switching from the chip is still #77, so it is drawn as a statement with
+> a tooltip pointing at the account menu, which does switch today. The theme toggle and
+> the settings gear stay in the row until CP.3 folds them into the profile menu.
+>
+> Third, and the part with no precedent in the module: **the overlay layer**. § 1.3's last
+> clause asks that dialogs, sheets and the palette render outside the pane and lock its
+> scroll, and the subtlety is the lock.
+> [`app/shell/pane-scroll.ts`](../ouroboros-ui/app/shell/pane-scroll.ts) explains it at
+> length — `scrollbar-gutter: stable` reserves the scrollbar's width only for an `overflow`
+> of `scroll` or `auto`, so locking with `hidden` un-reserves it and every line in the pane
+> reflows *under the dialog just opened over it*. The gutter is measured before the class
+> lands and handed back as padding, the depth is counted per element so two overlays cannot
+> unlock each other, and the scroll position is restored last, after the overflow rule that
+> would refuse it. [`overlay.tsx`](../ouroboros-ui/app/shell/overlay.tsx) is the React half:
+> portal, Escape, backdrop, focus in and focus back out, Tab cycling inside the panel.
+>
+> The one control that opens one is the **search pill**, which is the honest way to have
+> built the layer rather than a fixture — ⌘K (and Ctrl+K, since not every keyboard has the
+> other) opens a panel that says the palette arrives with #79 instead of miming results.
+> So the mechanism is exercised by the product and cannot rot before #79 replaces what is
+> inside the frame.
+>
+> **What is left to CP.5 (#647), by this roadmap's own split:** the two acceptance criteria
+> that need a browser to be true — 5,000px of fixture content moving only the pane, and no
+> pane-level horizontal scrollbar from 1280px to 3840px. Both are CSS here and asserted as
+> CSS (`__tests__/shell/shell-styles.test.ts` reads the rules; jsdom computes no layout), and
+> the pane carries `data-shell-pane` so that leg has one selector that means *the scroll
+> container* — `regions.ts` says why an attribute rather than the id. Everything assertable
+> without layout is: the layer is a sibling of the pane, the overlay portals into it, the
+> lock takes and returns the gutter, and the position comes back.
 
 - **Problem Statement:** The current #41 shell is a top bar with nav links
   and a page that scrolls whole. The spec demands the standard SaaS frame:
