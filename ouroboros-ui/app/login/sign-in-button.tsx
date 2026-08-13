@@ -39,7 +39,7 @@ import { type SignInRequest, beginSignIn } from "./sign-in";
  *
  * The default, and the one line of this component that a test cannot run: jsdom has no
  * navigation, and refuses to let `location.assign` be replaced. So it is a parameter —
- * the same seam `app/api/session.ts` opens for `fetch`, and for the same reason.
+ * the same seam `app/api/auth-server.ts` opens for `fetch`, and for the same reason.
  *
  * @param url Where the service said to go.
  */

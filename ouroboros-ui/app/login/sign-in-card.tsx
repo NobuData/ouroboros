@@ -1,4 +1,4 @@
-import type { SessionUser } from "@/app/api/session";
+import type { SessionUser } from "@/app/api/identity";
 import { Button, Card, Eyebrow, TextField } from "@/app/ui";
 
 import { GithubMark } from "./github-mark";

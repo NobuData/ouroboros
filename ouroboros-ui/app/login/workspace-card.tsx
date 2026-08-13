@@ -1,5 +1,5 @@
 import type { Membership } from "@/app/api/membership";
-import type { TenantSuggestion } from "@/app/api/session";
+import type { TenantSuggestion } from "@/app/api/identity";
 import { Card, Chip, EmptyState, Eyebrow } from "@/app/ui";
 
 import { chooseWorkspace } from "./actions";

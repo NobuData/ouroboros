@@ -18,7 +18,7 @@ import "server-only";
  * calling it freely the right thing to do rather than a cost to budget — and it matters more
  * since [#711](https://github.com/NobuData/ouroboros/issues/711), because a read is now
  * three calls against the auth family rather than one against a route of this service's own.
- * See `app/api/session.ts` for which three, and for the single call
+ * See `app/api/auth-server.ts` for which three, and for the single call
  * [#714](https://github.com/NobuData/ouroboros/issues/714) collapses them into.
  *
  * Two rules the rest of the application inherits from here:
@@ -40,7 +40,8 @@ import { cache } from "react";
 
 import { type Membership, activeMembership } from "@/app/api/membership";
 import { LOGIN_PATH, activeTenant } from "@/app/api/server";
-import { type Session, session as sessionResource } from "@/app/api/session";
+import { readSession } from "@/app/api/auth-server";
+import type { Session } from "@/app/api/identity";
 
 /** What a request carries: a session or nothing, and a chosen workspace or nothing. */
 export interface Access {
@@ -89,7 +90,7 @@ export const currentAccess = cache(async (): Promise<Access> => {
   // requirement the layer's own rather than an accident of statement order.
   await connection();
 
-  const current = await sessionResource.read();
+  const current = await readSession();
   if (current === null) return { session: null, membership: undefined };
 
   return {

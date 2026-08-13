@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Membership } from "@/app/api/membership";
-import type { Session } from "@/app/api/session";
+import type { Session } from "@/app/api/identity";
 import { WORKSPACE_PARAM, enablementPath, loginView } from "@/app/login/view";
 import { LOGIN_PATH } from "@/app/paths";
 

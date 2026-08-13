@@ -2,7 +2,7 @@ import type { Enablement, OrgEnablement } from "@/app/api/enablement";
 import type { Membership } from "@/app/api/membership";
 import type { Org } from "@/app/api/orgs";
 import type { Repo } from "@/app/api/repos";
-import type { SessionUser } from "@/app/api/session";
+import type { SessionUser } from "@/app/api/identity";
 
 /**
  * The seeded workspace, as the development seed and every mockup draw it.

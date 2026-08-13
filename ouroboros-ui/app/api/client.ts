@@ -41,7 +41,7 @@ import { TENANT_HEADER, assertTenantReference } from "@/app/api/tenant";
  * is dead on every request".
  *
  * The cost of the gap was a redirect loop, and it is worth recording because the shape
- * recurs: the session gate read one cookie through `app/api/auth-client.ts` and passed, then
+ * recurs: the session gate read one cookie through `app/api/auth-server.ts` and passed, then
  * the data calls forwarded another and were refused, so `/dashboard` sent the browser to
  * `/login`, which found a perfectly good session and sent it back. Two clients disagreeing
  * about a credential is not a failed request — it is a screen that renders for somebody the
@@ -55,7 +55,7 @@ export const SESSION_COOKIE = "better-auth.session_token";
  * BetterAuth's cookie cache: a five-minute signed copy of the session that lets the service
  * answer without a database lookup. Forwarding it is not optional politeness — dropping it
  * makes **every** call through this client cost a query, which is the same reason
- * `app/api/auth-client.ts` sends both. It is not in the contract's security scheme because
+ * `app/api/auth-server.ts` sends both. It is not in the contract's security scheme because
  * it authenticates nothing on its own; it is an optimisation the library reads if it is
  * there.
  */

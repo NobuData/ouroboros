@@ -51,7 +51,7 @@ export type DependencyStatus = components["schemas"]["DependencyStatus"];
  *
  * Typed as a path the contract describes, so a rename in `openapi.yaml` is a failed
  * typecheck here after `yarn api:sync` rather than a `404` behind a status pill. The same
- * technique `app/api/session.ts` uses for the sign-in URL, and for the same reason.
+ * technique `app/login/sign-in.ts` uses for the sign-in request, and for the same reason.
  */
 export const READINESS_PATH: keyof paths = "/health/ready";
 

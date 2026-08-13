@@ -3,7 +3,7 @@
  *
  * **Why the auth family is the one thing this module forwards rather than calls.** Every
  * other route of `ouroboros-rest` is reached server-side, through `app/api/client.ts` or
- * `app/api/auth-client.ts`, and its address never leaves the server — that is what
+ * `app/api/auth-server.ts`, and its address never leaves the server — that is what
  * `OURO_REST_URL` carrying no `NEXT_PUBLIC_` prefix buys (`app/env.ts`). BetterAuth's routes
  * cannot all be reached that way, because two of them are travelled by *the browser itself*:
  *
@@ -18,7 +18,7 @@
  *
  * Forwarding it here also puts the session cookies where the UI wants them: BetterAuth's
  * `Set-Cookie` arrives through this origin, so `better-auth.session_token` belongs to the UI
- * rather than to a second host, and `app/api/auth-client.ts` reads back a cookie a browser
+ * rather than to a second host, and `app/api/auth-server.ts` reads back a cookie a browser
  * actually sends. Cross-origin, that only works because a browser ignores the port when
  * matching `localhost` — a coincidence of development that no deployment can rely on.
  *
@@ -33,7 +33,7 @@
  * The same file therefore serves `yarn dev` against `localhost:4000` and a deployment
  * against an internal service address, with no rebuild between them.
  *
- * @see app/api/auth-client.ts — the same routes, called server-side, where the address stays
+ * @see app/api/auth-server.ts — the same routes, called server-side, where the address stays
  *   on the server and this proxy is not involved.
  * @see ouroboros-rest/src/auth/auth.routes.ts — what is being forwarded to, route by route.
  */
@@ -74,8 +74,8 @@ export function proxy(request: NextRequest) {
  *
  * Written out rather than composed from `app/api/auth-client.ts`'s `AUTH_BASE_PATH`, which
  * is the same string: Next.js reads this matcher statically at build time, so an imported
- * constant leaves it unresolvable — and that module is `server-only` besides, which is a
- * boundary this file has no business dragging into the request path.
+ * constant leaves it unresolvable. The two are held together by
+ * `__tests__/api/auth-client.test.ts` instead, which asserts this literal against that one.
  */
 export const config = {
   matcher: "/api/auth/:path*",

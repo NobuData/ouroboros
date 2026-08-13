@@ -5,7 +5,7 @@ import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 import { resetRestUrlCache } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
 
-import { authAnswer } from "../helpers/auth";
+import { authAnswer, requestedUrl } from "../helpers/auth";
 
 /**
  * The data-access layer: who is signed in, which workspace they are in, and the gate every
@@ -85,9 +85,9 @@ beforeEach(() => {
   failure = undefined;
   calls = 0;
 
-  vi.stubGlobal("fetch", (input: Request | string) => {
+  vi.stubGlobal("fetch", (input: Request | URL | string) => {
     calls += 1;
-    const url = typeof input === "string" ? input : input.url;
+    const url = requestedUrl(input);
     const body = failure === undefined ? authAnswer(url, memberships) : failure.body;
 
     return Promise.resolve(
@@ -177,7 +177,7 @@ describe("currentAccess, with a session", () => {
 
   // *Treats a suspended workspace as no choice* was here. It cannot be composed through the
   // service after #711 — BetterAuth's organizations have no lifecycle column, so
-  // `app/api/session.ts` reports every one of them as `active`. The rule is unchanged and is
+  // `app/api/auth-server.ts` reports every one of them as `active`. The rule is unchanged and is
   // asserted where it lives, in `__tests__/api/membership.test.ts`;
   // [#714](https://github.com/NobuData/ouroboros/issues/714) is what gives the service a way
   // to say `suspended` again.
