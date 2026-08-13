@@ -1,92 +1,129 @@
 import { describe, expect, it } from "vitest";
 
 import { DASHBOARD_PATH } from "@/app/paths";
-import { NAV_ITEMS, type NavItem, isActiveRoute, navGroup } from "@/app/shell/nav";
+import {
+  isActiveRoute,
+  navGroup,
+  navStatus,
+  orderNavEntries,
+  permittedNavEntries,
+} from "@/app/shell/nav";
+
+import { navEntry } from "../helpers/nav";
 
 /**
- * The navigation model: the list the sidebar renders, and the rule that decides which
- * entry a URL belongs to.
+ * The navigation model: how a list of registry entries is ordered, which of them a reader may
+ * see, and which one a URL belongs to.
  *
- * The rule is tested here rather than through the component because it is the part with
- * the interesting edges — the root, sub-routes, and the sibling route that a naive
- * prefix match gets wrong — and none of them need a DOM.
+ * Every rule here is a pure function of a list somebody else owns, which is why they are
+ * tested without a registry and without a DOM — the interesting edges (the root, sub-routes,
+ * the sibling route a naive prefix match gets wrong, the entry nobody may see) need neither.
  */
 
-describe("the navigation list", () => {
-  it("holds the eleven entries the shell specification names, in its order", () => {
-    // docs/DESIGN_SYSTEM_APP_SHELL.md § 1.2. Order is asserted, not just membership:
-    // the sidebar renders the array as it stands.
-    expect(NAV_ITEMS.map((item) => item.label)).toEqual([
-      "Dashboard",
-      "Issues",
-      "Workflows",
-      "Models",
-      "Build Farm",
-      "Knowledge",
-      "Planning",
-      "Research",
-      "Insights",
-      "Needs You",
-      "Settings",
+describe("navStatus", () => {
+  it("takes a module at its word that its own surface exists", () => {
+    // The default is what makes registration cheap: a module registering itself is a module
+    // that is there, and only the ones that are *not* have anything to declare.
+    expect(navStatus(navEntry())).toBe("live");
+    expect(navStatus(navEntry({ status: "soon", soonNote: "later" }))).toBe("soon");
+  });
+});
+
+describe("orderNavEntries", () => {
+  it("puts the primary group above the secondary one", () => {
+    const order = orderNavEntries([
+      navEntry({ id: "foot", group: "secondary", sort: 10 }),
+      navEntry({ id: "head", group: "primary", sort: 90 }),
     ]);
+
+    expect(order.map((entry) => entry.id)).toEqual(["head", "foot"]);
   });
 
-  it("gives every entry a unique id and a unique route", () => {
-    // Two entries on one route would both highlight; two on one id would collide as
-    // React keys.
-    expect(new Set(NAV_ITEMS.map((item) => item.id)).size).toBe(NAV_ITEMS.length);
-    expect(new Set(NAV_ITEMS.map((item) => item.route)).size).toBe(NAV_ITEMS.length);
-  });
-
-  it("roots every route at the application, so an entry cannot link off-site", () => {
-    for (const item of NAV_ITEMS) {
-      expect(item.route.startsWith("/")).toBe(true);
-      expect(item.route.startsWith("//")).toBe(false);
-    }
-  });
-
-  it("explains every unbuilt entry, and only those", () => {
-    // The honesty rule (§ 3.5) as an assertion: a "soon" row must carry the reason it
-    // shows as its tooltip, and a live one must not claim to be waiting on anything.
-    for (const item of NAV_ITEMS) {
-      if (item.status === "soon") expect(item.soonNote).toBeTruthy();
-      else expect(item.soonNote).toBeUndefined();
-    }
-  });
-
-  it("has exactly one built destination today: the dashboard", () => {
-    // The list of live routes is what the sidebar turns into links. Until the
-    // placeholder routes (#49) land, the dashboard is the only page that exists — a
-    // second live entry here without a page behind it would ship a 404 in the
-    // navigation. Asserted against the constant rather than the string, so the entry
-    // and every redirect to it are the same fact (#45 moved it off `/`).
-    expect(NAV_ITEMS.filter((item) => item.status === "live").map((item) => item.route)).toEqual(
-      [DASHBOARD_PATH],
-    );
-  });
-
-  it("splits into the specification's two groups", () => {
-    expect(navGroup("primary").map((item) => item.id)).toEqual([
-      "dashboard",
-      "issues",
-      "workflows",
-      "models",
-      "build-farm",
-      "knowledge",
-      "planning",
-      "research",
-      "insights",
+  it("sorts within a group by the entry's own number", () => {
+    const order = orderNavEntries([
+      navEntry({ id: "third", sort: 30 }),
+      navEntry({ id: "first", sort: 10 }),
+      navEntry({ id: "second", sort: 20 }),
     ]);
-    expect(navGroup("secondary").map((item) => item.id)).toEqual(["needs-you", "settings"]);
+
+    expect(order.map((entry) => entry.id)).toEqual(["first", "second", "third"]);
   });
 
-  it("filters the list it is given, so a registry (CP.2) can replace the default", () => {
-    const fixture = [
-      { id: "a", label: "A", route: "/a", icon: NAV_ITEMS[0].icon, group: "secondary", status: "live" },
-      { id: "b", label: "B", route: "/b", icon: NAV_ITEMS[0].icon, group: "primary", status: "live" },
-    ] satisfies NavItem[];
+  it("breaks a tie by id rather than by who registered first", () => {
+    // Registration order is import order, which is a bundler's business and changes between
+    // builds. A sidebar that reordered itself on a rebuild would be one nobody could learn.
+    const order = orderNavEntries([
+      navEntry({ id: "zulu", sort: 50 }),
+      navEntry({ id: "alpha", sort: 50 }),
+    ]);
 
-    expect(navGroup("primary", fixture).map((item) => item.id)).toEqual(["b"]);
+    expect(order.map((entry) => entry.id)).toEqual(["alpha", "zulu"]);
+  });
+
+  it("leaves the list it was given alone", () => {
+    // The registry hands out frozen snapshots; sorting one in place would throw.
+    const entries = Object.freeze([
+      navEntry({ id: "b", sort: 20 }),
+      navEntry({ id: "a", sort: 10 }),
+    ]);
+
+    expect(orderNavEntries(entries).map((entry) => entry.id)).toEqual(["a", "b"]);
+    expect(entries.map((entry) => entry.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("navGroup", () => {
+  it("takes one group, keeping the order it was given", () => {
+    const entries = [
+      navEntry({ id: "one", group: "primary" }),
+      navEntry({ id: "foot", group: "secondary" }),
+      navEntry({ id: "two", group: "primary" }),
+    ];
+
+    expect(navGroup("primary", entries).map((entry) => entry.id)).toEqual(["one", "two"]);
+    expect(navGroup("secondary", entries).map((entry) => entry.id)).toEqual(["foot"]);
+  });
+});
+
+describe("permittedNavEntries", () => {
+  it("shows an entry that asks for nothing", () => {
+    const entries = [navEntry({ id: "open" })];
+
+    expect(permittedNavEntries(entries, []).map((entry) => entry.id)).toEqual(["open"]);
+  });
+
+  it("hides an entry whose capability nobody has been granted", () => {
+    const entries = [navEntry({ id: "gated", capability: "models.read" })];
+
+    expect(permittedNavEntries(entries, ["issues.read"])).toEqual([]);
+  });
+
+  it("shows it once the capability is granted", () => {
+    const gated = navEntry({ id: "gated", capability: "models.read" });
+
+    expect(permittedNavEntries([gated], ["models.read", "issues.read"])).toEqual([gated]);
+  });
+
+  it("hides a gated entry when nothing has published a set at all", () => {
+    // The direction this errs in, and the reason: a capability system that is late, broken or
+    // forgotten leaves a missing entry rather than a visible link into a screen the service
+    // will refuse.
+    expect(permittedNavEntries([navEntry({ capability: "anything" })], [])).toEqual([]);
+  });
+
+  it("leaves no gap where a hidden entry was", () => {
+    // The specification's own wording. Filtering rather than blanking is what makes that
+    // true of the rendered list as well: there is no entry left to draw.
+    const entries = [
+      navEntry({ id: "before" }),
+      navEntry({ id: "gated", capability: "secret" }),
+      navEntry({ id: "after" }),
+    ];
+
+    expect(permittedNavEntries(entries, []).map((entry) => entry.id)).toEqual([
+      "before",
+      "after",
+    ]);
   });
 });
 
@@ -128,17 +165,5 @@ describe("isActiveRoute", () => {
     expect(isActiveRoute("/models/", "/models")).toBe(true);
     expect(isActiveRoute("//", "/")).toBe(true);
     expect(isActiveRoute("/", "/issues")).toBe(false);
-  });
-
-  it("matches nothing when the path belongs to no entry", () => {
-    // A screen outside the navigation highlights nothing rather than guessing.
-    expect(NAV_ITEMS.some((item) => isActiveRoute("/nowhere", item.route))).toBe(false);
-  });
-
-  it("highlights at most one entry for any route an entry owns", () => {
-    for (const item of NAV_ITEMS) {
-      const matches = NAV_ITEMS.filter((other) => isActiveRoute(item.route, other.route));
-      expect(matches).toEqual([item]);
-    }
   });
 });

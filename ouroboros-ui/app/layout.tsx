@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Chakra_Petch, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
+import { SIDEBAR_BOOTSTRAP } from "./shell/sidebar-state";
 import { ThemeProvider } from "./theme-provider";
 import { THEME_BOOTSTRAP } from "./theme";
 
@@ -82,6 +83,16 @@ export default function RootLayout({
           (02-guides/preventing-flash-before-hydration.md) uses exactly the form below.
         */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+
+        {/*
+          The sidebar bootstrap (CP.2, #644), here for exactly the reason above it is: the
+          collapse choice is a custom property the shell grid reads, so applying it from React
+          would be the reader watching the sidebar collapse on every load. Kept as a second
+          script rather than folded into the first because the two belong to different modules,
+          and each is generated from its own constants so neither can drift from the code that
+          reads it back.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_BOOTSTRAP }} />
       </head>
       <body>
         <ThemeProvider>{children}</ThemeProvider>

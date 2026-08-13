@@ -5,6 +5,7 @@ import Link from "next/link";
 import { DASHBOARD_PATH } from "@/app/paths";
 
 import { SearchPill } from "./search-pill";
+import { SidebarToggle } from "./sidebar-toggle";
 import { TenantChip } from "./tenant-chip";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
@@ -44,6 +45,15 @@ import { UserMenu } from "./user-menu";
 export function ShellHeader() {
   return (
     <header className="shell-header">
+      {/*
+        The way into the navigation when the navigation is not on screen: below 768px the
+        sidebar is an overlay drawer (CP.2, #644) and the header is the only chrome left. The
+        control is drawn nowhere else, and above that width the stylesheet does not draw it at
+        all. First in the row because that is where a reader reaches for it, and because it
+        opens the region immediately below it.
+      */}
+      <SidebarToggle />
+
       {/*
         To the dashboard, not to `/`. § 1.1 says "links to Dashboard", and since #45 moved it
         to a segment of its own that is a different URL — `/` only redirects there, so linking

@@ -1,15 +1,17 @@
 /**
- * The shell's two addressable regions, named once
- * ([#643](https://github.com/NobuData/ouroboros/issues/643)).
+ * The shell's addressable regions, named once
+ * ([#643](https://github.com/NobuData/ouroboros/issues/643); the sidebar joined them with
+ * [#644](https://github.com/NobuData/ouroboros/issues/644)).
  *
- * The pane and the overlay layer are both rendered by `app/shell/app-shell.tsx`, and both are
- * reached by things that are not its children: the skip link jumps to the pane, an overlay
- * portals into the layer from wherever it was opened, and the scroll lock below has to find
- * the pane from inside a dialog three components away. A React context would be the other
- * answer, and it was weighed — it would mean the frame becoming a Client Component so that a
- * provider could wrap the header, which would pull `ShellHeader` and `SidebarNav` across the
- * boundary with it for no gain. Both regions are singletons by construction, so an id each is
- * enough, and this file is the one place either is written down.
+ * The pane, the overlay layer and the sidebar are all rendered by `app/shell/app-shell.tsx`,
+ * and all are reached by things that are not its children: the skip link jumps to the pane, an
+ * overlay portals into the layer from wherever it was opened, the scroll lock below has to
+ * find the pane from inside a dialog three components away, and the header's hamburger has to
+ * name the sidebar it opens. A React context would be the other answer, and it was weighed —
+ * it would mean the frame becoming a Client Component so that a provider could wrap the
+ * header, which would pull `ShellHeader` and `SidebarNav` across the boundary with it for no
+ * gain. Each region is a singleton by construction, so an id each is enough, and this file is
+ * the one place any of them is written down.
  *
  * **Framework-free**, in the way `app/paths.ts` and `app/shell/account.ts` are: no `next/*`,
  * no React. A Server Component renders the markup and a Client Component looks it up, so
@@ -52,6 +54,16 @@ export const PANE_ATTRIBUTE = "data-shell-pane";
  * that cannot cover the header, because the pane is a grid cell that does not reach it.
  */
 export const OVERLAY_LAYER_ID = "shell-overlays";
+
+/**
+ * The sidebar: the navigation landmark, and what the header's hamburger opens below 768px.
+ *
+ * It is written down here rather than in either component because it is an *agreement between
+ * them*: the toggle carries `aria-controls` naming this id, and a screen reader that follows
+ * that reference to nothing announces a button that controls a region which does not exist.
+ * Two files typing the same string is how that happens.
+ */
+export const SIDEBAR_ID = "shell-sidebar";
 
 /**
  * Find the content pane.

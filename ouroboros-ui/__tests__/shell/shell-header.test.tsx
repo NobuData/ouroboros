@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DASHBOARD_PATH } from "@/app/paths";
+import { SIDEBAR_ID } from "@/app/shell/regions";
 
 import { signedIn } from "../helpers/account";
 import { renderThemed } from "../helpers/theme";
@@ -69,6 +70,21 @@ describe("the shell header", () => {
     expect(sources[1]).toContain("/brand/icon-dark.png");
     // Decorative — the wordmark beside them is the link's name.
     for (const mark of marks) expect(mark).toHaveAttribute("alt", "");
+  });
+
+  it("offers the way into the navigation, for the widths the navigation is not on screen at", () => {
+    // Below 768px the sidebar is an overlay drawer (CP.2, #644) and the header is the only
+    // chrome left, so the control that opens it lives here — first in the row, ahead of the
+    // brand, because it opens the region immediately below it. That it is *hidden* above that
+    // width is a rule in the stylesheet: `__tests__/shell/shell-styles.test.ts`.
+    renderThemed(<ShellHeader />);
+
+    const burger = screen.getByRole("button", { name: "Open navigation" });
+    expect(burger).toHaveAttribute("aria-controls", SIDEBAR_ID);
+    expect(burger).toHaveAttribute("aria-expanded", "false");
+
+    const brand = screen.getByRole("link", { name: /OUROBOROS/ });
+    expect(burger.compareDocumentPosition(brand)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
   it("carries no navigation links — the sidebar owns navigation", () => {

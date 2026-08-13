@@ -36,18 +36,26 @@ const DEFINED = new Set([...SHEET.matchAll(/\.([A-Za-z][A-Za-z0-9_-]*)/g)].map((
 const GLOBAL = new Set(["sr-only"]);
 
 /**
- * Every class a component asks for, read from its `className` literals.
+ * Every class a component asks for.
  *
- * Literals only, which is what these components write: a class composed at runtime would not
- * be findable this way, and `app/ui/class-names.ts` exists for the surfaces that need one.
+ * Two forms, because the shell writes both: a plain `className="…"`, and the literals handed
+ * to `cx()` (`app/ui/class-names.ts`) by a component whose class list depends on state. The
+ * second form is where the *modifiers* live — the active row, the open drawer — which are
+ * exactly the classes a rendering test cannot miss the absence of, because an unstyled
+ * modifier looks like a component that is simply not in that state.
  *
  * @param file Path of the component, relative to `app/`.
  * @returns The class names, deduplicated.
  */
 function classesOf(file: string): string[] {
   const source = readFileSync(join(UI, "app", file), "utf8");
-  const named = [...source.matchAll(/className="([^"{}]+)"/g)].flatMap((match) =>
-    match[1].split(/\s+/).filter((name) => name.length > 0),
+  const attributes = [...source.matchAll(/className="([^"{}]+)"/g)].map((match) => match[1]);
+  const composed = [...source.matchAll(/\bcx\(([^)]*)\)/g)].flatMap((match) =>
+    [...match[1].matchAll(/"([^"]+)"/g)].map((literal) => literal[1]),
+  );
+
+  const named = [...attributes, ...composed].flatMap((value) =>
+    value.split(/\s+/).filter((name) => name.length > 0),
   );
 
   return [...new Set(named)].filter((name) => !GLOBAL.has(name));
@@ -58,6 +66,7 @@ describe("the shell's components and its stylesheet", () => {
     "shell/user-menu.tsx",
     "shell/shell-header.tsx",
     "shell/sidebar-nav.tsx",
+    "shell/sidebar-toggle.tsx",
     "shell/app-shell.tsx",
     "shell/theme-toggle.tsx",
     "shell/overlay.tsx",
@@ -69,8 +78,10 @@ describe("the shell's components and its stylesheet", () => {
 
   it("has something to check, which an empty read would not", () => {
     // Without this the rule above would pass just as well against a component whose classes
-    // stopped being readable, and say nothing at all.
+    // stopped being readable, and say nothing at all. One of each form: an attribute, and a
+    // modifier composed through `cx`.
     expect(classesOf("shell/user-menu.tsx")).toContain("shell-menu__submenu");
+    expect(classesOf("shell/sidebar-nav.tsx")).toContain("shell-nav--open");
   });
 });
 
@@ -113,25 +124,92 @@ describe("the shell frame", () => {
 
   it("declares the sidebar slot's three widths, and drives the sidebar from one property", () => {
     // The acceptance criterion "the grid holds at every breakpoint with the sidebar slot at
-    // 240px, 64px and drawer widths": all three are values of one custom property, so CP.2
-    // (#644) moves between them without touching the grid.
+    // 240px, 64px and drawer widths": all three are values of one custom property, so the
+    // sidebar moves between them without touching the grid.
     const shell = rule(".app-shell");
 
     expect(shell).toMatch(/--shell-sidebar-wide:\s*15rem/);
     expect(shell).toMatch(/--shell-sidebar-rail:\s*4rem/);
     expect(shell).toMatch(/--shell-sidebar-drawer:\s*0rem/);
-    expect(shell).toMatch(/--shell-sidebar:\s*var\(--shell-sidebar-wide\)/);
+    expect(shell).toMatch(/--shell-sidebar-choice:\s*var\(--shell-sidebar-wide\)/);
+    expect(shell).toMatch(/--shell-sidebar:\s*var\(--shell-sidebar-choice\)/);
 
     // And the sidebar reads it rather than restating a width of its own.
     expect(rule(".shell-nav")).toMatch(/width:\s*var\(--shell-sidebar\)/);
   });
 
-  it("moves the slot to the rail width rather than resizing the sidebar", () => {
-    // Below 1024px. Written as the property because that is the same move the collapse
-    // control makes from script — one mechanism, two triggers.
+  it("keeps the reader's choice and the layout's width as two properties", () => {
+    // Written as one, the stamped choice (a selector) would outrank the drawer breakpoint (a
+    // media query), and a reader who had expanded the sidebar would find it still sitting in
+    // the grid on a phone. The split is what keeps every rule at its natural specificity.
+    for (const choice of ["wide", "rail"] as const) {
+      expect(SHEET).toMatch(
+        new RegExp(
+          `:root\\[data-sidebar="${choice}"\\] \\.app-shell\\s*\\{\\s*--shell-sidebar-choice:\\s*var\\(--shell-sidebar-${choice}\\)`,
+        ),
+      );
+    }
+  });
+
+  it("makes the rail the default below 1024px, not the rule", () => {
+    // The property the *choice* lives in, so the two selectors above still win: below 1024px
+    // the rail is what a reader who has said nothing gets.
     expect(SHEET).toMatch(
-      /@media \(max-width: 64rem\)\s*\{\s*\.app-shell\s*\{\s*--shell-sidebar:\s*var\(--shell-sidebar-rail\)/,
+      /@media \(max-width: 64rem\)\s*\{\s*\.app-shell\s*\{\s*--shell-sidebar-choice:\s*var\(--shell-sidebar-rail\)/,
     );
+  });
+
+  it("asks the sidebar's own width whether there is room for a label", () => {
+    // The rail treatment is reached three ways — the breakpoint, the reader's chevron, and
+    // never by the drawer, which is 240px wide at every viewport. A rule per trigger would be
+    // the same declarations three times; a container query is the one question that matters,
+    // asked of the element that can answer it.
+    expect(rule(".shell-nav")).toMatch(/container:\s*shell-sidebar \/ inline-size/);
+    expect(SHEET).toMatch(/@container shell-sidebar \(max-width: 8rem\)/);
+  });
+
+  it("hides the rail's labels from the page without hiding them from a screen reader", () => {
+    // `display: none` would take the label out of the accessibility tree with it, leaving a
+    // rail of unnamed icons for exactly the readers who cannot see the icons.
+    const rail = SHEET.match(/@container shell-sidebar \(max-width: 8rem\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(rail).toContain(".shell-nav__label");
+    expect(rail).not.toMatch(/\.shell-nav__label,?[^{]*\{[^}]*display:\s*none/);
+    expect(rail).toMatch(/clip-path:\s*inset\(50%\)/);
+  });
+
+  it("takes the sidebar out of the grid below 768px and floats it over the pane", () => {
+    // § 1.2's drawer: the slot has no width because the sidebar is no longer in it, and the
+    // sidebar is placed against the viewport under the header.
+    const drawer = SHEET.match(/@media \(max-width: 48rem\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(drawer).toMatch(/--shell-sidebar:\s*var\(--shell-sidebar-drawer\)/);
+    expect(drawer).toMatch(/position:\s*fixed/);
+    expect(drawer).toMatch(/top:\s*var\(--shell-header\)/);
+    // Closed, it is hidden rather than merely translated away: an off-screen sidebar that is
+    // still visible is one the keyboard tabs into and a screen reader reads out.
+    expect(drawer).toMatch(/visibility:\s*hidden/);
+    expect(drawer).toMatch(/\.shell-nav--open\s*\{\s*visibility:\s*visible/);
+  });
+
+  it("draws the hamburger only where there is a drawer to open", () => {
+    expect(rule(".shell-burger")).toMatch(/display:\s*none/);
+    expect(SHEET).toMatch(/@media \(max-width: 48rem\)[\s\S]*?\.shell-burger\s*\{\s*display:\s*grid/);
+  });
+
+  it("keeps the drawer's slide behind the reduced-motion preference", () => {
+    // The same guard the theme's cross-fade keeps: a reader who has asked for less motion
+    // gets the drawer instantly, which is the behaviour that was there before the transition.
+    expect(SHEET).toMatch(
+      /@media \(max-width: 48rem\) and \(prefers-reduced-motion: no-preference\)/,
+    );
+  });
+
+  it("takes the header's height from the shell rather than restating it", () => {
+    // The drawer starts below the header, so two rules know that number — and two files
+    // knowing it is one file's chance to change it alone.
+    expect(rule(".app-shell")).toMatch(/--shell-header:\s*3\.5rem/);
+    expect(rule(".shell-header")).toMatch(/height:\s*var\(--shell-header\)/);
   });
 
   it("gives the pane vertical scroll, a stable gutter, and no way to scroll sideways", () => {

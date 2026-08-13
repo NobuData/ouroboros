@@ -44,6 +44,8 @@
  * decides, the same way one place decides the palette.
  */
 
+import { safeStorage, safeWindow } from "./browser";
+
 /** The three states a theme choice can be in. `system` is the default. */
 export type Theme = "light" | "dark" | "system";
 
@@ -269,28 +271,3 @@ export const THEME_BOOTSTRAP = `(function(){try{var t=localStorage.getItem(${JSO
 )});if(t==="light"||t==="dark")document.documentElement.setAttribute(${JSON.stringify(
   THEME_ATTRIBUTE,
 )},t)}catch(e){}})();`;
-
-/**
- * `window`, or `undefined` on the server.
- *
- * @returns The global window when there is one.
- */
-function safeWindow(): Window | undefined {
-  return typeof window === "undefined" ? undefined : window;
-}
-
-/**
- * `window.localStorage`, or `undefined` where it cannot be reached.
- *
- * Merely *reaching* the property throws when storage is blocked, which is why this is a
- * function with a `try` rather than a constant.
- *
- * @returns Local storage when it is available.
- */
-function safeStorage(): Storage | undefined {
-  try {
-    return safeWindow()?.localStorage;
-  } catch {
-    return undefined;
-  }
-}

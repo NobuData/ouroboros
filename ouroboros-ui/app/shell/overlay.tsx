@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { useClientValue } from "./client-value";
+import { trapTab } from "./focus-trap";
 import { lockPaneScroll } from "./pane-scroll";
 import { shellOverlayLayer, shellPane } from "./regions";
 
@@ -62,18 +63,6 @@ export interface ShellOverlayProps {
   /** What the panel draws. */
   readonly children: React.ReactNode;
 }
-
-/**
- * The elements Tab can reach, in document order.
- *
- * Deliberately a selector rather than a walk of the accessibility tree: the panel's contents
- * are this application's own markup, so the list of shapes that can hold focus is known.
- * `disabled` is excluded by the selector; `aria-disabled` is not, because a control that
- * stays reachable to explain itself — the pattern the header's settings gear keeps — is one
- * the keyboard should still stop on.
- */
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * A modal dialog outside the content pane.
@@ -139,9 +128,9 @@ export function ShellOverlay({ open, onClose, label, children }: ShellOverlayPro
   /**
    * Escape closes; Tab cycles inside the panel.
    *
-   * The trap is a cycle rather than a guard on every focus event, because the guard version
-   * fights the browser — it cannot tell a Tab from a click, and stealing focus back from a
-   * click is how a reader ends up unable to use the address bar.
+   * The cycle itself is `app/shell/focus-trap.ts`, shared with the sidebar drawer (#644) —
+   * two surfaces that cover the page, one trap between them. What stays here is what only a
+   * dialog knows: that Escape means *close this*.
    *
    * @param event The key press, from anywhere inside the panel.
    */
@@ -154,28 +143,7 @@ export function ShellOverlay({ open, onClose, label, children }: ShellOverlayPro
       return;
     }
 
-    if (event.key !== "Tab" || panel.current === null) return;
-
-    const stops = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
-
-    // A panel with nothing focusable in it keeps focus on the panel, which is where the
-    // effect above put it — Tab out of a modal is the one thing the trap exists to prevent.
-    if (stops.length === 0) {
-      event.preventDefault();
-      return;
-    }
-
-    const first = stops[0];
-    const last = stops[stops.length - 1];
-    const active = document.activeElement;
-
-    if (event.shiftKey && (active === first || active === panel.current)) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    if (panel.current !== null) trapTab(event, panel.current);
   }
 
   /**
