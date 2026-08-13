@@ -1,11 +1,10 @@
-import type { Enablement } from "@/app/api/enablement";
 import type { Membership } from "@/app/api/membership";
 import type { SessionUser, TenantSuggestion } from "@/app/api/identity";
 
 import { BrandPanel } from "./brand-panel";
 import { EnablementCard } from "./enablement-card";
 import { SignInCard } from "./sign-in-card";
-import { NoWorkspaceCard, WorkspacePicker, WorkspacePreview } from "./workspace-card";
+import { NoWorkspaceCard, WorkspacePreview } from "./workspace-card";
 
 import "./login.css";
 
@@ -50,31 +49,31 @@ export function LoginScreen({
  * What the screen draws, and everything each shape needs to draw it.
  *
  * `app/login/view.ts`'s `LoginView` minus its one non-visual outcome (`dashboard`, which is
- * an instruction to redirect) plus the data the enablement step fetches. Keeping it a
- * discriminated union rather than a bag of optional props is what makes the switch below
- * total: there is no state in which a card is rendered without the data it needs, and no
- * `null` for one to guard against.
+ * an instruction to redirect). Keeping it a discriminated union rather than a bag of optional
+ * props is what makes the switch below total: there is no state in which a card is rendered
+ * without the data it needs, and no `null` for one to guard against.
+ *
+ * **It carries no data of its own since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719).** It used to add the enablement
+ * list, which the route fetched for the one step that needed it; the workspace rows arrive
+ * with the session now (`app/api/auth-server.ts`), so the view *is* the state and the route
+ * fetches nothing.
  */
 export type LoginScreenState =
   /** Nobody is signed in. */
   | { readonly step: "sign-in" }
-  /** Signed in, with live workspaces to choose between. */
-  | { readonly step: "choose"; readonly memberships: readonly Membership[] }
-  /** Signed in, belonging to no live workspace. */
+  /** Signed in, with workspaces to choose between and enable. */
   | {
-      readonly step: "no-workspace";
-      readonly suggestion: TenantSuggestion | null;
+      readonly step: "choose";
       readonly memberships: readonly Membership[];
+      readonly active: Membership | undefined;
+      readonly total: number;
     }
-  /** Signed in, a workspace chosen, its organisations read. */
-  | {
-      readonly step: "enable";
-      readonly membership: Membership;
-      readonly enablement: Enablement;
-    };
+  /** Signed in, belonging to no workspace. */
+  | { readonly step: "no-workspace"; readonly suggestion: TenantSuggestion | null };
 
 /**
- * The second card, in whichever of its four shapes this request calls for.
+ * The second card, in whichever of its three shapes this request calls for.
  *
  * @param props.state The screen's state.
  * @returns One step-2 card.
@@ -84,17 +83,14 @@ function StepTwo({ state }: Readonly<{ state: LoginScreenState }>) {
     case "sign-in":
       return <WorkspacePreview />;
     case "choose":
-      return <WorkspacePicker memberships={state.memberships} />;
-    case "no-workspace":
       return (
-        <NoWorkspaceCard
-          suggestion={state.suggestion}
+        <EnablementCard
           memberships={state.memberships}
+          active={state.active}
+          total={state.total}
         />
       );
-    case "enable":
-      return (
-        <EnablementCard membership={state.membership} enablement={state.enablement} />
-      );
+    case "no-workspace":
+      return <NoWorkspaceCard suggestion={state.suggestion} />;
   }
 }

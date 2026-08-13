@@ -4,12 +4,16 @@ import { describe, expect, it } from "vitest";
 import { Monogram, initials } from "@/app/login/monogram";
 
 /**
- * The derived initials beside every row.
+ * The tile beside every row, and the one derivation left on this side of the wire.
  *
- * The rule matters more than it looks: the mockup's letters are a person's ("KS" for
- * `kensuenobu`) and nothing in the contract carries those, so these are derived — and a
- * derivation that returned an empty string would render as a broken tile on the product's
- * first screen.
+ * **A workspace's letters are the service's** since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719) — `OrgRow.monogram`, derived where
+ * the name is, so that a browser cannot become a second place the rule lives. What
+ * {@link initials} is still for is the surface the contract says nothing about: the
+ * signed-in person on step 1, whose letters are theirs ("KS" for `kensuenobu`).
+ *
+ * The rule matters more than it looks: a derivation that returned an empty string would
+ * render as a broken tile on the product's first screen.
  */
 
 describe("initials", () => {
@@ -50,14 +54,29 @@ describe("initials", () => {
 });
 
 describe("<Monogram>", () => {
-  it("renders the derived letters", () => {
-    render(<Monogram name="acme-robotics" />);
+  it("renders the letters it is given", () => {
+    render(<Monogram letters="AR" />);
 
     expect(screen.getByText("AR")).toBeInTheDocument();
   });
 
+  it("renders the derived ones for the surface with no service monogram", () => {
+    render(<Monogram letters={initials("Ken Suenobu")} />);
+
+    expect(screen.getByText("KS")).toBeInTheDocument();
+  });
+
+  it("draws an empty tile for a name the service found no letters in", () => {
+    // The contract asks for exactly this: "empty for a name with no letters or digits in it
+    // at all, which a client renders as an empty circle rather than as a failure". Only the
+    // *derived* path falls back to a dash, because only it has a name to have failed on.
+    const { container } = render(<Monogram letters="" />);
+
+    expect(container.firstElementChild).toBeEmptyDOMElement();
+  });
+
   it("is hidden from assistive technology, because the row names the thing in words", () => {
-    const { container } = render(<Monogram name="acme-robotics" />);
+    const { container } = render(<Monogram letters="AR" />);
 
     expect(container.firstElementChild).toHaveAttribute("aria-hidden", "true");
   });

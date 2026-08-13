@@ -3,7 +3,7 @@ import { Card, Eyebrow } from "@/app/ui";
 
 import { DevSignInForm } from "./dev-sign-in";
 import { GithubMark } from "./github-mark";
-import { Monogram } from "./monogram";
+import { Monogram, initials } from "./monogram";
 import { GITHUB_PROVIDER, socialSignIn } from "./sign-in";
 import { SignInButton } from "./sign-in-button";
 import { SsoForm } from "./sso-form";
@@ -77,7 +77,7 @@ export function SignInCard({ user }: Readonly<{ user: SessionUser | null }>) {
           Signed in
         </h1>
         <p className="login-identity">
-          <Monogram name={user.displayName || user.email} />
+          <Monogram letters={initials(user.displayName || user.email)} />
           <span className="login-identity__who">
             {user.displayName}
             <span className="login-identity__mail">{user.email}</span>

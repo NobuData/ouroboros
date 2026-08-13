@@ -34,7 +34,13 @@ const { MEMBER_LIMIT, readDashboard } = await import("@/app/dashboard/data");
 
 /** What the gate hands the page, in the seeded world. */
 const ACCESS: Workspace = {
-  session: { user: sessionUser(), memberships: [membership()], tenantSuggestion: null },
+  session: {
+    user: sessionUser(),
+    memberships: [membership()],
+    membershipTotal: 1,
+    activeOrganizationId: membership().id,
+    tenantSuggestion: null,
+  },
   membership: membership(),
 };
 
@@ -62,11 +68,11 @@ describe("readDashboard", () => {
 
   it("scopes every workspace-scoped read to the workspace the gate resolved", async () => {
     // Not to a cookie, a parameter or anything else this layer could have chosen: the gate
-    // has already matched the `ouro_tenant` cookie against the session's own memberships.
+    // has already resolved the session's active organization against its own memberships.
     await readDashboard(ACCESS);
 
-    expect(list).toHaveBeenCalledWith(membership().tenantId, { limit: MEMBER_LIMIT });
-    expect(readEnablement).toHaveBeenCalledWith(membership().tenantId);
+    expect(list).toHaveBeenCalledWith(membership().id, { limit: MEMBER_LIMIT });
+    expect(readEnablement).toHaveBeenCalledWith(membership().id);
   });
 
   it("asks for the contract's largest page of members, so the breakdown describes the most it can", () => {
@@ -137,7 +143,7 @@ describe("a read that fails", () => {
     expect(readings.engine.ok).toBe(false);
     expect(readings.readiness).toBeNull();
     // The workspace still came from the gate, so the page head still has something to say.
-    expect(readings.workspace.displayName).toBe("Acme Robotics");
+    expect(readings.workspace.name).toBe("Acme Robotics");
   });
 });
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Access } from "@/app/api/access";
 import type { Membership } from "@/app/api/membership";
 import { DASHBOARD_PATH, LOGIN_PATH, RETURN_TO_PARAM } from "@/app/paths";
+import { WORKSPACE_PARAM } from "@/app/login/view";
 
 import { membership, sessionUser } from "../helpers/login";
 
@@ -25,8 +26,22 @@ import { membership, sessionUser } from "../helpers/login";
 /** What `currentAccess()` reports for this case. */
 let access: Access;
 
+/** Whether this browser has been through step 2 — the `ouro_tenant` hint. */
+let settledBrowser: boolean;
+
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/access", () => ({ currentAccess: () => Promise.resolve(access) }));
+vi.mock("@/app/api/server", () => ({
+  workspaceHint: () => Promise.resolve(settledBrowser ? "acme-robotics" : undefined),
+}));
+
+// The card the unsettled cases render submits to Server Actions, whose module reaches for
+// `next/cache` and the server-only client.
+vi.mock("@/app/login/actions", () => ({
+  enterMissionControl: vi.fn(),
+  setWorkspaceEnabled: vi.fn(),
+  discoverDomain: vi.fn(),
+}));
 
 /** Where the request was sent, if it was. */
 let redirectedTo: string | undefined;
@@ -46,7 +61,13 @@ const { default: LoginPage } = await import("@/app/(auth)/login/page");
 /** A person who has signed in and settled on a workspace — the `dashboard` outcome. */
 function settled(workspace: Membership = membership()): Access {
   return {
-    session: { user: sessionUser(), memberships: [workspace], tenantSuggestion: null },
+    session: {
+      user: sessionUser(),
+      memberships: [workspace],
+      membershipTotal: 1,
+      activeOrganizationId: workspace.id,
+      tenantSuggestion: null,
+    },
     membership: workspace,
   };
 }
@@ -65,6 +86,7 @@ async function visit(query: Record<string, string | string[] | undefined>): Prom
 
 beforeEach(() => {
   redirectedTo = undefined;
+  settledBrowser = true;
   access = settled();
 });
 
@@ -118,7 +140,7 @@ describe("where a settled visitor lands", () => {
 describe("when the visitor is not settled", () => {
   it("renders the screen rather than redirecting, return-to or not", async () => {
     // A `?next=` is a note about *afterwards*. Somebody who still has to sign in, or still
-    // has to choose a workspace, is not afterwards yet.
+    // has to be asked where the loop runs, is not afterwards yet.
     access = { session: null, membership: undefined };
 
     const screen = await LoginPage({
@@ -127,5 +149,33 @@ describe("when the visitor is not settled", () => {
 
     expect(redirectedTo).toBeUndefined();
     expect(screen).toBeTruthy();
+  });
+
+  it("asks where the loop runs on a browser that has not been asked", async () => {
+    // The state a sign-in lands in, and the reason the hint exists at all: the session
+    // already names a workspace — `ouroboros-rest` stamps one at session creation — so
+    // without this the screen would redirect past the question it exists to ask.
+    settledBrowser = false;
+
+    const screen = await LoginPage({ searchParams: Promise.resolve({}) });
+
+    expect(redirectedTo).toBeUndefined();
+    expect(screen).toBeTruthy();
+  });
+
+  it("asks again when the URL names a workspace, even on a settled browser", async () => {
+    const screen = await LoginPage({
+      searchParams: Promise.resolve({ [WORKSPACE_PARAM]: "acme-robotics" }),
+    });
+
+    expect(redirectedTo).toBeUndefined();
+    expect(screen).toBeTruthy();
+  });
+
+  it("refuses a repeated workspace parameter rather than picking one of the two", async () => {
+    // Guessing would mean a URL that quietly configures a workspace nobody named.
+    await visit({ [WORKSPACE_PARAM]: ["acme-robotics", "acme-labs"] });
+
+    expect(redirectedTo).toBe(DASHBOARD_PATH);
   });
 });

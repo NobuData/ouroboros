@@ -59,7 +59,7 @@ describe("the page head", () => {
     render(
       <DashboardScreen
         readings={readings({
-          workspace: membership({ role: "viewer", slug: "acme-labs" }),
+          workspace: membership({ roles: ["viewer"], slug: "acme-labs" }),
           user: sessionUser({ displayName: "Maya Chen" }),
         })}
       />,
@@ -352,15 +352,9 @@ describe("a workspace that is not the seeded one", () => {
     ).toBeInTheDocument();
   });
 
-  it("says a workspace is suspended, because that is the case somebody must be told", () => {
-    render(
-      <DashboardScreen
-        readings={readings({ workspace: membership({ status: "suspended" }) })}
-      />,
-    );
-
-    expect(screen.getByText(/workspace suspended/)).toBeInTheDocument();
-  });
+  // *Says a workspace is suspended* was here. `OrgRow` publishes no lifecycle since
+  // [#719](https://github.com/NobuData/ouroboros/issues/719), so the state cannot be
+  // reported and the subline no longer has a branch for it — see `view.test.ts`.
 
   it("renders every card even when every read failed", () => {
     // One failed read is one degraded card, and four are four — never a blank page.

@@ -1,25 +1,31 @@
 import type { Membership } from "@/app/api/membership";
 
 /**
- * The auth family, stubbed — what `app/api/auth-server.ts` calls, and what it hears back.
+ * The two families a session is composed from, stubbed — what `app/api/auth-server.ts`
+ * calls, and what it hears back.
  *
- * Every suite that exercises something behind `currentAccess()` has to answer three
- * requests rather than one since [#711](https://github.com/NobuData/ouroboros/issues/711)
- * deleted `GET /api/v1/auth/me`: the session, the organization listing, and the caller's
- * role in each organization. Written once here so a suite whose subject is a Server Action
- * or a screen states *who is signed in and what they hold* and nothing about how many
- * requests that takes — which is also what keeps those suites unchanged when
- * [#714](https://github.com/NobuData/ouroboros/issues/714) collapses the three into one.
+ * Every suite that exercises something behind `currentAccess()` has to answer two requests:
+ * BetterAuth's `GET /api/auth/get-session`, and `GET /api/v1/orgs` — the workspace rows,
+ * which [#719](https://github.com/NobuData/ouroboros/issues/719) made the source of a
+ * session's memberships. Written once here so a suite whose subject is a Server Action or a
+ * screen states *who is signed in and what they belong to* and nothing about how many
+ * requests that takes.
  *
- * It answers over `fetch` because that is what the auth client uses. The generated client's
- * own stub is `helpers/api.ts`, and the two do not overlap: they are the two families, and a
- * suite covering both wires both.
+ * It used to be three, and one of them was per workspace: `organization/list` returns the
+ * organizations without roles, so a role cost a `get-active-member-role` each. The row model
+ * carries roles, counts, the monogram and the `personal` flag together, so the fan-out is
+ * gone and so is the branch of this helper that answered it.
+ *
+ * Both stubs answer over `fetch`, because that is what both clients use — BetterAuth's own,
+ * and the generated one built by `app/api/client.ts`. A suite that only needs the *generated*
+ * family without a session has `helpers/api.ts` instead, which hands back a client rather
+ * than replacing the global.
  *
  * **What reaches the stub is not a string**, and that is
  * [#716](https://github.com/NobuData/ouroboros/issues/716)'s doing rather than a detail of
  * the helper: BetterAuth's client composes a `URL` and hands `fetch` that, where the
- * hand-written transport it replaced passed the string it had built. {@link requestedUrl} is
- * the one place that difference is absorbed, so a suite goes on answering by path.
+ * generated client hands it a `Request`. {@link requestedUrl} is the one place that
+ * difference is absorbed, so a suite goes on answering by path.
  */
 
 /** The signed-in person, in BetterAuth's own vocabulary — `name` and `image`. */
@@ -58,32 +64,55 @@ export function isAuthUrl(url: string): boolean {
 }
 
 /**
+ * Whether a URL names the workspace listing.
+ *
+ * @param url The request's URL.
+ * @returns `true` for `GET /api/v1/orgs` — and not for the GitHub-organisation routes
+ *   nested under it, which carry a further segment.
+ */
+export function isOrgsUrl(url: string): boolean {
+  return /\/api\/v1\/orgs(\?|$)/.test(url);
+}
+
+/**
  * What the auth family answers, for a person holding the given memberships.
  *
  * @param url The request's URL. Must be one {@link isAuthUrl} admits.
  * @param memberships What this person belongs to, or `null` for nobody signed in.
+ * @param activeOrganizationId Where the session is acting. Defaults to the first membership,
+ *   which is what `ouroboros-rest` stamps a new session with; pass `null` for a session
+ *   acting nowhere, or an id for one pointing somewhere specific.
  * @returns The body to answer with. `null` from the session route is what BetterAuth
  *   answers for a request carrying no session, and is why a signed-out visitor is a
  *   `200` here rather than a `401`.
  */
-export function authAnswer(url: string, memberships: readonly Membership[] | null): unknown {
+export function authAnswer(
+  url: string,
+  memberships: readonly Membership[] | null,
+  activeOrganizationId: string | null = memberships?.[0]?.id ?? null,
+): unknown {
   if (url.includes("/get-session")) {
-    return memberships === null
-      ? null
-      : { session: { activeOrganizationId: memberships[0]?.tenantId ?? null }, user: AUTH_USER };
+    return memberships === null ? null : { session: { activeOrganizationId }, user: AUTH_USER };
   }
 
-  if (url.includes("/organization/list")) {
-    // Organizations, without roles — the listing's real shape. The role is the third call.
-    return (memberships ?? []).map((one) => ({
-      id: one.tenantId,
-      name: one.displayName,
-      slug: one.slug,
-    }));
-  }
+  // `set-active` and `sign-out` are writes whose answer nothing in this module reads.
+  return {};
+}
 
-  const asked = new URL(url).searchParams.get("organizationId");
-  const held = (memberships ?? []).find((one) => one.tenantId === asked);
+/**
+ * What `GET /api/v1/orgs` answers — one page of workspace rows.
+ *
+ * @param memberships The rows, or `null` for nobody signed in, which is an empty page: the
+ *   listing is scoped to the caller and a caller with no session never gets this far.
+ * @param total How many exist in total. Defaults to the number given, which is the case
+ *   every suite but the truncation one is about.
+ * @returns The page body.
+ */
+export function orgsAnswer(
+  memberships: readonly Membership[] | null,
+  total?: number,
+): unknown {
+  const items = memberships ?? [];
 
-  return held === undefined ? null : { role: held.role };
+  return { items, total: total ?? items.length, limit: 100, offset: 0 };
 }

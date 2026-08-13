@@ -1,17 +1,14 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { DASHBOARD_PATH } from "@/app/paths";
-
-import { enablement, membership, org, repo, sessionUser } from "../helpers/login";
+import { membership, seededWorkspaces, sessionUser } from "../helpers/login";
 
 // The screen contains the Server-Action forms, whose module reaches for `next/cache`,
 // `next/navigation` and the server-only client. Replacing it is what lets the whole screen be
 // rendered in a test at all; what the actions do is `__tests__/login/actions.test.ts`.
 vi.mock("@/app/login/actions", () => ({
-  chooseWorkspace: vi.fn(),
-  setOrgEnabled: vi.fn(),
-  setRepoEnabled: vi.fn(),
+  enterMissionControl: vi.fn(),
+  setWorkspaceEnabled: vi.fn(),
   // Step 1's SSO half runs this through `useActionState`, so the mock has to answer with a
   // `DiscoveryState`. What it answers is `sso-form.test.tsx`'s subject, not this file's.
   discoverDomain: vi.fn(() =>
@@ -24,10 +21,16 @@ const { LoginScreen } = await import("@/app/login/login-screen");
 /**
  * The screen, whole — the integration test for #44's UI.
  *
- * Each of the four states is rendered as the route would render it, and what is asserted is
+ * Each of the three states is rendered as the route would render it, and what is asserted is
  * what somebody arriving at that state can actually see and do. Between them these are the
- * acceptance criteria's own path: sign in → pick `acme-robotics` → toggle a repo → land on
- * the dashboard, minus the two steps only a browser and a live service can take.
+ * acceptance criteria's own path: sign in → see the three workspaces → toggle one → enter
+ * mission control, minus the two steps only a browser and a live service can take.
+ *
+ * There were four states until
+ * [#719](https://github.com/NobuData/ouroboros/issues/719): *choose a workspace* and *enable
+ * organisations in it* were separate steps, because the second needed a workspace to fetch
+ * with. `GET /api/v1/orgs` answers every workspace with its counts and switch state at once,
+ * which is the mockup's own card, so the two collapsed into one.
  *
  * The screen is a Server Component and renders here with no provider and no router, because
  * it is a function from a state to markup. It is no longer *entirely* server-side —
@@ -90,54 +93,52 @@ describe("the login screen, signed out", () => {
   });
 });
 
-describe("the login screen, choosing a workspace", () => {
-  it("reports who signed in and asks where the loop should run", () => {
-    render(
+describe("the login screen, choosing where the loop runs", () => {
+  const SEEDED = seededWorkspaces();
+
+  /**
+   * Render the screen as somebody who has just signed in sees it.
+   *
+   * @returns Testing Library's result.
+   */
+  function choosing() {
+    return render(
       <LoginScreen
-        state={{ step: "choose", memberships: [membership()] }}
-       
+        state={{ step: "choose", memberships: SEEDED, active: SEEDED[0], total: 3 }}
         user={sessionUser()}
       />,
     );
+  }
+
+  it("reports who signed in, and stops offering to sign them in again", () => {
+    choosing();
 
     expect(screen.getByText("Ken Suenobu")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Acme Robotics/ })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Continue with GitHub/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Continue with GitHub/ })).not.toBeInTheDocument();
   });
-});
 
-describe("the login screen, enabling organisations", () => {
-  it("puts the workspace's organisations and repositories in front of an owner", () => {
-    render(
-      <LoginScreen
-        state={{
-          step: "enable",
-          membership: membership(),
-          enablement: enablement([[org(), [repo()]]]),
-        }}
-       
-        user={sessionUser()}
-      />,
-    );
+  it("puts the mockup's three rows and their switches in front of them", () => {
+    choosing();
 
     expect(screen.getByText("acme-robotics")).toBeInTheDocument();
-    expect(screen.getByText("helios-firmware")).toBeInTheDocument();
-    expect(screen.getAllByRole("switch")).toHaveLength(2);
-    expect(screen.getByRole("link", { name: /Enter mission control/ })).toHaveAttribute(
-      "href",
-      DASHBOARD_PATH,
-    );
+    expect(screen.getByText("acme-labs")).toBeInTheDocument();
+    expect(screen.getByText("kensuenobu")).toBeInTheDocument();
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
+  });
+
+  it("offers the way into the product, with a workspace already selected", () => {
+    choosing();
+
+    expect(screen.getByRole("button", { name: /Enter mission control/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio").filter((one) => (one as HTMLInputElement).checked))
+      .toHaveLength(1);
   });
 });
 
 describe("the login screen, belonging nowhere", () => {
   it("explains rather than offering an empty list", () => {
     render(
-      <LoginScreen
-        state={{ step: "no-workspace", suggestion: null, memberships: [] }}
-       
-        user={sessionUser()}
-      />,
+      <LoginScreen state={{ step: "no-workspace", suggestion: null }} user={sessionUser()} />,
     );
 
     expect(screen.getByRole("heading", { name: "No workspace yet" })).toBeInTheDocument();
@@ -149,13 +150,12 @@ describe("what every state has in common", () => {
   /** One state per shape the screen can take, with the data each needs. */
   const STATES = [
     ["signed out", { step: "sign-in" }, null],
-    ["choosing", { step: "choose", memberships: [membership()] }, sessionUser()],
     [
-      "enabling",
-      { step: "enable", membership: membership(), enablement: enablement([[org(), [repo()]]]) },
+      "choosing",
+      { step: "choose", memberships: [membership()], active: membership(), total: 1 },
       sessionUser(),
     ],
-    ["nowhere", { step: "no-workspace", suggestion: null, memberships: [] }, sessionUser()],
+    ["nowhere", { step: "no-workspace", suggestion: null }, sessionUser()],
   ] as const;
 
   it.each(STATES)("in the %s state, draws the brand and two cards", (_, state, user) => {

@@ -21,6 +21,20 @@ import "server-only";
  * that needs to *write* something calls a Server Action that calls this. That is the
  * shape the dashboard ([#45](https://github.com/NobuData/ouroboros/issues/45)) and the
  * login screen ([#44](https://github.com/NobuData/ouroboros/issues/44)) are built in.
+ *
+ * ### Neither client sends `X-Ouro-Tenant` any more
+ *
+ * Both did, from the `ouro_tenant` cookie, until
+ * [#719](https://github.com/NobuData/ouroboros/issues/719). The header is an *override* since
+ * [#713](https://github.com/NobuData/ouroboros/issues/713) — the session's active
+ * organization is what scopes a request — and an override this application never means to
+ * exercise is one it should not be sending: a cookie left over from a workspace somebody has
+ * since switched away from, sent alongside a path naming the workspace they are actually in,
+ * is `422 tenant_mismatch` on an operation that would otherwise have succeeded. The refusal
+ * is correct and the request was this client's mistake.
+ *
+ * `app/api/client.ts` keeps the capability, because a client that *can* name a workspace is
+ * what a future screen acting outside its own session would need. Nothing wires it today.
  */
 
 import { cookies } from "next/headers";
@@ -49,41 +63,60 @@ import { LOGIN_PATH } from "@/app/paths";
  */
 export { LOGIN_PATH };
 
-/** How long the active-workspace cookie lives, in seconds — one year. */
+/** How long the step-2 hint lives, in seconds — one year. */
 export const ACTIVE_TENANT_MAX_AGE = 60 * 60 * 24 * 365;
 
 /**
- * The workspace the signed-in person last chose, if it is still readable.
+ * ### `ouro_tenant` is a hint now, and no longer an authority
  *
- * A cookie is whatever the browser was last given, so a value that is not a workspace
- * reference is treated as *no choice* rather than as an error: the request then goes
- * without the header, and `ouroboros-rest` either infers the caller's sole workspace or
- * answers `422 tenant_required` — both of which are recoverable, where a throw here would
- * mean an edited cookie could stop the application rendering at all.
+ * It named the active workspace until
+ * [#719](https://github.com/NobuData/ouroboros/issues/719): every request read it, matched
+ * it against the session's memberships, and sent it on as `X-Ouro-Tenant`. That is now
+ * `session."activeOrganizationId"` — server state, written by
+ * `POST /api/auth/organization/set-active` and read by `ouroboros-rest`'s own middleware
+ * ([#713](https://github.com/NobuData/ouroboros/issues/713)) — so the cookie was demoted
+ * rather than deleted, and what is left of it answers exactly one question:
  *
- * @returns The slug or uuid, or `undefined` when there is no usable choice.
+ * > **Has this browser been through step 2 yet?**
+ *
+ * Nothing is *authorized* by the answer. Every session is stamped with an active
+ * organization the moment it is created (`ouroboros-rest/src/auth/active.organization.ts`),
+ * so "which workspace" is settled before the login screen renders and the only thing left to
+ * know is whether the person has actually been asked where the loop runs — which is a fact
+ * about a browser and belongs in a cookie. A visitor who deletes it is asked again; a
+ * visitor who forges one lands on the dashboard they could have navigated to anyway.
+ *
+ * The value is still a workspace reference rather than a flag, because a browser holding
+ * *which* workspace was last entered is what a switcher would read to preselect a row — but
+ * nothing reads it that way today, and nothing may treat it as a claim about access.
+ *
+ * @returns The remembered reference, or `undefined` when there is none this module is
+ *   willing to read back. An unreadable value is *no hint* rather than an error: a cookie is
+ *   whatever the browser was last given, and a bad one must not be able to stop the
+ *   application rendering.
  */
-export async function activeTenant(): Promise<string | undefined> {
+export async function workspaceHint(): Promise<string | undefined> {
   const value = (await cookies()).get(ACTIVE_TENANT_COOKIE)?.value;
   return value !== undefined && isTenantReference(value) ? value : undefined;
 }
 
 /**
- * Remember the workspace to operate in, for this browser.
+ * Remember that this browser has chosen where the loop runs.
  *
  * Callable only where Next.js allows a cookie to be written — a Server Action or a Route
- * Handler — which is where a person choosing a workspace ends up anyway.
+ * Handler — which is where **Enter mission control →** ends up anyway.
  *
- * `HttpOnly` because nothing in the browser reads this: the header is composed on the
- * server, and a value script can write is a value an XSS can point at another tenant's
- * workspace. `SameSite=Lax` for the same reason the session cookie uses it, and `Secure`
- * outside development, where there is no TLS to require.
+ * `HttpOnly` because nothing in the browser reads it, `SameSite=Lax` for the same reason the
+ * session cookie uses it, and `Secure` outside development, where there is no TLS to
+ * require. None of the three is load-bearing any more — see {@link workspaceHint} for what
+ * this does and does not decide — and all three stay, because a cookie that script can read
+ * is a cookie somebody will eventually decide something with.
  *
- * @param reference The workspace's slug or uuid.
+ * @param reference The workspace's slug or id, as the service reported it.
  * @throws {Error} If the reference is not one the contract accepts — unlike a read, a
  *   write is this application's own doing and a bad value is a bug to surface.
  */
-export async function setActiveTenant(reference: string): Promise<void> {
+export async function rememberWorkspace(reference: string): Promise<void> {
   (await cookies()).set(ACTIVE_TENANT_COOKIE, assertTenantReference(reference), {
     httpOnly: true,
     sameSite: "lax",
@@ -93,8 +126,8 @@ export async function setActiveTenant(reference: string): Promise<void> {
   });
 }
 
-/** Forget the chosen workspace — on sign-out, or when the person leaves it. */
-export async function clearActiveTenant(): Promise<void> {
+/** Forget it — on sign-out, so the next person on this browser is asked step 2 again. */
+export async function forgetWorkspace(): Promise<void> {
   (await cookies()).delete(ACTIVE_TENANT_COOKIE);
 }
 
@@ -148,7 +181,6 @@ let anonymous: ApiClient | undefined;
 export function api(): ApiClient {
   client ??= createApiClient({
     baseUrl: restUrl(),
-    tenant: activeTenant,
     session: sessionCookies,
     onUnauthenticated: () => {
       // `redirect` signals by throwing, and that throw is the one that reaches Next.js —
@@ -166,20 +198,19 @@ export function api(): ApiClient {
  * {@link api}'s handler would send the request to {@link LOGIN_PATH}, which is the page
  * asking — a redirect to itself, once per render, for every signed-out visitor.
  *
- * **`app/api/discovery.ts` is what calls it**, and for a while nothing did. Its first caller
- * was `app/api/access.ts`, asking whether anybody was signed in;
- * [#711](https://github.com/NobuData/ouroboros/issues/711) moved that question onto
- * `GET /api/auth/get-session`, which answers `null` for nobody and so needs no `401` to be
- * heard, and this was kept rather than deleted against the next public route in the generated
- * family arriving. It did: [#712](https://github.com/NobuData/ouroboros/issues/712)'s
- * `POST /api/v1/auth/discover` is called from the login screen by a visitor who is signed
- * in nowhere, which is exactly this client's case.
+ * **Two modules call it.** `app/api/discovery.ts` is the obvious one:
+ * [#712](https://github.com/NobuData/ouroboros/issues/712)'s `POST /api/v1/auth/discover` is
+ * called from the login screen by a visitor who is signed in nowhere, which is exactly this
+ * client's case. The second is `app/api/auth-server.ts`'s session read, which since
+ * [#719](https://github.com/NobuData/ouroboros/issues/719) composes the workspace listing
+ * into the session — a call made *while rendering the login screen*, on behalf of somebody
+ * who is signed in. A `401` there cannot mean "go and sign in" without meaning "render this
+ * page again", so it is left to reject and the route's error boundary shows it.
  *
- * Nothing else about it differs. It forwards the same session cookie and the same
- * workspace header, so a screen that uses it while a session *does* exist sees exactly
- * what {@link api} would have seen; a `401` simply rejects with the `ApiError` the
- * contract describes and the caller decides what it means
- * (`app/api/access.ts`).
+ * Nothing else about it differs. It forwards the same session cookies, so a screen that uses
+ * it while a session *does* exist sees exactly what {@link api} would have seen; a `401`
+ * simply rejects with the `ApiError` the contract describes and the caller decides what it
+ * means.
  *
  * @returns The typed client. Every call resolves with the body the contract describes or
  *   rejects with an `ApiError`, `401` included.
@@ -188,7 +219,6 @@ export function api(): ApiClient {
 export function anonymousApi(): ApiClient {
   anonymous ??= createApiClient({
     baseUrl: restUrl(),
-    tenant: activeTenant,
     session: sessionCookies,
   });
   return anonymous;

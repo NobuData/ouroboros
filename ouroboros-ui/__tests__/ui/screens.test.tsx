@@ -4,15 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
 
 import { readings } from "../helpers/dashboard";
-import { enablement, membership, org, repo, sessionUser } from "../helpers/login";
+import { membership, seededWorkspaces, sessionUser } from "../helpers/login";
 
 // The login screen contains the Server-Action forms, whose module reaches for `next/cache`,
 // `next/navigation` and the server-only client. Replacing it is what lets the whole screen
 // be rendered in a test at all; what the actions do is `__tests__/login/actions.test.ts`.
 vi.mock("@/app/login/actions", () => ({
-  chooseWorkspace: vi.fn(),
-  setOrgEnabled: vi.fn(),
-  setRepoEnabled: vi.fn(),
+  enterMissionControl: vi.fn(),
+  setWorkspaceEnabled: vi.fn(),
   // Step 1's SSO half runs this through `useActionState`, so the mock has to answer with a
   // `DiscoveryState`. What it answers is `sso-form.test.tsx`'s subject, not this file's.
   discoverDomain: vi.fn(() =>
@@ -46,19 +45,14 @@ type LoginScreenState = Parameters<typeof LoginScreen>[0]["state"];
  */
 
 
-/** The four states of the login screen, so no shape of step 2 escapes the sweep. */
+/** The three states of the login screen, so no shape of step 2 escapes the sweep. */
 const LOGIN_STATES: readonly (readonly [string, LoginScreenState])[] = [
   ["sign-in", { step: "sign-in" }],
-  ["choose", { step: "choose", memberships: [membership()] }],
-  ["no-workspace", { step: "no-workspace", suggestion: null, memberships: [membership()] }],
   [
-    "enable",
-    {
-      step: "enable",
-      membership: membership(),
-      enablement: enablement([[org(), [repo()]]]),
-    },
+    "choose",
+    { step: "choose", memberships: seededWorkspaces(), active: membership(), total: 3 },
   ],
+  ["no-workspace", { step: "no-workspace", suggestion: null }],
 ];
 
 /**
@@ -98,9 +92,8 @@ describe("the sign-in screen", () => {
   });
 
   it("draws its buttons, its field, its switches and its chips out of the primitives", () => {
-    // The two states that carry controls. `choose` and `no-workspace` carry none of these:
-    // a workspace is picked by pressing its whole row, which is this screen's own
-    // composition rather than a button.
+    // The two states that carry controls. `no-workspace` carries none of these: there is
+    // nothing to choose and nothing to switch on.
     //
     // Pinned to a production build, so the counts are the *mockup's* controls and cannot
     // drift with the environment a suite happens to run in — the development sign-in
@@ -120,22 +113,18 @@ describe("the sign-in screen", () => {
 
     vi.unstubAllEnvs();
 
+    const seeded = seededWorkspaces();
     const enabling = render(
       <LoginScreen
-        state={{
-          step: "enable",
-          membership: membership(),
-          enablement: enablement([[org(), [repo()]]]),
-        }}
-       
+        state={{ step: "choose", memberships: seeded, active: seeded[0], total: 3 }}
         user={sessionUser()}
       />,
     );
 
-    // One switch per organisation and per repository, the "on" chip beside an enabled
-    // organisation, and "Enter mission control".
-    expect(enabling.container.querySelectorAll(".ou-switch")).toHaveLength(2);
-    expect(enabling.container.querySelectorAll(".ou-chip").length).toBeGreaterThan(0);
+    // One switch per workspace, the `personal` chip on the one workspace the service
+    // flagged, and "Enter mission control".
+    expect(enabling.container.querySelectorAll(".ou-switch")).toHaveLength(3);
+    expect(enabling.container.querySelectorAll(".ou-chip")).toHaveLength(1);
     expect(enabling.container.querySelectorAll(".ou-btn")).toHaveLength(1);
   });
 

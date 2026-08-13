@@ -379,7 +379,7 @@
   font-weight: 400;
 }
 
-/* ---------- rows: a workspace to choose, or an organisation to enable ---------- */
+/* ---------- rows: one workspace, its switch, and the choice to enter it ---------- */
 
 .login-rows {
   margin: 0;
@@ -402,21 +402,50 @@
 }
 
 /*
- * Descendant rather than child: in the picker each row is wrapped in the form that submits
- * it, so `> .login-row` would match the enablement list and quietly miss the picker — the one
- * place the trailing hairline is most visible, sitting directly above the card's own note.
+ * Descendant rather than child, because a row is not always the `li`'s only child: the
+ * hairline that matters most is the trailing one, sitting directly above the card's own
+ * note.
  */
 .login-rows > li:last-child .login-row {
   border-bottom: none;
 }
 
-/* A whole row that is itself the control — how a workspace is chosen. */
-button.login-row {
+/*
+ * The choosing half of a row — the radio, the monogram and the name — as one label.
+ *
+ * It is the control, so it takes the pointer and the hover treatment the whole row used to
+ * take when the row *was* a button (#719 split the row in two: this chooses, the switch
+ * beside it enables). The hover reaches past the label's own box to the row's edges so the
+ * whole line lights rather than a column of it.
+ */
+.login-row__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-4) 0;
+  margin: calc(-1 * var(--sp-4)) 0;
+}
+
+label.login-row__choice {
   cursor: pointer;
 }
 
-button.login-row:hover {
+label.login-row__choice:hover {
   background: var(--accent-wash);
+}
+
+/*
+ * The radio is the platform's, not a drawn one: it is what makes the group arrow-navigable,
+ * announced as "1 of 3", and submittable with the form it is associated with by `form=`.
+ * `accent-color` is the one property that tints a native control without replacing it, and
+ * it takes a token like everything else here.
+ */
+.login-row__radio {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .login-row__meta {
@@ -441,9 +470,13 @@ button.login-row:hover {
   font-size: var(--t-xs);
 }
 
-.login-row__go {
-  flex: none;
-  color: var(--accent);
+/*
+ * The mockup's tick beside an enabled workspace's name, in the token that means *healthy*.
+ * Decoration only — it is `aria-hidden`, because the switch on the same row already
+ * announces the state and hue is never the only signal (docs/DESIGN_TOKENS.md § Status).
+ */
+.login-row__check {
+  color: var(--ok);
 }
 
 /*
@@ -468,37 +501,6 @@ button.login-row:hover {
   font-family: var(--f-disp);
   font-size: var(--t-xs);
   font-weight: 700;
-}
-
-/* ---------- repositories, indented under their organisation ---------- */
-
-.login-repos {
-  margin: 0 0 var(--sp-6);
-  padding: 0 0 0 var(--sp-11);
-  list-style: none;
-}
-
-.login-repo {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-6);
-  padding: var(--sp-4) 0;
-}
-
-.login-repo__name {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--ink-dim);
-  font-family: var(--f-mono);
-  font-size: var(--t-xs);
-}
-
-.login-repo__branch {
-  flex: none;
-  color: var(--ink-faint);
-  font-family: var(--f-mono);
-  font-size: var(--t-2xs);
 }
 
 /* ---------- the switch's transport ---------- */

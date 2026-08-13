@@ -107,10 +107,12 @@ address of a service it is not calling. [The generated client](#the-generated-cl
 and calls it lazily for the same reason.
 
 Two pieces of per-browser state belong to this module rather than to configuration: the
-[theme choice](#theming), in `localStorage` under `ouro-theme`, and the
-[active workspace](#access--who-is-signed-in-and-where), in an `HttpOnly` `ouro_tenant`
-cookie that [the login screen](#sign-in--tenancy) writes. The session cookies are
-`ouroboros-rest`'s — this module forwards them and never writes them.
+[theme choice](#theming), in `localStorage` under `ouro-theme`, and a note that this browser
+has been through [step 2](#sign-in--tenancy), in an `HttpOnly` `ouro_tenant` cookie. That
+cookie **named the active workspace** until
+[#719](https://github.com/NobuData/ouroboros/issues/719); the workspace is
+`session."activeOrganizationId"` now, so what is left of it authorizes nothing. The session
+cookies are `ouroboros-rest`'s — this module forwards them and never writes them.
 
 **Which cookies get forwarded now depends on which client is calling**, and the two do not
 agree yet. [`app/api/auth-server.ts`](app/api/auth-server.ts) forwards BetterAuth's
@@ -202,12 +204,12 @@ ouroboros-ui/
 │   │   ├── auth-client.ts   #   the other family: BetterAuth's client — the browser's
 │   │   ├── auth-server.ts   #   …and the server's, plus readSession() / signOutSession()
 │   │   ├── errors.ts        #   ApiError, and the envelope it is parsed from
-│   │   ├── tenant.ts        #   the active-workspace vocabulary
+│   │   ├── tenant.ts        #   the workspace-reference vocabulary
 │   │   ├── identity.ts      #   Session / SessionUser — framework-free
 │   │   ├── membership.ts    #   what a person holds in a workspace — framework-free
-│   │   ├── server.ts        #   api() / anonymousApi(), and the workspace store
+│   │   ├── server.ts        #   api() / anonymousApi(), and the step-2 hint
 │   │   ├── access.ts        #   the gate: currentAccess() / requireWorkspace()
-│   │   ├── tenants.ts       #   tenants.list() / tenants.read()
+│   │   ├── tenants.ts       #   tenants.list() — step 2's row model, and a session's
 │   │   ├── members.ts       #   members.list() — the dashboard's count
 │   │   ├── orgs.ts          #   orgs.list() / orgs.setEnabled()
 │   │   ├── repos.ts         #   repos.list() / repos.setEnabled()
@@ -318,24 +320,29 @@ Prefer the server helper. `/login` is Server Components with Server Action write
 [`page.tsx`](<app/(auth)/login/page.tsx>) documents why; the hook is right only where a
 component is already a Client Component for some other reason.
 
-**Who is signed in is three calls, and there is no fourth.**
-[`readSession()`](app/api/auth-server.ts) composes `getSession` (the person),
-`organization.list` (the workspaces) and `getActiveMemberRole` (what they hold in one).
-`GET /api/v1/auth/me` used to answer all three at once and was deleted in #711: two routes
-answering *who is signed in* are two answers that can disagree. **Do not add another** — if
-the generated client seems to be missing a session call, that is the rule working. The
-per-workspace role calls collapse into one when
-[#714](https://github.com/NobuData/ouroboros/issues/714)'s `GET /api/v1/orgs` is wired up in
-[#719](https://github.com/NobuData/ouroboros/issues/719).
+**Who is signed in is two calls, and there is no third.**
+[`readSession()`](app/api/auth-server.ts) composes `getSession` (the person, and where the
+session is acting) with `GET /api/v1/orgs` (every workspace they belong to — roles, counts,
+monogram and all). `GET /api/v1/auth/me` used to answer it in one and was deleted in #711:
+two routes answering *who is signed in* are two answers that can disagree. **Do not add
+another** — if the generated client seems to be missing a session call, that is the rule
+working.
+
+It was three calls, and one of them was *per workspace*: `organization.list` returns
+organizations without roles, so a role cost a `getActiveMemberRole` each.
+[#714](https://github.com/NobuData/ouroboros/issues/714)'s row model carries both, and
+[#719](https://github.com/NobuData/ouroboros/issues/719) is what retired the fan-out — which
+is also why `Membership` is a generated type again.
 
 ### Signing out clears three things
 
 [`signOutSession()`](app/api/auth-server.ts) ends the session **row** on the service, deletes
-both auth cookies from the response, and forgets the chosen workspace, then lands on `/login`.
+both auth cookies from the response, and forgets the step-2 hint, then lands on `/login`.
 All three are needed and only the first is BetterAuth's: the library's own `Set-Cookie` cannot
 reach the browser from a server-side call — the header arrives at this process and stops — and
-`ouro_tenant` is this application's own, so nothing else deletes it. A session merely
-forgotten by the browser is a session a copied cookie still opens. The account menu that binds
+`ouro_tenant` is this application's own, so nothing else deletes it. The active workspace
+goes with the row: the pointer lives *on* it. A session merely forgotten by the browser is a
+session a copied cookie still opens. The account menu that binds
 a form to it is [#721](https://github.com/NobuData/ouroboros/issues/721).
 
 ### Where a `401` goes
@@ -372,7 +379,7 @@ and no call should repeat:
 |---|---|
 | **Base URL** | `OURO_REST_URL`, via [`app/env.ts`](app/env.ts) |
 | **Session** | the session cookie of the request being served, forwarded — and only that cookie. Still named `ouro_session`; #720 re-points it at BetterAuth's. The **auth** client already forwards BetterAuth's two, which is why the session read works and these calls do not yet |
-| **Workspace** | `X-Ouro-Tenant`, from the active-workspace store |
+| **Workspace** | nothing. The session carries it (#719) — see below |
 | **Failure** | the contract's `{code, message, details}` envelope, parsed into a thrown `ApiError`; a `401` redirects to `/login` first |
 
 So a call has two outcomes rather than three: it resolves with the body the contract
@@ -384,11 +391,16 @@ describes, or it rejects with an `ApiError` carrying the `code` to branch on. Th
 authenticate to it; [`app/api/server.ts`](app/api/server.ts) imports `server-only`, which
 turns a Client Component that reaches for it into a build error rather than a runtime one.
 Screens therefore fetch in Server Components and pass data down, and a Client Component
-that needs to *write* calls a Server Action. The same fact decides where the active
-workspace lives: an `HttpOnly` `ouro_tenant` cookie, because the header is composed while a
-Server Component renders and nothing there can read `localStorage`.
-[The login screen](#sign-in--tenancy) writes it with `setActiveTenant()`, from a Server
-Action.
+that needs to *write* calls a Server Action.
+
+**Neither client sends `X-Ouro-Tenant` any more.** Both did, from the `ouro_tenant` cookie,
+until [#719](https://github.com/NobuData/ouroboros/issues/719). The header is an *override* of
+the session's active organization since
+[#713](https://github.com/NobuData/ouroboros/issues/713), and an override this application
+never means to exercise is one it should not be sending: a stale value alongside a path naming
+the workspace somebody is actually in is `422 tenant_mismatch` on a request that would
+otherwise have succeeded. [`app/api/client.ts`](app/api/client.ts) keeps the capability; nothing
+wires it.
 
 Three properties are worth knowing before changing any of it.
 
@@ -429,11 +441,14 @@ states — the second needs a chosen workspace this person still belongs to. `re
 returns both or redirects to [sign-in](#sign-in--tenancy); `currentAccess()` answers without
 redirecting, for the screen that has to ask.
 
-**The cookie is a claim, not a fact.** `ouro_tenant` is whatever the browser was last given,
-so it is resolved against the memberships [`readSession()`](#the-two-client-rule) reports *in the same request*
-([`app/api/membership.ts`](app/api/membership.ts)). A hand-edited cookie, one naming a
-workspace somebody has been removed from, and one naming a suspended workspace all resolve to
-*no choice* — and land on the login screen rather than on a screen of somebody else's data.
+**The pointer is a reference, not a fact.** The active workspace is
+`session."activeOrganizationId"` — server state, written only by
+`POST /api/auth/organization/set-active` — and it is still resolved against the memberships
+[`readSession()`](#the-two-client-rule) reports *in the same request*
+([`app/api/membership.ts`](app/api/membership.ts)). A session pointing at a workspace somebody
+has since been removed from resolves to *no choice*, and lands on the login screen rather than
+on a screen of somebody else's data. That check was doing much more when the reference came
+from a cookie; it costs one comparison and it stays.
 
 ```tsx
 // every screen in app/(app)
@@ -461,8 +476,8 @@ Three things about the shape are deliberate.
 [`docs/mockups/01-login.html`](../docs/mockups/01-login.html) as a working page, and the first
 screen to prove the design system, the session and the API together. Every card, button,
 chip, field and switch on it is a [UI primitive](#ui-primitives); what
-[`app/login/`](app/login) owns is the two-panel frame, the brand panel, the rows a workspace
-is chosen from, and the monogram beside them. It renders **outside the
+[`app/login/`](app/login) owns is the two-panel frame, the brand panel, the workspace rows,
+and the monogram beside them. It renders **outside the
 app shell** — the design system § 5 puts login and the onboarding wizard there, because a
 visitor who has not signed in has no workspace for the shell to describe — so it owns its own
 scroll container, `html`/`body` being locked for the shell's benefit.
@@ -474,55 +489,77 @@ scroll container, `html`/`body` being locked for the shell's benefit.
 │      Infinity in Autonomy     │  ─ or enterprise SSO ─  │
 │                               │  Company domain  ▢      │
 │   Point it at your backlog.   ├─────────────────────────┤
-│   It plans, codes, builds…    │  Step 2 · acme-robotics │
-│   You watch the loop turn.    │  AR acme-robotics   [◉] │
-│                               │     helios-firmware [◉] │
+│   It plans, codes, builds…    │  After sign-in · Step 2 │
+│   You watch the loop turn.    │  ◉ AR acme-robotics ✓[◉]│
+│                               │  ○ AL acme-labs      [○]│
 │   SOC 2 · SSO/SAML · self-…   │  [ Enter mission ctrl → ]│
 └───────────────────────────────┴─────────────────────────┘
         55% brand panel                45% two cards
 ```
 
-**One route, five outcomes**, decided by [`app/login/view.ts`](app/login/view.ts) from three
-values — the session, the resolved workspace, and a `?workspace=` slug — and nothing else.
-Keeping the decision pure is what makes each outcome a unit test rather than a route to drive:
+**One route, four outcomes**, decided by [`app/login/view.ts`](app/login/view.ts) from three
+values — the session, a `?workspace=` slug, and whether this browser has been through step 2
+before — and nothing else. Keeping the decision pure is what makes each outcome a unit test
+rather than a route to drive:
 
 | The request | What it gets |
 |---|---|
 | no session | step 1 live, step 2 as the mockup's dimmed preview |
-| signed in, no workspace chosen | step 2 is the workspace picker |
-| signed in, `?workspace=` naming the chosen one | step 2 is the organisation & repository list |
-| signed in, belonging to no live workspace | step 2 explains, and names the domain match if the contract supplied one |
+| signed in, not yet asked where the loop runs | step 2: **every workspace as a row**, with its counts, its `personal` pill and its switch |
+| signed in, `?workspace=` naming one they belong to | the same card, opened on that row |
+| signed in, belonging to no workspace | step 2 explains, and names the domain match if the contract supplied one |
 | signed in and settled | redirect to the dashboard |
 
-The `?workspace=` parameter is the only unobvious part, and it exists because two of the
-issue's requirements pull against each other: an authenticated visitor "skips to the
-dashboard", and choosing a workspace is *followed by* enabling organisations in it — a second
-step on this same screen, reached when the choice has already been made. Without something in
-the request to tell them apart, the state that renders the enablement list is the state that
-redirects away from it. So choosing redirects to `/login?workspace=<slug>`, in the URL rather
-than in hidden state: it survives a refresh, it can be linked, and it is visible. It is never
-trusted — it is compared against a membership the service reported in the same request.
+**Step 2 is one card since [#719](https://github.com/NobuData/ouroboros/issues/719)**, which
+is what the mockup draws: three workspaces, three switches, one **Enter mission control →**.
+It used to be two steps — pick a workspace, then enable organisations inside it — because the
+second needed a workspace to fetch with; `GET /api/v1/orgs` answers every workspace with its
+roles and counts at once, so choosing is a radio on a row rather than a screen of its own.
+
+Two things about the request are worth knowing.
+
+**Why a hint in a cookie decides whether step 2 renders.** Every signed-in request names a
+workspace: `ouroboros-rest` stamps `session."activeOrganizationId"` at session creation, so
+that step 2 opens on a row already selected. That means the pointer cannot also be the
+evidence that somebody has *chosen* — a screen reading it that way would send everybody
+straight past the question it exists to ask. `ouro_tenant` is that evidence, it authorizes
+nothing, and the worst a forged one can do is skip a step the person could have skipped by
+typing `/dashboard`.
+
+**Why `?workspace=` exists.** "An authenticated visitor skips to the dashboard" and "a
+signed-in person may come back and change where the loop runs" are otherwise the same request.
+The parameter is in the URL rather than in hidden state: it survives a refresh, it can be
+linked, and it is visible. It is never trusted — it is compared against a membership the
+service reported in the same request.
 
 ### What it writes, and why each write re-checks
 
-Three of the four Server Actions ([`app/login/actions.ts`](app/login/actions.ts)) write:
-choose the workspace, turn an organisation on or off, turn a repository on or off. A Server
-Action is a POST endpoint against the page that renders it, reachable by anyone who can send
-the same request, so rendering a form only for an owner is not a check. Each action therefore
-takes from the form only *the reference to what was pressed* — an organisation login, a
-repository name, the state to move to — and re-derives the rest: who from the session cookie,
-which workspace from `ouro_tenant` matched against the memberships, and which role from that
-membership. No form here carries a tenant id, so a hand-made POST cannot name somebody else's
-workspace at all.
+Two of the three Server Actions ([`app/login/actions.ts`](app/login/actions.ts)) write:
+`enterMissionControl` makes a workspace the session's active organization and leaves for the
+dashboard, and `setWorkspaceEnabled` moves its switch. A Server Action is a POST endpoint
+against the page that renders it, reachable by anyone who can send the same request, so
+rendering a form only for an owner is not a check. Each action therefore takes from the form
+only *the reference to what was pressed* — a workspace, and the state to move to — and
+re-derives the rest: **who** from the session cookie, and **which role** from the membership
+the reference resolves to.
 
-The fourth, `discoverDomain`, is the exception and deliberately so: it takes no authority and
+**The form carries a workspace now**, where it used to be implied by `ouro_tenant`, and that
+is a change of which untrusted place the reference arrives from rather than a loosening — a
+cookie is as forgeable as a form field, and the check that made one safe
+([`activeMembership`](app/api/membership.ts), against the memberships the service reported in
+this same request) is the check that makes the other safe. A hand-made POST naming somebody
+else's workspace resolves to nothing and lands on the login screen.
+
+The third, `discoverDomain`, is the exception and deliberately so: it takes no authority and
 checks none, because the endpoint behind it is public and its caller is a visitor with no
 session. What makes *that* safe is the contract rather than a check — the service answers the
 same body, in the same time, for a domain a workspace holds and one nothing does, so there is
 nothing it can tell a stranger that it does not tell everybody.
 
-Step 2's switches are submit buttons in one-field forms rather than `useState` toggles, so
-that half of the screen works before hydration and without JavaScript — on the product's first
+Step 2's switches are submit buttons in one-field forms rather than `useState` toggles, and
+its radios reach the CTA's form by `form=` rather than by being inside it — a form may not
+contain another form, and every switch is one. So that half of the screen works before
+hydration and without JavaScript — on the product's first
 screen over an unknown connection that is worth more than an optimistic animation. Each form
 carries the state to move *to*, so a stale render asks for something specific instead of
 inverting whatever the flag has become since.

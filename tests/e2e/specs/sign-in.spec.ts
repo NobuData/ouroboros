@@ -25,7 +25,7 @@
  * all.
  */
 
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 import { SEED_OWNER, SEED_TENANT } from "../support/seed";
 import { SESSION_COOKIE, SESSION_PARKED, signIn } from "../support/session";
@@ -90,60 +90,77 @@ test.describe("the session is really checked", () => {
 test.describe("login → tenant select → dashboard", () => {
   test.fixme(true, SESSION_PARKED);
 
+  /**
+   * Sign in and walk step 2 the way a person does.
+   *
+   * **Step 2 is one card since
+   * [#719](https://github.com/NobuData/ouroboros/issues/719)** — the mockup's own: every
+   * workspace as a row, and one **Enter mission control →** under them. It was two steps
+   * before, a picker that wrote `ouro_tenant` and then an enablement list reached by
+   * `?workspace=<slug>`, and the flow below is the same journey through the card that
+   * replaced both.
+   *
+   * @param page - The page to drive.
+   * @param slug - Which workspace to enter.
+   */
+  async function enterWorkspace(page: Page, slug: string): Promise<void> {
+    // A session whose browser has not been through step 2 is `loginView`'s `choose`
+    // outcome (`app/login/view.ts`). Arriving here at all proves the session read —
+    // `GET /api/auth/get-session` plus `GET /api/v1/orgs`, the row model
+    // [#714](https://github.com/NobuData/ouroboros/issues/714) added — answered with the
+    // seed's membership rows.
+    await page.goto("/login");
+
+    // The row prints the handle, which is what the mockup prints and what tells two
+    // similarly named workspaces apart. The radio is labelled by the whole row, so this
+    // finds the choice and the name in one.
+    const choice = page.getByRole("radio", { name: new RegExp(slug) });
+
+    await expect(choice, "the seeded workspace must be offered to its owner").toBeVisible();
+    await choice.check();
+
+    // A submit button rather than the link this used to be: the press is what writes
+    // `session."activeOrganizationId"` (`app/login/actions.ts`), and the navigation is that
+    // action's redirect.
+    await page.getByRole("button", { name: /Enter mission control/ }).click();
+
+    await expect(page).toHaveURL(new RegExp("/dashboard"));
+  }
+
   test("the seeded owner reaches their workspace", async ({ context, page }) => {
     await signIn(context, SEED_OWNER.id);
 
-    // ---- Step: the workspace chooser -------------------------------------------------
-    //
-    // A session with memberships and no `ouro_tenant` cookie is `loginView`'s `choose`
-    // outcome (`app/login/view.ts`). Arriving here at all proves the session read — since
-    // [#711](https://github.com/NobuData/ouroboros/issues/711), `GET /api/auth/get-session`
-    // plus the organization listing — answered with the seed's membership rows.
-    await page.goto("/login");
+    await enterWorkspace(page, SEED_TENANT.slug);
 
-    const workspaceRow = page.getByRole("button", { name: new RegExp(SEED_TENANT.displayName) });
-
-    await expect(workspaceRow, "the seeded workspace must be offered to its owner").toBeVisible();
-
-    // Scoped to the row rather than to the page: the signed-in identity block renders
-    // `ken@acme-robotics.dev`, so a page-wide search for the slug matches the email as
-    // well and asserts nothing about the row. It is the row's own detail line that has to
-    // carry the handle — that is what tells two similarly named workspaces apart.
-    await expect(workspaceRow.getByText(SEED_TENANT.slug, { exact: true })).toBeVisible();
-
-    // ---- Step: choosing it ------------------------------------------------------------
-    //
-    // Each row is a submit button in a form of one hidden field
-    // (`app/login/workspace-card.tsx`); pressing it runs the Server Action that writes the
-    // cookie and redirects to `?workspace=<slug>`, which is the enablement step.
-    await workspaceRow.click();
-
-    await expect(page).toHaveURL(new RegExp(`workspace=${SEED_TENANT.slug}`));
-
-    // ---- Step: entering ---------------------------------------------------------------
-    const enter = page.getByRole("link", { name: /Enter mission control/ });
-
-    await expect(enter).toBeVisible();
-    await enter.click();
-
-    // ---- The assertion the leg exists for ---------------------------------------------
-    await expect(page).toHaveURL(new RegExp("/dashboard"));
-
-    // The dashboard's `<h1>` is the workspace's display name
+    // The dashboard's `<h1>` is the workspace's name
     // (`app/dashboard/dashboard-screen.tsx`), so this is the seeded tenant arriving
     // through five services and being rendered — which is what "shows the seeded tenant"
-    // means.
+    // means. It is also the acceptance criterion #719 names: the CTA lands on the `(app)`
+    // dashboard **with the tenant context resolved**, and the context it resolves from is
+    // the session pointer the press just wrote
+    // ([#713](https://github.com/NobuData/ouroboros/issues/713)) rather than a cookie this
+    // browser was carrying.
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(SEED_TENANT.displayName);
+  });
+
+  test("the mockup's rows are what the seed put there", async ({ context, page }) => {
+    await signIn(context, SEED_OWNER.id);
+
+    await page.goto("/login");
+
+    // Step 2's first acceptance criterion, against the running stack: three rows, the
+    // counts the seed's enablement rows produce, and the `personal` pill on the one
+    // workspace #704 creates at first sign-in.
+    await expect(page.getByRole("radio")).toHaveCount(3);
+    await expect(page.getByRole("switch")).toHaveCount(3);
+    await expect(page.getByText("personal")).toBeVisible();
+    await expect(page.getByText(/4 repos enabled · incl\. helios-firmware/)).toBeVisible();
   });
 
   test("the dashboard reports the signed-in person", async ({ context, page }) => {
     await signIn(context, SEED_OWNER.id);
 
-    await page.goto("/login");
-    await page.getByRole("button", { name: new RegExp(SEED_TENANT.displayName) }).click();
-    await page.getByRole("link", { name: /Enter mission control/ }).click();
-
-    await expect(page).toHaveURL(new RegExp("/dashboard"));
+    await enterWorkspace(page, SEED_TENANT.slug);
 
     // The subline is built from the user the *service* reported, not from anything this
     // suite sent — so a session that authenticated the wrong person would show here and

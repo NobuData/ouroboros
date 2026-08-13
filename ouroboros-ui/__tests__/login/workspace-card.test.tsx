@@ -1,29 +1,25 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { membership } from "../helpers/login";
-
-// The picker submits to a Server Action, and that module reaches for `next/cache`,
-// `next/navigation` and the server-only client. Replacing it here keeps this suite about the
-// markup; the action's own behaviour — which is where the security is — is
-// `__tests__/login/actions.test.ts`.
-vi.mock("@/app/login/actions", () => ({
-  chooseWorkspace: vi.fn(),
-  setOrgEnabled: vi.fn(),
-  setRepoEnabled: vi.fn(),
-}));
-
-const { NoWorkspaceCard, WorkspacePicker, WorkspacePreview } = await import(
-  "@/app/login/workspace-card"
-);
+import { NoWorkspaceCard, WorkspacePreview } from "@/app/login/workspace-card";
 
 /**
- * Step 2 in the three shapes that come before anything can be enabled.
+ * Step 2 in the two shapes that have nothing to list.
  *
- * The thread running through all three is honesty: the preview shows no organisations because
- * it cannot know any, the picker offers only what was passed to it, and the "nowhere yet"
- * card tells apart *no workspace* from *a workspace that is suspended* — because those are
- * different facts and only one of them is a reason to talk to somebody.
+ * The thread running through both is honesty: the preview shows no workspaces because it
+ * cannot know any before somebody has signed in, and the "nowhere yet" card explains rather
+ * than drawing an empty list.
+ *
+ * *The workspace picker was here and is gone*
+ * ([#719](https://github.com/NobuData/ouroboros/issues/719)). It existed because choosing a
+ * workspace and enabling organisations inside it were two steps; `GET /api/v1/orgs` answers
+ * both in one row model, so the mockup's single card does both and choosing is a radio on a
+ * row. Its cases moved to `enablement-card.test.tsx`, which is where the rows live now —
+ * they were not deleted, and neither was the rule they covered: the form carries the
+ * smallest possible reference, and the action re-derives everything else.
+ *
+ * Neither shape here submits anything, so unlike that card this suite needs no stand-in for
+ * the Server Actions module.
  */
 
 describe("<WorkspacePreview>", () => {
@@ -43,74 +39,21 @@ describe("<WorkspacePreview>", () => {
     expect(screen.getByText(/After sign-in · Step 2/)).toBeInTheDocument();
   });
 
-  it("invents no organisations, and offers nothing to press", () => {
+  it("invents no workspaces, and offers nothing to press", () => {
     // The mockup fills this card with three examples. Real ones cannot be known before
     // sign-in, and invented ones would tell somebody they have workspaces they do not.
     render(<WorkspacePreview />);
 
     expect(screen.queryAllByRole("switch")).toHaveLength(0);
     expect(screen.queryAllByRole("button")).toHaveLength(0);
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
     expect(screen.getByText(/appear here once you have signed in/)).toBeInTheDocument();
-  });
-});
-
-describe("<WorkspacePicker>", () => {
-  it("renders one pressable row per workspace, naming it and the role held there", () => {
-    render(
-      <WorkspacePicker
-        memberships={[
-          membership(),
-          membership({
-            tenantId: "2",
-            slug: "acme-labs",
-            displayName: "Acme Labs",
-            role: "admin",
-          }),
-        ]}
-      />,
-    );
-
-    const rows = screen.getAllByRole("button");
-
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("Acme Robotics");
-    expect(rows[0]).toHaveTextContent("owner");
-    expect(rows[0]).toHaveTextContent("acme-robotics");
-    expect(rows[1]).toHaveTextContent("Acme Labs");
-    expect(rows[1]).toHaveTextContent("admin");
-  });
-
-  it("submits the slug rather than the workspace's id, in a hidden field", () => {
-    // The action re-derives everything else from the session; the form carries the smallest
-    // possible reference to what was pressed.
-    const { container } = render(<WorkspacePicker memberships={[membership()]} />);
-
-    const field = container.querySelector('input[name="workspace"]');
-
-    expect(field).toHaveAttribute("type", "hidden");
-    expect(field).toHaveAttribute("value", "acme-robotics");
-  });
-
-  it("asks for confirmation rather than a choice when there is only one", () => {
-    render(<WorkspacePicker memberships={[membership()]} />);
-
-    expect(screen.getByText(/Confirm the workspace/)).toBeInTheDocument();
-  });
-
-  it("asks for a choice when there is more than one", () => {
-    render(
-      <WorkspacePicker
-        memberships={[membership(), membership({ tenantId: "2", slug: "acme-labs" })]}
-      />,
-    );
-
-    expect(screen.getByText(/Pick the workspace/)).toBeInTheDocument();
   });
 });
 
 describe("<NoWorkspaceCard>", () => {
   it("explains the empty case and how an invitation reaches this account", () => {
-    render(<NoWorkspaceCard suggestion={null} memberships={[]} />);
+    render(<NoWorkspaceCard suggestion={null} />);
 
     expect(screen.getByRole("heading", { name: "No workspace yet" })).toBeInTheDocument();
     expect(screen.getByText(/do not belong to a workspace yet/)).toBeInTheDocument();
@@ -120,7 +63,6 @@ describe("<NoWorkspaceCard>", () => {
     render(
       <NoWorkspaceCard
         suggestion={{ tenantId: "1", slug: "acme-robotics", displayName: "Acme Robotics" }}
-        memberships={[]}
       />,
     );
 
@@ -128,34 +70,19 @@ describe("<NoWorkspaceCard>", () => {
     expect(screen.getByText(/Matching a domain is not membership/)).toBeInTheDocument();
   });
 
-  it("lists a suspended workspace with its status, rather than pretending there is none", () => {
-    render(
-      <NoWorkspaceCard
-        suggestion={null}
-        memberships={[membership({ status: "suspended" })]}
-      />,
-    );
+  it("keeps the least-privilege note, which every shape of step 2 carries", () => {
+    render(<NoWorkspaceCard suggestion={null} />);
 
-    expect(screen.getByText("suspended")).toBeInTheDocument();
-    expect(screen.getByText("acme-robotics")).toBeInTheDocument();
+    expect(screen.getByText(/least-privilege scopes/)).toBeInTheDocument();
   });
 
-  it("offers no way to select one, because there is nothing selectable", () => {
-    render(
-      <NoWorkspaceCard
-        suggestion={null}
-        memberships={[membership({ status: "suspended" })]}
-      />,
-    );
+  it("offers nothing to press, because there is nothing to choose", () => {
+    // *Lists a suspended workspace with its status* was here, and cannot be composed any
+    // more: `OrgRow` publishes no lifecycle, so a workspace the listing returns is one you
+    // can work in and one it does not return is not this screen's to describe.
+    render(<NoWorkspaceCard suggestion={null} />);
 
     expect(screen.queryAllByRole("button")).toHaveLength(0);
-  });
-
-  it("calls a deleted workspace closed, which is what it is to whoever is reading", () => {
-    render(
-      <NoWorkspaceCard suggestion={null} memberships={[membership({ status: "deleted" })]} />,
-    );
-
-    expect(screen.getByText("closed")).toBeInTheDocument();
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
   });
 });

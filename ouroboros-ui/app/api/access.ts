@@ -15,23 +15,27 @@ import "server-only";
  *
  * {@link currentAccess} is wrapped in React's `cache`, so the layout, the page and a
  * Server Action in the same request share one session read between them. That is what makes
- * calling it freely the right thing to do rather than a cost to budget — and it matters more
- * since [#711](https://github.com/NobuData/ouroboros/issues/711), because a read is now
- * three calls against the auth family rather than one against a route of this service's own.
- * See `app/api/auth-server.ts` for which three, and for the single call
- * [#714](https://github.com/NobuData/ouroboros/issues/714) collapses them into.
+ * calling it freely the right thing to do rather than a cost to budget — a read is two
+ * requests, one to each family, and `app/api/auth-server.ts` is where they are named.
  *
  * Two rules the rest of the application inherits from here:
  *
  * 1. **A session alone is not access.** Every operation in the contract except the five
  *    public ones is scoped to a workspace, so "signed in" and "able to render the product"
- *    are different states, and the second one needs a chosen workspace that this person
- *    still belongs to. The login screen (#44) is where the choice is made.
- * 2. **The cookie is a claim, not a fact.** `ouro_tenant` is whatever the browser was last
- *    given. It is matched against the memberships the *service* just reported, so a
- *    hand-edited cookie, or one naming a workspace somebody has since been removed from,
- *    resolves to no choice at all — and lands on the login screen rather than on a screen
- *    of somebody else's data.
+ *    are different states, and the second one needs a workspace this person still belongs
+ *    to. The login screen (#44) is where the choice is made.
+ * 2. **The pointer is a reference, not a fact.** The active workspace is
+ *    `session."activeOrganizationId"` since
+ *    [#719](https://github.com/NobuData/ouroboros/issues/719) — server state, written only
+ *    by `set-active` — and it is still resolved against the memberships the service reported
+ *    in this same request rather than trusted. A session pointing at a workspace somebody has
+ *    since been removed from resolves to no choice at all, and lands on the login screen
+ *    rather than on a screen of somebody else's data.
+ *
+ *    That check used to be doing much more, because the reference came from the `ouro_tenant`
+ *    cookie and a cookie is whatever the browser was last given. It is cheap and it stays:
+ *    the cost of keeping it is one comparison, and the cost of dropping it is discovering
+ *    that a stale pointer renders a workspace nobody is a member of.
  */
 
 import { redirect } from "next/navigation";
@@ -39,18 +43,18 @@ import { connection } from "next/server";
 import { cache } from "react";
 
 import { type Membership, activeMembership } from "@/app/api/membership";
-import { LOGIN_PATH, activeTenant } from "@/app/api/server";
+import { LOGIN_PATH } from "@/app/api/server";
 import { readSession } from "@/app/api/auth-server";
 import type { Session } from "@/app/api/identity";
 
-/** What a request carries: a session or nothing, and a chosen workspace or nothing. */
+/** What a request carries: a session or nothing, and an active workspace or nothing. */
 export interface Access {
   /** The signed-in person and their memberships, or `null` when nobody is signed in. */
   session: Session | null;
   /**
-   * The workspace the `ouro_tenant` cookie names, if the session still reports a live
-   * membership of it. `undefined` covers every other case — no cookie, an unreadable one,
-   * one naming a workspace this person has left, and one naming a suspended workspace.
+   * The workspace `session."activeOrganizationId"` names, if the session still reports a
+   * membership of it. `undefined` covers every other case — a session acting nowhere, and
+   * one pointing at a workspace this person has since left.
    */
   membership: Membership | undefined;
 }
@@ -95,7 +99,10 @@ export const currentAccess = cache(async (): Promise<Access> => {
 
   return {
     session: current,
-    membership: activeMembership(current.memberships, await activeTenant()),
+    membership: activeMembership(
+      current.memberships,
+      current.activeOrganizationId ?? undefined,
+    ),
   };
 });
 

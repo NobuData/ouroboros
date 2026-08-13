@@ -62,7 +62,7 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
 | **`ouroboros-rest`** | `modules/auth/`, `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app`; `auth/` (BetterAuth) | **Done.** A.3 deleted `oauth.ts`/`github.ts`; A.4 deleted `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts`, and rewrote `principal.ts` against BetterAuth's `@Session()` shape. |
 | **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, #33's dev-user bypass key, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. **A.6 has since removed the dev-user key** from both templates, the #28 zod schema and the compose comments, in the change that delivered its replacement. |
-| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2 is largely **done**; D.3's SSO half is **built and waiting for C.2**; D.4's cards exist and need re-pointing at C.4 — whose contract has now landed, and whose client files C.4 carried across so the module still builds. Epic D shrinks accordingly. |
+| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2, D.3 and D.4 are all **done**: the audit ran, step 1 signs in, and step 2 is re-pointed at C.4's row model with the tenancy authority on the session. Epic D shrank as predicted, and D.5/D.6 are what is left. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
 mockup's entire enterprise-SSO half** — the "or enterprise SSO" divider, the
@@ -992,7 +992,8 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > **C.2 · #712**'s `/auth/discover`; and a workspace's `status` is `active` for every row,
 > because an organization has no lifecycle column. **C.4 · #714**'s `GET /api/v1/orgs` has
 > since restored the one-call row model — with counts, the monogram, the personal flag and the
-> caller's role together — and **D.4 · #719** re-points the screens at it. It restores no
+> caller's role together — and **D.4 · #719**, which **has since landed**, re-pointed the
+> screens at it. It restores no
 > *lifecycle*: `organization` still has no such column, and #714 declined to invent one rather
 > than publish a field that would read `active` for every row forever.
 >
@@ -1115,7 +1116,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 >
 > `ouroboros-ui` was carried across but not re-pointed: `app/api/{tenants,orgs,repos}.ts` follow
 > the new paths, `app/api/members.ts` moved to the plugin's `get-full-organization`, and the
-> screens are untouched — **D.4 · #719** still owns the cards.
+> screens are untouched — **D.4 · #719** owned the cards and **has since landed**.
 
 **Every issue in this epic has landed.**
 
@@ -1416,9 +1417,66 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > security boundary; `emailAndPassword.enabled: false` in production is, and it is
 > **A.6 · #705**'s.
 
+> **D.4 · #719 has shipped and has left the table below. Epic D's MVP work is done, and
+> with it this roadmap's own MVP definition, which reads *mockup 01 working end to end on
+> BetterAuth*.** Step 2 is the mockup's card: every workspace as a row — the service's
+> monogram, the slug with its tick, the `personal` pill, `N repos enabled · incl. <repo>`,
+> and a switch — under one **Enter mission control →**.
+>
+> **The two step-2 steps became one, and that is the change with the most consequences.** The
+> shipped screen picked a workspace on one card and enabled organisations inside it on a
+> second, because the second needed a chosen workspace to fetch with — `1 + n` requests
+> against `app/api/orgs.ts` and `repos.ts`. **C.4 · #714**'s `GET /api/v1/orgs` answers every
+> workspace with its roles, counts, monogram and `personal` flag in one request, which *is*
+> the mockup's card, so `WorkspacePicker` is gone and choosing is a radio on a row. The
+> acceptance criterion that named it — *the shipped step-2 suites pass, adapted rather than
+> deleted* — held: `workspace-card.test.tsx` keeps the two shapes that have nothing to list
+> and its picker cases moved into `enablement-card.test.tsx` with the rows.
+>
+> **The tenancy authority moved, and the cookie was demoted rather than deleted.**
+> `session."activeOrganizationId"` is what `app/api/access.ts` resolves a workspace from and
+> what `enterMissionControl` writes through `organization.setActive`. `ouro_tenant` survives
+> answering one question — *has this browser been through step 2?* — and it has to, because
+> **A.5 · #704** stamps every session with an active organization at creation: the pointer
+> therefore cannot also be the evidence that somebody *chose*, or the screen would redirect
+> past the question it exists to ask. The hint authorises nothing, and a forged one skips a
+> step anybody could skip by typing `/dashboard`.
+>
+> **`X-Ouro-Tenant` is no longer sent at all**, which the issue did not ask for and the move
+> made necessary. **C.3 · #713** demoted the header to an *override* of the session pointer;
+> a stale hint travelling beside a path that names the workspace somebody is actually in is
+> `422 tenant_mismatch` on a request that would otherwise have succeeded. `app/api/client.ts`
+> keeps the capability and nothing wires it.
+>
+> **Three shipped comments predicted this issue by name and all three were honoured.**
+> `Membership` is a generated type again (`OrgRow`), `app/api/tenants.ts` is what a session's
+> memberships are read from, and `readSession()` is two calls where it was three plus one per
+> workspace — the plugin's listing discards the role, so a person in twenty workspaces used
+> to cost twenty-two requests to render a login screen.
+>
+> **What went with the old data path, and why neither is a loss.** The repository-level
+> switches are gone: the row model carries counts rather than repositories, the mockup draws
+> no repository rows, and keeping them would have meant `1 + n·m` requests on the product's
+> first screen. Paging through repositories is the workspace-settings screen's job
+> (**#491**). And `Membership.status` is gone with `selectableMemberships` and the suspended
+> rows the "nowhere yet" card drew: `OrgRow` publishes no lifecycle, because `organization`
+> has no lifecycle column — the filter was being kept against C.4 restoring the field, and
+> C.4 settled it the other way.
+>
+> **One deliberate departure from the drawing.** The mockup prints `2 repos enabled` for
+> `kensuenobu`; the seed gives it two enabled repositories and the service names the earliest,
+> so the row reads `2 repos enabled · incl. dotfiles` — which is `openapi.yaml`'s own example
+> for that row. Hiding a repository the service named would be less honest than showing it.
+>
+> **The e2e amendment is in `tests/e2e`.** `support/workspace.ts` calls
+> `organization/set-active` where it used to write a cookie, and `specs/sign-in.spec.ts` walks
+> the one card: pick a radio, press the button, land on the dashboard with the tenant context
+> resolved. Those legs stay `test.fixme` for the reason `support/session.ts` gives — the
+> compose stack runs a production `ouroboros-rest`, which gates off the password routes —
+> which is the last thing standing between this roadmap and its own exit gate.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| D.4 · #719 | ouroboros-ui: [D.4] Step 2 card — re-point tenancy cards at the org API | **Shipped** cards re-sourced from C.4; `ouro_tenant` cookie → `setActive` as authority | mvp, auth, ui, design | N (after D.3, C.4) | Y | **M** ⬇ | ouroboros-ui |
 | D.5 · #720 | ouroboros-ui: [D.5] Auth route guards & session-aware redirects | Re-point the **shipped** layout gate + `loginView()` at the new session; middleware decision | mvp, auth, ui | N (after D.1) | Y | S | ouroboros-ui |
 | D.6 · #721 | ouroboros-ui: [D.6] Signed-in session UI in the app shell | Avatar menu (user, active org, switch org, sign out) in #41's top bar | mvp, auth, ui | N (after D.1, #41) | Y | S | ouroboros-ui |
 
@@ -1561,6 +1619,15 @@ createAuthClient({plugins:[organizationClient()]})
 ```
 
 ### Issue D.4 (#719) — ouroboros-ui: [D.4] Step 2 card — re-point tenancy cards at the org API
+
+> **Shipped.** Kept as the record of what was asked for — see the note above the table for
+> what was built and where it differs. Two corrections to the wording below. The org rows
+> are sourced by adapting **`app/api/tenants.ts`**, not `app/api/orgs.ts`: C.4 had already
+> put `GET /api/v1/orgs` there, and `orgs.ts` is the *GitHub*-organisation resource the
+> switch writes through. And the `no-workspace` step is not the create-personal-org path —
+> A.5 creates that workspace at first sign-in, so reaching that card means the creation
+> failed or somebody was removed from everything, and it explains rather than offering to
+> create.
 
 - **Problem Statement:** Step 2 of [`docs/mockups/01-login.html`](mockups/01-login.html)
   ("Choose where the loop runs" — org rows with monogram avatars, repo-count lines,
@@ -1853,7 +1920,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    the suite that certifies the lot. C.5 turned out to be the phase's last *bug fix* as well
    as its last test: the first time a workspace was created the way a person creates one, every
    route beneath it answered `422` — see its section above.)*
-5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719
+5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719 ✅
    *(MVP for this roadmap is complete when D.4 passes against the compose stack —
    feeding the scaffolding roadmap's e2e gate #56, whose login leg switches from
    the dev-user bypass to A.6's `signIn.email`.)*
@@ -1952,8 +2019,8 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #719 (D.4) or #720 (D.5).** **#716 (D.1) has landed**, so Epic D's remaining
-five are unblocked: the UI reads its session through BetterAuth's own client, signs out
+**Start here: #720 (D.5).** **#716 (D.1) has landed**, so Epic D's remaining
+issues are unblocked: the UI reads its session through BetterAuth's own client, signs out
 through it, and `app/api/session.ts` is gone. **Epic C is complete**: #711 (C.1), #712
 (C.2), #713 (C.3), #714 (C.4) and now **#715 (C.5)** have all landed — the tenant context
 reads the session's active organization, `modules/tenancy` is rewritten against
@@ -1989,8 +2056,12 @@ behind was the debt this paragraph used to warn about — `modules/tenancy` quer
 tables — and **#713 (C.3) and #714 (C.4) have both landed and retired it**: `ci/rest`'s
 integration suite is green. **#718 (D.3) has now landed and the login page's button works**
 — step 1 signs in through `signIn.social`, submits its domain to C.2's endpoint, and carries
-a development email/password form outside production — so **#719 (D.4) is unblocked**.
-#720 (D.5) re-points the UI's own gate, which still forwards #33's cookie.
+a development email/password form outside production. **#719 (D.4) has now landed too**:
+step 2 is the mockup's single card, sourced from `GET /api/v1/orgs`, and the workspace a
+request acts in is `session."activeOrganizationId"` rather than a cookie the browser holds —
+so **mockup 01 works end to end** and what stands between this roadmap and its exit gate is
+a compose stack whose `ouroboros-rest` is not `NODE_ENV=production`. #720 (D.5) is the
+middleware decision, and #721 (D.6) the account menu.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

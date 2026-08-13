@@ -46,7 +46,7 @@ export function DashboardScreen({
       <div className="dash__head">
         <div className="dash__headings">
           <Eyebrow>Mission Control</Eyebrow>
-          <h1 className="dash__title">{workspace.displayName}</h1>
+          <h1 className="dash__title">{workspace.name}</h1>
           <p className="dash__sub">{pageSubline(workspace, user.displayName)}</p>
         </div>
         <div className="dash__actions">
