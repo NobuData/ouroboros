@@ -991,9 +991,37 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > adapter discards it, and the map had claimed otherwise — `get-active-member-role` is the
 > route that answers it, and it was added.
 
+> **C.2 · #712 has shipped and has left the table below.**
+> `POST /api/v1/auth/discover` is live and public, and `openapi.yaml` publishes it under the
+> `auth` tag with `DiscoverRequest` and `DiscoverResponse` — `redirectUrl` included, unused,
+> so **E.1 · #722** fills a field rather than changing a shape. `ouroboros-ui`'s
+> `app/api/schema.d.ts` is regenerated, so **D.3 · #718** can call it today.
+>
+> **The MVP answer is a constant, and the lookup still runs.** `ssoAvailable` is `false` for
+> every domain (decision A7), so the query against `tenant_domains` changes nothing a caller
+> can see — which is exactly why it is there: the statement, the index it uses, the
+> normalisation that makes it match and the timing floor that hides it are all exercised now,
+> while a mistake in any of them is invisible, rather than meeting their first real test on
+> the day SSO ships.
+>
+> **Anti-enumeration is two properties, not a note.** The body is composed without reading
+> the lookup, so known and unknown domains answer with identical bytes; and every answer is
+> held to a fixed floor, so the difference between an index hit and a miss is not readable
+> off a stopwatch. `discovery.integration-spec.ts` asserts both against a migrated
+> PostgreSQL — the bytes compared as text, the timing as a median over interleaved samples.
+> The floor is not rate limiting and does not pretend to be: per-IP throttling on this route
+> is **E.4 · #725**, unchanged.
+>
+> One thing it had to work around. **B.3 · #708 re-parented `tenant_domains` onto
+> `organization_id` and `ouroboros-rest`'s `db/schema.ts` still declares `tenant_id`**, so
+> every method on the shipped `tenancy/domains.repository.ts` is scoped by a column that no
+> longer exists. Discovery therefore reads the table through a repository of its own that
+> names `domain` and nothing else — the one index V006 explicitly preserved for it. **C.4 ·
+> #714** is still what reconciles the schema type and the tenancy module; nothing here
+> pre-empts it.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| C.2 · #712 | ouroboros-rest: [C.2] Domain discovery endpoint (`/auth/discover`) | Company-domain field backend: domain → tenant + SSO availability | mvp, auth, rest | N (after B.3) | Y | M | ouroboros-rest |
 | C.3 · #713 | ouroboros-rest: [C.3] Tenant context from session active organization | Rework #32's **shipped** middleware in place: `activeOrganizationId` primary, header override, role guards | mvp, auth, rest | N (after A.5, B.3) | Y | M | ouroboros-rest |
 | C.4 · #714 | ouroboros-rest: [C.4] Org & repo enablement API on org-plugin roles | Rewrite #31's **shipped** tenancy module: Step 2 toggles, member CRUD dropped to the plugin | mvp, auth, rest | N (after B.3, C.3) | Y | **L** ⬆ | ouroboros-rest |
 | C.5 · #715 | ouroboros-rest: [C.5] Auth integration test suite | Testcontainers coverage of the full auth surface | mvp, auth, rest, ci | N (after A.6, C.4) | Y | M | ouroboros-rest |
@@ -1582,7 +1610,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    legs remain parked on two things outside A.6: B.4 #709, which teaches the seed to write
    BetterAuth's `"user"` and `account` rows, and a stack whose `ouroboros-rest` is not the
    production image — the password routes are gated on exactly that.)*
-4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
+4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ ~~C.2 #712~~ } → C.3 #713 → C.4 #714 → C.5 #715
    *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
    creates.)*
 5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719

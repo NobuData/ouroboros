@@ -99,6 +99,7 @@ $ curl http://localhost:4000/api/v1
 | `GET POST /api/auth/get-session`                    | Who is signed in — BetterAuth's, and the only route that answers it   |
 | `GET /api/auth/organization/*`                      | Workspaces, membership and roles — the [organization plugin](#the-two-client-rule) |
 | `POST /api/v1/auth/logout`                          | Sign out — the versioned alias of `/api/auth/sign-out`                |
+| `POST /api/v1/auth/discover`                        | [Company domain → SSO?](#domain-discovery) — public, and uniform for every domain |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
@@ -664,6 +665,7 @@ answering from `tenant_members` and `tenants`, which
 its answer with no BetterAuth equivalent — *your organisation is already on Ouroboros* — is
 [#712](https://github.com/NobuData/ouroboros/issues/712)'s `POST /api/v1/auth/discover`,
 which belongs in the versioned family because it reads this service's own tenant domains.
+It is shipped: see [Domain discovery](#domain-discovery).
 
 Two error shapes come with the split, and it is worth knowing before writing a client: the
 `/api/v1` routes answer `{code, message, details}` from one filter, and the auth routes
@@ -795,6 +797,7 @@ handshake and serves its own routes under `/api/auth`, outside the versioned API
 | `GET  /api/auth/get-session`         | The person and their session, or `null` for nobody                   |
 | `POST /api/auth/sign-out`            | Deletes the session row; clears its cookies                          |
 | `POST /api/v1/auth/logout`           | The same thing, versioned — delegates to `sign-out`. `204`           |
+| `POST /api/v1/auth/discover`         | Company domain → is there SSO here? Public. See below. `200`         |
 
 ```mermaid
 sequenceDiagram
@@ -909,6 +912,51 @@ curl -sS -X POST http://localhost:4000/api/auth/sign-in/social \
    calls, and there is no fourth**: `GET /api/v1/auth/me` answered all of it at once until
    [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it — see
    [The two-client rule](#the-two-client-rule).
+
+### Domain discovery
+
+**`POST /api/v1/auth/discover`** ([#712](https://github.com/NobuData/ouroboros/issues/712))
+is the backend of mockup 01 Step 1's **Company domain** field: given a domain, is there a
+workspace here, and does it sign in through enterprise SSO?
+
+```console
+$ curl -sX POST http://localhost:4000/api/v1/auth/discover \
+       -H 'Content-Type: application/json' \
+       -d '{"domain": "https://Acme.Ouroboros.dev/"}'
+{"ssoAvailable":false,"message":"Enterprise SSO is not configured yet — sign in with GitHub for now."}
+```
+
+**Every domain gets that answer**, whether or not a workspace holds it. Enterprise SSO is
+[#722](https://github.com/NobuData/ouroboros/issues/722) and MVP signs in with GitHub
+(roadmap decision A7), so `ssoAvailable` is `false` today — and the response carries
+`redirectUrl` in its published schema anyway, so
+[#718](https://github.com/NobuData/ouroboros/issues/718)'s card is written once rather than
+restructured when the other branch starts happening.
+
+**It is the one route in this service that answers a caller with no session and no way to
+get one**, which is what shapes the rest of it. An endpoint that tells anybody *does this
+company use Ouroboros* is a tenant-enumeration oracle unless it is built not to be:
+
+| | How |
+| --- | --- |
+| Same body for known and unknown | Composed without reading the lookup — no organization name, no member count, no id |
+| Same timing | Every answer is held to a fixed floor, so an index hit and a miss are the same duration on a stopwatch |
+| Normalised, not guessed | `  HTTPS://Acme.Ouroboros.dev/login  ` and `acme.ouroboros.dev` are one request; a port or an email address is a `422` |
+| Nothing stored | A lookup key that does not outlive the request — which is why this is the one DTO here that folds rather than refuses |
+
+The floor is a floor rather than a constant: work that overruns it is not clamped, so what
+it guarantees is that the lookup's own duration is not observable. `discovery.timing.ts` is
+where that trade is argued and where the number lives. It is **not** rate limiting, and this
+route has none yet — per-IP throttling on the auth and discovery surface is
+[#725](https://github.com/NobuData/ouroboros/issues/725).
+
+It reads `tenant_domains` by `domain` alone. That is deliberate:
+`V006__tenancy_extensions.sql` re-parented the table from `tenant_id` onto
+`organization_id` and `src/modules/db/schema.ts` has not caught up
+([#714](https://github.com/NobuData/ouroboros/issues/714) is what rewrites both), while the
+unique index on `domain` survived the migration untouched — V006's own comment calls it
+"#712's path". `discovery.integration-spec.ts` runs the statement against a migrated
+database, which is the only place that claim can be checked.
 
 ### Sessions
 
@@ -1242,7 +1290,7 @@ ouroboros-rest/
 │       ├── health/         # /health/live, /health/ready, the two probes
 │       ├── db/             # schema types, pool, Kysely instance, lifecycle
 │       ├── tenancy/        # tenants, domains, members, enablement · #31 · context #32
-│       ├── auth/           # GitHub OAuth, sessions, the global guard     · #33
+│       ├── auth/           # sign-out, the legacy cookie · #33 #703 · discovery #712
 │       └── engine/         # typed internal client + /engine/status       · #35
 ├── Dockerfile              # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore # …and the context that image is built from

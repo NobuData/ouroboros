@@ -40,13 +40,20 @@ import { LIVE_ROUTE, READY_ROUTE, HEALTH_PATH } from "../health/health.paths";
  *
  * ## What the list is, and what it deliberately is not
  *
- * {@link SHIPPED_PUBLIC_SURFACE} is the spec, in the issue's own words. It holds four
+ * {@link SHIPPED_PUBLIC_SURFACE} is the spec, in the issue's own words. It held four
  * entries because #33 shipped four `@Public()` decisions — the heartbeat, the two probes,
  * and signing out — and the two decorators that expressed them (`@Public()` on a class
  * covering both probes) are flattened into the routes they actually exempted, because
  * "which routes answer a stranger" is the question and a decorator's placement is not.
  *
- * Three surfaces are *not* in it and are not omissions:
+ * **It holds five now.** [#712](https://github.com/NobuData/ouroboros/issues/712)'s
+ * `POST /api/v1/auth/discover` is the first route added to this list since #703 transcribed
+ * it, and it is the case the list was written for: a route that has to be public, added by
+ * an issue whose own subject is what a stranger may learn. The line below is the reviewable
+ * record of that decision, and it is one line rather than a paragraph because the argument
+ * for it belongs beside the route — `discovery.service.ts` is where it is made.
+ *
+ * Two surfaces are *not* in it and are not omissions:
  *
  *   * **Swagger UI and the two specification routes.** They are registered on the HTTP
  *     adapter rather than declared by a controller, so no guard sees them at all — the same
@@ -55,14 +62,10 @@ import { LIVE_ROUTE, READY_ROUTE, HEALTH_PATH } from "../health/health.paths";
  *   * **BetterAuth's own routes under `/api/auth`.** The library mounts a handler ahead of
  *     Nest's router, so those never reach the routing table this walks. `auth.routes.ts` is
  *     their map and `application.spec.ts` asserts they answer.
- *   * **[#712](https://github.com/NobuData/ouroboros/issues/712)'s discovery endpoint**,
- *     which the issue lists among the exempt paths and which does not exist yet. When it
- *     lands it adds one line here, and until it does a line for it would be a promise about
- *     a route nothing serves.
  */
 
 /**
- * The routes #33 shipped as reachable without a session.
+ * The routes reachable without a session: #33's four, and #712's.
  *
  * Written as `METHOD path` exactly as {@link routeTable} renders one, so the comparison is
  * between two lists of the same strings rather than between a list and a rule.
@@ -79,6 +82,11 @@ const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // Signing out, which is disposing of a session that may already have expired: requiring
   // one would mean an expired cookie could never be cleared.
   `POST ${API_BASE_PATH}/auth/logout`,
+  // Domain discovery (#712). It is what mockup 01 Step 1's *Company domain* field calls
+  // *before* anybody signs in, so a session is the one thing its caller cannot have. What
+  // makes that safe is that it answers every domain identically — see
+  // `discovery.service.ts`.
+  `POST ${API_BASE_PATH}/auth/discover`,
 ].sort();
 
 /** One route, as the enumeration sees it. */
@@ -233,6 +241,18 @@ describe("the decisions, as answers rather than as metadata", () => {
 
   it("answers signing out without a session", async () => {
     await request(server()).post(`${API_BASE_PATH}/auth/logout`).expect(204);
+  });
+
+  it("lets domain discovery past without a session", async () => {
+    // A `422` rather than a `200`, and that is the assertion rather than a compromise: this
+    // suite starts no database, so the furthest an accepted request gets is the pool. What
+    // is being proved is which layer refused it — a `401` would mean the guard, and a `422`
+    // means the guard let it through and the *validation pipe* answered, which runs after.
+    const response = await request(server())
+      .post(`${API_BASE_PATH}/auth/discover`)
+      .send({ domain: "" });
+
+    expect(response.status).toBe(422);
   });
 
   it.each([

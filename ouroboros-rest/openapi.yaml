@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.17.0"
+  version: "0.18.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -209,11 +209,16 @@ tags:
       the session and the organization operations are **not** here and must not be added
       here — see the two-client rule at the top of this document.
 
-      One operation today. `POST /api/v1/auth/logout` is the versioned alias of BetterAuth's
-      `sign-out` and delegates to it rather than implementing a second one;
-      [#712](https://github.com/NobuData/ouroboros/issues/712) adds `POST /api/v1/auth/discover`,
-      the company-domain lookup behind mockup 01 Step 1, which is genuinely this service's
-      because it reads this service's tenant domains.
+      Two operations, and they are here for opposite reasons. `POST /api/v1/auth/logout` is
+      the versioned alias of BetterAuth's `sign-out` and delegates to it rather than
+      implementing a second one. `POST /api/v1/auth/discover` delegates to nothing: it is the
+      company-domain lookup behind mockup 01 Step 1, and it is genuinely this service's
+      because it reads this service's `tenant_domains`
+      ([#712](https://github.com/NobuData/ouroboros/issues/712)).
+
+      Both are reachable without a session, for different reasons — one is disposing of a
+      session that may already have expired, the other is called before there has ever been
+      one. Everything else under this tag will require one.
 
   - name: engine
     description: |-
@@ -887,6 +892,89 @@ paths:
                 `Max-Age=0` — one header each.
               schema:
                 type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately: the real diagnosis names a query, a host or a
+            role, and it goes to the service log where only an operator reads it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/discover:
+    post:
+      tags: [auth]
+      summary: Discover a company domain
+      description: |-
+        Given a company domain, answer the two things the sign-in flow needs before anybody
+        has signed in: is there a workspace here, and does it use enterprise SSO?
+        ([#712](https://github.com/NobuData/ouroboros/issues/712).) This is the backend of
+        mockup 01 Step 1's **Company domain** field.
+
+        **The answer is the same for every domain in this release**, and that is the contract
+        rather than an implementation detail. Enterprise SSO is
+        [#722](https://github.com/NobuData/ouroboros/issues/722); MVP signs in with GitHub
+        (decision A7), so `ssoAvailable` is `false` whether or not a workspace holds the
+        domain, and the body is identical field for field either way.
+
+        **Reachable without a session, which is what shapes the rest of it.** Its caller is a
+        browser on the login page, so whatever this endpoint tells one caller it tells
+        everybody — and an endpoint that answers *does this company use Ouroboros* is a
+        tenant-enumeration oracle unless it is built not to be. Two things make it not one:
+
+          * **A uniform body.** No organization name, no member count, no identifier, nothing
+            conditional. `DiscoverResponse` is what an unknown domain answers with too.
+          * **Uniform timing.** The service holds every answer for a fixed floor, so the
+            difference between an index hit and a miss is not readable off a stopwatch.
+            `src/modules/auth/discovery.timing.ts` is where that is implemented and where its
+            limits are written down.
+
+        Neither is rate limiting, and this route has none yet: per-IP throttling on the auth
+        and discovery surface is
+        [#725](https://github.com/NobuData/ouroboros/issues/725).
+
+        A `POST` rather than a `GET` for two reasons that point the same way. A domain is an
+        organization's name for itself, and a `GET` puts it in the request line — where a
+        proxy log, a browser history and a `Referer` header all keep it. And a `GET` is
+        cacheable by anything in between, which for an answer that becomes caller-specific
+        when #722 lands is a shared cache holding one company's redirect for another. It
+        answers `200` rather than `201`: nothing is created, and the verb is protecting the
+        argument rather than describing a write.
+      operationId: discoverDomain
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscoverRequest"
+      responses:
+        "200":
+          description: |-
+            The answer. Identical in shape and in timing for a domain a workspace holds and
+            one nothing does.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoverResponse"
+              example:
+                ssoAvailable: false
+                message: Enterprise SSO is not configured yet — sign in with GitHub for now.
+        "422":
+          description: |-
+            `validation_failed` — the value is not a domain name once the scheme, the path and
+            the surrounding whitespace have been removed. `details` names the field, as it
+            does for every other body in this API.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request is not valid. See `details` for each field.
+                details:
+                  domain: ["domain must be a company domain, such as acme.ouroboros.dev"]
         "500":
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
@@ -3356,6 +3444,56 @@ components:
           description: Which organization. Defaults to the session's active one.
       additionalProperties: true
 
+    DiscoverResponse:
+      type: object
+      title: DiscoverResponse
+      description: |-
+        What a company domain resolves to: whether it signs in through an identity provider,
+        and what to do about it.
+
+        **The same object comes back for a domain we hold and one we have never seen.** The
+        endpoint is public, so anything conditional here would be a way to ask *is this
+        company a customer* — see the operation's own description. There is no organization
+        name in this schema, no member count and no identifier, and that is a property of the
+        contract rather than of one release's implementation.
+
+        `ssoAvailable` is the discriminator, and the two optional-looking halves are its two
+        branches: `false` means read `message`, `true` means follow `redirectUrl`. A client
+        written against that reads correctly today, when the answer is always `false`, and
+        goes on reading correctly when
+        [#722](https://github.com/NobuData/ouroboros/issues/722) makes it sometimes `true`.
+      additionalProperties: false
+      required: [ssoAvailable, message]
+      properties:
+        ssoAvailable:
+          type: boolean
+          description: |-
+            Whether this domain signs in through SAML or OIDC.
+
+            **`false` in every answer this release sends**, for every domain — enterprise SSO
+            is #722 and MVP signs in with GitHub (decision A7). It is in the contract now, and
+            answered honestly now, so the card that reads it does not have to be rewritten
+            when the other branch starts happening.
+          examples: [false]
+        message:
+          type: string
+          description: |-
+            A sentence to render, always present. When `ssoAvailable` is `false` it says why;
+            when it is `true` it is what the card shows while the browser is on its way.
+
+            Required rather than optional so a client has something to display in **both**
+            branches without inventing copy of its own.
+          examples: ["Enterprise SSO is not configured yet — sign in with GitHub for now."]
+        redirectUrl:
+          type: string
+          description: |-
+            Where to send the browser to sign in, present only when `ssoAvailable` is `true`.
+
+            **Never sent in this release.** It is published now because #718's sign-in card is
+            written against this document today and must not need restructuring when #722
+            fills it in.
+          examples: ["/api/auth/sso/saml2/acme"]
+
     Tenant:
       type: object
       title: Tenant
@@ -3718,6 +3856,44 @@ components:
           type: integer
           minimum: 0
           examples: [0]
+
+    DiscoverRequest:
+      type: object
+      title: DiscoverRequest
+      description: |-
+        The body of `POST /api/v1/auth/discover` — the company domain, as a person typed it.
+
+        **This is the one request body in this API that is normalised rather than rejected.**
+        Everywhere else a value with upper case in it is refused, because what is stored
+        should be what was sent; nothing is stored here, and the field is filled in by
+        somebody who has just pasted `https://Acme.Ouroboros.dev/` out of their address bar.
+        So the service trims it, lower-cases it, and removes the scheme, the path, the query,
+        the fragment and a trailing dot — and *then* requires what is left to be a domain
+        name. `  HTTPS://Acme.Ouroboros.dev/login  ` and `acme.ouroboros.dev` are the same
+        request.
+
+        What it does **not** do is guess. A port, an email address, an internal hostname with
+        no dot in it — none of them are folded into something plausible; they are a `422`
+        naming the field.
+      additionalProperties: false
+      required: [domain]
+      properties:
+        domain:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          description: |-
+            The company domain. `acme.ouroboros.dev` — mockup 01's own placeholder.
+
+            No `pattern` here, deliberately: the rule applies to the *normalised* value, and a
+            pattern on this field would tell a client generator to refuse `https://acme.…/`,
+            which the service accepts. After normalisation the value must be a lower-case
+            domain name of two or more labels and at most 253 characters — the same shape
+            `CreateDomainRequest` states, because it is the same column being matched.
+
+            The generous `maxLength` bounds what a form can post rather than what a domain may
+            be; the scheme and path a person pastes are removed before the real limit applies.
+          examples: [acme.ouroboros.dev]
 
     CreateTenantRequest:
       type: object

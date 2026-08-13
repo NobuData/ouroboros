@@ -32,18 +32,24 @@
  * to drop it. See `legacy.cookie.ts`, which is also where the date it can be deleted is
  * written down.
  *
- * **It no longer imports `DbModule`, and that is the shape of what #711 removed.** The only
- * statements this module ever issued were the two that answered the session — a membership
- * listing and a domain lookup — and both read `tenant_members` and `tenants`, which
- * `V006__tenancy_extensions.sql` dropped
- * ([#708](https://github.com/NobuData/ouroboros/issues/708)). Nothing here reaches the
- * database at all now; signing out is a call into the library, which holds its own pool.
+ * **`DbModule` is back, and it is one table this time.** #711 removed the import along with
+ * the two statements that answered the session — a membership listing and a domain lookup,
+ * both against `tenant_members` and `tenants`, which `V006__tenancy_extensions.sql` dropped
+ * ([#708](https://github.com/NobuData/ouroboros/issues/708)).
+ * [#712](https://github.com/NobuData/ouroboros/issues/712) puts it back for `POST
+ * /api/v1/auth/discover`, whose whole job is a read of `tenant_domains` — the one tenancy
+ * table V006 kept, and the one it re-pointed rather than deleted. The import is what answers
+ * "who can reach the schema" for this module, exactly as it does for `TenancyModule`:
+ * `DbModule` is deliberately not global, so the question always has a written answer.
  */
 
 import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from "@nestjs/common";
 
 import { BetterAuthModule } from "../../auth/auth.module";
+import { DbModule } from "../db/db.module";
 import { AuthController } from "./auth.controller";
+import { DiscoveryRepository } from "./discovery.repository";
+import { DiscoveryService } from "./discovery.service";
 import { LegacySessionCookieMiddleware } from "./legacy.cookie";
 
 @Module({
@@ -52,9 +58,13 @@ import { LegacySessionCookieMiddleware } from "./legacy.cookie";
   // what makes the provider resolvable — it is what makes "this module depends on
   // BetterAuth" a line somebody can read in the `imports` list rather than a surprise in a
   // constructor.
-  imports: [BetterAuthModule],
+  imports: [BetterAuthModule, DbModule],
   controllers: [AuthController],
-  providers: [LegacySessionCookieMiddleware],
+  // Two layers rather than three, and the missing one is deliberate: there is no
+  // `DiscoveryController`. Discovery is a route on the auth controller because it is part of
+  // signing in, and a controller per operation would put two `/api/v1/auth` paths in two
+  // files with nothing to tell a reader which holds which.
+  providers: [LegacySessionCookieMiddleware, DiscoveryRepository, DiscoveryService],
 })
 export class AuthModule implements NestModule {
   /**
