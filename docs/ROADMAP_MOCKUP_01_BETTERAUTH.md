@@ -62,7 +62,7 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
 | **`ouroboros-rest`** | `modules/auth/`, `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app`; `auth/` (BetterAuth) | **Done.** A.3 deleted `oauth.ts`/`github.ts`; A.4 deleted `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts`, and rewrote `principal.ts` against BetterAuth's `@Session()` shape. |
 | **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, #33's dev-user bypass key, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. **A.6 has since removed the dev-user key** from both templates, the #28 zod schema and the compose comments, in the change that delivered its replacement. |
-| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2–D.5 are all **done**: the audit ran, step 1 signs in, step 2 is re-pointed at C.4's row model with the tenancy authority on the session, and the route guards carry a return-to without an edge gate. Epic D shrank as predicted, and **D.6 is what is left**. |
+| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | **Epic D is done.** The audit ran, step 1 signs in, step 2 is re-pointed at C.4's row model with the tenancy authority on the session, the route guards carry a return-to without an edge gate, and **D.6 has filled the shell's avatar slot** — the person, the workspace they are acting in, the others to switch to, and a sign-out that revokes. Epic D shrank as predicted. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
 mockup's entire enterprise-SSO half** — the "or enterprise SSO" divider, the
@@ -1340,7 +1340,8 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 >
 > One thing it did not do: no `"use server"` wrapper for `signOutSession()`. A Server Action
 > nothing submits to is a POST endpoint published for nobody, so the form belongs to
-> **D.6 · #721** along with the menu that draws it. `app/login/sign-in.ts` is likewise left
+> **D.6 · #721** along with the menu that draws it — which **has since landed**, and the
+> wrapper is `app/shell/actions.ts`, beside its only caller. `app/login/sign-in.ts` is likewise left
 > alone — `signIn.social` can make that call now, and re-pointing the button at it is
 > **D.3 · #718**, which **has since landed** and retired that module's hand-written `POST`.
 
@@ -1484,7 +1485,8 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > only where `BETTER_AUTH_URL` happens to name it, and in this developer's environment it
 > does not. **`signOutSession()` had the same defect and was hiding it**: that call catches
 > its own failures, so a person pressing *sign out* was leaving a session row open — which is
-> **D.6 · #721**'s screen and was this module's bug.
+> **D.6 · #721**'s screen and was this module's bug. D.6 **has since landed** the form that
+> presses it, so the fix is exercised rather than merely present.
 >
 > **The e2e amendment is in `tests/e2e`.** `support/workspace.ts` calls
 > `organization/set-active` where it used to write a cookie, and `specs/sign-in.spec.ts` walks
@@ -1552,9 +1554,51 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > at all. A visitor whose cookie has merely expired streams the same prefix either way, which
 > is what settled the decision: the case an edge gate fixes is the rarer one.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| D.6 · #721 | ouroboros-ui: [D.6] Signed-in session UI in the app shell | Avatar menu (user, active org, switch org, sign out) in #41's top bar | mvp, auth, ui | N (after D.1, #41) | Y | S | ouroboros-ui |
+> **D.6 · #721 has shipped and has left the table below — which is now empty, and gone with
+> it. Epic D is complete, and so is this roadmap's MVP.** The app shell's avatar slot holds a
+> session: `app/shell/user-menu.tsx` names the signed-in person, states the workspace the
+> session is acting in, offers the others as a submenu, and signs out. `app/shell/account.ts`
+> is the pure half — what the menu draws, decided from the browser's session — and
+> `app/shell/actions.ts` is the `"use server"` wrapper **D.1 · #716 deliberately left
+> unwritten**, because "a Server Action nothing submits to is a POST endpoint published for
+> nobody". The form that submits to it is this issue's, exactly as that note said it would be.
+>
+> **The two writes go opposite ways, and that is the design rather than an inconsistency.**
+> Switching workspace is `organization.setActive` called from the **browser**; signing out is
+> a Server Action. Which side of the wire can write the cookie each one changes is the whole
+> argument: script cannot delete an `HttpOnly` cookie, and BetterAuth's refreshed
+> `session_data` cookie cannot reach a browser from a call the server made — which
+> `app/api/auth-server.ts` already recorded as the reason it deletes the auth cookies by hand.
+> `router.refresh()` is what carries the browser-side write across: the route's Server
+> Components re-render against the workspace the session now names (**C.3 · #713**), with no
+> navigation, which is the criterion *"without a full reload"* in the framework's own words.
+>
+> **The menu reads the plugin's listing, not `GET /api/v1/orgs`.** Two listings of the same
+> workspaces now exist and they answer different questions: `useListOrganizations()` answers
+> *which workspace am I in, and what may I move to*, from a store `set-active` invalidates;
+> **C.4 · #714**'s row model answers *what is in each of them* — roles, counts, the monogram
+> — which is step 2's card and not a one-line menu entry. `app/api/auth-client.ts` states the
+> split, so neither is a fallback for the other.
+>
+> **One acceptance criterion was implemented as its opposite, honestly.** *"Active
+> organization row with a switch-org submenu"* draws a chooser; a person who belongs to one
+> workspace and is already in it has nothing to choose, so the row becomes a **statement**
+> rather than a control — the same call **D.4 · #719** makes when it replaces a radio group of
+> one with a hidden field, on the same § 3.5 grounds. The judgement is "is there a workspace
+> this session is not already in", not "is there more than one", because somebody whose
+> session points nowhere can still enter their only workspace.
+>
+> **The interaction #41 built was inherited rather than rewritten, which was its argument for
+> existing.** Open, Escape, click-outside, Tab-out and the Arrow/Home/End roving focus are
+> unchanged; what the submenu added is the two keys the ARIA menu pattern gives one — Right to
+> open, Left to come back out — and an Escape that closes the submenu rather than the menu.
+> The roving focus reads the DOM rather than a list held in a ref, so the choices join the
+> walk the moment they are rendered. `__tests__/shell/shell-styles.test.ts` is new and generic:
+> it holds every class the shell's components name to having a rule behind it, which is the
+> one class of mistake that is neither a build error nor a failed assertion.
+>
+> **What is still deliberately marked rather than mocked**: the font-size stepper (CQ.1/CP.3)
+> and the settings item (#491). Both stay `aria-disabled` with the reason in their tooltip.
 
 ### Issue D.1 (#716) — ouroboros-ui: [D.1] BetterAuth client & session store
 
@@ -1791,6 +1835,10 @@ signed-in  ─▶ /login ─▶ active org? ──yes─▶ /dashboard ──no�
 
 ### Issue D.6 (#721) — ouroboros-ui: [D.6] Signed-in session UI in the app shell
 
+> **Shipped.** Kept as the record of what was asked for — see the note above the table for
+> why the two writes go opposite ways, which listing the menu reads, and the acceptance
+> criterion that is drawn as a statement when there is nothing to choose.
+
 - **Problem Statement:** #41's shell reserves a user/avatar slot; once BetterAuth
   sessions exist, the shell needs the real thing — including the active-org
   indicator, since tenancy is session state now.
@@ -2000,11 +2048,14 @@ Ordered checklist (⊕ = parallelizable within its phase):
    the suite that certifies the lot. C.5 turned out to be the phase's last *bug fix* as well
    as its last test: the first time a workspace was created the way a person creates one, every
    route beneath it answered `422` — see its section above.)*
-5. **Phase 4 — Login page UI:** ~~D.1 #716~~ → { ~~D.2 #717~~ ⊕ ~~D.5 #720~~ ⊕ D.6 #721 } → ~~D.3 #718~~ → ~~D.4 #719~~ ✅
-   *(MVP for this roadmap is complete when D.4 passes against the compose stack —
-   feeding the scaffolding roadmap's e2e gate #56, whose login leg switches from
-   the dev-user bypass to A.6's `signIn.email`. **D.5 has since landed** and left
-   **D.6 #721** as the phase's only open issue.)*
+5. **Phase 4 — Login page UI:** ~~D.1 #716~~ → { ~~D.2 #717~~ ⊕ ~~D.5 #720~~ ⊕ ~~D.6 #721~~ } → ~~D.3 #718~~ → ~~D.4 #719~~ ✅
+   *(**Phase 4 is complete, and with it every MVP issue in this roadmap.** D.6 has
+   landed the account menu, so the shell says who is signed in, which workspace the
+   session is acting in, and how to leave. What is left before the compose stack can
+   walk it end to end is not an issue in this roadmap: it is a stack whose
+   `ouroboros-rest` is not the production image, which feeds the scaffolding roadmap's
+   e2e gate #56 and whose login leg switches from the dev-user bypass to A.6's
+   `signIn.email`.)*
 6. **v2:** E.1 #722 → E.2 #723; E.3 #724 ⊕ E.4 #725 in any order.
 
 ## Totals
@@ -2101,9 +2152,12 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #721 (D.6)** — the last open issue in this roadmap's MVP. **#716 (D.1) has
-landed**, so Epic D's remaining issues are unblocked: the UI reads its session through
-BetterAuth's own client, signs out through it, and `app/api/session.ts` is gone. **Epic C is complete**: #711 (C.1), #712
+**Every MVP issue in this roadmap has landed. What is left is v2 — Epic E — and a stack to
+walk it on.** **Epic D is complete**: #716 (D.1), #717 (D.2), #718 (D.3), #719 (D.4),
+#720 (D.5) and now **#721 (D.6)** — the UI reads its session through BetterAuth's own
+client, the login screen signs people in and asks where the loop runs, the route guards
+carry a deep link through it, and the app shell now says who is signed in, which workspace
+the session is acting in, and how to leave. **Epic C is complete**: #711 (C.1), #712
 (C.2), #713 (C.3), #714 (C.4) and now **#715 (C.5)** have all landed — the tenant context
 reads the session's active organization, `modules/tenancy` is rewritten against
 `organization`/`member`, `GET /api/v1/orgs` serves mockup 01 Step 2's row model in one
@@ -2146,8 +2200,13 @@ a compose stack whose `ouroboros-rest` is not `NODE_ENV=production`. **#720 (D.5
 landed and the middleware decision is recorded: no edge gate.** `proxy.ts` grew a
 request-wide matcher, but it stamps the request's own address on a header rather than
 deciding anything with it — `requireWorkspace()` stays the single authority, and what the
-header buys is a deep link that survives the round trip through the login screen. That
-leaves **#721 (D.6)**, the account menu, as this roadmap's only open MVP issue.
+header buys is a deep link that survives the round trip through the login screen. **#721
+(D.6) has now landed and closes the MVP**: the shell's avatar slot holds a session — the
+person, the workspace `session."activeOrganizationId"` names, a submenu that moves it
+through `organization.setActive` and re-renders the route without a navigation, and a sign
+out that deletes the session row rather than the browser's copy of it. The one thing still
+standing between this roadmap and its own exit gate is unchanged, and is not an issue in it:
+a compose stack whose `ouroboros-rest` is not `NODE_ENV=production`.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

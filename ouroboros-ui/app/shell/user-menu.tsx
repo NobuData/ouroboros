@@ -1,88 +1,246 @@
 "use client";
 
 import { CircleUser } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState } from "react";
+
+import { organization, unwrap, useListOrganizations, useSession } from "@/app/api/auth-client";
+// The person's monogram, and the one rule this side of the wire still keeps. It lives with
+// the login screen's tile because that is where the *workspace* monogram question was
+// settled — the service computes those, so nothing here may re-derive them — and the
+// signed-in person is the single case it does not describe (`app/login/monogram.tsx`). The
+// shell draws the same person, so it reads the same function rather than a second copy of it.
+import { initials } from "@/app/login/monogram";
+
+import { type AccountView, type MenuWorkspace, accountMenuLabel, accountView } from "./account";
+import { signOutOfSession } from "./actions";
 
 /**
- * The account menu in the top-right corner of the header.
+ * The account menu in the top-right corner of the header — **the signed-in session, at last**
+ * ([#721](https://github.com/NobuData/ouroboros/issues/721)).
  *
- * ### What it can honestly show today
+ * What shipped with the shell (#41) was this interaction around three placeholders: *Not
+ * signed in*, a settings item that could not act, and a *Sign out* that explained it was
+ * waiting for sessions to exist. Sessions exist. What replaces the placeholders is the shape
+ * the design system asks the profile menu for (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1) minus
+ * the parts other issues own — the font-size stepper is CQ.1/CP.3 and the settings screen is
+ * #491, so both stay marked rather than mocked:
  *
- * Sessions are #33 and the profile menu's real contents are CP.3 (#645) — identity,
- * the font-size stepper, the theme control, the settings link and sign out. None of
- * those surfaces exist yet, so this ships the *menu*, with its two eventual actions
- * present and marked unavailable rather than absent: the design system's rule is that a
- * control which cannot act explains itself (§ 3.5), and a menu that silently omits
- * "Sign out" teaches the wrong shape.
+ * ```
+ * [ (avatar) ▾ ]
+ *      ├─ Ken Suenobu · ken@acme-robotics.dev
+ *      ├─ Workspace  acme-robotics  ▸ ─┬─ ● acme-robotics
+ *      │                               ├─ ○ acme-labs
+ *      │                               └─ ○ kensuenobu
+ *      ├─ Workspace settings           (#491)
+ *      └─ Sign out ─▶ session row deleted ─▶ /login
+ * ```
  *
- * The items therefore carry `aria-disabled` rather than `disabled`. A disabled button
- * leaves the tab order, taking its explanation with it; an `aria-disabled` one is still
- * reachable, still announces why, and — having no handler — still does nothing.
+ * ### It reads the browser's session, and it is the only thing in the product that does
  *
- * ### What it does own
+ * `app/api/auth-client.ts` reserved `useSession()` for exactly this component and says why: a
+ * hook is the right answer only where something is already a Client Component for some other
+ * reason, and a menu is. The alternative — the `(app)` layout reading the session and passing
+ * it down — is the one that file and `app/(app)/layout.tsx` both argue against: a layout does
+ * not re-render on a client-side navigation between siblings, and awaiting a session there
+ * would hold up the shell that a route's `loading.tsx` is drawn inside.
  *
- * The interaction, which does not change when the items become real: the menu opens
- * from the avatar, closes on Escape, on a click outside, or when focus leaves; Escape
- * returns focus to the button it came from; and Arrow/Home/End move a roving focus
- * through the items. Building that once here is why CP.3 is a content change.
+ * What that buys, beyond freshness, is the *other* half of switching workspace. The listing
+ * and the session both live in stores the organization plugin invalidates when
+ * `set-active` returns (`atomListeners` in its client), so the moment the call succeeds this
+ * menu is already describing the new workspace with no code here to keep it in step.
+ *
+ * ### Two writes, two directions — and the split is not arbitrary
+ *
+ * Switching workspace is a call the **browser** makes; signing out is a **Server Action**.
+ * `app/shell/actions.ts` sets out the argument in full; in one line, it is which side of the
+ * wire can write the cookie each one has to change. `router.refresh()` is what carries the
+ * first across to the server: it re-renders the route's Server Components — which since
+ * [#713](https://github.com/NobuData/ouroboros/issues/713) are scoped by
+ * `session."activeOrganizationId"` — without a navigation, which is the issue's *"without a
+ * full reload"* in the framework's own words.
+ *
+ * ### What the interaction owns
+ *
+ * The part that did not change when the placeholders became real, which is why building it
+ * once in #41 was worth it: the menu opens from the avatar, closes on Escape, on a click
+ * outside, or when focus leaves; Escape returns focus to the button it came from; and
+ * Arrow/Home/End move a roving focus through the items. The submenu adds the two keys the
+ * ARIA menu pattern gives a submenu — Right to open it, Left to come back out — and Escape
+ * inside it closes the submenu rather than the whole menu.
  *
  * @returns The avatar button and, while open, its menu.
  */
 export function UserMenu() {
+  const router = useRouter();
+  const session = useSession();
+  const workspaces = useListOrganizations();
+
+  const view = accountView({
+    user: session.data?.user,
+    // Read rather than asserted, for the reason `app/api/auth-server.ts` reads it the same
+    // way: BetterAuth leaves the field off the base session and the plugin widens it, so a
+    // build typed without the organization plugin would report every session as acting
+    // nowhere rather than failing to compile.
+    activeOrganizationId: session.data?.session.activeOrganizationId ?? null,
+    organizations: workspaces.data,
+    pending: session.isPending,
+  });
+
   const [open, setOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  /** The workspace a `set-active` is in flight for, so the row can say it is working. */
+  const [moving, setMoving] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  /** What to tell a screen reader about a switch that has just happened. */
+  const [announcement, setAnnouncement] = useState("");
+
   const wrapper = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
+  const switcher = useRef<HTMLButtonElement>(null);
+  const submenu = useRef<HTMLDivElement>(null);
+
   const menuId = useId();
+  const submenuId = useId();
+  const failureId = useId();
 
   /**
    * Close the menu, optionally putting focus back where it came from.
    *
-   * @param restoreFocus Whether to focus the avatar again. True for a keyboard
-   *   dismissal, where focus would otherwise fall to the document; false for a click
-   *   elsewhere, where stealing focus back is the wrong answer.
+   * A plain function rather than a `useCallback`: the React Compiler memoises what needs
+   * memoising, and the one place a stable identity would have mattered — the effect below —
+   * does not hold this function at all.
+   *
+   * @param restoreFocus Whether to focus the avatar again. True for a keyboard dismissal,
+   *   where focus would otherwise fall to the document; false for a click elsewhere, where
+   *   stealing focus back is the wrong answer.
    */
-  const close = useCallback((restoreFocus: boolean) => {
+  function close(restoreFocus: boolean): void {
     setOpen(false);
+    setSwitching(false);
+    setFailure(null);
     if (restoreFocus) trigger.current?.focus();
-  }, []);
+  }
+
+  /** Leave the submenu, landing on the item that opened it. */
+  function closeSwitcher(): void {
+    setSwitching(false);
+    switcher.current?.focus();
+  }
 
   // Dismissal from outside the menu: a pointer press anywhere else, which includes the
-  // avatar itself — the button's own handler toggles, and this effect is registered
-  // only while open, so the two do not fight over the same press.
+  // avatar itself — the button's own handler toggles, and this effect is registered only
+  // while open, so the two do not fight over the same press.
+  //
+  // The three setters are written out rather than reached through `close()`, so the effect
+  // depends on the one thing that decides whether it should be registered — `open` — and is
+  // not re-subscribed by a render that changed something else entirely.
   useEffect(() => {
     if (!open) return;
 
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
       if (target instanceof Node && wrapper.current?.contains(target)) return;
-      close(false);
+      setOpen(false);
+      setSwitching(false);
+      setFailure(null);
     };
 
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open, close]);
+  }, [open]);
 
-  // Opening moves focus into the menu, which is what makes the keyboard path work: the
-  // arrow keys below are handled on the menu, and Escape has somewhere to return from.
+  // Opening moves focus into the menu, which is what makes the keyboard path work: the arrow
+  // keys below are handled on the menu, and Escape has somewhere to return from.
   useEffect(() => {
     if (open) items(menu.current)[0]?.focus();
   }, [open]);
 
+  // And opening the submenu moves it on again, which is what the ARIA menu pattern asks of a
+  // submenu that was opened deliberately.
+  useEffect(() => {
+    if (switching) items(submenu.current)[0]?.focus();
+  }, [switching]);
+
+  /**
+   * Move the session into another workspace.
+   *
+   * The call is made from the browser rather than through a Server Action, and the two
+   * consequences are the point of that choice: BetterAuth's refreshed `session_data` cookie
+   * reaches the browser that asked for it, and the plugin's own stores invalidate, so the
+   * menu redraws itself. `router.refresh()` is what tells the *server* — every Server
+   * Component on the route re-renders against the workspace the session now names.
+   *
+   * @param workspace The workspace to move to.
+   */
+  async function choose(workspace: MenuWorkspace): Promise<void> {
+    if (moving !== null) return;
+
+    if (view.state === "signed-in" && workspace.id === view.active?.id) {
+      // Already there. Pressing the checked radio is a confirmation, not a request — so this
+      // spends no round trip on it and simply leaves the submenu.
+      closeSwitcher();
+      return;
+    }
+
+    setMoving(workspace.id);
+    setFailure(null);
+
+    try {
+      unwrap(
+        await organization.setActive({ organizationId: workspace.id }),
+        "/organization/set-active",
+      );
+    } catch (error) {
+      // A refusal is a state to render, not an error boundary over the whole application:
+      // the menu is chrome, and replacing every screen because one workspace could not be
+      // opened would lose the screen the person is still entitled to be on.
+      setFailure(error instanceof Error ? error.message : "That workspace could not be opened.");
+      setMoving(null);
+      return;
+    }
+
+    setMoving(null);
+    setAnnouncement(`Workspace: ${workspace.slug}.`);
+    close(true);
+    router.refresh();
+  }
+
   /**
    * Keyboard handling for the open menu.
    *
-   * @param event The key press, captured on the menu container so every item shares
-   *   one handler and the roving focus has a single source of truth: the DOM.
+   * One handler on the menu container — the submenu is inside it, so its keys bubble here —
+   * which keeps the roving focus with a single source of truth: the DOM.
+   *
+   * @param event The key press.
    */
-  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
     const entries = items(menu.current);
     const at = entries.indexOf(document.activeElement as HTMLElement);
+    const inSubmenu =
+      document.activeElement instanceof Node &&
+      (submenu.current?.contains(document.activeElement) ?? false);
 
     switch (event.key) {
       case "Escape":
         event.preventDefault();
-        close(true);
+        // Innermost first: Escape closes what is open, and inside a submenu that is the
+        // submenu. Closing the whole menu would throw away a choice still being made.
+        if (inSubmenu) closeSwitcher();
+        else close(true);
+        break;
+      case "ArrowRight":
+        if (document.activeElement === switcher.current) {
+          event.preventDefault();
+          setSwitching(true);
+        }
+        break;
+      case "ArrowLeft":
+        if (inSubmenu) {
+          event.preventDefault();
+          closeSwitcher();
+        }
         break;
       case "ArrowDown":
         event.preventDefault();
@@ -101,12 +259,14 @@ export function UserMenu() {
         entries[entries.length - 1]?.focus();
         break;
       case "Tab":
-        // Tabbing out is a dismissal, and the browser's own focus move is the right
-        // one — so this closes without preventing it or dragging focus back.
+        // Tabbing out is a dismissal, and the browser's own focus move is the right one — so
+        // this closes without preventing it or dragging focus back.
         close(false);
         break;
     }
-  };
+  }
+
+  const showSwitcher = view.state === "signed-in" && view.switchable;
 
   return (
     <div className="shell-menu" ref={wrapper}>
@@ -117,63 +277,255 @@ export function UserMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        aria-label="Account menu"
-        onClick={() => setOpen((was) => !was)}
+        aria-label={accountMenuLabel(view)}
+        // Closing through `close()` rather than by flipping `open`, so a menu re-opened from
+        // the avatar opens in the state a menu opens in: submenu shut, nothing reported. No
+        // focus is restored, because the press that closed it already put focus here.
+        onClick={() => (open ? close(false) : setOpen(true))}
       >
-        <CircleUser size={20} aria-hidden />
+        <Face view={view} />
       </button>
 
       {open && (
-        <div
-          className="shell-menu__panel"
-          id={menuId}
-          role="menu"
-          aria-label="Account"
-          ref={menu}
-          onKeyDown={onKeyDown}
-        >
-          <p className="shell-menu__identity">
-            Not signed in.
-            <span className="shell-menu__note">
-              Accounts and sessions arrive with #33; the full profile menu — identity,
-              font size, theme — with #645.
-            </span>
-          </p>
-          <button
-            type="button"
-            className="shell-menu__item"
-            role="menuitem"
-            tabIndex={-1}
-            aria-disabled="true"
-            title="Workspace settings arrive with #491."
+        <div className="shell-menu__panel">
+          <Identity view={view} />
+
+          {/*
+            The workspace, when there is nowhere to switch to: a fact rather than a control.
+            The design system's honesty rule (§ 3.5) is against drawing a chooser with one
+            choice, and `app/login/enablement-card.tsx` makes the same call on the same
+            grounds — so the name is still said, and nothing pretends to be pressable.
+          */}
+          {view.state === "signed-in" && !view.switchable && view.active !== undefined && (
+            <p className="shell-menu__workspace">
+              {/*
+                The space between them is written rather than left to the block layout: a
+                name is computed from the text, not from the boxes, so without it a screen
+                reader says "Workspaceacme-robotics" and so does every accessible-name test.
+              */}
+              <span className="shell-menu__label">Workspace</span>{" "}
+              <span className="shell-menu__value">{view.active.slug}</span>
+            </p>
+          )}
+
+          <div
+            className="shell-menu__items"
+            id={menuId}
+            role="menu"
+            aria-label="Account"
+            ref={menu}
+            onKeyDown={onKeyDown}
           >
-            Workspace settings
-          </button>
-          <button
-            type="button"
-            className="shell-menu__item"
-            role="menuitem"
-            tabIndex={-1}
-            aria-disabled="true"
-            title="Sign out arrives with sessions (#33)."
-          >
-            Sign out
-          </button>
+            {showSwitcher && (
+              // role="none" so the submenu below is a child of the menu in the accessibility
+              // tree rather than of a generic box, which is the <li role="none"> of the ARIA
+              // menu pattern written with the elements this panel is built from.
+              <div role="none" className="shell-menu__branch">
+                <button
+                  type="button"
+                  className="shell-menu__item shell-menu__item--switch"
+                  role="menuitem"
+                  tabIndex={-1}
+                  ref={switcher}
+                  aria-haspopup="menu"
+                  aria-expanded={switching}
+                  aria-controls={switching ? submenuId : undefined}
+                  onClick={() => setSwitching((was) => !was)}
+                >
+                  {/*
+                    "Switch workspace" rather than "Workspace", so the item's accessible name
+                    says what pressing it does — and so it cannot be confused with the
+                    *Workspace settings* item two rows below, which a reader hears in the
+                    same breath.
+                  */}
+                  <span className="shell-menu__label">Switch workspace</span>{" "}
+                  <span className="shell-menu__value">
+                    {view.active?.slug ?? "none chosen"}
+                  </span>
+                  <span className="shell-menu__marker" aria-hidden>
+                    ▸
+                  </span>
+                </button>
+
+                {switching && (
+                  <div
+                    className="shell-menu__submenu"
+                    id={submenuId}
+                    role="menu"
+                    aria-label="Switch workspace"
+                    ref={submenu}
+                  >
+                    {view.workspaces.map((workspace) => (
+                      <button
+                        type="button"
+                        key={workspace.id}
+                        className="shell-menu__item shell-menu__choice"
+                        role="menuitemradio"
+                        tabIndex={-1}
+                        // The active one included, and checked. A radio group needs the
+                        // chosen option in it to be a group at all, and a list of only the
+                        // others would make "which am I in?" a question the menu stops
+                        // answering the moment it is opened.
+                        aria-checked={workspace.id === view.active?.id}
+                        aria-busy={moving === workspace.id || undefined}
+                        aria-describedby={failure === null ? undefined : failureId}
+                        onClick={() => void choose(workspace)}
+                      >
+                        {workspace.slug}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/*
+              aria-disabled, not disabled: a control removed from the tab order takes its own
+              explanation with it. #491 turns this into a link to /settings.
+            */}
+            <button
+              type="button"
+              className="shell-menu__item"
+              role="menuitem"
+              tabIndex={-1}
+              aria-disabled="true"
+              title="Workspace settings arrive with #491."
+            >
+              Workspace settings
+            </button>
+
+            {/*
+              A form, because signing out is a write only the server can finish — see
+              `app/shell/actions.ts`. role="none" keeps the transport out of the
+              accessibility tree, so the button inside it is the menu's own child.
+            */}
+            <form className="shell-menu__form" role="none" action={signOutOfSession}>
+              <button type="submit" className="shell-menu__item" role="menuitem" tabIndex={-1}>
+                Sign out
+              </button>
+            </form>
+          </div>
+
+          {failure !== null && (
+            // role="alert" because it appears in answer to a press: somebody who has just
+            // chosen a workspace and been given nothing needs to be told, whatever they are
+            // reading the screen with.
+            <p className="shell-menu__failure" id={failureId} role="alert">
+              {failure}
+            </p>
+          )}
         </div>
       )}
+
+      {/*
+        Outside the panel, and always mounted: the menu closes on a successful switch, and a
+        live region that is removed at the moment its text is set announces nothing at all.
+      */}
+      <span className="sr-only" role="status">
+        {announcement}
+      </span>
     </div>
+  );
+}
+
+/**
+ * Who is signed in, above the menu's items.
+ *
+ * Deliberately **outside** the `role="menu"`: a menu's children are menu items, and a
+ * paragraph among them is a paragraph a screen reader in menu mode may skip past. What
+ * carries the same fact into the accessibility tree is the avatar button's own name
+ * (`accountMenuLabel`), which is read before the menu is ever opened.
+ *
+ * @param props.view What the menu draws.
+ * @returns The identity block.
+ */
+function Identity({ view }: Readonly<{ view: AccountView }>) {
+  if (view.state === "pending") {
+    return <p className="shell-menu__identity shell-menu__identity--quiet">Loading your session…</p>;
+  }
+
+  if (view.state === "signed-out") {
+    return <p className="shell-menu__identity shell-menu__identity--quiet">Not signed in.</p>;
+  }
+
+  return (
+    <p className="shell-menu__identity">
+      <span className="shell-menu__who">{view.person.name}</span>
+      <span className="shell-menu__mail">{view.person.email}</span>
+    </p>
+  );
+}
+
+/**
+ * What the avatar button draws: a picture, a monogram, or the generic mark.
+ *
+ * @param props.view What the menu draws.
+ * @returns The face, hidden from assistive technology — the button's `aria-label` is its
+ *   name, and a second reading of the same person would be noise.
+ */
+function Face({ view }: Readonly<{ view: AccountView }>) {
+  /**
+   * Whether the picture failed to load, in which case the monogram takes over.
+   *
+   * A remote image is a third party's uptime, and a broken one in a 30px circle is the
+   * browser's broken-image glyph — which reads as a bug in this product rather than as an
+   * avatar that did not arrive.
+   */
+  const [broken, setBroken] = useState(false);
+
+  if (view.state !== "signed-in") {
+    return <CircleUser size={20} aria-hidden />;
+  }
+
+  const { avatarUrl, name } = view.person;
+
+  if (avatarUrl !== null && !broken) {
+    return (
+      /*
+       * A plain <img>, and the one in this module. `next/image` refuses a remote host that
+       * `next.config.ts` has not listed, and the host here is whichever identity provider
+       * signed this person in — github.com's CDN today, an enterprise IdP's tomorrow
+       * (#722). Enumerating them in the build configuration would make *adding a provider*
+       * a rebuild, and a wildcard would be an image proxy for anyone who can set a URL on a
+       * user record. The picture is 30px and already sized, so the optimiser has nothing to
+       * do for it either way.
+       *
+       * `referrerPolicy` so the address of the page somebody is on is not handed to that
+       * third party with every load.
+       */
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        className="shell-avatar__image"
+        src={avatarUrl}
+        alt=""
+        width={30}
+        height={30}
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+
+  return (
+    <span className="shell-avatar__initials" aria-hidden>
+      {initials(name)}
+    </span>
   );
 }
 
 /**
  * The menu's focusable items, in document order.
  *
- * Read from the DOM rather than held in a ref array so that CP.3 can add, remove or
- * reorder items without touching the keyboard handling above.
+ * Read from the DOM rather than held in a ref array, so that the roving focus follows
+ * whatever is *currently rendered* — which is what makes the submenu's items part of the
+ * same Up/Down walk while it is open, and absent from it the moment it closes, with no list
+ * to keep in step.
  *
- * @param panel The open menu, or null when it is closed.
+ * @param panel The menu or submenu to read, or null when it is closed.
  * @returns The items, or an empty list when there is no menu.
  */
 function items(panel: HTMLElement | null): HTMLElement[] {
-  return Array.from(panel?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+  return Array.from(
+    panel?.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemradio"]') ?? [],
+  );
 }

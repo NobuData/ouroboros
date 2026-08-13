@@ -209,6 +209,28 @@
   border-color: var(--line-strong);
   background: var(--accent-panel);
   color: var(--accent-panel-ink);
+  overflow: hidden;
+}
+
+/*
+ * The signed-in person (#721), in the two treatments `app/api/identity.ts` names: the picture
+ * the identity provider holds, or the monogram that stands in when there is none.
+ *
+ * The picture fills the button rather than sitting inside it, so the hairline and the round
+ * radius the cluster's other controls share are what crops it — one shape for both
+ * treatments, whatever the provider sends.
+ */
+.shell-avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shell-avatar__initials {
+  font-family: var(--f-disp);
+  font-size: var(--t-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tr-wide);
 }
 
 /* A control that cannot act says so, and says why in its accessible name. */
@@ -289,18 +311,52 @@
   background: var(--surface);
 }
 
+/*
+ * Who is signed in. It sits above the menu rather than inside it — a menu's children are menu
+ * items — and `user-menu.tsx` says why that costs nothing: the avatar's accessible name
+ * carries the same fact, and carries it without the menu being opened.
+ */
 .shell-menu__identity {
-  margin: 0 0 var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0 var(--sp-5) var(--sp-4);
+  border-bottom: 1px solid var(--line);
   color: var(--ink);
   font-size: var(--t-sm);
 }
 
-.shell-menu__note {
-  display: block;
-  margin-top: var(--sp-3);
+.shell-menu__identity--quiet {
   color: var(--ink-faint);
+}
+
+.shell-menu__who {
+  font-weight: 600;
+}
+
+/* The address, in the mono face every identifier in this product is set in. */
+.shell-menu__mail {
+  overflow-wrap: anywhere;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
   font-size: var(--t-xs);
-  line-height: var(--lh-body);
+}
+
+/*
+ * The active workspace when there is nowhere to switch to: the same row as the switch item
+ * below, minus everything that would suggest pressing it. Padded to match, so the two states
+ * of this line sit in the same place.
+ */
+.shell-menu__workspace {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.shell-menu__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
 }
 
 .shell-menu__item {
@@ -321,6 +377,130 @@
 .shell-menu__item:hover:not([aria-disabled="true"]) {
   background: var(--accent-wash);
   color: var(--ink);
+}
+
+/* ---------- the workspace switcher ---------- */
+
+/*
+ * The branch is the presentational wrapper the ARIA menu pattern puts a submenu in, so it
+ * must not become a box: `display: contents` keeps the item and its submenu as direct
+ * children of the menu's own column.
+ */
+.shell-menu__branch {
+  display: contents;
+}
+
+/*
+ * The label above the value, with the caret beside both — two rows rather than one, because
+ * "Switch workspace" and a slug side by side do not fit a 16rem panel at the 150% font step
+ * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 4) without one of them being cut in half.
+ */
+.shell-menu__item--switch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 var(--sp-4);
+}
+
+.shell-menu__item--switch .shell-menu__marker {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+/*
+ * The word that says what the value is, in the eyebrow treatment the design system gives
+ * every label of this kind — quiet, because the value beside it is the information.
+ */
+.shell-menu__label {
+  display: block;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.shell-menu__value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mockups' disclosure caret. Decoration: aria-expanded is what says the same thing. */
+.shell-menu__marker {
+  color: var(--ink-faint);
+}
+
+/*
+ * Indented rather than floated beside the menu, which is what keeps a submenu of any length
+ * inside the panel on a 56px-tall header — and inside the viewport on a phone, where a
+ * flyout would open off the right edge.
+ */
+.shell-menu__submenu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-left: var(--sp-5);
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--line);
+}
+
+.shell-menu__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The chosen workspace, in the treatment docs/DESIGN_TOKENS.md reserves for a live thing —
+ * the same accent-on-tint the sidebar's active entry uses, so "where am I" reads the same way
+ * in both places. The dot is drawn rather than written so the row's text stays the slug alone.
+ */
+.shell-menu__choice[aria-checked="true"] {
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+
+.shell-menu__choice::before {
+  content: "";
+  width: var(--sp-3);
+  height: var(--sp-3);
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-round);
+}
+
+.shell-menu__choice[aria-checked="true"]::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* A switch in flight recedes, so a second press has something to be discouraged by. */
+.shell-menu__choice[aria-busy="true"] {
+  color: var(--ink-faint);
+  cursor: progress;
+}
+
+/*
+ * The sign-out form is the transport, not a box — the same rule, and the same one-line
+ * answer, as the login screen's switch form (`app/login/login.css`).
+ */
+.shell-menu__form {
+  display: contents;
+}
+
+.shell-menu__failure {
+  margin: var(--sp-4) 0 0;
+  padding: 0 var(--sp-5);
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
 }
 
 /* ---------- sidebar ---------- */
