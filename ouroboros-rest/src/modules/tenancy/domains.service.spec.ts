@@ -1,42 +1,41 @@
-import type { Tenant, TenantDomain } from "../db/schema";
+import type { TenantDomain } from "../db/schema";
 import { recordingDatabase, type RecordingDatabase } from "../db/database.fixture";
 import type { DomainsRepository } from "./domains.repository";
 import { DomainsService } from "./domains.service";
+import { FIXTURE_ORGANIZATION } from "./organization.fixture";
 import { TENANCY_ERRORS } from "./tenancy.errors";
-import type { TenantsService } from "./tenants.service";
 
 /**
  * The domain rules, and the transaction one of them needs.
  *
- * The interesting assertions here are about *order*: that the tenant is checked before
- * anything is written, that the current primary is demoted before another is promoted, and
- * that both happen inside one transaction. A partial unique index refuses the intermediate
- * state, so getting the order wrong is not a subtle bug — but getting the transaction wrong
- * is, because it only shows up when two requests arrive together.
+ * The interesting assertions here are about *order*: that the current primary is demoted
+ * before another is promoted, and that both happen inside one transaction. A partial unique
+ * index refuses the intermediate state, so getting the order wrong is not a subtle bug — but
+ * getting the transaction wrong is, because it only shows up when two requests arrive
+ * together.
+ *
+ * **The workspace is no longer checked here**, and one of the tests below is about the
+ * absence. Every route under `/api/v1/orgs/{orgId}` is resolved by the tenant guard before a
+ * handler runs, so a service that checked again would be a second place the `404`-not-`403`
+ * rule lives — the thing #32 asked for it to stop being, and what
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) finished by deleting
+ * `TenantsService`.
  */
 
-const TENANT: Tenant = {
-  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  slug: "acme",
-  display_name: "Acme, Inc.",
-  status: "active",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+const WORKSPACE = FIXTURE_ORGANIZATION.id;
 
 const ROW: TenantDomain = {
   id: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
-  tenant_id: TENANT.id,
   domain: "acme.example",
   is_primary: true,
   created_at: new Date("2026-08-11T10:20:23.114Z"),
   updated_at: new Date("2026-08-11T10:20:23.114Z"),
+  organization_id: WORKSPACE,
 };
 
 describe("the domains service", () => {
   let database: RecordingDatabase;
   let repository: jest.Mocked<DomainsRepository>;
-  let tenants: jest.Mocked<TenantsService>;
   let domains: DomainsService;
   /** What was called, in order, so the ordering assertions read as one list. */
   let order: string[];
@@ -64,19 +63,12 @@ describe("the domains service", () => {
       remove: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<DomainsRepository>;
 
-    tenants = {
-      require: jest.fn(() => {
-        order.push("requireTenant");
-        return Promise.resolve(TENANT);
-      }),
-    } as unknown as jest.Mocked<TenantsService>;
-
-    domains = new DomainsService(repository, tenants, database.service);
+    domains = new DomainsService(repository, database.service);
   });
 
   describe("listing", () => {
     it("answers a page of resources", async () => {
-      expect(await domains.list(TENANT.id, {})).toEqual({
+      expect(await domains.list(WORKSPACE, {})).toEqual({
         items: [expect.objectContaining({ domain: "acme.example", isPrimary: true })],
         total: 1,
         limit: 25,
@@ -84,22 +76,21 @@ describe("the domains service", () => {
       });
     });
 
-    it("answers 404 about the tenant rather than an empty list", async () => {
-      // A request for the domains of a tenant that does not exist is a question about the
-      // tenant, and `[]` would be an answer to a different one.
-      tenants.require.mockRejectedValue(new Error("404"));
+    it("names the workspace on the resource it returns", async () => {
+      // `orgId`, not `tenantId`: the column is `organization_id` and the path parameter is
+      // `{orgId}`, so the field a client reads is the one it would send back.
+      const page = await domains.list(WORKSPACE, {});
 
-      await expect(domains.list(TENANT.id, {})).rejects.toThrow();
-      expect(repository.list).not.toHaveBeenCalled();
+      expect(page.items[0].orgId).toBe(WORKSPACE);
     });
   });
 
   describe("adding", () => {
     it("defaults to not primary, as the schema does", async () => {
-      await domains.add(TENANT.id, { domain: "acme.example" });
+      await domains.add(WORKSPACE, { domain: "acme.example" });
 
       expect(repository.create).toHaveBeenCalledWith(
-        TENANT.id,
+        WORKSPACE,
         "acme.example",
         false,
         expect.anything(),
@@ -108,15 +99,13 @@ describe("the domains service", () => {
     });
 
     it("demotes the current primary before promoting the new one", async () => {
-      await domains.add(TENANT.id, { domain: "acme.example", isPrimary: true });
+      await domains.add(WORKSPACE, { domain: "acme.example", isPrimary: true });
 
-      expect(order).toEqual(["requireTenant", "clearPrimary", "create"]);
+      expect(order).toEqual(["clearPrimary", "create"]);
     });
 
     it("does all of it in one transaction", async () => {
-      // Including the tenant check: a tenant deleted mid-request must not be able to leave a
-      // domain behind.
-      await domains.add(TENANT.id, { domain: "acme.example", isPrimary: true });
+      await domains.add(WORKSPACE, { domain: "acme.example", isPrimary: true });
 
       expect(database.sql()).toEqual(["begin", "commit"]);
     });
@@ -124,38 +113,38 @@ describe("the domains service", () => {
     it("rolls back when the write fails", async () => {
       repository.create.mockRejectedValue(new Error("duplicate"));
 
-      await expect(domains.add(TENANT.id, { domain: "acme.example" })).rejects.toThrow();
+      await expect(domains.add(WORKSPACE, { domain: "acme.example" })).rejects.toThrow();
       expect(database.sql()).toEqual(["begin", "rollback"]);
     });
   });
 
   describe("setting the primary", () => {
-    it("checks the domain belongs to this tenant", async () => {
-      await domains.setPrimary(TENANT.id, ROW.id, { isPrimary: true });
+    it("checks the domain belongs to this workspace", async () => {
+      await domains.setPrimary(WORKSPACE, ROW.id, { isPrimary: true });
 
-      expect(repository.find).toHaveBeenCalledWith(TENANT.id, ROW.id, expect.anything());
+      expect(repository.find).toHaveBeenCalledWith(WORKSPACE, ROW.id, expect.anything());
     });
 
-    it("answers 404 for a domain of another tenant", async () => {
+    it("answers 404 for a domain of another workspace", async () => {
       // The same answer as one that does not exist — anything else confirms to whoever asked
       // that the identifier is real.
       repository.find.mockResolvedValue(undefined);
 
       await expect(
-        domains.setPrimary(TENANT.id, ROW.id, { isPrimary: true }),
+        domains.setPrimary(WORKSPACE, ROW.id, { isPrimary: true }),
       ).rejects.toMatchObject({ response: { code: TENANCY_ERRORS.domainNotFound } });
     });
 
     it("demotes the incumbent first", async () => {
-      await domains.setPrimary(TENANT.id, ROW.id, { isPrimary: true });
+      await domains.setPrimary(WORKSPACE, ROW.id, { isPrimary: true });
 
-      expect(order).toEqual(["requireTenant", "clearPrimary", "setPrimary"]);
+      expect(order).toEqual(["clearPrimary", "setPrimary"]);
     });
 
     it("demotes without promoting anything when asked to clear", async () => {
-      // A tenant with no primary at all is legal, and refusing would make "replace the domain
-      // we display" an operation with no order that works.
-      await domains.setPrimary(TENANT.id, ROW.id, { isPrimary: false });
+      // A workspace with no primary at all is legal, and refusing would make "replace the
+      // domain we display" an operation with no order that works.
+      await domains.setPrimary(WORKSPACE, ROW.id, { isPrimary: false });
 
       expect(repository.clearPrimary).not.toHaveBeenCalled();
       expect(repository.setPrimary).toHaveBeenCalledWith(ROW.id, false, expect.anything());
@@ -165,29 +154,42 @@ describe("the domains service", () => {
       repository.setPrimary.mockResolvedValue(undefined);
 
       await expect(
-        domains.setPrimary(TENANT.id, ROW.id, { isPrimary: true }),
+        domains.setPrimary(WORKSPACE, ROW.id, { isPrimary: true }),
       ).rejects.toMatchObject({ response: { code: TENANCY_ERRORS.domainNotFound } });
     });
   });
 
   describe("removing", () => {
-    it("checks the tenant, then removes within it", async () => {
-      await domains.remove(TENANT.id, ROW.id);
+    it("removes within the workspace", async () => {
+      await domains.remove(WORKSPACE, ROW.id);
 
-      expect(tenants.require).toHaveBeenCalledWith(TENANT.id);
-      expect(repository.remove).toHaveBeenCalledWith(TENANT.id, ROW.id);
+      expect(repository.remove).toHaveBeenCalledWith(WORKSPACE, ROW.id);
     });
 
     it("answers 404 when nothing was removed", async () => {
       repository.remove.mockResolvedValue(false);
 
-      await expect(domains.remove(TENANT.id, ROW.id)).rejects.toMatchObject({
+      await expect(domains.remove(WORKSPACE, ROW.id)).rejects.toMatchObject({
         response: { code: TENANCY_ERRORS.domainNotFound },
       });
     });
 
     it("answers nothing at all when it worked", async () => {
-      await expect(domains.remove(TENANT.id, ROW.id)).resolves.toBeUndefined();
+      await expect(domains.remove(WORKSPACE, ROW.id)).resolves.toBeUndefined();
+    });
+  });
+
+  describe("what it no longer does", () => {
+    it("issues one statement per operation, with no workspace lookup in front of it", async () => {
+      // The deletion, asserted. `TenantsService.require` used to run before every one of these
+      // — a `select` against `tenants` on every domain request — and the guard has already
+      // answered the same `404` by the time a handler is reached. A service that re-checked
+      // would be paying for a round trip *and* giving the rule a second home.
+      await domains.list(WORKSPACE, {});
+
+      expect(repository.list).toHaveBeenCalledTimes(1);
+      expect(repository.count).toHaveBeenCalledTimes(1);
+      expect(database.sql()).toEqual([]);
     });
   });
 });

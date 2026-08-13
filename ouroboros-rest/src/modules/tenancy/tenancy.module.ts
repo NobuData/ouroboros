@@ -6,35 +6,45 @@ import { ConstraintViolationInterceptor } from "./constraints";
 import { DomainsController } from "./domains.controller";
 import { DomainsRepository } from "./domains.repository";
 import { DomainsService } from "./domains.service";
-import { MembersController } from "./members.controller";
-import { MembersRepository } from "./members.repository";
-import { MembersService } from "./members.service";
+import { EnablementRepository } from "./enablement.repository";
+import { GithubOrgsController } from "./github-orgs.controller";
+import { GithubOrgsService } from "./github-orgs.service";
 import { OrganizationRepository } from "./organization.repository";
 import { OrgsController } from "./orgs.controller";
+import { OrgsService } from "./orgs.service";
+import { ReposController } from "./repos.controller";
+import { ReposService } from "./repos.service";
 import { RolesGuard } from "./roles.guard";
 import { TenantContextGuard } from "./tenant.guard";
 import { TenantContextMiddleware } from "./tenant.middleware";
 import { TenantResolver } from "./tenant.resolver";
-import { OrgsRepository } from "./orgs.repository";
-import { OrgsService } from "./orgs.service";
-import { ReposController } from "./repos.controller";
-import { ReposService } from "./repos.service";
-import { TenantsController } from "./tenants.controller";
-import { TenantsRepository } from "./tenants.repository";
-import { TenantsService } from "./tenants.service";
 
 /**
- * Tenancy — tenants, their domains, their members, and the GitHub organisations and
- * repositories they have turned on ([#31](https://github.com/NobuData/ouroboros/issues/31)).
+ * Tenancy — the workspaces a person belongs to, their domains, and the GitHub organisations
+ * and repositories they have turned on.
  *
- * The first feature module in this service, and the shape the ones after it follow. Three
- * layers, each with one job:
+ * [#31](https://github.com/NobuData/ouroboros/issues/31) shipped this module against V001's
+ * `tenants`/`tenant_members`; [#714](https://github.com/NobuData/ouroboros/issues/714) rewrote
+ * it against the organization plugin's tables after
+ * [#708](https://github.com/NobuData/ouroboros/issues/708) dropped the originals. Three layers
+ * survive that rewrite unchanged, each with one job:
  *
  * ```
- * controller  route, request shape, nothing else   → tenants.controller.ts …
- * service     the rules, and the transactions      → tenants.service.ts …
- * repository  the statements, and nothing else     → tenants.repository.ts …
+ * controller  route, request shape, nothing else   → orgs.controller.ts …
+ * service     the rules, and the transactions      → orgs.service.ts …
+ * repository  the statements, and nothing else     → organization.repository.ts …
  * ```
+ *
+ * **What this module is not, and the deletion is the point.** Creating a workspace, renaming
+ * one, listing its members, inviting somebody, changing a role and revoking one are all served
+ * by BetterAuth's organization plugin ([#704](https://github.com/NobuData/ouroboros/issues/704))
+ * at `/api/auth/organization/*`. #714 deleted this module's versions — `TenantsController`,
+ * `MembersController` and everything under them — rather than re-pointing them at the new
+ * tables, because two write paths to `member` are two role checks that can drift apart. What
+ * is left is what only this service has: the domains that resolve a workspace at sign-in, the
+ * enablement flags that bound where an autonomous agent may operate, and the one read the
+ * plugin cannot answer — `GET /api/v1/orgs`, a workspace *with* its counts and the caller's
+ * role in it, which is mockup 01 Step 2's row model in a single request.
  *
  * **It imports `DbModule` rather than assuming it.** That import is the answer to "who can
  * reach the tenancy schema" — [#30](https://github.com/NobuData/ouroboros/issues/30) left
@@ -42,59 +52,48 @@ import { TenantsService } from "./tenants.service";
  * where its `DatabaseService` is injected. Configuration needs no import: that module *is*
  * global, because every module reads configuration.
  *
- * **Five controllers, four services, three repositories.** The counts differ because the
- * seams are in different places at each layer: repositories are per *table group* —
- * `OrgsRepository` owns both GitHub tables, because a repository row is only reachable
- * through its organisation — while controllers are per *path*, because
- * `…/orgs/{login}/repos` and `…/orgs` take different parameters and a class cannot have two
- * shapes of them.
+ * **Four controllers, four services, three repositories.** The counts differ because the seams
+ * are in different places at each layer: repositories are per *table group* —
+ * `EnablementRepository` owns both GitHub tables, because a repository row is only reachable
+ * through its organisation, and `OrganizationRepository` owns the library's two — while
+ * controllers are per *path*, because `…/github-orgs/{login}/repos` and `…/github-orgs` take
+ * different parameters and a class cannot have two shapes of them.
  *
- * **These routes are authenticated, and this module says nothing about it.** The session
- * guard [#33](https://github.com/NobuData/ouroboros/issues/33) registers is global — an
- * `APP_GUARD` provider in `AuthModule` — so every controller here requires a session
- * without importing anything, and a controller added later is protected because somebody
- * wrote a controller. What is not enforced yet is *authorization*: the role a mutation
- * needs, and the `404`-not-`403` rule for a tenant the caller cannot see, both of which are
- * [#32](https://github.com/NobuData/ouroboros/issues/32)'s `RolesGuard` and tenant context.
- * Everything that does not need to know who is asking is enforced today: the shapes, the
- * last-owner rule, and every constraint the migrations declare.
+ * **These routes are authenticated, and this module says nothing about it.** The session guard
+ * [#703](https://github.com/NobuData/ouroboros/issues/703) registers is global — an
+ * `APP_GUARD` provider in `BetterAuthModule` — so every controller here requires a session
+ * without importing anything, and a controller added later is protected because somebody wrote
+ * a controller. Authorization is the two guards below: `TenantContextGuard` resolves the
+ * workspace and refuses a caller who is not a member (`404`, never `403` — see
+ * `tenant.resolver.ts`), and `RolesGuard` refuses a member whose role is too low (`403`, the
+ * one place this API answers it).
  */
 @Module({
   imports: [DbModule],
-  controllers: [
-    TenantsController,
-    DomainsController,
-    MembersController,
-    OrgsController,
-    ReposController,
-  ],
+  controllers: [OrgsController, DomainsController, GithubOrgsController, ReposController],
   providers: [
     ConstraintViolationInterceptor,
     TenantResolver,
-    // Order matters, and it is the order of this list: the tenant has to be resolved before
-    // a role in it can be checked, and Nest runs global guards in the order they are
+    // Order matters, and it is the order of this list: the workspace has to be resolved
+    // before a role in it can be checked, and Nest runs global guards in the order they are
     // registered. `tenancy.module.spec.ts` asserts the consequence rather than the order.
     { provide: APP_GUARD, useClass: TenantContextGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
-    TenantsRepository,
-    DomainsRepository,
-    MembersRepository,
-    // The one repository the tenant context reads through — `organization` and `member`, the
-    // tables #708 moved tenancy into. The three above it still name the tables #708 dropped;
-    // reconciling them is #714's, which is the issue that rewrites their callers.
+    // `organization` and `member` — the library's tables, read-only here, and what both the
+    // tenant context and `GET /api/v1/orgs` are built on.
     OrganizationRepository,
-    OrgsRepository,
-    TenantsService,
-    DomainsService,
-    MembersService,
+    DomainsRepository,
+    // `github_orgs` and `github_repos` — V003's enablement pair, re-parented by V006.
+    EnablementRepository,
     OrgsService,
+    DomainsService,
+    GithubOrgsService,
     ReposService,
   ],
-  // `TenantsService` is what [#32](https://github.com/NobuData/ouroboros/issues/32) will
-  // resolve a request's tenant through, and #33 what it will read memberships from. Exported
-  // for that, and only that: nothing else in this service should be reaching past a
-  // controller into these rules.
-  exports: [TenantsService, MembersService],
+  // Nothing is exported. `TenantsService` and `MembersService` were, for a
+  // [#32](https://github.com/NobuData/ouroboros/issues/32) that has since been answered by the
+  // guards above and for a `/auth/me` #711 deleted — so both exports had no importer left, and
+  // an export nothing imports is an invitation to reach past a controller into these rules.
 })
 export class TenancyModule implements NestModule {
   /**

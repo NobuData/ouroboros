@@ -24,9 +24,10 @@
  * **Ambient context is a loaded gun, and this one is loaded deliberately.** A service that
  * reads `currentTenant()` has a dependency the compiler cannot see and a test has to
  * remember. So the rule in this module is narrow: repositories and services take their
- * `tenantId` as a parameter, exactly as they did before this file existed, and the ambient
+ * workspace id as a parameter, exactly as they did before this file existed, and the ambient
  * form exists for the two cases where threading a parameter is the *problem* rather than
- * the solution — the caller-scoped tenant listing (`tenants.service.ts`), and the
+ * the solution — the caller-scoped workspace listing (`orgs.service.ts`, the one route with
+ * no workspace in its path, because its whole answer is *which* workspaces are yours), and the
  * `set_config('ouroboros.tenant_id', …)` that [#25](https://github.com/NobuData/ouroboros/issues/25)
  * will set on a connection nothing in the call chain is holding.
  *
@@ -39,7 +40,8 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { Organization, OrganizationRole, User } from "../db/schema";
+import type { SessionUser } from "../auth/principal";
+import type { Organization, OrganizationRole } from "../db/schema";
 
 /**
  * The membership that authorized this request.
@@ -73,8 +75,15 @@ export interface ActiveMembership {
 
 /** Everything one request knows about who it is and where. */
 export interface TenantContextStore {
-  /** The signed-in person, from the session guard. */
-  user?: User;
+  /**
+   * The signed-in person, from the session guard.
+   *
+   * BetterAuth's own `SessionUser` since
+   * [#714](https://github.com/NobuData/ouroboros/issues/714). It was a row of
+   * `ouroboros.users` until then, adapted by a function in `auth/principal.ts`; V006 dropped
+   * that table, so what the guard already holds is what this carries.
+   */
+  user?: SessionUser;
   /** The tenant this request is operating in, and the role that lets it. */
   membership?: ActiveMembership;
 }
@@ -152,6 +161,6 @@ export function currentMembership(): ActiveMembership | undefined {
  *
  * @returns The user, or `undefined` on an `@AllowAnonymous()` route.
  */
-export function currentUser(): User | undefined {
+export function currentUser(): SessionUser | undefined {
   return tenantContext()?.user;
 }

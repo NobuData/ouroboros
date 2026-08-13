@@ -16,19 +16,16 @@ import { ConstraintViolationInterceptor } from "./constraints";
 import { DomainsController } from "./domains.controller";
 import { DomainsRepository } from "./domains.repository";
 import { DomainsService } from "./domains.service";
-import { MembersController } from "./members.controller";
-import { MembersRepository } from "./members.repository";
-import { MembersService } from "./members.service";
+import { EnablementRepository } from "./enablement.repository";
+import { GithubOrgsController } from "./github-orgs.controller";
+import { GithubOrgsService } from "./github-orgs.service";
+import { OrganizationRepository } from "./organization.repository";
 import { OrgsController } from "./orgs.controller";
-import { OrgsRepository } from "./orgs.repository";
 import { OrgsService } from "./orgs.service";
 import { ReposController } from "./repos.controller";
 import { ReposService } from "./repos.service";
 import { TenancyModule } from "./tenancy.module";
 import { TenantResolver } from "./tenant.resolver";
-import { TenantsController } from "./tenants.controller";
-import { TenantsRepository } from "./tenants.repository";
-import { TenantsService } from "./tenants.service";
 
 /**
  * The wiring — which is the one thing about a Nest module that can be wrong at run time and
@@ -47,23 +44,20 @@ import { TenantsService } from "./tenants.service";
 /** The providers that must resolve, and what each one is. */
 const PROVIDERS = [
   TenantResolver,
-  TenantsRepository,
+  OrganizationRepository,
   DomainsRepository,
-  MembersRepository,
-  OrgsRepository,
-  TenantsService,
-  DomainsService,
-  MembersService,
+  EnablementRepository,
   OrgsService,
+  DomainsService,
+  GithubOrgsService,
   ReposService,
 ] as const;
 
 /** Every controller the module publishes. */
 const CONTROLLERS = [
-  TenantsController,
-  DomainsController,
-  MembersController,
   OrgsController,
+  DomainsController,
+  GithubOrgsController,
   ReposController,
 ] as const;
 
@@ -123,17 +117,18 @@ describe("the tenancy module", () => {
     expect(interceptors).toContain(ConstraintViolationInterceptor);
   });
 
-  it("exports only what the modules after it need", async () => {
-    // `TenantsService` is what the tenant context resolves through and `MembersService` what
-    // it reads memberships from. Everything else stays inside: nothing outside a controller
-    // should be reaching into these rules.
-    const moduleRef = await Test.createTestingModule({
-      imports: [ConfigurationModule.forRoot(testConfiguration()), TenancyModule],
-    }).compile();
+  it("exports nothing at all", async () => {
+    // It exported `TenantsService` and `MembersService` until
+    // [#714](https://github.com/NobuData/ouroboros/issues/714) deleted both. Nothing imports
+    // this module, and an export nothing imports is an invitation to reach past a controller
+    // into these rules — so the empty list is the assertion.
+    const moduleRef = await compile();
 
-    const consumer = moduleRef.select(TenancyModule);
-    expect(consumer.get(TenantsService)).toBeInstanceOf(TenantsService);
-    expect(consumer.get(MembersService)).toBeInstanceOf(MembersService);
+    // `Reflect` rather than a Nest API, because Nest offers no way to ask a compiled module
+    // what it exported: the decorator's own metadata is the only honest source.
+    const exported: unknown = Reflect.getMetadata("exports", TenancyModule);
+
+    expect(exported ?? []).toEqual([]);
 
     await moduleRef.close();
   });
@@ -161,7 +156,7 @@ describe("the guards this module registers", () => {
     // and the consequence is what matters: an unauthenticated caller must not reach a
     // database query at all.
     const response = await request(server()).get(
-      "/api/v1/tenants/9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
+      "/api/v1/orgs/9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10/domains",
     );
 
     expect(response.status).toBe(401);
@@ -170,8 +165,8 @@ describe("the guards this module registers", () => {
 
   it("refuses an unauthenticated mutation before the role guard could ask about a role", async () => {
     const response = await request(server())
-      .patch("/api/v1/tenants/9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10")
-      .send({ displayName: "Mine Now" });
+      .patch("/api/v1/orgs/9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10/github-orgs/nobudata")
+      .send({ enabled: true });
 
     expect(response.status).toBe(401);
   });

@@ -20,12 +20,7 @@ import { Injectable, type CanActivate, type ExecutionContext } from "@nestjs/com
 import { Reflector } from "@nestjs/core";
 
 import { isAnonymous } from "../auth/anonymous";
-import {
-  activeOrganizationOf,
-  principalOf,
-  userRow,
-  type PrincipalRequest,
-} from "../auth/principal";
+import { activeOrganizationOf, principalOf, type PrincipalRequest } from "../auth/principal";
 import { setTenantContext } from "./tenant.context";
 import { TENANT_OPTIONAL } from "./tenant.decorators";
 import {
@@ -39,7 +34,7 @@ import {
  * The part of a request this guard reads.
  *
  * `params` is populated by the router before any guard runs, which is what makes the
- * `{tenantId}` in a path available here rather than only in a handler.
+ * `{orgId}` in a path available here rather than only in a handler.
  */
 export interface TenantRequest extends PrincipalRequest {
   headers?: TenantHeaders & { cookie?: string };
@@ -87,10 +82,10 @@ export class TenantContextGuard implements CanActivate {
     }
 
     // The person goes into the store even on a route that needs no tenant: `currentUser()`
-    // is what scopes the tenant listing, and that listing is exactly a `@TenantOptional()`
-    // route. `userRow` is the one place the library's session user becomes the `users`
-    // shape this module was written against — see `principal.ts`.
-    const user = userRow(principal.user);
+    // is what scopes the workspace listing, and that listing is exactly a `@TenantOptional()`
+    // route. The session's user goes in unchanged — it was adapted into a `users` row until
+    // [#714](https://github.com/NobuData/ouroboros/issues/714), and V006 dropped that table.
+    const user = principal.user;
 
     setTenantContext({ user });
 
@@ -98,11 +93,11 @@ export class TenantContextGuard implements CanActivate {
       return true;
     }
 
-    // A `{tenantId}` that is not a uuid is a malformed request, not a workspace nobody can
+    // An `{orgId}` that is not a uuid is a malformed request, not a workspace nobody can
     // see, and the validation pipe owns that complaint — it is what produces the
-    // `details.tenantId` a form renders. Resolving here first would answer with whichever
+    // `details.orgId` a form renders. Resolving here first would answer with whichever
     // check ran first, and which one that is would depend on how many workspaces the caller
-    // belongs to. The handler is unreachable either way: every route with a `{tenantId}`
+    // belongs to. The handler is unreachable either way: every route with an `{orgId}`
     // validates it.
     if (pathTenantIsMalformed(request.params)) {
       return true;

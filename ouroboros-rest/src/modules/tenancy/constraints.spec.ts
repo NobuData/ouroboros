@@ -52,12 +52,9 @@ describe("recognising a database failure", () => {
 
 describe("a unique violation", () => {
   it.each([
-    ["tenants_slug_key", TENANCY_ERRORS.slugTaken],
     ["tenant_domains_domain_key", TENANCY_ERRORS.domainTaken],
-    ["tenant_members_pkey", TENANCY_ERRORS.memberExists],
-    ["github_orgs_tenant_login_key", TENANCY_ERRORS.orgTaken],
-    ["tenant_domains_one_primary_per_tenant", TENANCY_ERRORS.conflict],
-    ["users_email_key", TENANCY_ERRORS.conflict],
+    ["github_orgs_org_login_key", TENANCY_ERRORS.orgTaken],
+    ["tenant_domains_one_primary_per_organization", TENANCY_ERRORS.conflict],
     ["github_repos_org_name_key", TENANCY_ERRORS.conflict],
   ])("maps %s to a 409 with code %s", (constraint, code) => {
     const error = constraintError(failure(UNIQUE_VIOLATION, constraint));
@@ -72,9 +69,23 @@ describe("a unique violation", () => {
 
     expect(error?.envelope()).toEqual({
       code: "domain_taken",
-      message: "That domain belongs to another tenant.",
+      message: "That domain belongs to another workspace.",
       details: {},
     });
+  });
+
+  it("names the constraint V006 renamed, and not the one it replaced", () => {
+    // The half of #714 that is silent when it is wrong. V006 re-pointed `github_orgs` onto
+    // `organization_id`, which replaced `github_orgs_tenant_login_key` with
+    // `github_orgs_org_login_key` — a map still keyed on the old name would never fire, so
+    // `POST …/github-orgs` with a login the workspace already has would answer a generic
+    // `conflict` where the screen needs `org_taken`.
+    expect(
+      constraintError(failure(UNIQUE_VIOLATION, "github_orgs_tenant_login_key"))?.envelope().code,
+    ).toBe(TENANCY_ERRORS.conflict);
+    expect(
+      constraintError(failure(UNIQUE_VIOLATION, "github_orgs_org_login_key"))?.envelope().code,
+    ).toBe(TENANCY_ERRORS.orgTaken);
   });
 
   it("still answers 409 for a constraint nobody has named", () => {
@@ -97,9 +108,8 @@ describe("a unique violation", () => {
 
 describe("a foreign key violation", () => {
   it.each([
-    ["tenant_domains_tenant_id_fkey", TENANCY_ERRORS.tenantNotFound],
-    ["tenant_members_tenant_id_fkey", TENANCY_ERRORS.tenantNotFound],
-    ["github_orgs_tenant_id_fkey", TENANCY_ERRORS.tenantNotFound],
+    ["tenant_domains_organization_id_fkey", TENANCY_ERRORS.tenantNotFound],
+    ["github_orgs_organization_id_fkey", TENANCY_ERRORS.tenantNotFound],
     ["github_repos_org_id_fkey", TENANCY_ERRORS.orgNotFound],
   ])("maps %s to the 404 the check itself would have given", (constraint, code) => {
     // The parent went away between the check and the write. Answering 404 rather than 409

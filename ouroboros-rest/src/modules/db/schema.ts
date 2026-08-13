@@ -25,12 +25,11 @@
  *     with a check constraint rather than a PostgreSQL enum, so that adding a value later
  *     is an ordinary migration. The union here is what gives the same value a compile-time
  *     meaning; widening it is the migration's counterpart in this file.
- *   * **What the database fills in, application code may not overwrite.** `created_at`,
- *     `updated_at` and `invited_at` are {@link Stamped}: readable, optional on insert, and
- *     absent from the update type — because `ouroboros.touch_updated_at()` sets
- *     `updated_at` from the server clock on every update and ignores whatever the
- *     statement supplied. A type that let someone write it would promise something the
- *     trigger then quietly discards.
+ *   * **What the database fills in, application code may not overwrite.** `created_at` and
+ *     `updated_at` are {@link Stamped}: readable, optional on insert, and absent from the
+ *     update type — because `ouroboros.touch_updated_at()` sets `updated_at` from the
+ *     server clock on every update and ignores whatever the statement supplied. A type that
+ *     let someone write it would promise something the trigger then quietly discards.
  *
  * Regenerating this by hand is deliberate. The issue permits either hand-maintenance or
  * `kysely-codegen` against the development database; hand-maintained wins here because
@@ -40,7 +39,7 @@
  * to remember to run.
  */
 
-import type { ColumnType, Generated, Insertable, Selectable, Updateable } from "kysely";
+import type { ColumnType, Generated, Insertable, Selectable } from "kysely";
 
 /**
  * The PostgreSQL schema every table below lives in.
@@ -80,15 +79,6 @@ export type Stamped = ColumnType<Date, Date | undefined, never>;
  */
 export const LIBRARY_OWNED_TABLES = ["organization", "member"] as const;
 
-/** `tenants.status` — the values `tenants_status_valid` admits (V001). */
-export type TenantStatus = "active" | "suspended" | "deleted";
-
-/** `tenant_members.role` — the values `tenant_members_role_valid` admits (V002). */
-export type TenantRole = "owner" | "admin" | "member" | "viewer";
-
-/** `user_identities.provider` — the values `user_identities_provider_valid` admits (V002). */
-export type IdentityProvider = "github";
-
 /**
  * `member.role` — what a person may do in one organization (V005).
  *
@@ -107,97 +97,30 @@ export type IdentityProvider = "github";
 export type OrganizationRole = "owner" | "admin" | "member" | "viewer";
 
 /**
- * `ouroboros.tenants` — an isolated customer workspace (V001).
- *
- * The root of the schema: everything else is reachable from a row here by following
- * foreign keys, and every one of those keys cascades.
- */
-export interface TenantsTable {
-  /** Surrogate key, `gen_random_uuid()`. Every foreign key in the schema points here. */
-  id: Generated<string>;
-  /** URL- and CLI-safe handle, unique across the installation. DNS-label shaped. */
-  slug: string;
-  /** What a human reads. Free text; non-blank. */
-  display_name: string;
-  /** Lifecycle. `deleted` is a soft-delete marker, not a hard removal. */
-  status: Generated<TenantStatus>;
-  created_at: Stamped;
-  updated_at: Stamped;
-}
-
-/**
- * `ouroboros.tenant_domains` — the email domains that resolve a tenant at sign-in (V001).
+ * `ouroboros.tenant_domains` — the email domains that resolve a workspace at sign-in (V001,
+ * re-parented by V006).
  *
  * Stored lower-cased and globally unique, so a lookup is `where domain = lower($1)` and
- * one domain names exactly one tenant.
+ * one domain names exactly one workspace. `tenant_domains_domain_key` is the index #712's
+ * discovery route reads, and V006 preserved it untouched.
  */
 export interface TenantDomainsTable {
   id: Generated<string>;
-  /** Owning tenant. `on delete cascade`. */
-  tenant_id: string;
   /** Lower-cased domain, unique across the whole table. */
   domain: string;
-  /** The domain displayed back to the user. At most one per tenant; zero is legal. */
+  /** The domain displayed back to the user. At most one per workspace; zero is legal. */
   is_primary: Generated<boolean>;
   created_at: Stamped;
   updated_at: Stamped;
-}
-
-/**
- * `ouroboros.users` — a person (V002).
- *
- * Global rather than tenant-scoped, so one human can hold roles in several tenants.
- */
-export interface UsersTable {
-  id: Generated<string>;
-  /** Lower-cased, unique. How a person is recognised — not how they authenticate. */
-  email: string;
-  /** What the member list prints beside the avatar. Non-blank. */
-  display_name: string;
-  /** `http(s)` URL, or null when none is known. */
-  avatar_url: string | null;
-  created_at: Stamped;
-  updated_at: Stamped;
-}
-
-/**
- * `ouroboros.user_identities` — an external account a person has proved control of (V002).
- *
- * **Records which account only.** No token, secret or credential is stored here, and none
- * may be added: `ouroboros-db/tests/constraints.sql` reads `information_schema` and fails
- * if a column whose name looks like a credential ever appears on this table.
- */
-export interface UserIdentitiesTable {
-  id: Generated<string>;
-  /** The person this identity belongs to. `on delete cascade`. */
-  user_id: string;
-  /** Which external system issued it. */
-  provider: IdentityProvider;
-  /** The provider's immutable id — GitHub's numeric user id, not the renameable login. */
-  external_id: string;
-  created_at: Stamped;
-  updated_at: Stamped;
-}
-
-/**
- * `ouroboros.tenant_members` — a person's role in one tenant (V002).
- *
- * Keyed on the `(tenant_id, user_id)` pair rather than a surrogate id, which is what makes
- * "a user cannot join a tenant twice" true by construction. There is deliberately no
- * `created_at`: `invited_at` is when the row came into being.
- */
-export interface TenantMembersTable {
-  /** Half of the primary key. `on delete cascade`. */
-  tenant_id: string;
-  /** The other half. `on delete cascade`. */
-  user_id: string;
-  /** What this person may do in this tenant. No default — a caller must decide. */
-  role: TenantRole;
-  /** When the invitation was issued; also the row's creation time. */
-  invited_at: Stamped;
-  /** When it was accepted, or null while the invitation is outstanding. */
-  joined_at: Date | null;
-  updated_at: Stamped;
+  /**
+   * Owning organization — `organization."id"`, as text. `on delete cascade`.
+   *
+   * Was `tenant_id` until [#708](https://github.com/NobuData/ouroboros/issues/708). It is
+   * *last* here rather than second because that is where V006's `alter table … add column`
+   * put it, and this file's own rule is that the order is the migration's — so a diff of the
+   * interface against the DDL still reads top to bottom.
+   */
+  organization_id: string;
 }
 
 /**
@@ -266,16 +189,19 @@ export interface MemberTable {
 }
 
 /**
- * `ouroboros.github_orgs` — GitHub organisations a tenant has enabled (V003).
+ * `ouroboros.github_orgs` — GitHub organisations a workspace has enabled (V003, re-parented
+ * by V006).
  *
  * With {@link GithubReposTable}, the boundary of where Ouroboros may operate: a repo is in
  * scope only when its own `enabled` and its org's are **both** true.
+ *
+ * **Not to be confused with {@link OrganizationTable}.** These are *GitHub's* organisations;
+ * that one is the workspace they are enabled in. The API keeps the two apart in its paths —
+ * `/api/v1/orgs/{orgId}/github-orgs/{login}` — and this file keeps them apart by name.
  */
 export interface GithubOrgsTable {
   id: Generated<string>;
-  /** Owning tenant — enablement is per tenant, not global. `on delete cascade`. */
-  tenant_id: string;
-  /** Lower-cased GitHub org login, unique within the tenant. */
+  /** Lower-cased GitHub org login, unique within the workspace. */
   login: string;
   /** Deliberate opt-in; defaults false, so anything created by a future flow is off. */
   enabled: Generated<boolean>;
@@ -283,13 +209,22 @@ export interface GithubOrgsTable {
   installed_at: Date | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * Owning organization — enablement is per workspace, not global. `on delete cascade`.
+   *
+   * Was `tenant_id` until #708, and last for the reason
+   * {@link TenantDomainsTable.organization_id} gives. `github_orgs_org_login_key` is the
+   * `(organization_id, login)` unique key V006 declared in its place.
+   */
+  organization_id: string;
 }
 
 /**
- * `ouroboros.github_repos` — repositories within an enabled org (V003).
+ * `ouroboros.github_repos` — repositories within an enabled GitHub org (V003).
  *
- * Hung off the org rather than off the tenant: the tenant is reachable through `org_id`,
- * and a second copy of that fact could disagree with the org's.
+ * Hung off the GitHub org rather than off the workspace: the workspace is reachable through
+ * `org_id`, and a second copy of that fact could disagree with the org's. That is also why
+ * V006 left this table alone while it re-parented every other one.
  */
 export interface GithubReposTable {
   id: Generated<string>;
@@ -309,14 +244,17 @@ export interface GithubReposTable {
  * Every table `ouroboros-rest` may query, keyed by its name in the database.
  *
  * This is the type parameter the whole module is built around: `Kysely<Database>` is what
- * makes `selectFrom("tenants").select("slug")` compile and `select("slugg")` not.
+ * makes `selectFrom("organization").select("slug")` compile and `select("slugg")` not.
+ *
+ * **Five tables, where V005 left nine.** `tenants`, `tenant_members`, `users` and
+ * `user_identities` were dropped by V006 and are gone from here with it
+ * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
+ * them would let a query compile against a table PostgreSQL would refuse, which is the exact
+ * failure this file exists to prevent. `ouroboros-db/tests/constraints.sql` asserts all four
+ * stay gone, so there is no state in which re-adding them here would be right.
  */
 export interface Database {
-  tenants: TenantsTable;
   tenant_domains: TenantDomainsTable;
-  users: UsersTable;
-  user_identities: UserIdentitiesTable;
-  tenant_members: TenantMembersTable;
   organization: OrganizationTable;
   member: MemberTable;
   github_orgs: GithubOrgsTable;
@@ -335,46 +273,28 @@ export interface Database {
  * against a migration reads top to bottom.
  */
 export const TABLE_COLUMNS = {
-  tenants: ["id", "slug", "display_name", "status", "created_at", "updated_at"],
-  tenant_domains: ["id", "tenant_id", "domain", "is_primary", "created_at", "updated_at"],
-  users: ["id", "email", "display_name", "avatar_url", "created_at", "updated_at"],
-  user_identities: ["id", "user_id", "provider", "external_id", "created_at", "updated_at"],
-  tenant_members: ["tenant_id", "user_id", "role", "invited_at", "joined_at", "updated_at"],
+  tenant_domains: ["id", "domain", "is_primary", "created_at", "updated_at", "organization_id"],
   organization: ["id", "name", "slug", "logo", "createdAt", "metadata"],
   member: ["id", "organizationId", "userId", "role", "createdAt"],
-  github_orgs: ["id", "tenant_id", "login", "enabled", "installed_at", "created_at", "updated_at"],
+  github_orgs: [
+    "id",
+    "login",
+    "enabled",
+    "installed_at",
+    "created_at",
+    "updated_at",
+    "organization_id",
+  ],
   github_repos: ["id", "org_id", "name", "enabled", "default_branch", "created_at", "updated_at"],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
 /** Every table name, for a caller that wants to iterate them. */
 export const TABLE_NAMES = Object.keys(TABLE_COLUMNS) as (keyof Database)[];
 
-/** A row of `ouroboros.tenants`, as a `select` returns it. */
-export type Tenant = Selectable<TenantsTable>;
-/** The columns an `insert` into `ouroboros.tenants` may carry. */
-export type NewTenant = Insertable<TenantsTable>;
-/** The columns an `update` of `ouroboros.tenants` may carry. */
-export type TenantUpdate = Updateable<TenantsTable>;
-
 /** A row of `ouroboros.tenant_domains`, as a `select` returns it. */
 export type TenantDomain = Selectable<TenantDomainsTable>;
 /** The columns an `insert` into `ouroboros.tenant_domains` may carry. */
 export type NewTenantDomain = Insertable<TenantDomainsTable>;
-
-/** A row of `ouroboros.users`, as a `select` returns it. */
-export type User = Selectable<UsersTable>;
-/** The columns an `insert` into `ouroboros.users` may carry. */
-export type NewUser = Insertable<UsersTable>;
-
-/** A row of `ouroboros.user_identities`, as a `select` returns it. */
-export type UserIdentity = Selectable<UserIdentitiesTable>;
-/** The columns an `insert` into `ouroboros.user_identities` may carry. */
-export type NewUserIdentity = Insertable<UserIdentitiesTable>;
-
-/** A row of `ouroboros.tenant_members`, as a `select` returns it. */
-export type TenantMember = Selectable<TenantMembersTable>;
-/** The columns an `insert` into `ouroboros.tenant_members` may carry. */
-export type NewTenantMember = Insertable<TenantMembersTable>;
 
 /**
  * A row of `ouroboros.organization`, as a `select` returns it.

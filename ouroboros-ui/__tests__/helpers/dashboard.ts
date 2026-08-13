@@ -35,13 +35,14 @@ const SEEDED_MEMBERS: readonly (readonly [string, string, Role])[] = [
  */
 export function member(over: Partial<Member> = {}): Member {
   return {
-    tenantId: TENANT_ID,
+    orgId: TENANT_ID,
     userId: "5eed0003-0000-4000-8000-000000000001",
     email: "ken@acme-robotics.dev",
     displayName: "Ken Suenobu",
     avatarUrl: null,
     role: "owner",
-    invitedAt: "2026-08-11T10:20:23.114Z",
+    // One timestamp where `tenant_members` kept two: the organization plugin writes the
+    // member row at acceptance, so *invited* and *joined* are no longer separable.
     joinedAt: "2026-08-11T10:20:23.114Z",
     ...over,
   };

@@ -26,10 +26,11 @@
  *
  * Three sources, most specific first:
  *
- *   1. **The `{tenantId}` path parameter**, on the routes that have one. It is more specific
+ *   1. **The `{orgId}` path parameter**, on the routes that have one. It is more specific
  *      than anything else by construction — the caller wrote it into the URL — and it is what
  *      closes the leak the original issue was about: without it, a signed-in person could
- *      read `/api/v1/tenants/{anybody-elses-id}` and the `404` rule would apply to nothing.
+ *      read `/api/v1/orgs/{anybody-elses-id}/domains` and the `404` rule would apply to
+ *      nothing.
  *   2. **The `X-Ouro-Tenant` header**, a slug or a uuid: an explicit, per-request override of
  *      where the session says the caller is acting. It is how one request steps outside the
  *      active workspace without the session being changed for every other request in flight.
@@ -68,8 +69,16 @@ import { organizationRequired, tenantMismatch, tenantNotFound } from "./tenancy.
 /** The header a client names the active workspace in. Lower-case, as Node parses headers. */
 export const TENANT_HEADER = "x-ouro-tenant";
 
-/** The path parameter the tenancy routes address a workspace with. */
-export const TENANT_PARAMETER = "tenantId";
+/**
+ * The path parameter the tenancy routes address a workspace with.
+ *
+ * `orgId` since [#714](https://github.com/NobuData/ouroboros/issues/714), which moved every
+ * workspace-scoped route from `/api/v1/tenants/{tenantId}/…` to `/api/v1/orgs/{orgId}/…`. It
+ * has to agree with `OrgParams` in `tenancy.dto.ts` — the DTO validates the value and this
+ * reads it — and `tenant.resolver.spec.ts` asserts they do rather than leaving two strings to
+ * drift apart.
+ */
+export const TENANT_PARAMETER = "orgId";
 
 /** The canonical shape of a uuid, as `gen_random_uuid()` renders one. */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -126,13 +135,13 @@ export function headerReference(
  * so a value that is not a uuid is not a workspace this route could have addressed — it is a
  * malformed request, and the validation pipe is what says so. Reading it as a slug here would
  * answer `404` a guard's-worth earlier than that, turning "your uuid is malformed" into "no
- * such workspace" and losing the `details.tenantId` a form needs to render the complaint.
+ * such workspace" and losing the `details.orgId` a form needs to render the complaint.
  *
  * The header is the opposite case and reads both, because a slug is what a person types.
  *
  * @param params - The route parameters, populated by the router before any guard runs.
- * @returns The reference, or `undefined` on a route with no `{tenantId}` — and on one whose
- *   `{tenantId}` is not a uuid, which then falls through to the header or the session and is
+ * @returns The reference, or `undefined` on a route with no `{orgId}` — and on one whose
+ *   `{orgId}` is not a uuid, which then falls through to the header or the session and is
  *   refused by the pipe a moment later.
  */
 export function pathReference(
@@ -148,12 +157,12 @@ export function pathReference(
  * Does this request address a workspace in its path with something that is not a uuid?
  *
  * The guard skips resolution entirely when it does, and lets the validation pipe answer — see
- * `tenant.guard.ts`. Without that, `GET /api/v1/tenants/not-a-uuid` would be answered by
+ * `tenant.guard.ts`. Without that, `GET /api/v1/orgs/not-a-uuid/domains` would be answered by
  * whichever check happened to run first: `organization_required` for a session acting nowhere,
  * and `validation_failed` for one acting somewhere. One malformed request, two answers.
  *
  * @param params - The route parameters.
- * @returns `true` when there is a `{tenantId}` and it is not a uuid.
+ * @returns `true` when there is an `{orgId}` and it is not a uuid.
  */
 export function pathTenantIsMalformed(params: TenantParameters | undefined): boolean {
   const value = params?.[TENANT_PARAMETER];
@@ -188,7 +197,7 @@ export interface TenantRequestFacts {
   readonly activeOrganizationId?: string | null;
   /** The request's headers, for the `X-Ouro-Tenant` override. */
   readonly headers?: TenantHeaders;
-  /** The request's route parameters, for a `{tenantId}` in the path. */
+  /** The request's route parameters, for an `{orgId}` in the path. */
   readonly params?: TenantParameters;
 }
 

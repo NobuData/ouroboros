@@ -1,9 +1,9 @@
 import { ReposController } from "./repos.controller";
 import type { ReposService } from "./repos.service";
 
-/** See `tenants.controller.spec.ts` for what these specs are and are not about. */
+/** See `domains.controller.spec.ts` for what these specs are and are not about. */
 
-const TENANT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
+const WORKSPACE = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 
 describe("the repositories controller", () => {
   let service: jest.Mocked<ReposService>;
@@ -12,6 +12,7 @@ describe("the repositories controller", () => {
   beforeEach(() => {
     service = {
       list: jest.fn().mockResolvedValue({ items: [], total: 0, limit: 25, offset: 0 }),
+      read: jest.fn().mockResolvedValue({ name: "ouroboros" }),
       setEnabled: jest.fn().mockResolvedValue({ name: "ouroboros" }),
     } as unknown as jest.Mocked<ReposService>;
 
@@ -19,18 +20,24 @@ describe("the repositories controller", () => {
   });
 
   it("reaches a repository through its organisation", async () => {
-    await controller.list({ tenantId: TENANT, login: "nobudata" }, {});
+    await controller.list({ orgId: WORKSPACE, login: "nobudata" }, {});
 
-    expect(service.list).toHaveBeenCalledWith(TENANT, "nobudata", {});
+    expect(service.list).toHaveBeenCalledWith(WORKSPACE, "nobudata", {});
   });
 
-  it("names all three of tenant, organisation and repository when enabling one", async () => {
+  it("names all three of workspace, organisation and repository when reading one", async () => {
+    await controller.read({ orgId: WORKSPACE, login: "nobudata", name: "ouroboros" });
+
+    expect(service.read).toHaveBeenCalledWith(WORKSPACE, "nobudata", "ouroboros");
+  });
+
+  it("names all three of workspace, organisation and repository when enabling one", async () => {
     await controller.setEnabled(
-      { tenantId: TENANT, login: "nobudata", name: "ouroboros" },
+      { orgId: WORKSPACE, login: "nobudata", name: "ouroboros" },
       { enabled: true, defaultBranch: "main" },
     );
 
-    expect(service.setEnabled).toHaveBeenCalledWith(TENANT, "nobudata", "ouroboros", {
+    expect(service.setEnabled).toHaveBeenCalledWith(WORKSPACE, "nobudata", "ouroboros", {
       enabled: true,
       defaultBranch: "main",
     });

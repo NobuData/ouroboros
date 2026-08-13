@@ -175,7 +175,7 @@ describe("the header", () => {
 
 describe("the path parameter", () => {
   it("is read as a uuid", () => {
-    expect(pathReference({ tenantId: ORGANIZATION.id })).toEqual({
+    expect(pathReference({ orgId: ORGANIZATION.id })).toEqual({
       kind: "id",
       value: ORGANIZATION.id,
     });
@@ -184,9 +184,9 @@ describe("the path parameter", () => {
   it("is never read as a slug", () => {
     // It is documented as a uuid and validated as one, so anything else is a malformed
     // request rather than a workspace nobody can see — and the validation pipe owns that
-    // complaint, because it is what produces the `details.tenantId` a form renders.
-    expect(pathReference({ tenantId: "acme" })).toBeUndefined();
-    expect(pathTenantIsMalformed({ tenantId: "acme" })).toBe(true);
+    // complaint, because it is what produces the `details.orgId` a form renders.
+    expect(pathReference({ orgId: "acme" })).toBeUndefined();
+    expect(pathTenantIsMalformed({ orgId: "acme" })).toBe(true);
   });
 
   it("is nothing on a route that has none", () => {
@@ -232,7 +232,7 @@ describe("resolving from what the request named", () => {
     const { resolver, organizations } = harnessFinding(OTHER);
 
     const membership = await resolver.resolve(
-      request({ activeOrganizationId: ORGANIZATION.id, params: { tenantId: OTHER.id } }),
+      request({ activeOrganizationId: ORGANIZATION.id, params: { orgId: OTHER.id } }),
     );
 
     expect(membership.tenant).toEqual(OTHER);
@@ -282,7 +282,7 @@ describe("resolving from what the request named", () => {
         await resolver.resolve(
           request({
             headers: { [TENANT_HEADER]: "acme" },
-            params: { tenantId: ORGANIZATION.id },
+            params: { orgId: ORGANIZATION.id },
           }),
         )
       ).tenant,
@@ -295,7 +295,7 @@ describe("refusing what the request named", () => {
     const { resolver } = harness();
 
     expect(
-      await rejection(resolver.resolve(request({ params: { tenantId: ORGANIZATION.id } }))),
+      await rejection(resolver.resolve(request({ params: { orgId: ORGANIZATION.id } }))),
     ).toMatchObject({ code: TENANCY_ERRORS.tenantNotFound, status: 404 });
   });
 
@@ -318,7 +318,7 @@ describe("refusing what the request named", () => {
     const forbidden = harnessFinding(ORGANIZATION);
     forbidden.organizations.rolesFor.mockResolvedValue(undefined);
 
-    const named = request({ params: { tenantId: ORGANIZATION.id } });
+    const named = request({ params: { orgId: ORGANIZATION.id } });
     const one = await rejection(absent.resolver.resolve(named));
     const two = await rejection(forbidden.resolver.resolve(named));
 
@@ -332,8 +332,7 @@ describe("refusing what the request named", () => {
     organizations.rolesFor.mockResolvedValue(undefined);
 
     expect(
-      (await rejection(resolver.resolve(request({ params: { tenantId: ORGANIZATION.id } }))))
-        .status,
+      (await rejection(resolver.resolve(request({ params: { orgId: ORGANIZATION.id } })))).status,
     ).not.toBe(403);
   });
 
@@ -348,7 +347,7 @@ describe("refusing what the request named", () => {
         resolver.resolve(
           request({
             headers: { [TENANT_HEADER]: "globex" },
-            params: { tenantId: ORGANIZATION.id },
+            params: { orgId: ORGANIZATION.id },
           }),
         ),
       ),
@@ -369,7 +368,7 @@ describe("refusing what the request named", () => {
       resolver.resolve(
         request({
           headers: { [TENANT_HEADER]: "globex" },
-          params: { tenantId: ORGANIZATION.id },
+          params: { orgId: ORGANIZATION.id },
         }),
       ),
     );

@@ -65,9 +65,9 @@ describe("the committed types", () => {
     // A generator that silently produced an empty module would satisfy every check above.
     const generated = await render(SPEC_PATH);
 
-    expect(generated).toContain('"/api/v1/tenants"');
-    expect(generated).toContain("listTenants");
-    expect(generated).toContain("TenantPage:");
+    expect(generated).toContain('"/api/v1/orgs"');
+    expect(generated).toContain("listOrgs");
+    expect(generated).toContain("OrgRowPage:");
   });
 });
 

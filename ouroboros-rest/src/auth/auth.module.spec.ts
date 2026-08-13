@@ -146,7 +146,7 @@ describe("the module, in a running application", () => {
     // that mistake is a `500` from `@Roles()` on a route with no tenant context, so the
     // route that would produce it is what this asks about.
     const response = await request(server())
-      .patch(`${API_BASE_PATH}/tenants/00000000-0000-4000-8000-000000000000`)
+      .patch(`${API_BASE_PATH}/orgs/00000000-0000-4000-8000-000000000000/github-orgs/nobudata`)
       .set("Content-Type", "application/json")
       .send(JSON.stringify({ displayName: "Anything" }))
       .expect(401);

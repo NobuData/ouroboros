@@ -1,34 +1,26 @@
-import {
-  FIXTURE_ACTIVE_ORGANIZATION,
-  FIXTURE_INSTANT,
-  FIXTURE_USER,
-  principalFor,
-} from "./principal.fixture";
+import { FIXTURE_ACTIVE_ORGANIZATION, FIXTURE_USER, principalFor } from "./principal.fixture";
 import {
   activeOrganizationOf,
   principalOf,
-  principalUser,
   SESSION_PROPERTY,
-  userRow,
   type PrincipalRequest,
-  type SessionUser,
 } from "./principal";
 
 /**
- * How the session the library resolved reaches the code that was written before it existed.
+ * How the session the library resolved reaches the code that reads it.
  *
- * Three things are worth asserting rather than reading, and each replaces something
- * [#33](https://github.com/NobuData/ouroboros/issues/33) checked here:
+ * Two things are worth asserting rather than reading:
  *
  *   * **The property is the library's**, so a guard that reads the request directly reads
  *     what the library wrote rather than what this service wishes it had written.
- *   * **The adaptation is exact.** `userRow` is the whole of the `"user"` → `users`
- *     translation, and the day it drops a field is the day `/auth/me` starts answering with
- *     a blank display name.
- *   * **An absent session fails loudly.** #33's `@CurrentUser()` threw rather than handing a
- *     handler `undefined` typed as a person; this keeps that, because the failure it catches
- *     — `@Session()` on a route somebody also marked `@AllowAnonymous()` — is a mistake a
- *     type cannot catch.
+ *   * **"Acting nowhere" has one answer**, however the library spelled it — the plugin's
+ *     pointer is nullable *and* absent where the plugin is not configured, and
+ *     [#713](https://github.com/NobuData/ouroboros/issues/713) resolves a request's workspace
+ *     from it.
+ *
+ * There was a third until [#714](https://github.com/NobuData/ouroboros/issues/714) — that the
+ * `"user"` → `users` adaptation was exact — and it went with `userRow`, whose destination
+ * table V006 dropped.
  */
 
 describe("reading the session off a request", () => {
@@ -79,52 +71,11 @@ describe("the workspace a session is acting in", () => {
   });
 });
 
-describe("the session's user as a users row", () => {
-  it("maps every field the tenancy code reads", () => {
-    expect(userRow(FIXTURE_USER)).toEqual({
-      id: "5eed0003-0000-4000-8000-000000000001",
-      email: "ken@acme-robotics.dev",
-      display_name: "Ken Suenobu",
-      avatar_url: null,
-      created_at: FIXTURE_INSTANT,
-      updated_at: FIXTURE_INSTANT,
-    });
-  });
-
-  it("keeps the id, which is what makes tenant_members still resolve", () => {
-    // V004 back-filled `users` into `"user"` preserving ids. If this ever stopped being an
-    // identity, every membership lookup would quietly find nothing and the API would answer
-    // "you belong to no workspaces" to somebody who belongs to several.
-    expect(userRow(FIXTURE_USER).id).toBe(FIXTURE_USER.id);
-  });
-
-  it("renders a missing avatar as null rather than undefined", () => {
-    // The column is nullable and the resource publishes `null`; an `undefined` would
-    // serialise the field away, which is a different answer for a client to parse.
-    const withoutImage: SessionUser = { ...FIXTURE_USER, image: undefined };
-
-    expect(userRow(withoutImage).avatar_url).toBeNull();
-  });
-
-  it("carries an avatar the provider supplied", () => {
-    const withImage: SessionUser = { ...FIXTURE_USER, image: "https://example.test/a.png" };
-
-    expect(userRow(withImage).avatar_url).toBe("https://example.test/a.png");
-  });
-});
-
-describe("the person a handler is entitled to", () => {
-  it("is the session's user, adapted", () => {
-    expect(principalUser(principalFor())).toEqual(userRow(FIXTURE_USER));
-  });
-
-  it.each([
-    ["null, as an anonymous route hands it", null],
-    ["undefined, as a handler with no guard at all would", undefined],
-  ])("refuses %s loudly rather than passing it on", (_description, absent) => {
-    // The mistake this catches is @Session() on a route somebody also marked
-    // @AllowAnonymous(). Failing here names it; failing three layers down is a 500 about a
-    // query filtered by undefined.
-    expect(() => principalUser(absent)).toThrow(/@AllowAnonymous/);
+describe("the signed-in person", () => {
+  it("is the session's own user, with no row read to confirm it", () => {
+    // The property the tenant context stores and `member."userId"` is matched against. It is
+    // the library's shape rather than an adaptation of it since #714 — one shape for "the
+    // signed-in person", so there is nothing to keep in step.
+    expect(principalOf({ [SESSION_PROPERTY]: principalFor() })?.user).toBe(FIXTURE_USER);
   });
 });

@@ -36,23 +36,26 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  * The exceptions are enumerated, and each one is a question a workspace is not part of the
  * answer to:
  *
- *   * **`GET /api/v1/tenants`** — which workspaces this person belongs to. Asking them to
- *     name one first would be circular. The listing is scoped to them instead, so it is not
- *     a way around the rule.
- *   * **`POST /api/v1/tenants`** — creating the first one. Somebody who belongs to nothing
- *     yet has no tenant to be in.
+ *   * **`GET /api/v1/orgs`** — which workspaces this person belongs to. Asking them to
+ *     name one first would be circular, and it is exactly the state `400
+ *     organization_required` tells somebody to leave. The listing is scoped to them through
+ *     `currentUser()` instead, so the exemption is not a way around the rule.
  *   * **`GET /api/v1/engine/status`** — whether `ouroboros-engine` is reachable and which
  *     build it is ([#35](https://github.com/NobuData/ouroboros/issues/35)). There is one
  *     engine behind every workspace, so naming one changes nothing about the answer. It is
- *     the first exception that is about the *installation* rather than the person, and it
+ *     the one exception that is about the *installation* rather than the person, and it
  *     is still an exception rather than a category: a route that reads or writes anything
  *     belonging to a customer is scoped, whoever is asking.
  *
- * There was a fourth — `GET /api/v1/auth/me`, whose whole answer was the memberships a
- * tenant would have had to be resolved from, and which was the clearest case of all.
- * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted the route rather than
- * the exemption: who is signed in is `GET /api/auth/get-session`, which BetterAuth serves
- * ahead of Nest's router and which therefore never reaches this middleware to need marking.
+ * There were two more, and both left with the routes that carried them.
+ * `POST /api/v1/tenants` created a workspace for somebody who belonged to nothing yet;
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) deleted it, because
+ * `POST /api/auth/organization/create` is the organization plugin's and two ways to create a
+ * workspace is two ways for the first membership to be written. `GET /api/v1/auth/me`
+ * answered with the memberships a tenant would have had to be resolved from, and
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it in favour of
+ * `GET /api/auth/get-session`, which BetterAuth serves ahead of Nest's router and which
+ * therefore never reaches this middleware to need marking.
  *
  * @returns The decorator. Applied to a class it covers every route in it; the guard reads
  *   the handler first.

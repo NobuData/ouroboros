@@ -3,9 +3,8 @@ import { Reflector } from "@nestjs/core";
 
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 
-import { SESSION_PROPERTY, userRow } from "../auth/principal";
+import { SESSION_PROPERTY, type SessionUser } from "../auth/principal";
 import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
-import type { User } from "../db/schema";
 import { FIXTURE_ORGANIZATION, membershipIn } from "./organization.fixture";
 import { currentMembership, currentUser, runWithTenantContext } from "./tenant.context";
 import { TenantOptional } from "./tenant.decorators";
@@ -26,8 +25,8 @@ const TENANT = FIXTURE_ORGANIZATION;
 /** The membership the resolver answers with, unless a test says otherwise. */
 const MEMBERSHIP = membershipIn(["member"]);
 
-/** The person the session names, in the shape the tenancy code reads them. */
-const USER: User = userRow(FIXTURE_USER);
+/** The person the session names — the library's own shape, unadapted, since #714. */
+const USER: SessionUser = FIXTURE_USER;
 
 /** Controllers whose decorators are the thing under test. */
 @Controller()
@@ -103,7 +102,7 @@ describe("a route with neither opt-out", () => {
     const guard = new TenantContextGuard(new Reflector(), resolver);
     const request = signedInRequest({
       headers: { "x-ouro-tenant": "acme" },
-      params: { tenantId: TENANT.id },
+      params: { orgId: TENANT.id },
     });
 
     await runWithTenantContext(() =>
@@ -184,7 +183,7 @@ describe("a route with neither opt-out", () => {
 
   it("skips resolution when the path's tenant id is not a uuid", async () => {
     // Malformed, not invisible: the validation pipe answers, and it is what produces the
-    // `details.tenantId` a form renders. Resolving first would make the answer depend on how
+    // `details.orgId` a form renders. Resolving first would make the answer depend on how
     // many workspaces the caller belongs to.
     const resolver = resolverDouble();
     const guard = new TenantContextGuard(new Reflector(), resolver);
@@ -194,7 +193,7 @@ describe("a route with neither opt-out", () => {
         contextFor(
           ScopedController,
           ScopedController.prototype.handler,
-          signedInRequest({ params: { tenantId: "not-a-uuid" } }),
+          signedInRequest({ params: { orgId: "not-a-uuid" } }),
         ),
       ),
     );

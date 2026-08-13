@@ -2,10 +2,10 @@
  * What a request may contain — the path parameters, the query strings and the bodies of
  * every tenancy route, as `class-validator` classes.
  *
- * They are here in one file rather than in a `dto/` directory of nine, because they are read
- * together: the patterns below restate the `check` constraints V001–V003 declare, and having
- * them side by side is what makes it possible to see that they still agree. The pairing is
- * deliberate in both directions:
+ * They are here in one file rather than in a `dto/` directory of seven, because they are read
+ * together: the patterns below restate the `check` constraints V001 and V003 declare, and
+ * having them side by side is what makes it possible to see that they still agree. The pairing
+ * is deliberate in both directions:
  *
  *   * **The database is the authority.** A DTO that admitted something a constraint refuses
  *     would produce a `500` where the caller deserved a `422`, and one that admits *less* is
@@ -13,8 +13,16 @@
  *     violation, and why that mapping is not dead code.
  *   * **The DTO is the message.** A constraint's failure is a SQLSTATE and a name; a
  *     decorator's is a sentence naming the field, and it arrives before a connection is
- *     taken from the pool. Validating here is what turns "the write failed" into "slug must
- *     be lower-case letters, digits and single hyphens".
+ *     taken from the pool. Validating here is what turns "the write failed" into "domain must
+ *     be a lower-case domain name".
+ *
+ * **Nothing here describes a workspace or a membership.** Creating a workspace, renaming one,
+ * inviting somebody and changing a role are the organization plugin's operations since
+ * [#704](https://github.com/NobuData/ouroboros/issues/704), and
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) deleted this module's versions
+ * rather than leaving two write paths to the same rows. What is left is what only this service
+ * has: the domains that resolve a workspace, and the GitHub organisations and repositories it
+ * has turned on.
  *
  * Every property is `!`-asserted or optional rather than initialised. `class-transformer`
  * constructs these objects and assigns to them, so a default written here would be a value
@@ -23,8 +31,6 @@
 
 import {
   IsBoolean,
-  IsEmail,
-  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -32,11 +38,6 @@ import {
   Matches,
   MaxLength,
 } from "class-validator";
-
-import type { TenantRole, TenantStatus } from "../db/schema";
-
-/** `tenants_slug_format` (V001): lower-case alphanumerics in single-hyphen-separated groups. */
-export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** `tenant_domains_domain_format` (V001): two or more lower-case hostname labels. */
 export const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
@@ -58,38 +59,32 @@ export const REPO_NAME_PATTERN = /^[a-z0-9._-]+$/;
  */
 export const BRANCH_PATTERN = /^(?!\.)(?!.*\.\.)[A-Za-z0-9._-]+(\/(?!\.)[A-Za-z0-9._-]+)*$/;
 
-/** The values `tenants_status_valid` (V001) admits. */
-export const TENANT_STATUSES: readonly TenantStatus[] = ["active", "suspended", "deleted"];
-
-/** The values `tenant_members_role_valid` (V002) admits. */
-export const TENANT_ROLES: readonly TenantRole[] = ["owner", "admin", "member", "viewer"];
-
 /**
- * Every route below `/tenants/{tenantId}`.
+ * Every route below `/orgs/{orgId}`.
  *
  * A class rather than a `ParseUUIDPipe` on the parameter, so a malformed id answers with the
  * same `422` and the same `details` shape as a malformed body — one failure mode for the
  * client to handle instead of two.
+ *
+ * **`orgId` is a workspace, not a GitHub organisation.** The collision is real and the paths
+ * are what keep the two apart: `/api/v1/orgs/{orgId}` is the workspace, and the GitHub
+ * organisations inside it are `/github-orgs/{login}` under it. `tenant.resolver.ts` reads this
+ * parameter to resolve the request's workspace, which is why it is a uuid here and why it is
+ * the same value `organization."id"` holds.
  */
-export class TenantParams {
+export class OrgParams {
   @IsUUID()
-  tenantId!: string;
+  orgId!: string;
 }
 
-/** A route addressing one domain of one tenant. */
-export class DomainParams extends TenantParams {
+/** A route addressing one domain of one workspace. */
+export class DomainParams extends OrgParams {
   @IsUUID()
   domainId!: string;
 }
 
-/** A route addressing one member of one tenant. The member *is* the user. */
-export class MemberParams extends TenantParams {
-  @IsUUID()
-  userId!: string;
-}
-
-/** A route addressing one organisation of one tenant, by its GitHub login. */
-export class OrgParams extends TenantParams {
+/** A route addressing one GitHub organisation of one workspace, by its login. */
+export class GithubOrgParams extends OrgParams {
   @Matches(ORG_LOGIN_PATTERN, {
     message: "login must be a lower-case GitHub organisation login",
   })
@@ -97,71 +92,14 @@ export class OrgParams extends TenantParams {
   login!: string;
 }
 
-/** A route addressing one repository within one organisation. */
-export class RepoParams extends OrgParams {
+/** A route addressing one repository within one GitHub organisation. */
+export class RepoParams extends GithubOrgParams {
   @Matches(REPO_NAME_PATTERN, { message: "name must be a lower-case GitHub repository name" })
   @Length(1, 100)
   name!: string;
 }
 
-/** `POST /api/v1/tenants`. */
-export class CreateTenantBody {
-  /**
-   * The URL- and CLI-safe handle, unique across the installation.
-   *
-   * Not derived from `displayName` here. A slug appears in paths and command arguments and
-   * is the thing a person types, so it is chosen rather than generated — and a generator
-   * that produced `acme-inc` from `Acme, Inc.` would be one more rule to keep in step with
-   * `tenants_slug_format`.
-   */
-  @Matches(SLUG_PATTERN, {
-    message: "slug must be lower-case letters, digits and single hyphens",
-  })
-  @Length(2, 63)
-  slug!: string;
-
-  /** What a human reads. Free text; only required to be non-blank. */
-  @IsString()
-  @Length(1, 200)
-  @Matches(/\S/, { message: "displayName must not be blank" })
-  displayName!: string;
-}
-
-/**
- * `PATCH /api/v1/tenants/{tenantId}`.
- *
- * Every field optional, and a body with none of them is a no-op that answers with the tenant
- * unchanged — which is what `PATCH` means, and cheaper to allow than to special-case.
- */
-export class UpdateTenantBody {
-  @IsOptional()
-  @Matches(SLUG_PATTERN, {
-    message: "slug must be lower-case letters, digits and single hyphens",
-  })
-  @Length(2, 63)
-  slug?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(1, 200)
-  @Matches(/\S/, { message: "displayName must not be blank" })
-  displayName?: string;
-
-  /**
-   * The lifecycle.
-   *
-   * `deleted` is the soft-delete marker V001 describes: the row and everything cascading
-   * from it survive, so an accidental deletion is a second `PATCH` away from being undone.
-   * There is deliberately no `DELETE /tenants/{tenantId}` — a hard delete of a tenant takes
-   * its domains, members, organisations and repositories with it, and that is not an
-   * operation an HTTP verb should make one click away.
-   */
-  @IsOptional()
-  @IsIn(TENANT_STATUSES)
-  status?: TenantStatus;
-}
-
-/** `POST /api/v1/tenants/{tenantId}/domains`. */
+/** `POST /api/v1/orgs/{orgId}/domains`. */
 export class CreateDomainBody {
   /**
    * The email domain, lower-cased.
@@ -174,14 +112,14 @@ export class CreateDomainBody {
   @MaxLength(253)
   domain!: string;
 
-  /** Make this the tenant's primary domain, demoting whichever one holds it now. */
+  /** Make this the workspace's primary domain, demoting whichever one holds it now. */
   @IsOptional()
   @IsBoolean()
   isPrimary?: boolean;
 }
 
 /**
- * `PATCH /api/v1/tenants/{tenantId}/domains/{domainId}` — the set-primary operation.
+ * `PATCH /api/v1/orgs/{orgId}/domains/{domainId}` — the set-primary operation.
  *
  * One field, because it is the only thing about a domain that can change: the domain itself
  * is what the row *is*, and renaming one is adding the new one and removing the old.
@@ -191,52 +129,8 @@ export class UpdateDomainBody {
   isPrimary!: boolean;
 }
 
-/**
- * `POST /api/v1/tenants/{tenantId}/members` — the invitation.
- *
- * A stub, as the issue names it: the membership row is created with `joinedAt` null, and
- * nothing is emailed. What turns an outstanding invitation into a joined member is the
- * OAuth callback in [#33](https://github.com/NobuData/ouroboros/issues/33), which is the
- * first thing that can know a person accepted.
- */
-export class InviteMemberBody {
-  /**
-   * Who to invite, by email address.
-   *
-   * Lower-cased before the lookup, matching `users_email_lowercase` (V002) — the one place
-   * this file normalises rather than rejects, because an address is typed by a person into
-   * a form and `Ken@example.com` is not a mistake worth an error message.
-   */
-  @IsEmail()
-  @MaxLength(320)
-  email!: string;
-
-  /** What they may do in this tenant. */
-  @IsIn(TENANT_ROLES)
-  role!: TenantRole;
-
-  /**
-   * What to call them, if this is the first Ouroboros has heard of them.
-   *
-   * Ignored when the person already exists — their own name is not an inviter's to
-   * overwrite. Omitted, the local part of the address is used, which is what a member list
-   * shows until they sign in and GitHub supplies the real one.
-   */
-  @IsOptional()
-  @IsString()
-  @Length(1, 200)
-  @Matches(/\S/, { message: "displayName must not be blank" })
-  displayName?: string;
-}
-
-/** `PATCH /api/v1/tenants/{tenantId}/members/{userId}` — the role change. */
-export class UpdateMemberBody {
-  @IsIn(TENANT_ROLES)
-  role!: TenantRole;
-}
-
-/** `POST /api/v1/tenants/{tenantId}/orgs`. */
-export class CreateOrgBody {
+/** `POST /api/v1/orgs/{orgId}/github-orgs`. */
+export class CreateGithubOrgBody {
   /** The organisation's GitHub login — the `NobuData` in github.com/NobuData. */
   @Matches(ORG_LOGIN_PATTERN, {
     message: "login must be a lower-case GitHub organisation login",
@@ -256,14 +150,18 @@ export class CreateOrgBody {
   enabled?: boolean;
 }
 
-/** `PATCH /api/v1/tenants/{tenantId}/orgs/{login}` — enable or disable. */
-export class UpdateOrgBody {
+/**
+ * `PATCH /api/v1/orgs/{orgId}/github-orgs/{login}` — enable or disable.
+ *
+ * The Step 2 switch (`docs/mockups/01-login.html`), as a request body.
+ */
+export class UpdateGithubOrgBody {
   @IsBoolean()
   enabled!: boolean;
 }
 
 /**
- * `PATCH /api/v1/tenants/{tenantId}/orgs/{login}/repos/{name}` — enable or disable.
+ * `PATCH /api/v1/orgs/{orgId}/github-orgs/{login}/repos/{name}` — enable or disable.
  *
  * This is also how a repository first comes to be known: there is no `POST`, because there
  * is no discovery flow yet to create rows for a person to then enable. The `PATCH` creates
@@ -285,29 +183,4 @@ export class UpdateRepoBody {
   @Matches(BRANCH_PATTERN, { message: "defaultBranch must be a valid branch name" })
   @MaxLength(255)
   defaultBranch?: string;
-}
-
-/**
- * Coerce a value the API accepts loosely into the one the database stores.
- *
- * Only email addresses need this — every other text column in the tenancy schema is
- * constrained to a pattern that admits no upper case, so a DTO can reject rather than fold
- * and the stored value is always the value sent.
- *
- * @param email - The address as it was typed.
- * @returns It, lower-cased, which is what `users_email_key` compares.
- */
-export function normaliseEmail(email: string): string {
-  return email.toLowerCase();
-}
-
-/**
- * The name to give a person nobody has named.
- *
- * @param email - Their address, already normalised.
- * @returns The local part, which is a better placeholder than the whole address in a table
- *   of names and is guaranteed non-blank by `users_email_format`.
- */
-export function displayNameFromEmail(email: string): string {
-  return email.slice(0, email.indexOf("@"));
 }

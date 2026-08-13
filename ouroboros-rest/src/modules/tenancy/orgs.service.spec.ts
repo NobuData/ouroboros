@@ -1,206 +1,255 @@
-import type { GithubOrg, GithubRepo, Tenant } from "../db/schema";
-import type { OrgsRepository } from "./orgs.repository";
+import type { EnablementRepository, GithubOrgCountsRow } from "./enablement.repository";
+import type { OrganizationRepository } from "./organization.repository";
+import { FIXTURE_ORGANIZATION, FIXTURE_OTHER_ORGANIZATION } from "./organization.fixture";
 import { OrgsService } from "./orgs.service";
-import { ReposService } from "./repos.service";
-import { TENANCY_ERRORS } from "./tenancy.errors";
-import type { TenantsService } from "./tenants.service";
+import { runWithTenantContext, setTenantContext } from "./tenant.context";
+import { FIXTURE_USER } from "../auth/principal.fixture";
 
 /**
- * The two halves of the enablement boundary.
+ * The Step 2 row model, assembled.
  *
- * Both services are here because they share a repository and because the property worth
- * checking spans them: a repository is reached *through* its organisation, so every
- * repository operation has to fail with the organisation's `404` — and, before that, with
- * the tenant's. Neither service applies the "both flags true" rule, and that is deliberate:
- * they set the flags, and whatever is about to act on a repository is what reads them.
+ * `GET /api/v1/orgs` composes three tables into one answer, and the composition is where the
+ * mistakes are — not in any of the statements, which `enablement.repository.spec.ts` and
+ * `organization.repository.spec.ts` cover. Four properties matter:
+ *
+ *   * **It is scoped to the caller.** The route is `@TenantOptional()`, so nothing above the
+ *     service narrows it: a listing that read the wrong user id — or none — would be a
+ *     listing of somebody else's workspaces, which is the leak the exemption could otherwise
+ *     become.
+ *   * **It is two statements plus one, not two per row.** A hundred workspaces must not be
+ *     two hundred round trips.
+ *   * **A workspace with nothing recorded still renders.** The mockup's `acme-labs` row is a
+ *     zero and a switch that is off, not an absence.
+ *   * **The counts land on the right workspace.** The grouped query answers flat, and the
+ *     regrouping is the one place two workspaces' numbers could be swapped.
  */
 
-const TENANT: Tenant = {
-  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  slug: "acme",
-  display_name: "Acme, Inc.",
-  status: "active",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+/** One row of the grouped counts query, as `pg` returns it — aggregates as strings. */
+function counts(
+  organizationId: string,
+  login: string,
+  overrides: Partial<GithubOrgCountsRow> = {},
+): GithubOrgCountsRow {
+  return {
+    organization_id: organizationId,
+    login,
+    enabled: true,
+    enabled_repos: "0",
+    total_repos: "0",
+    featured_repo: null,
+    ...overrides,
+  };
+}
 
-const ORG: GithubOrg = {
-  id: "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
-  tenant_id: TENANT.id,
-  login: "nobudata",
-  enabled: true,
-  installed_at: null,
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
-
-const REPO: GithubRepo = {
-  id: "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d",
-  org_id: ORG.id,
-  name: "ouroboros",
-  enabled: true,
-  default_branch: "main",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
-
-describe("the organisations and repositories services", () => {
-  let repository: jest.Mocked<OrgsRepository>;
-  let tenants: jest.Mocked<TenantsService>;
+describe("the workspaces service", () => {
+  let organizations: jest.Mocked<OrganizationRepository>;
+  let enablement: jest.Mocked<EnablementRepository>;
   let orgs: OrgsService;
-  let repos: ReposService;
 
   beforeEach(() => {
-    repository = {
-      listOrgs: jest.fn().mockResolvedValue([ORG]),
-      countOrgs: jest.fn().mockResolvedValue(1),
-      findOrg: jest.fn().mockResolvedValue(ORG),
-      createOrg: jest.fn().mockResolvedValue(ORG),
-      setOrgEnabled: jest.fn().mockResolvedValue(ORG),
-      listRepos: jest.fn().mockResolvedValue([REPO]),
-      countRepos: jest.fn().mockResolvedValue(1),
-      findRepo: jest.fn().mockResolvedValue(REPO),
-      upsertRepo: jest.fn().mockResolvedValue(REPO),
-    } as unknown as jest.Mocked<OrgsRepository>;
+    organizations = {
+      listFor: jest
+        .fn()
+        .mockResolvedValue([{ organization: FIXTURE_ORGANIZATION, roles: ["owner"] }]),
+      countFor: jest.fn().mockResolvedValue(1),
+    } as unknown as jest.Mocked<OrganizationRepository>;
 
-    tenants = {
-      require: jest.fn().mockResolvedValue(TENANT),
-    } as unknown as jest.Mocked<TenantsService>;
+    enablement = {
+      countsFor: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<EnablementRepository>;
 
-    orgs = new OrgsService(repository, tenants);
-    repos = new ReposService(repository, orgs);
+    orgs = new OrgsService(organizations, enablement);
   });
 
-  describe("listing organisations", () => {
-    it("answers a page of resources", async () => {
-      expect(await orgs.list(TENANT.id, {})).toEqual({
-        items: [expect.objectContaining({ login: "nobudata", enabled: true })],
-        total: 1,
+  /**
+   * Run a listing as the fixture person, inside a request context.
+   *
+   * @param query - The window, if the test cares.
+   * @returns The page.
+   */
+  function asSignedIn(query = {}): ReturnType<OrgsService["list"]> {
+    return runWithTenantContext(() => {
+      setTenantContext({ user: FIXTURE_USER });
+      return orgs.list(query);
+    });
+  }
+
+  describe("scoping", () => {
+    it("reads only the signed-in person's memberships", async () => {
+      await asSignedIn();
+
+      expect(organizations.listFor).toHaveBeenCalledWith(FIXTURE_USER.id, {
         limit: 25,
         offset: 0,
       });
+      expect(organizations.countFor).toHaveBeenCalledWith(FIXTURE_USER.id);
     });
 
-    it("requires the tenant first", async () => {
-      tenants.require.mockRejectedValue(new Error("404"));
+    it("applies the window the caller asked for", async () => {
+      await asSignedIn({ limit: 100, offset: 50 });
 
-      await expect(orgs.list(TENANT.id, {})).rejects.toThrow();
-      expect(repository.listOrgs).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("adding an organisation", () => {
-    it("starts it switched off unless asked", async () => {
-      // V003's own default, stated here rather than omitted, so the API's default and the
-      // schema's are visibly the same decision.
-      await orgs.add(TENANT.id, { login: "nobudata" });
-
-      expect(repository.createOrg).toHaveBeenCalledWith(TENANT.id, "nobudata", false);
-    });
-
-    it("starts it on when the request says so", async () => {
-      await orgs.add(TENANT.id, { login: "nobudata", enabled: true });
-
-      expect(repository.createOrg).toHaveBeenCalledWith(TENANT.id, "nobudata", true);
-    });
-  });
-
-  describe("enabling an organisation", () => {
-    it("resolves the login within the tenant before changing anything", async () => {
-      await orgs.setEnabled(TENANT.id, "nobudata", { enabled: false });
-
-      expect(repository.findOrg).toHaveBeenCalledWith(TENANT.id, "nobudata", undefined);
-      expect(repository.setOrgEnabled).toHaveBeenCalledWith(ORG.id, false);
-    });
-
-    it("answers 404 for an organisation this tenant has not added", async () => {
-      repository.findOrg.mockResolvedValue(undefined);
-
-      await expect(orgs.setEnabled(TENANT.id, "nobudata", { enabled: true })).rejects.toMatchObject(
-        { response: { code: TENANCY_ERRORS.orgNotFound } },
-      );
-    });
-
-    it("answers 404 when the row vanished between the lookup and the update", async () => {
-      repository.setOrgEnabled.mockResolvedValue(undefined);
-
-      await expect(orgs.setEnabled(TENANT.id, "nobudata", { enabled: true })).rejects.toMatchObject(
-        { response: { code: TENANCY_ERRORS.orgNotFound } },
-      );
-    });
-
-    it("touches only the organisation's flag", async () => {
-      // Suspending an organisation preserves the per-repository choices underneath it, which
-      // is why there are two flags rather than one.
-      await orgs.setEnabled(TENANT.id, "nobudata", { enabled: false });
-
-      expect(repository.upsertRepo).not.toHaveBeenCalled();
-    });
-  });
-
-  describe("listing repositories", () => {
-    it("resolves the organisation and lists within it", async () => {
-      expect(await repos.list(TENANT.id, "nobudata", {})).toEqual({
-        items: [expect.objectContaining({ name: "ouroboros" })],
-        total: 1,
-        limit: 25,
-        offset: 0,
-      });
-      expect(repository.listRepos).toHaveBeenCalledWith(ORG.id, { limit: 25, offset: 0 });
-    });
-
-    it("answers the tenant's 404 before the organisation's", async () => {
-      tenants.require.mockRejectedValue(new Error("404"));
-
-      await expect(repos.list(TENANT.id, "nobudata", {})).rejects.toThrow();
-      expect(repository.findOrg).not.toHaveBeenCalled();
-    });
-
-    it("answers the organisation's 404 when the tenant has not added it", async () => {
-      repository.findOrg.mockResolvedValue(undefined);
-
-      await expect(repos.list(TENANT.id, "nobudata", {})).rejects.toMatchObject({
-        response: { code: TENANCY_ERRORS.orgNotFound },
+      expect(organizations.listFor).toHaveBeenCalledWith(FIXTURE_USER.id, {
+        limit: 100,
+        offset: 50,
       });
     });
+
+    it("refuses loudly rather than answering an empty page for nobody", async () => {
+      // The route is @TenantOptional(), not @AllowAnonymous(). An empty page is what "you
+      // belong to nothing" looks like, so a listing scoped to nobody must not be able to
+      // produce one — the two would be indistinguishable to a screen.
+      await expect(runWithTenantContext(() => orgs.list({}))).rejects.toThrow(/@TenantOptional/);
+      expect(organizations.listFor).not.toHaveBeenCalled();
+    });
   });
 
-  describe("enabling a repository", () => {
-    it("upserts, so naming one that was never recorded records it", async () => {
-      // There is no discovery flow yet to have created the row, which is why the `PATCH` is
-      // the operation that can create.
-      await repos.setEnabled(TENANT.id, "nobudata", "ouroboros", { enabled: true });
+  describe("the counts", () => {
+    it("are one query for the whole page", async () => {
+      organizations.listFor.mockResolvedValue([
+        { organization: FIXTURE_ORGANIZATION, roles: ["owner"] },
+        { organization: FIXTURE_OTHER_ORGANIZATION, roles: ["member"] },
+      ]);
+      organizations.countFor.mockResolvedValue(2);
 
-      expect(repository.upsertRepo).toHaveBeenCalledWith(ORG.id, "ouroboros", { enabled: true });
+      await asSignedIn();
+
+      expect(enablement.countsFor).toHaveBeenCalledTimes(1);
+      expect(enablement.countsFor).toHaveBeenCalledWith([
+        FIXTURE_ORGANIZATION.id,
+        FIXTURE_OTHER_ORGANIZATION.id,
+      ]);
     });
 
-    it("leaves the branch alone when the request omits it", async () => {
-      await repos.setEnabled(TENANT.id, "nobudata", "ouroboros", { enabled: false });
+    it("land on the workspace they belong to", async () => {
+      // The regrouping, which is the one place two workspaces' numbers could be swapped: the
+      // query answers flat, ordered by workspace and then login.
+      organizations.listFor.mockResolvedValue([
+        { organization: FIXTURE_ORGANIZATION, roles: ["owner"] },
+        { organization: FIXTURE_OTHER_ORGANIZATION, roles: ["member"] },
+      ]);
+      organizations.countFor.mockResolvedValue(2);
+      enablement.countsFor.mockResolvedValue([
+        counts(FIXTURE_ORGANIZATION.id, "acme-robotics", {
+          enabled_repos: "4",
+          total_repos: "4",
+          featured_repo: "helios-firmware",
+        }),
+        counts(FIXTURE_OTHER_ORGANIZATION.id, "globex", {
+          enabled: false,
+          enabled_repos: "0",
+          total_repos: "2",
+        }),
+      ]);
 
-      expect(repository.upsertRepo).toHaveBeenCalledWith(ORG.id, "ouroboros", { enabled: false });
-    });
+      const page = await asSignedIn();
 
-    it("sets the branch when the request names one", async () => {
-      await repos.setEnabled(TENANT.id, "nobudata", "ouroboros", {
+      expect(page.items[0]).toMatchObject({
+        id: FIXTURE_ORGANIZATION.id,
         enabled: true,
-        defaultBranch: "main",
+        repoCounts: { enabled: 4, total: 4 },
+        featuredRepo: "helios-firmware",
       });
-
-      expect(repository.upsertRepo).toHaveBeenCalledWith(ORG.id, "ouroboros", {
-        enabled: true,
-        default_branch: "main",
+      expect(page.items[1]).toMatchObject({
+        id: FIXTURE_OTHER_ORGANIZATION.id,
+        enabled: false,
+        repoCounts: { enabled: 0, total: 2 },
+        featuredRepo: null,
       });
     });
 
-    it("answers the organisation's 404 rather than creating one", async () => {
-      // The upsert creates a repository, never an organisation: the boundary a tenant chose
-      // is not something a repository name may widen.
-      repository.findOrg.mockResolvedValue(undefined);
+    it("arrive as numbers rather than as the strings pg counts in", async () => {
+      // `count(*)` is `bigint`, which `pg` hands back as a string. A `total` that reached the
+      // wire as `"4"` would be a contract violation the specification calls an `integer`.
+      enablement.countsFor.mockResolvedValue([
+        counts(FIXTURE_ORGANIZATION.id, "acme-robotics", {
+          enabled_repos: "4",
+          total_repos: "9",
+        }),
+      ]);
 
-      await expect(
-        repos.setEnabled(TENANT.id, "nobudata", "ouroboros", { enabled: true }),
-      ).rejects.toMatchObject({ response: { code: TENANCY_ERRORS.orgNotFound } });
-      expect(repository.upsertRepo).not.toHaveBeenCalled();
+      const page = await asSignedIn();
+
+      expect(page.items[0].repoCounts).toEqual({ enabled: 4, total: 9 });
+      expect(page.items[0].githubOrgs[0].repoCounts).toEqual({ enabled: 4, total: 9 });
+    });
+
+    it("sum across a workspace's several organisations", async () => {
+      enablement.countsFor.mockResolvedValue([
+        counts(FIXTURE_ORGANIZATION.id, "first", { enabled_repos: "2", total_repos: "5" }),
+        counts(FIXTURE_ORGANIZATION.id, "second", {
+          enabled: false,
+          enabled_repos: "1",
+          total_repos: "1",
+        }),
+      ]);
+
+      const page = await asSignedIn();
+
+      expect(page.items[0].repoCounts).toEqual({ enabled: 3, total: 6 });
+      expect(page.items[0].githubOrgs).toHaveLength(2);
+      // Any of them being on is the row's switch being on.
+      expect(page.items[0].enabled).toBe(true);
+    });
+
+    it("take the first organisation with an enabled repository as the featured one", async () => {
+      // The query returns a workspace's organisations by login, so the choice is stable
+      // between two identical requests — which is what a line beside a count has to be.
+      enablement.countsFor.mockResolvedValue([
+        counts(FIXTURE_ORGANIZATION.id, "first", { featured_repo: null }),
+        counts(FIXTURE_ORGANIZATION.id, "second", {
+          enabled_repos: "1",
+          total_repos: "1",
+          featured_repo: "helios-firmware",
+        }),
+      ]);
+
+      expect((await asSignedIn()).items[0].featuredRepo).toBe("helios-firmware");
+    });
+  });
+
+  describe("a workspace with nothing recorded", () => {
+    it("still renders, switched off and counted at zero", async () => {
+      // The mockup's `acme-labs` row. An absence here would be a workspace a person belongs to
+      // and cannot see, which is the opposite of what Step 2 is for.
+      const page = await asSignedIn();
+
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0]).toMatchObject({
+        enabled: false,
+        repoCounts: { enabled: 0, total: 0 },
+        featuredRepo: null,
+        githubOrgs: [],
+      });
+    });
+  });
+
+  describe("the page", () => {
+    it("echoes the window and the total the way every list in this API does", async () => {
+      organizations.countFor.mockResolvedValue(37);
+
+      expect(await asSignedIn({ limit: 10, offset: 20 })).toMatchObject({
+        total: 37,
+        limit: 10,
+        offset: 20,
+      });
+    });
+
+    it("is empty for somebody who belongs to nothing yet", async () => {
+      // A state, not a failure: it is what the login screen's `no-workspace` step draws, and
+      // it is why this route cannot require a workspace to answer.
+      organizations.listFor.mockResolvedValue([]);
+      organizations.countFor.mockResolvedValue(0);
+
+      expect(await asSignedIn()).toEqual({ items: [], total: 0, limit: 25, offset: 0 });
+      expect(enablement.countsFor).toHaveBeenCalledWith([]);
+    });
+
+    it("carries the roles the caller holds in each workspace", async () => {
+      organizations.listFor.mockResolvedValue([
+        { organization: FIXTURE_ORGANIZATION, roles: ["admin", "member"] },
+      ]);
+
+      expect((await asSignedIn()).items[0].roles).toEqual(["admin", "member"]);
     });
   });
 });

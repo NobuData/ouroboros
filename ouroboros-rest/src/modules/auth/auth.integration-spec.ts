@@ -7,7 +7,6 @@ import request from "supertest";
 
 import { API_BASE_PATH, configureApplication } from "../../application";
 import { bodyOf, integrationDatabaseUrl } from "../../testing/integration.fixture";
-import { GITHUB_PROVIDER_ID } from "../../auth/github.provider";
 import { AppModule } from "../app/app.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
@@ -42,19 +41,24 @@ import { sessionExists, signInAs } from "./session.fixture";
  *     automated suite for it, once #705's development password makes a sign-in reachable
  *     without github.com.
  *
- * **Two things about this suite are older than it looks, and neither is #711's.**
+ * **A third of this suite was deleted by
+ * [#714](https://github.com/NobuData/ouroboros/issues/714), and could not be repaired.**
  * [#708](https://github.com/NobuData/ouroboros/issues/708)'s `V006__tenancy_extensions.sql`
- * dropped `tenants`, `tenant_members`, `users` and `user_identities`, so every case below
- * that seeds one of them is stale against a migrated database and fails on the insert.
- * [#715](https://github.com/NobuData/ouroboros/issues/715) is the issue that rebuilds this
- * suite against the organization tables, and is where those cases are re-seeded rather than
- * here. What #711 changed is only that they no longer *read* a route that has been deleted.
+ * dropped `tenants`, `tenant_members`, `users` and `user_identities` **and**
+ * `backfill_betterauth_core()` — so *a person who first signed in under the #33 flow* seeded
+ * four rows that cannot exist and called a function that is gone. It was not a case that had
+ * drifted; it was a case about a migration path a migrated database no longer contains.
+ *
+ * What still exercises that path is `ouroboros-db/tests/rehearsal/`, which builds a populated
+ * *pre*-V006 database on every `ci/db` run and asserts every domain, org and repo resolves to
+ * the same logical tenant afterwards. That is the right home for it: the claim is about a
+ * migration, and the only database that can hold the "before" is one built to be before.
  *
  * What stays here is what this module still owns and a database still answers:
  *
  *   1. **The session the guard reads** — that a request with none, one whose person has
  *      been deleted, one that has expired and one that was never issued are all refused.
- *      Asserted against `GET /api/v1/tenants` since
+ *      Asserted against `GET /api/v1/orgs` since
  *      [#711](https://github.com/NobuData/ouroboros/issues/711), because the route these
  *      cases used to be asserted against — `GET /api/v1/auth/me` — was the second answer to
  *      *who is signed in* and that issue deleted it. The guard is the subject either way;
@@ -64,11 +68,6 @@ import { sessionExists, signInAs } from "./session.fixture";
  *      present the very same cookie, and be refused. The session is a row here — minted by
  *      `session.fixture.ts` and deleted by the library's `signOut` — so what is asserted is
  *      the mechanism rather than a stand-in for it.
- *   3. **That a person who signed in under #33 is the same person to BetterAuth**, which is
- *      the issue's second acceptance criterion and the one with a seeded pre-migration row
- *      in it. It is asserted here rather than only in SQL because the value being matched
- *      is `GITHUB_PROVIDER_ID` — a constant this service hands the library — and the point
- *      is that the string in `src/auth/` and the string V004 wrote agree.
  *
  * It takes a database the way `tenancy.integration-spec.ts` does — from the
  * [#37](https://github.com/NobuData/ouroboros/issues/37) harness, which starts one:
@@ -87,14 +86,26 @@ const TEST_PREFIX = "ouro-auth-it";
 /** The address the person in these tests holds. */
 const EMAIL = `${TEST_PREFIX}-person@example.test`;
 
-/** GitHub's immutable id for the account they signed in with under #33. */
-const EXTERNAL_ID = "990000001";
-
 /** A connection of this suite's own, for the setup and cleanup the application must not do. */
 const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
 /** The auth routes' base path. */
 const AUTH = "/api/v1/auth";
+
+/**
+ * An authenticated route to reach the guard through.
+ *
+ * *An* authenticated route rather than *the* one: the subject of every case below is the
+ * guard, and `GET /api/v1/auth/me` was only ever the cheapest way to reach it.
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted that route — it was the
+ * second answer to *who is signed in* — and
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) moved the workspace listing that
+ * replaced it from `/api/v1/tenants` to here. Naming it once is what keeps the next such move
+ * to one line.
+ *
+ * A `401` is decided before any handler runs, so the cases that expect one touch no table.
+ */
+const PROTECTED = `${API_BASE_PATH}/orgs`;
 
 /**
  * The whole `Set-Cookie` header for one cookie.
@@ -136,15 +147,12 @@ describe("the auth surface, against a real database", () => {
   /**
    * Remove everything this suite created.
    *
-   * Three deletes rather than two. `tenants` and `users` cascade through V002's tables as
-   * they always did; `"user"` needs its own, because V004 deliberately writes no foreign
-   * key between the two generations of user table — which is what lets
-   * [#708](https://github.com/NobuData/ouroboros/issues/708) drop the older pair. `account`
-   * cascades from `"user"`.
+   * One delete, where there were three until
+   * [#714](https://github.com/NobuData/ouroboros/issues/714): `tenants` and `users` no longer
+   * exist. `session` and `account` both cascade from `"user"`, so this takes the sessions the
+   * fixture minted with the people it minted them for.
    */
   async function cleanUp(): Promise<void> {
-    await admin.query("delete from ouroboros.tenants where slug like $1", [`${TEST_PREFIX}-%`]);
-    await admin.query("delete from ouroboros.users where email like $1", [`${TEST_PREFIX}-%`]);
     await admin.query('delete from ouroboros."user" where "email" like $1', [`${TEST_PREFIX}-%`]);
   }
 
@@ -170,8 +178,10 @@ describe("the auth surface, against a real database", () => {
     lifetimeSeconds?: number,
   ): Promise<{ id: string; cookie: string }> {
     const { rows } = await admin.query<{ id: string }>(
-      "insert into ouroboros.users (email, display_name) values ($1, $2) returning id",
-      [EMAIL, displayName],
+      `insert into ouroboros."user" ("id", "name", "email", "emailVerified", "updatedAt")
+       values (gen_random_uuid()::text, $1, $2, true, now())
+       returning "id"`,
+      [displayName, EMAIL],
     );
     const id = rows[0].id;
 
@@ -182,10 +192,6 @@ describe("the auth surface, against a real database", () => {
     // Asserted against an authenticated route rather than against *the* authenticated
     // route: the subject is the guard, and `GET /api/v1/auth/me` was only ever the cheapest
     // way to reach it. #711 deleted that route — it was the second answer to *who is signed
-    // in* — so these use the tenancy listing instead, which the guard protects the same way.
-    // A `401` is decided before any handler runs, so none of them touches a table.
-    const PROTECTED = `${API_BASE_PATH}/tenants`;
-
     it("refuses a request with no session", async () => {
       const response = await request(server()).get(PROTECTED).expect(401);
 
@@ -245,7 +251,7 @@ describe("the auth surface, against a real database", () => {
     // by something trying to verify a signature nothing checks any more.
     it("is refused with the envelope rather than a 500", async () => {
       const response = await request(server())
-        .get(`${AUTH}/me`)
+        .get(PROTECTED)
         .set("Cookie", `${LEGACY_SESSION_COOKIE}=whatever-it-used-to-hold`)
         .expect(401);
 
@@ -254,7 +260,7 @@ describe("the auth surface, against a real database", () => {
 
     it("is told to drop it", async () => {
       const response = await request(server())
-        .get(`${AUTH}/me`)
+        .get(PROTECTED)
         .set("Cookie", `${LEGACY_SESSION_COOKIE}=whatever-it-used-to-hold`)
         .expect(401);
 
@@ -308,11 +314,11 @@ describe("the auth surface, against a real database", () => {
       // The criterion as a caller experiences it: a cookie copied before sign-out is worth
       // nothing after it, rather than good for the rest of its week.
       const { cookie } = await signedInPerson();
-      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(200);
+      await request(server()).get(PROTECTED).set("Cookie", cookie).expect(200);
 
       await request(server()).post(`${AUTH}/logout`).set("Cookie", cookie).expect(204);
 
-      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
+      await request(server()).get(PROTECTED).set("Cookie", cookie).expect(401);
     });
 
     it("ends one session and not the person's others", async () => {
@@ -323,7 +329,7 @@ describe("the auth surface, against a real database", () => {
 
       await request(server()).post(`${AUTH}/logout`).set("Cookie", cookie).expect(204);
 
-      await request(server()).get(`${AUTH}/me`).set("Cookie", other).expect(200);
+      await request(server()).get(PROTECTED).set("Cookie", other).expect(200);
     });
 
     it("works without a session, which is why it is anonymous", async () => {
@@ -348,7 +354,7 @@ describe("the auth surface, against a real database", () => {
 
   describe("the rest of the API", () => {
     it("is closed to a request with no session", async () => {
-      const response = await request(server()).get("/api/v1/tenants").expect(401);
+      const response = await request(server()).get(PROTECTED).expect(401);
 
       expect(bodyOf<ErrorEnvelope>(response).code).toBe(AUTH_ERRORS.unauthenticated);
     });
@@ -356,110 +362,7 @@ describe("the auth surface, against a real database", () => {
     it("is open to one carrying a session the guard honours", async () => {
       const { cookie } = await signedInPerson();
 
-      await request(server()).get("/api/v1/tenants").set("Cookie", cookie).expect(200);
-    });
-  });
-
-  describe("a person who first signed in under the #33 flow", () => {
-    /**
-     * Seed the two rows #33's `resolveUser` wrote, and move them the way V004 does.
-     *
-     * The pre-migration state the acceptance criterion names: a `users` row and the
-     * `user_identities` row that made a repeat sign-in find it. `backfill_betterauth_core`
-     * is the migration's own function, called rather than reimplemented — a test that
-     * copied the columns itself would pass against a migration that had stopped doing so.
-     *
-     * @returns The legacy user's id.
-     */
-    async function seedPreMigrationIdentity(): Promise<string> {
-      const { rows } = await admin.query<{ id: string }>(
-        "insert into ouroboros.users (email, display_name, avatar_url) values ($1, $2, $3) returning id",
-        [EMAIL, "Integration Person", "https://avatars.example/990000001"],
-      );
-
-      await admin.query(
-        "insert into ouroboros.user_identities (user_id, provider, external_id) values ($1, 'github', $2)",
-        [rows[0].id, EXTERNAL_ID],
-      );
-      await admin.query("select * from ouroboros.backfill_betterauth_core()");
-
-      return rows[0].id;
-    }
-
-    it("is found by the pair BetterAuth looks a sign-in up by, and is the same person", async () => {
-      // `findOAuthUser(email, accountId, providerId)` reads `account` by (accountId,
-      // providerId) and joins the user. This is that query, with the provider id taken from
-      // the constant this service configures the library with — so a rename on either side
-      // fails here rather than at somebody's next sign-in.
-      const legacyId = await seedPreMigrationIdentity();
-
-      const { rows } = await admin.query<{ userId: string; email: string }>(
-        'select a."userId", u."email" from ouroboros.account a ' +
-          'join ouroboros."user" u on u."id" = a."userId" ' +
-          'where a."providerId" = $1 and a."accountId" = $2',
-        [GITHUB_PROVIDER_ID, EXTERNAL_ID],
-      );
-
-      expect(rows).toHaveLength(1);
-      expect(rows[0].userId).toBe(legacyId);
-      expect(rows[0].email).toBe(EMAIL);
-    });
-
-    it("keeps the memberships they already held, because the id did not change", async () => {
-      // What "the same person" is actually worth: `tenant_members.user_id` was written
-      // against `users.id`, and the back-fill preserved it — so the workspace they were
-      // invited to is still theirs after the move.
-      //
-      // Read in SQL rather than over HTTP since #711, which deleted the route that used to
-      // report it. The claim is unchanged and is about the *id*, so the row is the more
-      // direct evidence anyway; what a client is told about its memberships is
-      // `GET /api/auth/organization/list`, and #715 is the suite that covers that surface.
-      const legacyId = await seedPreMigrationIdentity();
-
-      const { rows } = await admin.query<{ id: string }>(
-        "insert into ouroboros.tenants (slug, display_name) values ($1, $2) returning id",
-        [`${TEST_PREFIX}-kept`, "Kept Workspace"],
-      );
-      await admin.query(
-        "insert into ouroboros.tenant_members (tenant_id, user_id, role) values ($1, $2, 'owner')",
-        [rows[0].id, legacyId],
-      );
-
-      const held = await admin.query<{ slug: string; role: string }>(
-        "select t.slug, m.role from ouroboros.tenant_members m " +
-          "join ouroboros.tenants t on t.id = m.tenant_id where m.user_id = $1",
-        [legacyId],
-      );
-
-      expect(held.rows).toEqual([{ slug: `${TEST_PREFIX}-kept`, role: "owner" }]);
-    });
-
-    it("arrives with a verified address, so account linking will attach to them", async () => {
-      // The flag BetterAuth's linking consults. #33 accepted only a verified GitHub primary
-      // address, so `true` is a fact about anybody holding an identity row — and if the
-      // back-fill wrote `false`, an existing person would sign in and be given a second
-      // account instead of their own.
-      await seedPreMigrationIdentity();
-
-      const { rows } = await admin.query<{ emailVerified: boolean; image: string | null }>(
-        'select "emailVerified", "image" from ouroboros."user" where "email" = $1',
-        [EMAIL],
-      );
-
-      expect(rows[0].emailVerified).toBe(true);
-      expect(rows[0].image).toBe("https://avatars.example/990000001");
-    });
-
-    it("is moved once and not again, however often the back-fill runs", async () => {
-      await seedPreMigrationIdentity();
-      await admin.query("select * from ouroboros.backfill_betterauth_core()");
-
-      const { rows } = await admin.query<{ count: string }>(
-        'select count(*) as count from ouroboros."user" where "email" = $1',
-        [EMAIL],
-      );
-
-      expect(rows[0].count).toBe("1");
+      await request(server()).get(PROTECTED).set("Cookie", cookie).expect(200);
     });
   });
 });

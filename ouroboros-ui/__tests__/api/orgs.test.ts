@@ -26,7 +26,7 @@ const TENANT = "5eed0001-0000-4000-8000-000000000001";
 /** One organisation, as the contract describes it. */
 const ORG = {
   id: "5eed0005-0000-4000-8000-000000000001",
-  tenantId: TENANT,
+  orgId: TENANT,
   login: "acme-robotics",
   enabled: true,
   installedAt: null,
@@ -43,7 +43,7 @@ describe("orgs.list", () => {
 
     const page = await orgs.list(TENANT, {}, client);
 
-    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/tenants/${TENANT}/orgs`);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/orgs/${TENANT}/github-orgs`);
     expect(page).toEqual(PAGE);
   });
 
@@ -91,7 +91,7 @@ describe("orgs.setEnabled", () => {
 
     expect(requests[0]?.method).toBe("PATCH");
     expect(requests[0]?.url).toBe(
-      `${STUB_BASE_URL}/api/v1/tenants/${TENANT}/orgs/acme-robotics`,
+      `${STUB_BASE_URL}/api/v1/orgs/${TENANT}/github-orgs/acme-robotics`,
     );
     expect(await requests[0]?.json()).toEqual({ enabled: false });
     expect(org.enabled).toBe(false);
@@ -102,7 +102,7 @@ describe("orgs.setEnabled", () => {
 
     await orgs.setEnabled(TENANT, "a b", true, client);
 
-    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/tenants/${TENANT}/orgs/a%20b`);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/orgs/${TENANT}/github-orgs/a%20b`);
   });
 
   it("rejects with the 403 the contract answers a role that may only read", async () => {
@@ -146,8 +146,8 @@ describe("the typing, which is the reason the client is generated", () => {
   it("rejects a flag of the wrong type in the update body", async () => {
     const { client } = clientAnswering(ORG);
 
-    await client.PATCH("/api/v1/tenants/{tenantId}/orgs/{login}", {
-      params: { path: { tenantId: TENANT, login: "acme-robotics" } },
+    await client.PATCH("/api/v1/orgs/{orgId}/github-orgs/{login}", {
+      params: { path: { orgId: TENANT, login: "acme-robotics" } },
       // @ts-expect-error — `enabled` is a boolean, and the truthiness of "yes" is not the
       // contract's business.
       body: { enabled: "yes" },
@@ -159,9 +159,9 @@ describe("the typing, which is the reason the client is generated", () => {
   it("rejects a path the contract does not publish", async () => {
     const { client } = clientAnswering(ORG);
 
-    // @ts-expect-error — nothing serves `/api/v1/tenants/{tenantId}/organisations`; only
+    // @ts-expect-error — nothing serves `/api/v1/orgs/{tenantId}/organisations`; only
     // paths the document describes are callable at all.
-    await client.GET("/api/v1/tenants/{tenantId}/organisations");
+    await client.GET("/api/v1/orgs/{tenantId}/organisations");
 
     expect(true).toBe(true);
   });

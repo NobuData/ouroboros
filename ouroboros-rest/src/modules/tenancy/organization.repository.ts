@@ -1,23 +1,24 @@
 /**
- * Every statement the tenant context issues against `ouroboros.organization` and
- * `ouroboros.member` ([#713](https://github.com/NobuData/ouroboros/issues/713)).
+ * Every statement this module issues against `ouroboros.organization` and `ouroboros.member`
+ * ([#713](https://github.com/NobuData/ouroboros/issues/713),
+ * [#714](https://github.com/NobuData/ouroboros/issues/714)).
  *
- * Two tables and three reads, which is the whole of what resolving a request's workspace
- * needs: find the organization a request named, and find whether the caller is in it. The
- * pair is one repository for the same reason `members.repository.ts` joined `tenant_members`
- * to `users` — the two are never read apart, and splitting them would mean the resolver
- * performing the join by hand.
+ * Two tables, and everything a request needs to know about *where* it is and *whose* it is:
+ * find the workspace a request named, find whether the caller is in it, and list the ones they
+ * are in. The pair is one repository because a membership is never read apart from the
+ * workspace it is in — splitting them would mean every caller performing the join by hand.
  *
- * **Not to be confused with `orgs.repository.ts`**, which is *GitHub* organisations
- * (`github_orgs`, `github_repos` — V003's enablement tables). The collision is real and it is
- * temporary: [#714](https://github.com/NobuData/ouroboros/issues/714) rewrites that module and
- * is where the two vocabularies stop overlapping. Until then, "organization" here always means
- * the workspace and "org" there always means GitHub's.
+ * **Not to be confused with `enablement.repository.ts`**, which is *GitHub* organisations
+ * (`github_orgs`, `github_repos` — V003's enablement tables). The collision was called
+ * temporary by #713 and #714 is where it was resolved: this file's "organization" is always
+ * the workspace, that file's "org" is always GitHub's, and the two names no longer appear on
+ * the same repository.
  *
  * **This repository only reads.** Organizations and memberships are written by BetterAuth's
  * organization plugin, through its own adapter and its own routes; `db/schema.ts` types both
  * tables as `LibraryOwned` so an `insert` here would not compile. A workspace is created by
- * `POST /api/auth/organization/create` and by `active.organization.ts`, and by nothing else.
+ * `POST /api/auth/organization/create` and by `active.organization.ts`, and by nothing else —
+ * which is also why #714 deleted this module's member CRUD rather than re-pointing it.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -25,7 +26,8 @@ import type { Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import type { Database, Organization, OrganizationRole } from "../db/schema";
-import { queryOn } from "./queries";
+import type { PageWindow } from "./pagination";
+import { asCount, queryOn } from "./queries";
 
 /**
  * The words this service recognises in `member.role`.
@@ -82,6 +84,21 @@ export type OrganizationReference =
   | { readonly kind: "id"; readonly value: string }
   | { readonly kind: "slug"; readonly value: string };
 
+/**
+ * One workspace a person belongs to, and what they hold in it.
+ *
+ * The join `GET /api/v1/orgs` is built on. It is a type of its own rather than a tuple because
+ * both halves are needed together and neither is meaningful alone here: a workspace with no
+ * membership is one this caller may not see, and a membership with no workspace is a row the
+ * cascade should already have taken.
+ */
+export interface OrganizationMembership {
+  /** The workspace. */
+  readonly organization: Organization;
+  /** The caller's roles in it, already parsed by {@link rolesFrom}. Possibly empty. */
+  readonly roles: OrganizationRole[];
+}
+
 @Injectable()
 export class OrganizationRepository {
   /**
@@ -136,5 +153,65 @@ export class OrganizationRepository {
       .executeTakeFirst();
 
     return membership === undefined ? undefined : rolesFrom(membership.role);
+  }
+
+  /**
+   * One page of the workspaces a person belongs to, with the roles they hold in each.
+   *
+   * The read behind `GET /api/v1/orgs`, and the reason it is a join rather than a listing
+   * followed by a role lookup each: the plugin's own `organization/list` discards the role in
+   * its adapter, so `ouroboros-ui` has been issuing one extra request per workspace to recover
+   * it (`app/api/session.ts`). One statement answers both, which is the whole point of the
+   * route.
+   *
+   * Ordered by `createdAt` then `id`, oldest first. The tiebreak is not decorative: the
+   * development seed creates its three workspaces in one statement, so they share an instant
+   * to the microsecond, and without a second key the order mockup 01 Step 2 is drawn in would
+   * be whatever the planner happened to return.
+   *
+   * @param userId - The person, as `"user".id` — the same value a session's `user.id` holds.
+   * @param window - Which rows to return.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns One page of memberships. Empty for somebody who belongs to nothing yet, which is
+   *   a state Step 2 exists to resolve rather than a failure.
+   */
+  async listFor(
+    userId: string,
+    window: PageWindow,
+    trx?: Transaction<Database>,
+  ): Promise<OrganizationMembership[]> {
+    const rows = await queryOn(this.database, trx)
+      .selectFrom("member")
+      .innerJoin("organization", "organization.id", "member.organizationId")
+      .selectAll("organization")
+      .select("member.role as memberRole")
+      .where("member.userId", "=", userId)
+      .orderBy("organization.createdAt")
+      .orderBy("organization.id")
+      .limit(window.limit)
+      .offset(window.offset)
+      .execute();
+
+    return rows.map(({ memberRole, ...organization }) => ({
+      organization,
+      roles: rolesFrom(memberRole),
+    }));
+  }
+
+  /**
+   * How many workspaces a person belongs to.
+   *
+   * @param userId - The person.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns The count, ignoring any window — the `total` the page echoes back.
+   */
+  async countFor(userId: string, trx?: Transaction<Database>): Promise<number> {
+    const { total } = await queryOn(this.database, trx)
+      .selectFrom("member")
+      .select((builder) => builder.fn.countAll<string>().as("total"))
+      .where("userId", "=", userId)
+      .executeTakeFirstOrThrow();
+
+    return asCount(total);
   }
 }

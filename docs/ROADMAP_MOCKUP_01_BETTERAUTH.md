@@ -42,7 +42,7 @@ edit — ten of these eleven shipped, so each disposition below now costs a migr
 | #20 `ouroboros-db: [3.2] Baseline tenancy schema — tenants & domains` | 🔴 **Closed** | **Amended** by B.3 — `V001__tenants.sql` really created `ouroboros.tenants` and `tenant_domains` (incl. the one-primary-per-tenant partial unique index). `tenants` is *replaced* by the org plugin's `organization`; `tenant_domains` is *re-pointed*, with its existing rows migrated. |
 | #22 `ouroboros-db: [3.4] GitHub org & repo enablement` | 🔴 **Closed** | **Amended** by B.3 — `V003__github_enablement.sql` shipped `github_orgs`/`github_repos`; same shape, FK re-pointed to `organization.id` with data migrated. |
 | #23 `ouroboros-db: [3.5] Dev seed data` | 🔴 **Closed** | ~~Amended by B.4~~ — **shipped as originally specified** (`R__dev_seed.sql`). B.4 is a rewrite of that one file; its production guard (`${ouro_dev_seed}`, false everywhere but the dev stack), its `5eed…` id convention and its two test files (`tests/seed.sql`, `tests/constraints.sql`) carry over unchanged. |
-| #31 `ouroboros-rest: [4.5] Tenancy module & API` | 🔴 **Closed** | **Amended** by C.4 — `src/modules/tenancy/` exists and serves the custom API. Member CRUD and invitations move to org-plugin endpoints; the module keeps domains + org/repo enablement. |
+| #31 `ouroboros-rest: [4.5] Tenancy module & API` | 🔴 **Closed** | **Amended** by C.4 — ✅ **done**. Member CRUD, invitations and workspace CRUD were **deleted** in favour of the org-plugin endpoints; the module keeps domains and org/repo enablement, moved under `/api/v1/orgs/{orgId}/…`, and gains `GET /api/v1/orgs` — Step 2's row model in one request. |
 | #32 `ouroboros-rest: [4.6] Tenant-context resolution middleware` | 🔴 **Closed** | **Amended** by C.3 — ✅ **done**. The session's `activeOrganizationId` is primary, `X-Ouro-Tenant` is a validated override against `member`, and `422 tenant_required` became `400 organization_required`. The path parameter, the mismatch rule and the `404` are unchanged. |
 | #37 `ouroboros-rest: [4.11] Integration test harness` | 🔴 **Closed** | **Extended** by C.5 (auth-flow suites) — the Testcontainers harness exists and `auth.integration-spec.ts` already uses it. |
 | #38 `ouroboros-rest: [4.12] Security baseline hardening` | 🟢 **Open** (`v2`) | **Reduced** by E.4 — the only one still open. DB-backed sessions (A.4) make its "revocation strategy" work item obsolete; rate limiting moves to E.4. Its body is trimmed during filing. |
@@ -62,7 +62,7 @@ Read from the working tree at `main` (`2593aa1`), not inferred from issue state:
 | **`ouroboros-db`** | `V000__bootstrap`, `V001__tenants`, `V002__users_membership`, `V003__github_enablement`, `R__dev_seed.sql`; `tests/constraints.sql`, `tests/seed.sql`, `tests/lib/assert.sql` | B.1 starts at **V004**. B.3 is a **data migration**, not just DDL — real rows exist in `tenants`, `tenant_members`, `tenant_domains`, `github_orgs`, `github_repos`. |
 | **`ouroboros-rest`** | `modules/auth/`, `modules/tenancy/`, `modules/db` (Kysely), `modules/config`, `modules/engine`, `modules/health`, `modules/errors`, `modules/app`; `auth/` (BetterAuth) | **Done.** A.3 deleted `oauth.ts`/`github.ts`; A.4 deleted `session.ts`, `signing.ts`, `cookies.ts`, `auth.guard.ts` and `public.decorator.ts`, and rewrote `principal.ts` against BetterAuth's `@Session()` shape. |
 | **env (`.env.example`)** | `OURO_GITHUB_CLIENT_ID`, `OURO_GITHUB_CLIENT_SECRET`, #33's dev-user bypass key, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` | A.4 **removed `OURO_SESSION_SECRET`** from the schema, both templates and `docker-compose.yml` along with the signer it belonged to. **A.6 has since removed the dev-user key** from both templates, the #28 zod schema and the compose comments, in the change that delivered its replacement. |
-| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2 is largely **done**; D.3's SSO half is **built and waiting for C.2**; D.4's cards exist and need re-pointing at C.4. Epic D shrinks accordingly. |
+| **`ouroboros-ui`** | `app/login/` (12 components incl. the inert SSO form), `app/(auth)/`, `app/api/{session,tenants,tenant}.ts`, `__tests__/login/` (12 suites) | D.2 is largely **done**; D.3's SSO half is **built and waiting for C.2**; D.4's cards exist and need re-pointing at C.4 — whose contract has now landed, and whose client files C.4 carried across so the module still builds. Epic D shrinks accordingly. |
 
 The single most consequential finding: **`sign-in-card.tsx` already implements the
 mockup's entire enterprise-SSO half** — the "or enterprise SSO" divider, the
@@ -674,10 +674,10 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 > tenant, by spot value rather than exit code. `R__dev_seed.sql` writes the BetterAuth
 > shape now, `tests/constraints.sql` was rebuilt around the surviving schema, and its
 > V006 section asserts the four dropped tables **stay** gone — a migration that
-> recreated one fails `ci/db`. **C.3 · #713 has since re-pointed the tenant context** at
-> `organization` and `member`; `modules/tenancy`'s own repositories still read the old
-> names, which is **C.4 · #714**, and `ci/rest`'s integration suites stay red until it
-> lands.
+> recreated one fails `ci/db`. **C.3 · #713 re-pointed the tenant context** at `organization`
+> and `member`, and **C.4 · #714 has since rewritten the rest of `modules/tenancy`** — the
+> module names none of the dropped tables now, and `ci/rest`'s integration suites are green
+> again.
 >
 > **B.4 · #709 has shipped and has left the table below — the seed is auth-aware.**
 > [`ouroboros-db/migrations/R__dev_seed.sql`](../ouroboros-db/migrations/R__dev_seed.sql)
@@ -985,9 +985,11 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > Two things it deliberately did **not** do. The tenant suggestion — *your organisation is
 > already on Ouroboros* — has no BetterAuth equivalent and is reported as `null` until
 > **C.2 · #712**'s `/auth/discover`; and a workspace's `status` is `active` for every row,
-> because an organization has no lifecycle column. **C.4 · #714**'s `GET /api/v1/orgs` is
-> what restores both a lifecycle and a one-call row model, and **D.4 · #719** re-points the
-> screens at it.
+> because an organization has no lifecycle column. **C.4 · #714**'s `GET /api/v1/orgs` has
+> since restored the one-call row model — with counts, the monogram, the personal flag and the
+> caller's role together — and **D.4 · #719** re-points the screens at it. It restores no
+> *lifecycle*: `organization` still has no such column, and #714 declined to invent one rather
+> than publish a field that would read `active` for every row forever.
 >
 > One correction it made to the map: `organization/list` carries **no role**. The plugin's
 > adapter discards it, and the map had claimed otherwise — `get-active-member-role` is the
@@ -1041,7 +1043,9 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > anything the *request* named: a workspace that does not exist and one the caller is not in
 > stay indistinguishable, which is the rule #32 was written for. No operation in
 > `openapi.yaml` can answer the `400` yet — every tenant-scoped one names its workspace in
-> its path — and **C.4 · #714**'s endpoints are the first that will.
+> its path — and **C.4 · #714** kept it that way: every endpoint it added names a workspace in
+> its path except `GET /api/v1/orgs`, which takes no `X-Ouro-Tenant` at all, because *which
+> workspaces are yours* is precisely the question somebody in that state is asking.
 >
 > `ActiveMembership` carries **roles, plural**. `member.role` is un-CHECK-constrained text
 > that holds a comma-separated list where the plugin was asked to grant two (V005's own
@@ -1054,15 +1058,60 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 >
 > `db/schema.ts` gained `organization` and `member` as **read-only mirrors** and lost
 > nothing, so the tenancy module's other repositories still compile against the dropped
-> tables — reconciling those is **C.4 · #714**'s, unchanged. "Read-only" is a rule rather
+> tables — reconciling those was **C.4 · #714**'s, and it has. "Read-only" is a rule rather
 > than a type after a type was tried and did not hold: a column of
 > `ColumnType<T, never, never>` makes Kysely's `Insertable` resolve to `{}`, which accepts
 > every object literal rather than none, so `organization.repository.spec.ts` reads the
 > service's own source and fails on a write verb naming either table instead.
 
+
+> **C.4 · #714 has shipped and has left the table below — `ci/rest` is green again.**
+> `modules/tenancy` is rewritten against `organization`, `member` and V006's re-parented
+> extension tables, and `db/schema.ts` mirrors five tables where it mirrored nine: `tenants`,
+> `tenant_members`, `users` and `user_identities` are gone from it, and
+> `tenant_domains`/`github_orgs` hang off `organization_id`.
+>
+> **`GET /api/v1/orgs` is mockup 01 Step 2's row model in one request** — id, slug, name,
+> monogram initials, the `personal` pill, the caller's **roles**, whether any GitHub org is
+> switched on, `repoCounts`, the `incl. <repo>` name, and the org logins the switch acts on. It
+> replaces four round trips: the plugin's `organization/list` discards the role in its adapter,
+> so `ouroboros-ui`'s `app/api/session.ts` has been issuing one `get-active-member-role` per
+> workspace, and it knows nothing about enablement at all. Two statements answer a whole page —
+> a join for the memberships, one grouped `count(*) filter (…)` for every workspace on it — so a
+> hundred rows are not two hundred round trips. It is the only `@TenantOptional()` route in the
+> module, because asking somebody to choose a workspace before being told which they have is
+> circular; the listing is scoped to the caller, so the exemption is not a way around the rule.
+>
+> **Everything else moved under it.** `/api/v1/tenants` no longer exists: enablement is
+> `…/orgs/{orgId}/github-orgs/{login}` (and `…/repos/{name}`, with a `GET` beside the `PATCH` —
+> the only operation that can answer `repo_not_found`, because the `PATCH` creates the row it
+> cannot find), and **domains moved with them** to `…/orgs/{orgId}/domains` rather than being
+> left under a prefix whose parent resource was gone. Two words called "org" meet on those
+> paths and the `github-orgs` segment is what keeps them apart — `orgId` is always the
+> workspace, and a repository names its parent `githubOrgId`.
+>
+> **Member CRUD, invitations and workspace CRUD were deleted rather than re-pointed.** The
+> organization plugin serves them (**A.5 · #704**) and applies its own access control, so a
+> second write path to `member` would be two role checks free to drift apart. The role matrix
+> went from fifteen operations to eleven and the mutation inventory from ten to six;
+> `slug_taken`, `member_not_found`, `member_exists` and `last_owner` are gone from the contract,
+> and `tenancy.errors.spec.ts` asserts they stay gone in both directions. `TenancyModule` now
+> exports nothing at all.
+>
+> Two things it deleted beyond the issue body, both because V006 had already made them
+> unrunnable. `auth/principal.ts`'s `userRow` spelled a session user as a `users` row and had
+> nothing left to translate *to*, so the tenant context carries BetterAuth's own `SessionUser`;
+> and `auth.integration-spec.ts`'s *a person who first signed in under the #33 flow* seeded four
+> dropped tables and called `backfill_betterauth_core()`, which V006 also dropped —
+> `ouroboros-db/tests/rehearsal/` is where that migration path is still exercised, against a
+> database built to be *before* it.
+>
+> `ouroboros-ui` was carried across but not re-pointed: `app/api/{tenants,orgs,repos}.ts` follow
+> the new paths, `app/api/members.ts` moved to the plugin's `get-full-organization`, and the
+> screens are untouched — **D.4 · #719** still owns the cards.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| C.4 · #714 | ouroboros-rest: [C.4] Org & repo enablement API on org-plugin roles | Rewrite #31's **shipped** tenancy module: Step 2 toggles, member CRUD dropped to the plugin | mvp, auth, rest | N (after B.3, C.3) | Y | **L** ⬆ | ouroboros-rest |
 | C.5 · #715 | ouroboros-rest: [C.5] Auth integration test suite | Testcontainers coverage of the full auth surface | mvp, auth, rest, ci | N (after A.6, C.4) | Y | M | ouroboros-rest |
 
 ### Issue C.1 (#711) — ouroboros-rest: [C.1] Auth route surface & OpenAPI exposure
@@ -1638,9 +1687,8 @@ Ordered checklist (⊕ = parallelizable within its phase):
    *(**B.3 — the cutover — has shipped.** `tenants`, `tenant_members`, `users` and
    `user_identities` are gone, and `ci/db` rehearses the migration against a populated
    V005 copy on every run rather than trusting the one that was recorded on its PR.
-   `modules/tenancy` still reads the dropped names, so **`ci/rest` is red until
-   C.3 #713 / C.4 #714 land** — the "same PR chain" this note used to warn about is
-   now the debt those two issues retire.)*
+   `modules/tenancy` read the dropped names until **C.3 #713 and C.4 #714 landed**, which
+   is the debt those two issues retired: `ci/rest` is green again.)*
 3. **Phase 2 — Auth capability:** ~~A.3 #702~~ ⊕ ~~A.4 #703~~ ⊕ ~~A.5 #704~~ ⊕ ~~A.6 #705~~
    *(**Epic A is complete.**)*
    *(**A.6 has shipped.** A.4 deleted the dev-user bypass along with the guard that read
@@ -1649,9 +1697,11 @@ Ordered checklist (⊕ = parallelizable within its phase):
    legs remain parked on two things outside A.6: B.4 #709, which teaches the seed to write
    BetterAuth's `"user"` and `account` rows, and a stack whose `ouroboros-rest` is not the
    production image — the password routes are gated on exactly that.)*
-4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ ~~C.2 #712~~ } → C.3 #713 → C.4 #714 → C.5 #715
-   *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
-   creates.)*
+4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ ~~C.2 #712~~ } → ~~C.3 #713~~ → ~~C.4 #714~~ → C.5 #715
+   *(C.3 moved after B.3 — it reworked #32's live middleware against tables B.3 creates.
+   C.4 has since rewritten the rest of `modules/tenancy` against them, so **C.5 is all that
+   is left of this phase** — and it now has a green suite to extend rather than a red one
+   to repair.)*
 5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719
    *(MVP for this roadmap is complete when D.4 passes against the compose stack —
    feeding the scaffolding roadmap's e2e gate #56, whose login leg switches from
@@ -1749,8 +1799,10 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #713 (C.3) and #714 (C.4), which un-red `ci/rest` — and they are now the
-whole front of the queue.** **Epics A and B are both complete**: #700 (A.1), #701 (A.2),
+**Start here: #715 (C.5), the last of Epic C.** #713 (C.3) and #714 (C.4) have both landed
+and `ci/rest` is green again — the tenant context reads the session's active organization,
+`modules/tenancy` is rewritten against `organization`/`member`, and `GET /api/v1/orgs` serves
+mockup 01 Step 2's row model in one request. **Epics A and B are both complete**: #700 (A.1), #701 (A.2),
 #702 (A.3), #703 (A.4), #704 (A.5) and #705 (A.6) **have all landed**, along with
 #706 (B.1), #707 (B.2), **#708 (B.3)**, **#709 (B.4)** and now **#710 (B.5)** — BetterAuth
 is configured, its handler answers at `/api/auth/*`, its core and organization tables exist
@@ -1775,11 +1827,10 @@ first sign-in yields a personal organization. **#708 (B.3) — the cut-over, and
 step in this roadmap — has now landed too**: `tenants`, `tenant_members`, `users` and
 `user_identities` are dropped, the extension tables hang off `organization_id`, and `ci/db`
 rehearses the migration against a populated V005 copy on every run. What it knowingly left
-behind is the debt this paragraph used to warn about: `modules/tenancy` still queries the
-dropped tables, so **`ci/rest`'s integration suite is red until #713 (C.3) and #714 (C.4)
-rework it** — which is why they are the front of the queue. #718 (D.3) makes the login
-page's button work, and #720 (D.5) re-points the UI's own gate, which still forwards #33's
-cookie.
+behind was the debt this paragraph used to warn about — `modules/tenancy` querying the dropped
+tables — and **#713 (C.3) and #714 (C.4) have both landed and retired it**: `ci/rest`'s
+integration suite is green. #718 (D.3) makes the login page's button work, and #720 (D.5)
+re-points the UI's own gate, which still forwards #33's cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate

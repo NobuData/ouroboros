@@ -377,7 +377,7 @@ describe("the body parser every other route depends on", () => {
     // service used to accept them and a mounting that quietly dropped the second parser
     // would be a change to the contract that no endpoint test would notice.
     await request(server())
-      .post(`${API_BASE_PATH}/tenants`)
+      .post(`${API_BASE_PATH}/orgs/00000000-0000-4000-8000-000000000000/github-orgs`)
       .type("form")
       .send({ slug: "ouro-parse" })
       .expect(401);
@@ -396,7 +396,7 @@ describe("the body parser every other route depends on", () => {
     // security baseline rather than here. That the request never reaches the guard is the
     // claim this test makes.
     const response = await request(server())
-      .post(`${API_BASE_PATH}/tenants`)
+      .post(`${API_BASE_PATH}/orgs/00000000-0000-4000-8000-000000000000/github-orgs`)
       .set("Content-Type", "application/json")
       .send(JSON.stringify({ slug: "x".repeat(200_000) }));
 

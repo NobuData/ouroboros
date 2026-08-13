@@ -5,24 +5,25 @@ import { recordingDatabase, type RecordingDatabase } from "../db/database.fixtur
 /**
  * The domain statements, and the two properties they have to have.
  *
- * **Everything is scoped by tenant.** A domain id is a uuid a caller can guess or be given,
- * and a lookup that trusted it alone would let one tenant read or delete another's rows. The
- * scoping is in the SQL, not in a check above it, so it is asserted in the SQL.
+ * **Everything is scoped by workspace.** A domain id is a uuid a caller can guess or be given,
+ * and a lookup that trusted it alone would let one workspace read or delete another's rows.
+ * The scoping is in the SQL, not in a check above it, so it is asserted in the SQL — and the
+ * column is `organization_id`, which is V006's name for what was `tenant_id` until #708.
  *
- * **Promoting is two statements.** `tenant_domains_one_primary_per_tenant` is a partial
+ * **Promoting is two statements.** `tenant_domains_one_primary_per_organization` is a partial
  * unique index, so the row that holds the flag has to give it up before another can take it.
  */
 
-const TENANT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
+const WORKSPACE = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 const DOMAIN = "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94";
 
 const ROW = {
   id: DOMAIN,
-  tenant_id: TENANT,
   domain: "acme.example",
   is_primary: true,
   created_at: new Date("2026-08-11T10:20:23.114Z"),
   updated_at: new Date("2026-08-11T10:20:23.114Z"),
+  organization_id: WORKSPACE,
 } satisfies TenantDomain;
 
 describe("the domains repository", () => {
@@ -35,47 +36,47 @@ describe("the domains repository", () => {
   });
 
   describe("listing", () => {
-    it("is scoped to the tenant", async () => {
-      await domains.list(TENANT, { limit: 25, offset: 0 });
+    it("is scoped to the workspace", async () => {
+      await domains.list(WORKSPACE, { limit: 25, offset: 0 });
 
-      expect(database.statements[0].sql).toContain('where "tenant_id" = $1');
-      expect(database.statements[0].parameters).toContain(TENANT);
+      expect(database.statements[0].sql).toContain('where "organization_id" = $1');
+      expect(database.statements[0].parameters).toContain(WORKSPACE);
     });
 
     it("puts the primary first, then sorts by name", async () => {
       // The settings screen's order: the domain the product displays back is the one a
       // reader looks for, so it is at the top rather than wherever creation time put it.
-      await domains.list(TENANT, { limit: 25, offset: 0 });
+      await domains.list(WORKSPACE, { limit: 25, offset: 0 });
 
       expect(database.statements[0].sql).toContain('order by "is_primary" desc, "domain"');
     });
   });
 
-  it("counts within the tenant", async () => {
+  it("counts within the workspace", async () => {
     database.answers({ rows: [{ total: "3" }] });
 
-    expect(await domains.count(TENANT)).toBe(3);
-    expect(database.statements[0].sql).toContain('where "tenant_id" = $1');
+    expect(await domains.count(WORKSPACE)).toBe(3);
+    expect(database.statements[0].sql).toContain('where "organization_id" = $1');
   });
 
   describe("finding one", () => {
-    it("requires the domain to belong to the tenant", async () => {
-      // A domain id that exists under a *different* tenant must answer exactly as one that
+    it("requires the domain to belong to the workspace", async () => {
+      // A domain id that exists under a *different* workspace must answer exactly as one that
       // exists nowhere, or the API confirms to whoever asked that an identifier is real.
-      await domains.find(TENANT, DOMAIN);
+      await domains.find(WORKSPACE, DOMAIN);
 
-      expect(database.statements[0].sql).toContain('where "tenant_id" = $1 and "id" = $2');
-      expect(database.statements[0].parameters).toEqual([TENANT, DOMAIN]);
+      expect(database.statements[0].sql).toContain('where "organization_id" = $1 and "id" = $2');
+      expect(database.statements[0].parameters).toEqual([WORKSPACE, DOMAIN]);
     });
   });
 
   describe("creating", () => {
-    it("stores the tenant, the domain and the flag", async () => {
+    it("stores the workspace, the domain and the flag", async () => {
       database.answers({ rows: [ROW] });
 
-      const created = await domains.create(TENANT, "acme.example", true);
+      const created = await domains.create(WORKSPACE, "acme.example", true);
 
-      expect(database.statements[0].parameters).toEqual([TENANT, "acme.example", true]);
+      expect(database.statements[0].parameters).toEqual([WORKSPACE, "acme.example", true]);
       expect(created).toEqual(ROW);
     });
   });
@@ -85,11 +86,11 @@ describe("the domains repository", () => {
       // One statement rather than a read followed by an update of the id it found: the index
       // guarantees at most one such row, and a single statement is what makes the promotion
       // race-free inside a transaction.
-      await domains.clearPrimary(TENANT);
+      await domains.clearPrimary(WORKSPACE);
 
       expect(database.statements[0].sql).toContain('set "is_primary" = $1');
-      expect(database.statements[0].sql).toContain('"tenant_id" = $2 and "is_primary" = $3');
-      expect(database.statements[0].parameters).toEqual([false, TENANT, true]);
+      expect(database.statements[0].sql).toContain('"organization_id" = $2 and "is_primary" = $3');
+      expect(database.statements[0].parameters).toEqual([false, WORKSPACE, true]);
     });
 
     it("is set on one row, by id", async () => {
@@ -105,21 +106,21 @@ describe("the domains repository", () => {
   });
 
   describe("removing", () => {
-    it("is scoped to the tenant", async () => {
+    it("is scoped to the workspace", async () => {
       database.answers({ numAffectedRows: 1n });
 
-      await domains.remove(TENANT, DOMAIN);
+      await domains.remove(WORKSPACE, DOMAIN);
 
-      expect(database.statements[0].sql).toContain('where "tenant_id" = $1 and "id" = $2');
+      expect(database.statements[0].sql).toContain('where "organization_id" = $1 and "id" = $2');
     });
 
     it("reports whether anything was removed", async () => {
       // `false` is what the service turns into a 404 — the domain did not exist *for this
-      // tenant*, which covers both "no such domain" and "somebody else's".
+      // workspace*, which covers both "no such domain" and "somebody else's".
       database.answers({ numAffectedRows: 1n }, { numAffectedRows: 0n });
 
-      expect(await domains.remove(TENANT, DOMAIN)).toBe(true);
-      expect(await domains.remove(TENANT, DOMAIN)).toBe(false);
+      expect(await domains.remove(WORKSPACE, DOMAIN)).toBe(true);
+      expect(await domains.remove(WORKSPACE, DOMAIN)).toBe(false);
     });
   });
 });

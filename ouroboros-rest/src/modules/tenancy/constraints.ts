@@ -7,7 +7,7 @@
  * and the only thing this service ever learns about it is a `pg` error carrying an SQLSTATE
  * and the constraint's name. Mapping that pair is how a database rule becomes an HTTP
  * answer, and doing it in one table rather than in a `catch` at each call site is what stops
- * the mapping drifting between the four resources that share these tables.
+ * the mapping drifting between the three resources that share these tables.
  *
  * **Checking first is not a substitute for this.** A service that asks whether a domain is
  * taken and then inserts it has a window between the two, and the loser of that race gets a
@@ -77,26 +77,17 @@ export function isDatabaseFailure(error: unknown): error is DatabaseFailure {
  * rule refusing a write is a conflict whether or not this table has a word for it.
  */
 const UNIQUE_CONSTRAINTS: Readonly<Record<string, () => DomainError>> = Object.freeze({
-  tenants_slug_key: () =>
-    conflict(TENANCY_ERRORS.slugTaken, "That slug is already in use by another tenant."),
-
   tenant_domains_domain_key: () =>
-    conflict(TENANCY_ERRORS.domainTaken, "That domain belongs to another tenant."),
+    conflict(TENANCY_ERRORS.domainTaken, "That domain belongs to another workspace."),
 
   // The service clears the previous primary inside the same transaction, so reaching this is
   // two requests racing rather than a mistake in a query — and the honest answer to that is
   // "try again", which is what a 409 says.
-  tenant_domains_one_primary_per_tenant: () =>
-    conflict(TENANCY_ERRORS.conflict, "This tenant's primary domain was changed concurrently."),
+  tenant_domains_one_primary_per_organization: () =>
+    conflict(TENANCY_ERRORS.conflict, "This workspace's primary domain was changed concurrently."),
 
-  tenant_members_pkey: () =>
-    conflict(TENANCY_ERRORS.memberExists, "That person is already a member of this tenant."),
-
-  users_email_key: () =>
-    conflict(TENANCY_ERRORS.conflict, "That email address was registered concurrently."),
-
-  github_orgs_tenant_login_key: () =>
-    conflict(TENANCY_ERRORS.orgTaken, "This tenant has already added that organisation."),
+  github_orgs_org_login_key: () =>
+    conflict(TENANCY_ERRORS.orgTaken, "This workspace has already added that organisation."),
 
   github_repos_org_name_key: () =>
     conflict(
@@ -108,29 +99,32 @@ const UNIQUE_CONSTRAINTS: Readonly<Record<string, () => DomainError>> = Object.f
 /**
  * The foreign keys these tables declare, and what a violation of each one means.
  *
- * Every one of them means the *parent* went away between the check and the write — a tenant
- * deleted while its settings screen was open, an organisation removed mid-request — so they
- * map to the same `404` the check itself would have produced, rather than to a `409`. The
- * names are PostgreSQL's own for an inline `references`: `<table>_<column>_fkey`.
+ * Every one of them means the *parent* went away between the check and the write — a workspace
+ * deleted while its settings screen was open, a GitHub organisation removed mid-request — so
+ * they map to the same `404` the check itself would have produced, rather than to a `409`.
+ *
+ * The two workspace keys are V006's, named for the column it re-parented onto: an inline
+ * `references` is `<table>_<column>_fkey` to PostgreSQL, so re-pointing `tenant_id` to
+ * `organization_id` renamed them. A key still spelled `*_tenant_id_fkey` here would be a
+ * mapping that never fires, which is a `500` where the answer should be a `404`.
  */
 const FOREIGN_KEYS: Readonly<Record<string, () => DomainError>> = Object.freeze({
   // No `details` on any of them: the parent's identifier is not in the driver's report, and
   // inventing one would put a value in the envelope that the caller never sent.
-  tenant_domains_tenant_id_fkey: () => goneTenant(),
-  tenant_members_tenant_id_fkey: () => goneTenant(),
-  github_orgs_tenant_id_fkey: () => goneTenant(),
+  tenant_domains_organization_id_fkey: () => goneWorkspace(),
+  github_orgs_organization_id_fkey: () => goneWorkspace(),
   github_repos_org_id_fkey: () =>
-    new NotFoundError(TENANCY_ERRORS.orgNotFound, "No such organisation on this tenant."),
+    new NotFoundError(TENANCY_ERRORS.orgNotFound, "No such GitHub organisation on this workspace."),
 });
 
 /**
- * The tenant a write named is gone.
+ * The workspace a write named is gone.
  *
- * @returns The same `404` a check for the tenant would have produced, so the answer does not
- *   depend on whether the row disappeared before the check or after it.
+ * @returns The same `404` a check for the workspace would have produced, so the answer does
+ *   not depend on whether the row disappeared before the check or after it.
  */
-function goneTenant(): DomainError {
-  return new NotFoundError(TENANCY_ERRORS.tenantNotFound, "No such tenant.");
+function goneWorkspace(): DomainError {
+  return new NotFoundError(TENANCY_ERRORS.tenantNotFound, "No such workspace.");
 }
 
 /**

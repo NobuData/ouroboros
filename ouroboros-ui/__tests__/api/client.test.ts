@@ -49,10 +49,15 @@ const TENANT_PAGE = {
     {
       id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
       slug: "acme",
-      displayName: "Acme, Inc.",
-      status: "active",
+      name: "Acme, Inc.",
+      monogram: "AI",
+      personal: false,
+      roles: ["owner"],
+      enabled: true,
+      repoCounts: { enabled: 4, total: 4 },
+      featuredRepo: "helios-firmware",
+      githubOrgs: [{ login: "acme", enabled: true, repoCounts: { enabled: 4, total: 4 } }],
       createdAt: "2026-08-11T10:20:23.114Z",
-      updatedAt: "2026-08-11T10:20:23.114Z",
     },
   ],
   total: 1,
@@ -93,30 +98,30 @@ describe("the request the client sends", () => {
   it("joins the path onto the configured base URL", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)]);
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
-    expect(requests[0]?.url).toBe(`${BASE_URL}/api/v1/tenants`);
+    expect(requests[0]?.url).toBe(`${BASE_URL}/api/v1/orgs`);
   });
 
   it("serialises path and query parameters from the contract", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)]);
 
-    await client.GET("/api/v1/tenants/{tenantId}/domains", {
+    await client.GET("/api/v1/orgs/{orgId}/domains", {
       params: {
-        path: { tenantId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10" },
+        path: { orgId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10" },
         query: { limit: 10, offset: 20 },
       },
     });
 
     expect(requests[0]?.url).toBe(
-      `${BASE_URL}/api/v1/tenants/9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10/domains?limit=10&offset=20`,
+      `${BASE_URL}/api/v1/orgs/9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10/domains?limit=10&offset=20`,
     );
   });
 
   it("asks for credentials, which is what makes the cookie travel cross-origin", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)]);
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.credentials).toBe("include");
   });
@@ -128,7 +133,7 @@ describe("the active workspace", () => {
       tenant: () => "acme",
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get(TENANT_HEADER)).toBe("acme");
   });
@@ -138,7 +143,7 @@ describe("the active workspace", () => {
       tenant: () => Promise.resolve("9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"),
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get(TENANT_HEADER)).toBe("9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10");
   });
@@ -150,9 +155,9 @@ describe("the active workspace", () => {
       { tenant: () => chosen },
     );
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
     chosen = "globex";
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests.map((request) => request.headers.get(TENANT_HEADER))).toEqual([
       "acme",
@@ -165,7 +170,7 @@ describe("the active workspace", () => {
       tenant: () => undefined,
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.has(TENANT_HEADER)).toBe(false);
   });
@@ -173,7 +178,7 @@ describe("the active workspace", () => {
   it("sends no header when nothing resolves one at all", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)]);
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.has(TENANT_HEADER)).toBe(false);
   });
@@ -185,7 +190,7 @@ describe("the active workspace", () => {
       tenant: () => "acme\r\nX-Ouro-Internal-Key: stolen",
     });
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toThrow(TENANT_HEADER);
+    await expect(client.GET("/api/v1/orgs")).rejects.toThrow(TENANT_HEADER);
     expect(requests).toHaveLength(0);
   });
 });
@@ -196,7 +201,7 @@ describe("the session", () => {
       session: () => ({ [SESSION_COOKIE]: "signed.value" }),
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
   });
@@ -221,7 +226,7 @@ describe("the session", () => {
       }),
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(
       `${SESSION_COOKIE}=signed.value; ${SESSION_CACHE_COOKIE}=cached.snapshot`,
@@ -233,7 +238,7 @@ describe("the session", () => {
       session: () => ({ [SESSION_CACHE_COOKIE]: "cached.snapshot" }),
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_CACHE_COOKIE}=cached.snapshot`);
   });
@@ -243,7 +248,7 @@ describe("the session", () => {
       session: () => undefined,
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.has("Cookie")).toBe(false);
   });
@@ -255,7 +260,7 @@ describe("the session", () => {
       session: () => ({}),
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.has("Cookie")).toBe(false);
   });
@@ -268,7 +273,7 @@ describe("the session", () => {
       tenant: () => "acme",
     });
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
   });
@@ -278,7 +283,7 @@ describe("the session", () => {
       session: () => ({ [SESSION_COOKIE]: "signed\r\nX-Ouro-Internal-Key: stolen" }),
     });
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toThrow(/RFC 6265/);
+    await expect(client.GET("/api/v1/orgs")).rejects.toThrow(/RFC 6265/);
     expect(requests).toHaveLength(0);
   });
 
@@ -287,8 +292,8 @@ describe("the session", () => {
       session: () => ({ [SESSION_COOKIE]: "signed;value" }),
     });
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toThrow(/RFC 6265/);
-    await expect(client.GET("/api/v1/tenants")).rejects.not.toThrow(/signed;value/);
+    await expect(client.GET("/api/v1/orgs")).rejects.toThrow(/RFC 6265/);
+    await expect(client.GET("/api/v1/orgs")).rejects.not.toThrow(/signed;value/);
     expect(requests).toHaveLength(0);
   });
 });
@@ -297,7 +302,7 @@ describe("what a call resolves with", () => {
   it("returns the body the contract describes", async () => {
     const { client } = clientOver([jsonResponse(200, TENANT_PAGE)]);
 
-    const result = await client.GET("/api/v1/tenants");
+    const result = await client.GET("/api/v1/orgs");
 
     expect(result.data).toEqual(TENANT_PAGE);
     expect(result.error).toBeUndefined();
@@ -312,7 +317,7 @@ describe("what a call rejects with", () => {
       }),
     ]);
 
-    const caught: unknown = await client.GET("/api/v1/tenants").catch((error: unknown) => error);
+    const caught: unknown = await client.GET("/api/v1/orgs").catch((error: unknown) => error);
 
     expect(isApiError(caught)).toBe(true);
     const error = caught as ApiError;
@@ -324,7 +329,7 @@ describe("what a call rejects with", () => {
   it("throws for every failing status, including one with no envelope", async () => {
     const { client } = clientOver([new Response("gateway said no", { status: 502 })]);
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toBeInstanceOf(ApiError);
+    await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
   });
 
   it("leaves a fetch that never arrived as the runtime's own error", async () => {
@@ -335,7 +340,7 @@ describe("what a call rejects with", () => {
       fetch: () => Promise.reject(new TypeError("fetch failed")),
     });
 
-    const caught: unknown = await client.GET("/api/v1/tenants").catch((error: unknown) => error);
+    const caught: unknown = await client.GET("/api/v1/orgs").catch((error: unknown) => error);
 
     expect(caught).toBeInstanceOf(TypeError);
     expect(isApiError(caught)).toBe(false);
@@ -350,7 +355,7 @@ describe("a 401", () => {
       { onUnauthenticated },
     );
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toBeInstanceOf(ApiError);
+    await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
 
     expect(onUnauthenticated).toHaveBeenCalledTimes(1);
     const [error] = onUnauthenticated.mock.calls[0] as [ApiError];
@@ -369,7 +374,7 @@ describe("a 401", () => {
       },
     });
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toBeInstanceOf(RedirectSignal);
+    await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
   });
 
   it("waits for a handler that answers asynchronously", async () => {
@@ -381,7 +386,7 @@ describe("a 401", () => {
       },
     });
 
-    await client.GET("/api/v1/tenants").catch(() => order.push("thrown"));
+    await client.GET("/api/v1/orgs").catch(() => order.push("thrown"));
 
     expect(order).toEqual(["handled", "thrown"]);
   });
@@ -392,7 +397,7 @@ describe("a 401", () => {
       onUnauthenticated,
     });
 
-    await expect(client.GET("/api/v1/tenants")).rejects.toBeInstanceOf(ApiError);
+    await expect(client.GET("/api/v1/orgs")).rejects.toBeInstanceOf(ApiError);
     expect(onUnauthenticated).not.toHaveBeenCalled();
   });
 });
@@ -401,7 +406,7 @@ describe("unwrap", () => {
   it("returns the body of a call that answered with one", async () => {
     const { client } = clientOver([jsonResponse(200, TENANT_PAGE)]);
 
-    const page = unwrap(await client.GET("/api/v1/tenants"));
+    const page = unwrap(await client.GET("/api/v1/orgs"));
 
     // Typed end to end: `page.items[0].slug` is a compile error the moment the contract
     // stops carrying that field and `yarn api:sync` is run.

@@ -7,9 +7,11 @@
  * true. The screen that renders them says so in words, because two switches that read
  * independently but act together would otherwise be a trap.
  *
- * A repository hangs from an organisation rather than from the workspace, which is why
+ * A repository hangs from a GitHub organisation rather than from the workspace, which is why
  * every path here carries both — and why this is a file beside `app/api/orgs.ts` rather
- * than more methods on it.
+ * than more methods on it. The resource names that parent `githubOrgId` rather than `orgId`
+ * since [#714](https://github.com/NobuData/ouroboros/issues/714), because `orgId` is the
+ * *workspace* everywhere else in the contract.
  *
  * Server-side only, by way of `app/api/server.ts`.
  */
@@ -51,8 +53,8 @@ export const repos = {
     client: ApiClient = api(),
   ): Promise<RepoPage> {
     return unwrap(
-      await client.GET("/api/v1/tenants/{tenantId}/orgs/{login}/repos", {
-        params: { path: { tenantId, login }, query },
+      await client.GET("/api/v1/orgs/{orgId}/github-orgs/{login}/repos", {
+        params: { path: { orgId: tenantId, login }, query },
       }),
     );
   },
@@ -84,8 +86,8 @@ export const repos = {
     client: ApiClient = api(),
   ): Promise<Repo> {
     return unwrap(
-      await client.PATCH("/api/v1/tenants/{tenantId}/orgs/{login}/repos/{name}", {
-        params: { path: { tenantId, login, name } },
+      await client.PATCH("/api/v1/orgs/{orgId}/github-orgs/{login}/repos/{name}", {
+        params: { path: { orgId: tenantId, login, name } },
         body: { enabled },
       }),
     );

@@ -18,7 +18,7 @@ import { enabledRepos, repoSummary } from "@/app/login/enablement";
 function repo(name: string, enabled: boolean) {
   return {
     id: `repo-${name}`,
-    orgId: "org",
+    githubOrgId: "org",
     name,
     enabled,
     defaultBranch: "main",
@@ -42,7 +42,7 @@ function entry(over: {
   return {
     org: {
       id: "org",
-      tenantId: "tenant",
+      orgId: "workspace",
       login: "acme-robotics",
       enabled: over.enabled ?? true,
       installedAt: null,

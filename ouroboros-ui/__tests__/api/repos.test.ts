@@ -27,7 +27,7 @@ const ORG_LOGIN = "acme-robotics";
 /** One repository, as the contract describes it. */
 const REPO = {
   id: "5eed0006-0000-4000-8000-000000000001",
-  orgId: "5eed0005-0000-4000-8000-000000000001",
+  githubOrgId: "5eed0005-0000-4000-8000-000000000001",
   name: "helios-firmware",
   enabled: true,
   defaultBranch: "main",
@@ -45,7 +45,7 @@ describe("repos.list", () => {
     const page = await repos.list(TENANT, ORG_LOGIN, {}, client);
 
     expect(requests[0]?.url).toBe(
-      `${STUB_BASE_URL}/api/v1/tenants/${TENANT}/orgs/${ORG_LOGIN}/repos`,
+      `${STUB_BASE_URL}/api/v1/orgs/${TENANT}/github-orgs/${ORG_LOGIN}/repos`,
     );
     expect(page).toEqual(PAGE);
   });
@@ -84,7 +84,7 @@ describe("repos.setEnabled", () => {
 
     expect(requests[0]?.method).toBe("PATCH");
     expect(requests[0]?.url).toBe(
-      `${STUB_BASE_URL}/api/v1/tenants/${TENANT}/orgs/${ORG_LOGIN}/repos/helios-firmware`,
+      `${STUB_BASE_URL}/api/v1/orgs/${TENANT}/github-orgs/${ORG_LOGIN}/repos/helios-firmware`,
     );
     expect(repo.enabled).toBe(false);
   });
@@ -131,7 +131,7 @@ describe("the typing, which is the reason the client is generated", () => {
     const first: Repo | undefined = page.items[0];
 
     expect(first?.name).toBe("helios-firmware");
-    expect(first?.orgId).toBe(REPO.orgId);
+    expect(first?.githubOrgId).toBe(REPO.githubOrgId);
   });
 
   it("rejects a field the contract does not describe", () => {

@@ -9,31 +9,26 @@
  * `ouroboros.session` joined to `ouroboros."user"` — and writes it to `request.session`.
  * This file is the *typing* of that, plus the one adaptation the rest of the service needs.
  *
- * Three things are worth stating, because each replaces a decision the old module made:
+ * Two things are worth stating, because each replaces a decision the old module made:
  *
  *   * **The property is `session`, a plain name, not a symbol.** #33 used a symbol
  *     precisely to avoid the contended `request.user`, and that argument still holds — the
  *     library writes `request.user` too, and this module deliberately never reads it. What
  *     it reads is `request.session`, which the library owns and this service does not get
  *     to choose. Naming it in one constant here is what keeps the choice greppable.
- *   * **The session's user is the person, and no row is read to confirm it.** V004
- *     back-filled `ouroboros.users` into `ouroboros."user"` **preserving ids**, so a
- *     session's `user.id` is the same value `tenant_members.user_id` holds. Looking the old
- *     row up again would cost a query per request — the thing the cookie cache exists to
- *     avoid — and would 500 for anybody who first signed in *after* V004, because such a
- *     person has a `"user"` row and no `users` row at all. {@link userRow} is the
- *     adaptation instead: the same person, spelled in the vocabulary the tenancy code was
- *     written against, until [#708](https://github.com/NobuData/ouroboros/issues/708)
- *     retires that vocabulary altogether.
- *   * **A null session is a programming mistake here, not a request's.** The guard has
- *     already answered `401` for anybody it could not resolve, so code reached on a
- *     protected route is guaranteed a principal. {@link principalUser} is where that
- *     guarantee is either honoured or failed loudly, exactly as `@CurrentUser()` used to
- *     fail — the case it catches is `@Session()` on a route somebody also marked
- *     `@AllowAnonymous()`.
+ *   * **The session's user is the person, and no row is read to confirm it.** The library's
+ *     `AuthGuard` has already resolved `ouroboros."user"`; reading it again would cost a
+ *     query per request, which is the thing the cookie cache exists to avoid. `session.user`
+ *     *is* the answer, and `member.userId` names the same value.
+ *
+ * **There is no longer an adaptation, and its absence is the point.** Until
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) this file also held `userRow`,
+ * which spelled a `SessionUser` as a row of `ouroboros.users` so that tenancy code written
+ * before BetterAuth could keep reading the vocabulary it was written against. #708 dropped
+ * that table and #714 rewrote those callers, so the translation had nothing left to translate
+ * *to*. {@link SessionUser} is what the tenant context carries now, and one shape for "the
+ * signed-in person" is one shape fewer to keep in step.
  */
-
-import type { User } from "../db/schema";
 
 /**
  * Where the library's guard writes the session on the request.
@@ -56,7 +51,7 @@ export const SESSION_PROPERTY = "session";
  * codebase whose rows are not — see V004 on why those tables keep vendor naming.
  */
 export interface SessionUser {
-  /** `"user".id`. The same value `ouroboros.users.id` holds, preserved by V004's back-fill. */
+  /** `"user".id`. The same value `member."userId"` holds — V004's back-fill preserved ids. */
   readonly id: string;
   /** `"user".name` — what a member list prints. `not null`; #702 maps GitHub's into it. */
   readonly name: string;
@@ -157,39 +152,6 @@ export function principalOf(request: PrincipalRequest): Principal | undefined {
 }
 
 /**
- * The signed-in person, in the shape the tenancy code was written against.
- *
- * The whole of the `ouroboros."user"` → `ouroboros.users` adaptation, in one function, so
- * that [#708](https://github.com/NobuData/ouroboros/issues/708) — which drops `users` and
- * re-points everything at the library's tables — has exactly one place to delete. Every
- * field maps one for one, because V004 wrote one from the other:
- *
- * ```
- * "user".id         → users.id            (preserved by the back-fill, uuid as text)
- * "user".name       → users.display_name
- * "user".email      → users.email
- * "user".image      → users.avatar_url
- * "user".createdAt  → users.created_at
- * "user".updatedAt  → users.updated_at
- * ```
- *
- * @param user - The session's user.
- * @returns The same person as a `users` row. `avatar_url` is `null` rather than
- *   `undefined` when the library has none: the column is nullable and the resource that
- *   renders it publishes `null`, and an `undefined` there would serialise the field away.
- */
-export function userRow(user: SessionUser): User {
-  return {
-    id: user.id,
-    email: user.email,
-    display_name: user.name,
-    avatar_url: user.image ?? null,
-    created_at: user.createdAt,
-    updated_at: user.updatedAt,
-  };
-}
-
-/**
  * The workspace a session is acting in.
  *
  * A function rather than a property read at three call sites, because "acting nowhere" has
@@ -203,33 +165,4 @@ export function userRow(user: SessionUser): User {
  */
 export function activeOrganizationOf(principal: Principal | null | undefined): string | undefined {
   return principal?.session.activeOrganizationId ?? undefined;
-}
-
-/**
- * The signed-in person a handler is entitled to, from the session the guard resolved.
- *
- * ```ts
- * @Get("me")
- * read(@Session() principal: Principal | null): Promise<SessionResource> {
- *   return this.auth.describe(principalUser(principal));
- * }
- * ```
- *
- * @param principal - What `@Session()` produced.
- * @returns Them, as {@link userRow} spells it.
- * @throws {Error} If there is no session — which means the handler is on a route somebody
- *   also marked `@AllowAnonymous()`. That is a programming mistake rather than a request's,
- *   and it fails loudly here instead of handing a handler a `null` typed as a person, which
- *   is how a nullable principal becomes a `500` three layers down or, worse, a query
- *   filtered by `undefined`.
- */
-export function principalUser(principal: Principal | null | undefined): User {
-  if (principal === null || principal === undefined) {
-    throw new Error(
-      "@Session() was read on a route with no session. Remove @AllowAnonymous() from the handler, " +
-        "or stop asking for the caller on a route that does not have one.",
-    );
-  }
-
-  return userRow(principal.user);
 }
