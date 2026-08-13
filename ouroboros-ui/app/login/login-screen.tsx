@@ -1,6 +1,6 @@
 import type { Enablement } from "@/app/api/enablement";
 import type { Membership } from "@/app/api/membership";
-import type { SessionUser, TenantSuggestion } from "@/app/api/session";
+import type { SessionUser, TenantSuggestion } from "@/app/api/identity";
 
 import { BrandPanel } from "./brand-panel";
 import { EnablementCard } from "./enablement-card";

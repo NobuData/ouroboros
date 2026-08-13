@@ -10,7 +10,9 @@
 > holding a [typed API client](#the-generated-client) generated from the REST contract
 > ([#43](https://github.com/NobuData/ouroboros/issues/43)), serving
 > [sign-in and workspace selection](#sign-in--tenancy)
-> ([#44](https://github.com/NobuData/ouroboros/issues/44)) and, behind it, the
+> ([#44](https://github.com/NobuData/ouroboros/issues/44)) over
+> [BetterAuth's own client](#the-two-client-rule)
+> ([#716](https://github.com/NobuData/ouroboros/issues/716)) and, behind it, the
 > [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)), both
 > built from the [UI primitives](#ui-primitives)
 > ([#46](https://github.com/NobuData/ouroboros/issues/46)) —
@@ -39,6 +41,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Package manager | Yarn 4 via corepack (`nodeLinker: node-modules`) |
 | Runtime | Node 24 |
 | API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The generated client](#the-generated-client) |
+| Auth client | `better-auth` with the organization plugin, for `/api/auth/*` only — see [The two-client rule](#the-two-client-rule) |
 | Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives) |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
@@ -110,7 +113,7 @@ cookie that [the login screen](#sign-in--tenancy) writes. The session cookies ar
 `ouroboros-rest`'s — this module forwards them and never writes them.
 
 **Which cookies get forwarded now depends on which client is calling**, and the two do not
-agree yet. [`app/api/auth-client.ts`](app/api/auth-client.ts) forwards BetterAuth's
+agree yet. [`app/api/auth-server.ts`](app/api/auth-server.ts) forwards BetterAuth's
 `better-auth.session_token` and `better-auth.session_data`, so the session read works;
 [`app/api/client.ts`](app/api/client.ts) still forwards `ouro_session`, which
 [#703](https://github.com/NobuData/ouroboros/issues/703) made wrong — a session is a row now,
@@ -193,17 +196,18 @@ ouroboros-ui/
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
 │   ├── paths.ts             # the two routes this application redirects to
-│   ├── api/                 # the two clients for ouroboros-rest — both server-side
+│   ├── api/                 # the two clients for ouroboros-rest
 │   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
 │   │   ├── client.ts        #   the wrapper: cookie · X-Ouro-Tenant · ApiError
-│   │   ├── auth-client.ts   #   the other family: /api/auth/* — never generated
+│   │   ├── auth-client.ts   #   the other family: BetterAuth's client — the browser's
+│   │   ├── auth-server.ts   #   …and the server's, plus readSession() / signOutSession()
 │   │   ├── errors.ts        #   ApiError, and the envelope it is parsed from
 │   │   ├── tenant.ts        #   the active-workspace vocabulary
+│   │   ├── identity.ts      #   Session / SessionUser — framework-free
 │   │   ├── membership.ts    #   what a person holds in a workspace — framework-free
 │   │   ├── server.ts        #   api() / anonymousApi(), and the workspace store
 │   │   ├── access.ts        #   the gate: currentAccess() / requireWorkspace()
 │   │   ├── tenants.ts       #   tenants.list() / tenants.read()
-│   │   ├── session.ts       #   session.read() — composed from three auth routes
 │   │   ├── members.ts       #   members.list() — the dashboard's count
 │   │   ├── orgs.ts          #   orgs.list() / orgs.setEnabled()
 │   │   ├── repos.ts         #   repos.list() / repos.setEnabled()
@@ -257,7 +261,7 @@ one**, and which one a call goes through is decided by the path rather than by p
 
 | Family | Paths | Client | Generated? |
 |---|---|---|---|
-| Auth | `/api/auth/*` — sign-in, session, organizations | [`app/api/auth-client.ts`](app/api/auth-client.ts) | **No, deliberately** |
+| Auth | `/api/auth/*` — sign-in, session, organizations | [`app/api/auth-client.ts`](app/api/auth-client.ts) | **No — BetterAuth ships its own** |
 | Everything else | `/api/v1/*` — tenants, enablement, engine | [`app/api/client.ts`](app/api/client.ts) | Yes, from the contract |
 
 `ouroboros-rest/openapi.yaml` describes both families and says the same thing at the top of
@@ -267,26 +271,83 @@ auth family is excluded from code generation** — `app/api/schema.d.ts` has no 
 those paths, which is what makes reaching for the wrong client a compile error rather than a
 convention.
 
+```ts
+import { authApi, readSession } from "@/app/api/auth-server";   // server
+import { useSession, signIn } from "@/app/api/auth-client";     // browser
+```
+
+That is `createAuthClient({plugins: [organizationClient()]})`
+([#716](https://github.com/NobuData/ouroboros/issues/716)), typed against the library's own
+route table rather than against interfaces copied out of the contract by hand — which is what
+the stand-in it replaced was, and why a renamed field used to surface as `undefined` at render
+time instead of as a compile error.
+
+### Two instances, because a browser and a server share nothing a client holds
+
+|  | Browser — [`auth-client.ts`](app/api/auth-client.ts) | Server — [`auth-server.ts`](app/api/auth-server.ts) |
+|---|---|---|
+| **Address** | this origin, `/api/auth`, forwarded by [`proxy.ts`](proxy.ts) | `OURO_REST_URL`, which the browser must never learn |
+| **Cookies** | the browser's own, `credentials: "include"` | `better-auth.session_token` **and** `better-auth.session_data`, composed by hand from the request being served |
+| **Entry point** | `better-auth/react` — one session store per tab, refetched on focus, broadcast between tabs | `better-auth/client` — a process that renders one request and forgets it |
+| **A `401`** | navigates to `/login?next=…` | Next.js's redirect signal to `/login` |
+
+The second cookie is the signed five-minute snapshot the service answers a session from
+without a database lookup; dropping it is a silent cost rather than a failure. What the two
+instances *share* is `auth-client.ts` itself — the base path, the cookie names, the `AuthError`
+shape and the two translations — because those are what would be wrong in two places if each
+kept its own.
+
+**A role is widened on the way in.** The organization plugin's client is typed against the
+library's three default roles; `ouroboros-rest` configures a fourth (`viewer`) and the
+contract publishes all four. `asRole` is the seam, and it degrades anything unrecognised to
+`viewer` — the least the API grants, because a screen that guessed high would render a control
+the service then refuses.
+
+### Reading a session
+
+```tsx
+// a Server Component, which is what every shipped screen is
+const { session, membership } = await requireWorkspace();   // app/api/access.ts
+
+// a Client Component — the account menu (#721) is the case this exists for
+"use client";
+const { data, isPending } = useSession();
+```
+
+Prefer the server helper. `/login` is Server Components with Server Action writes and
+[`page.tsx`](<app/(auth)/login/page.tsx>) documents why; the hook is right only where a
+component is already a Client Component for some other reason.
+
 **Who is signed in is three calls, and there is no fourth.**
-[`session.read()`](app/api/session.ts) composes `get-session` (the person),
-`organization/list` (the workspaces) and `get-active-member-role` (what they hold in one).
+[`readSession()`](app/api/auth-server.ts) composes `getSession` (the person),
+`organization.list` (the workspaces) and `getActiveMemberRole` (what they hold in one).
 `GET /api/v1/auth/me` used to answer all three at once and was deleted in #711: two routes
 answering *who is signed in* are two answers that can disagree. **Do not add another** — if
-the generated client seems to be missing a session call, that is the rule working.
+the generated client seems to be missing a session call, that is the rule working. The
+per-workspace role calls collapse into one when
+[#714](https://github.com/NobuData/ouroboros/issues/714)'s `GET /api/v1/orgs` is wired up in
+[#719](https://github.com/NobuData/ouroboros/issues/719).
 
-Two settings are all the auth client configures, and both are named here because
-[#716](https://github.com/NobuData/ouroboros/issues/716) inherits them:
+### Signing out clears three things
 
-| | |
-|---|---|
-| **Base URL** | `OURO_REST_URL`, the same origin the generated client uses — the families differ by prefix, not by host |
-| **Cookies** | `better-auth.session_token` **and** `better-auth.session_data`, forwarded from the request being served. The second is the signed five-minute snapshot that saves a database lookup; dropping it is a silent cost rather than a failure |
+[`signOutSession()`](app/api/auth-server.ts) ends the session **row** on the service, deletes
+both auth cookies from the response, and forgets the chosen workspace, then lands on `/login`.
+All three are needed and only the first is BetterAuth's: the library's own `Set-Cookie` cannot
+reach the browser from a server-side call — the header arrives at this process and stops — and
+`ouro_tenant` is this application's own, so nothing else deletes it. A session merely
+forgotten by the browser is a session a copied cookie still opens. The account menu that binds
+a form to it is [#721](https://github.com/NobuData/ouroboros/issues/721).
 
-`auth-client.ts` is a stand-in. #716 replaces it with
-`createAuthClient({plugins: [organizationClient()]})` — BetterAuth's own — and the shapes it
-returns are already the library's, so that is a swap of transport rather than of vocabulary.
-The per-workspace role calls collapse into one when
-[#714](https://github.com/NobuData/ouroboros/issues/714)'s `GET /api/v1/orgs` lands.
+### Where a `401` goes
+
+Both clients route one to [the login screen](#sign-in--tenancy), and the browser's carries
+`?next=` — where it was — which [`page.tsx`](<app/(auth)/login/page.tsx>) honours once the
+visitor is settled. The value is never trusted: `safeReturnTo` in
+[`app/paths.ts`](app/paths.ts) accepts only a path on this origin, because a link carrying
+`?next=https://evil.test` would otherwise hand a freshly signed-in visitor to somebody else's
+page. The server side sends no `next=` at all — a Server Component cannot read the URL it is
+rendering for, and giving it that knowledge is the middleware decision
+[#720](https://github.com/NobuData/ouroboros/issues/720) owns.
 
 ## The generated client
 
@@ -367,7 +428,7 @@ returns both or redirects to [sign-in](#sign-in--tenancy); `currentAccess()` ans
 redirecting, for the screen that has to ask.
 
 **The cookie is a claim, not a fact.** `ouro_tenant` is whatever the browser was last given,
-so it is resolved against the memberships [`session.read()`](#the-two-client-rule) reports *in the same request*
+so it is resolved against the memberships [`readSession()`](#the-two-client-rule) reports *in the same request*
 ([`app/api/membership.ts`](app/api/membership.ts)). A hand-edited cookie, one naming a
 workspace somebody has been removed from, and one naming a suspended workspace all resolve to
 *no choice* — and land on the login screen rather than on a screen of somebody else's data.
@@ -926,6 +987,7 @@ theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
 theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
 typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
+BetterAuth client & session store [#716](https://github.com/NobuData/ouroboros/issues/716) ·
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).

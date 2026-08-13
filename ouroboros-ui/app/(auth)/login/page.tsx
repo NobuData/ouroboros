@@ -5,7 +5,7 @@ import { currentAccess } from "@/app/api/access";
 import { readEnablement } from "@/app/api/enablement";
 import { LoginScreen, type LoginScreenState } from "@/app/login/login-screen";
 import { WORKSPACE_PARAM, type LoginView, loginView } from "@/app/login/view";
-import { DASHBOARD_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, RETURN_TO_PARAM, safeReturnTo } from "@/app/paths";
 
 /**
  * `/login` — the front door (#44).
@@ -27,6 +27,14 @@ import { DASHBOARD_PATH } from "@/app/paths";
  * incidental: a page whose content depends on who is asking cannot be prerendered, and
  * `next build` must not try — `OURO_REST_URL` is a runtime value and a build machine has no
  * reason to know the address of a service it is not calling.
+ *
+ * **It is also where a `?next=` lands** ([#716](https://github.com/NobuData/ouroboros/issues/716)).
+ * A `401` sends a request here carrying where it was going, and a screen that always finished
+ * on the dashboard would drop that on the floor — so a visitor who arrives with one and turns
+ * out to be settled goes back to the page they asked for instead. The parameter is never
+ * trusted: `safeReturnTo` accepts only a path on this origin, because a link carrying
+ * `?next=https://evil.test` would otherwise hand a freshly signed-in visitor to somebody
+ * else's page.
  */
 
 export const metadata: Metadata = {
@@ -41,21 +49,24 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
  * The login screen.
  *
  * @param props.searchParams The query string, as a promise — a request-time value in this
- *   version of Next.js.
- * @returns The screen, or a redirect to the dashboard for somebody who has already settled.
+ *   version of Next.js. `workspace` names the step-2 workspace; `next` is where a `401` came
+ *   from.
+ * @returns The screen, or — for somebody who has already settled — a redirect to wherever
+ *   they were heading, and to the dashboard when that was nowhere in particular.
  */
 export default async function LoginPage({
   searchParams,
 }: Readonly<{ searchParams: SearchParams }>) {
+  const parameters = await searchParams;
   const { session, membership } = await currentAccess();
   const view = loginView({
     session,
     membership,
-    workspace: single((await searchParams)[WORKSPACE_PARAM]),
+    workspace: single(parameters[WORKSPACE_PARAM]),
   });
 
   if (view.step === "dashboard") {
-    redirect(DASHBOARD_PATH);
+    redirect(safeReturnTo(single(parameters[RETURN_TO_PARAM])) ?? DASHBOARD_PATH);
   }
 
   return <LoginScreen state={await state(view)} user={session?.user ?? null} />;

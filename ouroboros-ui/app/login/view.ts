@@ -37,7 +37,7 @@
  */
 
 import { type Membership, selectableMemberships } from "@/app/api/membership";
-import type { Session, TenantSuggestion } from "@/app/api/session";
+import type { Session, TenantSuggestion } from "@/app/api/identity";
 import { LOGIN_PATH } from "@/app/paths";
 
 /** The query parameter that says the second step is being asked for deliberately. */

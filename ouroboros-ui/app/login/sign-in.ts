@@ -27,10 +27,16 @@
  *
  * The auth family is excluded from code generation
  * ([#711](https://github.com/NobuData/ouroboros/issues/711)) — `app/api/schema.d.ts` has no
- * entry for these paths — and this one is called from the *browser* besides, where
- * `app/api/auth-client.ts` cannot go: that module is `server-only`, because it forwards
+ * entry for these paths — and this one is called from the *browser*, where
+ * `app/api/auth-server.ts` cannot go: that module is `server-only`, because it forwards
  * `HttpOnly` cookies and knows the service's address. This travels same-origin through
  * `proxy.ts` instead and needs neither.
+ *
+ * **BetterAuth's client can now make this call itself** —
+ * [#716](https://github.com/NobuData/ouroboros/issues/716) landed `signIn.social` in
+ * `app/api/auth-client.ts`, on the same path and with the same body. Re-pointing the button
+ * at it, and retiring this module with the shape it was written to prove, is
+ * [#718](https://github.com/NobuData/ouroboros/issues/718)'s work rather than #716's.
  *
  * Framework-free on purpose, the way `app/api/membership.ts` is: the rules are testable
  * without a DOM, and `sign-in-button.tsx` is left holding nothing but the press.
@@ -111,7 +117,7 @@ export class SignInError extends Error {
  *
  * @param request What {@link socialSignIn} — or a future SSO builder — produced.
  * @param fetchImpl The fetch to call through. Defaults to the runtime's; the parameter is
- *   what lets a suite answer without a socket, the same way `app/api/session.ts` takes one.
+ *   what lets a suite answer without a socket, the same way `app/api/auth-server.ts` takes one.
  * @returns The absolute URL of the provider's consent page.
  * @throws {SignInError} When the service refused, when the network did, or when the answer
  *   carried no URL to follow — the last being a real possibility rather than a defensive

@@ -5,6 +5,8 @@ import { resetRestUrlCache } from "@/app/env";
 // Types only, so this import is erased and nothing loads before the mocks below.
 import type { Member, MemberPage } from "@/app/api/members";
 
+import { requestedUrl } from "../helpers/auth";
+
 // The resource sits on the auth client, so importing it pulls in the same server-only
 // modules `session.test.ts` answers. The cookie jar below is the one the auth client reads.
 vi.mock("server-only", () => ({}));
@@ -71,8 +73,8 @@ interface Stub {
 function organizationAnswering(body: unknown, status = 200): Stub {
   const urls: string[] = [];
 
-  vi.stubGlobal("fetch", (input: string) => {
-    urls.push(input);
+  vi.stubGlobal("fetch", (input: Request | URL | string) => {
+    urls.push(requestedUrl(input));
 
     return Promise.resolve(
       new Response(body === null ? "null" : JSON.stringify(body), {

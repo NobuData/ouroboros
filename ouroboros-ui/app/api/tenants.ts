@@ -15,7 +15,7 @@
  * through this. What is left here is the one read the plugin cannot answer, and it is the
  * whole of mockup 01 Step 2: every workspace the caller belongs to, with the monogram
  * initials, the personal flag, the enabled-repository counts and **the role they hold**, in
- * one request. `app/api/session.ts` composes the first two of those from
+ * one request. `app/api/auth-server.ts` composes the first two of those from
  * `organization/list` plus one `get-active-member-role` per workspace today;
  * [#719](https://github.com/NobuData/ouroboros/issues/719) is what re-points it here.
  *

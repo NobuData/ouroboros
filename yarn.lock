@@ -9230,6 +9230,7 @@ __metadata:
     "@types/react": "npm:^19"
     "@types/react-dom": "npm:^19"
     "@vitejs/plugin-react": "npm:^5"
+    better-auth: "npm:1.6.26"
     dotenv: "npm:^17.4.1"
     eslint: "npm:^9"
     eslint-config-next: "npm:16.3.0"

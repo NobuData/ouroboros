@@ -8,7 +8,7 @@
  * natively since [#704](https://github.com/NobuData/ouroboros/issues/704), and two write
  * paths to one membership table is how two role checks drift apart. So this reads
  * `GET /api/auth/organization/get-full-organization` — mockup 17's members table in a single
- * answer — through `app/api/auth-client.ts`, which is the rule the contract states: **auth
+ * answer — through `app/api/auth-server.ts`, which is the rule the contract states: **auth
  * routes via the auth client, everything else via the generated one.**
  *
  * Only the listing is wrapped. The dashboard ([#45](https://github.com/NobuData/ouroboros/issues/45))
@@ -17,15 +17,20 @@
  * mutations and are the plugin's `invite-member` / `update-member-role` / `remove-member` when
  * that screen is written.
  *
- * **The types are written here rather than generated**, the same way `app/api/membership.ts`
- * is and for the same reason: the auth family is excluded from code generation, so there is no
- * generated type to point at and pretending otherwise would mean pointing at an unrelated one.
- * What is declared is only what a screen reads.
+ * **What the service answers is no longer described here.** It was, while
+ * `app/api/auth-client.ts` was a hand-written stand-in and the auth family had no typed
+ * source at all: two interfaces copied out of `openapi.yaml`, kept correct by reading. Since
+ * [#716](https://github.com/NobuData/ouroboros/issues/716) the client is BetterAuth's own and
+ * carries the plugin's types with it, so {@link memberOf} takes the shape the library
+ * infers — which is the same guarantee the generated client gives the other family, arrived at
+ * the other way round. What is still written here is {@link Member}: the row a screen reads,
+ * which is this application's vocabulary rather than the library's.
  *
- * Server-side only, by way of `app/api/auth-client.ts` — see that file for why.
+ * Server-side only, by way of `app/api/auth-server.ts` — see that file for why.
  */
 
-import { authRead } from "@/app/api/auth-client";
+import { asRole, isoTimestamp } from "@/app/api/auth-client";
+import { authApi, authFetchOptions, authRead } from "@/app/api/auth-server";
 import type { Role } from "@/app/api/membership";
 
 /**
@@ -71,20 +76,16 @@ export interface MemberListQuery {
 /** How many rows a caller that named no window gets, matching the contract's own default. */
 const DEFAULT_LIMIT = 25;
 
-/** `GET /api/auth/organization/get-full-organization` — § `FullOrganizationOrNull`. */
-interface FullOrganization {
-  id: string;
-  members?: OrganizationMember[];
-}
-
-/** One entry of it — § `OrganizationMember`. */
-interface OrganizationMember {
-  organizationId: string;
-  userId: string;
-  role: Role;
-  createdAt: string;
-  user?: { email?: string | null; name?: string | null; image?: string | null } | null;
-}
+/**
+ * One row of what `organization.getFullOrganization` answers, as the library types it.
+ *
+ * Read off the client rather than declared, so this module has no second opinion about the
+ * wire: a field the plugin renames is a compile error in {@link memberOf} rather than a
+ * column that quietly starts rendering `undefined`.
+ */
+type FullOrganizationMember = NonNullable<
+  Awaited<ReturnType<typeof authApi.organization.getFullOrganization>>["data"]
+>["members"][number];
 
 /**
  * A workspace's members.
@@ -117,9 +118,12 @@ export const members = {
     query: MemberListQuery = {},
     fetchImpl: typeof fetch = fetch,
   ): Promise<MemberPage> {
-    const organization = await authRead<FullOrganization>(
-      `/organization/get-full-organization?organizationId=${encodeURIComponent(tenantId)}`,
-      fetchImpl,
+    const organization = await authRead(
+      authApi.organization.getFullOrganization({
+        query: { organizationId: tenantId },
+        fetchOptions: await authFetchOptions(fetchImpl),
+      }),
+      "/organization/get-full-organization",
     );
 
     const all = organization?.members ?? [];
@@ -143,12 +147,12 @@ export const members = {
  *   in — preserved rather than defaulted, because "we did not ask for the person" and "the
  *   person has no name" are different facts and a member table renders them differently.
  */
-function memberOf(member: OrganizationMember): Member {
+function memberOf(member: FullOrganizationMember): Member {
   return {
     orgId: member.organizationId,
     userId: member.userId,
-    role: member.role,
-    joinedAt: member.createdAt,
+    role: asRole(member.role),
+    joinedAt: isoTimestamp(member.createdAt),
     email: member.user?.email ?? null,
     displayName: member.user?.name ?? null,
     avatarUrl: member.user?.image ?? null,

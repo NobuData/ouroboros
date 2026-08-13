@@ -50,7 +50,7 @@ function serviceAnswering(body: unknown, status = 200) {
  * Render the control as the card does, with the navigation captured.
  *
  * jsdom cannot navigate and will not let `location.assign` be replaced, so the component
- * takes the departure as a parameter — the same seam `app/api/session.ts` opens for `fetch`.
+ * takes the departure as a parameter — the same seam `app/api/auth-server.ts` opens for `fetch`.
  *
  * @param provider Which provider's sign-in this button begins.
  * @returns Testing Library's result.

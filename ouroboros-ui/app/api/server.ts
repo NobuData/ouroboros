@@ -103,7 +103,7 @@ export async function clearActiveTenant(): Promise<void> {
  *
  * Both of BetterAuth's, not just the token: the second is the signed snapshot the service
  * answers from without a database lookup, so a client that dropped it would turn every call
- * into a query. `app/api/auth-client.ts` reads the same pair for the same reason.
+ * into a query. `app/api/auth-server.ts` reads the same pair for the same reason.
  *
  * @returns The cookies present, or `undefined` when the browser sent neither.
  */

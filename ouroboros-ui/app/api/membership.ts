@@ -9,7 +9,7 @@
  * [#711](https://github.com/NobuData/ouroboros/issues/711).** It used to be
  * `components["schemas"]["Membership"]`, from `GET /api/v1/auth/me`; that route was the
  * second answer to *who is signed in* and the issue deleted it, so the schema left the
- * contract with it. What `app/api/session.ts` composes the rows from now is the auth family
+ * contract with it. What `app/api/auth-server.ts` composes the rows from now is the auth family
  * — organizations and roles — which is **excluded from code generation** by the same rule,
  * so there is no generated type to point at and pretending otherwise would mean pointing at
  * an unrelated one.
@@ -35,10 +35,20 @@
 export type Role = "owner" | "admin" | "member" | "viewer";
 
 /**
+ * The same four, as data — what `app/api/auth-client.ts`'s `asRole` checks a string against.
+ *
+ * The list has to exist somewhere the moment a role arrives as a string rather than as a
+ * type, which it does at every boundary with the service. It is here rather than beside that
+ * check so that the type above and the list below cannot come apart: `readonly Role[]` makes
+ * a role added to one and forgotten in the other a compile error.
+ */
+export const ROLES: readonly Role[] = ["owner", "admin", "member", "viewer"];
+
+/**
  * A workspace's lifecycle.
  *
  * Only `active` is reachable today: the organization plugin has no lifecycle column, so
- * `app/api/session.ts` reports every workspace as one you can work in. The other two are
+ * `app/api/auth-server.ts` reports every workspace as one you can work in. The other two are
  * kept because the rule that reads them — {@link selectableMemberships} — is the rule, and a
  * screen that stopped checking is a screen that has to learn to again when #714 restores the
  * field.

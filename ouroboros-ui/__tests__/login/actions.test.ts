@@ -5,7 +5,7 @@ import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 import { resetRestUrlCache } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
 
-import { authAnswer, isAuthUrl } from "../helpers/auth";
+import { authAnswer, isAuthUrl, requestedUrl } from "../helpers/auth";
 import { TENANT_ID, membership } from "../helpers/login";
 
 /**
@@ -97,12 +97,12 @@ beforeEach(() => {
   resetRestUrlCache();
   process.env.OURO_REST_URL = BASE_URL;
 
-  // Two families reach this stub. The generated client hands `fetch` a `Request`; the auth
-  // client hands it a URL string and an init — see `app/api/auth-client.ts`. Both shapes are
+  // Two families reach this stub. The generated client hands `fetch` a `Request`; BetterAuth's
+  // client hands it a `URL` and an init — see `app/api/auth-client.ts`. Both shapes are
   // answered here, which is what the two-client rule costs a suite that spans both.
-  vi.stubGlobal("fetch", (input: Request | string) => {
-    const url = typeof input === "string" ? input : input.url;
-    if (typeof input !== "string") requests.push(input);
+  vi.stubGlobal("fetch", (input: Request | URL | string) => {
+    const url = requestedUrl(input);
+    if (input instanceof Request) requests.push(input);
 
     const body = isAuthUrl(url) ? authAnswer(url, memberships) : { id: "row", enabled: true };
 
@@ -163,7 +163,7 @@ describe("chooseWorkspace", () => {
   // case cannot be composed at this level after
   // [#711](https://github.com/NobuData/ouroboros/issues/711): a membership is built from
   // BetterAuth's organization listing now, and an organization has no lifecycle column for
-  // the service to report `suspended` in — see `app/api/session.ts`. The rule the case was
+  // the service to report `suspended` in — see `app/api/auth-server.ts`. The rule the case was
   // covering is `selectableMemberships`, which still filters and is still asserted directly
   // in `__tests__/api/membership.test.ts`; what is gone is the *route* to it, and
   // [#714](https://github.com/NobuData/ouroboros/issues/714) is what restores one by

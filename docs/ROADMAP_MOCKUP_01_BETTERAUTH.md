@@ -982,8 +982,9 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > **B.3 · #708 had already dropped both**, so it could only have answered `500`. Its service,
 > repository and resource module went with it. What replaces it is three calls —
 > `get-session`, `organization/list`, `get-active-member-role` — and `ouroboros-ui`'s
-> `app/api/session.ts` composes them through a new `app/api/auth-client.ts`, which is a
-> stand-in **D.1 · #716** replaces with `createAuthClient`.
+> `app/api/session.ts` composed them through a new `app/api/auth-client.ts`, which was a
+> stand-in; **D.1 · #716** has since replaced both with `createAuthClient` and deleted
+> `session.ts` outright.
 >
 > Two things it deliberately did **not** do. The tenant suggestion — *your organisation is
 > already on Ouroboros* — has no BetterAuth equivalent and is reported as `null` until
@@ -1296,9 +1297,45 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > *extend and re-point the shipped components; do not rebuild them.* A ticket that
 > deletes `login-screen.tsx` to start over has misread its scope.
 
+> **D.1 · #716 has shipped and has left the table below.** `app/api/auth-client.ts` is
+> `createAuthClient({plugins: [organizationClient()]})` — BetterAuth's own, typed against its
+> route table — and `app/api/session.ts` is **gone** rather than unused, with
+> `__tests__/api/session.test.ts` rewritten as `auth-server.test.ts` against the new client.
+> What replaced that one module is three, and the split is the point: `auth-client.ts` (the
+> browser's client, `useSession()`, and everything both sides translate), `auth-server.ts`
+> (the server's client, this request's cookies, `readSession()` / `setActiveOrganization()` /
+> `signOutSession()`), and `identity.ts` (the vocabulary, which a pure view decision and a
+> component may import and a `server-only` module may not).
+>
+> **There are two client instances, not one, and that is a correction to the issue's own
+> shape.** The body reads as though one `createAuthClient` serves both environments; they
+> share no configuration at all — address, cookies, entry point, and what a `401` does are
+> different in each — and a single instance carrying the browser's `401` handler answers a
+> server-side refusal twice. `better-auth/react` in the browser for the session store the
+> hook needs; `better-auth/client` on the server, where a store that refetches on window
+> focus is apparatus for a tab that does not exist.
+>
+> **`asRole` is the seam nobody asked for and the build needs.** The organization plugin's
+> client is typed against the library's three default roles; `ouroboros-rest` configures a
+> fourth and the contract publishes all four, so a `viewer` arrives at a client with no name
+> for it. Every role now crosses the boundary through one check that degrades the unknown to
+> `viewer`.
+>
+> **The `401` return-to is half-wired, deliberately.** `app/paths.ts` gained `loginPath()` and
+> `safeReturnTo()` — an open-redirect guard on the raw string, since `//evil.test` is a path
+> to a reader and a host to a browser — the browser's client fills `?next=` with where it was,
+> and `app/(auth)/login/page.tsx` honours it. The *server* sends no `next=`: a Server
+> Component cannot read the URL it renders for, and the request-wide matcher that would tell
+> it is the middleware decision **D.5 · #720** owns.
+>
+> One thing it did not do: no `"use server"` wrapper for `signOutSession()`. A Server Action
+> nothing submits to is a POST endpoint published for nobody, so the form belongs to
+> **D.6 · #721** along with the menu that draws it. `app/login/sign-in.ts` is likewise left
+> alone — `signIn.social` can make that call now, and re-pointing the button at it is
+> **D.3 · #718**.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| D.1 · #716 | ouroboros-ui: [D.1] BetterAuth client & session store | `createAuthClient`, session hook, org actions, 401 routing; **replaces `app/api/session.ts`** | mvp, auth, ui | N (after C.1) | Y | **M** ⬆ | ouroboros-ui |
 | D.2 · #717 | ouroboros-ui: [D.2] Login route & brand panel — mockup-fidelity audit | Audit the **shipped** split/panel against mockup 01, land the light theme, fix divergences | mvp, auth, ui, design | N (after #40, #14) | Y | **S** ⬇ | ouroboros-ui |
 | D.3 · #718 | ouroboros-ui: [D.3] Step 1 card — wire GitHub sign-in & activate the shipped SSO form | Re-point button at `signIn.social`; un-inert the **already-built** SSO form onto C.2; dev form | mvp, auth, ui, design | N (after D.1, D.2, C.2) | Y | M | ouroboros-ui |
 | D.4 · #719 | ouroboros-ui: [D.4] Step 2 card — re-point tenancy cards at the org API | **Shipped** cards re-sourced from C.4; `ouro_tenant` cookie → `setActive` as authority | mvp, auth, ui, design | N (after D.3, C.4) | Y | **M** ⬇ | ouroboros-ui |
@@ -1306,6 +1343,9 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 | D.6 · #721 | ouroboros-ui: [D.6] Signed-in session UI in the app shell | Avatar menu (user, active org, switch org, sign out) in #41's top bar | mvp, auth, ui | N (after D.1, #41) | Y | S | ouroboros-ui |
 
 ### Issue D.1 (#716) — ouroboros-ui: [D.1] BetterAuth client & session store
+
+> **Shipped.** Kept as the record of what was asked for — see the note above the table for
+> what was built and where it differs.
 
 - **Problem Statement:** The UI needs a typed client for the auth family of routes
   (sign-in, session, org operations) — separate from the generated OpenAPI client,
@@ -1757,7 +1797,7 @@ got easier (its components exist).
 | B.1 · #706 | M | **L** | Back-fills two populated tables, not just DDL |
 | B.3 · #708 | L | **L ⚠** | Unchanged chip, but re-rated **riskiest issue in the roadmap** — irreversible |
 | C.4 · #714 | M | **L** | Rewrites #31's shipped module rather than writing a new one |
-| D.1 · #716 | S | **M** | Replaces `app/api/session.ts` and its callers |
+| ~~D.1 · #716~~ | S | **M** | *Shipped.* Replaced `app/api/session.ts` and its callers |
 | D.2 · #717 | M | **S** | The split layout and brand panel already ship — this is an audit |
 | D.4 · #719 | L | **M** | The step-2 cards already ship — this re-points their data source |
 
@@ -1819,7 +1859,9 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #716 (D.1), the first of Epic D.** **Epic C is complete**: #711 (C.1), #712
+**Start here: #717 (D.2) or #720 (D.5).** **#716 (D.1) has landed**, so Epic D's remaining
+five are unblocked: the UI reads its session through BetterAuth's own client, signs out
+through it, and `app/api/session.ts` is gone. **Epic C is complete**: #711 (C.1), #712
 (C.2), #713 (C.3), #714 (C.4) and now **#715 (C.5)** have all landed — the tenant context
 reads the session's active organization, `modules/tenancy` is rewritten against
 `organization`/`member`, `GET /api/v1/orgs` serves mockup 01 Step 2's row model in one

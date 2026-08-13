@@ -19,7 +19,7 @@ import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { MemberPage } from "@/app/api/members";
 import type { Membership, Role } from "@/app/api/membership";
-import type { SessionUser } from "@/app/api/session";
+import type { SessionUser } from "@/app/api/identity";
 
 /**
  * One read that was attempted: what it returned, or why it did not.
