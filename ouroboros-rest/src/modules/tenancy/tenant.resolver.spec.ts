@@ -36,6 +36,16 @@ const OTHER = FIXTURE_OTHER_ORGANIZATION;
 /** The person every request below is from — `"user".id`, as a session carries it. */
 const USER_ID = "5eed0003-0000-4000-8000-000000000001";
 
+/**
+ * An organization id of the shape BetterAuth's `generateId` mints — 32 mixed-case alphanumerics.
+ *
+ * The fixtures above carry uuids, because they predate
+ * [#704](https://github.com/NobuData/ouroboros/issues/704) and stand in for the rows V006
+ * back-filled. This is the other shape `organization."id"` holds, and the one every workspace
+ * created since [#714](https://github.com/NobuData/ouroboros/issues/714) has.
+ */
+const PLUGIN_ID = "OIQ354GBlvNySIlDShHcoNjqiJ21A5PG";
+
 /** Everything a test drives the resolver through. */
 interface Harness {
   resolver: TenantResolver;
@@ -131,6 +141,23 @@ describe("reading a value as a reference", () => {
     expect(referenceFrom(ORGANIZATION.id.toUpperCase())?.kind).toBe("id");
   });
 
+  it("recognises the id the organization plugin mints", () => {
+    // The shape every workspace created since #714 carries, and the one this read got wrong
+    // until [#715](https://github.com/NobuData/ouroboros/issues/715): reading it as a slug
+    // meant a perfectly good id matched no row, so the header form of *act in this workspace*
+    // answered `404` for every workspace anybody had actually made.
+    expect(referenceFrom(PLUGIN_ID)).toEqual({ kind: "id", value: PLUGIN_ID });
+  });
+
+  it("still treats a slug as a slug, which is the discrimination this rule exists for", () => {
+    // The cost of widening the id shape, and the reason it was widened *precisely* rather than
+    // to "any text": a header carries a slug or an id, they are told apart by nothing but this
+    // pattern, and a rule loose enough to admit `acme` would make every slug an id that
+    // matches no row.
+    expect(referenceFrom("acme")).toEqual({ kind: "slug", value: "acme" });
+    expect(referenceFrom("acme-robotics")).toEqual({ kind: "slug", value: "acme-robotics" });
+  });
+
   it("treats anything else as a slug", () => {
     expect(referenceFrom("acme")).toEqual({ kind: "slug", value: "acme" });
   });
@@ -174,15 +201,20 @@ describe("the header", () => {
 });
 
 describe("the path parameter", () => {
-  it("is read as a uuid", () => {
+  it("is read as an id", () => {
     expect(pathReference({ orgId: ORGANIZATION.id })).toEqual({
       kind: "id",
       value: ORGANIZATION.id,
     });
   });
 
+  it("is read as an id when it is the plugin's, which is every workspace since #714", () => {
+    expect(pathReference({ orgId: PLUGIN_ID })).toEqual({ kind: "id", value: PLUGIN_ID });
+    expect(pathTenantIsMalformed({ orgId: PLUGIN_ID })).toBe(false);
+  });
+
   it("is never read as a slug", () => {
-    // It is documented as a uuid and validated as one, so anything else is a malformed
+    // It is documented as an id and validated as one, so anything else is a malformed
     // request rather than a workspace nobody can see — and the validation pipe owns that
     // complaint, because it is what produces the `details.orgId` a form renders.
     expect(pathReference({ orgId: "acme" })).toBeUndefined();

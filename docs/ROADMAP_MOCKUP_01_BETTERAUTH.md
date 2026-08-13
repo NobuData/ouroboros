@@ -220,13 +220,16 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > seeds a pre-migration `user_identities` row, runs V004's back-fill and asserts the pair
 > `findOAuthUser` reads resolves to the same id.
 >
-> Two things it deliberately did **not** do. The full browser flow against a real GitHub
-> OAuth app stays a manual check — the library is ES-module-only and both Jest runners
-> substitute it, so a suite asserting a sign-in would be asserting against a stand-in;
-> **C.5 · #715** owns the automated one. And **the login page's GitHub button does not work
-> until D.3 · #718** re-points it at `signIn.social`. That gap is the deliberate cost of not
-> keeping two sign-in paths alive at once. Its issue section below is kept as the record of
-> what was asked for.
+> Two things it deliberately did **not** do, and **C.5 · #715 has since closed the first of
+> them.** The full browser flow was a manual check because the library is ES-module-only and
+> both Jest runners substituted it — so a suite asserting a sign-in would have been asserting
+> against a stand-in. C.5 converted the library for the *integration* runner instead of
+> replacing it, and `github.integration-spec.ts` now walks both hops of the handshake against
+> a stubbed github.com: the state cookie, the code exchange, the profile mapping and the
+> `account` row are all real. The unit suite still substitutes it, deliberately. What remains
+> is that **the login page's GitHub button does not work until D.3 · #718** re-points it at
+> `signIn.social`. That gap is the deliberate cost of not keeping two sign-in paths alive at
+> once. Its issue section below is kept as the record of what was asked for.
 >
 > **A.4 · #703 has shipped and has left the table below.** Sessions are **rows**:
 > `src/auth/session.options.ts` sets `expiresIn` (7 days), `updateAge` (1 day) and
@@ -1110,9 +1113,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > the new paths, `app/api/members.ts` moved to the plugin's `get-full-organization`, and the
 > screens are untouched — **D.4 · #719** still owns the cards.
 
-| Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
-|-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| C.5 · #715 | ouroboros-rest: [C.5] Auth integration test suite | Testcontainers coverage of the full auth surface | mvp, auth, rest, ci | N (after A.6, C.4) | Y | M | ouroboros-rest |
+**Every issue in this epic has landed.**
 
 ### Issue C.1 (#711) — ouroboros-rest: [C.1] Auth route surface & OpenAPI exposure
 
@@ -1233,6 +1234,24 @@ PATCH …/github-orgs/:login/repos/:name     → toggle repo  (owner/admin)
 ```
 
 ### Issue C.5 (#715) — ouroboros-rest: [C.5] Auth integration test suite
+
+> **C.5 · #715 has shipped and has left the table above.** The integration runner now loads
+> the **real** BetterAuth — `jest.integration.config.mjs` converts it rather than replacing
+> it — which is what made every one of this issue's bullets assertable at all. Five suites
+> came with it: `credentials`, `github`, `session.lifecycle`, `organizations` and
+> `guard.surface`, joining the `discovery` and `roles` matrices that already existed, for
+> **276 integration tests against a Testcontainers PostgreSQL, +8s on the #37 budget of 90**.
+> The acceptance criteria were checked by doing the thing they describe: neutering the global
+> guard turns 141 of them red, deleting one `@Roles(...ADMINISTRATORS)` turns 4 red.
+>
+> **It found a shipped bug on its first run, which is the argument for the issue.** A
+> workspace created through `POST /api/auth/organization/create` — the only route that makes
+> one since C.4 — gets a 32-character id, and `/api/v1/orgs/{orgId}` validated that parameter
+> as a uuid. Every workspace anybody actually made answered `422` on its own domains, GitHub
+> organisations and repositories, while `GET /api/v1/orgs` listed it correctly. Only the rows
+> B.3 back-filled out of `tenants` worked, which is why the seed never showed it.
+> `ORGANIZATION_ID_PATTERN` is the fix, in the DTO and in `tenant.resolver.ts`'s
+> id-versus-slug rule, and the published contract stopped saying `format: uuid`.
 
 - **Problem Statement:** Session semantics, role gates, active-org switching, and the
   discovery contract are integration-level behavior — unit mocks cannot certify the
@@ -1697,11 +1716,12 @@ Ordered checklist (⊕ = parallelizable within its phase):
    legs remain parked on two things outside A.6: B.4 #709, which teaches the seed to write
    BetterAuth's `"user"` and `account` rows, and a stack whose `ouroboros-rest` is not the
    production image — the password routes are gated on exactly that.)*
-4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ ~~C.2 #712~~ } → ~~C.3 #713~~ → ~~C.4 #714~~ → C.5 #715
-   *(C.3 moved after B.3 — it reworked #32's live middleware against tables B.3 creates.
-   C.4 has since rewritten the rest of `modules/tenancy` against them, so **C.5 is all that
-   is left of this phase** — and it now has a green suite to extend rather than a red one
-   to repair.)*
+4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ ~~C.2 #712~~ } → ~~C.3 #713~~ → ~~C.4 #714~~ → ~~C.5 #715~~
+   *(**Phase 3 is complete.** C.3 moved after B.3 — it reworked #32's live middleware against
+   tables B.3 creates; C.4 rewrote the rest of `modules/tenancy` against them; and C.5 built
+   the suite that certifies the lot. C.5 turned out to be the phase's last *bug fix* as well
+   as its last test: the first time a workspace was created the way a person creates one, every
+   route beneath it answered `422` — see its section above.)*
 5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719
    *(MVP for this roadmap is complete when D.4 passes against the compose stack —
    feeding the scaffolding roadmap's e2e gate #56, whose login leg switches from
@@ -1799,10 +1819,13 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #715 (C.5), the last of Epic C.** #713 (C.3) and #714 (C.4) have both landed
-and `ci/rest` is green again — the tenant context reads the session's active organization,
-`modules/tenancy` is rewritten against `organization`/`member`, and `GET /api/v1/orgs` serves
-mockup 01 Step 2's row model in one request. **Epics A and B are both complete**: #700 (A.1), #701 (A.2),
+**Start here: #716 (D.1), the first of Epic D.** **Epic C is complete**: #711 (C.1), #712
+(C.2), #713 (C.3), #714 (C.4) and now **#715 (C.5)** have all landed — the tenant context
+reads the session's active organization, `modules/tenancy` is rewritten against
+`organization`/`member`, `GET /api/v1/orgs` serves mockup 01 Step 2's row model in one
+request, and the whole auth surface is now certified against a real BetterAuth over a
+Testcontainers PostgreSQL rather than against a stand-in. **Epics A and B are both
+complete**: #700 (A.1), #701 (A.2),
 #702 (A.3), #703 (A.4), #704 (A.5) and #705 (A.6) **have all landed**, along with
 #706 (B.1), #707 (B.2), **#708 (B.3)**, **#709 (B.4)** and now **#710 (B.5)** — BetterAuth
 is configured, its handler answers at `/api/auth/*`, its core and organization tables exist

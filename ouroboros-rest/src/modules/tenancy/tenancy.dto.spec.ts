@@ -31,6 +31,16 @@ import {
 const UUID = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 
 /**
+ * An organization id of the shape BetterAuth's `generateId` mints — 32 mixed-case alphanumerics.
+ *
+ * The other half of what `organization."id"` holds, and the half that was refused until
+ * [#715](https://github.com/NobuData/ouroboros/issues/715). Copied from a real one rather than
+ * invented, and that the plugin still mints this shape is asserted where only a real library
+ * can answer — `organizations.integration-spec.ts`.
+ */
+const PLUGIN_ID = "OIQ354GBlvNySIlDShHcoNjqiJ21A5PG";
+
+/**
  * Which fields a body was refused for.
  *
  * @param Dto - The class to validate against.
@@ -64,12 +74,35 @@ describe("the path parameters", () => {
     expect(await refused(DomainParams, { orgId: UUID, domainId: UUID })).toEqual([]);
   });
 
+  it("accepts the id the organization plugin actually mints", async () => {
+    // **The #715 regression, as a unit.** `orgId` was `@IsUUID()`, and the only route that
+    // creates a workspace has minted 32-character ids since #714 — so every workspace anybody
+    // made answered `422` on every route beneath it. A uuid is still accepted because V006
+    // back-filled the pre-cut-over rows with them; both shapes are real, which is why the
+    // rule names two.
+    expect(await refused(OrgParams, { orgId: PLUGIN_ID })).toEqual([]);
+    expect(await refused(DomainParams, { orgId: PLUGIN_ID, domainId: UUID })).toEqual([]);
+  });
+
   it("refuses anything else, so a malformed id is a 422 rather than a query", async () => {
     // The reason these are classes instead of a `ParseUUIDPipe`: the answer is the same
     // envelope and the same `details` shape as a malformed body, so a client has one failure
     // mode to handle rather than two.
-    expect(await refused(OrgParams, { orgId: "not-a-uuid" })).toEqual(["orgId"]);
+    //
+    // Widening the rule for the plugin's ids did not widen it to *anything*, and these are the
+    // edges that say so: a value of the right length carrying a character the generator never
+    // emits, one a character short, and one a character long.
+    expect(await refused(OrgParams, { orgId: "not-an-id" })).toEqual(["orgId"]);
+    expect(await refused(OrgParams, { orgId: `${"a".repeat(31)}-` })).toEqual(["orgId"]);
+    expect(await refused(OrgParams, { orgId: "a".repeat(31) })).toEqual(["orgId"]);
+    expect(await refused(OrgParams, { orgId: "a".repeat(33) })).toEqual(["orgId"]);
     expect(await refused(DomainParams, { orgId: UUID, domainId: "12345" })).toEqual(["domainId"]);
+  });
+
+  it("keeps the domain id a uuid, because this service is what mints one", async () => {
+    // Only `orgId` moved. `tenant_domains.id` is `gen_random_uuid()` and nothing else writes
+    // it, so widening that one would admit values no row can ever hold.
+    expect(await refused(DomainParams, { orgId: UUID, domainId: PLUGIN_ID })).toEqual(["domainId"]);
   });
 
   it("inherits the workspace's id into every nested route", async () => {

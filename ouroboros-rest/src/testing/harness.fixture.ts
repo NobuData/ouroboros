@@ -65,11 +65,15 @@ import { Pool } from "pg";
 import request from "supertest";
 
 import { createApplication } from "../application";
+import { AUTH_BASE_PATH } from "../auth/auth.options";
+import { GITHUB_PROVIDER_ID } from "../auth/github.provider";
 import { signInAs } from "../modules/auth/session.fixture";
 import type { Configuration } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { SCHEMA_NAME, type OrganizationRole } from "../modules/db/schema";
+import type { GithubStub } from "./github.fixture";
 import {
+  cookiesOf,
   databaseIsDisposable,
   DISPOSABLE,
   integrationDatabaseUrl,
@@ -115,6 +119,25 @@ export const HARNESS_PREFIX = "ouro-h";
 /** The tenancy API's base path, which is where most of what the harness does lands. */
 export const ORGS = "/api/v1/orgs";
 
+/**
+ * BetterAuth's own base path, restated as the harness writes it.
+ *
+ * From `auth.options.ts` rather than typed again, because a suite asserting that a route is
+ * served *where the service says it is* and a suite that hard-codes the same string are
+ * different tests, and only the first one is worth having.
+ */
+export const AUTH = AUTH_BASE_PATH;
+
+/**
+ * The password every account {@link ApiHarness.signUp} creates is given.
+ *
+ * Twenty-one characters, comfortably past `PASSWORD_MIN_LENGTH` — which is twelve, and which
+ * `password.provider.ts` says #709's seeded credentials also have to clear. It is a constant
+ * rather than a random string so that a suite asserting a *wrong* password has something to
+ * be wrong about.
+ */
+export const HARNESS_PASSWORD = "harness-password-0001";
+
 /** A workspace, as the harness stands one up. */
 export interface Workspace {
   /** `organization."id"` — the `{orgId}` every tenancy route takes. */
@@ -138,6 +161,15 @@ const HISTORY_TABLE = "flyway_schema_history";
 export class ApiHarness {
   /** Every table {@link truncate} empties, discovered once and remembered. */
   private tables: string[] | undefined;
+
+  /**
+   * What each person's browser is holding — see {@link as}.
+   *
+   * A `WeakMap` keyed by the {@link Person} object rather than by their id, because one
+   * account can have two browsers and each is its own jar. It also means a person a test
+   * created goes away with the test.
+   */
+  private readonly jars = new WeakMap<Person, string>();
 
   /**
    * @param app - The application, already listening.
@@ -194,6 +226,22 @@ export class ApiHarness {
   }
 
   /**
+   * The application itself, for the one thing that cannot be asked over HTTP.
+   *
+   * Exposed by [#715](https://github.com/NobuData/ouroboros/issues/715) for
+   * `guard.surface.integration-spec.ts`, which enumerates the **route table** — every
+   * controller Nest registered and the exemption metadata on each handler. There is no
+   * request that answers "what routes exist"; only the injector knows.
+   *
+   * It is a narrow door and meant to stay one. A suite reaching in here to replace a provider
+   * or call a service directly would be testing the object rather than the service, which is
+   * what every other method on this harness exists to avoid.
+   */
+  get nest(): INestApplication {
+    return this.app;
+  }
+
+  /**
    * A request from a browser with no session.
    *
    * @param method - The verb.
@@ -212,11 +260,84 @@ export class ApiHarness {
    * `const owner = api.as(person)` — and every call after that carries the session by
    * construction rather than by being remembered at fifty call sites.
    *
-   * @param person - Whose session, from {@link signIn}.
-   * @returns A builder that sets their `Cookie` on every request it makes.
+   * **It keeps the cookies it is given**, which is the part
+   * [#715](https://github.com/NobuData/ouroboros/issues/715) added and the part that makes
+   * this a browser rather than a fixed header. Two cookies matter and only one of them is
+   * static: the session token, which does not change, and the *cookie cache*
+   * (`SESSION_COOKIE_CACHE_SECONDS`), a signed snapshot of the session that BetterAuth
+   * re-issues whenever it changes. `POST /api/auth/organization/set-active` is what makes
+   * that concrete — it moves `session."activeOrganizationId"` and hands back a fresh
+   * snapshot, and a caller that went on replaying the old one would keep acting in the
+   * workspace it had just left, for up to five minutes, with every assertion about the switch
+   * quietly failing.
+   *
+   * The jar is per-{@link Person} *object*, so `signInWithPassword`'s new person is a second
+   * browser rather than the same one — which is what makes "sign out here and stay signed in
+   * there" arrangeable.
+   *
+   * @param person - Whose session, from {@link signIn}, {@link signUp} or
+   *   {@link signInWithPassword}.
+   * @returns A builder that sends their current cookies and stores whatever comes back.
    */
   as(person: Person): SignedIn {
-    return (method, path) => this.anonymous(method, path).set("Cookie", person.cookie);
+    return (method, path) => {
+      const pending = this.anonymous(method, path).set("Cookie", this.jarFor(person));
+
+      pending.on("response", (response: request.Response) => {
+        this.keepCookies(person, response);
+      });
+
+      return pending;
+    };
+  }
+
+  /**
+   * What this person's browser is currently holding.
+   *
+   * @param person - Whose jar.
+   * @returns The `Cookie` header value — their sign-in's cookies until something replaces one.
+   */
+  jarFor(person: Person): string {
+    return this.jars.get(person) ?? person.cookie;
+  }
+
+  /**
+   * Store whatever a response set, the way a browser would.
+   *
+   * A cookie the response did not mention is left alone, and one it *removed* — `Max-Age=0`
+   * with an empty value, which is how signing out clears them — is dropped rather than
+   * carried forward empty. That second rule is what makes a post-sign-out request from the
+   * same browser genuinely anonymous, instead of one presenting `name=` and being refused for
+   * the wrong reason.
+   *
+   * @param person - Whose jar.
+   * @param response - What came back.
+   */
+  private keepCookies(person: Person, response: request.Response): void {
+    const set = (response.headers["set-cookie"] ?? []) as unknown as string[];
+
+    if (set.length === 0) {
+      return;
+    }
+
+    const jar = new Map<string, string>();
+
+    for (const pair of this.jarFor(person).split("; ").filter(Boolean)) {
+      jar.set(pair.slice(0, pair.indexOf("=")), pair);
+    }
+
+    for (const header of set) {
+      const pair = header.split(";")[0];
+      const name = pair.slice(0, pair.indexOf("="));
+
+      if (pair === `${name}=`) {
+        jar.delete(name);
+      } else {
+        jar.set(name, pair);
+      }
+    }
+
+    this.jars.set(person, [...jar.values()].join("; "));
   }
 
   /**
@@ -250,6 +371,150 @@ export class ApiHarness {
   }
 
   /**
+   * Create somebody by **signing them up**, the way a browser would.
+   *
+   * The difference from {@link signIn} is the whole of why
+   * [#715](https://github.com/NobuData/ouroboros/issues/715) added it. {@link signIn} inserts
+   * two rows and composes a cookie: fast, and enough for a suite whose subject is somewhere
+   * else. This one posts to `POST /api/auth/sign-up/email` and gets back whatever the library
+   * decides to do — a scrypt hash in `account.password`, a `session` row, the signed cookie,
+   * and [#704](https://github.com/NobuData/ouroboros/issues/704)'s session hook creating a
+   * personal organization and pointing the session at it. Nothing here is arranged; it is all
+   * consequence.
+   *
+   * It works because `NODE_ENV` is not `production` in these suites, which is the one switch
+   * `password.provider.ts` gates the route on. A harness started with
+   * `{ NODE_ENV: "production" }` gets a `400` from this, and `credentials.integration-spec.ts`
+   * is where that is asserted rather than worked around.
+   *
+   * @param overrides - Their address, name and password, when a suite cares what they are.
+   * @returns Them, with the cookie the sign-up handed back.
+   * @throws {Error} When the library refused the sign-up, naming what it said — a suite
+   *   whose arrangement failed should not go on to report a confusing assertion failure.
+   */
+  async signUp(
+    overrides: Partial<Pick<Person, "email" | "displayName">> & { password?: string } = {},
+  ): Promise<Person> {
+    const email = (overrides.email ?? uniqueEmail(HARNESS_PREFIX)).toLowerCase();
+    const displayName = overrides.displayName ?? "Harness Person";
+    const response = await this.anonymous("post", `${AUTH}/sign-up/email`).send({
+      email,
+      name: displayName,
+      password: overrides.password ?? HARNESS_PASSWORD,
+    });
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Signing ${email} up answered ${response.status}: ${JSON.stringify(response.body)}`,
+      );
+    }
+
+    const { user } = response.body as { user: { id: string } };
+
+    return { id: user.id, email, displayName, cookie: cookiesOf(response) };
+  }
+
+  /**
+   * Sign somebody in with their password.
+   *
+   * The route #705 added, and the one an e2e run and a developer both use. A wrong password
+   * is a `401` from the library rather than an exception here, so a suite asserting refusal
+   * calls `anonymous` directly; this is for the arrangement, and it throws on anything but a
+   * completed sign-in for the reason {@link signUp} does.
+   *
+   * @param person - Who. Their `email` and `displayName` are carried through to the result,
+   *   because the answer only names the id.
+   * @param password - What they type. Defaults to {@link HARNESS_PASSWORD}.
+   * @returns Them, with the cookie of the **new** session — a second one, if they already
+   *   had one, exactly as signing in on a second machine would be.
+   * @throws {Error} When the sign-in did not complete.
+   */
+  async signInWithPassword(person: Person, password: string = HARNESS_PASSWORD): Promise<Person> {
+    const response = await this.anonymous("post", `${AUTH}/sign-in/email`).send({
+      email: person.email,
+      password,
+    });
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Signing ${person.email} in answered ${response.status}: ${JSON.stringify(response.body)}`,
+      );
+    }
+
+    return { ...person, cookie: cookiesOf(response) };
+  }
+
+  /**
+   * Walk the whole GitHub handshake, against a stubbed github.com.
+   *
+   * Both hops, because the `state` the second one presents is the one the first one issued —
+   * that pairing is a cross-site-request-forgery defence, it lives in a cookie, and a suite
+   * that skipped the first hop would be asserting against a callback with the check disabled.
+   *
+   *   1. `POST /api/auth/sign-in/social` answers the github.com authorization URL and sets
+   *      the state cookies. The `code_challenge`, the scopes and the redirect are all in that
+   *      URL and are the provider's decisions, which `github.integration-spec.ts` reads.
+   *   2. `GET /api/auth/callback/github?code=…&state=…` presents those cookies back. The
+   *      library exchanges the code and reads the profile — both through
+   *      `src/testing/github.fixture.ts` — and answers a redirect with the session cookie.
+   *
+   * @param github - The installed stub, from `stubGithub`. Its recorded calls are how a suite
+   *   asserts what was sent to github.com.
+   * @param code - The authorization code github.com would have redirected with. Any string;
+   *   the stub does not check it, and the exchange records it.
+   * @returns The browser's `Cookie` header after the callback, and where it was redirected.
+   *   Not a {@link Person}: who signed in is a *result* of this flow rather than an input,
+   *   and a suite reads it from `GET /api/auth/get-session`.
+   */
+  async signInWithGithub(
+    github: GithubStub,
+    code = "stubbed-authorization-code",
+  ): Promise<{ cookie: string; location: string; status: number }> {
+    const begun = await this.anonymous("post", `${AUTH}/sign-in/social`).send({
+      provider: GITHUB_PROVIDER_ID,
+      callbackURL: "/",
+    });
+
+    if (begun.status !== 200) {
+      throw new Error(
+        `Beginning a GitHub sign-in answered ${begun.status}: ${JSON.stringify(begun.body)}`,
+      );
+    }
+
+    const { url } = begun.body as { url: string };
+    const state = new URL(url).searchParams.get("state") ?? "";
+
+    const exchangesBefore = github.exchanges.length;
+
+    const callback = await this.anonymous(
+      "get",
+      `${AUTH}/callback/${GITHUB_PROVIDER_ID}?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    )
+      // The state cookies the first hop set. Without them the callback has nothing to compare
+      // the `state` parameter against and refuses — which is the library working, not a bug.
+      .set("Cookie", cookiesOf(begun))
+      .redirects(0);
+
+    // The stub is the reason this suite reaches no network, so "the code was exchanged
+    // through it" is worth asserting *here* rather than leaving to whatever the caller
+    // happens to check. A suite that forgot `stubGithub` would otherwise fail somewhere far
+    // downstream, on a `fetch` to the real github.com that timed out or — worse — did not.
+    if (github.exchanges.length !== exchangesBefore + 1) {
+      throw new Error(
+        "The GitHub callback exchanged no code through the stub. Either `stubGithub` was not " +
+          "installed before this call, or the callback was refused before it got that far — " +
+          `it answered ${callback.status} ${String(callback.headers.location ?? "")}.`,
+      );
+    }
+
+    return {
+      cookie: cookiesOf(callback),
+      location: String(callback.headers.location ?? ""),
+      status: callback.status,
+    };
+  }
+
+  /**
    * Give an existing person a second session.
    *
    * Two browsers, one account — which is the arrangement every revocation assertion needs:
@@ -257,10 +522,20 @@ export class ApiHarness {
    * row rather than everybody's.
    *
    * @param userId - Whose. A `"user".id` from {@link signIn}.
+   * @param lifetimeSeconds - How long it lasts. Defaults to the fixture's hour; a negative
+   *   value mints one that has already expired, which is how "the guard reads the row
+   *   rather than the cookie" is asserted.
    * @returns The `Cookie` header value for the new session.
    */
-  async session(userId: string): Promise<string> {
-    return signInAs(this.sql, userId);
+  async session(userId: string, lifetimeSeconds?: number): Promise<string> {
+    return signInAs(this.sql, userId, {
+      // The secret the application under test was configured with, so the cookie this
+      // mints is one it will accept. Since #715 the real library verifies the signature —
+      // see `signSessionToken` — and a harness that reached for the *default* secret would
+      // hand out `401`s the moment a suite overrode it in `start`.
+      secret: this.configuration.betterAuthSecret,
+      ...(lifetimeSeconds === undefined ? {} : { lifetimeSeconds }),
+    });
   }
 
   /**

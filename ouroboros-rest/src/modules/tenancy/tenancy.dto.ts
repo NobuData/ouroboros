@@ -42,6 +42,44 @@ import {
 /** `tenant_domains_domain_format` (V001): two or more lower-case hostname labels. */
 export const DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
+/**
+ * What an `organization."id"` can look like — **two shapes, because there are two writers**.
+ *
+ * This is the one pattern here that does not restate a `check` constraint, because there is
+ * no constraint to restate: V005 declares the column `text` and leaves the vocabulary to
+ * whoever writes it. Two things do.
+ *
+ *   * **BetterAuth**, for every workspace created since
+ *     [#704](https://github.com/NobuData/ouroboros/issues/704) — which is every workspace,
+ *     `POST /api/auth/organization/create` being the only route that makes one since
+ *     [#714](https://github.com/NobuData/ouroboros/issues/714). Its `generateId` is a
+ *     32-character mixed-case alphanumeric string.
+ *   * **`gen_random_uuid()`**, for the rows
+ *     [#708](https://github.com/NobuData/ouroboros/issues/708)'s V006 back-filled out of
+ *     `tenants` — the demo tenant every mockup is drawn around, and every workspace that
+ *     existed before the cut-over.
+ *
+ * It was `@IsUUID()` until [#715](https://github.com/NobuData/ouroboros/issues/715), and that
+ * was a real break rather than a tidy-up: a workspace created through the plugin answered
+ * `422 orgId must be a UUID` on **every route under itself** — its domains, its GitHub
+ * organisations, its repositories — while `GET /api/v1/orgs` happily listed it. Only the
+ * back-filled rows worked, which is why nothing caught it: the seed is back-filled, and the
+ * suite that would have caught it is the one that issue asked for.
+ *
+ * **It is deliberately not "any text".** The value is also read by `tenant.resolver.ts`, and
+ * two things depend on the shape being narrow. A path parameter that matches nothing here is
+ * a malformed request rather than a missing workspace, so the validation pipe answers `422`
+ * naming the field instead of the tenant guard answering `404`. And the `X-Ouro-Tenant`
+ * header is a slug *or* an id, told apart by this pattern — a rule loose enough to admit
+ * `acme` would make every slug an id that matches no row.
+ *
+ * That the plugin still mints ids of this shape is not assumed: `organizations.integration-spec.ts`
+ * creates one through the real library and asserts it matches, so a `better-auth` upgrade
+ * that changed the generator fails there rather than in production.
+ */
+export const ORGANIZATION_ID_PATTERN =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{32})$/i;
+
 /** `github_orgs_login_format` (V003): GitHub's own rule for an organisation login. */
 export const ORG_LOGIN_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -69,11 +107,12 @@ export const BRANCH_PATTERN = /^(?!\.)(?!.*\.\.)[A-Za-z0-9._-]+(\/(?!\.)[A-Za-z0
  * **`orgId` is a workspace, not a GitHub organisation.** The collision is real and the paths
  * are what keep the two apart: `/api/v1/orgs/{orgId}` is the workspace, and the GitHub
  * organisations inside it are `/github-orgs/{login}` under it. `tenant.resolver.ts` reads this
- * parameter to resolve the request's workspace, which is why it is a uuid here and why it is
- * the same value `organization."id"` holds.
+ * parameter to resolve the request's workspace, which is why its shape is
+ * {@link ORGANIZATION_ID_PATTERN} — the same value `organization."id"` holds, in either of the
+ * two forms that column carries.
  */
 export class OrgParams {
-  @IsUUID()
+  @Matches(ORGANIZATION_ID_PATTERN, { message: "orgId must be an organization id" })
   orgId!: string;
 }
 

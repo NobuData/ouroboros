@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.20.0"
+  version: "0.21.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -2312,10 +2312,16 @@ components:
         **Not a GitHub organisation.** The two words collide and the paths are what keep them
         apart: this is the workspace, and the GitHub organisations inside it are
         `/github-orgs/{login}` under it.
+
+        **Two shapes, because two things write the column.** A workspace created through
+        `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+        a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+        tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+        validate, and never parse it as a uuid.
       schema:
         type: string
-        format: uuid
-      example: 5eed0001-0000-4000-8000-000000000001
+        pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{32})$
+      example: aBcD1234eFgH5678iJkL9012mNoP3456
 
     DomainId:
       name: domainId
@@ -3108,9 +3114,11 @@ components:
       properties:
         id:
           type: string
-          format: uuid
-          description: The `{orgId}` every other operation in this document takes.
-          examples: [5eed0001-0000-4000-8000-000000000001]
+          pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{32})$
+          description: |-
+            The `{orgId}` every other operation in this document takes. An opaque string in
+            one of two shapes — see the `orgId` path parameter.
+          examples: [aBcD1234eFgH5678iJkL9012mNoP3456]
         slug:
           type: string
           description: The handle. What the mockup prints as the row's name.
@@ -3214,9 +3222,9 @@ components:
           examples: [4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94]
         orgId:
           type: string
-          format: uuid
-          description: The workspace it belongs to.
-          examples: [5eed0001-0000-4000-8000-000000000001]
+          pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{32})$
+          description: The workspace it belongs to. An opaque string — see the path parameter.
+          examples: [aBcD1234eFgH5678iJkL9012mNoP3456]
         domain:
           type: string
           pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$
@@ -3283,9 +3291,9 @@ components:
           examples: [2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f]
         orgId:
           type: string
-          format: uuid
-          description: The workspace it belongs to.
-          examples: [5eed0001-0000-4000-8000-000000000001]
+          pattern: ^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9]{32})$
+          description: The workspace it belongs to. An opaque string — see the path parameter.
+          examples: [aBcD1234eFgH5678iJkL9012mNoP3456]
         login:
           type: string
           pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
