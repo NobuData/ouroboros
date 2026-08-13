@@ -128,18 +128,28 @@ check_run() {
 
 # check_markdown_links FILE — assert every link a markdown file makes resolves.
 #
-# Inline links only, deduplicated. A relative target is resolved against the file's own
-# directory; an anchor against the headings the file itself defines, using GitHub's slug
-# rules — lower-cased, everything but alphanumerics, spaces, underscores and hyphens
-# dropped, spaces hyphenated. Headings inside a fenced block are code rather than headings,
-# so the fence state is tracked. External links are somebody else's uptime problem and are
-# left alone.
+# Inline links only, deduplicated, in both forms markdown writes them: the plain
+# `](target)`, and the angle-bracketed `](<target>)` a target needs the moment it contains
+# parentheses — which every link into Next.js route groups does, `(app)` and `(auth)` being
+# directories. A plain-form-only reader truncates those at the group's own closing paren
+# and reports a file called `<app/(app` missing, which is how this case was found.
+#
+# A relative target is resolved against the file's own directory; an anchor against the
+# headings the file itself defines, using GitHub's slug rules — lower-cased, everything but
+# alphanumerics, spaces, underscores and hyphens dropped, spaces hyphenated. Headings
+# inside a fenced block are code rather than headings, so the fence state is tracked.
+# External links are somebody else's uptime problem and are left alone.
 #
 # Locals are prefixed so a caller's own variables survive the call.
 check_markdown_links() {
   links_file=$1
   links_dir=$(dirname -- "$links_file")
-  links_targets=$(grep -oE '\]\([^)]+\)' "$links_file" 2>/dev/null | sed 's/^](//; s/)$//' | sort -u || true)
+  # The angle form first, then the plain form — which must not open with `<`, or it would
+  # re-read every angle target with the bracket still on and the tail cut at the first `)`.
+  links_targets=$({
+    grep -oE '\]\(<[^>]+>\)' "$links_file" 2>/dev/null | sed 's/^](<//; s/>)$//'
+    grep -oE '\]\([^<)][^)]*\)' "$links_file" 2>/dev/null | sed 's/^](//; s/)$//'
+  } | sort -u || true)
   links_slugs=$(LC_ALL=C awk '
     /^```/ { fence = !fence; next }
     !fence && /^#+[[:space:]]/ {
