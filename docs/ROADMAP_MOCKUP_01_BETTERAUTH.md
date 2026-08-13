@@ -1468,6 +1468,18 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > so the row reads `2 repos enabled · incl. dotfiles` — which is `openapi.yaml`'s own example
 > for that row. Hiding a repository the service named would be less honest than showing it.
 >
+> **One thing only a running stack could have found, and it was not this issue's own.**
+> The first press of **Enter mission control →** answered `403 Missing or null Origin`.
+> BetterAuth's origin check reads `Origin` or `Referer` on any request carrying a `Cookie`
+> and refuses one that has neither — which is *every* request a server composes, because the
+> header is a browser's to set. `app/api/auth-server.ts` now forwards the origin of the
+> request being served, which is both the truthful answer to what the check asks and the one
+> `OURO_CORS_ORIGINS` already declares trusted; the service's own address would have worked
+> only where `BETTER_AUTH_URL` happens to name it, and in this developer's environment it
+> does not. **`signOutSession()` had the same defect and was hiding it**: that call catches
+> its own failures, so a person pressing *sign out* was leaving a session row open — which is
+> **D.6 · #721**'s screen and was this module's bug.
+>
 > **The e2e amendment is in `tests/e2e`.** `support/workspace.ts` calls
 > `organization/set-active` where it used to write a cookie, and `specs/sign-in.spec.ts` walks
 > the one card: pick a radio, press the button, land on the dashboard with the tenant context

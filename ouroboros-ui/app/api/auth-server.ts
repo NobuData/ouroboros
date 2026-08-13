@@ -64,7 +64,7 @@ import "server-only";
 
 import { createAuthClient } from "better-auth/client";
 import { organizationClient } from "better-auth/client/plugins";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
@@ -139,24 +139,70 @@ async function authCookieHeader(): Promise<string | undefined> {
 }
 
 /**
+ * The origin of the request being served, when it declared one.
+ *
+ * **BetterAuth refuses a cookie-carrying `POST` that arrives without an origin.** Its check
+ * reads `Origin` or `Referer` on any request that has a `Cookie` header and answers
+ * `403 Missing or null Origin` when there is neither
+ * (`node_modules/better-auth/dist/api/middlewares/origin-check.mjs` § `validateOrigin`). A
+ * browser sets the header itself; a server composing a request sets nothing, so every write
+ * this module makes — `organization/set-active`, `sign-out` — was refused before it reached
+ * the route it was addressed to.
+ *
+ * What is forwarded is **the browser's own origin**, taken from the request this render or
+ * action is serving, and it is the right value for two separate reasons:
+ *
+ * 1. **It is the truthful answer to what the check asks.** The question is *which site
+ *    initiated this*, and the site is the one the person is on. That this application makes
+ *    the call from a server rather than from the tab is a detail of where the session cookie
+ *    can be read, not a change of who is asking.
+ * 2. **It is the origin the deployment already trusts.** `OURO_CORS_ORIGINS` is
+ *    `ouroboros-rest`'s answer to "which browser origins may call this API with credentials"
+ *    and is what it passes to BetterAuth as `trustedOrigins` (`src/auth/auth.options.ts`) —
+ *    the UI's origin, by definition, since the browser's own copy of this client calls the
+ *    same routes directly. The *service's* address would have been trusted only where
+ *    `BETTER_AUTH_URL` happens to name it, which is a second thing to keep in step for no
+ *    gain.
+ *
+ * **Forwarding is not a bypass.** CSRF is a property of a *browser* — a cross-site page
+ * making a browser send a request carrying cookies it did not choose — and Next.js has
+ * already refused that case before this code runs: a Server Action whose `Origin` does not
+ * match its `Host` is rejected by the framework
+ * (`node_modules/next/dist/docs/01-app/02-guides/server-actions.md` § Security). So the value
+ * passed on here is one the framework has already checked, and the browser-side path
+ * (`app/api/auth-client.ts`) is left with BetterAuth's check exactly as it was.
+ *
+ * @returns The `Origin` header of the request being served, or `undefined` when it carried
+ *   none — an ordinary `GET` render, where BetterAuth runs no origin check at all and a
+ *   header invented here would be a claim nothing asked for.
+ */
+async function requestOrigin(): Promise<string | undefined> {
+  return (await headers()).get("origin") ?? undefined;
+}
+
+/**
  * The options every call in this module passes to the client.
  *
  * @param fetchImpl The fetch to call through. Defaults to the runtime's; the parameter is
  *   what lets a suite answer without a socket, in the same shape `createApiClient` takes
  *   one.
- * @returns The base URL, this request's cookies, and the two settings that are not
- *   negotiable — an uncached read, because a session is per person and per moment and a
- *   cached answer would be somebody else's.
+ * @returns The base URL, the origin this request carried, its cookies, and the two settings
+ *   that are not negotiable — an uncached read, because a session is per person and per
+ *   moment and a cached answer would be somebody else's.
  * @throws {Error} From `restUrl()`, when `OURO_REST_URL` is unset or unusable.
  */
 export async function authFetchOptions(
   fetchImpl: typeof fetch = fetch,
 ): Promise<AuthFetchOptions> {
   const cookie = await authCookieHeader();
+  const origin = await requestOrigin();
 
   return {
     baseURL: `${restUrl()}${AUTH_BASE_PATH}`,
-    headers: cookie === undefined ? {} : { Cookie: cookie },
+    headers: {
+      ...(origin === undefined ? {} : { Origin: origin }),
+      ...(cookie === undefined ? {} : { Cookie: cookie }),
+    },
     cache: "no-store",
     customFetchImpl: fetchImpl,
   };

@@ -39,6 +39,10 @@ vi.mock("next/headers", () => ({
       set: setCookie,
       delete: () => {},
     }),
+  // A Server Action's request always carries one — Next.js refuses the action otherwise —
+  // and `app/api/auth-server.ts` forwards it so BetterAuth's origin check is satisfied on a
+  // write this process composes rather than the browser.
+  headers: () => Promise.resolve(new Headers({ origin: "http://localhost:3000" })),
 }));
 
 /** What `redirect()` does: signal by throwing, so nothing after it runs. */

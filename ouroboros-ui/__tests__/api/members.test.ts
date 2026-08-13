@@ -21,6 +21,9 @@ vi.mock("next/headers", () => ({
       set: () => {},
       delete: () => {},
     }),
+  // The request's own headers — this module reads the auth family through
+  // `app/api/auth-server.ts`, which forwards the origin off them.
+  headers: () => Promise.resolve(new Headers({ origin: "http://localhost:3000" })),
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
