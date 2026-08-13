@@ -45,7 +45,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives) |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
-| Lint | ESLint flat config |
+| Lint | ESLint flat config, plus stylelint on `app/**/*.css` — the px type ban (#648) that keeps every sheet scalable by the font-size preference |
 | Container | Multi-stage Dockerfile on `node:24-alpine`, Next.js standalone output — see [Container](#container) |
 
 ## Run
@@ -250,6 +250,7 @@ ouroboros-ui/
 ├── Dockerfile          # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore   # …and the context that image is built from
 ├── eslint.config.mjs   # ESLint flat config
+├── stylelint.config.mjs # the px type ban (#648) — yarn lint runs both
 ├── next.config.ts      # standalone output, traced from the repo root
 └── vitest.config.mts   # + vitest.setup.ts
 ```

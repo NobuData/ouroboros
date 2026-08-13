@@ -420,15 +420,47 @@ e2e: fixed chrome ✓ · nav states ×11 ✓ · rail/drawer ✓ · restoration �
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CQ.1 | #648 | 🟡 Open | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
+| CQ.1 | #648 | 🟢 Done | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
 | CQ.2 | #649 | 🟡 Open | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
 | CQ.3 | #650 | 🟡 Open | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue CQ.1 — ouroboros-ui: [CQ.1] rem-based token scale & px lint
 
-> **GitHub issue:** #648 · **Status:** 🟡 Open · **Parent epic:** #641
+> **GitHub issue:** #648 · **Status:** 🟢 Done · **Parent epic:** #641
 
-- **Problem Statement:** Font scaling only works if nothing is pinned in
+> **Shipped.** The enforcement half of this ticket:
+> [`ouroboros-ui/stylelint.config.mjs`](../ouroboros-ui/stylelint.config.mjs), run by
+> `yarn lint` on every pull request, red on any absolute unit in `font-size`,
+> `line-height` or the `font` shorthand.
+>
+> **The conversion this issue was written to do had already happened.** The issue body was
+> drafted against a px-based token sheet (`--fs-13: 13px`), but the sheet that actually
+> shipped with #16's adoption and #643's shell was rem from the start: every `--t-*` size,
+> every `--lh-*` line height and the whole `--sp-*` scale in
+> [`app/tokens.css`](../ouroboros-ui/app/tokens.css) — held byte-identical to
+> `docs/design/tokens.css` by `scripts/verify-tokens.sh` — with zero px type sizes anywhere
+> under `app/`. The audit that established this is recorded by the lint pass itself being
+> green on the first run. Two acceptance criteria therefore land vacuously: at 100% the UI
+> is pixel-identical because not one byte of CSS changed, and both themes are unaffected
+> for the same reason — no screenshot diff was taken because there was nothing to compare,
+> and the screenshot *infrastructure* remains CQ.3's (#650), where the scale × theme matrix
+> actually needs it.
+>
+> **What was genuinely missing was the "keeps it that way" half.** `__tests__/styles.test.ts`
+> already failed absolute `font`/`font-size` in shipped sheets, but it never covered
+> `line-height`, and a vitest rule answers at test time, not at the moment the offending
+> line is written. The stylelint rule closes both gaps and the two guards are held to the
+> same vocabulary — the same seven absolute units, asserted against each other in
+> [`__tests__/stylelint.test.ts`](../ouroboros-ui/__tests__/stylelint.test.ts), which also
+> carries the acceptance criterion verbatim: red on a `font-size: 12px` fixture, green
+> across every shipped sheet, under the *shipped* configuration rather than a copy.
+>
+> **The allowlist is the rule's scope, not a list.** Only the two type properties (and the
+> shorthand that can smuggle them) are banned, so everything px is correct for — hairline
+> borders, shadow offsets, `.sr-only`'s deliberately unscalable 1px boxes — never trips it.
+> That is the shortest allowlist that can exist: empty, with the rationale in the config's
+> own header and in `docs/DESIGN_TOKENS.md`, which already carried the rem scale table and
+> now names the enforcement.
   px; the #16 token sheet and existing components carry px type sizes from
   the mockup CSS (spec §3.2, §4).
 - **Solution/Scope:** Token sweep: type sizes, line heights, and key
