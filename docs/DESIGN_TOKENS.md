@@ -217,6 +217,13 @@ Sizes are **rem, never px**, so the five-step font-size preference in
 scales every surface from one change to the root element. The px column is what each step
 resolves to at the browser default of 16px — a reading aid, not a value to use.
 
+The rule is lint-enforced (#648): `ouroboros-ui/stylelint.config.mjs` rejects any absolute
+unit in `font-size`, `line-height` or the `font` shorthand under `yarn lint`, and
+`__tests__/styles.test.ts` proves the shipped sheets clean on every `yarn test`. The
+allowlist is the rule's own scope rather than a list of exceptions: px stays correct — and
+untouched — where it is not type, which is hairline borders, shadow offsets, and the 1px
+boxes of `.sr-only`, the one box that must *not* follow the reader's preference.
+
 | Token | Value | Dark override | What it is |
 |---|---|---|---|
 | `--t-2xs` | `0.6875rem` | — | 11px — eyebrows, table heads, tags, keycaps |

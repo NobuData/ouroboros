@@ -45,7 +45,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives) |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
-| Lint | ESLint flat config |
+| Lint | ESLint flat config, plus stylelint on `app/**/*.css` — the px type ban (#648) that keeps every sheet scalable by the font-size preference |
 | Container | Multi-stage Dockerfile on `node:24-alpine`, Next.js standalone output — see [Container](#container) |
 
 ## Run
@@ -250,6 +250,7 @@ ouroboros-ui/
 ├── Dockerfile          # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore   # …and the context that image is built from
 ├── eslint.config.mjs   # ESLint flat config
+├── stylelint.config.mjs # the px type ban (#648) — yarn lint runs both
 ├── next.config.ts      # standalone output, traced from the repo root
 └── vitest.config.mts   # + vitest.setup.ts
 ```
@@ -816,16 +817,14 @@ Five things are worth knowing before adding a screen to it.
    request as the route.
 4. **What is a slot, not an omission.** The bar carries every slot § 1.1 names, in its
    order: the tenant chip beside the brand, then search · live-loops · needs-you ·
-   notifications · [theme toggle](#theming)
-   ([#42](https://github.com/NobuData/ouroboros/issues/42)) · settings gear ·
-   [account menu](#the-account-menu). The toggle, the menu and the chip's *reading* are
-   finished; what fills the rest has an issue each — switching workspace from the chip
-   (#77), the ⌘K palette behind the search pill (#79), real counts in both pills (#78),
-   the settings screen the gear will link to (#491). Nothing shows a number nobody
-   computed: an unfilled count is an em dash, which is the design system's honesty rule
-   (§ 3.5). The theme toggle and the gear are on their way *into* the profile menu with
-   CP.3 ([#645](https://github.com/NobuData/ouroboros/issues/645)), along with the
-   font-size stepper.
+   notifications · [account menu](#the-account-menu). The menu and the chip's *reading*
+   are finished; what fills the rest has an issue each — switching workspace from the
+   chip (#77), the ⌘K palette behind the search pill (#79), real counts in both pills
+   (#78). Nothing shows a number nobody computed: an unfilled count is an em dash, which
+   is the design system's honesty rule (§ 3.5). The theme control and the settings entry
+   live *inside* the profile menu since CP.3
+   ([#645](https://github.com/NobuData/ouroboros/issues/645)) — § 1.1 puts them there,
+   and a control drawn twice is a state that can be read twice differently.
 5. **Overlays render beside the pane, not inside it.**
    [`app/shell/overlay.tsx`](app/shell/overlay.tsx) portals into a layer that is a sibling
    of the pane, so a dialog can cover the header instead of being clipped by the grid cell
@@ -881,13 +880,27 @@ awaiting a session there would hold up the shell a route's `loading.tsx` is draw
 
 ```
 [ (avatar) ▾ ]
-     ├─ Ken Suenobu · ken@acme-robotics.dev
+     ├─ Ken Suenobu · ken@acme-robotics.dev · owner
+     ├─ Font size  [A−] ▪▪▪▫▫ [A+]           ← live, persisted per account (#649)
+     ├─ Theme      ○ Light ○ Dark ● System   ← radios over the #17 engine
      ├─ Switch workspace  acme-robotics  ▸ ─┬─ ● acme-robotics
      │                                      ├─ ○ acme-labs
      │                                      └─ ○ kensuenobu
      ├─ Workspace settings                  (#491)
+     ├─ Keyboard shortcuts ─▶ sheet over the pane (ShellOverlay)
      └─ Sign out ─▶ session row deleted ─▶ /login
 ```
+
+**The two controls hold no state of their own** (CP.3,
+[#645](https://github.com/NobuData/ouroboros/issues/645)). The stepper reads
+`useFontScale()` and writes `setFontScale` — [the font scale](#the-font-scale)'s store —
+then persists through the `saveFontScale` Server Action, quietly; the theme radios read
+`useTheme()` and call `setTheme`, so engine, persistence and boot are all
+[the theming machinery](#theming)'s. The role beside the address is
+`organization.getActiveMemberRole`, collapsed by `primaryRole()` and shown only once known —
+no guessed word while the fetch is out (§ 3.5). The shortcuts sheet
+([`app/shell/shortcuts-sheet.tsx`](app/shell/shortcuts-sheet.tsx)) rides `ShellOverlay` and
+lists only bindings that exist; a new binding adds its row in the change that wires it.
 
 **The two writes go opposite ways, and which side of the wire can write the cookie is why.**
 Switching workspace is `organization.setActive` called from the browser — that is the call
@@ -1038,10 +1051,10 @@ from, which is what makes the theme switch a redefinition rather than a restyle.
 Three states — `light`, `dark`, `system` — and *system* is the default. The engine is
 [`app/theme.ts`](app/theme.ts) (vocabulary, the two DOM operations, and the boot script)
 plus [`app/theme-provider.tsx`](app/theme-provider.tsx) (`ThemeProvider`, `useTheme()`).
-The visible switcher is
-[`app/shell/theme-toggle.tsx`](app/shell/theme-toggle.tsx)
-([#42](https://github.com/NobuData/ouroboros/issues/42)), in the header cluster; this is
-what it calls.
+The visible control is the [account menu](#the-account-menu)'s radio group — three
+`menuitemradio`s over `setTheme`, where CP.3
+([#645](https://github.com/NobuData/ouroboros/issues/645)) folded the header's cycling
+toggle ([#42](https://github.com/NobuData/ouroboros/issues/42)); this is what it calls.
 
 ```tsx
 "use client";
@@ -1105,26 +1118,50 @@ repaints that one on its own, so whether it fades depends on the change reaching
 listener before the frame that paints it. Losing that race costs nothing — the swap is
 simply instant.
 
-### The switcher
+### The control
 
-One button in the header cluster, cycling **light → dark → system** and holding no state
-of its own: it reads `useTheme()` and calls `setTheme`, and everything above is what
-happens next. Two decisions in it are worth knowing.
+Three radios in the [account menu](#the-account-menu) — Light, Dark, System — holding no
+state of their own: each press calls `setTheme`, and everything above is what happens
+next. It replaced the header's one-button cycle when CP.3
+([#645](https://github.com/NobuData/ouroboros/issues/645)) folded the control into the
+menu: a menu row has room for the three states the cycle had to fold into one icon, and
+`aria-checked` says which is chosen where the old toggle needed a marker dot and a
+tooltip. The *System* radio's title still resolves what the choice renders as
+(`describeTheme` in [`app/theme.ts`](app/theme.ts)), because "system" alone does not say
+which palette is on the screen.
 
-**The icon is the palette, not the preference.** A sun while light is rendering, a moon
-while dark is — the *resolved* value, which is what the issue asks for and what makes the
-control describe the product rather than a setting. Its cost is that *light* and *system
-resolving to light* draw the same sun, so the button carries an accent dot while the
-choice is *system* (`.theme-toggle--auto`). The accessible name and the tooltip carry the
-same fact in words — `Theme: system (dark). Switch to light.` — and both name what the
-next press does.
+**A screen reader hears about presses only.** The announcement goes through the menu's
+own `role="status"` region, written by the click handler rather than derived from
+`theme`. Derived, it would also speak the correction the provider makes to its own state
+just after mount, so every page load would announce a change nobody made. The region is
+mounted empty from the start, because a live region added at the same moment as its text
+is not reliably read at all.
 
-**A screen reader hears about presses only.** The announcement is a visually hidden
-`role="status"` region beside the button, whose text is written by the click handler
-rather than derived from `theme`. Derived, it would also speak the correction the
-provider makes to its own state just after mount, so every page load would announce a
-change nobody made. The region is mounted empty from the start, because a live region
-added at the same moment as its text is not reliably read at all.
+## The font scale
+
+The five-step font-size preference of
+[`../docs/DESIGN_SYSTEM_APP_SHELL.md`](../docs/DESIGN_SYSTEM_APP_SHELL.md) § 4
+([#649](https://github.com/NobuData/ouroboros/issues/649)): **87.5 · 100 · 112.5 · 125 ·
+150 %** of the browser's base size, applied as `data-font-scale` on `<html>` and turned
+into a root `font-size` by five rules in [`app/globals.css`](app/globals.css). Every
+length in the product is rem (lint-enforced, #648), so that one attribute rescales every
+surface — and percentages compose with browser zoom rather than fighting it.
+
+The engine is [`app/font-scale.ts`](app/font-scale.ts) — the third instance of the
+theme's no-flash pattern, and the first whose **truth is the account rather than the
+browser**: `GET`/`PATCH /api/v1/me/preferences` owns the value, `localStorage` is only
+the mirror that makes the first paint instant, and
+[`app/shell/font-scale-sync.tsx`](app/shell/font-scale-sync.tsx) reconciles the two when
+the session loads (server wins — it is the cross-device truth). Writes hop through the
+Server Actions in [`app/shell/preference-actions.ts`](app/shell/preference-actions.ts),
+because the browser cannot reach REST. The boot script sits in the root layout beside
+the theme's, which is what makes `/login` honour the mirror with no session at all.
+
+Controls subscribe through `useFontScale()`
+([`app/use-font-scale.ts`](app/use-font-scale.ts)); the profile-menu stepper is CP.3
+([#645](https://github.com/NobuData/ouroboros/issues/645)) and the Settings → Appearance
+row is [#492](https://github.com/NobuData/ouroboros/issues/492) — two surfaces over this
+one store, which is the whole of how they stay in sync.
 
 ## Favicons and the web-app manifest
 

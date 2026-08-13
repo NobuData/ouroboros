@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.21.0",
+    "version": "0.22.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -45,6 +45,10 @@
     {
       "name": "engine",
       "description": "The gateway to `ouroboros-engine`, the Python backend that executes the work this\nservice brokers. It is internal — reachable from this service and from nothing else\n(`docs/ARCHITECTURE.md` § 10) — so everything a client learns about it, it learns\nthrough an operation here.\n\nThere is no proxy route and there will not be one. Each engine capability arrives as a\nnamed operation with its own contract in this document, because a route that forwarded\na path, a method and a body to an internal service would be that boundary written as a\nhole.\n\n**The engine failing is always a `502`.** Down, slow, unresolvable, holding a\nmismatched shared secret, or answering outside its own contract are one answer with\none code, naming no address. A mismatched secret in particular is never forwarded as a\n`401`: it is a deployment's mistake rather than a caller's, and telling a browser to\nsign in again for it would be telling it about a boundary it cannot reach."
+    },
+    {
+      "name": "preferences",
+      "description": "**The caller's own product settings** ([#649](https://github.com/NobuData/ouroboros/issues/649))\n— starting with the font scale the design system's § 4 gives every reader.\n\nThese are the person's, not the workspace's: the value is the same whichever\norganization the session is acting in, because a font size is chosen by the reader's\neyes. That is why the path says `/me/`, why no operation here takes a workspace, and\nwhy a person who belongs to nothing yet still has preferences.\n\n**Absence is the defaults, never a `404`.** A preference always has a value; a person\nwho has never chosen reads back `fontScale: \"100\"`, and no row is written on the way\nto that answer. The server is the truth — signing in on a second machine brings the\nsetting along — and the browser's `localStorage` is only a mirror for the no-flash\nboot, reconciled against `GET` when the session loads."
     },
     {
       "name": "tenancy",
@@ -868,6 +872,117 @@
                   "code": "engine_unavailable",
                   "message": "The engine is not available right now. Try again in a moment.",
                   "details": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/preferences": {
+      "get": {
+        "tags": [
+          "preferences"
+        ],
+        "summary": "Your preferences",
+        "description": "Stored choices where they exist, the defaults where none do. Never a `404` and never\nempty: a preference always has a value, even for somebody who has never expressed\none — so a client can render a control from this answer without a fallback branch.\n\nRequires no workspace, exactly as `GET /api/v1/orgs` does not: the answer belongs to\nthe person, and a fresh sign-up who belongs to nothing yet still has a text size.",
+        "operationId": "readPreferences",
+        "responses": {
+          "200": {
+            "description": "The caller's preferences, defaults included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                },
+                "example": {
+                  "fontScale": "100"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Preferences belong to somebody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "preferences"
+        ],
+        "summary": "Change your preferences",
+        "description": "Send what changed; the answer is the whole surface as it now stands, read back from\nthe row rather than from the request. A body carrying nothing changes nothing and\nanswers the current state — PATCH means \"what is present changed\", and an empty\nchange is a question, not an error.\n\nThe write is an upsert keyed on the person: \"set my font scale\" is the same request\nwhether it is the first choice or the fortieth, and two racing writes are arbitrated\nby the database rather than by whichever arrived second overwriting a read.",
+        "operationId": "patchPreferences",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesPatch"
+              },
+              "example": {
+                "fontScale": "125"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The caller's preferences after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                },
+                "example": {
+                  "fontScale": "125"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Preferences belong to somebody.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `fontScale` was not one of the five steps. `details`\ncarries the entry keyed by the field, so a control can render the message\nbeside itself. The five are the design system's (§ 4) and the database CHECK's\nalike; a respelling of a named step — `\"100.0\"` for `\"100\"` — is refused, not\ncoerced, because the value is a label rather than a number.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3722,6 +3837,46 @@
             "examples": [
               "main"
             ]
+          }
+        }
+      },
+      "FontScale": {
+        "type": "string",
+        "title": "FontScale",
+        "enum": [
+          "87.5",
+          "100",
+          "112.5",
+          "125",
+          "150"
+        ],
+        "description": "One of the five root font-size steps, as a percentage of the browser's base size\n(`docs/DESIGN_SYSTEM_APP_SHELL.md` § 4). A **string, deliberately**: the value is a\nlabel the UI stamps onto `<html>` — nothing does arithmetic with it, `\"100.0\"` is\nnot `\"100\"`, and a number would round-trip through JSON as a float. The vocabulary\nis `user_preferences_font_scale`'s CHECK (V007), restated; widening it is a\nmigration there before it is a value here.",
+        "examples": [
+          "100"
+        ]
+      },
+      "Preferences": {
+        "type": "object",
+        "title": "Preferences",
+        "description": "The caller's product preferences, defaults included — the answer of both operations\nunder `/api/v1/me/preferences`. Every field always has a value: absence of a stored\nchoice reads as the default, never as a missing property, so a client renders\ncontrols from this without a fallback branch.",
+        "additionalProperties": false,
+        "required": [
+          "fontScale"
+        ],
+        "properties": {
+          "fontScale": {
+            "$ref": "#/components/schemas/FontScale"
+          }
+        }
+      },
+      "PreferencesPatch": {
+        "type": "object",
+        "title": "PreferencesPatch",
+        "description": "What changed. Every field optional — send what changed, omit the rest — and an\nempty object is legal: it changes nothing and reads back the current state.",
+        "additionalProperties": false,
+        "properties": {
+          "fontScale": {
+            "$ref": "#/components/schemas/FontScale"
           }
         }
       },

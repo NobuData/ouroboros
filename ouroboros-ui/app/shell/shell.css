@@ -409,48 +409,6 @@
   display: none;
 }
 
-/* ---------- theme toggle ---------- */
-
-/*
- * The switcher (#42). Its shape is .shell-icon-button's, so it sits in the cluster as
- * one of a row rather than as a control of its own design; what belongs to it alone is
- * the marker below, and the positioning context that marker is placed against.
- */
-.theme-toggle {
-  position: relative;
-}
-
-/*
- * The dot that separates *system* from an explicit choice.
- *
- * The icon inside the button is the palette actually rendering — a sun for light, a moon
- * for dark — which is what the issue specifies, and which leaves *light* and *system
- * resolving to light* drawing exactly the same thing. The accessible name and the
- * tooltip distinguish them in words; this distinguishes them at a glance, because a
- * control whose state is only legible on hover is not a discoverable one.
- *
- * The ring is --surface, the header's own ground, so the dot reads as separate from the
- * button's hairline at every scale instead of merging with it.
- */
-.theme-toggle--auto::after {
-  content: "";
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: var(--sp-3);
-  height: var(--sp-3);
-  border: 1px solid var(--surface);
-  border-radius: var(--r-round);
-  background: var(--accent);
-}
-
-/*
- * The visually hidden region the toggle announces through is `.sr-only`, in globals.css —
- * it moved there when the login screen (#44) needed the same nine declarations for the
- * accessible name of every switch on it, and a second copy of a technique is a second copy
- * to keep correct.
- */
-
 /* ---------- account menu ---------- */
 
 .shell-menu {
@@ -508,6 +466,92 @@
   color: var(--ink-faint);
   font-family: var(--f-mono);
   font-size: var(--t-xs);
+}
+
+/* The role beside the address (§ 1.1's "ken@… · owner"): same line, slightly lifted ink,
+   because it is the one word on the line that is a *standing* rather than an identifier. */
+.shell-menu__role {
+  color: var(--ink-mut);
+}
+
+/*
+ * A control row (§ 1.1): the label at the start, the control at the end — the stepper or
+ * the theme radios. A row rather than an item: pressing the *row* means nothing, and only
+ * the buttons inside it are in the menu's ring.
+ */
+.shell-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) var(--sp-5);
+}
+
+.shell-menu__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/*
+ * One step button. The item treatment (hover wash, disabled ink) is inherited from
+ * .shell-menu__item; what is this class's own is the compact square, so [A−] and [A+]
+ * read as key caps beside the dots rather than as menu rows of their own.
+ */
+.shell-menu__step {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.shell-menu__step[aria-disabled="true"] {
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+/* The five steps, as marks: filled up to the one the reader is at. */
+.shell-menu__dots {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.shell-menu__dot {
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-round);
+}
+
+.shell-menu__dot--on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.shell-menu__themes {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/*
+ * One theme radio. aria-checked is the state the stylesheet reads — the same accent-on-tint
+ * the workspace radios and the sidebar's active entry use, so "which one am I on" is one
+ * treatment everywhere a chosen thing is drawn.
+ */
+.shell-menu__theme {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid transparent;
+  font-size: var(--t-xs);
+}
+
+.shell-menu__theme[aria-checked="true"] {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 
 /*
@@ -1137,4 +1181,64 @@ a.shell-nav__item--active:hover {
 .shell-overlay__close:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+/* ---------- the shortcuts sheet ---------- */
+
+/*
+ * The keyboard-shortcuts sheet's content (§ 1.1, issue 645 — written without its hash for
+ * the reason the rail rule gives). The dialog around it is .shell-overlay's; these style
+ * only the listing: groups of key-cap/definition rows, in the treatment the search pill's
+ * key cap established.
+ */
+.shell-shortcuts__group {
+  margin-top: var(--sp-6);
+}
+
+.shell-shortcuts__heading {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.shell-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+}
+
+/* One binding: the keys in a fixed column, so the sentences align down the sheet. */
+.shell-shortcuts__row {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: baseline;
+}
+
+.shell-shortcuts__keys {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* The search pill's key-cap treatment, at the sheet's own size. */
+.shell-shortcuts__key {
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.shell-shortcuts__does {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
 }

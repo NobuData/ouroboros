@@ -170,6 +170,24 @@ export function resolveTheme(
 }
 
 /**
+ * Name a state in words, resolving *system* rather than leaving it ambiguous.
+ *
+ * Written for the header's cycling toggle (#42) and moved here when CP.3
+ * ([#645](https://github.com/NobuData/ouroboros/issues/645)) replaced that control with the
+ * account menu's radio group: the sentence belongs to the *vocabulary*, not to any one
+ * control that speaks it.
+ *
+ * @param theme The choice being described.
+ * @param resolved The palette that choice renders as.
+ * @returns `"light"`, `"dark"`, or `"system (light)"` / `"system (dark)"` — the form a
+ *   tooltip or announcement wants, because "system" alone does not tell a reader which of
+ *   the two palettes is on the screen.
+ */
+export function describeTheme(theme: Theme, resolved: ResolvedTheme): string {
+  return theme === "system" ? `system (${resolved})` : theme;
+}
+
+/**
  * Put a choice on the document, which is the whole of applying a theme.
  *
  * No reload and no restyle: the palette is a set of custom properties on `:root`, so

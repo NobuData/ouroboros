@@ -128,7 +128,7 @@ Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CP.1 | #643 | 🟢 Done | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
 | CP.2 | #644 | 🟢 Done | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
-| CP.3 | #645 | 🟡 Open | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
+| CP.3 | #645 | 🟢 Done | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
 | CP.4 | #646 | 🟡 Open | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
 | CP.5 | #647 | 🟡 Open | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
 
@@ -334,9 +334,62 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 
 ### Issue CP.3 — ouroboros-ui: [CP.3] Profile & session menu
 
-> **GitHub issue:** #645 · **Status:** 🟡 Open · **Parent epic:** #640
+> **GitHub issue:** #645 · **Status:** 🟢 Done · **Parent epic:** #640
 
-- **Problem Statement:** "Profile information in the upper right-hand (as
+> **Shipped.** The § 1.1 menu, complete:
+> [`app/shell/user-menu.tsx`](../ouroboros-ui/app/shell/user-menu.tsx) now carries the
+> font-size stepper (live over #649's store, persisted through its Server Action), the
+> theme control as three `menuitemradio`s over the #17 engine, the person's role beside
+> their address, the keyboard-shortcuts sheet
+> ([`app/shell/shortcuts-sheet.tsx`](../ouroboros-ui/app/shell/shortcuts-sheet.tsx), on
+> the CP.1 overlay), and the sign-out and workspace switcher #721 had already built. Most
+> of this ticket's surface predated it — the interaction shell, ESC, the roving ring,
+> focus return, session truth — which is why building the menu before it had contents was
+> worth it; what CP.3 added is everything between the identity block and the switcher.
+>
+> **The header gave up two controls, and the correction is recorded where they were
+> promised a future.** § 1.1's upper-right enumeration draws the theme control *inside*
+> the profile menu — no slot beside it — so the #42 cycling button left the row when the
+> menu's radios learned its job (three visible states where the cycle folded them into
+> one icon, `aria-checked` where it needed a marker dot). The engine was reused untouched,
+> which is the half of ROADMAP_OOE_MVP's "second surface, not a replacement" note that
+> survives; both passages that predicted the button would stay are amended in their own
+> files. The disabled settings gear was absorbed by the menu's *Workspace settings* item —
+> still honestly `aria-disabled` naming #491, because the issue's "links → `/settings`"
+> clause has no route to point at until that ticket builds one. A link to a 404 is worse
+> than a marked wait.
+>
+> **The stepper's press is the preview.** `setFontScale` stamps `<html>` before the
+> Server Action is even called, so "live preview as you step" is the ordering of two
+> statements rather than a feature; the quiet-failure posture for the durable half is
+> #649's, restated at the call site. The two step buttons are ordinary `menuitem`s in the
+> ring — `aria-disabled` at the ends, never `disabled`, so the arrow walk never breaks —
+> and the announcement rides the menu's existing `role="status"` region.
+>
+> **The role is fetched apart from the session, and remembered with its workspace.** The
+> plugin's `organization.list` discards roles in its adapter, so the identity block asks
+> `getActiveMemberRole` (one word for one workspace — `GET /api/v1/orgs` is for screens
+> that need roles per row), collapses multi-role text with `primaryRole()`, and stores
+> the answer *paired with the workspace it was asked for* — a stale answer voids itself
+> by derivation the moment the session moves, with no reset to forget. Until an answer
+> arrives the address stands alone: no guessed word, per § 3.5.
+>
+> **"Portals over the pane" is satisfied by construction, not by a portal.** The panel is
+> an absolutely positioned child of the header — a sibling of the pane, which therefore
+> cannot clip it — and `__tests__/shell/shell-styles.test.ts` pins the position and
+> z-index facts. An actual portal through the overlay layer would buy nothing and cost
+> the pane a scroll lock a menu must not take. The shortcuts sheet, which *is* a dialog,
+> does ride the overlay layer, and lists only bindings that exist — ⌘K in the platform's
+> own spelling through the search pill's exported `shortcutHint()`, the two roving rings,
+> the dismissals — because documentation is held to the same honesty rule as controls.
+>
+> Proved in `__tests__/shell/user-menu.test.tsx` (stepper, radios, role, sheet, and the
+> full keyboard path around them), `__tests__/shell/account.test.ts` (the role's five
+> decisions), `__tests__/theme.test.ts` (`describeTheme`, moved with its function), and
+> `__tests__/shell/shell-header.test.tsx`, which now asserts the two controls stay *out*
+> of the row. **Left to CP.5 (#647) and CQ.3 (#650), by this roadmap's own split:** the
+> browser-observed legs — AA contrast at every scale × theme, and the cross-device
+> persistence walk a jsdom suite can only stub.
   with standard SaaS applications)" — the avatar must open a real account
   menu, and it is the spec'd home of the font-size quick control (spec
   §1.1, §4).
@@ -420,15 +473,47 @@ e2e: fixed chrome ✓ · nav states ×11 ✓ · rail/drawer ✓ · restoration �
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CQ.1 | #648 | 🟡 Open | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
-| CQ.2 | #649 | 🟡 Open | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
+| CQ.1 | #648 | 🟢 Done | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
+| CQ.2 | #649 | 🟢 Done | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
 | CQ.3 | #650 | 🟡 Open | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue CQ.1 — ouroboros-ui: [CQ.1] rem-based token scale & px lint
 
-> **GitHub issue:** #648 · **Status:** 🟡 Open · **Parent epic:** #641
+> **GitHub issue:** #648 · **Status:** 🟢 Done · **Parent epic:** #641
 
-- **Problem Statement:** Font scaling only works if nothing is pinned in
+> **Shipped.** The enforcement half of this ticket:
+> [`ouroboros-ui/stylelint.config.mjs`](../ouroboros-ui/stylelint.config.mjs), run by
+> `yarn lint` on every pull request, red on any absolute unit in `font-size`,
+> `line-height` or the `font` shorthand.
+>
+> **The conversion this issue was written to do had already happened.** The issue body was
+> drafted against a px-based token sheet (`--fs-13: 13px`), but the sheet that actually
+> shipped with #16's adoption and #643's shell was rem from the start: every `--t-*` size,
+> every `--lh-*` line height and the whole `--sp-*` scale in
+> [`app/tokens.css`](../ouroboros-ui/app/tokens.css) — held byte-identical to
+> `docs/design/tokens.css` by `scripts/verify-tokens.sh` — with zero px type sizes anywhere
+> under `app/`. The audit that established this is recorded by the lint pass itself being
+> green on the first run. Two acceptance criteria therefore land vacuously: at 100% the UI
+> is pixel-identical because not one byte of CSS changed, and both themes are unaffected
+> for the same reason — no screenshot diff was taken because there was nothing to compare,
+> and the screenshot *infrastructure* remains CQ.3's (#650), where the scale × theme matrix
+> actually needs it.
+>
+> **What was genuinely missing was the "keeps it that way" half.** `__tests__/styles.test.ts`
+> already failed absolute `font`/`font-size` in shipped sheets, but it never covered
+> `line-height`, and a vitest rule answers at test time, not at the moment the offending
+> line is written. The stylelint rule closes both gaps and the two guards are held to the
+> same vocabulary — the same seven absolute units, asserted against each other in
+> [`__tests__/stylelint.test.ts`](../ouroboros-ui/__tests__/stylelint.test.ts), which also
+> carries the acceptance criterion verbatim: red on a `font-size: 12px` fixture, green
+> across every shipped sheet, under the *shipped* configuration rather than a copy.
+>
+> **The allowlist is the rule's scope, not a list.** Only the two type properties (and the
+> shorthand that can smuggle them) are banned, so everything px is correct for — hairline
+> borders, shadow offsets, `.sr-only`'s deliberately unscalable 1px boxes — never trips it.
+> That is the shortest allowlist that can exist: empty, with the rationale in the config's
+> own header and in `docs/DESIGN_TOKENS.md`, which already carried the rem scale table and
+> now names the enforcement.
   px; the #16 token sheet and existing components carry px type sizes from
   the mockup CSS (spec §3.2, §4).
 - **Solution/Scope:** Token sweep: type sizes, line heights, and key
@@ -452,9 +537,51 @@ stylelint: "font-size: 12px" ─▶ ✗ error (use rem token)
 
 ### Issue CQ.2 — ouroboros-rest: [CQ.2] Font-size preference & no-flash boot
 
-> **GitHub issue:** #649 · **Status:** 🟡 Open · **Parent epic:** #641
+> **GitHub issue:** #649 · **Status:** 🟢 Done · **Parent epic:** #641
 
-- **Problem Statement:** The description's ask: adjustable font size for
+> **Shipped.** The engine end to end: a `user_preferences` table (V007), `GET`/`PATCH
+> /api/v1/me/preferences` in a new
+> [`preferences module`](../ouroboros-rest/src/modules/preferences/preferences.module.ts),
+> and the browser half in [`app/font-scale.ts`](../ouroboros-ui/app/font-scale.ts) — the
+> boot script in the root layout, the five `:root[data-font-scale]` rules in
+> `globals.css`, the localStorage mirror, and the session-load reconciliation
+> (`app/shell/font-scale-sync.tsx`, server wins). `preferences.integration-spec.ts` proves
+> the criteria a mock cannot: the two-users-two-scales isolation, the 401, the 422 with
+> the field named, and the upsert staying one row.
+>
+> **"BA user prefs" became a Flyway table, deliberately.** The issue sketched the
+> preference on the account surface — BetterAuth `additionalFields` — and that is the one
+> place it must not live: `betterauth-schema.sql` is a rendered snapshot of the library's
+> expected DDL, held by ci/db, so a product column there is either snapshot drift or
+> application-owned DDL, and D3 says Flyway owns every table. `ouroboros.user_preferences`
+> references `"user"` and cascades with it; #31 turns out to have been the *pattern* (a
+> session-authed, person-scoped surface), not a home — nothing called an
+> account-preferences surface existed to build on.
+>
+> **The value is a label, not a number.** `font_scale` is text under a named CHECK, the
+> house idiom, mirrored as a TS union and as the contract's string enum: `'100.0'` must
+> not equal `'100'`, nothing does arithmetic with the step, and JSON would make a numeric
+> 87.5 a float. The same five words appear in exactly four authorities — the CHECK, the
+> schema union, the contract enum, the UI vocabulary — each held to the next by a test.
+>
+> **The controls are deliberately absent.** The stepper is CP.3's (#645, next in this
+> stack); the Settings → Appearance row is #492's, whose issues-table row in the mockup-17
+> roadmap already carries the amendment. What this ticket ships is the store both controls
+> will subscribe to (`useFontScale()`), which is also how the "two controls stay in sync"
+> criterion is met: there is one value for them to disagree about, and no code by which
+> they could.
+>
+> **Reconciliation is one direction.** On session load the shell reads the account's scale
+> and corrects the paint (a shared browser, a change made on another machine); it never
+> PATCHes the value back, because a write that echoes a read is at best a no-op and at
+> worst a race against a choice being made on another device. A control's press is the
+> only writer: apply locally (the live preview), then `saveFontScale`, whose failure is
+> quiet — the reader is already reading at the size they chose.
+>
+> **What is left to CP.5 (#647) and CQ.3 (#650), by this roadmap's own split:** the
+> throttled-reload no-flash proof and the reflow-artifact criterion are browser
+> observations — jsdom computes no layout and the e2e leg deliberately does not run on
+> pull requests — and the scale × theme × page screenshot matrix is CQ.3's entire remit.
   high-resolution monitors — per user, instant, persistent, and applied
   without a flash of wrong-size text (spec §4; decision S4).
 - **Solution/Scope:** **Pref API**: user preference `font_scale` CHECK

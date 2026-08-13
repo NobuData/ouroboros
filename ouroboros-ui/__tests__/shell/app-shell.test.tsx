@@ -30,6 +30,14 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
 
+// The font-scale reconciler (#649) is mounted by the shell and its actions module sits on
+// the server-only client, exactly as `actions.ts` does — same mock, same reason. What the
+// reconciler does is `__tests__/shell/font-scale-sync.test.tsx`'s to assert.
+vi.mock("@/app/shell/preference-actions", () => ({
+  readFontScale: vi.fn().mockResolvedValue("100"),
+  saveFontScale: vi.fn().mockResolvedValue(true),
+}));
+
 const { default: AppLayout } = await import("@/app/(app)/layout");
 const { AppShell, CONTENT_ID } = await import("@/app/shell/app-shell");
 const { OVERLAY_LAYER_ID, PANE_ATTRIBUTE } = await import("@/app/shell/regions");

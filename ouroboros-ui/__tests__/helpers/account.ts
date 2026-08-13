@@ -29,6 +29,8 @@ import { seededWorkspaces } from "./login";
 
 /** The seeded person, as `get-session` reports them (`ouroboros-db/migrations/R__dev_seed.sql`). */
 export const MENU_USER = {
+  /** BetterAuth's row id — what the font-scale reconciler (#649) keys its effect on. */
+  id: "user-ken",
   name: "Ken Suenobu",
   email: "ken@acme-robotics.dev",
   image: null as string | null,
@@ -72,6 +74,12 @@ type SetActive = (args: { organizationId: string }) => Promise<{
   error: { status?: number; code?: string; message?: string } | null;
 }>;
 
+/** `organization.getActiveMemberRole`, in the shape the menu calls and reads it. */
+type GetActiveMemberRole = () => Promise<{
+  data: { role: string } | null;
+  error: { status?: number; code?: string; message?: string } | null;
+}>;
+
 /** The session and the workspace listing, as this case wants them answered. */
 export interface AuthClientStub {
   /** `useSession()`. `data: null` with `isPending: false` is *nobody signed in*. */
@@ -83,6 +91,8 @@ export interface AuthClientStub {
   organizations: StubQuery<StubWorkspace[]>;
   /** `organization.setActive`, and what it answers. */
   setActive: ReturnType<typeof vi.fn<SetActive>>;
+  /** `organization.getActiveMemberRole` — the identity block's role (#645). */
+  getActiveMemberRole: ReturnType<typeof vi.fn<GetActiveMemberRole>>;
 }
 
 /**
@@ -95,6 +105,7 @@ export const authStub: AuthClientStub = {
   session: { data: null, isPending: false },
   organizations: { data: null, isPending: false },
   setActive: vi.fn<SetActive>(),
+  getActiveMemberRole: vi.fn<GetActiveMemberRole>(),
 };
 
 /**
@@ -111,6 +122,9 @@ export function signedIn(activeOrganizationId: string | null = menuWorkspaces()[
   authStub.organizations = { data: menuWorkspaces(), isPending: false };
   authStub.setActive.mockReset();
   authStub.setActive.mockResolvedValue({ data: {}, error: null });
+  authStub.getActiveMemberRole.mockReset();
+  // Ken owns the seeded workspace — the world the § 1.1 sketch ("ken@… · owner") draws.
+  authStub.getActiveMemberRole.mockResolvedValue({ data: { role: "owner" }, error: null });
 }
 
 /** The state before any answer has arrived: the menu knows nothing yet. */
@@ -118,6 +132,8 @@ export function stillLoading(): void {
   authStub.session = { data: null, isPending: true };
   authStub.organizations = { data: null, isPending: true };
   authStub.setActive.mockReset();
+  authStub.getActiveMemberRole.mockReset();
+  authStub.getActiveMemberRole.mockResolvedValue({ data: null, error: null });
 }
 
 /** A session that answered *nobody* — what the browser holds just after a sign-out. */
@@ -125,6 +141,8 @@ export function signedOut(): void {
   authStub.session = { data: null, isPending: false };
   authStub.organizations = { data: null, isPending: false };
   authStub.setActive.mockReset();
+  authStub.getActiveMemberRole.mockReset();
+  authStub.getActiveMemberRole.mockResolvedValue({ data: null, error: null });
 }
 
 /**
@@ -144,6 +162,9 @@ export async function authClientModule(): Promise<Record<string, unknown>> {
     ...actual,
     useSession: () => authStub.session,
     useListOrganizations: () => authStub.organizations,
-    organization: { setActive: (args: { organizationId: string }) => authStub.setActive(args) },
+    organization: {
+      setActive: (args: { organizationId: string }) => authStub.setActive(args),
+      getActiveMemberRole: () => authStub.getActiveMemberRole(),
+    },
   };
 }

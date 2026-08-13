@@ -45,6 +45,36 @@ html {
 }
 
 /*
+ * The five steps of § 4, selected by the attribute `app/font-scale.ts` stamps (#649) — its
+ * boot script before first paint, its store on every change after.
+ *
+ * Percentages of the browser's base size, so the preference composes with browser zoom
+ * rather than fighting it. `:root[data-font-scale]` (0,1,1) outranks the bare `html` above
+ * (0,0,1), which is the entire cascade of this feature; the `"100"` rule repeats the
+ * default on purpose, so the sheet answers for every value the attribute can hold rather
+ * than leaving one step's meaning to an absence two rules apart.
+ */
+:root[data-font-scale="87.5"] {
+  font-size: 87.5%;
+}
+
+:root[data-font-scale="100"] {
+  font-size: 100%;
+}
+
+:root[data-font-scale="112.5"] {
+  font-size: 112.5%;
+}
+
+:root[data-font-scale="125"] {
+  font-size: 125%;
+}
+
+:root[data-font-scale="150"] {
+  font-size: 150%;
+}
+
+/*
  * The document does not scroll — the app shell's content pane does, and it is the only
  * thing in the product that does (DESIGN_SYSTEM_APP_SHELL.md § 1.3, decision S2). The
  * lock lives here rather than on the shell because it is a property of the page: two

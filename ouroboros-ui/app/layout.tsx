@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Chakra_Petch, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
+import { FONT_SCALE_BOOTSTRAP } from "./font-scale";
 import { SIDEBAR_BOOTSTRAP } from "./shell/sidebar-state";
 import { ThemeProvider } from "./theme-provider";
 import { THEME_BOOTSTRAP } from "./theme";
@@ -93,6 +94,16 @@ export default function RootLayout({
           reads it back.
         */}
         <script dangerouslySetInnerHTML={{ __html: SIDEBAR_BOOTSTRAP }} />
+
+        {/*
+          The font-scale bootstrap (CQ.2, #649), third of the family and here for the
+          strongest version of the reason: a 150% reader whose scale arrived with React
+          would watch small text jump on every single load. In the ROOT layout deliberately
+          — /login has no session but has this script, which is § 4's "anonymous screens
+          honor the local mirror" implemented by placement. The server truth reconciles
+          later, from the shell (app/shell/font-scale-sync.tsx).
+        */}
+        <script dangerouslySetInnerHTML={{ __html: FONT_SCALE_BOOTSTRAP }} />
       </head>
       <body>
         <ThemeProvider>{children}</ThemeProvider>

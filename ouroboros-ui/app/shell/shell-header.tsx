@@ -1,4 +1,4 @@
-import { Bell, Settings } from "lucide-react";
+import { Bell } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -7,7 +7,6 @@ import { DASHBOARD_PATH } from "@/app/paths";
 import { SearchPill } from "./search-pill";
 import { SidebarToggle } from "./sidebar-toggle";
 import { TenantChip } from "./tenant-chip";
-import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
 /**
@@ -34,11 +33,13 @@ import { UserMenu } from "./user-menu";
  * is [#77](https://github.com/NobuData/ouroboros/issues/77); the settings screen is
  * [#491](https://github.com/NobuData/ouroboros/issues/491).
  *
- * Two controls here are on their way *out* of the bar rather than into it. The theme toggle
- * (#42) and the settings gear are both items the specification puts inside the profile menu,
- * and CP.3 ([#645](https://github.com/NobuData/ouroboros/issues/645)) is the issue that moves
- * them there along with the font-size stepper. They stay in the cluster until it does,
- * because a control that works is worth more than a tidy row.
+ * Two controls left this bar with CP.3
+ * ([#645](https://github.com/NobuData/ouroboros/issues/645)), exactly as the paragraph that
+ * used to stand here promised: the theme toggle (#42) became the account menu's radio group
+ * — a second surface over the same #17 engine, not a second engine — and the disabled
+ * settings gear was absorbed by the menu's *Workspace settings* item, which already said the
+ * same thing (#491). § 1.1 puts both inside the profile menu, and a control drawn twice is a
+ * state that can be read twice differently.
  *
  * @returns The header row.
  */
@@ -105,18 +106,6 @@ export function ShellHeader() {
           title="Notifications arrive with the needs-you inbox roadmap (mockup 16)."
         >
           <Bell size={16} aria-hidden />
-        </button>
-
-        <ThemeToggle />
-
-        <button
-          type="button"
-          className="shell-icon-button"
-          aria-disabled="true"
-          aria-label="Workspace settings — arrives with #491"
-          title="Workspace settings arrive with #491."
-        >
-          <Settings size={16} aria-hidden />
         </button>
 
         <UserMenu />
