@@ -166,12 +166,12 @@ export function api(): ApiClient {
  * {@link api}'s handler would send the request to {@link LOGIN_PATH}, which is the page
  * asking — a redirect to itself, once per render, for every signed-out visitor.
  *
- * **Nothing calls it at the moment, and it is kept rather than deleted.** Its one caller was
- * `app/api/access.ts`, asking whether anybody was signed in;
+ * **`app/api/discovery.ts` is what calls it**, and for a while nothing did. Its first caller
+ * was `app/api/access.ts`, asking whether anybody was signed in;
  * [#711](https://github.com/NobuData/ouroboros/issues/711) moved that question onto
  * `GET /api/auth/get-session`, which answers `null` for nobody and so needs no `401` to be
- * heard. The need comes back with the next public route in the generated family:
- * [#712](https://github.com/NobuData/ouroboros/issues/712)'s
+ * heard, and this was kept rather than deleted against the next public route in the generated
+ * family arriving. It did: [#712](https://github.com/NobuData/ouroboros/issues/712)'s
  * `POST /api/v1/auth/discover` is called from the login screen by a visitor who is signed
  * in nowhere, which is exactly this client's case.
  *

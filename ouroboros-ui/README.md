@@ -413,7 +413,9 @@ Three properties are worth knowing before changing any of it.
 Two clients are wired, not one. [`api()`](app/api/server.ts) turns a `401` into a redirect
 to `/login`; `anonymousApi()` is the same client with that one handler removed, for the one
 caller that must be able to *hear* a `401` — the login screen, which `api()` would send to
-itself once per render for every signed-out visitor.
+itself once per render for every signed-out visitor. Its caller today is
+[`app/api/discovery.ts`](app/api/discovery.ts), the one public operation this module calls,
+submitted from step 1 by somebody who has not signed in yet.
 
 ## Access — who is signed in, and where
 
@@ -503,27 +505,63 @@ trusted — it is compared against a membership the service reported in the same
 
 ### What it writes, and why each write re-checks
 
-Three Server Actions ([`app/login/actions.ts`](app/login/actions.ts)): choose the workspace,
-turn an organisation on or off, turn a repository on or off. A Server Action is a POST endpoint
-against the page that renders it, reachable by anyone who can send the same request, so
-rendering a form only for an owner is not a check. Each action therefore takes from the form
-only *the reference to what was pressed* — an organisation login, a repository name, the state
-to move to — and re-derives the rest: who from the session cookie, which workspace from
-`ouro_tenant` matched against the memberships, and which role from that membership. No form
-here carries a tenant id, so a hand-made POST cannot name somebody else's workspace at all.
+Three of the four Server Actions ([`app/login/actions.ts`](app/login/actions.ts)) write:
+choose the workspace, turn an organisation on or off, turn a repository on or off. A Server
+Action is a POST endpoint against the page that renders it, reachable by anyone who can send
+the same request, so rendering a form only for an owner is not a check. Each action therefore
+takes from the form only *the reference to what was pressed* — an organisation login, a
+repository name, the state to move to — and re-derives the rest: who from the session cookie,
+which workspace from `ouro_tenant` matched against the memberships, and which role from that
+membership. No form here carries a tenant id, so a hand-made POST cannot name somebody else's
+workspace at all.
 
-The switches are submit buttons in one-field forms rather than `useState` toggles, which is
-why this screen has **no client component on it anywhere**: it works before hydration and
-without JavaScript, and on the product's first screen over an unknown connection that is worth
-more than an optimistic animation. Each form carries the state to move *to*, so a stale render
-asks for something specific instead of inverting whatever the flag has become since.
+The fourth, `discoverDomain`, is the exception and deliberately so: it takes no authority and
+checks none, because the endpoint behind it is public and its caller is a visitor with no
+session. What makes *that* safe is the contract rather than a check — the service answers the
+same body, in the same time, for a domain a workspace holds and one nothing does, so there is
+nothing it can tell a stranger that it does not tell everybody.
+
+Step 2's switches are submit buttons in one-field forms rather than `useState` toggles, so
+that half of the screen works before hydration and without JavaScript — on the product's first
+screen over an unknown connection that is worth more than an optimistic animation. Each form
+carries the state to move *to*, so a stale render asks for something specific instead of
+inverting whatever the flag has become since.
+
+### The three client components on step 1, and why each one is
+
+The screen was Server Components the whole way down until
+[#718](https://github.com/NobuData/ouroboros/issues/718), and the three exceptions are worth
+naming individually rather than as "sign-in needs a client":
+
+| Component | Why |
+|---|---|
+| [`sign-in-button.tsx`](app/login/sign-in-button.tsx) | BetterAuth answers a social sign-in with a URL the **browser** navigates to, rather than redirecting to it |
+| [`dev-sign-in.tsx`](app/login/dev-sign-in.tsx) | the session cookie is set by `Set-Cookie`, which reaches a browser only on a request the browser itself made |
+| [`sso-form.tsx`](app/login/sso-form.tsx) | the call **is** a Server Action; rendering what it returned is what needs `useActionState` |
+
+The first two are the same fact seen twice, and it is the fact that keeps sign-in out of
+Server Actions entirely: a `Set-Cookie` sent to the Next.js process is a session nobody holds.
+The third is the only rendering decision, and the alternatives were weighed —
+a `redirect()` back to `/login` carrying the message would put a company's own domain in a
+URL, a browser history and a `Referer` header, which is precisely what the discovery endpoint
+is a `POST` rather than a `GET` to avoid.
 
 ### What it does not pretend
 
-- **Enterprise SSO** has no endpoint to call — SAML and OIDC are v2 — so the mockup's field and
-  button render *marked unavailable, saying why* (design system § 3.5) rather than being
-  dropped. The button carries `aria-disabled` rather than `disabled`, so the explanation stays
-  in the tab order.
+- **Enterprise SSO says what the service says**, and nothing of its own. The field and button
+  rendered inert behind one `SSO_UNAVAILABLE` constant until
+  [#712](https://github.com/NobuData/ouroboros/issues/712) gave them an endpoint — the design
+  system's answer (§ 3.5) to a control that cannot act. They submit now, to
+  `POST /api/v1/auth/discover`, and the sentence under them is the response's `message` in
+  both branches of `ssoAvailable`. The constant is gone rather than moved, which is the whole
+  point: a client that says "not configured" is right today by luck and wrong the moment
+  [#722](https://github.com/NobuData/ouroboros/issues/722) lands. The only copy this module
+  still owns for that half says *we could not ask*, which is its own fact to report.
+- **Email and password is development scaffolding**, and says so on the card. `ouroboros-rest`
+  enables it on `NODE_ENV !== "production"` and nothing else, which is the security boundary;
+  what this module adds is two gates that keep a production screen from offering a control the
+  service would refuse — the card does not compose the form, and the form refuses to render.
+  Neither its copy nor its field ids appear in a production `next build`.
 - **The mockup's three example organisations** are not invented for a visitor who has not
   signed in. The preview card says what the step will ask.
 - **`member` and `viewer`** see every switch, in its real state, marked read-only with the

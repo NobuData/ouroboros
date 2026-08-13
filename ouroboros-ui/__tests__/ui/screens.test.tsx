@@ -13,6 +13,11 @@ vi.mock("@/app/login/actions", () => ({
   chooseWorkspace: vi.fn(),
   setOrgEnabled: vi.fn(),
   setRepoEnabled: vi.fn(),
+  // Step 1's SSO half runs this through `useActionState`, so the mock has to answer with a
+  // `DiscoveryState`. What it answers is `sso-form.test.tsx`'s subject, not this file's.
+  discoverDomain: vi.fn(() =>
+    Promise.resolve({ status: "answered", ssoAvailable: false, message: "not asked here" }),
+  ),
 }));
 
 const { LoginScreen } = await import("@/app/login/login-screen");
@@ -96,13 +101,24 @@ describe("the sign-in screen", () => {
     // The two states that carry controls. `choose` and `no-workspace` carry none of these:
     // a workspace is picked by pressing its whole row, which is this screen's own
     // composition rather than a button.
+    //
+    // Pinned to a production build, so the counts are the *mockup's* controls and cannot
+    // drift with the environment a suite happens to run in — the development sign-in
+    // ([#705](https://github.com/NobuData/ouroboros/issues/705)) adds a button and two fields
+    // to every other build, and is counted separately below.
+    vi.stubEnv("NODE_ENV", "production");
+
     const signedOut = render(
       <LoginScreen state={{ step: "sign-in" }} user={null} />,
     );
 
-    // "Continue with GitHub", and the SSO control that explains why it cannot act.
+    // "Continue with GitHub", and "Continue with SSO" — live since
+    // [#718](https://github.com/NobuData/ouroboros/issues/718), and inert before it.
     expect(signedOut.container.querySelectorAll(".ou-btn")).toHaveLength(2);
+    // The company-domain field.
     expect(signedOut.container.querySelectorAll(".ou-input")).toHaveLength(1);
+
+    vi.unstubAllEnvs();
 
     const enabling = render(
       <LoginScreen
@@ -121,6 +137,17 @@ describe("the sign-in screen", () => {
     expect(enabling.container.querySelectorAll(".ou-switch")).toHaveLength(2);
     expect(enabling.container.querySelectorAll(".ou-chip").length).toBeGreaterThan(0);
     expect(enabling.container.querySelectorAll(".ou-btn")).toHaveLength(1);
+  });
+
+  it("draws the development sign-in out of the primitives too", () => {
+    // It is scaffolding rather than product, and that is exactly why it is worth a case: a
+    // form written out of raw `<input>`s because "it is only for developers" is how a screen
+    // grows a second set of field styles nobody measured.
+    const { container } = render(<LoginScreen state={{ step: "sign-in" }} user={null} />);
+
+    // The two above, plus "Sign in"; the domain field, plus the address and the password.
+    expect(container.querySelectorAll(".ou-btn")).toHaveLength(3);
+    expect(container.querySelectorAll(".ou-input")).toHaveLength(3);
   });
 
   it.each(LOGIN_STATES)("has no shape of its own left in the %s state", (_, state) => {

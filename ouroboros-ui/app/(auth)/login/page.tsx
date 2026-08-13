@@ -18,10 +18,25 @@ import { DASHBOARD_PATH, RETURN_TO_PARAM, safeReturnTo } from "@/app/paths";
  *
  * It is a Server Component because every *read* this screen makes is server-side by
  * construction (`app/api/server.ts`): the session cookie is `HttpOnly` and the service's
- * address carries no `NEXT_PUBLIC_` prefix. The writes are Server Actions
- * (`app/login/actions.ts`). The one client component is `app/login/sign-in-button.tsx`,
- * which exists because beginning a sign-in is a `POST` whose answer the *browser* then
- * navigates to — see that file, and #702.
+ * address carries no `NEXT_PUBLIC_` prefix. The submissions are Server Actions
+ * (`app/login/actions.ts`), and step 2 is Server Components the whole way down — its switches
+ * are submit buttons in one-field forms, so they work before hydration and without JavaScript.
+ *
+ * **Step 1 has three client components, and each one is a different reason**
+ * ([#718](https://github.com/NobuData/ouroboros/issues/718)). Two of them are the same
+ * reason, and it is BetterAuth's `Set-Cookie`: a session cookie reaches a browser only on a
+ * request the browser itself made, so *every* sign-in on this screen is a call from the
+ * client and not from an action.
+ *
+ * | Component | Why it cannot be a Server Component |
+ * |---|---|
+ * | `sign-in-button.tsx` | the answer is a URL the *browser* navigates to (#702) |
+ * | `dev-sign-in.tsx` | the session cookie is set on the browser's own request (#705) |
+ * | `sso-form.tsx` | the call is a Server Action; **rendering what it returned** is not |
+ *
+ * The third is the only one that is a rendering decision rather than a transport one, and
+ * that file says at length why the alternatives — a `redirect()` carrying the message, a
+ * search parameter — are worse than one `useActionState`.
  *
  * Reading `searchParams` and the cookies makes the route dynamic, which is correct and not
  * incidental: a page whose content depends on who is asking cannot be prerendered, and

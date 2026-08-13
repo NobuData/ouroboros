@@ -226,10 +226,11 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`) plus one new label **`auth
 > against a stand-in. C.5 converted the library for the *integration* runner instead of
 > replacing it, and `github.integration-spec.ts` now walks both hops of the handshake against
 > a stubbed github.com: the state cookie, the code exchange, the profile mapping and the
-> `account` row are all real. The unit suite still substitutes it, deliberately. What remains
-> is that **the login page's GitHub button does not work until D.3 · #718** re-points it at
-> `signIn.social`. That gap is the deliberate cost of not keeping two sign-in paths alive at
-> once. Its issue section below is kept as the record of what was asked for.
+> `account` row are all real. The unit suite still substitutes it, deliberately. What remained
+> was that **the login page's GitHub button did not work until D.3 · #718** re-pointed it at
+> `signIn.social`, which **has now landed** — that gap was the deliberate cost of not keeping
+> two sign-in paths alive at once, and it is closed. Its issue section below is kept as the
+> record of what was asked for.
 >
 > **A.4 · #703 has shipped and has left the table below.** Sessions are **rows**:
 > `src/auth/session.options.ts` sets `expiresIn` (7 days), `updateAge` (1 day) and
@@ -1003,7 +1004,9 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > `POST /api/v1/auth/discover` is live and public, and `openapi.yaml` publishes it under the
 > `auth` tag with `DiscoverRequest` and `DiscoverResponse` — `redirectUrl` included, unused,
 > so **E.1 · #722** fills a field rather than changing a shape. `ouroboros-ui`'s
-> `app/api/schema.d.ts` is regenerated, so **D.3 · #718** can call it today.
+> `app/api/schema.d.ts` is regenerated, and **D.3 · #718 now does call it** — through
+> `app/api/discovery.ts` and a Server Action, because `proxy.ts` gives the browser no address
+> for `/api/v1`.
 >
 > **The MVP answer is a constant, and the lookup still runs.** `ssoAvailable` is `false` for
 > every domain (decision A7), so the query against `tenant_domains` changes nothing a caller
@@ -1332,7 +1335,7 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > nothing submits to is a POST endpoint published for nobody, so the form belongs to
 > **D.6 · #721** along with the menu that draws it. `app/login/sign-in.ts` is likewise left
 > alone — `signIn.social` can make that call now, and re-pointing the button at it is
-> **D.3 · #718**.
+> **D.3 · #718**, which **has since landed** and retired that module's hand-written `POST`.
 
 > **D.2 · #717 has shipped and has left the table below.** The audit was run against a
 > browser rather than against the source: the shipped `LoginScreen` was rendered to static
@@ -1378,9 +1381,43 @@ work (the mockup is dark-only; the light rendering follows the token sheet).
 > files and enforced by none, so it is now a check over every sheet in the module rather than
 > a claim in a comment; the module passed it on the first run.
 
+> **D.3 · #718 has shipped and has left the table below.** Step 1 acts. The GitHub button
+> goes through `signIn.social` — BetterAuth's own client, on the route it actually mounts, so
+> a route that changes shape is now a compile error rather than a `404` somebody meets after
+> pressing a button. **`SSO_UNAVAILABLE` no longer exists**: the field accepts typing, the
+> button submits, and what the card says about a domain is what `POST /api/v1/auth/discover`
+> said about it, in both branches of `ssoAvailable`. `app/login/sso.ts` is where the states
+> live, framework-free, so **E.2 · #723** finds a component that already reads the branch it
+> is about to start filling in.
+>
+> **The screen gained two client components and lost a claim it was making about itself.**
+> `page.tsx` said there was deliberately none; there are three, and each is a different
+> reason — which is now a table in that file rather than a sentence. Two are transport:
+> BetterAuth's `Set-Cookie` reaches a browser only on a request the browser made, so *every*
+> sign-in here is a client call, the dev form included. Only `sso-form.tsx` is a rendering
+> decision: the discovery call **is** a Server Action, because `proxy.ts` forwards
+> `/api/auth/*` and deliberately not `/api/v1/*`, but a plain `<form action={…}>` throws away
+> what the action returned. The alternatives were weighed and are worse — a `redirect()`
+> carrying the message would put a company's own domain in a URL, a browser history and a
+> `Referer`, which is the exact thing the endpoint is a `POST` rather than a `GET` to avoid.
+>
+> **Two things the issue asked for turned out to be already done or differently shaped.**
+> `githubSignInUrl()` was gone before this issue opened — **A.3 · #702** had already replaced
+> it with a hand-written `POST`, and what #718 actually retired was that stand-in, which
+> `sign-in.ts` had been carrying a note about since. And the library's own `redirect` fetch
+> plugin assigns `window.location.href` itself inside a `try {} catch {}`, so every call now
+> sends `disableRedirect: true`: a departure nothing can observe is a departure the button
+> cannot report having failed.
+>
+> **The dev form is absent from a production build, and that was checked rather than
+> asserted.** Two gates — the card does not compose it, and the component refuses to render
+> one — and `next build` was grepped afterwards: neither its copy nor its field ids appear in
+> the emitted client or server chunks, while the SSO form's copy does. Neither gate is the
+> security boundary; `emailAndPassword.enabled: false` in production is, and it is
+> **A.6 · #705**'s.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| D.3 · #718 | ouroboros-ui: [D.3] Step 1 card — wire GitHub sign-in & activate the shipped SSO form | Re-point button at `signIn.social`; un-inert the **already-built** SSO form onto C.2; dev form | mvp, auth, ui, design | N (after D.1, D.2, C.2) | Y | M | ouroboros-ui |
 | D.4 · #719 | ouroboros-ui: [D.4] Step 2 card — re-point tenancy cards at the org API | **Shipped** cards re-sourced from C.4; `ouro_tenant` cookie → `setActive` as authority | mvp, auth, ui, design | N (after D.3, C.4) | Y | **M** ⬇ | ouroboros-ui |
 | D.5 · #720 | ouroboros-ui: [D.5] Auth route guards & session-aware redirects | Re-point the **shipped** layout gate + `loginView()` at the new session; middleware decision | mvp, auth, ui | N (after D.1) | Y | S | ouroboros-ui |
 | D.6 · #721 | ouroboros-ui: [D.6] Signed-in session UI in the app shell | Avatar menu (user, active org, switch org, sign out) in #41's top bar | mvp, auth, ui | N (after D.1, #41) | Y | S | ouroboros-ui |
@@ -1471,6 +1508,12 @@ createAuthClient({plugins:[organizationClient()]})
 ```
 
 ### Issue D.3 (#718) — ouroboros-ui: [D.3] Step 1 card — wire GitHub sign-in & activate the shipped SSO form
+
+> **Shipped.** Kept as the record of what was asked for — see the note above the table for
+> what was built and where it differs. One correction to the wording below: the GitHub button
+> did **not** go "through `githubSignInUrl()` from the #33 flow". A.3 · #702 had already
+> deleted that, leaving a hand-written `POST` in `app/login/sign-in.ts` which is what this
+> issue actually replaced with `signIn.social`.
 
 - **Problem Statement:** `sign-in-card.tsx` **is already built and tested** — the
   eyebrow, the GitHub mark SVG and button, the "or enterprise SSO" divider, the
@@ -1847,6 +1890,7 @@ got easier (its components exist).
 | C.4 · #714 | M | **L** | Rewrites #31's shipped module rather than writing a new one |
 | ~~D.1 · #716~~ | S | **M** | *Shipped.* Replaced `app/api/session.ts` and its callers |
 | ~~D.2 · #717~~ | M | **S** | *Shipped.* An audit, and it read as one: eight divergences, five fixed, three accepted |
+| ~~D.3 · #718~~ | M | **M** | *Shipped.* Rated right: wiring, but three components' worth of it |
 | D.4 · #719 | L | **M** | The step-2 cards already ship — this re-points their data source |
 
 ## References
@@ -1889,7 +1933,8 @@ Issue-level impact:
 | Issue | Amendment |
 |---|---|
 | ~~D.2 · #717~~ | *Shipped.* Renders standalone outside the shell; post-login redirect lands in the shell. **CQ.2 does not exist yet** — there is no font-scale mirror to honour, and the audit's finding is that there will be nothing to do when it lands: every length on this screen is already rem or a token, and the page was photographed at the 150% step with nothing clipped, in both palettes, at 900px and 1440px |
-| D.1, D.3, D.4, D.5, D.6 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
+| ~~D.3 · #718~~ | *Shipped.* Every length on step 1 is a token or rem — the new controls are the `#46` primitives, and the two sheets they draw from were already under `__tests__/styles.test.ts`'s rem rule, which the module still passes |
+| D.1, D.4, D.5, D.6 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | #56 | Gains a check that post-login navigation lands inside the shell with the sidebar present, and a font-scale render check on the login screen |
 
 ## Next Step
@@ -1907,7 +1952,7 @@ below is navigable from any single ticket.
 | D — Login Page UI | **#698** | #716 · #717 · #718 · #719 · #720 · #721 |
 | E — Enterprise SSO & Hardening (v2) | **#699** | #722 · #723 · #724 · #725 |
 
-**Start here: #717 (D.2) or #720 (D.5).** **#716 (D.1) has landed**, so Epic D's remaining
+**Start here: #719 (D.4) or #720 (D.5).** **#716 (D.1) has landed**, so Epic D's remaining
 five are unblocked: the UI reads its session through BetterAuth's own client, signs out
 through it, and `app/api/session.ts` is gone. **Epic C is complete**: #711 (C.1), #712
 (C.2), #713 (C.3), #714 (C.4) and now **#715 (C.5)** have all landed — the tenant context
@@ -1942,8 +1987,10 @@ step in this roadmap — has now landed too**: `tenants`, `tenant_members`, `use
 rehearses the migration against a populated V005 copy on every run. What it knowingly left
 behind was the debt this paragraph used to warn about — `modules/tenancy` querying the dropped
 tables — and **#713 (C.3) and #714 (C.4) have both landed and retired it**: `ci/rest`'s
-integration suite is green. #718 (D.3) makes the login page's button work, and #720 (D.5)
-re-points the UI's own gate, which still forwards #33's cookie.
+integration suite is green. **#718 (D.3) has now landed and the login page's button works**
+— step 1 signs in through `signIn.social`, submits its domain to C.2's endpoint, and carries
+a development email/password form outside production — so **#719 (D.4) is unblocked**.
+#720 (D.5) re-points the UI's own gate, which still forwards #33's cookie.
 
 Decisions A1–A9 were re-checked against the shipped code during the 2026-08-12
 reconciliation and all nine still hold — but they were **filed without a separate
