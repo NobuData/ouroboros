@@ -1,20 +1,18 @@
 import type { Server } from "node:http";
 
 import type { INestApplication } from "@nestjs/common";
-import { PATH_METADATA, METHOD_METADATA } from "@nestjs/common/constants";
-import { DiscoveryService, MetadataScanner, Reflector } from "@nestjs/core";
 import request from "supertest";
 
 import { API_BASE_PATH, createApplication } from "../../application";
 import { grantSession, revokeGrantedSessions } from "../../auth/better-auth.fixture";
-import { ALLOW_ANONYMOUS } from "./anonymous";
-import { AUTH_ERRORS } from "./auth.errors";
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
-import { LIVE_ROUTE, READY_ROUTE, HEALTH_PATH } from "../health/health.paths";
+import { HEALTH_PATH, LIVE_ROUTE } from "../health/health.paths";
+import { AUTH_ERRORS } from "./auth.errors";
+import { routeTable, SHIPPED_PUBLIC_SURFACE, type Route } from "./route.table.fixture";
 
 /**
- * **The public surface, enumerated.**
+ * **The public surface, enumerated — as metadata.**
  *
  * [#703](https://github.com/NobuData/ouroboros/issues/703)'s second acceptance criterion is
  * the one that is not about a mechanism: *every route that `public.decorator.ts` exempted is
@@ -33,145 +31,17 @@ import { LIVE_ROUTE, READY_ROUTE, HEALTH_PATH } from "../health/health.paths";
  *
  * So this file does not check three routes it happens to remember. It walks **every
  * controller the running application registered**, reads the exemption metadata off each
- * handler, and compares the whole set against a list written down below — which is #33's
- * shipped surface, transcribed once. A route added later is in the enumeration whether or
- * not anybody thought to add a test, and a route that quietly gains `@AllowAnonymous()`
- * fails here by name.
+ * handler, and compares the whole set against `SHIPPED_PUBLIC_SURFACE` — which is that list,
+ * in the issue's own words, with the argument for each entry beside it.
  *
- * ## What the list is, and what it deliberately is not
- *
- * {@link SHIPPED_PUBLIC_SURFACE} is the spec, in the issue's own words. It held four
- * entries because #33 shipped four `@Public()` decisions — the heartbeat, the two probes,
- * and signing out — and the two decorators that expressed them (`@Public()` on a class
- * covering both probes) are flattened into the routes they actually exempted, because
- * "which routes answer a stranger" is the question and a decorator's placement is not.
- *
- * **It holds five now.** [#712](https://github.com/NobuData/ouroboros/issues/712)'s
- * `POST /api/v1/auth/discover` is the first route added to this list since #703 transcribed
- * it, and it is the case the list was written for: a route that has to be public, added by
- * an issue whose own subject is what a stranger may learn. The line below is the reviewable
- * record of that decision, and it is one line rather than a paragraph because the argument
- * for it belongs beside the route — `discovery.service.ts` is where it is made.
- *
- * Two surfaces are *not* in it and are not omissions:
- *
- *   * **Swagger UI and the two specification routes.** They are registered on the HTTP
- *     adapter rather than declared by a controller, so no guard sees them at all — the same
- *     reason they are absent from `openapi.yaml`. `application.spec.ts` is where they are
- *     asserted to answer.
- *   * **BetterAuth's own routes under `/api/auth`.** The library mounts a handler ahead of
- *     Nest's router, so those never reach the routing table this walks. `auth.routes.ts` is
- *     their map and `application.spec.ts` asserts they answer.
+ * The walk itself is `route.table.fixture.ts`, shared since
+ * [#715](https://github.com/NobuData/ouroboros/issues/715) with
+ * `guard.surface.integration-spec.ts` — which asks the same list what a stranger *actually
+ * gets*, against a migrated database and over a socket. This suite starts nothing, so the
+ * furthest it can follow a request is the pool; that one follows it to a status code, and
+ * between them the claim is complete. See that fixture's header for where the line is drawn,
+ * and for why BetterAuth's own routes are in neither.
  */
-
-/**
- * The routes reachable without a session: #33's four, and #712's.
- *
- * Written as `METHOD path` exactly as {@link routeTable} renders one, so the comparison is
- * between two lists of the same strings rather than between a list and a rule.
- */
-const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
-  // The heartbeat. It says which build is answering and nothing else, and whatever polls it
-  // holds no session.
-  `GET ${API_BASE_PATH}`,
-  // The two probes. Their reader is a container platform, which holds no session and could
-  // not be given one — and a probe behind authentication reports the service unhealthy the
-  // moment authentication is what is broken.
-  `GET /${HEALTH_PATH}/${LIVE_ROUTE}`,
-  `GET /${HEALTH_PATH}/${READY_ROUTE}`,
-  // Signing out, which is disposing of a session that may already have expired: requiring
-  // one would mean an expired cookie could never be cleared.
-  `POST ${API_BASE_PATH}/auth/logout`,
-  // Domain discovery (#712). It is what mockup 01 Step 1's *Company domain* field calls
-  // *before* anybody signs in, so a session is the one thing its caller cannot have. What
-  // makes that safe is that it answers every domain identically — see
-  // `discovery.service.ts`.
-  `POST ${API_BASE_PATH}/auth/discover`,
-].sort();
-
-/** One route, as the enumeration sees it. */
-interface Route {
-  /** `METHOD path`, from the origin root. */
-  readonly signature: string;
-  /** Whether the guard would let a request with no session through. */
-  readonly anonymous: boolean;
-}
-
-/** Nest's numeric `RequestMethod`, as a verb. Indexed by the enum's own values. */
-const METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "ALL", "OPTIONS", "HEAD", "SEARCH"];
-
-/**
- * Every route the application registered, with the guard's decision for each.
- *
- * `DiscoveryService` is asked for the controllers rather than a list being imported,
- * because an imported list is a list somebody has to remember to add to — which is the
- * failure this whole file exists to catch. `MetadataScanner` then walks each controller's
- * prototype for handlers, and the two path halves are read from the same metadata keys
- * Nest's own router reads.
- *
- * @param app - The initialised application.
- * @returns One entry per handler, sorted by signature.
- */
-function routeTable(app: INestApplication): Route[] {
-  const discovery = app.get(DiscoveryService);
-  const scanner = app.get(MetadataScanner);
-  const reflector = app.get(Reflector);
-  const routes: Route[] = [];
-
-  for (const wrapper of discovery.getControllers()) {
-    const controller = wrapper.metatype;
-
-    if (controller === undefined || controller === null) {
-      continue;
-    }
-
-    const base = String(Reflect.getMetadata(PATH_METADATA, controller) ?? "");
-
-    for (const name of scanner.getAllMethodNames(controller.prototype as object)) {
-      const handler = (controller.prototype as Record<string, () => unknown>)[name];
-      const path = String(Reflect.getMetadata(PATH_METADATA, handler) ?? "");
-      const method = Reflect.getMetadata(METHOD_METADATA, handler) as number | undefined;
-
-      if (method === undefined) {
-        continue;
-      }
-
-      routes.push({
-        signature: `${METHODS[method]} ${fullPath(base, path)}`,
-        // The same read the guard makes, through the same helper: handler first, then the
-        // controller, so a class-level exemption covers its handlers.
-        anonymous:
-          reflector.getAllAndOverride<boolean | undefined>(ALLOW_ANONYMOUS, [
-            handler,
-            controller,
-          ]) === true,
-      });
-    }
-  }
-
-  return routes.sort((left, right) => left.signature.localeCompare(right.signature));
-}
-
-/**
- * Where a route answers, from the origin root.
- *
- * The health controller is `VERSION_NEUTRAL` and its path is excluded from the global
- * prefix, so it answers at the root; everything else sits under `/api/v1`. That is two
- * cases rather than a general rule because there are two cases —
- * `src/modules/health/health.paths.ts` is the list, and a third would be a decision
- * somebody made rather than a pattern to be inferred.
- *
- * @param base - The controller's own path segment.
- * @param path - The handler's.
- * @returns The path a client writes.
- */
-function fullPath(base: string, path: string): string {
-  const segments = [base, path].filter((segment) => segment !== "" && segment !== "/");
-  const prefix = base === HEALTH_PATH ? "" : API_BASE_PATH;
-  const joined = segments.join("/");
-
-  return joined === "" ? prefix : `${prefix}/${joined}`;
-}
 
 describe("the guard's decision for every route in the table", () => {
   let app: INestApplication;

@@ -1370,9 +1370,9 @@ export interface components {
          */
         OrgRow: {
             /**
-             * Format: uuid
-             * @description The `{orgId}` every other operation in this document takes.
-             * @example 5eed0001-0000-4000-8000-000000000001
+             * @description The `{orgId}` every other operation in this document takes. An opaque string in
+             *     one of two shapes — see the `orgId` path parameter.
+             * @example aBcD1234eFgH5678iJkL9012mNoP3456
              */
             id: string;
             /**
@@ -1460,9 +1460,8 @@ export interface components {
              */
             id: string;
             /**
-             * Format: uuid
-             * @description The workspace it belongs to.
-             * @example 5eed0001-0000-4000-8000-000000000001
+             * @description The workspace it belongs to. An opaque string — see the path parameter.
+             * @example aBcD1234eFgH5678iJkL9012mNoP3456
              */
             orgId: string;
             /**
@@ -1516,9 +1515,8 @@ export interface components {
              */
             id: string;
             /**
-             * Format: uuid
-             * @description The workspace it belongs to.
-             * @example 5eed0001-0000-4000-8000-000000000001
+             * @description The workspace it belongs to. An opaque string — see the path parameter.
+             * @example aBcD1234eFgH5678iJkL9012mNoP3456
              */
             orgId: string;
             /**
@@ -1861,7 +1859,13 @@ export interface components {
          *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
          *     apart: this is the workspace, and the GitHub organisations inside it are
          *     `/github-orgs/{login}` under it.
-         * @example 5eed0001-0000-4000-8000-000000000001
+         *
+         *     **Two shapes, because two things write the column.** A workspace created through
+         *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+         *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+         *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+         *     validate, and never parse it as a uuid.
+         * @example aBcD1234eFgH5678iJkL9012mNoP3456
          */
         OrgId: string;
         /**
@@ -2902,7 +2906,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
             };
@@ -3044,7 +3054,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
             };
@@ -3217,7 +3233,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**
@@ -3364,7 +3386,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**
@@ -3545,7 +3573,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
             };
@@ -3688,7 +3722,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
             };
@@ -3862,7 +3902,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**
@@ -4005,7 +4051,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**
@@ -4189,7 +4241,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**
@@ -4339,7 +4397,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**
@@ -4488,7 +4552,13 @@ export interface operations {
                  *     **Not a GitHub organisation.** The two words collide and the paths are what keep them
                  *     apart: this is the workspace, and the GitHub organisations inside it are
                  *     `/github-orgs/{login}` under it.
-                 * @example 5eed0001-0000-4000-8000-000000000001
+                 *
+                 *     **Two shapes, because two things write the column.** A workspace created through
+                 *     `POST /api/auth/organization/create` — which is every workspace made since #714 — has
+                 *     a 32-character alphanumeric id, and the rows migrated out of the pre-BetterAuth
+                 *     tenancy tables have uuids. Treat it as an opaque string: match the pattern if you must
+                 *     validate, and never parse it as a uuid.
+                 * @example aBcD1234eFgH5678iJkL9012mNoP3456
                  */
                 orgId: components["parameters"]["OrgId"];
                 /**

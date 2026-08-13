@@ -131,6 +131,46 @@ export function containing(text: string): string {
 }
 
 /**
+ * Every cookie a response set, as the `Cookie` header a browser would send back.
+ *
+ * [#715](https://github.com/NobuData/ouroboros/issues/715) needs this because its flows are
+ * *multi-request*: a sign-in sets two cookies, the GitHub handshake sets a state pair on one
+ * request and reads them on the next, and a suite that carried only the session token would
+ * be testing a browser that discards cookies. Supertest has no cookie jar; this is the
+ * smallest thing that stands in for one.
+ *
+ * Attributes are dropped — `Path`, `HttpOnly`, `Max-Age` and the rest describe how a browser
+ * should *store* a cookie, and none of them are sent back. A removal (`name=; Max-Age=0`) is
+ * kept rather than filtered, because handing an empty value back is exactly what a browser
+ * that had not yet processed the removal would do, and refusing it is the server's job.
+ *
+ * @param response - What Supertest returned.
+ * @returns The header value, `name=value` pairs joined with `; `, or an empty string when the
+ *   response set no cookie.
+ */
+export function cookiesOf(response: request.Response): string {
+  const headers = (response.headers["set-cookie"] ?? []) as unknown as string[];
+
+  return headers.map((header) => header.split(";")[0]).join("; ");
+}
+
+/**
+ * One cookie's whole `Set-Cookie` header, attributes and all.
+ *
+ * The counterpart to {@link cookiesOf}: that one is for carrying a cookie onward, this is for
+ * asserting about it — `Max-Age=0` on a sign-out, `HttpOnly` on a session token.
+ *
+ * @param response - What Supertest returned.
+ * @param name - The cookie to find.
+ * @returns The header, or an empty string when the response did not set that cookie.
+ */
+export function setCookie(response: request.Response, name: string): string {
+  const headers = (response.headers["set-cookie"] ?? []) as unknown as string[];
+
+  return headers.find((candidate) => candidate.startsWith(`${name}=`)) ?? "";
+}
+
+/**
  * A name no other run of a suite will produce.
  *
  * Shaped to fit `tenants_slug_format` and `github_orgs_login_format`, which admit only

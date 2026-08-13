@@ -91,6 +91,19 @@ const ABSENT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 /** A connection of this suite's own, for the arrangement and cleanup the application cannot do. */
 const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
+/**
+ * What the application under test is configured with.
+ *
+ * Hoisted out of `beforeAll` by [#715](https://github.com/NobuData/ouroboros/issues/715),
+ * because the suite now needs one value out of it before the application exists: the
+ * integration suite loads the real BetterAuth, which verifies a session cookie's signature,
+ * so `signInAs` has to sign under the same `BETTER_AUTH_SECRET` the service was given.
+ */
+const configuration = testConfiguration({ OURO_DATABASE_URL: DATABASE_URL });
+
+/** How every session below is signed. See {@link configuration}. */
+const SIGNING = { secret: configuration.betterAuthSecret };
+
 /** A name no other run of this suite will produce, inside this suite's namespace. */
 const aName = (): string => uniqueName(TEST_PREFIX);
 
@@ -111,9 +124,7 @@ describe("the tenancy API, for real", () => {
   let sessionUserId: string;
 
   beforeAll(async () => {
-    app = await createApplication(testConfiguration({ OURO_DATABASE_URL: DATABASE_URL }), {
-      logger: false,
-    });
+    app = await createApplication(configuration, { logger: false });
     await app.init();
 
     // Every route below is authenticated ([#703](https://github.com/NobuData/ouroboros/issues/703)),
@@ -121,7 +132,7 @@ describe("the tenancy API, for real", () => {
     // `ouroboros.session` naming a real person, exactly as a sign-in would have written —
     // so what runs below is the guard doing its job rather than the guard switched off.
     sessionUserId = await aPerson(SESSION_EMAIL, "Integration Suite");
-    session = await signInAs(admin, sessionUserId);
+    session = await signInAs(admin, sessionUserId, SIGNING);
   });
 
   afterAll(async () => {
@@ -229,7 +240,7 @@ describe("the tenancy API, for real", () => {
       await join(organizationId, id, role);
     }
 
-    return { id, cookie: await signInAs(admin, id) };
+    return { id, cookie: await signInAs(admin, id, SIGNING) };
   }
 
   /** The adapter's server, typed so Supertest can be handed it without an `any`. */
@@ -438,7 +449,7 @@ describe("the tenancy API, for real", () => {
       const page = bodyOf<Page<OrgRowResource>>(
         await request(server())
           .get(ORGS)
-          .set("Cookie", await signInAs(admin, id))
+          .set("Cookie", await signInAs(admin, id, SIGNING))
           .expect(200),
       );
 

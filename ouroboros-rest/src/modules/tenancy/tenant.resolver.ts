@@ -31,7 +31,7 @@
  *      closes the leak the original issue was about: without it, a signed-in person could
  *      read `/api/v1/orgs/{anybody-elses-id}/domains` and the `404` rule would apply to
  *      nothing.
- *   2. **The `X-Ouro-Tenant` header**, a slug or a uuid: an explicit, per-request override of
+ *   2. **The `X-Ouro-Tenant` header**, a slug or an id: an explicit, per-request override of
  *      where the session says the caller is acting. It is how one request steps outside the
  *      active workspace without the session being changed for every other request in flight.
  *   3. **The session's `activeOrganizationId`.** The ordinary case, and the one that carries
@@ -64,6 +64,7 @@ import { Injectable } from "@nestjs/common";
 import type { Organization, OrganizationRole } from "../db/schema";
 import { OrganizationRepository, type OrganizationReference } from "./organization.repository";
 import type { ActiveMembership } from "./tenant.context";
+import { ORGANIZATION_ID_PATTERN } from "./tenancy.dto";
 import { organizationRequired, tenantMismatch, tenantNotFound } from "./tenancy.errors";
 
 /** The header a client names the active workspace in. Lower-case, as Node parses headers. */
@@ -80,18 +81,23 @@ export const TENANT_HEADER = "x-ouro-tenant";
  */
 export const TENANT_PARAMETER = "orgId";
 
-/** The canonical shape of a uuid, as `gen_random_uuid()` renders one. */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * Read a value as a reference to a workspace.
  *
+ * The shape is `ORGANIZATION_ID_PATTERN`'s, imported from `tenancy.dto.ts` rather than
+ * restated, because the DTO validating a path parameter and this reading the same parameter
+ * are two halves of one rule — and they were allowed to be two strings until
+ * [#715](https://github.com/NobuData/ouroboros/issues/715), when the DTO's half said *uuid*,
+ * the plugin started minting 32-character ids, and every workspace made after
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) became unreachable on its own
+ * routes. One import is what makes that impossible to repeat.
+ *
  * @param value - What the caller wrote, already trimmed.
- * @returns A reference, or `undefined` when the value is empty. Anything that is not a uuid
- *   is treated as a slug — including a value that is neither, which then simply matches no
- *   row and becomes a `404`. Validating the slug's shape here would be a second, weaker copy
- *   of a rule the organization plugin already applies to what it writes, and its only effect
- *   would be to answer `422` where the answer is already `404`.
+ * @returns A reference, or `undefined` when the value is empty. Anything that is not an
+ *   organization id is treated as a slug — including a value that is neither, which then
+ *   simply matches no row and becomes a `404`. Validating the slug's shape here would be a
+ *   second, weaker copy of a rule the organization plugin already applies to what it writes,
+ *   and its only effect would be to answer `422` where the answer is already `404`.
  */
 export function referenceFrom(value: string): OrganizationReference | undefined {
   const trimmed = value.trim();
@@ -100,7 +106,7 @@ export function referenceFrom(value: string): OrganizationReference | undefined 
     return undefined;
   }
 
-  return UUID_PATTERN.test(trimmed)
+  return ORGANIZATION_ID_PATTERN.test(trimmed)
     ? { kind: "id", value: trimmed }
     : { kind: "slug", value: trimmed };
 }
@@ -131,18 +137,19 @@ export function headerReference(
 /**
  * The reference a request carries in its path, if any.
  *
- * **Only a uuid.** The path parameter is documented as one and every DTO validates it as one,
- * so a value that is not a uuid is not a workspace this route could have addressed — it is a
- * malformed request, and the validation pipe is what says so. Reading it as a slug here would
- * answer `404` a guard's-worth earlier than that, turning "your uuid is malformed" into "no
- * such workspace" and losing the `details.orgId` a form needs to render the complaint.
+ * **Only an id.** The path parameter is documented as one and every DTO validates it as one,
+ * so a value that is not an organization id is not a workspace this route could have
+ * addressed — it is a malformed request, and the validation pipe is what says so. Reading it
+ * as a slug here would answer `404` a guard's-worth earlier than that, turning "your id is
+ * malformed" into "no such workspace" and losing the `details.orgId` a form needs to render
+ * the complaint.
  *
  * The header is the opposite case and reads both, because a slug is what a person types.
  *
  * @param params - The route parameters, populated by the router before any guard runs.
  * @returns The reference, or `undefined` on a route with no `{orgId}` — and on one whose
- *   `{orgId}` is not a uuid, which then falls through to the header or the session and is
- *   refused by the pipe a moment later.
+ *   `{orgId}` is not an organization id, which then falls through to the header or the
+ *   session and is refused by the pipe a moment later.
  */
 export function pathReference(
   params: TenantParameters | undefined,
@@ -154,15 +161,15 @@ export function pathReference(
 }
 
 /**
- * Does this request address a workspace in its path with something that is not a uuid?
+ * Does this request address a workspace in its path with something that is not an id?
  *
  * The guard skips resolution entirely when it does, and lets the validation pipe answer — see
- * `tenant.guard.ts`. Without that, `GET /api/v1/orgs/not-a-uuid/domains` would be answered by
+ * `tenant.guard.ts`. Without that, `GET /api/v1/orgs/not-an-id/domains` would be answered by
  * whichever check happened to run first: `organization_required` for a session acting nowhere,
  * and `validation_failed` for one acting somewhere. One malformed request, two answers.
  *
  * @param params - The route parameters.
- * @returns `true` when there is an `{orgId}` and it is not a uuid.
+ * @returns `true` when there is an `{orgId}` and it is not an organization id.
  */
 export function pathTenantIsMalformed(params: TenantParameters | undefined): boolean {
   const value = params?.[TENANT_PARAMETER];
@@ -337,7 +344,7 @@ export class TenantResolver {
   /**
    * Do two references name the same workspace?
    *
-   * Compared by *resolution* rather than by string, because one may be a uuid and the other
+   * Compared by *resolution* rather than by string, because one may be an id and the other
    * the slug of the same row — a workspace switcher sending a slug on a path built from an id
    * is the ordinary case, not a mistake.
    *

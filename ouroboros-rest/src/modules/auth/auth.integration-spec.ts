@@ -89,6 +89,19 @@ const EMAIL = `${TEST_PREFIX}-person@example.test`;
 /** A connection of this suite's own, for the setup and cleanup the application must not do. */
 const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 
+/**
+ * What the application under test is configured with.
+ *
+ * Hoisted out of `beforeAll` by [#715](https://github.com/NobuData/ouroboros/issues/715): the
+ * integration suite now loads the real BetterAuth, which verifies a session cookie's
+ * signature, so `signInAs` has to sign under the same `BETTER_AUTH_SECRET` the service was
+ * given.
+ */
+const configuration = testConfiguration({ OURO_DATABASE_URL: DATABASE_URL });
+
+/** How every session below is signed. See {@link configuration}. */
+const SIGNING = { secret: configuration.betterAuthSecret };
+
 /** The auth routes' base path. */
 const AUTH = "/api/v1/auth";
 
@@ -125,7 +138,7 @@ describe("the auth surface, against a real database", () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [AppModule.forRoot(testConfiguration({ OURO_DATABASE_URL: DATABASE_URL }))],
+      imports: [AppModule.forRoot(configuration)],
     }).compile();
 
     app = moduleRef.createNestApplication({ logger: false });
@@ -185,7 +198,13 @@ describe("the auth surface, against a real database", () => {
     );
     const id = rows[0].id;
 
-    return { id, cookie: await signInAs(admin, id, lifetimeSeconds) };
+    return {
+      id,
+      cookie: await signInAs(admin, id, {
+        ...SIGNING,
+        ...(lifetimeSeconds === undefined ? {} : { lifetimeSeconds }),
+      }),
+    };
   }
 
   describe("the session the guard reads", () => {
@@ -325,7 +344,7 @@ describe("the auth surface, against a real database", () => {
       // Two browsers, one account. Sign-out deletes the session that asked, so somebody
       // signing out of a shared machine is not signed out of their own.
       const { id, cookie } = await signedInPerson();
-      const other = await signInAs(admin, id);
+      const other = await signInAs(admin, id, SIGNING);
 
       await request(server()).post(`${AUTH}/logout`).set("Cookie", cookie).expect(204);
 

@@ -465,21 +465,43 @@ tests**, which would take the dev seed with it, so they refuse a database the ru
 start and say so. Add `OURO_TEST_DATABASE_DISPOSABLE=true` when the database you supplied
 is genuinely throwaway.
 
+**It loads the real BetterAuth**, and that is the difference between this runner and
+`yarn test` — [#715](https://github.com/NobuData/ouroboros/issues/715).
+`jest.integration.config.mjs` converts the library and its ES-module dependencies through
+`jest.esm-transform.cjs` instead of mapping them at `src/auth/better-auth.fixture.ts`, so a
+sign-in below is a sign-in: a scrypt hash the library wrote and verified, a signed cookie it
+checks, a `session` row it deletes. The unit suite still substitutes it, deliberately — see
+*Testing the mount*.
+
 What runs:
 
-| Suite                          | What only a real database can answer                                          |
-| ------------------------------ | ----------------------------------------------------------------------------- |
-| `db.integration-spec.ts`       | the `Database` interface names the columns Flyway created; the pool drains     |
-| `tenancy.integration-spec.ts`  | CRUD end to end, constraint → envelope mapping, the last-owner rule            |
-| `auth.integration-spec.ts`     | the OAuth flow lands a session; a repeat sign-in reuses the same user row      |
-| `roles.integration-spec.ts`    | the role matrix — 15 routes × 6 callers, through the guards that are really on |
-| `harness.integration-spec.ts`  | the harness itself: the image, the migrations, the port, the truncation        |
+| Suite                                    | What only a real database can answer                                             |
+| ---------------------------------------- | -------------------------------------------------------------------------------- |
+| `db.integration-spec.ts`                 | the `Database` interface names the columns Flyway created; the pool drains         |
+| `tenancy.integration-spec.ts`            | CRUD end to end, constraint → envelope mapping, the last-owner rule                |
+| `auth.integration-spec.ts`               | the guard's reading of a session row: absent, expired, deleted, never issued       |
+| `credentials.integration-spec.ts`        | a password buys a session; the hash is a hash; production refuses the route        |
+| `github.integration-spec.ts`             | the whole OAuth handshake against a stubbed github.com — state, exchange, profile  |
+| `session.lifecycle.integration-spec.ts`  | sign-out deletes the row, and the copied cookie stops working                      |
+| `organizations.integration-spec.ts`      | the organization plugin's own routes: create, list, set-active, and its role matrix |
+| `discovery.integration-spec.ts`          | a known domain and an unknown one answer with the same bytes, in the same time      |
+| `roles.integration-spec.ts`              | the role matrix — 11 routes × 6 callers, through the guards that are really on      |
+| `guard.surface.integration-spec.ts`      | every route in the table, answered: 401 for a stranger, not-401 for a session       |
+| `harness.integration-spec.ts`            | the harness itself: the image, the migrations, the port, the truncation             |
 
-`roles.integration-spec.ts` is the one that answers #37's second criterion. `RolesGuard`'s
-unit spec proves the guard refuses a role that is not in its list — with metadata the test
-wrote. It cannot prove the metadata is *there*: delete `@Roles(...ADMINISTRATORS)` from a
-controller and every unit spec still passes, because none of them go through the router that
-reads it. The matrix does, for every route, as every role.
+**No credential and no network.** `src/testing/github.fixture.ts` replaces this process's
+`fetch` for the three github.com endpoints an OAuth sign-in touches, and throws on anything
+else — so a suite that quietly reached the internet fails immediately and by name rather
+than passing on a laptop and failing in CI.
+
+The two matrices are what answer #37's second criterion and #715's. `RolesGuard`'s unit spec
+proves the guard refuses a role that is not in its list — with metadata the test wrote. It
+cannot prove the metadata is *there*: delete `@Roles(...ADMINISTRATORS)` from a controller
+and every unit spec still passes, because none of them go through the router that reads it.
+`roles.integration-spec.ts` does, for every route this service serves, as every role;
+`organizations.integration-spec.ts` does the same for the routes the organization plugin
+serves. Both were checked by doing it — one deleted `@Roles(...ADMINISTRATORS)` turns four
+tests red, and a global auth guard that stops guarding turns 141 red.
 
 ## The tenancy API
 
@@ -748,13 +770,21 @@ same origin list.
 
 ### Testing the mount
 
-The suites load `@thallesp/nestjs-better-auth` **for real** — `jest.esm-transform.cjs`
-converts that one package to CommonJS on the way in — and replace `better-auth` itself with
+**The unit suite** loads `@thallesp/nestjs-better-auth` for real — `jest.esm-transform.cjs`
+converts that one package to CommonJS on the way in — and replaces `better-auth` itself with
 `src/auth/better-auth.fixture.ts`. The seam is deliberate and it is where #701 ends: what
 the integration contributes is middleware ordering, so a stand-in for it would be a second
-implementation of the very thing under test, while what BetterAuth's routes *do* is #702's
-and #703's to prove. That the real library accepts these options is established outside
-Jest, by `@better-auth/cli generate` building an instance from `auth.config.ts` — see below.
+implementation of the very thing under test, while what BetterAuth's routes *do* is proved
+elsewhere. It stays a stand-in so that `yarn test` goes on starting nothing and running on
+save.
+
+**The integration suite loads the library itself** since
+[#715](https://github.com/NobuData/ouroboros/issues/715) — same transform, pointed at
+`better-auth` and its ES-module dependencies rather than at one package. That is where
+"what BetterAuth's routes do" is now proved, against a real database; see *Running the
+integration suite*. That the real library accepts these options was, before then,
+established only outside Jest — by `@better-auth/cli generate` building an instance from
+`auth.config.ts`, which is still how the schema is generated and is described below.
 
 ### Generating the auth schema
 
@@ -1413,6 +1443,7 @@ engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
 integration harness [#37](https://github.com/NobuData/ouroboros/issues/37) ·
+auth integration suite [#715](https://github.com/NobuData/ouroboros/issues/715) ·
 the Flyway project it migrates with [#19](https://github.com/NobuData/ouroboros/issues/19) ·
 the compose stack that runs it [#55](https://github.com/NobuData/ouroboros/issues/55) ·
 full epic [#4](https://github.com/NobuData/ouroboros/issues/4).
