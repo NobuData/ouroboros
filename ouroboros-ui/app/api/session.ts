@@ -36,16 +36,18 @@
  * change a workspace — is `app/api/membership.ts`, which is framework-free so that both this
  * and the screens can read the same rules.
  *
- * Sign-in itself is **not** a call through any client, which is why {@link githubSignInUrl}
- * returns a URL rather than doing anything: a `fetch` would follow a redirect to github.com
- * into a page it cannot render and land nobody anywhere.
+ * **Sign-in itself is not here at all**, and used to be: `githubSignInUrl()` composed the
+ * address of BetterAuth's sign-in route on `ouroboros-rest` for the login screen to link to.
+ * Beginning a sign-in is a `POST` whose answer the browser navigates to
+ * ([#702](https://github.com/NobuData/ouroboros/issues/702)), so it is a request rather than
+ * an address, it is made from the browser rather than from here, and it lives in
+ * `app/login/sign-in.ts`. This module reads sessions; it no longer says how one starts.
  *
  * Server-side only, by way of `app/api/auth-client.ts` — see that file for why.
  */
 
 import { authRead } from "@/app/api/auth-client";
 import type { Membership } from "@/app/api/membership";
-import { restUrl } from "@/app/env";
 
 /** The signed-in person, in this application's vocabulary rather than the library's. */
 export interface SessionUser {
@@ -109,41 +111,6 @@ interface AuthOrganization {
 /** `GET /api/auth/organization/get-active-member-role` — § `MemberRoleResponse`. */
 interface MemberRoleAnswer {
   role: Membership["role"];
-}
-
-/**
- * Where signing in with GitHub begins.
- *
- * **BetterAuth's**, since [#702](https://github.com/NobuData/ouroboros/issues/702) retired
- * the hand-rolled flow `GET /api/v1/auth/github` served. It is deliberately *not* typed
- * against `keyof paths`, as its predecessor was: the auth family is excluded from code
- * generation ([#711](https://github.com/NobuData/ouroboros/issues/711)), so the generated
- * types have no entry for this path and pointing the annotation at some other path would be
- * worse than saying so. The contract does describe it — `openapi.yaml`, tag `identity` —
- * which is what makes this string checkable by a person even though it is not by `tsc`.
- *
- * This is the one address of `ouroboros-rest` that legitimately reaches the browser, and it
- * reaches it as an `href` in server-rendered HTML rather than as configuration: the OAuth
- * handshake is a navigation a person follows, so the URL has to be one their browser can
- * resolve. `OURO_REST_URL` still carries no `NEXT_PUBLIC_` prefix and is still absent from
- * the client bundle — nothing in the browser can *compose* a call to the service, which is
- * the property that mattered.
- *
- * **It is not yet a working link, and that is #702's known cost.** BetterAuth begins a
- * social sign-in with a `POST` carrying `{ provider: "github" }` and answers with the
- * github.com URL for the caller to follow — so a person clicking an anchor at this address
- * gets a `404` rather than a consent screen.
- * [#718](https://github.com/NobuData/ouroboros/issues/718) is the issue that replaces the
- * anchor with `authClient.signIn.social`, and it is the reason this function still exists
- * rather than having been deleted with the route: the login screen, its props and its suites
- * are all built around a URL, and re-pointing all of that is #718's work rather than
- * something to do halfway here.
- *
- * @returns The sign-in URL, absolute.
- * @throws {Error} From {@link restUrl}, when `OURO_REST_URL` is unset or unusable.
- */
-export function githubSignInUrl(): string {
-  return `${restUrl()}/api/auth/sign-in/social`;
 }
 
 /**

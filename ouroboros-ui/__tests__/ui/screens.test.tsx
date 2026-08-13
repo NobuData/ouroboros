@@ -40,7 +40,6 @@ type LoginScreenState = Parameters<typeof LoginScreen>[0]["state"];
  * no domain concept.
  */
 
-const SIGN_IN = "http://rest.test:4000/api/auth/sign-in/social";
 
 /** The four states of the login screen, so no shape of step 2 escapes the sweep. */
 const LOGIN_STATES: readonly (readonly [string, LoginScreenState])[] = [
@@ -82,7 +81,7 @@ describe("the sign-in screen", () => {
     const { container } = render(
       <LoginScreen
         state={state}
-        signInHref={SIGN_IN}
+       
         user={state.step === "sign-in" ? null : sessionUser()}
       />,
     );
@@ -98,7 +97,7 @@ describe("the sign-in screen", () => {
     // a workspace is picked by pressing its whole row, which is this screen's own
     // composition rather than a button.
     const signedOut = render(
-      <LoginScreen state={{ step: "sign-in" }} signInHref={SIGN_IN} user={null} />,
+      <LoginScreen state={{ step: "sign-in" }} user={null} />,
     );
 
     // "Continue with GitHub", and the SSO control that explains why it cannot act.
@@ -112,7 +111,7 @@ describe("the sign-in screen", () => {
           membership: membership(),
           enablement: enablement([[org(), [repo()]]]),
         }}
-        signInHref={SIGN_IN}
+       
         user={sessionUser()}
       />,
     );
@@ -128,7 +127,7 @@ describe("the sign-in screen", () => {
     const { container } = render(
       <LoginScreen
         state={state}
-        signInHref={SIGN_IN}
+       
         user={state.step === "sign-in" ? null : sessionUser()}
       />,
     );

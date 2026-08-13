@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The two modules under `app/api/` that are not server-only import statically; the
 // module under test cannot, because the mocks below have to be in place first.
-import { SESSION_COOKIE } from "@/app/api/client";
+import { SESSION_CACHE_COOKIE, SESSION_COOKIE } from "@/app/api/client";
 import { ApiError } from "@/app/api/errors";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 
@@ -184,6 +184,29 @@ describe("api", () => {
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
     expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBe("acme");
+  });
+
+  it("forwards both of BetterAuth's cookies when the browser sent both", async () => {
+    // The pair `app/api/auth-client.ts` already forwards: the token, and the signed
+    // snapshot the service answers from without a database lookup. This is the point where
+    // the two clients agree about a credential — #720 is what happened when they did not.
+    jar.set(SESSION_COOKIE, "signed.value");
+    jar.set(SESSION_CACHE_COOKIE, "cached.snapshot");
+    respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
+
+    await api().GET("/api/v1/tenants");
+
+    expect(requests[0]?.headers.get("Cookie")).toBe(
+      `${SESSION_COOKIE}=signed.value; ${SESSION_CACHE_COOKIE}=cached.snapshot`,
+    );
+  });
+
+  it("sends no cookie header for a request carrying neither", async () => {
+    respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
+
+    await api().GET("/api/v1/tenants");
+
+    expect(requests[0]?.headers.has("Cookie")).toBe(false);
   });
 
   it("reads the cookies of each request rather than the ones it was built with", async () => {

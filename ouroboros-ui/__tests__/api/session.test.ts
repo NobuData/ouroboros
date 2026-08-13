@@ -20,10 +20,10 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { githubSignInUrl, session } = await import("@/app/api/session");
+const { session } = await import("@/app/api/session");
 
 /**
- * The session resource, and the one URL that is a link rather than a call.
+ * The session resource — the three calls that answer one question.
  *
  * **Three calls answer one question now.**
  * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted `GET /api/v1/auth/me`,
@@ -274,49 +274,5 @@ describe("session.read", () => {
     serviceAnswering({ session: { body: { message: "no" }, status: 401 } });
 
     await expect(session.read()).rejects.toBeInstanceOf(AuthError);
-  });
-});
-
-describe("githubSignInUrl", () => {
-  const REST = "https://rest.example.test";
-
-  // `restUrl()` memoises the first successful read, which is right for a process whose
-  // environment does not change and wrong for a suite whose whole subject is the value.
-  beforeEach(() => {
-    resetRestUrlCache();
-    delete process.env.OURO_REST_URL;
-  });
-
-  afterEach(() => {
-    resetRestUrlCache();
-    delete process.env.OURO_REST_URL;
-  });
-
-  it("is an absolute URL on ouroboros-rest, at BetterAuth's own sign-in route", () => {
-    // #702 retired `/api/v1/auth/github` — this service's own hand-rolled flow — for the
-    // library's, which is served outside the versioned API because it versions its own
-    // routes. The path is not in `openapi.yaml` and so cannot be checked by the generated
-    // types until #711 publishes it, which is why it is asserted here instead.
-    process.env.OURO_REST_URL = REST;
-
-    expect(githubSignInUrl()).toBe(`${REST}/api/auth/sign-in/social`);
-  });
-
-  it("is composed from the configured base rather than from a hard-coded host", () => {
-    process.env.OURO_REST_URL = "http://localhost:4000";
-
-    expect(githubSignInUrl()).toBe("http://localhost:4000/api/auth/sign-in/social");
-  });
-
-  it("is outside the versioned API, which is where BetterAuth mounts itself", () => {
-    process.env.OURO_REST_URL = REST;
-
-    expect(githubSignInUrl()).not.toContain("/api/v1/");
-  });
-
-  it("throws naming the variable when the service's address is not configured", () => {
-    // The same failure `app/env.ts` raises everywhere else: a missing address is an error
-    // with a name in it, never a request to the wrong host.
-    expect(() => githubSignInUrl()).toThrow(/OURO_REST_URL/);
   });
 });

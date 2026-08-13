@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 
 import { currentAccess } from "@/app/api/access";
 import { readEnablement } from "@/app/api/enablement";
-import { githubSignInUrl } from "@/app/api/session";
 import { LoginScreen, type LoginScreenState } from "@/app/login/login-screen";
 import { WORKSPACE_PARAM, type LoginView, loginView } from "@/app/login/view";
 import { DASHBOARD_PATH } from "@/app/paths";
@@ -17,10 +16,12 @@ import { DASHBOARD_PATH } from "@/app/paths";
  * component (`app/login/login-screen.tsx`). Everything with a decision in it is therefore
  * testable without a router, and everything with markup in it without a request.
  *
- * It is a Server Component because every call this screen makes is server-side by
+ * It is a Server Component because every *read* this screen makes is server-side by
  * construction (`app/api/server.ts`): the session cookie is `HttpOnly` and the service's
  * address carries no `NEXT_PUBLIC_` prefix. The writes are Server Actions
- * (`app/login/actions.ts`). There is no client component on this screen at all.
+ * (`app/login/actions.ts`). The one client component is `app/login/sign-in-button.tsx`,
+ * which exists because beginning a sign-in is a `POST` whose answer the *browser* then
+ * navigates to — see that file, and #702.
  *
  * Reading `searchParams` and the cookies makes the route dynamic, which is correct and not
  * incidental: a page whose content depends on who is asking cannot be prerendered, and
@@ -57,13 +58,7 @@ export default async function LoginPage({
     redirect(DASHBOARD_PATH);
   }
 
-  return (
-    <LoginScreen
-      state={await state(view)}
-      signInHref={githubSignInUrl()}
-      user={session?.user ?? null}
-    />
-  );
+  return <LoginScreen state={await state(view)} user={session?.user ?? null} />;
 }
 
 /**

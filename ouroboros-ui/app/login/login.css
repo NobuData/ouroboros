@@ -250,6 +250,13 @@
   color: var(--ink-faint);
 }
 
+/* A press that failed, under the control that failed it — see sign-in-button.tsx. The
+   margin is tighter than a note's, because this one belongs to the button above it. */
+.login-note--error {
+  margin-top: var(--sp-3);
+  color: var(--err);
+}
+
 /* The mockup's accent caret, which is decoration and is hidden from a screen reader. */
 .login-note__marker {
   color: var(--accent);

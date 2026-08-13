@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   type ApiResult,
+  SESSION_CACHE_COOKIE,
   SESSION_COOKIE,
   createApiClient,
   unwrap,
@@ -192,12 +193,49 @@ describe("the active workspace", () => {
 describe("the session", () => {
   it("forwards the session as the cookie the contract names", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
-      session: () => "signed.value",
+      session: () => ({ [SESSION_COOKIE]: "signed.value" }),
     });
 
     await client.GET("/api/v1/tenants");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
+  });
+
+  it("names BetterAuth's cookie, which is the one the service reads", () => {
+    // #720. It said `ouro_session` until then — #33's, which #703 replaced — and
+    // `ouroboros-rest` does not ignore that name but *evicts* it, answering `401` with a
+    // `Set-Cookie` that clears it. The cost was a redirect loop: the session gate read the
+    // right cookie and passed, these calls forwarded the wrong one and were refused, and
+    // `/dashboard` and `/login` sent the browser back and forth between them.
+    expect(SESSION_COOKIE).toBe("better-auth.session_token");
+    expect(SESSION_COOKIE).not.toBe("ouro_session");
+  });
+
+  it("forwards the cookie cache beside the token, so a call costs no query", async () => {
+    // The snapshot the service answers a session from without a database lookup. Dropping
+    // it is not a failure — it is every call costing a query, which nothing would notice.
+    const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
+      session: () => ({
+        [SESSION_COOKIE]: "signed.value",
+        [SESSION_CACHE_COOKIE]: "cached.snapshot",
+      }),
+    });
+
+    await client.GET("/api/v1/tenants");
+
+    expect(requests[0]?.headers.get("Cookie")).toBe(
+      `${SESSION_COOKIE}=signed.value; ${SESSION_CACHE_COOKIE}=cached.snapshot`,
+    );
+  });
+
+  it("forwards the snapshot alone when that is all the browser sent", async () => {
+    const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
+      session: () => ({ [SESSION_CACHE_COOKIE]: "cached.snapshot" }),
+    });
+
+    await client.GET("/api/v1/tenants");
+
+    expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_CACHE_COOKIE}=cached.snapshot`);
   });
 
   it("forwards nothing when the request carries no session", async () => {
@@ -210,11 +248,23 @@ describe("the session", () => {
     expect(requests[0]?.headers.has("Cookie")).toBe(false);
   });
 
+  it("sends no header for a session that resolved to nothing at all", async () => {
+    // An empty set is *no cookies*, not an empty header — which a service would read as a
+    // malformed request rather than as an anonymous one.
+    const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
+      session: () => ({}),
+    });
+
+    await client.GET("/api/v1/tenants");
+
+    expect(requests[0]?.headers.has("Cookie")).toBe(false);
+  });
+
   it("sends only the session, never the browser's other cookies", async () => {
     // The theme and the active workspace are this UI's business. The assertion is that
     // what goes out is composed from the one value, not copied from a cookie header.
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
-      session: () => "signed.value",
+      session: () => ({ [SESSION_COOKIE]: "signed.value" }),
       tenant: () => "acme",
     });
 
@@ -225,7 +275,7 @@ describe("the session", () => {
 
   it("refuses a session value carrying CRLF, which would be a second header", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
-      session: () => "signed\r\nX-Ouro-Internal-Key: stolen",
+      session: () => ({ [SESSION_COOKIE]: "signed\r\nX-Ouro-Internal-Key: stolen" }),
     });
 
     await expect(client.GET("/api/v1/tenants")).rejects.toThrow(/RFC 6265/);
@@ -234,7 +284,7 @@ describe("the session", () => {
 
   it("refuses a session value a cookie may not carry, and names no credential", async () => {
     const { client, requests } = clientOver([jsonResponse(200, TENANT_PAGE)], {
-      session: () => "signed;value",
+      session: () => ({ [SESSION_COOKIE]: "signed;value" }),
     });
 
     await expect(client.GET("/api/v1/tenants")).rejects.toThrow(/RFC 6265/);

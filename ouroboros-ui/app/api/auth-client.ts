@@ -52,10 +52,14 @@ export const AUTH_BASE_PATH = "/api/auth";
 /**
  * The session cookie BetterAuth issues, and the signed snapshot that travels beside it.
  *
- * Named here rather than imported from `app/api/client.ts`, whose `SESSION_COOKIE` is still
- * `ouro_session` — #33's, which #703 replaced and which
- * [#720](https://github.com/NobuData/ouroboros/issues/720) re-points. Sharing the constant
- * would mean this file was wrong for as long as that one is.
+ * Named here rather than imported from `app/api/client.ts`, which since
+ * [#720](https://github.com/NobuData/ouroboros/issues/720) forwards the same pair under the
+ * same names — that module's `SESSION_COOKIES`. The duplication is deliberate and now the
+ * only thing keeping the two families independent: this file may not import from a module
+ * built over the generated client, because the auth family is excluded from code generation
+ * and importing across that line is what the rule exists to prevent. The names are wire
+ * contract, like the paths beside them, and `client.test.ts` asserts the other copy against
+ * the same literal.
  */
 export const AUTH_COOKIES = ["better-auth.session_token", "better-auth.session_data"] as const;
 

@@ -24,12 +24,14 @@ const { LoginScreen } = await import("@/app/login/login-screen");
  * acceptance criteria's own path: sign in → pick `acme-robotics` → toggle a repo → land on
  * the dashboard, minus the two steps only a browser and a live service can take.
  *
- * The screen is a Server Component with no client component anywhere inside it, which is why
- * it renders here with no provider, no router and no hydration: it is a function from a state
- * to markup.
+ * The screen is a Server Component and renders here with no provider and no router, because
+ * it is a function from a state to markup. It is no longer *entirely* server-side —
+ * `sign-in-button.tsx` is a client component, since #702 made beginning a sign-in a `POST`
+ * whose answer the browser navigates to — but a client component renders under this suite
+ * like any other function, and what that one does when pressed is
+ * `__tests__/login/sign-in-button.test.tsx`.
  */
 
-const SIGN_IN = "http://rest.test:4000/api/auth/sign-in/social";
 
 describe("the login screen, signed out", () => {
   /**
@@ -39,7 +41,7 @@ describe("the login screen, signed out", () => {
    */
   function signedOut() {
     return render(
-      <LoginScreen state={{ step: "sign-in" }} signInHref={SIGN_IN} user={null} />,
+      <LoginScreen state={{ step: "sign-in" }} user={null} />,
     );
   }
 
@@ -57,10 +59,7 @@ describe("the login screen, signed out", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "Choose where the loop runs" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Continue with GitHub/ })).toHaveAttribute(
-      "href",
-      SIGN_IN,
-    );
+    expect(screen.getByRole("button", { name: /Continue with GitHub/ })).toBeInTheDocument();
   });
 
   it("carries the brand lines and the trust row from the mockup", () => {
@@ -91,7 +90,7 @@ describe("the login screen, choosing a workspace", () => {
     render(
       <LoginScreen
         state={{ step: "choose", memberships: [membership()] }}
-        signInHref={SIGN_IN}
+       
         user={sessionUser()}
       />,
     );
@@ -111,7 +110,7 @@ describe("the login screen, enabling organisations", () => {
           membership: membership(),
           enablement: enablement([[org(), [repo()]]]),
         }}
-        signInHref={SIGN_IN}
+       
         user={sessionUser()}
       />,
     );
@@ -131,7 +130,7 @@ describe("the login screen, belonging nowhere", () => {
     render(
       <LoginScreen
         state={{ step: "no-workspace", suggestion: null, memberships: [] }}
-        signInHref={SIGN_IN}
+       
         user={sessionUser()}
       />,
     );
@@ -156,7 +155,7 @@ describe("what every state has in common", () => {
 
   it.each(STATES)("in the %s state, draws the brand and two cards", (_, state, user) => {
     const { container } = render(
-      <LoginScreen state={state} signInHref={SIGN_IN} user={user} />,
+      <LoginScreen state={state} user={user} />,
     );
 
     expect(screen.getByRole("region", { name: "Ouroboros" })).toBeInTheDocument();
@@ -164,7 +163,7 @@ describe("what every state has in common", () => {
   });
 
   it.each(STATES)("in the %s state, names step 2 with its own heading", (_, state, user) => {
-    render(<LoginScreen state={state} signInHref={SIGN_IN} user={user} />);
+    render(<LoginScreen state={state} user={user} />);
 
     // Whatever step 2 is showing, the card is labelled by its heading — so a screen reader
     // moving by region hears which step it has landed in.

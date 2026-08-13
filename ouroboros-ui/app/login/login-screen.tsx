@@ -24,23 +24,20 @@ import "./login.css";
  * reads the request, `app/login/view.ts` decides, and this draws it.
  *
  * @param props.state Which step to draw, and the data that step needs.
- * @param props.signInHref Absolute URL of BetterAuth's sign-in route on `ouroboros-rest`
- *   (#702). Not yet followable as a link — see `sign-in-card.tsx`, and #718.
  * @param props.user The signed-in person, or `null` while nobody is.
  * @returns The screen.
  */
 export function LoginScreen({
   state,
-  signInHref,
   user,
-}: Readonly<{ state: LoginScreenState; signInHref: string; user: SessionUser | null }>) {
+}: Readonly<{ state: LoginScreenState; user: SessionUser | null }>) {
   return (
     <main className="login">
       <div className="login__split">
         <BrandPanel />
         <section className="login-auth" aria-label="Sign in to Ouroboros">
           <div className="login-auth__col">
-            <SignInCard signInHref={signInHref} user={user} />
+            <SignInCard user={user} />
             <StepTwo state={state} />
           </div>
         </section>

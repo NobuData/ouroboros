@@ -10,7 +10,8 @@
  * 1. **The base URL**, from `OURO_REST_URL` — supplied by the caller, because reading the
  *    environment is `app/env.ts`'s job and doing it here would make this module
  *    server-only for a reason that has nothing to do with fetching.
- * 2. **The session**, forwarded as the `ouro_session` cookie the contract names.
+ * 2. **The session**, forwarded as the cookies the contract names — see
+ *    {@link SESSION_COOKIE}.
  * 3. **The active workspace**, as the `X-Ouro-Tenant` header (`app/api/tenant.ts`).
  * 4. **The error envelope**, parsed into an {@link ApiError} and thrown — including the
  *    `401` that means the session is gone, which is handed to `onUnauthenticated` first
@@ -32,24 +33,57 @@ import { TENANT_HEADER, assertTenantReference } from "@/app/api/tenant";
  * The session cookie, as `ouroboros-rest` issues and reads it
  * (`openapi.yaml` § `components.securitySchemes.ouroSession`).
  *
- * **This is out of date and is deliberately not fixed here.**
- * [#703](https://github.com/NobuData/ouroboros/issues/703) made a session a database row
- * and renamed the cookie to BetterAuth's `better-auth.session_token`; the scheme above now
- * names that one. Re-pointing this module — this constant, the layout gate and
- * `loginView()` — is [#720](https://github.com/NobuData/ouroboros/issues/720), which owns
- * them together because they have to move in one step: a gate that reads one cookie and a
- * client that forwards another is a screen that renders for somebody the API then refuses.
- * Nothing here works in the meantime, and nothing here worked before it either — the login
- * button has been waiting on [#718](https://github.com/NobuData/ouroboros/issues/718) since
- * #702.
+ * **It was `ouro_session` until [#720](https://github.com/NobuData/ouroboros/issues/720)**,
+ * which is this change: [#703](https://github.com/NobuData/ouroboros/issues/703) made a
+ * session a database row and renamed the cookie to BetterAuth's, and this module went on
+ * forwarding the old name. The service does not merely ignore it — `legacy.cookie.ts`
+ * *evicts* it, answering `401` with a `Set-Cookie` that clears it, because "`ouro_session`
+ * is dead on every request".
+ *
+ * The cost of the gap was a redirect loop, and it is worth recording because the shape
+ * recurs: the session gate read one cookie through `app/api/auth-client.ts` and passed, then
+ * the data calls forwarded another and were refused, so `/dashboard` sent the browser to
+ * `/login`, which found a perfectly good session and sent it back. Two clients disagreeing
+ * about a credential is not a failed request — it is a screen that renders for somebody the
+ * API then refuses.
  */
-export const SESSION_COOKIE = "ouro_session";
+export const SESSION_COOKIE = "better-auth.session_token";
+
+/**
+ * The signed snapshot that travels beside it.
+ *
+ * BetterAuth's cookie cache: a five-minute signed copy of the session that lets the service
+ * answer without a database lookup. Forwarding it is not optional politeness — dropping it
+ * makes **every** call through this client cost a query, which is the same reason
+ * `app/api/auth-client.ts` sends both. It is not in the contract's security scheme because
+ * it authenticates nothing on its own; it is an optimisation the library reads if it is
+ * there.
+ */
+export const SESSION_CACHE_COOKIE = "better-auth.session_data";
+
+/** Both, in the order they are sent. */
+export const SESSION_COOKIES = [SESSION_COOKIE, SESSION_CACHE_COOKIE] as const;
+
+/** One of the cookies this client forwards. */
+export type SessionCookieName = (typeof SESSION_COOKIES)[number];
+
+/**
+ * The session cookies of one request — whichever of {@link SESSION_COOKIES} the browser
+ * sent, by name. A browser may send the token alone, both, or neither.
+ */
+export type SessionCookies = Readonly<Partial<Record<SessionCookieName, string>>>;
 
 /** Where a workspace reference comes from, per request. `undefined` sends no header. */
 export type TenantResolver = () => string | undefined | Promise<string | undefined>;
 
-/** Where the session cookie's value comes from, per request. `undefined` sends none. */
-export type SessionResolver = () => string | undefined | Promise<string | undefined>;
+/**
+ * Where the session cookies come from, per request. `undefined` — or an empty set — sends
+ * no `Cookie` header at all.
+ */
+export type SessionResolver = () =>
+  | SessionCookies
+  | undefined
+  | Promise<SessionCookies | undefined>;
 
 /**
  * What to do about a `401` before it is thrown.
@@ -89,19 +123,43 @@ const COOKIE_VALUE_PATTERN = /^[!#-+\--:<-[\]-~]*$/;
 /**
  * Check a cookie value on its way into a request header.
  *
+ * @param name Which cookie, for the message.
  * @param value The raw value read from the incoming request.
  * @returns The value, unchanged.
  * @throws {Error} If it carries a character a cookie value may not. The message quotes
  *   the cookie's name and never its value — this is a credential.
  */
-function assertCookieValue(value: string): string {
+function assertCookieValue(name: string, value: string): string {
   if (!COOKIE_VALUE_PATTERN.test(value)) {
     throw new Error(
-      `The ${SESSION_COOKIE} cookie carries a character a cookie value may not ` +
+      `The ${name} cookie carries a character a cookie value may not ` +
         `(RFC 6265 § 4.1.1) and was not forwarded.`,
     );
   }
   return value;
+}
+
+/**
+ * Compose the `Cookie` header for one request.
+ *
+ * @param present The cookies this request carries.
+ * @returns The header value, or `undefined` when there is nothing to send — in which case
+ *   no header is set at all, rather than an empty one.
+ * @throws {Error} From {@link assertCookieValue}, for a value that cannot be forwarded.
+ */
+function sessionCookieHeader(present: SessionCookies | undefined): string | undefined {
+  if (present === undefined) {
+    return undefined;
+  }
+
+  // Iterated over the constant rather than over the object's own keys, so the order is
+  // this module's and a resolver cannot introduce a name that was never meant to be sent.
+  const pairs = SESSION_COOKIES.flatMap((name) => {
+    const value = present[name];
+    return value === undefined ? [] : [`${name}=${assertCookieValue(name, value)}`];
+  });
+
+  return pairs.length === 0 ? undefined : pairs.join("; ");
 }
 
 /**
@@ -121,13 +179,13 @@ function credentialsAndErrors(options: ApiClientOptions): Middleware {
         request.headers.set(TENANT_HEADER, assertTenantReference(tenant));
       }
 
-      // Only the session cookie, never the whole `Cookie` header of the incoming
+      // Only the session cookies, never the whole `Cookie` header of the incoming
       // request: the browser's other cookies — the theme, the active workspace — are
       // this UI's business and none of `ouroboros-rest`'s, and a client that forwarded
       // them wholesale would leak every future cookie to a service that never asked.
-      const session = await options.session?.();
-      if (session !== undefined) {
-        request.headers.set("Cookie", `${SESSION_COOKIE}=${assertCookieValue(session)}`);
+      const cookie = sessionCookieHeader(await options.session?.());
+      if (cookie !== undefined) {
+        request.headers.set("Cookie", cookie);
       }
 
       return request;

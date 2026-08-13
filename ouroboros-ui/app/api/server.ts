@@ -26,7 +26,12 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { type ApiClient, SESSION_COOKIE, createApiClient } from "@/app/api/client";
+import {
+  type ApiClient,
+  SESSION_COOKIES,
+  type SessionCookies,
+  createApiClient,
+} from "@/app/api/client";
 import { ACTIVE_TENANT_COOKIE, assertTenantReference, isTenantReference } from "@/app/api/tenant";
 import { restUrl } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
@@ -93,9 +98,27 @@ export async function clearActiveTenant(): Promise<void> {
   (await cookies()).delete(ACTIVE_TENANT_COOKIE);
 }
 
-/** The session this request carries, if any, for forwarding to `ouroboros-rest`. */
-async function sessionToken(): Promise<string | undefined> {
-  return (await cookies()).get(SESSION_COOKIE)?.value;
+/**
+ * The session cookies this request carries, for forwarding to `ouroboros-rest`.
+ *
+ * Both of BetterAuth's, not just the token: the second is the signed snapshot the service
+ * answers from without a database lookup, so a client that dropped it would turn every call
+ * into a query. `app/api/auth-client.ts` reads the same pair for the same reason.
+ *
+ * @returns The cookies present, or `undefined` when the browser sent neither.
+ */
+async function sessionCookies(): Promise<SessionCookies | undefined> {
+  const jar = await cookies();
+
+  const present: Record<string, string> = {};
+  for (const name of SESSION_COOKIES) {
+    const value = jar.get(name)?.value;
+    if (value !== undefined) {
+      present[name] = value;
+    }
+  }
+
+  return Object.keys(present).length === 0 ? undefined : present;
 }
 
 /**
@@ -126,7 +149,7 @@ export function api(): ApiClient {
   client ??= createApiClient({
     baseUrl: restUrl(),
     tenant: activeTenant,
-    session: sessionToken,
+    session: sessionCookies,
     onUnauthenticated: () => {
       // `redirect` signals by throwing, and that throw is the one that reaches Next.js —
       // which is the whole of "401 responses route to login". Nothing here catches it.
@@ -166,7 +189,7 @@ export function anonymousApi(): ApiClient {
   anonymous ??= createApiClient({
     baseUrl: restUrl(),
     tenant: activeTenant,
-    session: sessionToken,
+    session: sessionCookies,
   });
   return anonymous;
 }

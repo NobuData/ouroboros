@@ -3,6 +3,8 @@ import { Button, Card, Eyebrow, TextField } from "@/app/ui";
 
 import { GithubMark } from "./github-mark";
 import { Monogram } from "./monogram";
+import { GITHUB_PROVIDER, socialSignIn } from "./sign-in";
+import { SignInButton } from "./sign-in-button";
 
 /**
  * Step 1 of the mockup: sign in.
@@ -12,19 +14,23 @@ import { Monogram } from "./monogram";
  * signed in, because a numbered step that vanished once it was done would leave the second
  * card labelled "Step 2" with no step 1 above it.
  *
- * ### Why sign-in is a link, and why it does not work yet
+ * ### Why sign-in is a button, and was a link
  *
- * It was an anchor because the route behind it answered `302` to github.com: a `fetch`
- * would have followed the redirect into a consent page it cannot render and landed nobody
- * anywhere, and the whole handshake belonged to `ouroboros-rest`.
+ * It was an anchor because #33's route answered `302` to github.com: a `fetch` would have
+ * followed the redirect into a consent page it cannot render and landed nobody anywhere.
  *
  * The handshake still belongs to `ouroboros-rest` — but to **BetterAuth** inside it, since
  * [#702](https://github.com/NobuData/ouroboros/issues/702), which deleted the hand-rolled
- * flow this anchor pointed at. The library begins a social sign-in with a `POST` that
- * *answers* with the github.com URL rather than redirecting to it, so an anchor is now the
- * wrong shape and this control is temporarily inert in fact if not in markup.
- * [#718](https://github.com/NobuData/ouroboros/issues/718) is the issue that replaces it
- * with `authClient.signIn.social`, and it is where the card's shape is reconsidered.
+ * flow that anchor pointed at. The library begins a social sign-in with a `POST` that
+ * *answers* with the github.com URL rather than redirecting to it, so the anchor became a
+ * `GET` at a `POST`-only route — a `404` from the service, which is what it had been
+ * answering since. `sign-in-button.tsx` is the control that replaces it, and `sign-in.ts` is
+ * the request behind it; this card only says which provider.
+ *
+ * **The card no longer takes a sign-in URL**, which is what let the anchor be wrong from
+ * here. Where a sign-in *goes* is now the service's answer to a request, and the path that
+ * request is made to is same-origin (`proxy.ts`) — so there is no address for a screen to be
+ * handed, and none to be handed a stale one.
  *
  * ### Why the SSO form is present but inert
  *
@@ -48,15 +54,10 @@ const SSO_UNAVAILABLE =
 /**
  * Step 1's card.
  *
- * @param props.signInHref Absolute URL of BetterAuth's sign-in route on `ouroboros-rest`.
- *   Not yet followable as a link — see this module's header, and #718.
  * @param props.user The signed-in person, or `null` while nobody is.
  * @returns The card: the sign-in control, or the identity it produced.
  */
-export function SignInCard({
-  signInHref,
-  user,
-}: Readonly<{ signInHref: string; user: SessionUser | null }>) {
+export function SignInCard({ user }: Readonly<{ user: SessionUser | null }>) {
   if (user !== null) {
     return (
       <Card as="section" tone="ground" size="lg" aria-labelledby="login-step-1">
@@ -82,10 +83,10 @@ export function SignInCard({
         Sign in
       </h1>
 
-      <Button tone="primary" size="lg" block href={signInHref}>
+      <SignInButton request={socialSignIn(GITHUB_PROVIDER)}>
         <GithubMark />
         Continue with GitHub
-      </Button>
+      </SignInButton>
 
       <p className="login-or">or enterprise SSO</p>
 

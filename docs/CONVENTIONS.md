@@ -202,11 +202,24 @@ its image; a single run can still be overridden without editing anything
 for a checkout, not a second source of truth competing with the platform. Copy the
 template, edit it, and `yarn dev` works with nothing exported.
 
-Both services implement exactly that list, deliberately in step:
+All three services implement exactly that list, deliberately in step:
 [`settings._ENV_FILES`](../ouroboros-engine/src/ouroboros_engine/settings.py) in the
 engine, [`ENV_FILES`](../ouroboros-rest/src/modules/config/dotenv.ts) in the NestJS
-layer. Neither reads a file a test hands it an environment — a suite whose result depends
-on what a developer has in their `.env` fails on one machine and passes on another.
+layer, and [`envFiles`](../ouroboros-ui/env-files.ts) in the UI. None of them reads a file
+a test hands it an environment — a suite whose result depends on what a developer has in
+their `.env` fails on one machine and passes on another.
+
+They are parallel implementations rather than one shared module because the first is
+Python; what is shared is the ordering, and each names the other two. The UI's differs in
+the two ways Next.js forces and no others: its list holds **only** the repo-root file,
+because Next.js has already loaded the module's own from the project directory before any
+of it runs; and it fills `process.env` in place rather than composing an environment,
+because that is what an application reading `process.env` needs. It fills only names that
+are still absent, which is the same precedence expressed against a global. The call site
+is [`instrumentation.ts`](../ouroboros-ui/instrumentation.ts) rather than
+`next.config.ts` — a standalone build serialises the config and never evaluates that file
+again, so an environment assembled there would be the build machine's, frozen into the
+image.
 
 Note that `turbo` does **not** load `.env`. `globalDependencies` in `turbo.json` puts it
 in the task hash and `globalEnv` decides which variables survive turbo's strict
