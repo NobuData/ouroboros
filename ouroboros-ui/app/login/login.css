@@ -5,12 +5,16 @@
  * (docs/DESIGN_SYSTEM_APP_SHELL.md § 5 renders login *outside* the shell, so nothing here
  * shares the shell's chrome). What it is not is a stylesheet to copy: it was drawn against
  * the dark palette with literal colours, and every one of them has a token that means the
- * same thing — `--bg0` is `--ground`, `--border` is `--line`, `--mut` is `--ink-mut`,
- * `--glow` is `--accent-glow`. The two rules from docs/CONVENTIONS.md § 6 hold here as they
- * do in shell.css, and `__tests__/styles.test.ts` fails the build on either: no colour
+ * same thing. docs/DESIGN_TOKENS.md § Departures is the whole rename — `--bg0/--bg1` are
+ * `--ground-deep/--ground`, `--border/--border-strong` are `--line/--line-strong`, `--mut`
+ * is `--ink-mut`, `--faint` is `--ink-faint`, and `--glow-soft/--glow` are
+ * `--accent-tint/--accent-glow`. The two rules from docs/CONVENTIONS.md § 6 hold here as
+ * they do in shell.css, and `__tests__/styles.test.ts` fails the build on either: no colour
  * literal outside app/tokens.css, and rem for every length the reader's font-size
- * preference should scale. Hairlines and the grid dot stay in px, because a texture that
- * grows with the type is a different texture.
+ * preference should scale. Hairlines and the dot grid stay in px, because a texture that
+ * grows with the type is a different texture — the glows do not, because they light the
+ * content rather than sit behind it, and a glow that stayed put while the lockup and the
+ * lines grew would slide off the thing it is lighting.
  *
  * Sizes come from the mockup's pixels mapped onto the nearest token — the 24px brand lines
  * are `--t-2xl`, the 20px card title is `--t-xl` — rather than being re-specified. Where
@@ -53,6 +57,30 @@
  * The glow, the low corner wash and the dot grid the mockup layers over the page ground.
  * `transparent` is a keyword rather than a colour, which is what lets a gradient stop be
  * written here at all; every stop that carries a colour carries a token.
+ *
+ * **The ground under them is `--ground`, where the mockup writes `--bg0`** — the one
+ * deliberate substitution on this panel, and the audit (#717) is where it was weighed. The
+ * rename table above makes `--bg0` `--ground-deep`, which the token sheet keeps for
+ * gutters and backdrops: docs/DESIGN_TOKENS.md measures no text against it, and
+ * scripts/lib/contrast.awk puts the trust row at 4.43:1 on it in the light palette,
+ * against a minimum of 4.5 — under AA on the one surface this panel exists to carry words
+ * on. The mockup never met that, being dark-only, and in the dark palette `--bg0` is the
+ * better ground; a ground chosen per palette is a fork of the sheet, which is the thing
+ * tokens exist to prevent. Adopting it means measuring `--ground-deep` as a text surface
+ * in the token sheet, which is a #16 change and not a stylesheet one — the same answer,
+ * for the same reason, that the monogram's three gradients got further down this file.
+ *
+ * Two of the three layers are the mockup's own literals mapped onto tokens; the corner
+ * wash is the one that has no exact step. The mockup fills it with `--accent-deep` at 8%
+ * and the sheet publishes no accent at 8%, so it takes `--accent-wash`, the only step
+ * below the `--accent-tint` the main glow already uses. It is dimmer than the mockup's,
+ * which is the right direction to be wrong in: it is the layer furthest from the type.
+ *
+ * The single `gap` stands in for the mockup's two margins — 44px under the lockup, 52px
+ * under the lines — and it is one value on purpose. Neither is on the spacing scale, and
+ * rounding each to its nearest step would give 32 and 64: an 8px difference in the drawing
+ * turned into a 32px one on the page. A uniform `--sp-11` keeps the rhythm the mockup has,
+ * a little tighter than it draws it.
  */
 .login-brand {
   flex: 55 1 0;
@@ -64,7 +92,7 @@
   background:
     radial-gradient(56.25rem 32.5rem at 60% 32%, var(--accent-tint), transparent 62%),
     radial-gradient(43.75rem 25rem at -10% 110%, var(--accent-wash), transparent 60%),
-    radial-gradient(var(--grid-dot) 1px, transparent 1px) 0 0 / 1.625rem 1.625rem,
+    radial-gradient(var(--grid-dot) 1px, transparent 1px) 0 0 / 26px 26px,
     var(--ground);
 }
 
@@ -86,11 +114,23 @@
   aspect-ratio: 640 / 471;
 }
 
+/*
+ * Nothing but placement. The mockup hangs `mix-blend-mode: screen` and a 34px
+ * `drop-shadow(var(--glow))` on its lockup, and both are the *same* workaround rather than
+ * two effects: that crop was cut with its ground still attached, so it had to be blended
+ * onto the panel and then given back the halo the blend flattened. docs/BRAND.md § Rules
+ * bans each of them on these assets by name — no filter, no shadow behind the mark, no
+ * `mix-blend-mode: screen`, "the mockups' older crops need it because their background was
+ * never removed; these do not" — and the #14 pair is de-grounded and carries its own glow
+ * in the artwork. So the panel places the picture and paints nothing over it, which is
+ * also what the header's mark pair does (shell.css) and what makes the light treatment
+ * legible: a `--accent-glow` halo behind the navy wordmark is a teal smear on a light
+ * ground, and it was there until #717 measured this panel against the mockup.
+ */
 .login-brand__mark {
   grid-area: 1 / 1;
   width: 100%;
   height: auto;
-  filter: drop-shadow(0 0 2rem var(--accent-glow));
 }
 
 .login-brand__mark--dark {
@@ -133,13 +173,28 @@
   text-wrap: balance;
 }
 
-/* Three lines, three depths of ink: the claim, its expansion, and the payoff in accent. */
+/*
+ * Three lines, three depths of ink: the claim, its expansion, and the payoff in accent.
+ * The first carries no colour of its own because the one it would name is the one it
+ * already has — `--ink`, from body (globals.css) — and a rule that restates an inherited
+ * value is a second place to keep it correct.
+ */
 .login-brand__line:nth-child(2) {
   color: var(--ink-dim);
 }
 
+/*
+ * The payoff line, and the mockup's halo behind it restored by #717 — it is the one piece
+ * of the mockup's brand panel the port had dropped. `--accent-tint` is the rename of the
+ * `--glow-soft` the mockup uses, not the `--accent-glow` docs/BRAND.md reserves for live
+ * things, and the token is what makes the effect right in both palettes without a second
+ * rule: 12% cyan on the dark ground is the mockup's glow, and 10% of a deep teal spread
+ * over 24px behind dark text on a light one is nothing at all, which is what a glow should
+ * come to where there is no dark for it to sit in.
+ */
 .login-brand__line:nth-child(3) {
   color: var(--accent);
+  text-shadow: 0 0 1.5rem var(--accent-tint);
 }
 
 .login-brand__trust {
@@ -166,14 +221,19 @@
 
 /* ---------- auth panel (45%) ---------- */
 
+/*
+ * The mockup's `56px 32px`, on the spacing scale: `--sp-11` is the 32 exactly and `--sp-12`
+ * is the nearest step to the 56 — 8px above it, where the step below is 24px under. The
+ * `gap` this rule used to carry went with #717's audit: the panel has one child, and a gap
+ * between one box and nothing is a declaration a reader has to work out is inert.
+ */
 .login-auth {
   flex: 45 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-9);
-  padding: var(--sp-11) var(--sp-10);
+  padding: var(--sp-12) var(--sp-11);
   border-left: 1px solid var(--line);
   background: var(--surface);
 }
@@ -467,6 +527,18 @@ button.login-row:hover {
 /*
  * The mockup's own breakpoint: below 900px the split stacks, the auth panel's left
  * hairline becomes a top one, and the brand panel stops trying to fill a column.
+ *
+ * 56.25rem is that 900px and stays it. A media query resolves `rem` against the *initial*
+ * font size rather than the one `:root` declares (CSS Conditional § 4), so the font-scale
+ * preference (DESIGN_SYSTEM_APP_SHELL.md § 4) cannot move this line — which is the
+ * behaviour to want, since the thing being asked about is how wide the viewport is. What
+ * it does still follow is a reader who has raised their *browser's* base size, and a
+ * reader who reads at 24px wants the column sooner.
+ *
+ * The mockup takes the brand panel's padding from 64px to 56px here and the scale has no
+ * 56: `--sp-12` is 8px over it and the step below is 24px under, so the panel keeps its
+ * 64 and only the gutter widens. #717 measured that; before it the stacked panel dropped
+ * to `--sp-11`, half the mockup's padding on the layout with the least room to spare it.
  */
 @media (max-width: 56.25rem) {
   .login__split {
@@ -474,7 +546,7 @@ button.login-row:hover {
   }
 
   .login-brand {
-    padding: var(--sp-11) 8vw;
+    padding: var(--sp-12) 8vw;
   }
 
   .login-auth {

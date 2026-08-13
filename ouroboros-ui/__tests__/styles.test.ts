@@ -24,9 +24,46 @@ const SHEET = "tokens.css";
  * is not part of the word, or any of the colour functions. The lengths are CSS's own,
  * which is what keeps a `#faced` fragment identifier out of the results. Mirrors
  * `COLOUR_LITERAL` in scripts/verify-tokens.sh.
+ *
+ * It is matched against {@link code}, never the file, and #717's audit is where that
+ * became necessary. Three hex digits and a three-digit issue number are the same string:
+ * a sheet that names the issue it was written for — `#717`, `#698`, every ticket in this
+ * epic — reads as a colour to any regex, and these sheets cite their tickets constantly.
+ * A literal inside a comment paints nothing, so the prose was never what this rule was
+ * about.
  */
 const COLOUR_LITERAL =
   /#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})(?![0-9a-zA-Z-])|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/;
+
+/**
+ * A type size written in a unit the reader's font-size preference cannot move.
+ *
+ * The other half of docs/CONVENTIONS.md § 6: *"Font sizes are rem-based; px font sizes are
+ * lint-banned so the user font-scale preference scales every surface."* The preference is
+ * five steps of the root's `font-size`
+ * ([`DESIGN_SYSTEM_APP_SHELL.md` § 4](../../docs/DESIGN_SYSTEM_APP_SHELL.md), CQ.1/CQ.2),
+ * so one root change scales the product — and every absolute type size in a sheet is a
+ * piece of the product that stays behind, which at the 150% step is the difference between
+ * a page a low-vision reader can use and one they cannot.
+ *
+ * Both spellings, because `font: 600 13px/1.3 var(--f-ui)` sets a size as surely as
+ * `font-size` does. Absolute units only: `%`, `em`, `rem` and `ex` all move with the root.
+ */
+const ABSOLUTE_TYPE_SIZE = /font(?:-size)?:\s*[^;}]*?[\d.]+(?:px|pt|pc|in|cm|mm|Q)\b/;
+
+/**
+ * A stylesheet with its prose removed, so a rule can never be found inside a comment.
+ *
+ * These sheets explain themselves at length, and a comment recording what the mockup drew
+ * ("the 24px brand lines are `--t-2xl`") is the file obeying the rule rather than breaking
+ * it.
+ *
+ * @param name Path of the sheet, relative to `app/`.
+ * @returns Its declarations, with every `/* … *\/` block replaced by one space.
+ */
+function code(name: string): string {
+  return readFileSync(join(APP_DIR, name), "utf8").replace(/\/\*[\s\S]*?\*\//g, " ");
+}
 
 /**
  * Every stylesheet under `app/`, recursively, as paths relative to `app/`.
@@ -56,17 +93,25 @@ describe("the module's stylesheets", () => {
   it.each(sheets.filter((name) => name !== SHEET))(
     "%s carries no colour literal",
     (name) => {
-      const source = readFileSync(join(APP_DIR, name), "utf8");
-      const found = source.match(COLOUR_LITERAL);
-
-      expect(found?.[0] ?? null).toBeNull();
+      expect(code(name).match(COLOUR_LITERAL)?.[0] ?? null).toBeNull();
     },
   );
 
   it("keep every colour in the token sheet, so the check above has something to guard", () => {
-    const sheet = readFileSync(join(APP_DIR, SHEET), "utf8");
+    expect(code(SHEET)).toMatch(COLOUR_LITERAL);
+  });
 
-    expect(sheet).toMatch(COLOUR_LITERAL);
+  // The token sheet is not excused this one the way it is excused the colour rule: it is
+  // where a px type size would do the most damage, because every sheet below reads its
+  // scale from there and none of them would look wrong.
+  it.each(sheets)("%s sizes no type in a unit the font-scale preference cannot move", (name) => {
+    expect(code(name).match(ABSOLUTE_TYPE_SIZE)?.[0] ?? null).toBeNull();
+  });
+
+  it("keeps a rem type scale for that check to be about", () => {
+    // Without this the rule above would pass just as well on a module that had stopped
+    // sizing type at all, and say nothing.
+    expect(code(SHEET)).toMatch(/--t-[\dA-Za-z]+:\s*[\d.]+rem/);
   });
 });
 
