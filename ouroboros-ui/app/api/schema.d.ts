@@ -2035,16 +2035,34 @@ export interface components {
         /**
          * @description The workspace this request is operating in — its slug or its uuid.
          *
+         *     **An override, not the answer.** Since
+         *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+         *     in is the session's active organization, which is server state: it is set through
+         *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+         *     header can assert it. This header names a *different* workspace for one request —
+         *     which is how a client acts outside the active one without changing it for every other
+         *     request in flight. It is validated exactly as everything else is: a workspace the
+         *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+         *
          *     On the operations below it is **optional and redundant**: they already name a
          *     workspace in their path, which is the more specific of the two, and a header that
          *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
          *     silent preference for either. It is accepted here so that one client can set it on
-         *     every request, and it is how the operations that have no workspace in their path —
-         *     everything the epic adds after this one — say which workspace they mean.
+         *     every request, and it is how the operations that have no workspace in their path say
+         *     which workspace they mean.
          *
-         *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-         *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-         *     gets a `422` with `code: "tenant_required"`.
+         *     A caller who omits it is acting in their session's active organization. A session
+         *     that has none — a person who belongs to no workspace, one whose workspace was
+         *     deleted, one who was removed from it — gets a `400` with
+         *     `code: "organization_required"` on any operation that names no workspace of its own.
+         *     Every operation in this document names one in its path, so none of them can answer
+         *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+         *     adds are the first that will.
+         *
+         *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+         *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+         *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+         *     on the session.
          */
         TenantHeader: string;
         /**
@@ -2993,16 +3011,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3106,16 +3142,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3269,16 +3323,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3389,16 +3461,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3551,16 +3641,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3679,16 +3787,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3854,16 +3980,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -3976,16 +4120,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -4130,16 +4292,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -4265,16 +4445,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -4450,16 +4648,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -4571,16 +4787,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -4723,16 +4957,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -4885,16 +5137,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };
@@ -5013,16 +5283,34 @@ export interface operations {
                 /**
                  * @description The workspace this request is operating in — its slug or its uuid.
                  *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
                  *     On the operations below it is **optional and redundant**: they already name a
                  *     workspace in their path, which is the more specific of the two, and a header that
                  *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
                  *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path —
-                 *     everything the epic adds after this one — say which workspace they mean.
+                 *     every request, and it is how the operations that have no workspace in their path say
+                 *     which workspace they mean.
                  *
-                 *     A caller who belongs to exactly one workspace may omit it everywhere; theirs is
-                 *     inferred. A caller who belongs to several, on an operation with no `{tenantId}`,
-                 *     gets a `422` with `code: "tenant_required"`.
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     Every operation in this document names one in its path, so none of them can answer
+                 *     it today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)
+                 *     adds are the first that will.
+                 *
+                 *     It replaces `tenant_required`, which was `422` and meant *you belong to several
+                 *     workspaces and named none*. Nothing is inferred from how many workspaces somebody
+                 *     belongs to any more: the choice is made once, at sign-in or in the picker, and lives
+                 *     on the session.
                  */
                 "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
             };

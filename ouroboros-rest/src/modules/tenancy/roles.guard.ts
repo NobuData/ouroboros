@@ -27,7 +27,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
-import type { TenantRole } from "../db/schema";
+import type { OrganizationRole } from "../db/schema";
 import { currentMembership } from "./tenant.context";
 import { forbidden } from "./tenancy.errors";
 
@@ -43,19 +43,19 @@ export const REQUIRED_ROLES = "ouroboros:tenancy:roles";
  *
  * `member` and `viewer` are absent on purpose: mockup 17 shows a member list where a
  * Maintainer can invite and a Viewer cannot, and `admin` is the stored role behind that
- * Maintainer (V002).
+ * Maintainer (V002, and `member.role` since V005).
  */
-export const ADMINISTRATORS: readonly TenantRole[] = ["owner", "admin"];
+export const ADMINISTRATORS: readonly OrganizationRole[] = ["owner", "admin"];
 
 /**
- * Require one of these roles in the active tenant.
+ * Require one of these roles in the active workspace.
  *
  * @param roles - The roles that suffice. Holding *any* of them is enough; there is no
  *   ordering between them, because `owner` and `admin` differ in what they may do rather
  *   than in rank.
  * @returns The decorator. Applied to a class it covers every route in it.
  */
-export const Roles = (...roles: TenantRole[]): CustomDecorator =>
+export const Roles = (...roles: OrganizationRole[]): CustomDecorator =>
   SetMetadata(REQUIRED_ROLES, roles);
 
 @Injectable()
@@ -74,10 +74,10 @@ export class RolesGuard implements CanActivate {
    *   handler. A programming mistake, and one that must not read as "allowed".
    */
   canActivate(context: ExecutionContext): boolean {
-    const required = this.reflector.getAllAndOverride<TenantRole[] | undefined>(REQUIRED_ROLES, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const required = this.reflector.getAllAndOverride<OrganizationRole[] | undefined>(
+      REQUIRED_ROLES,
+      [context.getHandler(), context.getClass()],
+    );
 
     if (required === undefined || required.length === 0) {
       return true;
@@ -92,10 +92,30 @@ export class RolesGuard implements CanActivate {
       );
     }
 
-    if (!required.includes(membership.role)) {
-      throw forbidden(membership.role, required);
+    // Any of them is enough, and a membership may carry more than one role — `member.role`
+    // holds a comma-separated list where somebody does (V005). Holding one role that suffices
+    // and three that do not is a caller who may proceed.
+    if (!membership.roles.some((held) => required.includes(held))) {
+      throw forbidden(heldRoles(membership.roles), required);
     }
 
     return true;
   }
+}
+
+/**
+ * The roles a refusal echoes back, as one string.
+ *
+ * `details.role` is documented in `openapi.yaml` as the role the caller holds, and it stays a
+ * string here even though a membership carries a list: for every membership anything in this
+ * product creates, the list has one entry and this is that word. A member holding two roles
+ * sees both, comma-separated, which is exactly how the column spells it — so what a client is
+ * shown matches what an administrator would read out of the database.
+ *
+ * @param roles - What the membership carries.
+ * @returns Them, joined. Empty when the membership carries no role this service recognises,
+ *   which is honest: there is no word to show, and the caller was refused because of it.
+ */
+function heldRoles(roles: readonly string[]): string {
+  return roles.join(",");
 }

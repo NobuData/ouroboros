@@ -15,7 +15,7 @@ import {
   type ExecutionContext,
 } from "@nestjs/common";
 
-import type { Tenant } from "../db/schema";
+import type { Organization } from "../db/schema";
 import { currentMembership, type ActiveMembership } from "./tenant.context";
 
 /**
@@ -64,16 +64,22 @@ export const TenantOptional = (): CustomDecorator => SetMetadata(TENANT_OPTIONAL
  *
  * ```ts
  * @Get("members")
- * list(@CurrentTenant() tenant: Tenant): Promise<Page<MemberResource>> { … }
+ * list(@CurrentTenant() tenant: Organization): Promise<Page<MemberResource>> { … }
  * ```
+ *
+ * **The name is unchanged and the row is a different table.** Since
+ * [#713](https://github.com/NobuData/ouroboros/issues/713) this is an `ouroboros.organization`
+ * row — #708 moved every tenant into that table and dropped the old one — and the decorator
+ * keeps the name it had because renaming it would ripple through every controller and buy
+ * nothing. The tenant *is* the organization; what changed is where the row is read from.
  *
  * @throws {Error} If no tenant was established — which means the decorator is on a
  *   `@TenantOptional()` or `@AllowAnonymous()` route. A programming mistake rather than a request's,
- *   and it fails loudly here rather than handing a handler `undefined` typed as a `Tenant`,
- *   which is how a query ends up filtered by nothing at all.
+ *   and it fails loudly here rather than handing a handler `undefined` typed as a row, which
+ *   is how a query ends up filtered by nothing at all.
  */
 export const CurrentTenant = createParamDecorator(
-  (_data: unknown, _context: ExecutionContext): Tenant => requireMembership().tenant,
+  (_data: unknown, _context: ExecutionContext): Organization => requireMembership().tenant,
 );
 
 /**

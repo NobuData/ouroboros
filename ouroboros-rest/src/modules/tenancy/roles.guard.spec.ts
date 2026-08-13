@@ -2,8 +2,9 @@ import { Controller, Delete, Get, Patch, Post, type ExecutionContext } from "@ne
 import { Reflector } from "@nestjs/core";
 
 import type { DomainError } from "../errors/error.envelope";
-import type { Tenant, TenantRole } from "../db/schema";
+import type { OrganizationRole } from "../db/schema";
 import { DomainsController } from "./domains.controller";
+import { membershipIn } from "./organization.fixture";
 import { MembersController } from "./members.controller";
 import { OrgsController } from "./orgs.controller";
 import { ReposController } from "./repos.controller";
@@ -21,15 +22,6 @@ import { TenantsController } from "./tenants.controller";
  * without `@Roles()` would be open to every `viewer` in the workspace, and no behavioural
  * test would notice, because there would be no test for a route nobody wrote one for.
  */
-
-const TENANT: Tenant = {
-  id: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-  slug: "acme",
-  display_name: "Acme, Inc.",
-  status: "active",
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
 
 @Controller()
 class Guarded {
@@ -70,24 +62,44 @@ function contextFor(target: new (...args: never[]) => object, handler: unknown):
 }
 
 /**
- * Run the guard as somebody holding a role.
+ * Run the guard as somebody holding one role.
  *
- * @param role - What they hold in the active tenant.
+ * @param role - What they hold in the active workspace.
  * @param context - The route.
  * @returns Whether it allowed the request.
  * @throws {ForbiddenError} When it did not.
  */
-function asRole(role: TenantRole, context: ExecutionContext): boolean {
+function asRole(role: OrganizationRole, context: ExecutionContext): boolean {
+  return asRoles([role], context);
+}
+
+/**
+ * Run the guard as somebody holding several.
+ *
+ * `member.role` is un-CHECK-constrained text and holds a comma-separated list where the
+ * library was asked to grant two roles at once (V005), so "several" is a state the guard has
+ * to answer for rather than one this suite invented.
+ *
+ * @param roles - What they hold. May be empty — a membership carrying only words this service
+ *   does not recognise.
+ * @param context - The route.
+ * @returns Whether it allowed the request.
+ * @throws {ForbiddenError} When it did not.
+ */
+function asRoles(roles: readonly OrganizationRole[], context: ExecutionContext): boolean {
   return runWithTenantContext(() => {
-    setTenantContext({ membership: { tenant: TENANT, role } });
+    setTenantContext({ membership: membershipIn(roles) });
     return guard.canActivate(context);
   });
 }
 
 /** The roles a handler declares, as the guard reads them. */
-function declaredRoles(target: new (...args: never[]) => object, handler: unknown): TenantRole[] {
+function declaredRoles(
+  target: new (...args: never[]) => object,
+  handler: unknown,
+): OrganizationRole[] {
   return (
-    reflector.getAllAndOverride<TenantRole[] | undefined>(REQUIRED_ROLES, [
+    reflector.getAllAndOverride<OrganizationRole[] | undefined>(REQUIRED_ROLES, [
       handler as () => unknown,
       target,
     ]) ?? []
@@ -99,7 +111,7 @@ describe("a route that declares no roles", () => {
     // Not the same laxity as `@AllowAnonymous()`: the tenant guard has already refused anybody who
     // is not a member, so the default is "any of the four roles" rather than "anybody". A
     // `viewer` is a role that exists to be able to look.
-    for (const role of ["owner", "admin", "member", "viewer"] as TenantRole[]) {
+    for (const role of ["owner", "admin", "member", "viewer"] as OrganizationRole[]) {
       expect(asRole(role, contextFor(Guarded, Guarded.prototype.read))).toBe(true);
     }
   });
@@ -150,6 +162,42 @@ describe("a route that declares roles", () => {
     }
 
     expect(failure?.details).toEqual({ role: "viewer", required: ["owner", "admin"] });
+  });
+
+  it("echoes both roles when the caller holds two, exactly as the column spells them", () => {
+    // `details.role` is documented in openapi.yaml as *the role you hold*, and for every
+    // membership this product creates that is one word. Where it is two, showing both is what
+    // makes the field match what an administrator would read out of the database.
+    let failure: DomainError | undefined;
+
+    try {
+      asRoles(["member", "viewer"], contextFor(Guarded, Guarded.prototype.administer));
+    } catch (error) {
+      failure = error as DomainError;
+    }
+
+    expect(failure?.details).toEqual({ role: "member,viewer", required: ["owner", "admin"] });
+  });
+
+  it("allows a membership that holds a sufficient role among others", () => {
+    // The library grants an array of roles by writing them comma-separated into one column.
+    // Read as a single word, `admin,member` would match nothing a route asks for — an admin
+    // refused every mutation, with the database showing them as an admin.
+    expect(asRoles(["admin", "member"], contextFor(Guarded, Guarded.prototype.administer))).toBe(
+      true,
+    );
+  });
+
+  it("blocks a membership whose every role is insufficient", () => {
+    expect(() =>
+      asRoles(["member", "viewer"], contextFor(Guarded, Guarded.prototype.administer)),
+    ).toThrow();
+  });
+
+  it("blocks a membership holding no role this service recognises", () => {
+    // `member.role` carries no check constraint, so a word nothing here knows is possible —
+    // and it grants nothing, which is the only safe reading of a permission nobody defined.
+    expect(() => asRoles([], contextFor(Guarded, Guarded.prototype.administer))).toThrow();
   });
 
   it("narrows to one role when a handler asks for one", () => {

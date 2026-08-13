@@ -12,6 +12,7 @@
  */
 
 import {
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   InvalidRequestError,
@@ -36,8 +37,16 @@ export const TENANCY_ERRORS = {
    * identifiers is trying to learn.
    */
   tenantNotFound: "tenant_not_found",
-  /** The request named no tenant and the caller belongs to none, or to more than one. */
-  tenantRequired: "tenant_required",
+  /**
+   * The session names no active workspace, and the request named none either.
+   *
+   * The successor to `tenant_required`
+   * ([#713](https://github.com/NobuData/ouroboros/issues/713)). That code answered `422` and
+   * meant *you belong to several workspaces and named none*; this one answers `400` and
+   * means *choose one*, which is a thing mockup 01 Step 2 exists to let somebody do and
+   * which `POST /api/auth/organization/set-active` is how they do it.
+   */
+  organizationRequired: "organization_required",
   /** The path and the `X-Ouro-Tenant` header named different tenants. */
   tenantMismatch: "tenant_mismatch",
   /** The caller is a member, and their role does not permit this. */
@@ -79,18 +88,24 @@ export function tenantNotFound(tenantId: string): NotFoundError {
 }
 
 /**
- * `422` — this request names no tenant, and one could not be inferred.
+ * `400` — this request operates in no workspace, and one has to be chosen.
  *
- * Raised when the caller belongs to no tenant at all, or to several and said which in
- * neither the path nor the header. It leaks nothing: the caller is being told to name
- * something, not told anything about what exists.
+ * Raised when the session carries no `activeOrganizationId` and the request named nothing in
+ * its path or its `X-Ouro-Tenant` header. Three states reach it, and the answer is the same
+ * for all three because the caller's next move is the same: a session made before the person
+ * belonged to anything, a session whose workspace was deleted (V005 nulls the pointer), and a
+ * person who has been removed from the workspace they were acting in.
+ *
+ * It leaks nothing. The caller is being told to choose, not told anything about what exists —
+ * `details` is empty for that reason, and the message names the endpoint that records a
+ * choice rather than any workspace they might make it from.
  *
  * @returns The error to throw.
  */
-export function tenantRequired(): InvalidRequestError {
-  return new InvalidRequestError(
-    TENANCY_ERRORS.tenantRequired,
-    "Name the workspace this request is for, in the X-Ouro-Tenant header.",
+export function organizationRequired(): BadRequestError {
+  return new BadRequestError(
+    TENANCY_ERRORS.organizationRequired,
+    "Choose a workspace before making this request.",
   );
 }
 

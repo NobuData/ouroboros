@@ -1,5 +1,11 @@
-import { FIXTURE_INSTANT, FIXTURE_USER, principalFor } from "./principal.fixture";
 import {
+  FIXTURE_ACTIVE_ORGANIZATION,
+  FIXTURE_INSTANT,
+  FIXTURE_USER,
+  principalFor,
+} from "./principal.fixture";
+import {
+  activeOrganizationOf,
   principalOf,
   principalUser,
   SESSION_PROPERTY,
@@ -39,6 +45,37 @@ describe("reading the session off a request", () => {
 
   it("answers with nothing when no guard ran at all", () => {
     expect(principalOf({})).toBeUndefined();
+  });
+});
+
+describe("the workspace a session is acting in", () => {
+  it("is the pointer the organization plugin keeps on the session row", () => {
+    // The primary source of a request's tenant since
+    // [#713](https://github.com/NobuData/ouroboros/issues/713), and server state: only
+    // `setActiveOrganization` and session creation write it.
+    expect(activeOrganizationOf(principalFor())).toBe(FIXTURE_ACTIVE_ORGANIZATION);
+  });
+
+  it("is nothing for a session that is signed in and acting nowhere", () => {
+    // A valid session, and the state V005 made the column nullable to hold: somebody who
+    // belongs to no workspace, or whose workspace was deleted out from under them.
+    expect(activeOrganizationOf(principalFor(FIXTURE_USER, null))).toBeUndefined();
+  });
+
+  it("is nothing when the field is absent, which is the same thing to every caller", () => {
+    // The library writes no such field where the plugin is not configured. "Absent" and
+    // "null" have one consequence everywhere they are asked about, so they get one answer —
+    // code that branched on which it got would be branching on nothing.
+    const principal = principalFor();
+    const withoutField = { ...principal, session: { ...principal.session } };
+    delete (withoutField.session as { activeOrganizationId?: string | null }).activeOrganizationId;
+
+    expect(activeOrganizationOf(withoutField)).toBeUndefined();
+  });
+
+  it("is nothing on an anonymous route, where there is no session at all", () => {
+    expect(activeOrganizationOf(null)).toBeUndefined();
+    expect(activeOrganizationOf(undefined)).toBeUndefined();
   });
 });
 

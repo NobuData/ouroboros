@@ -43,7 +43,7 @@ edit — ten of these eleven shipped, so each disposition below now costs a migr
 | #22 `ouroboros-db: [3.4] GitHub org & repo enablement` | 🔴 **Closed** | **Amended** by B.3 — `V003__github_enablement.sql` shipped `github_orgs`/`github_repos`; same shape, FK re-pointed to `organization.id` with data migrated. |
 | #23 `ouroboros-db: [3.5] Dev seed data` | 🔴 **Closed** | ~~Amended by B.4~~ — **shipped as originally specified** (`R__dev_seed.sql`). B.4 is a rewrite of that one file; its production guard (`${ouro_dev_seed}`, false everywhere but the dev stack), its `5eed…` id convention and its two test files (`tests/seed.sql`, `tests/constraints.sql`) carry over unchanged. |
 | #31 `ouroboros-rest: [4.5] Tenancy module & API` | 🔴 **Closed** | **Amended** by C.4 — `src/modules/tenancy/` exists and serves the custom API. Member CRUD and invitations move to org-plugin endpoints; the module keeps domains + org/repo enablement. |
-| #32 `ouroboros-rest: [4.6] Tenant-context resolution middleware` | 🔴 **Closed** | **Amended** by C.3 — the shipped middleware resolves tenant from `X-Ouro-Tenant` against `tenant_members`. C.3 reworks it in place: `activeOrganizationId` becomes primary, the header demoted to an override. |
+| #32 `ouroboros-rest: [4.6] Tenant-context resolution middleware` | 🔴 **Closed** | **Amended** by C.3 — ✅ **done**. The session's `activeOrganizationId` is primary, `X-Ouro-Tenant` is a validated override against `member`, and `422 tenant_required` became `400 organization_required`. The path parameter, the mismatch rule and the `404` are unchanged. |
 | #37 `ouroboros-rest: [4.11] Integration test harness` | 🔴 **Closed** | **Extended** by C.5 (auth-flow suites) — the Testcontainers harness exists and `auth.integration-spec.ts` already uses it. |
 | #38 `ouroboros-rest: [4.12] Security baseline hardening` | 🟢 **Open** (`v2`) | **Reduced** by E.4 — the only one still open. DB-backed sessions (A.4) make its "revocation strategy" work item obsolete; rate limiting moves to E.4. Its body is trimmed during filing. |
 | #43 `ouroboros-ui: [5.5] Typed API client from OpenAPI` | 🔴 **Closed** | **Amended** by D.1 — the generated client exists (`app/api/session.ts`, `tenants.ts`, `tenant.ts`). Auth routes move to the BetterAuth client; the generated client keeps everything else. |
@@ -674,8 +674,10 @@ NODE_ENV=production  ─▶ [GitHub] only — password route disabled
 > tenant, by spot value rather than exit code. `R__dev_seed.sql` writes the BetterAuth
 > shape now, `tests/constraints.sql` was rebuilt around the surviving schema, and its
 > V006 section asserts the four dropped tables **stay** gone — a migration that
-> recreated one fails `ci/db`. `modules/tenancy` still reads the old names; that is
-> **C.3 · #713 / C.4 · #714**, and `ci/rest` stays red until they land.
+> recreated one fails `ci/db`. **C.3 · #713 has since re-pointed the tenant context** at
+> `organization` and `member`; `modules/tenancy`'s own repositories still read the old
+> names, which is **C.4 · #714**, and `ci/rest`'s integration suites stay red until it
+> lands.
 >
 > **B.4 · #709 has shipped and has left the table below — the seed is auth-aware.**
 > [`ouroboros-db/migrations/R__dev_seed.sql`](../ouroboros-db/migrations/R__dev_seed.sql)
@@ -1020,9 +1022,46 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 > #714** is still what reconciles the schema type and the tenancy module; nothing here
 > pre-empts it.
 
+> **C.3 · #713 has shipped and has left the table below.** The tenant context reads the
+> session first: `TenantResolver` takes the request's *facts* — who is asking, the session's
+> `activeOrganizationId`, the headers, the route parameters — and resolves them against
+> `organization` and `member` through a repository of its own
+> ([`organization.repository.ts`](../ouroboros-rest/src/modules/tenancy/organization.repository.ts)),
+> which are the tables #708 moved tenancy into. `X-Ouro-Tenant` still works and is now an
+> explicit per-request override rather than the answer; `{tenantId}` in the path still wins
+> over both, so **every route that resolved a tenant before this change still resolves the
+> same tenant after it**. The sole-membership fallback is gone and lost nothing: #704 stamps
+> a person's earliest membership onto their session when it is created, so what used to be
+> inferred per request is now decided once, where the person can also change it.
+>
+> Two answers changed, both deliberately. `422 tenant_required` is **replaced by `400
+> organization_required`** — a session acting nowhere is asked to *choose a workspace*, which
+> is a thing Step 2 exists to let somebody do, and the same answer covers a deleted workspace
+> and a person removed from one, because the remedy is identical. `404` is unchanged for
+> anything the *request* named: a workspace that does not exist and one the caller is not in
+> stay indistinguishable, which is the rule #32 was written for. No operation in
+> `openapi.yaml` can answer the `400` yet — every tenant-scoped one names its workspace in
+> its path — and **C.4 · #714**'s endpoints are the first that will.
+>
+> `ActiveMembership` carries **roles, plural**. `member.role` is un-CHECK-constrained text
+> that holds a comma-separated list where the plugin was asked to grant two (V005's own
+> column comment), and read as one word `admin,member` would have matched no `@Roles()` at
+> all — an administrator locked out of every mutation, with the database showing them as an
+> admin. A word this service does not recognise grants nothing rather than being trusted, and
+> `KNOWN_ROLES` is asserted against `ORGANIZATION_ROLE_IDS` so the two lists cannot drift.
+> The decorators keep their names and signatures: `@CurrentTenant()` hands back an
+> `organization` row now, which is what a tenant *is* since #708.
+>
+> `db/schema.ts` gained `organization` and `member` as **read-only mirrors** and lost
+> nothing, so the tenancy module's other repositories still compile against the dropped
+> tables — reconciling those is **C.4 · #714**'s, unchanged. "Read-only" is a rule rather
+> than a type after a type was tried and did not hold: a column of
+> `ColumnType<T, never, never>` makes Kysely's `Insertable` resolve to `{}`, which accepts
+> every object literal rather than none, so `organization.repository.spec.ts` reads the
+> service's own source and fails on a write verb naming either table instead.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| C.3 · #713 | ouroboros-rest: [C.3] Tenant context from session active organization | Rework #32's **shipped** middleware in place: `activeOrganizationId` primary, header override, role guards | mvp, auth, rest | N (after A.5, B.3) | Y | M | ouroboros-rest |
 | C.4 · #714 | ouroboros-rest: [C.4] Org & repo enablement API on org-plugin roles | Rewrite #31's **shipped** tenancy module: Step 2 toggles, member CRUD dropped to the plugin | mvp, auth, rest | N (after B.3, C.3) | Y | **L** ⬆ | ouroboros-rest |
 | C.5 · #715 | ouroboros-rest: [C.5] Auth integration test suite | Testcontainers coverage of the full auth surface | mvp, auth, rest, ci | N (after A.6, C.4) | Y | M | ouroboros-rest |
 

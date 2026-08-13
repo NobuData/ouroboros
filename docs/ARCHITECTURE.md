@@ -446,10 +446,14 @@ sign-in operates as a member of exactly one tenant, resolved centrally rather th
 per-controller:
 
 1. The active tenant comes from three sources, most specific first: the `{tenantId}` in the
-   path, the `X-Ouro-Tenant` header (slug or uuid), then the user's sole membership when
-   they belong to exactly one tenant. A path and a header naming *different* tenants are
-   refused (`422 tenant_mismatch`) rather than resolved by precedence, so a client holding
-   a stale workspace cannot quietly act on another one.
+   path, the `X-Ouro-Tenant` header (slug or uuid, an explicit per-request override), then
+   the session's `activeOrganizationId` — server state written by the organization plugin's
+   `setActiveOrganization` and by session creation, which a client cannot assert
+   ([#713](https://github.com/NobuData/ouroboros/issues/713)). A path and a header naming
+   *different* tenants are refused (`422 tenant_mismatch`) rather than resolved by
+   precedence, so a client holding a stale workspace cannot quietly act on another one; a
+   session that names no tenant, on a request that names none either, is a `400
+   organization_required` asking the caller to choose one.
 2. Membership and role are looked up and attached to a request-scoped context
    (`AsyncLocalStorage`), so services read the current tenant without it being threaded
    through every signature. The store is opened by middleware and filled in by a guard,

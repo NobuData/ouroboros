@@ -10,6 +10,7 @@ import {
   SCHEMA_NAME,
   TABLE_COLUMNS,
   TABLE_NAMES,
+  LIBRARY_OWNED_TABLES,
   type Database,
   type NewTenant,
   type NewTenantDomain,
@@ -182,6 +183,14 @@ describe("Database", () => {
   });
 });
 
+/**
+ * The tables in {@link Database} that BetterAuth owns rather than this repository.
+ *
+ * V004's and V005's DDL is the library's own, down to the quoting, and two of the rules below
+ * are about *our* conventions — which the library is not bound by and must not be edited into.
+ */
+const LIBRARY_TABLES: readonly (keyof Database)[] = [...LIBRARY_OWNED_TABLES];
+
 describe("TABLE_COLUMNS", () => {
   /**
    * A column declared on a table interface that {@link TABLE_COLUMNS} does not list.
@@ -207,7 +216,9 @@ describe("TABLE_COLUMNS", () => {
 
   it("names every table in the Database interface", () => {
     expect(TABLE_NAMES).toEqual(Object.keys(TABLE_COLUMNS));
-    expect(TABLE_NAMES).toHaveLength(7);
+    // Seven of ours, plus the two of the library's that #713 reads: `organization` and
+    // `member`, the tables #708 moved tenancy into.
+    expect(TABLE_NAMES).toHaveLength(9);
   });
 
   it.each(TABLE_NAMES)("gives %s no duplicate columns", (table) => {
@@ -217,11 +228,25 @@ describe("TABLE_COLUMNS", () => {
   });
 
   it("uses the database's own names rather than JavaScript's", () => {
-    // A camel-cased name here would mean a `CamelCasePlugin` had been added, and the drift
-    // check compares these strings against `information_schema` literally.
-    const everyColumn = TABLE_NAMES.flatMap((table) => [...TABLE_COLUMNS[table]]);
+    // A camel-cased name on one of *our* tables would mean a `CamelCasePlugin` had been
+    // added, and the drift check compares these strings against `information_schema`
+    // literally.
+    //
+    // The library's two tables are exempt and are the reason this test names them: V004 and
+    // V005 are BetterAuth's own DDL, their columns really are `"organizationId"` and
+    // `"createdAt"` in the database, and translating them here would be the very thing this
+    // check exists to catch — a name that differs between the migration and the type.
+    const ours = TABLE_NAMES.filter((table) => !LIBRARY_TABLES.includes(table));
+    const everyColumn = ours.flatMap((table) => [...TABLE_COLUMNS[table]]);
 
     expect(everyColumn.filter((column) => /[A-Z]/.test(column))).toEqual([]);
+  });
+
+  it("keeps the library's tables spelled the way the library spells them", () => {
+    // The other direction of the same rule: these columns are quoted camelCase in V005, so a
+    // snake_cased one here would be a mirror that had started translating.
+    expect(TABLE_COLUMNS.member).toContain("organizationId");
+    expect(TABLE_COLUMNS.organization).toContain("createdAt");
   });
 });
 
