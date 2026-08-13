@@ -214,11 +214,12 @@ describe("TABLE_COLUMNS", () => {
 
   it("names every table in the Database interface", () => {
     expect(TABLE_NAMES).toEqual(Object.keys(TABLE_COLUMNS));
-    // Three of ours — `tenant_domains`, `github_orgs`, `github_repos` — plus the two of the
-    // library's that tenancy is authorized against: `organization` and `member`. It was nine
-    // until #714; V006 dropped `tenants`, `tenant_members`, `users` and `user_identities`,
-    // and this number is what fails if one of them is ever mirrored again.
-    expect(TABLE_NAMES).toHaveLength(5);
+    // Four of ours — `tenant_domains`, `github_orgs`, `github_repos`, and V007's
+    // `user_preferences` (#649) — plus the two of the library's that tenancy is authorized
+    // against: `organization` and `member`. It was nine until #714; V006 dropped `tenants`,
+    // `tenant_members`, `users` and `user_identities`, and this number is what fails if one
+    // of them is ever mirrored again.
+    expect(TABLE_NAMES).toHaveLength(6);
   });
 
   it("mirrors no table V006 dropped", () => {

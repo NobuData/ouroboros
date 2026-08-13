@@ -421,7 +421,7 @@ e2e: fixed chrome ✓ · nav states ×11 ✓ · rail/drawer ✓ · restoration �
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CQ.1 | #648 | 🟢 Done | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
-| CQ.2 | #649 | 🟡 Open | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
+| CQ.2 | #649 | 🟢 Done | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
 | CQ.3 | #650 | 🟡 Open | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue CQ.1 — ouroboros-ui: [CQ.1] rem-based token scale & px lint
@@ -484,9 +484,51 @@ stylelint: "font-size: 12px" ─▶ ✗ error (use rem token)
 
 ### Issue CQ.2 — ouroboros-rest: [CQ.2] Font-size preference & no-flash boot
 
-> **GitHub issue:** #649 · **Status:** 🟡 Open · **Parent epic:** #641
+> **GitHub issue:** #649 · **Status:** 🟢 Done · **Parent epic:** #641
 
-- **Problem Statement:** The description's ask: adjustable font size for
+> **Shipped.** The engine end to end: a `user_preferences` table (V007), `GET`/`PATCH
+> /api/v1/me/preferences` in a new
+> [`preferences module`](../ouroboros-rest/src/modules/preferences/preferences.module.ts),
+> and the browser half in [`app/font-scale.ts`](../ouroboros-ui/app/font-scale.ts) — the
+> boot script in the root layout, the five `:root[data-font-scale]` rules in
+> `globals.css`, the localStorage mirror, and the session-load reconciliation
+> (`app/shell/font-scale-sync.tsx`, server wins). `preferences.integration-spec.ts` proves
+> the criteria a mock cannot: the two-users-two-scales isolation, the 401, the 422 with
+> the field named, and the upsert staying one row.
+>
+> **"BA user prefs" became a Flyway table, deliberately.** The issue sketched the
+> preference on the account surface — BetterAuth `additionalFields` — and that is the one
+> place it must not live: `betterauth-schema.sql` is a rendered snapshot of the library's
+> expected DDL, held by ci/db, so a product column there is either snapshot drift or
+> application-owned DDL, and D3 says Flyway owns every table. `ouroboros.user_preferences`
+> references `"user"` and cascades with it; #31 turns out to have been the *pattern* (a
+> session-authed, person-scoped surface), not a home — nothing called an
+> account-preferences surface existed to build on.
+>
+> **The value is a label, not a number.** `font_scale` is text under a named CHECK, the
+> house idiom, mirrored as a TS union and as the contract's string enum: `'100.0'` must
+> not equal `'100'`, nothing does arithmetic with the step, and JSON would make a numeric
+> 87.5 a float. The same five words appear in exactly four authorities — the CHECK, the
+> schema union, the contract enum, the UI vocabulary — each held to the next by a test.
+>
+> **The controls are deliberately absent.** The stepper is CP.3's (#645, next in this
+> stack); the Settings → Appearance row is #492's, whose issues-table row in the mockup-17
+> roadmap already carries the amendment. What this ticket ships is the store both controls
+> will subscribe to (`useFontScale()`), which is also how the "two controls stay in sync"
+> criterion is met: there is one value for them to disagree about, and no code by which
+> they could.
+>
+> **Reconciliation is one direction.** On session load the shell reads the account's scale
+> and corrects the paint (a shared browser, a change made on another machine); it never
+> PATCHes the value back, because a write that echoes a read is at best a no-op and at
+> worst a race against a choice being made on another device. A control's press is the
+> only writer: apply locally (the live preview), then `saveFontScale`, whose failure is
+> quiet — the reader is already reading at the size they chose.
+>
+> **What is left to CP.5 (#647) and CQ.3 (#650), by this roadmap's own split:** the
+> throttled-reload no-flash proof and the reflow-artifact criterion are browser
+> observations — jsdom computes no layout and the e2e leg deliberately does not run on
+> pull requests — and the scale × theme × page screenshot matrix is CQ.3's entire remit.
   high-resolution monitors — per user, instant, persistent, and applied
   without a flash of wrong-size text (spec §4; decision S4).
 - **Solution/Scope:** **Pref API**: user preference `font_scale` CHECK

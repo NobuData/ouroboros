@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { FONT_SCALES } from "@/app/font-scale";
 import { THEME_FADE_ATTRIBUTE, THEME_FADE_MS } from "@/app/theme";
 
 /**
@@ -160,6 +161,21 @@ describe("globals.css", () => {
       ["--f-mono", "--font-mono"],
     ]) {
       expect(source).toContain(`${token}: var(${face},`);
+    }
+  });
+
+  it("turns every step the font-scale attribute can hold into a root percentage", () => {
+    // The CSS half of #649: `app/font-scale.ts` stamps `data-font-scale` (its boot script
+    // before first paint), and these five rules are what the stamp selects. Percentages so
+    // the preference composes with browser zoom; `:root[attr]` (0,1,1) so each rule
+    // outranks the bare `html { font-size: 100% }` (0,0,1) it moves. The list is the
+    // module's own, so a sixth step arrives here the day it arrives there.
+    for (const step of FONT_SCALES) {
+      expect(source).toMatch(
+        new RegExp(
+          `:root\\[data-font-scale="${step.replace(".", "\\.")}"\\]\\s*\\{\\s*font-size:\\s*${step.replace(".", "\\.")}%`,
+        ),
+      );
     }
   });
 });

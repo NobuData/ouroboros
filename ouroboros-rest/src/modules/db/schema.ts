@@ -220,6 +220,53 @@ export interface GithubOrgsTable {
 }
 
 /**
+ * `user_preferences.font_scale` — the five steps of the reader's font-size preference
+ * (V007, [#649](https://github.com/NobuData/ouroboros/issues/649)).
+ *
+ * The union is `user_preferences_font_scale`'s CHECK, mirrored the way this file's header
+ * says a CHECK becomes a type. Text rather than a number end to end, because the value is a
+ * *label* the UI stamps onto `<html>` — nothing computes with it, `'100.0'` must not equal
+ * `'100'`, and a numeric would round-trip through JSON as a float.
+ */
+export type FontScale = "87.5" | "100" | "112.5" | "125" | "150";
+
+/**
+ * The same five, as a list — what a DTO validates against and a test iterates.
+ *
+ * In the order the CHECK declares them, smallest step first. `satisfies` keeps the list and
+ * {@link FontScale} from drifting; `preferences.dto.ts` reads this rather than restating it.
+ */
+export const FONT_SCALES = [
+  "87.5",
+  "100",
+  "112.5",
+  "125",
+  "150",
+] as const satisfies readonly FontScale[];
+
+/** What a person with no stored choice reads as — the column default, § 4's default. */
+export const DEFAULT_FONT_SCALE: FontScale = "100";
+
+/**
+ * `ouroboros.user_preferences` — per-person product preferences (V007,
+ * [#649](https://github.com/NobuData/ouroboros/issues/649)).
+ *
+ * One row per person, keyed by the BetterAuth user id, holding **choices only**: a person
+ * with no row is at every default, and `preferences.repository.ts` synthesizes that answer
+ * rather than writing a row nobody asked for. Not a column on `"user"` — that table is the
+ * library's shape, held to `betterauth-schema.sql` by ci/db, and a product column there
+ * would be drift on the next `generate`. The migration's header carries the full argument.
+ */
+export interface UserPreferencesTable {
+  /** The person — `"user".id`, text (V004). Primary key: one row each. `on delete cascade`. */
+  user_id: string;
+  /** The reader's font-size step. Defaults to `'100'`; the CHECK holds it to the five. */
+  font_scale: Generated<FontScale>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.github_repos` — repositories within an enabled GitHub org (V003).
  *
  * Hung off the GitHub org rather than off the workspace: the workspace is reachable through
@@ -259,6 +306,7 @@ export interface Database {
   member: MemberTable;
   github_orgs: GithubOrgsTable;
   github_repos: GithubReposTable;
+  user_preferences: UserPreferencesTable;
 }
 
 /**
@@ -286,6 +334,7 @@ export const TABLE_COLUMNS = {
     "organization_id",
   ],
   github_repos: ["id", "org_id", "name", "enabled", "default_branch", "created_at", "updated_at"],
+  user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
 /** Every table name, for a caller that wants to iterate them. */
@@ -323,3 +372,8 @@ export type NewGithubOrg = Insertable<GithubOrgsTable>;
 export type GithubRepo = Selectable<GithubReposTable>;
 /** The columns an `insert` into `ouroboros.github_repos` may carry. */
 export type NewGithubRepo = Insertable<GithubReposTable>;
+
+/** A row of `ouroboros.user_preferences`, as a `select` returns it. */
+export type UserPreferences = Selectable<UserPreferencesTable>;
+/** The columns an `insert` into `ouroboros.user_preferences` may carry. */
+export type NewUserPreferences = Insertable<UserPreferencesTable>;

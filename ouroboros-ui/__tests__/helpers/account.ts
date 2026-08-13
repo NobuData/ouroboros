@@ -29,6 +29,8 @@ import { seededWorkspaces } from "./login";
 
 /** The seeded person, as `get-session` reports them (`ouroboros-db/migrations/R__dev_seed.sql`). */
 export const MENU_USER = {
+  /** BetterAuth's row id — what the font-scale reconciler (#649) keys its effect on. */
+  id: "user-ken",
   name: "Ken Suenobu",
   email: "ken@acme-robotics.dev",
   image: null as string | null,

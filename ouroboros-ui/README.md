@@ -1127,6 +1127,32 @@ provider makes to its own state just after mount, so every page load would annou
 change nobody made. The region is mounted empty from the start, because a live region
 added at the same moment as its text is not reliably read at all.
 
+## The font scale
+
+The five-step font-size preference of
+[`../docs/DESIGN_SYSTEM_APP_SHELL.md`](../docs/DESIGN_SYSTEM_APP_SHELL.md) § 4
+([#649](https://github.com/NobuData/ouroboros/issues/649)): **87.5 · 100 · 112.5 · 125 ·
+150 %** of the browser's base size, applied as `data-font-scale` on `<html>` and turned
+into a root `font-size` by five rules in [`app/globals.css`](app/globals.css). Every
+length in the product is rem (lint-enforced, #648), so that one attribute rescales every
+surface — and percentages compose with browser zoom rather than fighting it.
+
+The engine is [`app/font-scale.ts`](app/font-scale.ts) — the third instance of the
+theme's no-flash pattern, and the first whose **truth is the account rather than the
+browser**: `GET`/`PATCH /api/v1/me/preferences` owns the value, `localStorage` is only
+the mirror that makes the first paint instant, and
+[`app/shell/font-scale-sync.tsx`](app/shell/font-scale-sync.tsx) reconciles the two when
+the session loads (server wins — it is the cross-device truth). Writes hop through the
+Server Actions in [`app/shell/preference-actions.ts`](app/shell/preference-actions.ts),
+because the browser cannot reach REST. The boot script sits in the root layout beside
+the theme's, which is what makes `/login` honour the mirror with no session at all.
+
+Controls subscribe through `useFontScale()`
+([`app/use-font-scale.ts`](app/use-font-scale.ts)); the profile-menu stepper is CP.3
+([#645](https://github.com/NobuData/ouroboros/issues/645)) and the Settings → Appearance
+row is [#492](https://github.com/NobuData/ouroboros/issues/492) — two surfaces over this
+one store, which is the whole of how they stay in sync.
+
 ## Favicons and the web-app manifest
 
 [`public/`](public) already holds the browser and home-screen icon set, generated from

@@ -1,3 +1,4 @@
+import { FontScaleSync } from "./font-scale-sync";
 import { CONTENT_ID, OVERLAY_LAYER_ID, PANE_ATTRIBUTE } from "./regions";
 import { ShellHeader } from "./shell-header";
 import { SidebarNav } from "./sidebar-nav";
@@ -50,6 +51,13 @@ export { CONTENT_ID } from "./regions";
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="app-shell">
+      {/*
+        Draws nothing: reconciles the boot script's font-scale paint against the signed-in
+        person's stored preference (#649). In the shell rather than the root layout because
+        it needs a session, and the shell is where sessions exist — the (auth) screens keep
+        honouring the bare localStorage mirror, which is § 4's rule for anonymous pages.
+      */}
+      <FontScaleSync />
       <a className="shell-skip" href={`#${CONTENT_ID}`}>
         Skip to content
       </a>

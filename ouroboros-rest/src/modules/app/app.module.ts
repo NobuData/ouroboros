@@ -7,6 +7,7 @@ import type { Configuration } from "../config/configuration";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { HealthModule } from "../health/health.module";
+import { PreferencesModule } from "../preferences/preferences.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
@@ -29,6 +30,9 @@ import { AppService } from "./app.service";
  * the guard inside a module three lines further down. `EngineModule` comes after both,
  * which is the same thought once more: its one route is authenticated and tenant-optional,
  * and it is a route only because both guards are already registered above it.
+ * `PreferencesModule` ([#649](https://github.com/NobuData/ouroboros/issues/649)) follows
+ * for the same reason again — two authenticated, tenant-optional routes, listed after the
+ * guards they depend on.
  *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
@@ -84,6 +88,7 @@ export class AppModule {
         AuthModule,
         TenancyModule,
         EngineModule,
+        PreferencesModule,
       ],
     };
   }

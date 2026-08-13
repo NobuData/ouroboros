@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.21.0"
+  version: "0.22.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -242,6 +242,22 @@ tags:
       one code, naming no address. A mismatched secret in particular is never forwarded as a
       `401`: it is a deployment's mistake rather than a caller's, and telling a browser to
       sign in again for it would be telling it about a boundary it cannot reach.
+
+  - name: preferences
+    description: |-
+      **The caller's own product settings** ([#649](https://github.com/NobuData/ouroboros/issues/649))
+      — starting with the font scale the design system's § 4 gives every reader.
+
+      These are the person's, not the workspace's: the value is the same whichever
+      organization the session is acting in, because a font size is chosen by the reader's
+      eyes. That is why the path says `/me/`, why no operation here takes a workspace, and
+      why a person who belongs to nothing yet still has preferences.
+
+      **Absence is the defaults, never a `404`.** A preference always has a value; a person
+      who has never chosen reads back `fontScale: "100"`, and no row is written on the way
+      to that answer. The server is the truth — signing in on a second machine brings the
+      setting along — and the browser's `localStorage` is only a mirror for the no-flash
+      boot, reconciled against `GET` when the session loads.
 
   - name: tenancy
     description: |-
@@ -1052,6 +1068,101 @@ paths:
                 code: engine_unavailable
                 message: The engine is not available right now. Try again in a moment.
                 details: {}
+
+  /api/v1/me/preferences:
+    get:
+      tags: [preferences]
+      summary: Your preferences
+      description: |-
+        Stored choices where they exist, the defaults where none do. Never a `404` and never
+        empty: a preference always has a value, even for somebody who has never expressed
+        one — so a client can render a control from this answer without a fallback branch.
+
+        Requires no workspace, exactly as `GET /api/v1/orgs` does not: the answer belongs to
+        the person, and a fresh sign-up who belongs to nothing yet still has a text size.
+      operationId: readPreferences
+      responses:
+        "200":
+          description: The caller's preferences, defaults included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+              example:
+                fontScale: "100"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Preferences belong to somebody.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [preferences]
+      summary: Change your preferences
+      description: |-
+        Send what changed; the answer is the whole surface as it now stands, read back from
+        the row rather than from the request. A body carrying nothing changes nothing and
+        answers the current state — PATCH means "what is present changed", and an empty
+        change is a question, not an error.
+
+        The write is an upsert keyed on the person: "set my font scale" is the same request
+        whether it is the first choice or the fortieth, and two racing writes are arbitrated
+        by the database rather than by whichever arrived second overwriting a read.
+      operationId: patchPreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreferencesPatch"
+            example:
+              fontScale: "125"
+      responses:
+        "200":
+          description: The caller's preferences after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Preferences"
+              example:
+                fontScale: "125"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will
+            not honour. Preferences belong to somebody.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `fontScale` was not one of the five steps. `details`
+            carries the entry keyed by the field, so a control can render the message
+            beside itself. The five are the design system's (§ 4) and the database CHECK's
+            alike; a respelling of a named step — `"100.0"` for `"100"` — is refused, not
+            coerced, because the value is a label rather than a number.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/orgs:
     get:
@@ -3559,6 +3670,44 @@ components:
             one that matters, because a slash is permitted and `..` would otherwise be path
             traversal in anything that builds a checkout directory from the value.
           examples: [main]
+
+    FontScale:
+      type: string
+      title: FontScale
+      enum: ["87.5", "100", "112.5", "125", "150"]
+      description: |-
+        One of the five root font-size steps, as a percentage of the browser's base size
+        (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 4). A **string, deliberately**: the value is a
+        label the UI stamps onto `<html>` — nothing does arithmetic with it, `"100.0"` is
+        not `"100"`, and a number would round-trip through JSON as a float. The vocabulary
+        is `user_preferences_font_scale`'s CHECK (V007), restated; widening it is a
+        migration there before it is a value here.
+      examples: ["100"]
+
+    Preferences:
+      type: object
+      title: Preferences
+      description: |-
+        The caller's product preferences, defaults included — the answer of both operations
+        under `/api/v1/me/preferences`. Every field always has a value: absence of a stored
+        choice reads as the default, never as a missing property, so a client renders
+        controls from this without a fallback branch.
+      additionalProperties: false
+      required: [fontScale]
+      properties:
+        fontScale:
+          $ref: "#/components/schemas/FontScale"
+
+    PreferencesPatch:
+      type: object
+      title: PreferencesPatch
+      description: |-
+        What changed. Every field optional — send what changed, omit the rest — and an
+        empty object is legal: it changes nothing and reads back the current state.
+      additionalProperties: false
+      properties:
+        fontScale:
+          $ref: "#/components/schemas/FontScale"
 
     EngineStatus:
       type: object
