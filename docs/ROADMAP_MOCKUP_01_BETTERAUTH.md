@@ -2132,7 +2132,7 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| ~~D.2 · #717~~ | *Shipped.* Renders standalone outside the shell; post-login redirect lands in the shell. **CQ.2 does not exist yet** — there is no font-scale mirror to honour, and the audit's finding is that there will be nothing to do when it lands: every length on this screen is already rem or a token, and the page was photographed at the 150% step with nothing clipped, in both palettes, at 900px and 1440px |
+| ~~D.2 · #717~~ | *Shipped.* Renders standalone outside the shell; post-login redirect lands in the shell. **CQ.2 has since landed (#649)** and the audit's prediction held: there was nothing to do on this screen. The font-scale boot script sits in the *root* layout, so `/login` honours the local mirror with no session and no code of its own — and every length here was already rem or a token, photographed at the 150% step with nothing clipped, in both palettes, at 900px and 1440px |
 | ~~D.3 · #718~~ | *Shipped.* Every length on step 1 is a token or rem — the new controls are the `#46` primitives, and the two sheets they draw from were already under `__tests__/styles.test.ts`'s rem rule, which the module still passes |
 | D.1, D.4, D.5, D.6 | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | #56 | Gains a check that post-login navigation lands inside the shell with the sidebar present, and a font-scale render check on the login screen |

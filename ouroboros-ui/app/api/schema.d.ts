@@ -520,6 +520,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Your preferences
+         * @description Stored choices where they exist, the defaults where none do. Never a `404` and never
+         *     empty: a preference always has a value, even for somebody who has never expressed
+         *     one — so a client can render a control from this answer without a fallback branch.
+         *
+         *     Requires no workspace, exactly as `GET /api/v1/orgs` does not: the answer belongs to
+         *     the person, and a fresh sign-up who belongs to nothing yet still has a text size.
+         */
+        get: operations["readPreferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change your preferences
+         * @description Send what changed; the answer is the whole surface as it now stands, read back from
+         *     the row rather than from the request. A body carrying nothing changes nothing and
+         *     answers the current state — PATCH means "what is present changed", and an empty
+         *     change is a question, not an error.
+         *
+         *     The write is an upsert keyed on the person: "set my font scale" is the same request
+         *     whether it is the first choice or the fortieth, and two racing writes are arbitrated
+         *     by the database rather than by whichever arrived second overwriting a read.
+         */
+        patch: operations["patchPreferences"];
+        trace?: never;
+    };
     "/api/v1/orgs": {
         parameters: {
             query?: never;
@@ -1729,6 +1765,36 @@ export interface components {
             defaultBranch?: string;
         };
         /**
+         * FontScale
+         * @description One of the five root font-size steps, as a percentage of the browser's base size
+         *     (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 4). A **string, deliberately**: the value is a
+         *     label the UI stamps onto `<html>` — nothing does arithmetic with it, `"100.0"` is
+         *     not `"100"`, and a number would round-trip through JSON as a float. The vocabulary
+         *     is `user_preferences_font_scale`'s CHECK (V007), restated; widening it is a
+         *     migration there before it is a value here.
+         * @example 100
+         * @enum {string}
+         */
+        FontScale: "87.5" | "100" | "112.5" | "125" | "150";
+        /**
+         * Preferences
+         * @description The caller's product preferences, defaults included — the answer of both operations
+         *     under `/api/v1/me/preferences`. Every field always has a value: absence of a stored
+         *     choice reads as the default, never as a missing property, so a client renders
+         *     controls from this without a fallback branch.
+         */
+        Preferences: {
+            fontScale: components["schemas"]["FontScale"];
+        };
+        /**
+         * PreferencesPatch
+         * @description What changed. Every field optional — send what changed, omit the rest — and an
+         *     empty object is legal: it changes nothing and reads back the current state.
+         */
+        PreferencesPatch: {
+            fontScale?: components["schemas"]["FontScale"];
+        };
+        /**
          * EngineStatus
          * @description The body of a `GET /api/v1/engine/status` response.
          */
@@ -2665,6 +2731,128 @@ export interface operations {
                      *       "details": {}
                      *     }
                      */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's preferences, defaults included. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "fontScale": "100"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Preferences"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will
+             *     not honour. Preferences belong to somebody.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "fontScale": "125"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreferencesPatch"];
+            };
+        };
+        responses: {
+            /** @description The caller's preferences after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "fontScale": "125"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Preferences"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will
+             *     not honour. Preferences belong to somebody.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `fontScale` was not one of the five steps. `details`
+             *     carries the entry keyed by the field, so a control can render the message
+             *     beside itself. The five are the design system's (§ 4) and the database CHECK's
+             *     alike; a respelling of a named step — `"100.0"` for `"100"` — is refused, not
+             *     coerced, because the value is a label rather than a number.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["Error"];
                 };
             };

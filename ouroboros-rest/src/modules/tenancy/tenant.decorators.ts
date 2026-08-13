@@ -46,6 +46,12 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  *     the one exception that is about the *installation* rather than the person, and it
  *     is still an exception rather than a category: a route that reads or writes anything
  *     belonging to a customer is scoped, whoever is asking.
+ *   * **`GET`/`PATCH /api/v1/me/preferences`** — the caller's own settings
+ *     ([#649](https://github.com/NobuData/ouroboros/issues/649)). A font size is chosen by
+ *     the reader's eyes, not by the workspace they are reading in: the value is the same
+ *     whichever organization the session is acting in, and requiring one would make a
+ *     reader's text size depend on having somewhere to be. Scoped to the person through
+ *     `currentUser()`, exactly as the orgs listing is.
  *
  * There were two more, and both left with the routes that carried them.
  * `POST /api/v1/tenants` created a workspace for somebody who belonged to nothing yet;

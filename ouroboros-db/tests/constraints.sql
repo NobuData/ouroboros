@@ -832,6 +832,89 @@ select pg_temp.must_hold(
      and column_name in ('id', 'identifier', 'value', 'expiresAt')),
   'verification keeps BetterAuth''s camelCase column names');
 
+-- ===========================================================================
+-- V007 — user_preferences, the font scale (#649)
+-- ===========================================================================
+--
+-- One row per person, holding choices only: a person with no row is at the default, so
+-- these fixtures write rows deliberately and the absence case is the API's to synthesize
+-- (asserted in ouroboros-rest's preferences integration spec, not here — this file tests
+-- rules the *schema* makes).
+--
+-- The state at this point is what the sections above left: Ken (`6666…`) and Maya
+-- (`7777…`) are deleted by the cascade assertions above, so Jorge (`8888…`) carries the
+-- happy path and the throwaway (`aaaa…`) is, once again, the row whose deletion a
+-- cascade assertion observes.
+
+-- --- the default is the design system's default ------------------------------
+insert into ouroboros.user_preferences (user_id)
+  values ('88888888-8888-8888-8888-888888888888');
+
+select pg_temp.must_hold(
+  (select font_scale = '100' from ouroboros.user_preferences
+   where user_id = '88888888-8888-8888-8888-888888888888'),
+  'a preferences row written with no font_scale is at 100 — § 4''s default');
+
+-- --- the five steps are the whole vocabulary ---------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.user_preferences set font_scale = '90'
+    where user_id = '88888888-8888-8888-8888-888888888888'$$,
+  'font_scale rejects a step § 4 does not name', 'user_preferences_font_scale');
+
+-- The same number in a spelling the UI never stamps. Text comparison is exact, which is
+-- the point of storing a label rather than a numeric: '100.0' is not '100'.
+select pg_temp.must_reject(
+  $$update ouroboros.user_preferences set font_scale = '100.0'
+    where user_id = '88888888-8888-8888-8888-888888888888'$$,
+  'font_scale rejects a respelling of a named step', 'user_preferences_font_scale');
+
+-- And every named step is accepted — the CHECK is a vocabulary, not a subset of one.
+update ouroboros.user_preferences set font_scale = '87.5'
+  where user_id = '88888888-8888-8888-8888-888888888888';
+update ouroboros.user_preferences set font_scale = '112.5'
+  where user_id = '88888888-8888-8888-8888-888888888888';
+update ouroboros.user_preferences set font_scale = '125'
+  where user_id = '88888888-8888-8888-8888-888888888888';
+update ouroboros.user_preferences set font_scale = '150'
+  where user_id = '88888888-8888-8888-8888-888888888888';
+
+select pg_temp.must_hold(
+  (select font_scale = '150' from ouroboros.user_preferences
+   where user_id = '88888888-8888-8888-8888-888888888888'),
+  'every step § 4 names is storable, ending at 150');
+
+-- --- one row per person ------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_preferences (user_id, font_scale)
+    values ('88888888-8888-8888-8888-888888888888', '125')$$,
+  'a second preferences row for the same person is refused', 'user_preferences_pkey');
+
+-- --- a person who does not exist cannot hold preferences ----------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.user_preferences (user_id)
+    values ('nobody-at-all')$$,
+  'user_preferences.user_id must name a real person', 'user_preferences_user_id_fkey');
+
+-- --- deleting the person deletes their choices --------------------------------
+insert into ouroboros.user_preferences (user_id, font_scale)
+  values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '125');
+
+delete from ouroboros."user" where "id" = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.user_preferences
+   where user_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+  'deleting a "user" cascades to their preferences');
+
+-- --- updated_at moves on its own -----------------------------------------------
+-- The V001 trigger, attached here too: the mirror-reconciliation story reads freshness
+-- from this column, so a row whose updated_at never moved would claim a choice made at
+-- account creation was made just now.
+select pg_temp.must_hold(
+  (select tgname = 'user_preferences_touch_updated_at' from pg_trigger
+   where tgrelid = 'ouroboros.user_preferences'::regclass and not tgisinternal),
+  'user_preferences carries the touch_updated_at trigger');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

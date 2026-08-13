@@ -1741,10 +1741,16 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 >
 > This does **not** discharge the profile-menu theme control that
 > [`DESIGN_SYSTEM_APP_SHELL.md`](DESIGN_SYSTEM_APP_SHELL.md) § 1.1 also names, and which
-> the [MVP roadmap](ROADMAP_OOE_MVP.md) folds into `CP.3` (#645). That is a second
-> surface over the same `useTheme()`, not a replacement — the issue as filed asks for the
-> top-bar control, 5.3 reserved the slot for it, and the engine (2.4) was written against
-> a control that draws a sun or a moon.
+> the [MVP roadmap](ROADMAP_OOE_MVP.md) folds into `CP.3` (#645).
+>
+> **CP.3 (#645) has since landed that control, and it corrected this paragraph's
+> prediction.** The menu's radio group is the top-bar toggle's *successor*, not a second
+> surface beside it: § 1.1's upper-right enumeration draws the theme control inside the
+> profile menu and reserves no slot next to it, so the header's cycling button left the
+> row when the menu learned to do its job. What this paragraph got right is the part that
+> mattered — the `useTheme()` engine (2.4) is reused by the radios exactly as it was by
+> the button, and nothing about applying, persisting or booting a theme was written
+> twice.
 
 - **Problem Statement:** The theme engine (2.4) needs its visible, discoverable
   control.
