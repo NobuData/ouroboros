@@ -23,9 +23,8 @@
  *     organisation — the cleanup leaks. {@link ApiHarness.truncate} empties every table the
  *     migrations created, so what a suite sees is what it put there.
  *   * **Sessions minted the way a sign-in mints them.** {@link ApiHarness.signIn} inserts a
- *     real person — in both the tenancy `users` table and BetterAuth's `"user"`, which V004
- *     keys by the same id — and then a real `session` row, and hands back the cookie that
- *     names it. Nothing here is a bypass: a suite using it exercises the global guard
+ *     real `ouroboros."user"` row and then a real `session` row, and hands back the cookie
+ *     that names it. Nothing here is a bypass: a suite using it exercises the global guard
  *     rather than avoiding it, which is the difference between proving the tenancy API
  *     works for a signed-in caller and proving nothing because authentication was switched
  *     off underneath it. Since
@@ -41,11 +40,19 @@
  *
  * it("answers", async () => {
  *   const owner = await api.signIn();
- *   const tenant = await api.workspace(owner);
+ *   const workspace = await api.workspace(owner);
  *
- *   await api.as(owner)("get", `/api/v1/tenants/${tenant.id}`).expect(200);
+ *   await api.as(owner)("get", `/api/v1/orgs/${workspace.id}/domains`).expect(200);
  * });
  * ```
+ *
+ * **Every people-shaped fixture writes the library's tables, and only those.**
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) is where that became true: V006
+ * dropped `users` and `tenant_members`, so {@link ApiHarness.signIn} writes `"user"` and
+ * {@link ApiHarness.join} writes `member`. Both are `LIBRARY_OWNED_TABLES` and the
+ * application may not write them — a *fixture* arranging a row through the suite's own
+ * connection is a different act from application code doing it, and it is the only way to
+ * stand up the `member` and `viewer` roles the role matrix has to refuse.
  *
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs.
  */
@@ -61,10 +68,8 @@ import { createApplication } from "../application";
 import { signInAs } from "../modules/auth/session.fixture";
 import type { Configuration } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
-import { SCHEMA_NAME, type TenantRole } from "../modules/db/schema";
-import type { TenantResource } from "../modules/tenancy/resources";
+import { SCHEMA_NAME, type OrganizationRole } from "../modules/db/schema";
 import {
-  bodyOf,
   databaseIsDisposable,
   DISPOSABLE,
   integrationDatabaseUrl,
@@ -79,12 +84,10 @@ export type Method = "get" | "post" | "patch" | "delete";
 /** Somebody signed in: the person, and the cookie their browser carries. */
 export interface Person {
   /**
-   * Their id — one value, in two tables.
+   * Their id — `ouroboros."user".id`, which is also what `member."userId"` holds.
    *
-   * `ouroboros.users.id` for everything tenancy references, and `ouroboros."user".id` for
-   * the session. V004 back-filled one from the other preserving ids, and
-   * {@link ApiHarness.signIn} writes both with the same value for exactly that reason: a
-   * fixture that let them differ would be a fixture that could not reproduce production.
+   * One value in one table since #714. It was one value in *two* until V006 dropped
+   * `ouroboros.users`, which is why the harness used to write both.
    */
   readonly id: string;
   /** Their address, folded to lower case exactly as the API would fold it. */
@@ -103,13 +106,24 @@ export type SignedIn = (method: Method, path: string) => request.Test;
  *
  * A suite may still name its own rows whatever it likes; this is only what
  * {@link ApiHarness.signIn} and {@link ApiHarness.workspace} reach for when they are not
- * told. It is shaped to fit `tenants_slug_format`, which admits only lower-case
- * alphanumerics in single-hyphen-separated groups.
+ * told. It is shaped to fit `github_orgs_login_format`, which admits only lower-case
+ * alphanumerics in single-hyphen-separated groups — the strictest rule any of these fixtures
+ * has to satisfy, so one prefix serves every one of them.
  */
 export const HARNESS_PREFIX = "ouro-h";
 
 /** The tenancy API's base path, which is where most of what the harness does lands. */
-export const TENANTS = "/api/v1/tenants";
+export const ORGS = "/api/v1/orgs";
+
+/** A workspace, as the harness stands one up. */
+export interface Workspace {
+  /** `organization."id"` — the `{orgId}` every tenancy route takes. */
+  readonly id: string;
+  /** Its handle. */
+  readonly slug: string;
+  /** What a human reads, and what the Step 2 monogram is derived from. */
+  readonly name: string;
+}
 
 /**
  * Flyway's own table, which is in the application's schema and is not the application's.
@@ -208,14 +222,14 @@ export class ApiHarness {
   /**
    * Create somebody, and sign them in.
    *
-   * The rows are inserted directly rather than through the API, because the API's invite
-   * flow makes a stub `users` row with no identity — which is exactly right for an
-   * invitation and no use for being somebody. Two people-shaped tables are written, with
-   * one id between them: `users`, which every tenancy foreign key points at, and
-   * BetterAuth's `"user"`, which the session references. That is not duplication invented
-   * here — it is exactly what V004's back-fill did to everybody who had already signed in,
-   * and it is what [#708](https://github.com/NobuData/ouroboros/issues/708) collapses back
-   * to one.
+   * The row is inserted directly rather than through a sign-in, because the providers that
+   * would create one need GitHub (#702) or a scrypt hash (#705) and neither is a thing every
+   * suite should have to arrange to have *a person*. One table: `ouroboros."user"`, which is
+   * what the session references and what `member."userId"` names.
+   *
+   * `emailVerified` is true, which is the state a completed sign-in leaves — GitHub only
+   * completes with a verified primary address, and the credential provider verifies on
+   * registration.
    *
    * @param overrides - Their address and name, when a suite cares what they are.
    * @returns Them, with the cookie their browser carries.
@@ -225,10 +239,11 @@ export class ApiHarness {
     const displayName = overrides.displayName ?? "Harness Person";
 
     const { rows } = await this.sql.query<{ id: string }>(
-      `insert into ${SCHEMA_NAME}.users (email, display_name) values ($1, $2)
-       on conflict (email) do update set display_name = excluded.display_name
-       returning id`,
-      [email, displayName],
+      `insert into ${SCHEMA_NAME}."user" ("id", "name", "email", "emailVerified", "updatedAt")
+       values (gen_random_uuid()::text, $1, $2, true, now())
+       on conflict ("email") do update set "name" = excluded."name"
+       returning "id"`,
+      [displayName, email],
     );
 
     return { id: rows[0].id, email, displayName, cookie: await this.session(rows[0].id) };
@@ -241,8 +256,7 @@ export class ApiHarness {
    * sign out of one and the other must be unaffected, because sign-out deletes *a* session
    * row rather than everybody's.
    *
-   * @param userId - Whose. A `users.id` from {@link signIn}; the `"user"` row is written
-   *   here if it is not already there, keyed by the same value.
+   * @param userId - Whose. A `"user".id` from {@link signIn}.
    * @returns The `Cookie` header value for the new session.
    */
   async session(userId: string): Promise<string> {
@@ -253,45 +267,62 @@ export class ApiHarness {
    * Give somebody a role in a workspace, directly.
    *
    * Directly, because the point of most of these fixtures is to have a `member` or a `viewer`
-   * to make a request as — and the API will not create one except for an administrator, so
-   * arranging it over HTTP would make the arrangement part of what is under test.
+   * to make a request as — and this service has no route that creates one at all since
+   * [#714](https://github.com/NobuData/ouroboros/issues/714): membership is the organization
+   * plugin's, whose `addMember` needs an inviter and an acceptance a suite has no reason to
+   * stage. `member` is one of `LIBRARY_OWNED_TABLES`, and this is the suite's own connection
+   * rather than the application's — see this file's header on why that distinction holds.
    *
-   * @param tenantId - The workspace.
+   * @param organizationId - The workspace.
    * @param person - Who joins it.
-   * @param role - What they hold there. Joined rather than invited: `joined_at` is stamped,
-   *   because somebody who is only invited has not accepted and this is a fixture for people
-   *   who have.
+   * @param role - What they hold there. A single word; the column takes a comma-separated
+   *   list and `rolesFrom` parses one, which `roles.integration-spec.ts` exercises directly.
    * @returns When the membership exists.
    */
-  async join(tenantId: string, person: Person, role: TenantRole): Promise<void> {
+  async join(organizationId: string, person: Person, role: OrganizationRole): Promise<void> {
     await this.sql.query(
-      `insert into ${SCHEMA_NAME}.tenant_members (tenant_id, user_id, role, joined_at)
-       values ($1, $2, $3, now())`,
-      [tenantId, person.id, role],
+      `insert into ${SCHEMA_NAME}.member ("id", "organizationId", "userId", "role", "createdAt")
+       values (gen_random_uuid()::text, $1, $2, $3, now())`,
+      [organizationId, person.id, role],
     );
   }
 
   /**
-   * Create a workspace, over the API, owned by somebody.
+   * Create a workspace, owned by somebody.
    *
-   * Through the API rather than directly, unlike {@link join}, and for the opposite reason:
-   * creating a workspace also makes its creator the owner, and that rule lives in the
-   * service. A fixture that inserted the row itself would produce a workspace with no
-   * members — which every route under it answers `404` to, including the creator's.
+   * Directly rather than over the API, and that is a change #714 forced rather than chose:
+   * `POST /api/v1/tenants` used to create the row *and* the owner membership in one service
+   * call, and that route is gone — creating a workspace is
+   * `POST /api/auth/organization/create`, which BetterAuth serves and which needs the whole
+   * plugin standing behind it. Two statements here reproduce exactly what it does: the
+   * organization, and the caller as its `owner`.
    *
-   * @param owner - Who creates it, and therefore owns it.
+   * The membership is not optional. A workspace with no members answers `404` to every route
+   * under it — including its creator's — because that is the rule `tenant.resolver.ts`
+   * enforces, so a fixture that inserted only the first row would produce a workspace nobody
+   * can use.
+   *
+   * @param owner - Who owns it.
    * @param slug - Its slug. Invented inside the harness namespace when not given.
-   * @returns The workspace, as the API stored it.
+   * @param name - What a human reads. Two words, so {@link ORGS}'s monogram has initials to
+   *   take.
+   * @returns The workspace.
    */
   async workspace(
     owner: Person,
     slug: string = uniqueName(HARNESS_PREFIX),
-  ): Promise<TenantResource> {
-    return bodyOf<TenantResource>(
-      await this.as(owner)("post", TENANTS)
-        .send({ slug, displayName: "Harness Workspace" })
-        .expect(201),
+    name = "Harness Workspace",
+  ): Promise<Workspace> {
+    const { rows } = await this.sql.query<{ id: string }>(
+      `insert into ${SCHEMA_NAME}.organization ("id", "name", "slug", "createdAt")
+       values (gen_random_uuid()::text, $1, $2, now())
+       returning "id"`,
+      [name, slug],
     );
+
+    await this.join(rows[0].id, owner, "owner");
+
+    return { id: rows[0].id, slug, name };
   }
 
   /**

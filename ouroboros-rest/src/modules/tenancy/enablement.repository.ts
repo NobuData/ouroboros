@@ -3,13 +3,22 @@
  * `ouroboros.github_repos` — the two tables that bound where Ouroboros may operate.
  *
  * One repository for both, because a repository is only ever reached *through* its
- * organisation: V003 hangs `github_repos` off `org_id` rather than off the tenant, so
- * "this tenant's repository" is a two-hop question and answering it in two repositories
+ * organisation: V003 hangs `github_repos` off `org_id` rather than off the workspace, so
+ * "this workspace's repository" is a two-hop question and answering it in two repositories
  * would mean every caller doing the first hop by hand.
  *
- * Nothing here consults `enabled` when it reads. A disabled organisation is still listed —
- * a settings screen has to show the switch that is off — and it is the *consumer* of this
- * boundary, not this module, that must find both flags true before acting.
+ * **`organization_id`, not `tenant_id`.** V006 re-parented `github_orgs` onto the
+ * organization plugin's table and dropped `tenants`
+ * ([#708](https://github.com/NobuData/ouroboros/issues/708)); every statement below names the
+ * new column, which is the half of [#714](https://github.com/NobuData/ouroboros/issues/714)
+ * that makes this module compile again. `github_repos` is untouched by that migration —
+ * V003 already reached the workspace *through* the organisation rather than storing it twice,
+ * which is the choice that kept the re-parenting to one table.
+ *
+ * Nothing here consults `enabled` when it reads a row. A disabled organisation is still listed
+ * — a settings screen has to show the switch that is off — and it is the *consumer* of this
+ * boundary, not this module, that must find both flags true before acting. {@link countsFor}
+ * is the one place `enabled` appears in a read, and it counts rather than filters.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -27,30 +36,56 @@ export interface RepoChanges {
   default_branch?: string;
 }
 
+/**
+ * One GitHub organisation with its repositories counted — a Step 2 row's raw material.
+ *
+ * Named as the query returns it (snake_case, `string` counts) rather than as the resource
+ * spells it, which is this module's rule everywhere: `resources.ts` owns the translation, and
+ * a repository that pre-translated would put half of it somewhere nobody looks.
+ */
+export interface GithubOrgCountsRow {
+  /** The owning workspace — how the caller groups these back onto organizations. */
+  organization_id: string;
+  login: string;
+  enabled: boolean;
+  /** Repositories whose own flag is on. `count(*) filter (…)`, so `pg` returns a string. */
+  enabled_repos: string;
+  /** Repositories in total, enabled or not. */
+  total_repos: string;
+  /**
+   * The earliest-recorded enabled repository under this organisation, or `null`.
+   *
+   * A correlated subquery rather than an aggregate, because `min(name)` would answer
+   * *alphabetically first* and the mockup's `incl. helios-firmware` is the first one recorded
+   * — see `resources.ts` on why earliest beats alphabetical for a line a person reads.
+   */
+  featured_repo: string | null;
+}
+
 @Injectable()
-export class OrgsRepository {
+export class EnablementRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * One page of a tenant's organisations, by login.
+   * One page of a workspace's GitHub organisations, by login.
    *
    * Alphabetical rather than by creation: the login is what a reader scans for, and the
-   * unique index `(tenant_id, login)` already orders that way.
+   * unique index `(organization_id, login)` already orders that way.
    *
-   * @param tenantId - Whose organisations.
+   * @param organizationId - Whose organisations.
    * @param window - Which rows to return.
    * @param trx - The transaction to run in, if there is one.
    * @returns The rows for this window.
    */
   async listOrgs(
-    tenantId: string,
+    organizationId: string,
     window: PageWindow,
     trx?: Transaction<Database>,
   ): Promise<GithubOrg[]> {
     return queryOn(this.database, trx)
       .selectFrom("github_orgs")
       .selectAll()
-      .where("tenant_id", "=", tenantId)
+      .where("organization_id", "=", organizationId)
       .orderBy("login")
       .limit(window.limit)
       .offset(window.offset)
@@ -58,47 +93,106 @@ export class OrgsRepository {
   }
 
   /**
-   * How many organisations a tenant has.
+   * How many GitHub organisations a workspace has.
    *
-   * @param tenantId - Whose organisations.
+   * @param organizationId - Whose organisations.
    * @param trx - The transaction to run in, if there is one.
    * @returns The count, ignoring any window.
    */
-  async countOrgs(tenantId: string, trx?: Transaction<Database>): Promise<number> {
+  async countOrgs(organizationId: string, trx?: Transaction<Database>): Promise<number> {
     const { total } = await queryOn(this.database, trx)
       .selectFrom("github_orgs")
       .select((builder) => builder.fn.countAll<string>().as("total"))
-      .where("tenant_id", "=", tenantId)
+      .where("organization_id", "=", organizationId)
       .executeTakeFirstOrThrow();
 
     return asCount(total);
   }
 
   /**
-   * Find one of a tenant's organisations by its login.
+   * Every GitHub organisation of several workspaces, with its repositories counted.
    *
-   * @param tenantId - The tenant it must belong to.
+   * **One statement for a whole page of workspaces**, which is the reason this method exists
+   * rather than a loop over {@link listOrgs} and {@link countRepos}: `GET /api/v1/orgs` renders
+   * up to a hundred rows, and doing it per workspace would be two queries each. Grouped by
+   * organisation rather than by workspace so that the switch a row draws — which acts on one
+   * `login` — has the counts sitting beside the thing it toggles.
+   *
+   * @param organizationIds - The workspaces to report on. An empty list is answered without a
+   *   query: `in ()` is not valid SQL, and a page of no workspaces has no counts by
+   *   definition.
+   * @param trx - The transaction to run in, if there is one.
+   * @returns One row per GitHub organisation across all of them, by workspace then login. A
+   *   workspace with no organisations recorded simply contributes none, which the caller reads
+   *   as the zero the mockup's `acme-labs` row shows.
+   */
+  async countsFor(
+    organizationIds: readonly string[],
+    trx?: Transaction<Database>,
+  ): Promise<GithubOrgCountsRow[]> {
+    if (organizationIds.length === 0) {
+      return [];
+    }
+
+    return (
+      queryOn(this.database, trx)
+        .selectFrom("github_orgs as org")
+        .leftJoin("github_repos as repo", "repo.org_id", "org.id")
+        .select((builder) => [
+          "org.organization_id",
+          "org.login",
+          "org.enabled",
+          builder.fn
+            .count<string>("repo.id")
+            .filterWhere("repo.enabled", "=", true)
+            .as("enabled_repos"),
+          builder.fn.count<string>("repo.id").as("total_repos"),
+          builder
+            .selectFrom("github_repos as featured")
+            .select("featured.name")
+            .whereRef("featured.org_id", "=", "org.id")
+            .where("featured.enabled", "=", true)
+            .orderBy("featured.created_at")
+            .orderBy("featured.id")
+            .limit(1)
+            .as("featured_repo"),
+        ])
+        // Every non-aggregated column is listed rather than relying on PostgreSQL's functional
+        // dependency on `org.id`: the dependency is real and the explicit list is what keeps
+        // this query portable to a `group by` that does not know about the primary key.
+        .groupBy(["org.id", "org.organization_id", "org.login", "org.enabled"])
+        .where("org.organization_id", "in", organizationIds)
+        .orderBy("org.organization_id")
+        .orderBy("org.login")
+        .execute()
+    );
+  }
+
+  /**
+   * Find one of a workspace's GitHub organisations by its login.
+   *
+   * @param organizationId - The workspace it must belong to.
    * @param login - The GitHub login, lower-cased.
    * @param trx - The transaction to run in, if there is one.
    * @returns The row, or `undefined`.
    */
   async findOrg(
-    tenantId: string,
+    organizationId: string,
     login: string,
     trx?: Transaction<Database>,
   ): Promise<GithubOrg | undefined> {
     return queryOn(this.database, trx)
       .selectFrom("github_orgs")
       .selectAll()
-      .where("tenant_id", "=", tenantId)
+      .where("organization_id", "=", organizationId)
       .where("login", "=", login)
       .executeTakeFirst();
   }
 
   /**
-   * Add an organisation to a tenant.
+   * Add a GitHub organisation to a workspace.
    *
-   * @param tenantId - The owning tenant.
+   * @param organizationId - The owning workspace.
    * @param login - The GitHub login, lower-cased by its DTO.
    * @param enabled - Whether Ouroboros may operate in it. The caller passes V003's own
    *   default when the request said nothing, rather than omitting the column, so the API's
@@ -107,22 +201,22 @@ export class OrgsRepository {
    * @returns The stored row.
    */
   async createOrg(
-    tenantId: string,
+    organizationId: string,
     login: string,
     enabled: boolean,
     trx?: Transaction<Database>,
   ): Promise<GithubOrg> {
     return queryOn(this.database, trx)
       .insertInto("github_orgs")
-      .values({ tenant_id: tenantId, login, enabled })
+      .values({ organization_id: organizationId, login, enabled })
       .returningAll()
       .executeTakeFirstOrThrow();
   }
 
   /**
-   * Enable or disable an organisation.
+   * Enable or disable a GitHub organisation.
    *
-   * @param orgId - The organisation to change.
+   * @param orgId - The organisation to change — `github_orgs.id`.
    * @param enabled - What to set the flag to.
    * @param trx - The transaction to run in, if there is one.
    * @returns The updated row, or `undefined` when no organisation has that id.
@@ -143,7 +237,7 @@ export class OrgsRepository {
   /**
    * One page of an organisation's repositories, by name.
    *
-   * @param orgId - Whose repositories.
+   * @param orgId - Whose repositories — `github_orgs.id`.
    * @param window - Which rows to return.
    * @param trx - The transaction to run in, if there is one.
    * @returns The rows for this window.

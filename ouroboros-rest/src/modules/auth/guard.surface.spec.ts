@@ -191,7 +191,12 @@ describe("the guard's decision for every route in the table", () => {
     // A walk that silently found nothing would make every assertion below vacuously true.
     // The number is a floor rather than an equality: a route added later must not have to
     // edit this line, only the exemption list — which is the one that matters.
-    expect(routes.length).toBeGreaterThanOrEqual(20);
+    //
+    // It was 20 until [#714](https://github.com/NobuData/ouroboros/issues/714), which
+    // deleted this service's workspace and member operations in favour of the organization
+    // plugin's. A floor that moves *down* has to be edited, and lowering it is the one
+    // direction that deserves a second look: it means routes stopped existing.
+    expect(routes.length).toBeGreaterThanOrEqual(16);
   });
 
   it("exempts exactly the surface #33 shipped, and nothing else", () => {
@@ -256,7 +261,7 @@ describe("the decisions, as answers rather than as metadata", () => {
   });
 
   it.each([
-    ["the tenancy API", "get", `${API_BASE_PATH}/tenants`],
+    ["the tenancy API", "get", `${API_BASE_PATH}/orgs`],
     ["the engine gateway", "get", `${API_BASE_PATH}/engine/status`],
   ] as const)("refuses %s without one, in the envelope", async (_description, method, path) => {
     const response = await request(server())[method](path).expect(401);
@@ -269,7 +274,7 @@ describe("the decisions, as answers rather than as metadata", () => {
     // A guard runs before a pipe. Without that ordering a malformed body would be a `422`
     // that told somebody with no session which fields exist.
     const response = await request(server())
-      .post(`${API_BASE_PATH}/tenants`)
+      .post(`${API_BASE_PATH}/orgs/00000000-0000-4000-8000-000000000000/github-orgs`)
       .set("Content-Type", "application/json")
       .send(JSON.stringify({ nonsense: true }));
 
@@ -286,12 +291,12 @@ describe("the decisions, as answers rather than as metadata", () => {
     // fails on a connection rather than on a session. `auth.integration-spec.ts` is where
     // the same request answers `200` against real rows.
     //
-    // The tenancy listing rather than `GET /api/v1/auth/me`, which was this assertion's
+    // The workspace listing rather than `GET /api/v1/auth/me`, which was this assertion's
     // route until [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it as the
     // duplicate answer to *who is signed in*. Any authenticated route will do here — the
     // subject is the guard.
     const response = await request(server())
-      .get(`${API_BASE_PATH}/tenants`)
+      .get(`${API_BASE_PATH}/orgs`)
       .set("Cookie", grantSession());
 
     expect(response.status).not.toBe(401);

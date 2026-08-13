@@ -4,9 +4,11 @@ import { Reflector } from "@nestjs/core";
 
 import { AuthController } from "../auth/auth.controller";
 import { FIXTURE_ORGANIZATION } from "./organization.fixture";
+import { DomainsController } from "./domains.controller";
+import { GithubOrgsController } from "./github-orgs.controller";
+import { OrgsController } from "./orgs.controller";
 import { CurrentMember, CurrentTenant, TENANT_OPTIONAL, TenantOptional } from "./tenant.decorators";
 import { runWithTenantContext, setTenantContext } from "./tenant.context";
-import { TenantsController } from "./tenants.controller";
 
 /**
  * The three decorators, and the list of routes that opt out of having a tenant.
@@ -100,23 +102,26 @@ describe("@CurrentMember()", () => {
 });
 
 describe("the routes that need no tenant", () => {
-  it.each([
-    ["listing your workspaces", TenantsController, TenantsController.prototype.list],
-    ["creating one", TenantsController, TenantsController.prototype.create],
-  ])("%s is tenant-optional", (_description, target, handler) => {
-    expect(isOptional(target as never, handler)).toBe(true);
+  it("listing your workspaces is tenant-optional", () => {
+    // Asking somebody to name a workspace before being told which workspaces they have is
+    // circular, and it is exactly the state `400 organization_required` tells them to leave.
+    expect(isOptional(OrgsController as never, OrgsController.prototype.list)).toBe(true);
   });
 
-  it("is a list of two, and both of them are about the person", () => {
-    // Which workspaces are mine, and let me have one. A third entry would need the same
-    // justification.
+  it("is a list of one in this module, and it is about the person", () => {
+    // It was two until [#714](https://github.com/NobuData/ouroboros/issues/714): creating a
+    // workspace was the other, and `POST /api/auth/organization/create` is the plugin's now —
+    // so the route was deleted rather than the exemption. Before that it was three, and
+    // [#711](https://github.com/NobuData/ouroboros/issues/711) deleted `GET /api/v1/auth/me`
+    // the same way.
     //
-    // It was three until [#711](https://github.com/NobuData/ouroboros/issues/711): reading
-    // the session was the clearest case of all — its whole answer was the list of
-    // workspaces a tenant would have had to be resolved *from* — and the route was deleted,
-    // not the exemption. `GET /api/auth/get-session` is BetterAuth's and never reaches this
-    // middleware at all.
-    expect(isOptional(TenantsController as never, TenantsController.prototype.read)).toBe(false);
+    // Everything else here is scoped, including every read: a workspace in the path is what
+    // the guard resolves, and a route that opted out would be one whose `404` rule applied to
+    // nothing.
+    expect(isOptional(DomainsController as never, DomainsController.prototype.list)).toBe(false);
+    expect(isOptional(GithubOrgsController as never, GithubOrgsController.prototype.list)).toBe(
+      false,
+    );
   });
 
   it("leaves signing out to its own exemption, not this one", () => {

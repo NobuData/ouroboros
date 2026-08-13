@@ -1,121 +1,167 @@
 /**
- * GitHub organisation enablement — the outer half of the boundary V003 describes.
+ * The workspaces a person belongs to, as mockup 01 Step 2 draws them.
  *
- * *A repo is in scope only when its own `enabled` and its org's are **both** true.* Nothing
- * in this file or `repos.service.ts` enforces that; they are what *sets* the two flags, and
- * the check belongs to whatever is about to act on a repository. What these two do own is
- * that the flags are only ever set through a tenant that exists, on an organisation that
- * belongs to it.
+ * `GET /api/v1/orgs` answers one question — *where may the loop run, and where may I turn it
+ * on?* — and it answers it in one request, which is the whole of why the route exists. The
+ * facts it composes live in three places and no client should be asked to fetch three:
  *
- * Enablement defaults to off, here as in the migration. A row records that Ouroboros knows
- * about the organisation; the flag records that somebody deliberately turned it on, and
- * anything arriving by a path nobody has thought about yet arrives switched off.
+ * ```
+ * organization + member   →  which workspaces, and what I hold in each
+ * github_orgs             →  the switches, and whether any is on
+ * github_repos            →  "4 repos enabled · incl. helios-firmware"
+ * ```
+ *
+ * Before this route, `ouroboros-ui` composed the first of those from
+ * `GET /api/auth/organization/list` plus one `get-active-member-role` **per workspace**,
+ * because the plugin's adapter discards the role on the way out — see that module's
+ * `app/api/session.ts`, which says so and names this issue as its replacement.
+ *
+ * ## Two statements, not one per row
+ *
+ * The listing is a join, and the counts are a single grouped query over every workspace on the
+ * page. That matters at a hundred rows — the contract's page ceiling — where the obvious
+ * implementation is two hundred round trips. See `enablement.repository.ts`'s `countsFor`.
+ *
+ * ## No workspace is required to ask
+ *
+ * The controller is `@TenantOptional()`, and it is the only route in this module that is:
+ * requiring somebody to choose a workspace before being told which workspaces they have is
+ * circular, and it is exactly the state `400 organization_required` tells them to leave. The
+ * listing is scoped to the caller instead, through `currentUser()`, so the exemption is not a
+ * way around the tenant rule — a person sees their own memberships and no others.
  */
 
 import { Injectable } from "@nestjs/common";
-import type { Transaction } from "kysely";
 
-import type { Database, GithubOrg } from "../db/schema";
-import { OrgsRepository } from "./orgs.repository";
+import { EnablementRepository, type GithubOrgCountsRow } from "./enablement.repository";
+import { OrganizationRepository, type OrganizationMembership } from "./organization.repository";
 import { pageOf, windowOf, type Page, type PageQuery } from "./pagination";
-import { orgResource, type OrgResource } from "./resources";
-import type { CreateOrgBody, UpdateOrgBody } from "./tenancy.dto";
-import { orgNotFound } from "./tenancy.errors";
-import { TenantsService } from "./tenants.service";
+import { asCount } from "./queries";
+import { orgRowResource, type GithubOrgSummary, type OrgRowResource } from "./resources";
+import { currentUser } from "./tenant.context";
+
+/**
+ * The counts belonging to one workspace, pulled out of the grouped query's flat answer.
+ *
+ * `featuredRepo` is chosen across the workspace's organisations rather than per organisation,
+ * because the mockup's line is one line: `4 repos enabled · incl. helios-firmware` describes
+ * the row, not one switch inside it.
+ */
+interface WorkspaceEnablement {
+  readonly githubOrgs: GithubOrgSummary[];
+  readonly featuredRepo: string | null;
+}
 
 @Injectable()
 export class OrgsService {
   constructor(
-    private readonly orgs: OrgsRepository,
-    private readonly tenants: TenantsService,
+    private readonly organizations: OrganizationRepository,
+    private readonly enablement: EnablementRepository,
   ) {}
 
   /**
-   * List a tenant's organisations, enabled or not.
+   * The signed-in person's workspaces, as Step 2 rows.
    *
-   * Disabled ones are included deliberately: a settings screen has to render the switch that
-   * is off, and a list that hid them would make turning one back on impossible through this
-   * API.
-   *
-   * @param tenantId - Whose organisations.
    * @param query - The window the client asked for.
-   * @returns One page of organisations, by login.
-   * @throws {NotFoundError} `404 tenant_not_found` when there is no such tenant.
+   * @returns One page of rows, oldest workspace first.
+   * @throws {Error} When there is no signed-in person — which cannot happen through the
+   *   pipeline, because the route is authenticated and only tenant-optional. It fails loudly
+   *   rather than answering with an empty page, because an empty page is what "you belong to
+   *   nothing" looks like and the two must not be confused.
    */
-  async list(tenantId: string, query: PageQuery): Promise<Page<OrgResource>> {
-    await this.tenants.require(tenantId);
+  async list(query: PageQuery): Promise<Page<OrgRowResource>> {
+    const user = currentUser();
+
+    if (user === undefined) {
+      throw new Error(
+        "GET /api/v1/orgs was reached with no signed-in person. The route is @TenantOptional(), " +
+          "not @AllowAnonymous() — a listing scoped to nobody would be a listing of everything.",
+      );
+    }
 
     const window = windowOf(query);
-    const [rows, total] = await Promise.all([
-      this.orgs.listOrgs(tenantId, window),
-      this.orgs.countOrgs(tenantId),
+    const [memberships, total] = await Promise.all([
+      this.organizations.listFor(user.id, window),
+      this.organizations.countFor(user.id),
     ]);
 
-    return pageOf(rows.map(orgResource), total, window);
+    const enablement = await this.enablementFor(memberships);
+
+    return pageOf(
+      memberships.map((membership) => this.rowFor(membership, enablement)),
+      total,
+      window,
+    );
   }
 
   /**
-   * Add an organisation to a tenant.
+   * The enablement counts for a page of workspaces, keyed by workspace id.
    *
-   * @param tenantId - The owning tenant.
-   * @param body - The validated request.
-   * @returns The organisation as it was stored.
-   * @throws {NotFoundError} `404 tenant_not_found` when there is no such tenant.
-   * @throws {ConflictError} `409 org_taken` when this tenant has already added it — raised
-   *   by `github_orgs_tenant_login_key`, mapped by `constraints.ts`. Scoped to the tenant,
-   *   because two tenants may each enable an organisation they both belong to.
+   * @param memberships - The page, in the order it will be rendered.
+   * @returns A lookup from workspace id to its switches and counts. A workspace with nothing
+   *   recorded is simply absent, and {@link rowFor} reads that as the zeroes the mockup's
+   *   `acme-labs` row shows.
    */
-  async add(tenantId: string, body: CreateOrgBody): Promise<OrgResource> {
-    await this.tenants.require(tenantId);
+  private async enablementFor(
+    memberships: readonly OrganizationMembership[],
+  ): Promise<Map<string, WorkspaceEnablement>> {
+    const rows = await this.enablement.countsFor(
+      memberships.map((membership) => membership.organization.id),
+    );
 
-    return orgResource(await this.orgs.createOrg(tenantId, body.login, body.enabled ?? false));
-  }
+    const byWorkspace = new Map<string, WorkspaceEnablement>();
 
-  /**
-   * Enable or disable an organisation.
-   *
-   * Disabling suspends everything under it without discarding the per-repository choices
-   * underneath — that is why V003 carries two flags rather than one, and why this touches
-   * only the organisation's.
-   *
-   * @param tenantId - The tenant it must belong to.
-   * @param login - Which organisation.
-   * @param body - The validated request.
-   * @returns The organisation after the change.
-   * @throws {NotFoundError} `404 tenant_not_found` or `404 org_not_found`.
-   */
-  async setEnabled(tenantId: string, login: string, body: UpdateOrgBody): Promise<OrgResource> {
-    const org = await this.require(tenantId, login);
-    const updated = await this.orgs.setOrgEnabled(org.id, body.enabled);
+    for (const row of rows) {
+      const existing = byWorkspace.get(row.organization_id);
+      const githubOrgs = existing?.githubOrgs ?? [];
 
-    if (updated === undefined) {
-      throw orgNotFound(login);
+      githubOrgs.push(summaryOf(row));
+      byWorkspace.set(row.organization_id, {
+        githubOrgs,
+        // The query returns each workspace's organisations by login, and the first `incl.`
+        // candidate found is kept — one line per row, and a stable choice for a screen that
+        // renders it beside a count.
+        featuredRepo: existing?.featuredRepo ?? row.featured_repo,
+      });
     }
 
-    return orgResource(updated);
+    return byWorkspace;
   }
 
   /**
-   * The organisation, or a `404`.
+   * One row.
    *
-   * Public for the same reason `TenantsService.require` is: repositories are reached through
-   * an organisation, so `repos.service.ts` runs this first and gets the tenant check with it.
-   *
-   * @param tenantId - The tenant it must belong to.
-   * @param login - Its GitHub login.
-   * @param trx - The transaction to look in, when the caller is inside one.
-   * @returns The row.
-   * @throws {NotFoundError} `404 tenant_not_found` or `404 org_not_found`.
+   * @param membership - The workspace and what the caller holds in it.
+   * @param enablement - The counts for the whole page.
+   * @returns The resource.
    */
-  async require(tenantId: string, login: string, trx?: Transaction<Database>): Promise<GithubOrg> {
-    await this.tenants.require(tenantId, trx);
+  private rowFor(
+    membership: OrganizationMembership,
+    enablement: Map<string, WorkspaceEnablement>,
+  ): OrgRowResource {
+    const counts = enablement.get(membership.organization.id);
 
-    const org = await this.orgs.findOrg(tenantId, login, trx);
-
-    if (org === undefined) {
-      throw orgNotFound(login);
-    }
-
-    return org;
+    return orgRowResource({
+      organization: membership.organization,
+      roles: membership.roles,
+      githubOrgs: counts?.githubOrgs ?? [],
+      featuredRepo: counts?.featuredRepo ?? null,
+    });
   }
+}
+
+/**
+ * One GitHub organisation's counted row, as a Step 2 summary.
+ *
+ * @param row - What the grouped query returned.
+ * @returns The summary, with the aggregates read as numbers — `pg` hands a `count(*)` back as
+ *   a string, and a `total` that reached the wire as `"4"` would be a contract violation the
+ *   specification says is an `integer`.
+ */
+function summaryOf(row: GithubOrgCountsRow): GithubOrgSummary {
+  return {
+    login: row.login,
+    enabled: row.enabled,
+    repoCounts: { enabled: asCount(row.enabled_repos), total: asCount(row.total_repos) },
+  };
 }

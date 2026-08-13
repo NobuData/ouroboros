@@ -216,7 +216,7 @@ describe("setOrgEnabled", () => {
     const [write] = writes();
 
     expect(write?.method).toBe("PATCH");
-    expect(write?.url).toBe(`${BASE_URL}/api/v1/tenants/${TENANT_ID}/orgs/acme-robotics`);
+    expect(write?.url).toBe(`${BASE_URL}/api/v1/orgs/${TENANT_ID}/github-orgs/acme-robotics`);
     expect(await write?.json()).toEqual({ enabled: false });
     expect(refresh).toHaveBeenCalledOnce();
   });
@@ -232,7 +232,7 @@ describe("setOrgEnabled", () => {
       }),
     );
 
-    expect(writes()[0]?.url).toContain(`/tenants/${TENANT_ID}/`);
+    expect(writes()[0]?.url).toContain(`/orgs/${TENANT_ID}/`);
   });
 
   it("refuses a role that may read the workspace but not administer it", async () => {
@@ -314,7 +314,7 @@ describe("setRepoEnabled", () => {
     const [write] = writes();
 
     expect(write?.url).toBe(
-      `${BASE_URL}/api/v1/tenants/${TENANT_ID}/orgs/acme-robotics/repos/helios-firmware`,
+      `${BASE_URL}/api/v1/orgs/${TENANT_ID}/github-orgs/acme-robotics/repos/helios-firmware`,
     );
     expect(await write?.json()).toEqual({ enabled: true });
     expect(refresh).toHaveBeenCalledOnce();

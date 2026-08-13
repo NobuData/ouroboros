@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { ApiHarness, TENANTS } from "./harness.fixture";
+import { ApiHarness, ORGS } from "./harness.fixture";
 import { bodyOf, DISPOSABLE, integrationDatabaseUrl } from "./integration.fixture";
 import { databaseProject, DATABASE_SCHEMA, POSTGRES_IMAGE } from "./migration.fixture";
 import { SCHEMA_NAME } from "../modules/db/schema";
@@ -77,9 +77,10 @@ describe("the integration harness", () => {
         [SCHEMA_NAME],
       );
 
-      // Seven tables plus Flyway's own history. The exact set is `db.integration-spec.ts`'s
-      // to check against `TABLE_COLUMNS`; here it is only that the schema is populated at
-      // all, which is what distinguishes "migrated" from "created".
+      // The application's tables plus BetterAuth's plus Flyway's own history. The exact set
+      // is `db.integration-spec.ts`'s to check against `TABLE_COLUMNS`; here it is only that
+      // the schema is populated at all, which is what distinguishes "migrated" from
+      // "created".
       expect(Number(rows[0].count)).toBeGreaterThan(1);
       expect(DATABASE_SCHEMA).toBe(SCHEMA_NAME);
     });
@@ -153,7 +154,7 @@ describe("the integration harness", () => {
       // No cookie, so the global session guard answers before any handler is reached. A
       // harness that had switched authentication off to make its own life easier would fail
       // here, which is the point of asserting it.
-      await api.anonymous("get", TENANTS).expect(401);
+      await api.anonymous("get", ORGS).expect(401);
     });
   });
 
@@ -161,20 +162,22 @@ describe("the integration harness", () => {
     it("are honoured by the real guard", async () => {
       const person = await api.signIn();
 
-      const page = bodyOf<{ total: number }>(await api.as(person)("get", TENANTS).expect(200));
+      const page = bodyOf<{ total: number }>(await api.as(person)("get", ORGS).expect(200));
 
+      // Zero, because a person the harness invented belongs to nothing until a fixture says
+      // so — which is the `no-workspace` state Step 2 draws, and a 200 rather than a refusal.
       expect(page.total).toBe(0);
     });
 
     it("name a person the database really holds", async () => {
       const person = await api.signIn({ displayName: "Ada Lovelace" });
 
-      const { rows } = await api.sql.query<{ email: string; display_name: string }>(
-        `select email, display_name from ${SCHEMA_NAME}.users where id = $1`,
+      const { rows } = await api.sql.query<{ email: string; name: string }>(
+        `select "email", "name" from ${SCHEMA_NAME}."user" where "id" = $1`,
         [person.id],
       );
 
-      expect(rows).toEqual([{ email: person.email, display_name: "Ada Lovelace" }]);
+      expect(rows).toEqual([{ email: person.email, name: "Ada Lovelace" }]);
     });
 
     it("fold an address the way the API folds one", async () => {
@@ -186,16 +189,16 @@ describe("the integration harness", () => {
     it("carry a role when the harness grants one", async () => {
       const owner = await api.signIn();
       const viewer = await api.signIn();
-      const tenant = await api.workspace(owner);
+      const workspace = await api.workspace(owner);
 
-      await api.join(tenant.id, viewer, "viewer");
+      await api.join(workspace.id, viewer, "viewer");
 
       // A viewer may look and may not touch, which is the guard reading a membership this
       // fixture wrote — the arrangement half of every test in `roles.integration-spec.ts`.
-      await api.as(viewer)("get", `${TENANTS}/${tenant.id}`).expect(200);
+      await api.as(viewer)("get", `${ORGS}/${workspace.id}/github-orgs`).expect(200);
       await api
-        .as(viewer)("patch", `${TENANTS}/${tenant.id}`)
-        .send({ displayName: "Mine Now" })
+        .as(viewer)("post", `${ORGS}/${workspace.id}/github-orgs`)
+        .send({ login: "mine-now" })
         .expect(403);
     });
   });
@@ -203,25 +206,27 @@ describe("the integration harness", () => {
   describe("the truncation between tests", () => {
     it("empties what a test created, tables the test never named included", async () => {
       const owner = await api.signIn();
-      const tenant = await api.workspace(owner);
+      const workspace = await api.workspace(owner);
       await api
-        .as(owner)("post", `${TENANTS}/${tenant.id}/domains`)
+        .as(owner)("post", `${ORGS}/${workspace.id}/domains`)
         .send({ domain: `${PREFIX}.example` })
         .expect(201);
 
       await api.truncate();
 
-      // `tenant_members` and `users` are the ones a prefix-scoped cleanup misses: the
-      // membership was created by the service rather than by this test, and the person was
-      // created by the harness.
+      // `member`, `"user"` and `session` are the ones a prefix-scoped cleanup misses: none of
+      // the three was named by this test, and all three were written by the harness on its
+      // way to having somebody signed in.
       const { rows } = await api.sql.query<{ table: string; count: string }>(
-        `select 'tenants' as table, count(*)::text as count from ${SCHEMA_NAME}.tenants
+        `select 'organization' as table, count(*)::text as count
+           from ${SCHEMA_NAME}.organization
          union all select 'tenant_domains', count(*)::text from ${SCHEMA_NAME}.tenant_domains
-         union all select 'tenant_members', count(*)::text from ${SCHEMA_NAME}.tenant_members
-         union all select 'users', count(*)::text from ${SCHEMA_NAME}.users`,
+         union all select 'member', count(*)::text from ${SCHEMA_NAME}.member
+         union all select 'user', count(*)::text from ${SCHEMA_NAME}."user"
+         union all select 'session', count(*)::text from ${SCHEMA_NAME}.session`,
       );
 
-      expect(rows.map((row) => row.count)).toEqual(["0", "0", "0", "0"]);
+      expect(rows.map((row) => row.count)).toEqual(["0", "0", "0", "0", "0"]);
     });
 
     it("refuses a database the run did not start", async () => {

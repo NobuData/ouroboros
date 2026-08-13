@@ -106,9 +106,9 @@ describe("DatabaseService", () => {
     // Compiled rather than executed — there is no database here. What this asserts is that
     // the instance is wired to the PostgreSQL dialect and schema-qualifies its tables,
     // which is the difference between a query that finds a table and one that does not.
-    const { sql } = database.db.selectFrom("tenants").select("slug").compile();
+    const { sql } = database.db.selectFrom("organization").select("slug").compile();
 
-    expect(sql).toBe('select "slug" from "ouroboros"."tenants"');
+    expect(sql).toBe('select "slug" from "ouroboros"."organization"');
   });
 
   it("qualifies every table with the schema Flyway owns", async () => {

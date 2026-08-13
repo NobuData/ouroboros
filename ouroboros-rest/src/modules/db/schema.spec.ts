@@ -12,7 +12,7 @@ import {
   TABLE_NAMES,
   LIBRARY_OWNED_TABLES,
   type Database,
-  type NewTenant,
+  type NewGithubOrg,
   type NewTenantDomain,
 } from "./schema";
 
@@ -54,8 +54,8 @@ describe("Database", () => {
   describe("rejects what the schema does not have", () => {
     it("does not compile a select of a column that does not exist", () => {
       const query = db
-        .selectFrom("tenants")
-        // @ts-expect-error — `slugg` is not a column of ouroboros.tenants. This is the
+        .selectFrom("organization")
+        // @ts-expect-error — `slugg` is not a column of ouroboros.organization. This is the
         // acceptance criterion: remove the typo and this line stops being an error, which
         // is what fails the compile.
         .select("slugg");
@@ -67,19 +67,33 @@ describe("Database", () => {
 
     it("does not compile a filter on a column that does not exist", () => {
       const query = db
-        .selectFrom("users")
-        .select("email")
-        // @ts-expect-error — `email_address` is not a column of ouroboros.users.
-        .where("email_address", "=", "someone@example.com");
+        .selectFrom("github_orgs")
+        .select("login")
+        // @ts-expect-error — `org_login` is not a column of ouroboros.github_orgs.
+        .where("org_login", "=", "acme-robotics");
 
-      expect(query.compile().sql).toContain("email_address");
+      expect(query.compile().sql).toContain("org_login");
     });
 
     it("does not compile a query against a table that does not exist", () => {
-      // @ts-expect-error — there is no `sessions` table; #33 has not added one.
+      // @ts-expect-error — there is no `sessions` table in this mirror. BetterAuth owns the
+      // one V004 created and nothing here reads it (`src/modules/auth/principal.ts` takes
+      // the session off the request instead).
       const query = db.selectFrom("sessions").selectAll();
 
       expect(query.compile().sql).toContain("sessions");
+    });
+
+    it("does not compile a query against a table V006 dropped", () => {
+      // The whole of #714's schema half, as one assertion. `tenants`, `tenant_members`,
+      // `users` and `user_identities` no longer exist in PostgreSQL, so a mirror that still
+      // declared them would let a query compile that the database would refuse at run time —
+      // which is the failure this file exists to make impossible.
+      //
+      // @ts-expect-error — `tenant_members` was dropped by V006.
+      const query = db.selectFrom("tenant_members").selectAll();
+
+      expect(query.compile().sql).toContain("tenant_members");
     });
 
     it("does not accept an insert missing a column the migration requires", () => {
@@ -88,16 +102,16 @@ describe("Database", () => {
       // "no overload matches" on the call rather than on the property — which is still an
       // error, but not one anchored to the line this comment is on.
       //
-      // @ts-expect-error — `display_name` is `not null` with no default, so it cannot be
-      // omitted. `id`, `status` and the timestamps can be: they have defaults.
-      const incomplete: NewTenant = { slug: "acme" };
+      // @ts-expect-error — `organization_id` is `not null` with no default, so it cannot be
+      // omitted. `id`, `enabled` and the timestamps can be: they have defaults.
+      const incomplete: NewGithubOrg = { login: "acme-robotics" };
 
-      expect(incomplete.slug).toBe("acme");
+      expect(incomplete.login).toBe("acme-robotics");
     });
 
     it("does not accept a value of the wrong type", () => {
       const wrongType: NewTenantDomain = {
-        tenant_id: "00000000-0000-0000-0000-000000000000",
+        organization_id: "00000000-0000-0000-0000-000000000000",
         domain: "example.com",
         // @ts-expect-error — `is_primary` is a boolean column, not a string.
         is_primary: "yes",
@@ -106,35 +120,14 @@ describe("Database", () => {
       expect(wrongType.domain).toBe("example.com");
     });
 
-    it("does not compile a status the check constraint would reject", () => {
-      const query = db
-        .updateTable("tenants")
-        // @ts-expect-error — `tenants_status_valid` admits active, suspended and deleted.
-        .set({ status: "archived" })
-        .where("slug", "=", "acme");
-
-      expect(query.compile().sql).toContain("update");
-    });
-
-    it("does not compile a role the check constraint would reject", () => {
-      const query = db.insertInto("tenant_members").values({
-        tenant_id: "00000000-0000-0000-0000-000000000000",
-        user_id: "00000000-0000-0000-0000-000000000001",
-        // @ts-expect-error — `tenant_members_role_valid` admits owner, admin, member, viewer.
-        role: "superuser",
-      });
-
-      expect(query.compile().sql).toContain("insert into");
-    });
-
     it("does not compile a write to a column the trigger owns", () => {
       const query = db
-        .updateTable("tenants")
+        .updateTable("github_orgs")
         // @ts-expect-error — `ouroboros.touch_updated_at()` sets `updated_at` from the
         // server clock and discards whatever the statement supplied, so the type does not
         // offer it. See `Stamped` in schema.ts.
         .set({ updated_at: new Date() })
-        .where("slug", "=", "acme");
+        .where("login", "=", "acme-robotics");
 
       expect(query.compile().sql).toContain("update");
     });
@@ -142,43 +135,48 @@ describe("Database", () => {
 
   describe("accepts what the schema does have", () => {
     it("selects a column that exists", () => {
-      const { sql } = db.selectFrom("tenants").select(["id", "slug", "status"]).compile();
+      const { sql } = db.selectFrom("organization").select(["id", "slug", "metadata"]).compile();
 
-      expect(sql).toBe('select "id", "slug", "status" from "tenants"');
+      expect(sql).toBe('select "id", "slug", "metadata" from "organization"');
     });
 
     it("inserts without the columns the database fills in", () => {
-      // Every omitted column here — id, status, created_at, updated_at — has a default in
-      // V001. That they *may* be omitted is as much a part of mirroring the migration as
+      // Every omitted column here — id, enabled, created_at, updated_at — has a default in
+      // V003. That they *may* be omitted is as much a part of mirroring the migration as
       // the columns themselves.
       const { sql } = db
-        .insertInto("tenants")
-        .values({ slug: "acme", display_name: "Acme" })
+        .insertInto("github_orgs")
+        .values({
+          organization_id: "00000000-0000-0000-0000-000000000000",
+          login: "acme-robotics",
+        })
         .compile();
 
-      expect(sql).toBe('insert into "tenants" ("slug", "display_name") values ($1, $2)');
+      expect(sql).toBe('insert into "github_orgs" ("organization_id", "login") values ($1, $2)');
     });
 
-    it("joins across a foreign key", () => {
+    it("joins across the foreign key V006 re-pointed", () => {
       const { sql } = db
-        .selectFrom("tenant_members")
-        .innerJoin("users", "users.id", "tenant_members.user_id")
-        .select(["users.email", "tenant_members.role"])
-        .where("tenant_members.tenant_id", "=", "00000000-0000-0000-0000-000000000000")
+        .selectFrom("github_orgs")
+        .innerJoin("organization", "organization.id", "github_orgs.organization_id")
+        .select(["organization.slug", "github_orgs.login"])
+        .where("github_orgs.enabled", "=", true)
         .compile();
 
-      expect(sql).toContain('inner join "users" on "users"."id" = "tenant_members"."user_id"');
+      expect(sql).toContain(
+        'inner join "organization" on "organization"."id" = "github_orgs"."organization_id"',
+      );
     });
 
     it("parameterises every value, which is what makes injection impossible", () => {
       const { sql, parameters } = db
-        .selectFrom("tenants")
+        .selectFrom("organization")
         .selectAll()
-        .where("slug", "=", "acme'; drop table ouroboros.tenants; --")
+        .where("slug", "=", "acme'; drop table ouroboros.organization; --")
         .compile();
 
-      expect(sql).toBe('select * from "tenants" where "slug" = $1');
-      expect(parameters).toEqual(["acme'; drop table ouroboros.tenants; --"]);
+      expect(sql).toBe('select * from "organization" where "slug" = $1');
+      expect(parameters).toEqual(["acme'; drop table ouroboros.organization; --"]);
     });
   });
 });
@@ -216,9 +214,30 @@ describe("TABLE_COLUMNS", () => {
 
   it("names every table in the Database interface", () => {
     expect(TABLE_NAMES).toEqual(Object.keys(TABLE_COLUMNS));
-    // Seven of ours, plus the two of the library's that #713 reads: `organization` and
-    // `member`, the tables #708 moved tenancy into.
-    expect(TABLE_NAMES).toHaveLength(9);
+    // Three of ours — `tenant_domains`, `github_orgs`, `github_repos` — plus the two of the
+    // library's that tenancy is authorized against: `organization` and `member`. It was nine
+    // until #714; V006 dropped `tenants`, `tenant_members`, `users` and `user_identities`,
+    // and this number is what fails if one of them is ever mirrored again.
+    expect(TABLE_NAMES).toHaveLength(5);
+  });
+
+  it("mirrors no table V006 dropped", () => {
+    // The named form of the count above, so the failure says *which* table came back rather
+    // than only that one did. `ouroboros-db/tests/constraints.sql` asserts the same four stay
+    // gone from the database; this is the same assertion about the mirror.
+    for (const dropped of ["tenants", "tenant_members", "users", "user_identities"]) {
+      expect(TABLE_NAMES).not.toContain(dropped);
+    }
+  });
+
+  it("names the column V006 re-parented the extension tables onto", () => {
+    // Both of *our* surviving parented tables hang off `organization` now. A mirror still
+    // saying `tenant_id` is the drift that made every tenancy query uncompilable between
+    // #708 and #714.
+    expect(TABLE_COLUMNS.tenant_domains).toContain("organization_id");
+    expect(TABLE_COLUMNS.github_orgs).toContain("organization_id");
+    expect(TABLE_COLUMNS.tenant_domains).not.toContain("tenant_id");
+    expect(TABLE_COLUMNS.github_orgs).not.toContain("tenant_id");
   });
 
   it.each(TABLE_NAMES)("gives %s no duplicate columns", (table) => {

@@ -3,11 +3,11 @@ import { resolve } from "node:path";
 
 import request from "supertest";
 
-import { ApiHarness, TENANTS, type Method, type Person } from "../../testing/harness.fixture";
-import { bodyOf, uniqueEmail, uniqueName } from "../../testing/integration.fixture";
-import type { TenantRole } from "../db/schema";
+import { ApiHarness, ORGS, type Method, type Person } from "../../testing/harness.fixture";
+import { bodyOf, uniqueName } from "../../testing/integration.fixture";
+import type { OrganizationRole } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
-import type { DomainResource, OrgResource } from "./resources";
+import type { DomainResource, GithubOrgResource } from "./resources";
 import { ADMINISTRATORS } from "./roles.guard";
 
 /**
@@ -22,10 +22,16 @@ import { ADMINISTRATORS } from "./roles.guard";
  * `@Roles(...ADMINISTRATORS)` from a controller and every unit spec in this module still
  * passes, because none of them go through the router that reads it.
  *
- * So this enumerates the surface instead. Fifteen operations — every route under
- * `/api/v1/tenants/{tenantId}` — against six callers: the four roles V002 admits, somebody
- * who belongs to another workspace, and a browser with no session. Each answer is the whole
- * pipeline: session guard, tenant guard, roles guard, validation pipe, handler, error filter.
+ * So this enumerates the surface instead. Eleven operations — every route under
+ * `/api/v1/orgs/{orgId}` — against six callers: the four roles the organization plugin is
+ * configured with, somebody who belongs to another workspace, and a browser with no session.
+ * Each answer is the whole pipeline: session guard, tenant guard, roles guard, validation
+ * pipe, handler, error filter.
+ *
+ * It was fifteen operations until [#714](https://github.com/NobuData/ouroboros/issues/714).
+ * The four that left are the workspace rename and the three member operations, which the
+ * organization plugin serves at `/api/auth/organization/*` and applies its own access control
+ * to — so they are covered by that plugin's own matrix rather than by this one.
  *
  * **Three answers, and the difference between them is the design.** An administrator gets the
  * operation. A member or a viewer gets `403` naming their role, because they have already
@@ -49,28 +55,31 @@ import { ADMINISTRATORS } from "./roles.guard";
 /** What every row this suite creates is named with. */
 const PREFIX = "ouro-roles";
 
-/** The four roles `tenant_members_role_valid` admits, in the order V002 declares them. */
-const ROLES: readonly TenantRole[] = ["owner", "admin", "member", "viewer"];
+/**
+ * The four roles the organization plugin is configured with, in the order it declares them.
+ *
+ * `V005` deliberately puts no check constraint behind `member.role` — the vocabulary is
+ * configuration rather than schema — so this list is `src/auth/organization.roles.ts`'s, and
+ * `organization.repository.spec.ts` is what asserts the two agree.
+ */
+const ROLES: readonly OrganizationRole[] = ["owner", "admin", "member", "viewer"];
 
 /** The controllers this matrix claims to cover, in this directory. */
 const CONTROLLERS = [
-  "tenants.controller.ts",
-  "domains.controller.ts",
-  "members.controller.ts",
   "orgs.controller.ts",
+  "domains.controller.ts",
+  "github-orgs.controller.ts",
   "repos.controller.ts",
 ];
 
 /** The workspace one test operates in, and the subjects it operates on. */
 interface World {
-  /** The workspace itself. */
-  tenantId: string;
+  /** The workspace itself — the `{orgId}` every path below carries. */
+  orgId: string;
   /** A domain it has already claimed, for the operations that change or remove one. */
   domainId: string;
-  /** An organisation it has already recorded. */
+  /** A GitHub organisation it has already recorded. */
   orgLogin: string;
-  /** Somebody whose membership can be changed or removed — the viewer. */
-  memberId: string;
 }
 
 /** One route, and what it answers when the caller is allowed to ask. */
@@ -92,52 +101,44 @@ interface Operation {
 /** Every route under a workspace, and what it takes to be allowed to use it. */
 const OPERATIONS: readonly Operation[] = [
   {
-    name: "read the workspace",
-    method: "get",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}`,
-    success: 200,
-    administered: false,
-  },
-  {
     name: "list its domains",
     method: "get",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}/domains`,
+    path: ({ orgId }) => `${ORGS}/${orgId}/domains`,
     success: 200,
     administered: false,
   },
   {
-    name: "list its members",
+    name: "list its GitHub organisations",
     method: "get",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}/members`,
+    path: ({ orgId }) => `${ORGS}/${orgId}/github-orgs`,
     success: 200,
     administered: false,
   },
   {
-    name: "list its organisations",
+    name: "read one of its GitHub organisations",
     method: "get",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}/orgs`,
+    path: ({ orgId, orgLogin }) => `${ORGS}/${orgId}/github-orgs/${orgLogin}`,
     success: 200,
     administered: false,
   },
   {
     name: "list an organisation's repositories",
     method: "get",
-    path: ({ tenantId, orgLogin }) => `${TENANTS}/${tenantId}/orgs/${orgLogin}/repos`,
+    path: ({ orgId, orgLogin }) => `${ORGS}/${orgId}/github-orgs/${orgLogin}/repos`,
     success: 200,
     administered: false,
   },
   {
-    name: "rename the workspace",
-    method: "patch",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}`,
-    body: () => ({ displayName: "Renamed by the matrix" }),
+    name: "read one of those repositories",
+    method: "get",
+    path: ({ orgId, orgLogin }) => `${ORGS}/${orgId}/github-orgs/${orgLogin}/repos/ouroboros`,
     success: 200,
-    administered: true,
+    administered: false,
   },
   {
     name: "claim a domain",
     method: "post",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}/domains`,
+    path: ({ orgId }) => `${ORGS}/${orgId}/domains`,
     body: () => ({ domain: `${uniqueName(PREFIX)}.example` }),
     success: 201,
     administered: true,
@@ -145,7 +146,7 @@ const OPERATIONS: readonly Operation[] = [
   {
     name: "make a domain the primary one",
     method: "patch",
-    path: ({ tenantId, domainId }) => `${TENANTS}/${tenantId}/domains/${domainId}`,
+    path: ({ orgId, domainId }) => `${ORGS}/${orgId}/domains/${domainId}`,
     body: () => ({ isPrimary: true }),
     success: 200,
     administered: true,
@@ -153,45 +154,22 @@ const OPERATIONS: readonly Operation[] = [
   {
     name: "give a domain up",
     method: "delete",
-    path: ({ tenantId, domainId }) => `${TENANTS}/${tenantId}/domains/${domainId}`,
+    path: ({ orgId, domainId }) => `${ORGS}/${orgId}/domains/${domainId}`,
     success: 204,
     administered: true,
   },
   {
-    name: "invite somebody",
+    name: "record a GitHub organisation",
     method: "post",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}/members`,
-    body: () => ({ email: uniqueEmail(PREFIX), role: "viewer" }),
-    success: 201,
-    administered: true,
-  },
-  {
-    name: "change somebody's role",
-    method: "patch",
-    path: ({ tenantId, memberId }) => `${TENANTS}/${tenantId}/members/${memberId}`,
-    body: () => ({ role: "member" }),
-    success: 200,
-    administered: true,
-  },
-  {
-    name: "remove somebody",
-    method: "delete",
-    path: ({ tenantId, memberId }) => `${TENANTS}/${tenantId}/members/${memberId}`,
-    success: 204,
-    administered: true,
-  },
-  {
-    name: "record an organisation",
-    method: "post",
-    path: ({ tenantId }) => `${TENANTS}/${tenantId}/orgs`,
+    path: ({ orgId }) => `${ORGS}/${orgId}/github-orgs`,
     body: () => ({ login: uniqueName(PREFIX) }),
     success: 201,
     administered: true,
   },
   {
-    name: "enable an organisation",
+    name: "enable a GitHub organisation",
     method: "patch",
-    path: ({ tenantId, orgLogin }) => `${TENANTS}/${tenantId}/orgs/${orgLogin}`,
+    path: ({ orgId, orgLogin }) => `${ORGS}/${orgId}/github-orgs/${orgLogin}`,
     body: () => ({ enabled: true }),
     success: 200,
     administered: true,
@@ -199,7 +177,7 @@ const OPERATIONS: readonly Operation[] = [
   {
     name: "enable a repository",
     method: "patch",
-    path: ({ tenantId, orgLogin }) => `${TENANTS}/${tenantId}/orgs/${orgLogin}/repos/ouroboros`,
+    path: ({ orgId, orgLogin }) => `${ORGS}/${orgId}/github-orgs/${orgLogin}/repos/ouroboros`,
     body: () => ({ enabled: true }),
     success: 200,
     administered: true,
@@ -226,8 +204,8 @@ function decoratorCount(pattern: string): number {
 
 describe("who may do what in a workspace", () => {
   let api: ApiHarness;
-  /** One person per role. Rebuilt per test — `truncate` takes `users` with everything else. */
-  let people: Record<TenantRole, Person>;
+  /** One person per role. Rebuilt per test — `truncate` takes `"user"` with everything else. */
+  let people: Record<OrganizationRole, Person>;
   /** Somebody who holds no role anywhere. */
   let stranger: Person;
 
@@ -263,34 +241,29 @@ describe("who may do what in a workspace", () => {
    * @returns The workspace and its subjects.
    */
   async function aWorkspace(): Promise<World> {
-    const tenant = await api.workspace(people.owner, uniqueName(PREFIX));
+    const workspace = await api.workspace(people.owner, uniqueName(PREFIX));
     const owner = api.as(people.owner);
 
-    // The creator is already the owner (#32), so only the other three join.
-    await api.join(tenant.id, people.admin, "admin");
-    await api.join(tenant.id, people.member, "member");
-    await api.join(tenant.id, people.viewer, "viewer");
+    // `ApiHarness.workspace` makes its first argument the owner, so only the other three join.
+    await api.join(workspace.id, people.admin, "admin");
+    await api.join(workspace.id, people.member, "member");
+    await api.join(workspace.id, people.viewer, "viewer");
 
     const domain = bodyOf<DomainResource>(
-      await owner("post", `${TENANTS}/${tenant.id}/domains`)
+      await owner("post", `${ORGS}/${workspace.id}/domains`)
         .send({ domain: `${uniqueName(PREFIX)}.example` })
         .expect(201),
     );
-    const org = bodyOf<OrgResource>(
-      await owner("post", `${TENANTS}/${tenant.id}/orgs`)
+    const org = bodyOf<GithubOrgResource>(
+      await owner("post", `${ORGS}/${workspace.id}/github-orgs`)
         .send({ login: uniqueName(PREFIX) })
         .expect(201),
     );
-    await owner("patch", `${TENANTS}/${tenant.id}/orgs/${org.login}/repos/ouroboros`)
+    await owner("patch", `${ORGS}/${workspace.id}/github-orgs/${org.login}/repos/ouroboros`)
       .send({ enabled: true })
       .expect(200);
 
-    return {
-      tenantId: tenant.id,
-      domainId: domain.id,
-      orgLogin: org.login,
-      memberId: people.viewer.id,
-    };
+    return { orgId: workspace.id, domainId: domain.id, orgLogin: org.login };
   }
 
   /**
@@ -319,7 +292,7 @@ describe("who may do what in a workspace", () => {
    * @param role - The caller's role in the workspace.
    * @returns The status they should get.
    */
-  function entitlement(operation: Operation, role: TenantRole): number {
+  function entitlement(operation: Operation, role: OrganizationRole): number {
     if (!operation.administered) {
       return operation.success;
     }
@@ -338,8 +311,8 @@ describe("who may do what in a workspace", () => {
     });
 
     it("has a row for every route the controllers publish under a workspace", () => {
-      // Two routes are `@TenantOptional()` — listing your workspaces and creating one — and
-      // are not under a workspace at all, so they are not this matrix's to cover.
+      // One route is `@TenantOptional()` — `GET /api/v1/orgs`, the listing of your own
+      // workspaces — and is not under a workspace at all, so it is not this matrix's to cover.
       const routes = ["Get", "Post", "Patch", "Delete"].reduce(
         (total, verb) => total + decoratorCount(verb),
         0,

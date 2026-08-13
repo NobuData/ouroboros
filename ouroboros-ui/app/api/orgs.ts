@@ -7,6 +7,13 @@
  * does not belong to gets the same `404` as one naming a workspace that does not exist —
  * the contract deliberately does not distinguish them.
  *
+ * **The paths gained a segment in [#714](https://github.com/NobuData/ouroboros/issues/714)**:
+ * `/api/v1/orgs/{orgId}/github-orgs/{login}` rather than `/tenants/{tenantId}/orgs/{login}`.
+ * Two words called "org" meet on that path and the segment is what keeps them apart —
+ * `{orgId}` is the *workspace*, and these are GitHub's. The first argument of every method
+ * below is therefore a workspace id, exactly as it was; only the URL it is written into
+ * changed.
+ *
  * One line per operation over the generated client, in the shape `app/api/tenants.ts`
  * established. Server-side only, by way of `app/api/server.ts`.
  */
@@ -16,13 +23,13 @@ import type { components, operations } from "@/app/api/schema";
 import { api } from "@/app/api/server";
 
 /** One GitHub organisation a workspace has recorded, enabled or not. */
-export type Org = components["schemas"]["Org"];
+export type Org = components["schemas"]["GithubOrg"];
 
 /** A page of organisations: `{items, total, limit, offset}`. */
-export type OrgPage = components["schemas"]["OrgPage"];
+export type OrgPage = components["schemas"]["GithubOrgPage"];
 
 /** The window a listing accepts — `?limit=&offset=`, both optional. */
-export type OrgListQuery = NonNullable<operations["listOrgs"]["parameters"]["query"]>;
+export type OrgListQuery = NonNullable<operations["listGithubOrgs"]["parameters"]["query"]>;
 
 /**
  * A workspace's GitHub organisations, and whether Ouroboros may work in them.
@@ -48,8 +55,8 @@ export const orgs = {
     client: ApiClient = api(),
   ): Promise<OrgPage> {
     return unwrap(
-      await client.GET("/api/v1/tenants/{tenantId}/orgs", {
-        params: { path: { tenantId }, query },
+      await client.GET("/api/v1/orgs/{orgId}/github-orgs", {
+        params: { path: { orgId: tenantId }, query },
       }),
     );
   },
@@ -77,8 +84,8 @@ export const orgs = {
     client: ApiClient = api(),
   ): Promise<Org> {
     return unwrap(
-      await client.PATCH("/api/v1/tenants/{tenantId}/orgs/{login}", {
-        params: { path: { tenantId, login } },
+      await client.PATCH("/api/v1/orgs/{orgId}/github-orgs/{login}", {
+        params: { path: { orgId: tenantId, login } },
         body: { enabled },
       }),
     );

@@ -4,9 +4,18 @@ import { HTTP_CODE_METADATA } from "@nestjs/common/constants";
 import { DomainsController } from "./domains.controller";
 import type { DomainsService } from "./domains.service";
 
-/** See `tenants.controller.spec.ts` for what these specs are and are not about. */
+/**
+ * What a controller spec in this module is and is not about.
+ *
+ * A controller here does three things: it names a route, it declares the shapes a request may
+ * take, and it hands the validated result to a service. So these specs assert exactly that —
+ * that the path parameters reach the service in the right order, and that the two decorations
+ * carrying meaning (`@Roles()`, `@HttpCode()`) are on the handlers that need them. What the
+ * service *does* with the arguments is the service's spec, and whether the route answers is
+ * `tenancy.integration-spec.ts`.
+ */
 
-const TENANT = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
+const WORKSPACE = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 const DOMAIN = "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94";
 
 describe("the domains controller", () => {
@@ -24,31 +33,31 @@ describe("the domains controller", () => {
     controller = new DomainsController(service);
   });
 
-  it("scopes a listing to the tenant in the path", async () => {
-    await controller.list({ tenantId: TENANT }, { limit: 5 });
+  it("scopes a listing to the workspace in the path", async () => {
+    await controller.list({ orgId: WORKSPACE }, { limit: 5 });
 
-    expect(service.list).toHaveBeenCalledWith(TENANT, { limit: 5 });
+    expect(service.list).toHaveBeenCalledWith(WORKSPACE, { limit: 5 });
   });
 
   it("passes a new domain straight through", async () => {
-    await controller.add({ tenantId: TENANT }, { domain: "acme.example", isPrimary: true });
+    await controller.add({ orgId: WORKSPACE }, { domain: "acme.example", isPrimary: true });
 
-    expect(service.add).toHaveBeenCalledWith(TENANT, {
+    expect(service.add).toHaveBeenCalledWith(WORKSPACE, {
       domain: "acme.example",
       isPrimary: true,
     });
   });
 
-  it("addresses one domain of one tenant when promoting it", async () => {
-    await controller.setPrimary({ tenantId: TENANT, domainId: DOMAIN }, { isPrimary: true });
+  it("addresses one domain of one workspace when promoting it", async () => {
+    await controller.setPrimary({ orgId: WORKSPACE, domainId: DOMAIN }, { isPrimary: true });
 
-    expect(service.setPrimary).toHaveBeenCalledWith(TENANT, DOMAIN, { isPrimary: true });
+    expect(service.setPrimary).toHaveBeenCalledWith(WORKSPACE, DOMAIN, { isPrimary: true });
   });
 
-  it("addresses one domain of one tenant when removing it", async () => {
-    await controller.remove({ tenantId: TENANT, domainId: DOMAIN });
+  it("addresses one domain of one workspace when removing it", async () => {
+    await controller.remove({ orgId: WORKSPACE, domainId: DOMAIN });
 
-    expect(service.remove).toHaveBeenCalledWith(TENANT, DOMAIN);
+    expect(service.remove).toHaveBeenCalledWith(WORKSPACE, DOMAIN);
   });
 
   it("answers a removal with 204 and no body", () => {

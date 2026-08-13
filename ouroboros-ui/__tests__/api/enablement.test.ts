@@ -34,7 +34,7 @@ const TENANT = "5eed0001-0000-4000-8000-000000000001";
 function org(login: string, enabled = true) {
   return {
     id: `org-${login}`,
-    tenantId: TENANT,
+    orgId: TENANT,
     login,
     enabled,
     installedAt: null,
@@ -53,7 +53,7 @@ function org(login: string, enabled = true) {
 function repo(name: string, enabled = true) {
   return {
     id: `repo-${name}`,
-    orgId: "org-acme-robotics",
+    githubOrgId: "org-acme-robotics",
     name,
     enabled,
     defaultBranch: "main",
@@ -83,7 +83,7 @@ function page(items: unknown[], total = items.length) {
 function serviceWith(orgPage: unknown, repoPages: Record<string, unknown> = {}) {
   return stubClient((request) => {
     const path = new URL(request.url).pathname;
-    const match = /\/orgs\/([^/]+)\/repos$/.exec(path);
+    const match = /\/github-orgs\/([^/]+)\/repos$/.exec(path);
 
     if (match) {
       return { body: repoPages[decodeURIComponent(match[1])] ?? page([]) };
@@ -115,9 +115,9 @@ describe("readEnablement", () => {
     await readEnablement(TENANT, client);
 
     expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
-      `/api/v1/tenants/${TENANT}/orgs`,
-      `/api/v1/tenants/${TENANT}/orgs/one/repos`,
-      `/api/v1/tenants/${TENANT}/orgs/two/repos`,
+      `/api/v1/orgs/${TENANT}/github-orgs`,
+      `/api/v1/orgs/${TENANT}/github-orgs/one/repos`,
+      `/api/v1/orgs/${TENANT}/github-orgs/two/repos`,
     ]);
   });
 

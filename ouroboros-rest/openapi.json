@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.19.0",
+    "version": "0.20.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -47,20 +47,12 @@
       "description": "The gateway to `ouroboros-engine`, the Python backend that executes the work this\nservice brokers. It is internal — reachable from this service and from nothing else\n(`docs/ARCHITECTURE.md` § 10) — so everything a client learns about it, it learns\nthrough an operation here.\n\nThere is no proxy route and there will not be one. Each engine capability arrives as a\nnamed operation with its own contract in this document, because a route that forwarded\na path, a method and a body to an internal service would be that boundary written as a\nhole.\n\n**The engine failing is always a `502`.** Down, slow, unresolvable, holding a\nmismatched shared secret, or answering outside its own contract are one answer with\none code, naming no address. A mismatched secret in particular is never forwarded as a\n`401`: it is a deployment's mistake rather than a caller's, and telling a browser to\nsign in again for it would be telling it about a boundary it cannot reach."
     },
     {
-      "name": "tenants",
-      "description": "Isolated customer workspaces — the root of everything else. A tenant has a slug that\nappears in URLs and command arguments, a display name, and a lifecycle: `active`,\n`suspended`, or the `deleted` that is a soft-delete marker rather than a removal.\n\n**A workspace you are not a member of answers `404`, not `403`**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). A `403` would confirm that\nan identifier names something real, which is the whole of what somebody enumerating\nidentifiers is trying to learn — so \"no such workspace\" and \"not yours\" are one\nanswer. `GET /api/v1/tenants` is scoped the same way: it lists the workspaces *you*\nbelong to, never the installation's.\n\nCreating one makes you its `owner`, in the same transaction. Before the rule above\nthat was harmless; with it, a workspace with no members would be one nobody — its\ncreator included — could ever reach again.\n\nThere is deliberately no `DELETE`. A hard delete takes a tenant's domains, members,\norganisations and repositories with it — every foreign key in the schema cascades —\nand that is not an operation an HTTP verb should put one click away."
-    },
-    {
-      "name": "domains",
-      "description": "The email domains that resolve a tenant at sign-in. One tenant may present several;\nat most one of them is the primary the product displays back, and zero is legal for a\ntenant part-way through setting itself up.\n\nA domain is globally unique: it names exactly one tenant, so a second tenant claiming\nit is a `409` with `code: \"domain_taken\"`."
-    },
-    {
-      "name": "members",
-      "description": "Who belongs to a tenant, and what they may do there — `owner`, `admin`, `member` or\n`viewer`. A member is addressed by the *person's* id, because a membership is the\n`(tenant, person)` pair rather than a row with an identity of its own.\n\nOne rule here is enforced by this service rather than by the database, because it\nspans rows and must survive both a role change and a removal: **a tenant always keeps\nat least one owner.** Demoting or removing the last one is a `409` with\n`code: \"last_owner\"`.\n\nThe roles are also what every mutation in this document is checked against: `owner`\nand `admin` may change a workspace, `member` and `viewer` may read it. A member whose\nrole is too low gets a `403` with `code: \"forbidden\"` — the one place this API answers\n`403`, because by then the caller has already proved the workspace is no secret from\nthem."
+      "name": "tenancy",
+      "description": "**The workspaces you belong to, and the email domains that resolve one at sign-in.**\n\nA workspace *is* an organization — the organization plugin's row\n([#704](https://github.com/NobuData/ouroboros/issues/704)) — and creating, renaming,\nswitching into and staffing one are all served under `identity` and `organizations`\nabove, through BetterAuth's own client. This tag is what only this service can answer\nabout them.\n\n`GET /api/v1/orgs` is that: mockup 01 Step 2's row model, in one request. The plugin's\n`organization/list` returns the workspaces and discards the role in its adapter, and it\nknows nothing about enablement — so the counts, the monogram, the personal flag and the\ncaller's role arrive together here or in four round trips there.\n\n**A workspace you are not a member of answers `404`, not `403`**\n([#32](https://github.com/NobuData/ouroboros/issues/32)). A `403` would confirm that an\nidentifier names something real, which is the whole of what somebody enumerating\nidentifiers is trying to learn — so \"no such workspace\" and \"not yours\" are one answer.\n`GET /api/v1/orgs` is scoped the same way: it lists the workspaces *you* belong to,\nnever the installation's.\n\nDomains are the other half. One workspace may present several; at most one of them is\nthe primary the product displays back, and zero is legal for a workspace part-way\nthrough setting itself up. A domain is globally unique — it names exactly one workspace,\nwhich is what makes `POST /api/v1/auth/discover` possible — so a second workspace\nclaiming it is a `409` with `code: \"domain_taken\"`."
     },
     {
       "name": "github",
-      "description": "The GitHub organisations and repositories a tenant has enabled — the boundary of where\nOuroboros may operate. Both carry their own flag, and a repository is in scope only\nwhen **both** are true, so suspending an organisation preserves the per-repository\nchoices underneath it.\n\nBoth default to off. A row records that Ouroboros knows about the organisation or the\nrepository; the flag records that somebody deliberately turned it on."
+      "description": "The GitHub organisations and repositories a workspace has enabled — the boundary of\nwhere Ouroboros may operate, and the switches mockup 01 Step 2 draws. Both carry their\nown flag, and a repository is in scope only when **both** are true, so suspending an\norganisation preserves the per-repository choices underneath it.\n\nBoth default to off. A row records that Ouroboros knows about the organisation or the\nrepository; the flag records that somebody deliberately turned it on.\n\n**Two words called \"org\" meet under this tag**, and the paths are what keep them apart:\n`/api/v1/orgs/{orgId}` is the *workspace*, and `/github-orgs/{login}` under it is\nGitHub's. A resource's `orgId` is always the workspace; a repository names its parent\norganisation `githubOrgId` for the same reason.\n\nAdministering these is `owner` or `admin`; `member` and `viewer` may read them. A member\nwhose role is too low gets a `403` with `code: \"forbidden\"` — the one place this API\nanswers `403`, because by then the caller has already proved the workspace is no secret\nfrom them."
     }
   ],
   "paths": {
@@ -883,14 +875,14 @@
         }
       }
     },
-    "/api/v1/tenants": {
+    "/api/v1/orgs": {
       "get": {
         "tags": [
-          "tenants"
+          "tenancy"
         ],
-        "summary": "List your workspaces",
-        "description": "One page of the workspaces the signed-in person belongs to, oldest first.\n\n**Scoped to the caller**, never the installation's whole table: a listing that\nenumerated every workspace would be a larger existence leak than the `403` this API\nanswers `404` to avoid, and it would be one request rather than a scan. Somebody who\nbelongs to none gets an empty page.\n\nIt is one of the three operations that need no active workspace, and the reason is\ncircularity: this is the question a workspace switcher asks *before* it can name\none.\n\nOrdered by creation time and then by id. The second term is not decoration: two\ntenants created in the same millisecond would otherwise be free to swap places\nbetween requests, and a paginated read could show one of them twice and the other\nnever.",
-        "operationId": "listTenants",
+        "summary": "The workspaces you belong to",
+        "description": "**Mockup 01 Step 2's row model, in one request.** Every workspace the signed-in\nperson is a member of, with the monogram initials its avatar draws, whether it is a\npersonal workspace, how many repositories are enabled inside it, one of them to name,\nand the role the caller holds there.\n\nIt exists because that answer is three tables and the organization plugin serves only\none of them: `GET /api/auth/organization/list` returns the workspaces but discards the\nrole in its adapter, so a client composing this itself needs one further request *per\nworkspace* — and still has no counts. This is a join and a grouped count, and it is\nthe one read `/api/v1` offers that the auth family cannot.\n\n**It is the one operation in this document that requires no workspace.** Asking\nsomebody to choose one before being told which they have would be circular, and it is\nexactly the state `organization_required` tells them to leave. The listing is scoped\nto the caller, so the exemption is not a way around the rule — a person sees their own\nmemberships and no others.\n\nOldest first, which is the order Step 2 draws them in.",
+        "operationId": "listOrgs",
         "parameters": [
           {
             "$ref": "#/components/parameters/Limit"
@@ -901,24 +893,97 @@
         ],
         "responses": {
           "200": {
-            "description": "The page.",
+            "description": "The page. Somebody who belongs to nothing yet gets an empty one — the login\nscreen's create-your-first-workspace state, and not a failure.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TenantPage"
+                  "$ref": "#/components/schemas/OrgRowPage"
                 },
                 "example": {
                   "items": [
                     {
-                      "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                      "slug": "acme",
-                      "displayName": "Acme, Inc.",
-                      "status": "active",
-                      "createdAt": "2026-08-11T10:20:23.114Z",
-                      "updatedAt": "2026-08-11T10:20:23.114Z"
+                      "id": "5eed0001-0000-4000-8000-000000000001",
+                      "slug": "acme-robotics",
+                      "name": "Acme Robotics",
+                      "monogram": "AR",
+                      "personal": false,
+                      "roles": [
+                        "owner"
+                      ],
+                      "enabled": true,
+                      "repoCounts": {
+                        "enabled": 4,
+                        "total": 4
+                      },
+                      "featuredRepo": "helios-firmware",
+                      "githubOrgs": [
+                        {
+                          "login": "acme-robotics",
+                          "enabled": true,
+                          "repoCounts": {
+                            "enabled": 4,
+                            "total": 4
+                          }
+                        }
+                      ],
+                      "createdAt": "2026-08-11T10:20:23.114Z"
+                    },
+                    {
+                      "id": "5eed0001-0000-4000-8000-000000000002",
+                      "slug": "acme-labs",
+                      "name": "Acme Labs",
+                      "monogram": "AL",
+                      "personal": false,
+                      "roles": [
+                        "member"
+                      ],
+                      "enabled": false,
+                      "repoCounts": {
+                        "enabled": 0,
+                        "total": 0
+                      },
+                      "featuredRepo": null,
+                      "githubOrgs": [
+                        {
+                          "login": "acme-labs",
+                          "enabled": false,
+                          "repoCounts": {
+                            "enabled": 0,
+                            "total": 0
+                          }
+                        }
+                      ],
+                      "createdAt": "2026-08-11T10:20:24.221Z"
+                    },
+                    {
+                      "id": "5eed0001-0000-4000-8000-000000000003",
+                      "slug": "kensuenobu",
+                      "name": "Ken Suenobu",
+                      "monogram": "KS",
+                      "personal": true,
+                      "roles": [
+                        "owner"
+                      ],
+                      "enabled": true,
+                      "repoCounts": {
+                        "enabled": 2,
+                        "total": 2
+                      },
+                      "featuredRepo": "dotfiles",
+                      "githubOrgs": [
+                        {
+                          "login": "kensuenobu",
+                          "enabled": true,
+                          "repoCounts": {
+                            "enabled": 2,
+                            "total": 2
+                          }
+                        }
+                      ],
+                      "createdAt": "2026-08-11T10:20:25.007Z"
                     }
                   ],
-                  "total": 1,
+                  "total": 3,
                   "limit": 25,
                   "offset": 0
                 }
@@ -936,89 +1001,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "tenants"
-        ],
-        "summary": "Create a tenant",
-        "description": "Create a tenant.\n\nThe slug is chosen rather than derived from the display name: it appears in paths\nand command arguments and is the thing a person types, and a generator that turned\n`Acme, Inc.` into `acme-inc` would be one more rule to keep in step with the\ndatabase's own.\n\n**The caller becomes its `owner`**, in the same transaction. That is not a\nconvenience: a workspace with no members is one every route under it answers `404`\nto, including for the person who has just made it, so the two rows are written\ntogether or not at all.\n\nThe tenant is created with no domains and no organisations. It is `active` from the\nmoment it exists — the status is a lifecycle, not an approval. This operation needs\nno active workspace, because somebody creating their first belongs to none.",
-        "operationId": "createTenant",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateTenantRequest"
-              },
-              "example": {
-                "slug": "acme",
-                "displayName": "Acme, Inc."
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The tenant, as it was stored.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Tenant"
-                },
-                "example": {
-                  "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "slug": "acme",
-                  "displayName": "Acme, Inc.",
-                  "status": "active",
-                  "createdAt": "2026-08-11T10:20:23.114Z",
-                  "updatedAt": "2026-08-11T10:20:23.114Z"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`slug_taken` — another tenant already has that slug.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1040,204 +1023,17 @@
         }
       }
     },
-    "/api/v1/tenants/{tenantId}": {
+    "/api/v1/orgs/{orgId}/domains": {
       "get": {
         "tags": [
-          "tenants"
+          "tenancy"
         ],
-        "summary": "Read a tenant",
-        "description": "Read one tenant by its id.",
-        "operationId": "readTenant",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TenantId"
-          },
-          {
-            "$ref": "#/components/parameters/TenantHeader"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The tenant.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Tenant"
-                },
-                "example": {
-                  "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "slug": "acme",
-                  "displayName": "Acme, Inc.",
-                  "status": "active",
-                  "createdAt": "2026-08-11T10:20:23.114Z",
-                  "updatedAt": "2026-08-11T10:20:23.114Z"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "tenants"
-        ],
-        "summary": "Change a tenant",
-        "description": "Rename a tenant, re-slug it, or change its status. Every field is optional, and a\nbody naming none of them answers with the tenant unchanged — which is what `PATCH`\nmeans, and a friendlier answer than refusing a request that asked for nothing.\n\n`status: \"deleted\"` is the soft delete. The row and everything cascading from it\nsurvive, so it is one further `PATCH` away from being undone; there is no `DELETE`\nfor a tenant at all.",
-        "operationId": "updateTenant",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TenantId"
-          },
-          {
-            "$ref": "#/components/parameters/TenantHeader"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateTenantRequest"
-              },
-              "example": {
-                "displayName": "Acme Corporation"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The tenant, after the change.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Tenant"
-                },
-                "example": {
-                  "id": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "slug": "acme",
-                  "displayName": "Acme Corporation",
-                  "status": "active",
-                  "createdAt": "2026-08-11T10:20:23.114Z",
-                  "updatedAt": "2026-08-11T11:02:44.900Z"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`slug_taken` — the new slug is another tenant's.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tenants/{tenantId}/domains": {
-      "get": {
-        "tags": [
-          "domains"
-        ],
-        "summary": "List a tenant's domains",
-        "description": "One page of this tenant's email domains, the primary first and then alphabetically —\nthe order a settings screen reads in, rather than whatever creation time produced.",
+        "summary": "List a workspace's email domains",
+        "description": "One page of this workspace's domains, the primary first and the rest alphabetically.\nThe order is the settings screen's: the domain the product displays back is the one a\nreader looks for.",
         "operationId": "listDomains",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/Limit"
@@ -1261,8 +1057,8 @@
                   "items": [
                     {
                       "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
-                      "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                      "domain": "acme.example",
+                      "orgId": "5eed0001-0000-4000-8000-000000000001",
+                      "domain": "acme-robotics.dev",
                       "isPrimary": true,
                       "createdAt": "2026-08-11T10:20:23.114Z",
                       "updatedAt": "2026-08-11T10:20:23.114Z"
@@ -1286,7 +1082,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
+            "description": "`tenant_not_found` — no workspace has that id, or none you are a member of. The two are deliberately one answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1296,7 +1092,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1319,14 +1115,14 @@
       },
       "post": {
         "tags": [
-          "domains"
+          "tenancy"
         ],
-        "summary": "Claim a domain",
-        "description": "Claim an email domain for this tenant, optionally as the one the product displays\nback.\n\n`isPrimary: true` demotes whichever domain currently holds it, in the same\ntransaction — the database permits only one primary per tenant, and the two\nstatements are what make changing it possible at all.",
+        "summary": "Claim an email domain",
+        "description": "Claim a domain for this workspace, optionally as the one displayed back.\n\nA domain is unique across the whole installation rather than within a workspace,\nbecause it is what resolves a workspace at sign-in: `POST /api/v1/auth/discover` reads\nexactly this table, and a domain naming two workspaces would name neither.",
         "operationId": "addDomain",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/TenantHeader"
@@ -1340,7 +1136,7 @@
                 "$ref": "#/components/schemas/CreateDomainRequest"
               },
               "example": {
-                "domain": "acme.example",
+                "domain": "acme-robotics.dev",
                 "isPrimary": true
               }
             }
@@ -1356,8 +1152,8 @@
                 },
                 "example": {
                   "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
-                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "domain": "acme.example",
+                  "orgId": "5eed0001-0000-4000-8000-000000000001",
+                  "domain": "acme-robotics.dev",
                   "isPrimary": true,
                   "createdAt": "2026-08-11T10:20:23.114Z",
                   "updatedAt": "2026-08-11T10:20:23.114Z"
@@ -1386,7 +1182,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
+            "description": "`tenant_not_found` — no workspace has that id, or none you are a member of. The two are deliberately one answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1396,22 +1192,17 @@
             }
           },
           "409": {
-            "description": "`domain_taken` — the domain belongs to another tenant. A domain resolves exactly\none tenant at sign-in, so it is unique across the whole installation rather than\nwithin a tenant.",
+            "description": "`domain_taken` — that domain belongs to another workspace.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "code": "domain_taken",
-                  "message": "That domain belongs to another tenant.",
-                  "details": {}
                 }
               }
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1433,17 +1224,17 @@
         }
       }
     },
-    "/api/v1/tenants/{tenantId}/domains/{domainId}": {
+    "/api/v1/orgs/{orgId}/domains/{domainId}": {
       "patch": {
         "tags": [
-          "domains"
+          "tenancy"
         ],
-        "summary": "Set or clear a domain's primary flag",
-        "description": "Promote this domain to the tenant's primary, or demote it.\n\nDemotion may leave the tenant with no primary at all, deliberately: zero is a legal\nstate, and refusing it would make \"replace the domain we display\" an operation with\nno order that works.",
-        "operationId": "setDomainPrimary",
+        "summary": "Promote or demote a domain",
+        "description": "Make this the workspace's primary domain, or give up the flag.\n\nDemoting is allowed to leave the workspace with no primary at all: that is a legal\nstate, and refusing would make \"replace the domain we display\" an operation with no\norder that works.",
+        "operationId": "setPrimaryDomain",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/DomainId"
@@ -1475,11 +1266,11 @@
                 },
                 "example": {
                   "id": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
-                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "domain": "acme.example",
+                  "orgId": "5eed0001-0000-4000-8000-000000000001",
+                  "domain": "acme-robotics.dev",
                   "isPrimary": true,
                   "createdAt": "2026-08-11T10:20:23.114Z",
-                  "updatedAt": "2026-08-11T11:31:02.005Z"
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
                 }
               }
             }
@@ -1505,17 +1296,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found`, or `domain_not_found` — which a domain belonging to a\n*different* tenant also answers, so the API does not confirm to whoever asked\nthat an identifier they guessed is real.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`conflict` — this tenant's primary domain was changed by another request at the\nsame moment. Retrying is the honest response.",
+            "description": "`tenant_not_found` or `domain_not_found`. A domain belonging to another workspace answers exactly as one that does not exist.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1525,7 +1306,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1548,14 +1329,14 @@
       },
       "delete": {
         "tags": [
-          "domains"
+          "tenancy"
         ],
-        "summary": "Give up a domain",
-        "description": "Remove a domain from this tenant. Removing the primary is permitted, for the same\nreason demoting it is.",
+        "summary": "Give a domain up",
+        "description": "Remove a domain from this workspace, primary or not.\n\n`204` and no body: there is nothing to say about a row that no longer exists, and a\nbody carrying the deleted resource invites a client to keep using it.",
         "operationId": "removeDomain",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/DomainId"
@@ -1566,7 +1347,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Gone. No body: there is nothing to say about a row that no longer exists, and a\n`200` carrying the deleted resource invites a client to keep using it."
+            "description": "It is gone."
           },
           "401": {
             "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
@@ -1589,7 +1370,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found`, or `domain_not_found`.",
+            "description": "`tenant_not_found` or `domain_not_found`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1599,7 +1380,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1621,430 +1402,17 @@
         }
       }
     },
-    "/api/v1/tenants/{tenantId}/members": {
-      "get": {
-        "tags": [
-          "members"
-        ],
-        "summary": "List a tenant's members",
-        "description": "One page of this tenant's members, by name, each row carrying the person's own\ndetails — this is the query mockup 17's member table renders.",
-        "operationId": "listMembers",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TenantId"
-          },
-          {
-            "$ref": "#/components/parameters/Limit"
-          },
-          {
-            "$ref": "#/components/parameters/Offset"
-          },
-          {
-            "$ref": "#/components/parameters/TenantHeader"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "The page.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemberPage"
-                },
-                "example": {
-                  "items": [
-                    {
-                      "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                      "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85",
-                      "email": "ada@acme.example",
-                      "displayName": "Ada Lovelace",
-                      "avatarUrl": "https://avatars.example/ada.png",
-                      "role": "owner",
-                      "invitedAt": "2026-08-11T10:20:23.114Z",
-                      "joinedAt": "2026-08-11T10:24:51.400Z"
-                    }
-                  ],
-                  "total": 1,
-                  "limit": 25,
-                  "offset": 0
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Invite somebody",
-        "description": "Invite a person to this tenant, by email address.\n\n**A stub, deliberately.** The membership is created with `joinedAt` null and nothing\nis sent: what turns an outstanding invitation into a joined member is the sign-in\n[#33](https://github.com/NobuData/ouroboros/issues/33) adds, which is the first\nthing that can honestly say somebody accepted.\n\nA person Ouroboros has never heard of is created here so the membership has\nsomething to point at. One that already exists is reused and their display name is\nleft alone — a person is one row across every tenant they belong to, and an inviter\ntyping a name into a form is not authority to rename them in the others.",
-        "operationId": "inviteMember",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TenantId"
-          },
-          {
-            "$ref": "#/components/parameters/TenantHeader"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/InviteMemberRequest"
-              },
-              "example": {
-                "email": "grace@acme.example",
-                "role": "admin",
-                "displayName": "Grace Hopper"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "The membership, as the member list shows it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Member"
-                },
-                "example": {
-                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85",
-                  "email": "grace@acme.example",
-                  "displayName": "Grace Hopper",
-                  "avatarUrl": null,
-                  "role": "admin",
-                  "invitedAt": "2026-08-11T10:20:23.114Z",
-                  "joinedAt": null
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`member_exists` — that person already belongs to this tenant.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tenants/{tenantId}/members/{userId}": {
-      "patch": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Change a member's role",
-        "description": "Change what a member may do in this tenant.\n\nDemoting the tenant's last `owner` is refused — see the `409` below. Promoting\nsomebody *to* owner never is: it cannot reduce the number of owners.",
-        "operationId": "changeMemberRole",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TenantId"
-          },
-          {
-            "$ref": "#/components/parameters/UserId"
-          },
-          {
-            "$ref": "#/components/parameters/TenantHeader"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMemberRequest"
-              },
-              "example": {
-                "role": "admin"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "The membership, after the change.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Member"
-                },
-                "example": {
-                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85",
-                  "email": "grace@acme.example",
-                  "displayName": "Grace Hopper",
-                  "avatarUrl": null,
-                  "role": "admin",
-                  "invitedAt": "2026-08-11T10:20:23.114Z",
-                  "joinedAt": "2026-08-11T10:24:51.400Z"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`tenant_not_found`, or `member_not_found`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`last_owner` — this would leave the tenant with nobody who can administer it.\nThe one rule in the tenancy schema the database deliberately does not enforce:\nit spans rows and has to survive both a role change and a removal, so this\nservice owns it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "code": "last_owner",
-                  "message": "A tenant must keep at least one owner. Promote another member first.",
-                  "details": {
-                    "userId": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85"
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "members"
-        ],
-        "summary": "Remove a member",
-        "description": "Remove somebody from this tenant. The person is not deleted — they may hold roles in\nother tenants, and one human is one row across all of them.",
-        "operationId": "removeMember",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/TenantId"
-          },
-          {
-            "$ref": "#/components/parameters/UserId"
-          },
-          {
-            "$ref": "#/components/parameters/TenantHeader"
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "They are no longer a member."
-          },
-          "401": {
-            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Administering a workspace is `owner` or `admin`; `member` and `viewer` may\nread it.\n\nThe one place this API answers `403` rather than `404`. Everywhere else, \"you\nmay not\" would confirm that an identifier names something real — here the caller\nhas already proved they are a member, so the workspace is no secret from them\nand their role is the only thing left to tell them. `details.role` is what they\nhold and `details.required` is what would have been enough.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "`tenant_not_found`, or `member_not_found`.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`last_owner` — they are the only owner this tenant has.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/tenants/{tenantId}/orgs": {
+    "/api/v1/orgs/{orgId}/github-orgs": {
       "get": {
         "tags": [
           "github"
         ],
-        "summary": "List a tenant's GitHub organisations",
-        "description": "One page of this tenant's GitHub organisations, by login — **including the disabled\nones**, because a settings screen has to render the switch that is off, and a list\nthat hid them would make turning one back on impossible through this API.",
-        "operationId": "listOrgs",
+        "summary": "List a workspace's GitHub organisations",
+        "description": "One page of this workspace's GitHub organisations, by login — **including the disabled\nones**, because a settings screen has to render the switch that is off, and a list\nthat hid them would make turning one back on impossible through this API.\n\nTwo words called \"org\" meet on this path, and the path is what keeps them apart:\n`{orgId}` is the **workspace**, and `github-orgs` are **GitHub's**.",
+        "operationId": "listGithubOrgs",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/Limit"
@@ -2062,14 +1430,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrgPage"
+                  "$ref": "#/components/schemas/GithubOrgPage"
                 },
                 "example": {
                   "items": [
                     {
                       "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
-                      "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                      "login": "nobudata",
+                      "orgId": "5eed0001-0000-4000-8000-000000000001",
+                      "login": "acme-robotics",
                       "enabled": true,
                       "installedAt": null,
                       "createdAt": "2026-08-11T10:20:23.114Z",
@@ -2094,7 +1462,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
+            "description": "`tenant_not_found` — no workspace has that id, or none you are a member of. The two are deliberately one answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2104,7 +1472,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2130,11 +1498,11 @@
           "github"
         ],
         "summary": "Record a GitHub organisation",
-        "description": "Record a GitHub organisation for this tenant, switched off unless the request asks\notherwise.\n\nEnablement is per tenant rather than global: two tenants may each enable an\norganisation they both belong to, and each holds its own flag and its own\ninstallation.",
-        "operationId": "addOrg",
+        "description": "Record a GitHub organisation for this workspace, switched off unless the request asks\notherwise.\n\nEnablement is per workspace rather than global: two workspaces may each enable an\norganisation they both belong to, and each holds its own flag and its own\ninstallation.",
+        "operationId": "addGithubOrg",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/TenantHeader"
@@ -2145,10 +1513,10 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateOrgRequest"
+                "$ref": "#/components/schemas/CreateGithubOrgRequest"
               },
               "example": {
-                "login": "nobudata",
+                "login": "acme-robotics",
                 "enabled": true
               }
             }
@@ -2160,12 +1528,12 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Org"
+                  "$ref": "#/components/schemas/GithubOrg"
                 },
                 "example": {
                   "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
-                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "login": "nobudata",
+                  "orgId": "5eed0001-0000-4000-8000-000000000001",
+                  "login": "acme-robotics",
                   "enabled": true,
                   "installedAt": null,
                   "createdAt": "2026-08-11T10:20:23.114Z",
@@ -2195,7 +1563,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found` — no tenant has that id.",
+            "description": "`tenant_not_found` — no workspace has that id, or none you are a member of. The two are deliberately one answer.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2205,7 +1573,7 @@
             }
           },
           "409": {
-            "description": "`org_taken` — this tenant has already recorded that organisation.",
+            "description": "`org_taken` — this workspace has already recorded that organisation.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2215,7 +1583,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2237,17 +1605,97 @@
         }
       }
     },
-    "/api/v1/tenants/{tenantId}/orgs/{login}": {
+    "/api/v1/orgs/{orgId}/github-orgs/{login}": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "One GitHub organisation",
+        "description": "The organisation, addressed by its login rather than by an id — the login is what a\nperson types, what a URL elsewhere already carries, and what is unique within the\nworkspace.",
+        "operationId": "readGithubOrg",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/OrgLogin"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The organisation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubOrg"
+                },
+                "example": {
+                  "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                  "orgId": "5eed0001-0000-4000-8000-000000000001",
+                  "login": "acme-robotics",
+                  "enabled": true,
+                  "installedAt": null,
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` or `org_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "tags": [
           "github"
         ],
         "summary": "Enable or disable a GitHub organisation",
-        "description": "Turn an organisation on or off for this tenant.\n\nTurning it off suspends everything under it without discarding the per-repository\nchoices underneath — which is why there are two flags rather than one, and why this\ntouches only the organisation's.",
-        "operationId": "setOrgEnabled",
+        "description": "**Mockup 01 Step 2's switch.** Turn the organisation on or off for this workspace.\n\nTurning it off suspends everything under it **without** discarding the per-repository\nchoices underneath — which is why there are two flags rather than one, and why this\ntouches only the organisation's. A repository is in scope for Ouroboros when its own\nflag and its organisation's are both true.",
+        "operationId": "setGithubOrgEnabled",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/OrgLogin"
@@ -2261,10 +1709,10 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateOrgRequest"
+                "$ref": "#/components/schemas/UpdateGithubOrgRequest"
               },
               "example": {
-                "enabled": false
+                "enabled": true
               }
             }
           }
@@ -2275,16 +1723,16 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Org"
+                  "$ref": "#/components/schemas/GithubOrg"
                 },
                 "example": {
                   "id": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
-                  "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                  "login": "nobudata",
-                  "enabled": false,
+                  "orgId": "5eed0001-0000-4000-8000-000000000001",
+                  "login": "acme-robotics",
+                  "enabled": true,
                   "installedAt": null,
                   "createdAt": "2026-08-11T10:20:23.114Z",
-                  "updatedAt": "2026-08-11T12:05:19.732Z"
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
                 }
               }
             }
@@ -2310,7 +1758,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found`, or `org_not_found`.",
+            "description": "`tenant_not_found` or `org_not_found`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2320,7 +1768,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2342,17 +1790,17 @@
         }
       }
     },
-    "/api/v1/tenants/{tenantId}/orgs/{login}/repos": {
+    "/api/v1/orgs/{orgId}/github-orgs/{login}/repos": {
       "get": {
         "tags": [
           "github"
         ],
         "summary": "List an organisation's repositories",
-        "description": "One page of the repositories recorded under this organisation, by name, enabled or\nnot.\n\nA repository is in scope for Ouroboros only when its own `enabled` **and** its\norganisation's are both true. Neither this operation nor the one below applies that\nrule — they set the flags; whatever is about to act on a repository is what has to\nfind both of them true.",
+        "description": "One page of this organisation's repositories, by name, enabled or not.\n\nA repository hangs from its GitHub organisation rather than from the workspace, which\nis why this path carries both — and why a repository resource names its parent\n`githubOrgId` rather than `orgId`, which is the workspace everywhere else here.",
         "operationId": "listRepos",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/OrgLogin"
@@ -2379,8 +1827,8 @@
                   "items": [
                     {
                       "id": "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d",
-                      "orgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
-                      "name": "ouroboros",
+                      "githubOrgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                      "name": "helios-firmware",
                       "enabled": true,
                       "defaultBranch": "main",
                       "createdAt": "2026-08-11T10:20:23.114Z",
@@ -2405,7 +1853,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found`, or `org_not_found`.",
+            "description": "`tenant_not_found` or `org_not_found`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2415,7 +1863,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2437,17 +1885,100 @@
         }
       }
     },
-    "/api/v1/tenants/{tenantId}/orgs/{login}/repos/{name}": {
+    "/api/v1/orgs/{orgId}/github-orgs/{login}/repos/{name}": {
+      "get": {
+        "tags": [
+          "github"
+        ],
+        "summary": "One repository",
+        "description": "The repository, if Ouroboros has heard of it.\n\n**This is the only operation that can answer `repo_not_found`.** The `PATCH` beside it\n*creates* the row it cannot find — there is no discovery flow yet, so naming a\nrepository is how one comes to exist — which leaves a `GET` as the one operation with\nnothing to create and something honest to report.",
+        "operationId": "readRepo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/OrgLogin"
+          },
+          {
+            "$ref": "#/components/parameters/RepoName"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The repository.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Repo"
+                },
+                "example": {
+                  "id": "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d",
+                  "githubOrgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                  "name": "helios-firmware",
+                  "enabled": true,
+                  "defaultBranch": "main",
+                  "createdAt": "2026-08-11T10:20:23.114Z",
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will\nnot honour. Sign in through `/api/auth/sign-in/social`.\n\nEvery way a session can fail is this one answer: absent, expired, signed with a\nrotated key, forged, or naming a person who has since been deleted. A client\ncannot act differently on any of them, and distinguishing them would tell\nwhoever is probing which part of their forgery was right.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found`, `org_not_found`, or `repo_not_found` when nothing has recorded that repository.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately: the real diagnosis names a query, a host or a\nrole, and it goes to the service log where only an operator reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "tags": [
           "github"
         ],
         "summary": "Enable or disable a repository",
-        "description": "Turn a repository on or off — **and record it if this is the first Ouroboros has\nheard of it.**\n\nThere is no `POST` for a repository, and that is why this one creates. The GitHub App\ninstallation flow that would discover repositories is future product work, so nothing\nexists today to have created a row for a person to then switch on; making this an\nupsert keeps \"turn this repository on\" a single request either way, and doing it in\none statement keeps it correct when two people do it at once.\n\n`defaultBranch` is left alone when the request omits it rather than cleared: it is\ndiscovered from GitHub, and an enable/disable is not the thing that should forget it.",
+        "description": "Turn a repository on or off — **and record it if this is the first Ouroboros has heard\nof it.**\n\nThere is no `POST` for a repository, and that is why this one creates: the GitHub App\ninstallation flow that would discover repositories is future product work, so nothing\nexists today to have created a row for somebody to then switch on. Making the `PATCH`\nan upsert is what keeps \"turn this repository on\" a single request either way.\n\n`defaultBranch` is left alone when omitted rather than cleared — it is discovered from\nGitHub, and an enable/disable is not the thing that should forget it.\n\nIt answers no `repo_not_found`: the only thing that can be missing is the organisation\nthe row would hang from.",
         "operationId": "setRepoEnabled",
         "parameters": [
           {
-            "$ref": "#/components/parameters/TenantId"
+            "$ref": "#/components/parameters/OrgId"
           },
           {
             "$ref": "#/components/parameters/OrgLogin"
@@ -2483,12 +2014,12 @@
                 },
                 "example": {
                   "id": "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d",
-                  "orgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
-                  "name": "ouroboros",
+                  "githubOrgId": "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f",
+                  "name": "helios-firmware",
                   "enabled": true,
                   "defaultBranch": "main",
                   "createdAt": "2026-08-11T10:20:23.114Z",
-                  "updatedAt": "2026-08-11T12:11:38.220Z"
+                  "updatedAt": "2026-08-11T10:20:23.114Z"
                 }
               }
             }
@@ -2514,17 +2045,7 @@
             }
           },
           "404": {
-            "description": "`tenant_not_found`, or `org_not_found`. There is no `repo_not_found`: a\nrepository this API has never seen is one it creates, so the only thing that can\nbe missing is the organisation it would hang from.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "`conflict` — the repository was recorded by another request at the same moment.",
+            "description": "`tenant_not_found` or `org_not_found`.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2534,7 +2055,7 @@
             }
           },
           "422": {
-            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.\nunderstood, and a different value can succeed.",
+            "description": "`validation_failed` — a path parameter, a query parameter or a field of the body\nwas refused. `details` carries one entry per field, keyed by its path, so a form\ncan render each message beside the input that produced it.\n\nOr `constraint_violated`, when the value was one this document's own rules admit\nand a `check` in the database does not. `details.constraint` names which. The two\nshare a status because both mean the same thing to a client: the request was\nunderstood, and a different value can succeed.\n\nOr `tenant_mismatch`, when the path and the `X-Ouro-Tenant` header name different\nworkspaces — refused rather than resolved by precedence, so a client holding a\nstale workspace in a header cannot quietly act on another one.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2672,51 +2193,40 @@
       }
     },
     "parameters": {
-      "TenantId": {
-        "name": "tenantId",
+      "OrgId": {
+        "name": "orgId",
         "in": "path",
         "required": true,
-        "description": "The tenant's id.",
+        "description": "The workspace's id — an `organization` row, and what `GET /api/v1/orgs` returns as\n`id`.\n\n**Not a GitHub organisation.** The two words collide and the paths are what keep them\napart: this is the workspace, and the GitHub organisations inside it are\n`/github-orgs/{login}` under it.",
         "schema": {
           "type": "string",
           "format": "uuid"
         },
-        "example": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+        "example": "5eed0001-0000-4000-8000-000000000001"
       },
       "DomainId": {
         "name": "domainId",
         "in": "path",
         "required": true,
-        "description": "The domain's id. It must belong to the tenant in the path.",
+        "description": "The domain's id. It must belong to the workspace in the path.",
         "schema": {
           "type": "string",
           "format": "uuid"
         },
         "example": "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
       },
-      "UserId": {
-        "name": "userId",
-        "in": "path",
-        "required": true,
-        "description": "The person's id. A membership is the `(tenant, person)` pair rather than a row with\nan identity of its own, so this is what addresses one.",
-        "schema": {
-          "type": "string",
-          "format": "uuid"
-        },
-        "example": "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85"
-      },
       "OrgLogin": {
         "name": "login",
         "in": "path",
         "required": true,
-        "description": "The organisation's GitHub login — the `NobuData` in github.com/NobuData, lower-cased.\nGitHub treats logins case-insensitively, so they are stored folded and one casing is\nthe only one that resolves.",
+        "description": "The GitHub organisation's login — the `NobuData` in github.com/NobuData, lower-cased.\nGitHub treats logins case-insensitively, so they are stored folded and one casing is\nthe only one that resolves.",
         "schema": {
           "type": "string",
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
           "minLength": 1,
           "maxLength": 39
         },
-        "example": "nobudata"
+        "example": "acme-robotics"
       },
       "RepoName": {
         "name": "name",
@@ -2729,7 +2239,7 @@
           "minLength": 1,
           "maxLength": 100
         },
-        "example": "ouroboros"
+        "example": "helios-firmware"
       },
       "AuthProviderId": {
         "name": "id",
@@ -2745,7 +2255,7 @@
         "name": "X-Ouro-Tenant",
         "in": "header",
         "required": false,
-        "description": "The workspace this request is operating in — its slug or its uuid.\n\n**An override, not the answer.** Since\n[#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts\nin is the session's active organization, which is server state: it is set through\n`/api/auth/organization/set-active`, it is stamped onto every new session, and no\nheader can assert it. This header names a *different* workspace for one request —\nwhich is how a client acts outside the active one without changing it for every other\nrequest in flight. It is validated exactly as everything else is: a workspace the\ncaller is not a member of is a `404`, the same answer one that does not exist gets.\n\nOn the operations below it is **optional and redundant**: they already name a\nworkspace in their path, which is the more specific of the two, and a header that\nnames a *different* one is a `422` with `code: \"tenant_mismatch\"` rather than a\nsilent preference for either. It is accepted here so that one client can set it on\nevery request, and it is how the operations that have no workspace in their path say\nwhich workspace they mean.\n\nA caller who omits it is acting in their session's active organization. A session\nthat has none — a person who belongs to no workspace, one whose workspace was\ndeleted, one who was removed from it — gets a `400` with\n`code: \"organization_required\"` on any operation that names no workspace of its own.\nEvery operation in this document names one in its path, so none of them can answer\nit today; the endpoints [#714](https://github.com/NobuData/ouroboros/issues/714)\nadds are the first that will.\n\nIt replaces `tenant_required`, which was `422` and meant *you belong to several\nworkspaces and named none*. Nothing is inferred from how many workspaces somebody\nbelongs to any more: the choice is made once, at sign-in or in the picker, and lives\non the session.",
+        "description": "The workspace this request is operating in — its slug or its uuid.\n\n**An override, not the answer.** Since\n[#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts\nin is the session's active organization, which is server state: it is set through\n`/api/auth/organization/set-active`, it is stamped onto every new session, and no\nheader can assert it. This header names a *different* workspace for one request —\nwhich is how a client acts outside the active one without changing it for every other\nrequest in flight. It is validated exactly as everything else is: a workspace the\ncaller is not a member of is a `404`, the same answer one that does not exist gets.\n\nOn the operations below it is **optional and redundant**: they already name a\nworkspace in their path, which is the more specific of the two, and a header that\nnames a *different* one is a `422` with `code: \"tenant_mismatch\"` rather than a\nsilent preference for either. It is accepted here so that one client can set it on\nevery request, and it is how the operations that have no workspace in their path say\nwhich workspace they mean.\n\nA caller who omits it is acting in their session's active organization. A session\nthat has none — a person who belongs to no workspace, one whose workspace was\ndeleted, one who was removed from it — gets a `400` with\n`code: \"organization_required\"` on any operation that names no workspace of its own.\nEvery operation that takes this header also names a workspace in its path, so none of\nthem can answer it; the one operation that names none is `GET /api/v1/orgs`, which\ndoes not take this header at all, because *which workspaces are yours* is the question\nsomebody in that state is asking.\n\nNothing is inferred from how many workspaces somebody belongs to: the choice is made\nonce, at sign-in or in the picker, and lives on the session.",
         "schema": {
           "type": "string",
           "minLength": 1,
@@ -2806,7 +2316,7 @@
             "examples": [
               "domain_taken",
               "tenant_not_found",
-              "last_owner",
+              "org_not_found",
               "validation_failed"
             ]
           },
@@ -2814,7 +2324,7 @@
             "type": "string",
             "description": "Written for a person. It may name a value the caller sent and never names\nanything about the service's own internals — no driver text, no stack, no\nconstraint. A `500`'s message is a constant for exactly that reason.",
             "examples": [
-              "That domain belongs to another tenant."
+              "That domain belongs to another workspace."
             ]
           },
           "details": {
@@ -3530,80 +3040,175 @@
           }
         }
       },
-      "Tenant": {
+      "RepoCounts": {
         "type": "object",
-        "title": "Tenant",
-        "description": "An isolated customer workspace — the root of everything else in the API.",
+        "title": "RepoCounts",
+        "description": "How many repositories are switched on, and how many there are.\n\nCounted on each repository's **own** flag, without regard to its organisation's. The\ntwo are independent by design — a repository is in scope for Ouroboros only when both\nare true — and a count that folded them together would make turning an organisation\noff look like losing the per-repository choices underneath it, which is exactly what\ntwo flags exist to prevent.",
+        "additionalProperties": false,
+        "required": [
+          "enabled",
+          "total"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              4
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Never smaller than `enabled`.",
+            "examples": [
+              4
+            ]
+          }
+        }
+      },
+      "GithubOrgSummary": {
+        "type": "object",
+        "title": "GithubOrgSummary",
+        "description": "One GitHub organisation as a workspace row carries it — enough to draw a switch and to\naddress the `PATCH` that flips it.\n\nA summary rather than the whole `GithubOrg`: the ids and timestamps a settings screen\npages through are noise on a first-run card, and `login` is what the enable/disable\npath takes.",
+        "additionalProperties": false,
+        "required": [
+          "login",
+          "enabled",
+          "repoCounts"
+        ],
+        "properties": {
+          "login": {
+            "type": "string",
+            "description": "The `{login}` in the enable/disable path.",
+            "examples": [
+              "acme-robotics"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "examples": [
+              true
+            ]
+          },
+          "repoCounts": {
+            "$ref": "#/components/schemas/RepoCounts"
+          }
+        }
+      },
+      "OrgRow": {
+        "type": "object",
+        "title": "OrgRow",
+        "description": "One workspace the signed-in person belongs to — mockup 01 Step 2's row, field for\nfield.\n\n```\n┌────┐  acme-robotics ✓                          ┌────●\n│ AR │  4 repos enabled · incl. helios-firmware  └────┘\n└────┘\n  ▲     ▲              ▲     ▲                     ▲\n  │     slug           │     featuredRepo          enabled\n  monogram             repoCounts.enabled\n```\n\nThe derived fields — `monogram`, `personal` — are computed by the service rather than\nby the client on purpose: a browser that derived them would be a second place the rule\nlives, and the two would disagree the first time either changed.",
         "additionalProperties": false,
         "required": [
           "id",
           "slug",
-          "displayName",
-          "status",
-          "createdAt",
-          "updatedAt"
+          "name",
+          "monogram",
+          "personal",
+          "roles",
+          "enabled",
+          "repoCounts",
+          "featuredRepo",
+          "githubOrgs",
+          "createdAt"
         ],
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Stable for the tenant's whole life. The slug is not; this is what to store.",
+            "description": "The `{orgId}` every other operation in this document takes.",
             "examples": [
-              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+              "5eed0001-0000-4000-8000-000000000001"
             ]
           },
           "slug": {
             "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "minLength": 2,
-            "maxLength": 63,
-            "description": "The URL- and CLI-safe handle, unique across the installation. DNS-label shaped,\nwhich keeps it usable if one is ever wanted as a subdomain.",
+            "description": "The handle. What the mockup prints as the row's name.",
             "examples": [
-              "acme"
+              "acme-robotics"
             ]
           },
-          "displayName": {
+          "name": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "What a human reads. Free text; it carries no machine meaning.",
+            "description": "What a human reads. The monogram is derived from it.",
             "examples": [
-              "Acme, Inc."
+              "Acme Robotics"
             ]
           },
-          "status": {
+          "monogram": {
             "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "deleted"
+            "maxLength": 2,
+            "description": "Initials for the avatar the mockup draws in place of a logo — the first letter of\neach of the first two words, or the first two letters of a single-word name.\nEmpty for a name with no letters or digits in it at all, which a client renders as\nan empty circle rather than as a failure.",
+            "examples": [
+              "AR"
+            ]
+          },
+          "personal": {
+            "type": "boolean",
+            "description": "Whether this is somebody's own workspace — the mockup's `personal` pill. Set only\nby the service, at a person's first sign-in; `POST /api/auth/organization/create`\nstrips the flag from whatever a client sends, so this is a fact rather than a\nclaim.",
+            "examples": [
+              false
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "description": "What the caller may do here — **a list, not a word**, because the stored column is\none. It is what a screen greys the switch out on: `owner` and `admin` may toggle,\n`member` and `viewer` may look. Ordinarily one entry; possibly none, for a\nmembership carrying only roles this service does not recognise.",
+            "items": {
+              "$ref": "#/components/schemas/MemberRole"
+            },
+            "examples": [
+              [
+                "owner"
+              ]
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether **any** of this workspace's GitHub organisations is switched on — the\nrow's own switch, summarising the ones in `githubOrgs` rather than a flag of its\nown.",
+            "examples": [
+              true
+            ]
+          },
+          "repoCounts": {
+            "$ref": "#/components/schemas/RepoCounts"
+          },
+          "featuredRepo": {
+            "description": "One enabled repository to name in the mockup's `incl. <repo>`, or `null` when none\nis. The earliest-recorded one in the first of this workspace's organisations that\nhas any — earliest rather than alphabetical, because \"the first one you turned on\"\nis a more useful thing to show a person than \"the one whose name sorts first\".",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "description": "The lifecycle. `deleted` is a soft-delete marker: the row and everything\ncascading from it survive, so it is recoverable.",
             "examples": [
-              "active"
+              "helios-firmware"
             ]
+          },
+          "githubOrgs": {
+            "type": "array",
+            "description": "Its GitHub organisations, by login — what the switch acts on.",
+            "items": {
+              "$ref": "#/components/schemas/GithubOrgSummary"
+            }
           },
           "createdAt": {
             "type": "string",
             "format": "date-time",
-            "examples": [
-              "2026-08-11T10:20:23.114Z"
-            ]
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Maintained by the database on every write; never accepted from a client.",
+            "description": "When the workspace came into being. The listing's own order.",
             "examples": [
               "2026-08-11T10:20:23.114Z"
             ]
           }
         }
       },
-      "TenantPage": {
+      "OrgRowPage": {
         "type": "object",
-        "title": "TenantPage",
-        "description": "One page of tenants.",
+        "title": "OrgRowPage",
+        "description": "One page of the workspaces you belong to, oldest first.",
         "additionalProperties": false,
         "required": [
           "items",
@@ -3614,24 +3219,21 @@
         "properties": {
           "items": {
             "type": "array",
-            "description": "The rows for this window, oldest first.",
             "items": {
-              "$ref": "#/components/schemas/Tenant"
+              "$ref": "#/components/schemas/OrgRow"
             }
           },
           "total": {
             "type": "integer",
             "minimum": 0,
-            "description": "How many rows there are in total, ignoring the window.",
             "examples": [
-              1
+              3
             ]
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
             "maximum": 100,
-            "description": "The window that was applied — the default, when the request named none.",
             "examples": [
               25
             ]
@@ -3648,11 +3250,11 @@
       "Domain": {
         "type": "object",
         "title": "Domain",
-        "description": "An email domain that resolves a tenant at sign-in.",
+        "description": "An email domain that resolves a workspace at sign-in.",
         "additionalProperties": false,
         "required": [
           "id",
-          "tenantId",
+          "orgId",
           "domain",
           "isPrimary",
           "createdAt",
@@ -3666,25 +3268,26 @@
               "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"
             ]
           },
-          "tenantId": {
+          "orgId": {
             "type": "string",
             "format": "uuid",
+            "description": "The workspace it belongs to.",
             "examples": [
-              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+              "5eed0001-0000-4000-8000-000000000001"
             ]
           },
           "domain": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
             "maxLength": 253,
-            "description": "Lower-cased, and unique across the whole installation rather than within the\ntenant — a domain names exactly one tenant at sign-in.",
+            "description": "Lower-cased, and unique across the whole installation rather than within the\nworkspace — a domain names exactly one workspace at sign-in.",
             "examples": [
-              "acme.example"
+              "acme-robotics.dev"
             ]
           },
           "isPrimary": {
             "type": "boolean",
-            "description": "The domain the product displays back. At most one per tenant, and zero is legal\nfor a tenant part-way through setting itself up.",
+            "description": "The domain the product displays back. At most one per workspace, and zero is legal\nfor a workspace part-way through setting itself up.",
             "examples": [
               true
             ]
@@ -3708,7 +3311,7 @@
       "DomainPage": {
         "type": "object",
         "title": "DomainPage",
-        "description": "One page of a tenant's domains, the primary first.",
+        "description": "One page of a workspace's domains, the primary first.",
         "additionalProperties": false,
         "required": [
           "items",
@@ -3747,151 +3350,14 @@
           }
         }
       },
-      "Member": {
+      "GithubOrg": {
         "type": "object",
-        "title": "Member",
-        "description": "A person's membership of one tenant, with the person's own details alongside — one\nrow of a member table.\n\nFlattened rather than nested, and with no id of its own: the membership *is* the\n`(tenantId, userId)` pair, which is what a `PATCH` or a `DELETE` addresses.",
-        "additionalProperties": false,
-        "required": [
-          "tenantId",
-          "userId",
-          "email",
-          "displayName",
-          "avatarUrl",
-          "role",
-          "invitedAt",
-          "joinedAt"
-        ],
-        "properties": {
-          "tenantId": {
-            "type": "string",
-            "format": "uuid",
-            "examples": [
-              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
-            ]
-          },
-          "userId": {
-            "type": "string",
-            "format": "uuid",
-            "examples": [
-              "c7b1e2f4-5a63-4d8e-b0c9-7f2a1d3e6b85"
-            ]
-          },
-          "email": {
-            "type": "string",
-            "format": "email",
-            "maxLength": 320,
-            "description": "Lower-cased and unique across the installation. How a person is recognised and\ncontacted — not how they authenticate.",
-            "examples": [
-              "ada@acme.example"
-            ]
-          },
-          "displayName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "What the member list prints. For somebody who has never signed in this is the\nname their inviter gave, or the local part of their address.",
-            "examples": [
-              "Ada Lovelace"
-            ]
-          },
-          "avatarUrl": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "maxLength": 2048,
-            "description": "An `http(s)` URL, or `null` when none is known — which is every person who has\nnot signed in yet. A placeholder is the UI's decision, so none is invented here.",
-            "examples": [
-              "https://avatars.example/ada.png",
-              null
-            ]
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member",
-              "viewer"
-            ],
-            "description": "What this person may do in this tenant.",
-            "examples": [
-              "owner"
-            ]
-          },
-          "invitedAt": {
-            "type": "string",
-            "format": "date-time",
-            "description": "When the invitation was issued. Also when the membership came into being.",
-            "examples": [
-              "2026-08-11T10:20:23.114Z"
-            ]
-          },
-          "joinedAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "When it was accepted, or `null` while it is outstanding — a real state the member\nlist renders, and what an invitation looks like until #33's sign-in exists.",
-            "examples": [
-              "2026-08-11T10:24:51.400Z",
-              null
-            ]
-          }
-        }
-      },
-      "MemberPage": {
-        "type": "object",
-        "title": "MemberPage",
-        "description": "One page of a tenant's members, by name.",
-        "additionalProperties": false,
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Member"
-            }
-          },
-          "total": {
-            "type": "integer",
-            "minimum": 0,
-            "examples": [
-              1
-            ]
-          },
-          "limit": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "examples": [
-              25
-            ]
-          },
-          "offset": {
-            "type": "integer",
-            "minimum": 0,
-            "examples": [
-              0
-            ]
-          }
-        }
-      },
-      "Org": {
-        "type": "object",
-        "title": "Org",
-        "description": "A GitHub organisation a tenant has recorded, enabled or not.",
+        "title": "GithubOrg",
+        "description": "A GitHub organisation a workspace has recorded, enabled or not.\n\nNot to be confused with `Organization`, which is the *workspace* the organization\nplugin holds. `orgId` here is the workspace; the GitHub organisation is addressed by\n`login`.",
         "additionalProperties": false,
         "required": [
           "id",
-          "tenantId",
+          "orgId",
           "login",
           "enabled",
           "installedAt",
@@ -3906,37 +3372,41 @@
               "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f"
             ]
           },
-          "tenantId": {
+          "orgId": {
             "type": "string",
             "format": "uuid",
+            "description": "The workspace it belongs to.",
             "examples": [
-              "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10"
+              "5eed0001-0000-4000-8000-000000000001"
             ]
           },
           "login": {
             "type": "string",
             "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "minLength": 1,
             "maxLength": 39,
-            "description": "Lower-cased GitHub login, unique within the tenant.",
+            "description": "Lower-cased, and unique within the workspace rather than globally.",
             "examples": [
-              "nobudata"
+              "acme-robotics"
             ]
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether Ouroboros may operate in it. A row records that the organisation is\nknown; this records that somebody deliberately turned it on.",
+            "description": "Whether Ouroboros may operate in it. A row records that the organisation is\n*known*; this records that somebody deliberately turned it on, and anything\narriving by a path nobody has thought about yet arrives switched off.",
             "examples": [
               true
             ]
           },
           "installedAt": {
-            "type": [
-              "string",
-              "null"
+            "description": "When the GitHub App was installed. `null` until the installation flow exists — a\ntimestamp here would assert an installation that never happened.",
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "format": "date-time",
-            "description": "When the GitHub App was installed. `null` on every row today — the installation\nflow is future product work, and a default would assert something that never\nhappened.",
             "examples": [
               null
             ]
@@ -3957,10 +3427,10 @@
           }
         }
       },
-      "OrgPage": {
+      "GithubOrgPage": {
         "type": "object",
-        "title": "OrgPage",
-        "description": "One page of a tenant's GitHub organisations, by login.",
+        "title": "GithubOrgPage",
+        "description": "One page of a workspace's GitHub organisations, by login.",
         "additionalProperties": false,
         "required": [
           "items",
@@ -3972,7 +3442,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Org"
+              "$ref": "#/components/schemas/GithubOrg"
             }
           },
           "total": {
@@ -4002,11 +3472,11 @@
       "Repo": {
         "type": "object",
         "title": "Repo",
-        "description": "A repository within an organisation. In scope for Ouroboros only when this `enabled`\nand its organisation's are **both** true.",
+        "description": "A repository within a GitHub organisation. In scope for Ouroboros only when this\n**and** its organisation are enabled.",
         "additionalProperties": false,
         "required": [
           "id",
-          "orgId",
+          "githubOrgId",
           "name",
           "enabled",
           "defaultBranch",
@@ -4021,10 +3491,10 @@
               "7a3d9c21-8e4f-4b5a-9c6d-0e1f2a3b4c5d"
             ]
           },
-          "orgId": {
+          "githubOrgId": {
             "type": "string",
             "format": "uuid",
-            "description": "The organisation it hangs from. The tenant is reachable through that, and a\nsecond copy of the fact here could disagree with it.",
+            "description": "The **GitHub organisation** it belongs to, not the workspace. A repository hangs\noff its organisation and the workspace is reachable through that, so a second copy\nof the fact here could disagree with the organisation's. `githubOrgId` rather than\n`orgId` because `orgId` is the workspace everywhere else in this document.",
             "examples": [
               "2e5f7a19-3b4c-4d6e-8f01-9a2b3c4d5e6f"
             ]
@@ -4032,30 +3502,32 @@
           "name": {
             "type": "string",
             "pattern": "^[a-z0-9._-]+$",
-            "minLength": 1,
             "maxLength": 100,
-            "description": "Lower-cased, without the owner prefix. Unique within the organisation.",
+            "description": "Lower-cased, without the owner prefix, and unique within its organisation.",
             "examples": [
-              "ouroboros"
+              "helios-firmware"
             ]
           },
           "enabled": {
             "type": "boolean",
-            "description": "Independent of the organisation's flag, so suspending one preserves this.",
             "examples": [
               true
             ]
           },
           "defaultBranch": {
-            "type": [
-              "string",
-              "null"
+            "description": "The branch work is cut from. `null` until it has been discovered from GitHub, and\nleft alone by an enable/disable that does not mention it.",
+            "oneOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!\\.)(?!.*\\.\\.)[A-Za-z0-9._-]+(\\/(?!\\.)[A-Za-z0-9._-]+)*$",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
             ],
-            "maxLength": 255,
-            "description": "The branch work is cut from, or `null` until it has been discovered from GitHub.\nAn enable/disable that omits it leaves it alone rather than clearing it.",
             "examples": [
-              "main",
-              null
+              "main"
             ]
           },
           "createdAt": {
@@ -4136,75 +3608,10 @@
           }
         }
       },
-      "CreateTenantRequest": {
-        "type": "object",
-        "title": "CreateTenantRequest",
-        "description": "The body of `POST /api/v1/tenants`.\n\nRequest schemas are closed, as the response schemas are: a property this document\ndoes not list is refused rather than ignored, which is what closes mass assignment\nfor every route at once instead of per handler.",
-        "additionalProperties": false,
-        "required": [
-          "slug",
-          "displayName"
-        ],
-        "properties": {
-          "slug": {
-            "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "minLength": 2,
-            "maxLength": 63,
-            "examples": [
-              "acme"
-            ]
-          },
-          "displayName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "examples": [
-              "Acme, Inc."
-            ]
-          }
-        }
-      },
-      "UpdateTenantRequest": {
-        "type": "object",
-        "title": "UpdateTenantRequest",
-        "description": "The body of `PATCH /api/v1/tenants/{tenantId}`. Every field optional; a body naming\nnone of them is a no-op that answers with the tenant unchanged.",
-        "additionalProperties": false,
-        "properties": {
-          "slug": {
-            "type": "string",
-            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
-            "minLength": 2,
-            "maxLength": 63,
-            "examples": [
-              "acme"
-            ]
-          },
-          "displayName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "examples": [
-              "Acme Corporation"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "deleted"
-            ],
-            "examples": [
-              "suspended"
-            ]
-          }
-        }
-      },
       "CreateDomainRequest": {
         "type": "object",
         "title": "CreateDomainRequest",
-        "description": "The body of `POST /api/v1/tenants/{tenantId}/domains`.",
+        "description": "A domain to claim for a workspace.",
         "additionalProperties": false,
         "required": [
           "domain"
@@ -4214,15 +3621,15 @@
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
             "maxLength": 253,
-            "description": "Lower-cased. An address with upper case in it is refused rather than folded —\nfolding would mean the value stored is not the value sent, which is the beginning\nof a client that cannot predict what a `GET` returns.",
+            "description": "Lower-cased. Upper case is **rejected rather than folded**: folding would be\nfriendlier, and it would also mean the value stored is not the value sent, which\nis the beginning of a client that cannot predict what a `GET` will return.",
             "examples": [
-              "acme.example"
+              "acme-robotics.dev"
             ]
           },
           "isPrimary": {
             "type": "boolean",
             "default": false,
-            "description": "Make this the displayed domain, demoting whichever one holds it now.",
+            "description": "Make this the primary domain, demoting whichever one holds the flag now.",
             "examples": [
               true
             ]
@@ -4232,7 +3639,7 @@
       "UpdateDomainRequest": {
         "type": "object",
         "title": "UpdateDomainRequest",
-        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/domains/{domainId}`. One field, because\nit is the only thing about a domain that can change: the domain itself is what the\nrow *is*, and renaming one is adding the new and removing the old.",
+        "description": "The set-primary operation. One field, because it is the only thing about a domain that\ncan change: the domain itself is what the row *is*, and renaming one is adding the new\none and removing the old.",
         "additionalProperties": false,
         "required": [
           "isPrimary"
@@ -4246,75 +3653,10 @@
           }
         }
       },
-      "InviteMemberRequest": {
+      "CreateGithubOrgRequest": {
         "type": "object",
-        "title": "InviteMemberRequest",
-        "description": "The body of `POST /api/v1/tenants/{tenantId}/members`.",
-        "additionalProperties": false,
-        "required": [
-          "email",
-          "role"
-        ],
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email",
-            "maxLength": 320,
-            "description": "Who to invite. Lower-cased before the lookup — the one value this API normalises\nrather than refuses, because an address is typed by a person into a form and\n`Ada@acme.example` is not a mistake worth an error message.",
-            "examples": [
-              "grace@acme.example"
-            ]
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member",
-              "viewer"
-            ],
-            "examples": [
-              "admin"
-            ]
-          },
-          "displayName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "What to call them if this is the first Ouroboros has heard of them. Ignored when\nthe person already exists — their own name is not an inviter's to overwrite.\nOmitted, the local part of the address is used.",
-            "examples": [
-              "Grace Hopper"
-            ]
-          }
-        }
-      },
-      "UpdateMemberRequest": {
-        "type": "object",
-        "title": "UpdateMemberRequest",
-        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/members/{userId}`.",
-        "additionalProperties": false,
-        "required": [
-          "role"
-        ],
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member",
-              "viewer"
-            ],
-            "examples": [
-              "admin"
-            ]
-          }
-        }
-      },
-      "CreateOrgRequest": {
-        "type": "object",
-        "title": "CreateOrgRequest",
-        "description": "The body of `POST /api/v1/tenants/{tenantId}/orgs`.",
+        "title": "CreateGithubOrgRequest",
+        "description": "A GitHub organisation to record for a workspace.",
         "additionalProperties": false,
         "required": [
           "login"
@@ -4325,24 +3667,25 @@
             "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
             "minLength": 1,
             "maxLength": 39,
+            "description": "The organisation's GitHub login, lower-cased.",
             "examples": [
-              "nobudata"
+              "acme-robotics"
             ]
           },
           "enabled": {
             "type": "boolean",
             "default": false,
-            "description": "Off unless asked. Anything arriving by a path nobody has thought about yet\narrives switched off, which is the right posture for a flag whose whole job is to\nbound what an autonomous agent may touch.",
+            "description": "Whether Ouroboros may operate in it. Defaults to `false`: failing closed is the\nposture for the flags whose whole job is to bound what an autonomous agent may\ntouch.",
             "examples": [
               true
             ]
           }
         }
       },
-      "UpdateOrgRequest": {
+      "UpdateGithubOrgRequest": {
         "type": "object",
-        "title": "UpdateOrgRequest",
-        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/orgs/{login}`.",
+        "title": "UpdateGithubOrgRequest",
+        "description": "Mockup 01 Step 2's switch, as a request body.",
         "additionalProperties": false,
         "required": [
           "enabled"
@@ -4351,7 +3694,7 @@
           "enabled": {
             "type": "boolean",
             "examples": [
-              false
+              true
             ]
           }
         }
@@ -4359,7 +3702,7 @@
       "UpdateRepoRequest": {
         "type": "object",
         "title": "UpdateRepoRequest",
-        "description": "The body of `PATCH /api/v1/tenants/{tenantId}/orgs/{login}/repos/{name}`, which is\nalso how a repository is first recorded.",
+        "description": "Turn a repository on or off. This is also how one first comes to be known — see the\noperation.",
         "additionalProperties": false,
         "required": [
           "enabled"
@@ -4373,8 +3716,9 @@
           },
           "defaultBranch": {
             "type": "string",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)[A-Za-z0-9._-]+(\\/(?!\\.)[A-Za-z0-9._-]+)*$",
             "maxLength": 255,
-            "description": "The branch work is cut from. Left alone when omitted rather than cleared. The\nshape is an allow-list — letters, digits, dot, underscore, hyphen and slash, with\nno leading or trailing slash, no empty segment, no leading dot and no `..`\nanywhere — because the value is joined onto a filesystem path.",
+            "description": "The branch work is cut from. Omitted leaves whatever was discovered alone rather\nthan clearing it — the difference between \"I am not setting this\" and \"I am\nsetting this to nothing\".\n\nThe pattern is the database's rule as one expression: no leading or trailing\nslash, no empty segment, no leading dot, and **no `..` anywhere** — which is the\none that matters, because a slash is permitted and `..` would otherwise be path\ntraversal in anything that builds a checkout directory from the value.",
             "examples": [
               "main"
             ]

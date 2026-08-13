@@ -1,3 +1,4 @@
+import { FIXTURE_USER } from "../auth/principal.fixture";
 import {
   currentUser,
   setTenantContext,
@@ -28,16 +29,7 @@ describe("the tenant context middleware", () => {
     // The division of labour: this cannot resolve anything, because it runs before the
     // session guard and there is nobody to resolve a tenant for yet.
     middleware.use(undefined, undefined, () => {
-      setTenantContext({
-        user: {
-          id: "5eed0003-0000-4000-8000-000000000001",
-          email: "ken@acme-robotics.dev",
-          display_name: "Ken Suenobu",
-          avatar_url: null,
-          created_at: new Date(),
-          updated_at: new Date(),
-        },
-      });
+      setTenantContext({ user: FIXTURE_USER });
 
       expect(currentUser()?.email).toBe("ken@acme-robotics.dev");
     });

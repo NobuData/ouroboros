@@ -63,7 +63,7 @@ export function sessionUser(over: Partial<SessionUser> = {}): SessionUser {
 export function org(over: Partial<Org> = {}): Org {
   return {
     id: "5eed0005-0000-4000-8000-000000000001",
-    tenantId: TENANT_ID,
+    orgId: TENANT_ID,
     login: "acme-robotics",
     enabled: true,
     installedAt: null,
@@ -82,7 +82,7 @@ export function org(over: Partial<Org> = {}): Org {
 export function repo(over: Partial<Repo> = {}): Repo {
   return {
     id: "5eed0006-0000-4000-8000-000000000001",
-    orgId: "5eed0005-0000-4000-8000-000000000001",
+    githubOrgId: "5eed0005-0000-4000-8000-000000000001",
     name: "helios-firmware",
     enabled: true,
     defaultBranch: "main",

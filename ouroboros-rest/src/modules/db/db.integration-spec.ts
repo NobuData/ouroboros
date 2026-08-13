@@ -10,7 +10,7 @@ import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { DbModule } from "./db.module";
 import { DatabaseService } from "./db.service";
-import { SCHEMA_NAME, TABLE_COLUMNS, TABLE_NAMES, type Database, type Tenant } from "./schema";
+import { SCHEMA_NAME, TABLE_COLUMNS, TABLE_NAMES, type Database, type GithubOrg } from "./schema";
 
 /**
  * The half of this module that needs a real PostgreSQL.
@@ -63,60 +63,73 @@ const DRAIN_TIMEOUT_MS = 5_000;
 /**
  * A repository, written the way `DbModule` says a feature module should write one.
  *
- * It lives here rather than in `src/modules/` because repositories belong to their feature
- * module and the tenancy module is [#31](https://github.com/NobuData/ouroboros/issues/31) —
- * so this is the convention demonstrated and exercised, not the tenancy API arriving early.
- * Everything about it is what #31's will be: it injects {@link DatabaseService}, it names
- * no environment variable, it opens no connection, and it takes an optional transaction so
- * the same method can be called inside one or outside it.
+ * It lives here rather than in `src/modules/` because it is the *convention* demonstrated and
+ * exercised rather than a shipping repository — `modules/tenancy/enablement.repository.ts` is
+ * the real one over these two tables. Everything about it is what a feature module's looks
+ * like: it injects {@link DatabaseService}, it names no environment variable, it opens no
+ * connection, and it takes an optional transaction so the same method can be called inside
+ * one or outside it.
+ *
+ * It works `github_orgs` rather than `tenants` because
+ * [#708](https://github.com/NobuData/ouroboros/issues/708) dropped the latter. The choice of
+ * replacement is not arbitrary: this has to be a table *this repository owns and writes*, and
+ * of the five left in the mirror, `organization` and `member` are the library's and are
+ * read-only here. `github_orgs` also keeps every property the old example was chosen for — a
+ * generated uuid, a defaulted flag, an `updated_at` trigger, a `check` the types cannot
+ * express, and a foreign key in each direction.
  */
 @Injectable()
-class TenantsRepository {
+class GithubOrgsRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * Create a tenant.
+   * Record a GitHub organisation against a workspace.
    *
-   * @param slug - The URL-safe handle. Unique across the installation.
-   * @param displayName - What a human reads.
+   * @param organizationId - The owning workspace, as `organization."id"`.
+   * @param login - The lower-cased GitHub login. Unique within the workspace.
    * @param trx - The transaction to run in, if there is one.
    * @returns The row as the database stored it, defaults and all.
    */
-  async create(slug: string, displayName: string, trx?: Transaction<Database>): Promise<Tenant> {
+  async create(
+    organizationId: string,
+    login: string,
+    trx?: Transaction<Database>,
+  ): Promise<GithubOrg> {
     return (trx ?? this.database.db)
-      .insertInto("tenants")
-      .values({ slug, display_name: displayName })
+      .insertInto("github_orgs")
+      .values({ organization_id: organizationId, login })
       .returningAll()
       .executeTakeFirstOrThrow();
   }
 
   /**
-   * Find a tenant by its slug.
+   * Find one by its login.
    *
-   * @param slug - The handle to look up.
+   * @param login - The login to look up. Unique per workspace, and this suite's logins are
+   *   unique across the installation by construction — see {@link uniqueName}.
    * @param trx - The transaction to run in, if there is one.
-   * @returns The tenant, or `undefined` when there is none.
+   * @returns The row, or `undefined` when there is none.
    */
-  async findBySlug(slug: string, trx?: Transaction<Database>): Promise<Tenant | undefined> {
+  async findByLogin(login: string, trx?: Transaction<Database>): Promise<GithubOrg | undefined> {
     return (trx ?? this.database.db)
-      .selectFrom("tenants")
+      .selectFrom("github_orgs")
       .selectAll()
-      .where("slug", "=", slug)
+      .where("login", "=", login)
       .executeTakeFirst();
   }
 
   /**
-   * Rename a tenant.
+   * Turn one on or off.
    *
-   * @param slug - The tenant to rename.
-   * @param displayName - The new display name.
+   * @param login - The organisation to change.
+   * @param enabled - What the flag should become.
    * @returns The updated row.
    */
-  async rename(slug: string, displayName: string): Promise<Tenant> {
+  async setEnabled(login: string, enabled: boolean): Promise<GithubOrg> {
     return this.database.db
-      .updateTable("tenants")
-      .set({ display_name: displayName })
-      .where("slug", "=", slug)
+      .updateTable("github_orgs")
+      .set({ enabled })
+      .where("login", "=", login)
       .returningAll()
       .executeTakeFirstOrThrow();
   }
@@ -134,6 +147,44 @@ const admin = new Pool({ connectionString: DATABASE_URL, max: 1 });
 /** A slug or login no other run of this suite will produce. */
 function uniqueName(): string {
   return `${TEST_PREFIX}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Create the workspace every row below hangs from.
+ *
+ * Written through {@link admin} as raw SQL rather than through the typed builder, and that is
+ * the rule rather than a shortcut: `organization` is one of `LIBRARY_OWNED_TABLES`, BetterAuth
+ * is the only thing that writes it in the running service, and a suite that inserted through
+ * Kysely would be demonstrating the one thing `db/schema.ts` forbids. Test *setup* standing up
+ * a parent row is a different act from application code writing one.
+ *
+ * `id` and `createdAt` are supplied because V005 gives neither a default — the library always
+ * sends both.
+ *
+ * @returns The new workspace's id.
+ */
+async function createWorkspace(): Promise<string> {
+  const { rows } = await admin.query<{ id: string }>(
+    `insert into ouroboros.organization ("id", "name", "slug", "createdAt")
+     values (gen_random_uuid()::text, 'Integration Suite', $1, now())
+     returning "id"`,
+    [uniqueName()],
+  );
+
+  return rows[0].id;
+}
+
+/**
+ * Remove everything this suite created.
+ *
+ * One statement, because `github_orgs_organization_id_fkey` and `github_repos_org_id_fkey`
+ * both cascade — deleting the workspace takes its organisations and their repositories with
+ * it, which is the same cascade V006 restated when it re-parented the tables.
+ */
+async function removeTestRows(): Promise<void> {
+  await admin.query(`delete from ouroboros.organization where "slug" like $1`, [
+    `${TEST_PREFIX}-%`,
+  ]);
 }
 
 /**
@@ -215,150 +266,145 @@ async function drainedTo(baseline: number): Promise<number> {
 describe("the database, for real", () => {
   let moduleRef: TestingModule;
   let database: DatabaseService;
-  let tenants: TenantsRepository;
+  let orgs: GithubOrgsRepository;
+  let workspaceId: string;
 
   beforeAll(async () => {
     moduleRef = await application();
     database = moduleRef.get(DatabaseService);
-    tenants = new TenantsRepository(database);
+    orgs = new GithubOrgsRepository(database);
   });
 
   afterAll(async () => {
     // Ordered: the application's own pool first, then the connection the cleanup needs.
     await moduleRef.close();
-    await admin.query("delete from ouroboros.tenants where slug like $1", [`${TEST_PREFIX}-%`]);
+    await removeTestRows();
     await admin.end();
   });
 
-  afterEach(async () => {
-    await admin.query("delete from ouroboros.tenants where slug like $1", [`${TEST_PREFIX}-%`]);
+  beforeEach(async () => {
+    workspaceId = await createWorkspace();
   });
+
+  afterEach(removeTestRows);
 
   describe("a repository roundtrip", () => {
     it("writes a row and reads it back", async () => {
-      const slug = uniqueName();
+      const login = uniqueName();
 
-      const created = await tenants.create(slug, "Integration Suite");
-      const found = await tenants.findBySlug(slug);
+      const created = await orgs.create(workspaceId, login);
+      const found = await orgs.findByLogin(login);
 
       expect(found).toEqual(created);
-      expect(found?.slug).toBe(slug);
-      expect(found?.display_name).toBe("Integration Suite");
+      expect(found?.login).toBe(login);
+      expect(found?.organization_id).toBe(workspaceId);
     });
 
     it("comes back with the types the interface promises", async () => {
-      const created = await tenants.create(uniqueName(), "Integration Suite");
+      const created = await orgs.create(workspaceId, uniqueName());
 
-      // The defaults V001 declares, as the types say they arrive: a uuid as a string, a
-      // timestamptz as a Date, and the status the check constraint defaults to.
+      // The defaults V003 declares, as the types say they arrive: a uuid as a string, a
+      // timestamptz as a Date, and the flag that fails closed.
       expect(typeof created.id).toBe("string");
       expect(created.id).toMatch(/^[0-9a-f-]{36}$/);
-      expect(created.status).toBe("active");
+      expect(created.enabled).toBe(false);
+      expect(created.installed_at).toBeNull();
       expect(created.created_at).toBeInstanceOf(Date);
       expect(created.updated_at).toBeInstanceOf(Date);
     });
 
     it("lets the database keep updated_at, as its trigger does", async () => {
-      const slug = uniqueName();
-      const created = await tenants.create(slug, "Integration Suite");
+      const login = uniqueName();
+      const created = await orgs.create(workspaceId, login);
 
-      const renamed = await tenants.rename(slug, "Renamed");
+      const enabled = await orgs.setEnabled(login, true);
 
       // `ouroboros.touch_updated_at()` stamps this from the server clock. Nothing in the
       // update said so — which is why the type does not offer the column.
-      expect(renamed.display_name).toBe("Renamed");
-      expect(renamed.updated_at.getTime()).toBeGreaterThanOrEqual(created.updated_at.getTime());
-      expect(renamed.created_at).toEqual(created.created_at);
+      expect(enabled.enabled).toBe(true);
+      expect(enabled.updated_at.getTime()).toBeGreaterThanOrEqual(created.updated_at.getTime());
+      expect(enabled.created_at).toEqual(created.created_at);
     });
 
     it("follows a foreign key back to its parent", async () => {
-      const slug = uniqueName();
-      const tenant = await tenants.create(slug, "Integration Suite");
-      await database.db
-        .insertInto("tenant_domains")
-        .values({ tenant_id: tenant.id, domain: `${slug}.example.com`, is_primary: true })
-        .execute();
+      // The hop V006 re-pointed. `github_orgs.organization_id` is text holding a uuid and
+      // `organization."id"` is text, which is what made the migration a rename rather than a
+      // remapping — and a join is where that either works or does not.
+      const login = uniqueName();
+      await orgs.create(workspaceId, login);
 
       const rows = await database.db
-        .selectFrom("tenant_domains")
-        .innerJoin("tenants", "tenants.id", "tenant_domains.tenant_id")
-        .select(["tenants.slug", "tenant_domains.domain", "tenant_domains.is_primary"])
-        .where("tenants.id", "=", tenant.id)
+        .selectFrom("github_orgs")
+        .innerJoin("organization", "organization.id", "github_orgs.organization_id")
+        .select(["organization.name", "github_orgs.login", "github_orgs.enabled"])
+        .where("github_orgs.organization_id", "=", workspaceId)
         .execute();
 
-      expect(rows).toEqual([{ slug, domain: `${slug}.example.com`, is_primary: true }]);
+      expect(rows).toEqual([{ name: "Integration Suite", login, enabled: false }]);
     });
 
     it("lets the schema refuse what it is supposed to refuse", async () => {
-      // The types cannot express `tenants_slug_format`, and are not meant to: the database
-      // is the one that enforces it. What matters is that the violation arrives as a
+      // The types cannot express `github_orgs_login_format`, and are not meant to: the
+      // database is the one that enforces it. What matters is that the violation arrives as a
       // rejected promise a repository can map to a 4xx rather than as a silent write.
-      await expect(tenants.create("Not A Slug", "Integration Suite")).rejects.toThrow();
+      await expect(orgs.create(workspaceId, "Not A Login")).rejects.toThrow();
     });
   });
 
   describe("a transaction", () => {
     it("commits everything when the work succeeds", async () => {
-      const slug = uniqueName();
+      const login = uniqueName();
 
       await database.transaction(async (trx) => {
-        const tenant = await tenants.create(slug, "Integration Suite", trx);
-        await trx
-          .insertInto("tenant_domains")
-          .values({ tenant_id: tenant.id, domain: `${slug}.example.com` })
-          .execute();
+        const org = await orgs.create(workspaceId, login, trx);
+        await trx.insertInto("github_repos").values({ org_id: org.id, name: "helios" }).execute();
       });
 
-      const domains = await database.db
-        .selectFrom("tenant_domains")
-        .select("domain")
-        .where("domain", "=", `${slug}.example.com`)
+      const repos = await database.db
+        .selectFrom("github_repos")
+        .innerJoin("github_orgs", "github_orgs.id", "github_repos.org_id")
+        .select("github_repos.name")
+        .where("github_orgs.login", "=", login)
         .execute();
-      expect(domains).toHaveLength(1);
+      expect(repos).toEqual([{ name: "helios" }]);
     });
 
     it("rolls everything back when the work throws", async () => {
-      const slug = uniqueName();
+      const login = uniqueName();
       const failure = new Error("changed my mind");
 
       await expect(
         database.transaction(async (trx) => {
-          await tenants.create(slug, "Integration Suite", trx);
+          await orgs.create(workspaceId, login, trx);
           throw failure;
         }),
       ).rejects.toBe(failure);
 
       // The insert succeeded and was then undone — which is the whole point of the helper,
       // and the thing a `begin`/`commit` written by hand at each call site gets wrong.
-      await expect(tenants.findBySlug(slug)).resolves.toBeUndefined();
+      await expect(orgs.findByLogin(login)).resolves.toBeUndefined();
     });
 
     it("rolls back a whole unit of work, not only the last statement", async () => {
-      const slug = uniqueName();
+      const login = uniqueName();
 
       await expect(
         database.transaction(async (trx) => {
-          const tenant = await tenants.create(slug, "Integration Suite", trx);
-          await trx
-            .insertInto("tenant_domains")
-            .values({ tenant_id: tenant.id, domain: `${slug}.example.com` })
-            .execute();
-          // A constraint violation, raised by the database rather than by the test: the
-          // same domain twice trips `tenant_domains_domain_key`.
-          await trx
-            .insertInto("tenant_domains")
-            .values({ tenant_id: tenant.id, domain: `${slug}.example.com` })
-            .execute();
+          const org = await orgs.create(workspaceId, login, trx);
+          await trx.insertInto("github_repos").values({ org_id: org.id, name: "helios" }).execute();
+          // A constraint violation, raised by the database rather than by the test: the same
+          // repository twice trips `github_repos_org_name_key`.
+          await trx.insertInto("github_repos").values({ org_id: org.id, name: "helios" }).execute();
         }),
       ).rejects.toThrow();
 
-      await expect(tenants.findBySlug(slug)).resolves.toBeUndefined();
-      const domains = await database.db
-        .selectFrom("tenant_domains")
-        .select("domain")
-        .where("domain", "=", `${slug}.example.com`)
+      await expect(orgs.findByLogin(login)).resolves.toBeUndefined();
+      const repos = await database.db
+        .selectFrom("github_repos")
+        .select("name")
+        .where("name", "=", "helios")
         .execute();
-      expect(domains).toEqual([]);
+      expect(repos).toEqual([]);
     });
   });
 
@@ -412,7 +458,7 @@ describe("the database, for real", () => {
       const shuttingDown = await application();
       const service = shuttingDown.get(DatabaseService);
 
-      await service.db.selectFrom("tenants").select("id").limit(1).execute();
+      await service.db.selectFrom("organization").select("id").limit(1).execute();
       expect(await serviceConnections()).toBeGreaterThan(baseline);
 
       await shuttingDown.close();

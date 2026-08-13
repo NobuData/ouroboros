@@ -4,14 +4,13 @@ import { Reflector } from "@nestjs/core";
 import type { DomainError } from "../errors/error.envelope";
 import type { OrganizationRole } from "../db/schema";
 import { DomainsController } from "./domains.controller";
+import { GithubOrgsController } from "./github-orgs.controller";
 import { membershipIn } from "./organization.fixture";
-import { MembersController } from "./members.controller";
 import { OrgsController } from "./orgs.controller";
 import { ReposController } from "./repos.controller";
 import { ADMINISTRATORS, REQUIRED_ROLES, Roles, RolesGuard } from "./roles.guard";
 import { runWithTenantContext, setTenantContext } from "./tenant.context";
 import { TENANCY_ERRORS } from "./tenancy.errors";
-import { TenantsController } from "./tenants.controller";
 
 /**
  * The issue's second acceptance criterion — *the role guard blocks member-level users from
@@ -224,15 +223,15 @@ describe("a route that declares roles", () => {
 describe("the tenancy API's own mutations", () => {
   /** Every handler that changes something, and the controller it belongs to. */
   const MUTATIONS = [
-    ["rename or suspend a tenant", TenantsController, TenantsController.prototype.update],
     ["add a domain", DomainsController, DomainsController.prototype.add],
     ["set a primary domain", DomainsController, DomainsController.prototype.setPrimary],
     ["give a domain up", DomainsController, DomainsController.prototype.remove],
-    ["invite a member", MembersController, MembersController.prototype.invite],
-    ["change a role", MembersController, MembersController.prototype.changeRole],
-    ["remove a member", MembersController, MembersController.prototype.remove],
-    ["add an organisation", OrgsController, OrgsController.prototype.add],
-    ["enable an organisation", OrgsController, OrgsController.prototype.setEnabled],
+    ["add a GitHub organisation", GithubOrgsController, GithubOrgsController.prototype.add],
+    [
+      "enable a GitHub organisation",
+      GithubOrgsController,
+      GithubOrgsController.prototype.setEnabled,
+    ],
     ["enable a repository", ReposController, ReposController.prototype.setEnabled],
   ] as const;
 
@@ -240,18 +239,22 @@ describe("the tenancy API's own mutations", () => {
     expect(declaredRoles(target as never, handler)).toEqual([...ADMINISTRATORS]);
   });
 
-  it("has ten of them, so a new one cannot be added without this list noticing", () => {
-    expect(MUTATIONS).toHaveLength(10);
+  it("has six of them, so a new one cannot be added without this list noticing", () => {
+    // It was ten until [#714](https://github.com/NobuData/ouroboros/issues/714). The four that
+    // left are the workspace rename and the three member operations, all of which the
+    // organization plugin serves — and the plugin applies its *own* access control to them,
+    // which is why deleting them here is a move rather than a hole.
+    expect(MUTATIONS).toHaveLength(6);
   });
 
   /** Every handler that only reads. */
   const READS = [
-    ["list tenants", TenantsController, TenantsController.prototype.list],
-    ["read a tenant", TenantsController, TenantsController.prototype.read],
+    ["list workspaces", OrgsController, OrgsController.prototype.list],
     ["list domains", DomainsController, DomainsController.prototype.list],
-    ["list members", MembersController, MembersController.prototype.list],
-    ["list organisations", OrgsController, OrgsController.prototype.list],
+    ["list GitHub organisations", GithubOrgsController, GithubOrgsController.prototype.list],
+    ["read a GitHub organisation", GithubOrgsController, GithubOrgsController.prototype.read],
     ["list repositories", ReposController, ReposController.prototype.list],
+    ["read a repository", ReposController, ReposController.prototype.read],
   ] as const;
 
   it.each(READS)("lets any member %s", (_description, target, handler) => {

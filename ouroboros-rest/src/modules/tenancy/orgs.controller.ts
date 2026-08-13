@@ -1,61 +1,49 @@
 /**
- * `/api/v1/tenants/{tenantId}/orgs` — the GitHub organisations a tenant has enabled.
+ * `/api/v1/orgs` — the workspaces the signed-in person belongs to.
  *
- * Addressed by login rather than by id, because the login is what a person types, what a URL
- * elsewhere already carries, and what `github_orgs_tenant_login_key` makes unique within the
- * tenant. It is lower-case by construction (V003), so the route parameter is validated
- * against GitHub's own rule for a login before anything looks it up.
+ * The Step 2 row model (`docs/mockups/01-login.html`), and the root of every other path in
+ * this module: domains are `…/orgs/{orgId}/domains`, GitHub organisations are
+ * `…/orgs/{orgId}/github-orgs/{login}`, and repositories hang off those.
+ *
+ * **There is no `POST`, `PATCH` or `DELETE` here, and their absence is the design.** Creating
+ * a workspace is `POST /api/auth/organization/create`, renaming one is the plugin's `update`,
+ * and switching into one is `POST /api/auth/organization/set-active` — all served by
+ * BetterAuth since [#704](https://github.com/NobuData/ouroboros/issues/704). This service
+ * adding its own would be a second write path to `organization` and `member`, which is how two
+ * role checks drift apart. What is left is the one thing the plugin cannot answer: the
+ * workspace *with its enablement counts and the caller's role in it*, in a single request.
  */
 
-import { Body, Controller, Get, Param, Patch, Post, Query, UseInterceptors } from "@nestjs/common";
+import { Controller, Get, Query, UseInterceptors } from "@nestjs/common";
 
 import { ConstraintViolationInterceptor } from "./constraints";
 import { OrgsService } from "./orgs.service";
 import { PageQuery, type Page } from "./pagination";
-import { ADMINISTRATORS, Roles } from "./roles.guard";
-import type { OrgResource } from "./resources";
-import { CreateOrgBody, OrgParams, TenantParams, UpdateOrgBody } from "./tenancy.dto";
+import type { OrgRowResource } from "./resources";
+import { TenantOptional } from "./tenant.decorators";
 
-@Controller("tenants/:tenantId/orgs")
+@Controller("orgs")
 @UseInterceptors(ConstraintViolationInterceptor)
 export class OrgsController {
   constructor(private readonly orgs: OrgsService) {}
 
   /**
-   * `GET …/orgs` — one page of this tenant's organisations, enabled or not.
+   * `GET /orgs` — one page of the caller's workspaces, oldest first.
    *
-   * @param params - The tenant's id.
+   * `@TenantOptional()` and nothing else: the tenant guard would otherwise demand a workspace
+   * before answering *which workspaces are yours*, which is circular, and the authentication
+   * guard still applies — this is the caller's own listing, scoped to them in the service.
+   * There is no `@Roles()` either, and there is nothing for one to say: every row is a
+   * workspace the caller is already a member of, and what they hold there is a field of the
+   * answer rather than a condition on it.
+   *
    * @param query - `limit` and `offset`.
-   * @returns The page.
+   * @returns The page. Somebody who belongs to nothing yet gets an empty one, which is the
+   *   `no-workspace` state Step 2 draws rather than a failure.
    */
+  @TenantOptional()
   @Get()
-  list(@Param() params: TenantParams, @Query() query: PageQuery): Promise<Page<OrgResource>> {
-    return this.orgs.list(params.tenantId, query);
-  }
-
-  /**
-   * `POST …/orgs` — record an organisation for this tenant.
-   *
-   * @param params - The tenant's id.
-   * @param body - The login, and whether it starts enabled. It does not, unless asked.
-   * @returns The organisation as it was stored, with `201`.
-   */
-  @Roles(...ADMINISTRATORS)
-  @Post()
-  add(@Param() params: TenantParams, @Body() body: CreateOrgBody): Promise<OrgResource> {
-    return this.orgs.add(params.tenantId, body);
-  }
-
-  /**
-   * `PATCH …/orgs/{login}` — enable or disable it.
-   *
-   * @param params - The tenant's id and the organisation's login.
-   * @param body - `enabled`.
-   * @returns The organisation after the change.
-   */
-  @Roles(...ADMINISTRATORS)
-  @Patch(":login")
-  setEnabled(@Param() params: OrgParams, @Body() body: UpdateOrgBody): Promise<OrgResource> {
-    return this.orgs.setEnabled(params.tenantId, params.login, body);
+  list(@Query() query: PageQuery): Promise<Page<OrgRowResource>> {
+    return this.orgs.list(query);
   }
 }

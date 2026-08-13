@@ -30,8 +30,11 @@ class ExampleRepository {
    * @returns The compiled SQL, so the test needs no database to see it.
    */
   findBySlugSql(): string {
-    return this.database.db.selectFrom("tenants").selectAll().where("slug", "=", "acme").compile()
-      .sql;
+    return this.database.db
+      .selectFrom("organization")
+      .selectAll()
+      .where("slug", "=", "acme")
+      .compile().sql;
   }
 }
 
@@ -56,7 +59,7 @@ describe("DbModule", () => {
     // The convention, resolved: the repository is the feature's, the connection is this
     // module's, and the feature said so by importing it.
     expect(moduleRef.get(ExampleRepository).findBySlugSql()).toBe(
-      'select * from "ouroboros"."tenants" where "slug" = $1',
+      'select * from "ouroboros"."organization" where "slug" = $1',
     );
   });
 

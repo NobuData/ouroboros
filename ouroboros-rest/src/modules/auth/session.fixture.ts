@@ -44,11 +44,10 @@ export const FIXTURE_SESSION_SECONDS = 60 * 60;
  * Give somebody a session, and the cookie their browser would carry.
  *
  * The `"user"` row has to exist first: `session.userId` references it. Suites arrange that
- * through `ApiHarness.signIn`, which writes both tables — see `src/testing/harness.fixture.ts`.
+ * through `ApiHarness.signIn` — see `src/testing/harness.fixture.ts`.
  *
  * @param sql - A connection to the application's database.
- * @param userId - Whose session: a real `ouroboros."user".id`, which — V004 having
- *   preserved ids — is also their `ouroboros.users.id`.
+ * @param userId - Whose session: a real `ouroboros."user".id`.
  * @param lifetimeSeconds - How long it is good for. Defaults to
  *   {@link FIXTURE_SESSION_SECONDS}; a suite asserting on expiry passes a negative number to
  *   mint one that is already stale.
@@ -71,16 +70,16 @@ export async function sessionCookieFor(
 }
 
 /**
- * Sign an existing `ouroboros.users` row in.
+ * Sign an existing `ouroboros."user"` row in.
  *
- * Two statements, because a person is currently two rows: the tenancy `users` row every
- * foreign key points at, and BetterAuth's `"user"` row the session references. V004's
- * back-fill is what made that pair, keyed by one id, and this reproduces it for somebody a
- * suite inserted afterwards — which is the honest arrangement until
- * [#708](https://github.com/NobuData/ouroboros/issues/708) collapses the two back to one.
+ * One statement, and it used to be two. A person was two rows until
+ * [#708](https://github.com/NobuData/ouroboros/issues/708) — the tenancy `users` row every
+ * foreign key pointed at, and BetterAuth's `"user"` row the session referenced, keyed by one
+ * id by V004's back-fill. V006 dropped the first, so this is now exactly
+ * {@link sessionCookieFor} and is kept as the name every suite already calls.
  *
  * @param sql - A connection to the application's database.
- * @param userId - An existing `ouroboros.users.id`.
+ * @param userId - An existing `ouroboros."user".id`.
  * @param lifetimeSeconds - How long the session is good for; see {@link sessionCookieFor}.
  * @returns The `Cookie` header value a request from them carries.
  */
@@ -89,16 +88,6 @@ export async function signInAs(
   userId: string,
   lifetimeSeconds: number = FIXTURE_SESSION_SECONDS,
 ): Promise<string> {
-  await sql.query(
-    `insert into ${SCHEMA_NAME}."user" ("id", "name", "email", "emailVerified", "image",
-                                       "createdAt", "updatedAt")
-     select u.id::text, u.display_name, u.email, true, u.avatar_url, u.created_at, u.updated_at
-       from ${SCHEMA_NAME}.users u
-      where u.id = $1
-     on conflict ("id") do nothing`,
-    [userId],
-  );
-
   return sessionCookieFor(sql, userId, lifetimeSeconds);
 }
 

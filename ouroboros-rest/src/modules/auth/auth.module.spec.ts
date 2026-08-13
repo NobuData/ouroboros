@@ -124,14 +124,14 @@ describe("the authentication this module's routes sit behind", () => {
     // third module again. Asserted through the application rather than by introspecting the
     // container, because Nest registers a global guard under a token it generates, so
     // behaviour is the only honest way to ask this question.
-    const response = await request(server()).get("/api/v1/tenants").expect(401);
+    const response = await request(server()).get("/api/v1/orgs").expect(401);
 
     expect((response.body as ErrorEnvelope).code).toBe(AUTH_ERRORS.unauthenticated);
   });
 
   it("refuses a mutation as readily as a read", async () => {
     await request(server())
-      .post("/api/v1/tenants")
+      .post("/api/v1/orgs/00000000-0000-4000-8000-000000000000/github-orgs")
       .send({ slug: "x", displayName: "X" })
       .expect(401);
   });
@@ -139,7 +139,9 @@ describe("the authentication this module's routes sit behind", () => {
   it("refuses before validation runs, so an unauthenticated caller learns nothing about the shape", async () => {
     // A guard runs before a pipe. Without that ordering, a malformed body would be a 422
     // that told a stranger which fields exist.
-    const response = await request(server()).post("/api/v1/tenants").send({ nonsense: true });
+    const response = await request(server())
+      .post("/api/v1/orgs/00000000-0000-4000-8000-000000000000/github-orgs")
+      .send({ nonsense: true });
 
     expect(response.status).toBe(401);
   });

@@ -21,6 +21,25 @@ import {
 } from "../errors/error.envelope";
 
 /**
+ * The codes this module used to answer with and no longer can.
+ *
+ * `slug_taken`, `member_not_found`, `member_exists` and `last_owner` all belonged to
+ * operations [#714](https://github.com/NobuData/ouroboros/issues/714) deleted: workspace
+ * creation and member CRUD, which the organization plugin serves. They are named here rather
+ * than merely removed because `tenancy.errors.spec.ts` asserts the specification documents no
+ * code this file does not define **and** that none of these has quietly come back under a
+ * tenancy route — a client branching on `last_owner` should find the plugin's answer, not a
+ * second opinion from here.
+ */
+export const RETIRED_ERRORS: readonly string[] = [
+  "slug_taken",
+  "member_not_found",
+  "member_exists",
+  "last_owner",
+  "tenant_required",
+];
+
+/**
  * The codes, as one object.
  *
  * `as const` so each value is its own literal type: a helper below that returns
@@ -51,22 +70,23 @@ export const TENANCY_ERRORS = {
   tenantMismatch: "tenant_mismatch",
   /** The caller is a member, and their role does not permit this. */
   forbidden: "forbidden",
-  /** The slug is already another tenant's. `tenants_slug_key`. */
-  slugTaken: "slug_taken",
-  /** No such domain on this tenant. */
+  /** No such domain on this workspace. */
   domainNotFound: "domain_not_found",
-  /** The domain belongs to another tenant. `tenant_domains_domain_key`. */
+  /** The domain belongs to another workspace. `tenant_domains_domain_key`. */
   domainTaken: "domain_taken",
-  /** No such member of this tenant. */
-  memberNotFound: "member_not_found",
-  /** That person is already a member. `tenant_members_pkey`. */
-  memberExists: "member_exists",
-  /** The tenant would be left with no owner. Enforced here; see `members.service.ts`. */
-  lastOwner: "last_owner",
-  /** No such organisation on this tenant. */
+  /** No such GitHub organisation on this workspace. */
   orgNotFound: "org_not_found",
-  /** The tenant has already enabled that organisation. `github_orgs_tenant_login_key`. */
+  /** The workspace has already added that organisation. `github_orgs_org_login_key`. */
   orgTaken: "org_taken",
+  /**
+   * Ouroboros has never heard of that repository.
+   *
+   * Answerable by `GET …/repos/{name}` and by nothing else. The `PATCH` beside it *creates*
+   * the row it cannot find (there is no discovery flow yet — see `repos.service.ts`), so the
+   * only operation that can honestly report a missing repository is the one with nothing to
+   * create.
+   */
+  repoNotFound: "repo_not_found",
   /** A uniqueness rule this API has no more specific name for. See `details.constraint`. */
   conflict: "conflict",
   /** A `check` the migrations declare and a DTO does not restate. See `details.constraint`. */
@@ -77,14 +97,17 @@ export const TENANCY_ERRORS = {
 export type TenancyErrorCode = (typeof TENANCY_ERRORS)[keyof typeof TENANCY_ERRORS];
 
 /**
- * `404` — no tenant with this id.
+ * `404` — no workspace with this id.
  *
- * @param tenantId - The id that was asked for. Echoed into `details` because a UI holding
- *   several tenants open needs to know *which* request failed, and the caller sent it.
+ * @param reference - What the request named — the `{orgId}` from the path, or the id or slug
+ *   from `X-Ouro-Tenant`. Echoed into `details.orgId` because a UI holding several workspaces
+ *   open needs to know *which* request failed, and because the caller sent the value itself.
  * @returns The error to throw.
  */
-export function tenantNotFound(tenantId: string): NotFoundError {
-  return new NotFoundError(TENANCY_ERRORS.tenantNotFound, "No such tenant.", { tenantId });
+export function tenantNotFound(reference: string): NotFoundError {
+  return new NotFoundError(TENANCY_ERRORS.tenantNotFound, "No such workspace.", {
+    orgId: reference,
+  });
 }
 
 /**
@@ -149,62 +172,47 @@ export function forbidden(role: string, required: readonly string[]): ForbiddenE
 }
 
 /**
- * `404` — this tenant has no such domain.
+ * `404` — this workspace has no such domain.
  *
- * A domain that exists but belongs to *another* tenant answers with this too, and that is
+ * A domain that exists but belongs to *another* workspace answers with this too, and that is
  * deliberate: the alternative tells whoever asked that the id is real, which is the same
  * existence leak [#32](https://github.com/NobuData/ouroboros/issues/32) answers `404` to
- * avoid at the tenant level.
+ * avoid at the workspace level.
  *
  * @param domainId - The domain id that was addressed.
  * @returns The error to throw.
  */
 export function domainNotFound(domainId: string): NotFoundError {
-  return new NotFoundError(TENANCY_ERRORS.domainNotFound, "No such domain on this tenant.", {
+  return new NotFoundError(TENANCY_ERRORS.domainNotFound, "No such domain on this workspace.", {
     domainId,
   });
 }
 
 /**
- * `404` — this person is not a member of this tenant.
- *
- * @param userId - The user that was addressed.
- * @returns The error to throw.
- */
-export function memberNotFound(userId: string): NotFoundError {
-  return new NotFoundError(TENANCY_ERRORS.memberNotFound, "No such member of this tenant.", {
-    userId,
-  });
-}
-
-/**
- * `404` — this tenant has not enabled that organisation.
+ * `404` — this workspace has not added that GitHub organisation.
  *
  * @param login - The GitHub login that was addressed.
  * @returns The error to throw.
  */
 export function orgNotFound(login: string): NotFoundError {
-  return new NotFoundError(TENANCY_ERRORS.orgNotFound, "No such organisation on this tenant.", {
-    login,
-  });
+  return new NotFoundError(
+    TENANCY_ERRORS.orgNotFound,
+    "No such GitHub organisation on this workspace.",
+    { login },
+  );
 }
 
 /**
- * `409` — the tenant would be left without an owner.
+ * `404` — this organisation has no such repository recorded.
  *
- * The issue's second acceptance criterion, and the one rule in the tenancy schema that
- * `ouroboros-db` deliberately does *not* enforce: V002's header records that it spans rows,
- * has to survive both a role change and a delete, and therefore belongs to the API that is
- * the only thing allowed to write the table.
- *
- * @param userId - The owner whose demotion or removal was refused.
+ * @param name - The repository name that was addressed.
  * @returns The error to throw.
  */
-export function lastOwner(userId: string): ConflictError {
-  return new ConflictError(
-    TENANCY_ERRORS.lastOwner,
-    "A tenant must keep at least one owner. Promote another member first.",
-    { userId },
+export function repoNotFound(name: string): NotFoundError {
+  return new NotFoundError(
+    TENANCY_ERRORS.repoNotFound,
+    "No such repository in this organisation.",
+    { name },
   );
 }
 

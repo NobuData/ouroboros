@@ -1,4 +1,6 @@
-import type { Organization, User } from "../db/schema";
+import type { SessionUser } from "../auth/principal";
+import { FIXTURE_USER } from "../auth/principal.fixture";
+import type { Organization } from "../db/schema";
 import { FIXTURE_ORGANIZATION, FIXTURE_OTHER_ORGANIZATION } from "./organization.fixture";
 import {
   currentMembership,
@@ -23,14 +25,14 @@ const TENANT = FIXTURE_ORGANIZATION;
 
 const OTHER = FIXTURE_OTHER_ORGANIZATION;
 
-const USER: User = {
-  id: "5eed0003-0000-4000-8000-000000000001",
-  email: "ken@acme-robotics.dev",
-  display_name: "Ken Suenobu",
-  avatar_url: null,
-  created_at: new Date("2026-08-11T10:20:23.114Z"),
-  updated_at: new Date("2026-08-11T10:20:23.114Z"),
-};
+/**
+ * The signed-in person the store carries.
+ *
+ * BetterAuth's own `SessionUser` since
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) — it was a row of `ouroboros.users`
+ * until V006 dropped that table, and the adaptation that produced one went with it.
+ */
+const USER: SessionUser = FIXTURE_USER;
 
 describe("outside a request", () => {
   it("has no context, and says so rather than throwing", () => {

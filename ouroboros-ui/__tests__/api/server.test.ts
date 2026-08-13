@@ -163,9 +163,9 @@ describe("api", () => {
   it("calls the service configured in the environment", async () => {
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
 
-    await api().GET("/api/v1/tenants");
+    await api().GET("/api/v1/orgs");
 
-    expect(requests[0]?.url).toBe(`${BASE_URL}/api/v1/tenants`);
+    expect(requests[0]?.url).toBe(`${BASE_URL}/api/v1/orgs`);
   });
 
   it("names the variable when the environment does not carry it", () => {
@@ -180,7 +180,7 @@ describe("api", () => {
     jar.set(ACTIVE_TENANT_COOKIE, "acme");
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
 
-    await api().GET("/api/v1/tenants");
+    await api().GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
     expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBe("acme");
@@ -194,7 +194,7 @@ describe("api", () => {
     jar.set(SESSION_CACHE_COOKIE, "cached.snapshot");
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
 
-    await api().GET("/api/v1/tenants");
+    await api().GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(
       `${SESSION_COOKIE}=signed.value; ${SESSION_CACHE_COOKIE}=cached.snapshot`,
@@ -204,7 +204,7 @@ describe("api", () => {
   it("sends no cookie header for a request carrying neither", async () => {
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
 
-    await api().GET("/api/v1/tenants");
+    await api().GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.has("Cookie")).toBe(false);
   });
@@ -216,9 +216,9 @@ describe("api", () => {
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
     const client = api();
 
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
     jar.set(SESSION_COOKIE, "second.visitor");
-    await client.GET("/api/v1/tenants");
+    await client.GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.has("Cookie")).toBe(false);
     expect(requests[1]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=second.visitor`);
@@ -236,7 +236,7 @@ describe("api", () => {
       ),
     );
 
-    await expect(api().GET("/api/v1/tenants")).rejects.toBeInstanceOf(RedirectSignal);
+    await expect(api().GET("/api/v1/orgs")).rejects.toBeInstanceOf(RedirectSignal);
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
     expect(LOGIN_PATH).toBe("/login");
   });
@@ -244,14 +244,14 @@ describe("api", () => {
   it("leaves every other failure to the caller, as an ApiError", async () => {
     respondWith(
       new Response(
-        JSON.stringify({ code: "tenant_not_found", message: "No such tenant.", details: {} }),
+        JSON.stringify({ code: "tenant_not_found", message: "No such workspace.", details: {} }),
         { status: 404, headers: { "Content-Type": "application/json" } },
       ),
     );
 
     await expect(
-      api().GET("/api/v1/tenants/{tenantId}", {
-        params: { path: { tenantId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10" } },
+      api().GET("/api/v1/orgs/{orgId}/domains", {
+        params: { path: { orgId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10" } },
       }),
     ).rejects.toBeInstanceOf(ApiError);
     expect(redirect).not.toHaveBeenCalled();
@@ -271,7 +271,7 @@ describe("anonymousApi", () => {
     jar.set(ACTIVE_TENANT_COOKIE, "acme");
     respondWith(new Response(JSON.stringify({ items: [], total: 0, limit: 25, offset: 0 })));
 
-    await anonymousApi().GET("/api/v1/tenants");
+    await anonymousApi().GET("/api/v1/orgs");
 
     expect(requests[0]?.headers.get("Cookie")).toBe(`${SESSION_COOKIE}=signed.value`);
     expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBe("acme");
@@ -290,7 +290,7 @@ describe("anonymousApi", () => {
     );
 
     const caught: unknown = await anonymousApi()
-      .GET("/api/v1/tenants")
+      .GET("/api/v1/orgs")
       .catch((error: unknown) => error);
 
     expect(caught).toBeInstanceOf(ApiError);
