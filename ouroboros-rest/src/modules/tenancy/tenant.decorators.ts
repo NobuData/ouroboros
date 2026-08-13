@@ -41,14 +41,18 @@ export const TENANT_OPTIONAL = "ouroboros:tenancy:optional";
  *     a way around the rule.
  *   * **`POST /api/v1/tenants`** — creating the first one. Somebody who belongs to nothing
  *     yet has no tenant to be in.
- *   * **`GET /api/v1/auth/me`** — who is signed in. Its whole answer is the memberships a
- *     tenant would have had to be resolved from.
  *   * **`GET /api/v1/engine/status`** — whether `ouroboros-engine` is reachable and which
  *     build it is ([#35](https://github.com/NobuData/ouroboros/issues/35)). There is one
  *     engine behind every workspace, so naming one changes nothing about the answer. It is
  *     the first exception that is about the *installation* rather than the person, and it
  *     is still an exception rather than a category: a route that reads or writes anything
  *     belonging to a customer is scoped, whoever is asking.
+ *
+ * There was a fourth — `GET /api/v1/auth/me`, whose whole answer was the memberships a
+ * tenant would have had to be resolved from, and which was the clearest case of all.
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted the route rather than
+ * the exemption: who is signed in is `GET /api/auth/get-session`, which BetterAuth serves
+ * ahead of Nest's router and which therefore never reaches this middleware to need marking.
  *
  * @returns The decorator. Applied to a class it covers every route in it; the guard reads
  *   the handler first.

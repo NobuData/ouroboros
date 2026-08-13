@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Membership } from "@/app/api/membership";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 import { resetRestUrlCache } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
 
+import { authAnswer, isAuthUrl } from "../helpers/auth";
 import { TENANT_ID, membership } from "../helpers/login";
 
 /**
@@ -69,8 +71,8 @@ const BASE_URL = "http://rest.test:4000";
 /** Every request the stubbed global `fetch` was handed. */
 let requests: Request[] = [];
 
-/** What `/auth/me` answers with for this case. */
-let memberships: unknown[] = [membership()];
+/** What this person belongs to, for this case. `null` is nobody signed in. */
+let memberships: Membership[] | null = [membership()];
 
 /**
  * A form carrying exactly the named fields.
@@ -95,26 +97,17 @@ beforeEach(() => {
   resetRestUrlCache();
   process.env.OURO_REST_URL = BASE_URL;
 
-  vi.stubGlobal("fetch", (request: Request) => {
-    requests.push(request);
+  // Two families reach this stub. The generated client hands `fetch` a `Request`; the auth
+  // client hands it a URL string and an init — see `app/api/auth-client.ts`. Both shapes are
+  // answered here, which is what the two-client rule costs a suite that spans both.
+  vi.stubGlobal("fetch", (input: Request | string) => {
+    const url = typeof input === "string" ? input : input.url;
+    if (typeof input !== "string") requests.push(input);
 
-    const body = request.url.endsWith("/api/v1/auth/me")
-      ? {
-          user: {
-            id: "5eed0003-0000-4000-8000-000000000001",
-            email: "ken@acme-robotics.dev",
-            displayName: "Ken Suenobu",
-            avatarUrl: null,
-            createdAt: "2026-08-11T10:20:23.114Z",
-            updatedAt: "2026-08-11T10:20:23.114Z",
-          },
-          memberships,
-          tenantSuggestion: null,
-        }
-      : { id: "row", enabled: true };
+    const body = isAuthUrl(url) ? authAnswer(url, memberships) : { id: "row", enabled: true };
 
     return Promise.resolve(
-      new Response(JSON.stringify(body), {
+      new Response(body === null ? "null" : JSON.stringify(body), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -129,9 +122,16 @@ afterEach(() => {
   resetApiClient();
 });
 
-/** The requests that were not the session read — i.e. the writes. */
+/**
+ * The writes.
+ *
+ * `requests` already holds only what the *generated* client sent — the auth client is
+ * answered by the same stub but hands it a URL rather than a `Request`, so the session read
+ * never lands here. The filter is kept anyway, so a session read that came back through the
+ * generated family would be visible rather than counted as a write.
+ */
 function writes(): Request[] {
-  return requests.filter((request) => !request.url.endsWith("/api/v1/auth/me"));
+  return requests.filter((request) => !isAuthUrl(request.url));
 }
 
 describe("chooseWorkspace", () => {
@@ -159,15 +159,15 @@ describe("chooseWorkspace", () => {
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);
   });
 
-  it("refuses a suspended workspace they do belong to", async () => {
-    memberships = [membership({ status: "suspended" })];
-
-    await expect(chooseWorkspace(form({ workspace: "acme-robotics" }))).rejects.toBeInstanceOf(
-      RedirectSignal,
-    );
-
-    expect(setCookie).not.toHaveBeenCalled();
-  });
+  // *Refuses a suspended workspace they do belong to* was here, and is not any more. The
+  // case cannot be composed at this level after
+  // [#711](https://github.com/NobuData/ouroboros/issues/711): a membership is built from
+  // BetterAuth's organization listing now, and an organization has no lifecycle column for
+  // the service to report `suspended` in — see `app/api/session.ts`. The rule the case was
+  // covering is `selectableMemberships`, which still filters and is still asserted directly
+  // in `__tests__/api/membership.test.ts`; what is gone is the *route* to it, and
+  // [#714](https://github.com/NobuData/ouroboros/issues/714) is what restores one by
+  // putting the workspace row model back in the generated family.
 
   it("refuses a form with no workspace in it at all", async () => {
     await expect(chooseWorkspace(form({}))).rejects.toBeInstanceOf(RedirectSignal);
@@ -177,14 +177,11 @@ describe("chooseWorkspace", () => {
   });
 
   it("refuses when there is no session to check the slug against", async () => {
-    vi.stubGlobal("fetch", () =>
-      Promise.resolve(
-        new Response(JSON.stringify({ code: "unauthenticated", message: "no", details: {} }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
+    // `null` from `get-session` rather than a `401`, since
+    // [#711](https://github.com/NobuData/ouroboros/issues/711): the absence of a session is
+    // the answer BetterAuth gives, and the action must read it as *nobody* rather than as a
+    // failure it might retry past.
+    memberships = null;
 
     await expect(chooseWorkspace(form({ workspace: "acme-robotics" }))).rejects.toBeInstanceOf(
       RedirectSignal,

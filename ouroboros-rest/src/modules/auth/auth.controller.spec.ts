@@ -3,24 +3,24 @@ import type { AuthService as BetterAuth } from "@thallesp/nestjs-better-auth";
 import type { Auth } from "../../auth/auth.factory";
 import { SESSION_COOKIE, SESSION_DATA_COOKIE } from "../../auth/session.options";
 import { AuthController } from "./auth.controller";
-import type { AuthService } from "./auth.service";
 import { SET_COOKIE, type AuthResponse } from "./http";
-import { principalFor, FIXTURE_USER } from "./principal.fixture";
-import { userRow } from "./principal";
 
 /**
- * The two routes, and what each of them hands on.
+ * The one route, and what it hands on.
  *
- * `GET me` is now a question about the *session* rather than about a row this service read,
- * and `POST logout` is a forward to the library rather than a cookie this service composed
- * — so the assertions here are about what leaves the controller: which person reaches the
- * service, which headers reach the browser, and the `204` that says there is nothing else.
+ * `POST logout` is a forward to the library rather than a cookie this service composed, so
+ * the assertions here are about what leaves the controller: which headers reach the
+ * library, which reach the browser, and the `204` that says there is nothing else.
  *
- * **Two routes and their suites left with #33's OAuth flow.** `GET auth/github` and
+ * **Three routes and their suites have left this controller.** `GET auth/github` and
  * `GET auth/github/callback` were the browser-facing halves of a handshake this service no
  * longer performs, and [#702](https://github.com/NobuData/ouroboros/issues/702) removed
- * them rather than forwarding them. BetterAuth serves the replacement at `/api/auth/*`,
- * outside Nest's router altogether, so there is no controller here to assert about.
+ * them rather than forwarding them. `GET me` went in
+ * [#711](https://github.com/NobuData/ouroboros/issues/711), which published BetterAuth's
+ * own session routes and deleted the second answer to the same question. BetterAuth serves
+ * all three replacements at `/api/auth/*`, outside Nest's router altogether, so there is no
+ * controller here to assert about — `src/openapi/openapi.spec.ts` is where the published
+ * surface is held to the route map instead.
  */
 
 /** What the response recorded. */
@@ -66,13 +66,6 @@ function recordingResponse(): Recorded {
   return response;
 }
 
-/** An auth service double whose every method is a mock. */
-function authDouble(): jest.Mocked<AuthService> {
-  return {
-    describe: jest.fn().mockResolvedValue({ user: {}, memberships: [], tenantSuggestion: null }),
-  } as unknown as jest.Mocked<AuthService>;
-}
-
 /**
  * A stand-in for the library's `AuthService`, answering sign-out as the real one does.
  *
@@ -98,34 +91,29 @@ function betterAuthDouble() {
   return { double: { api: { signOut } } as unknown as BetterAuth<Auth>, signOut };
 }
 
-/** The controller, its doubles, and a fresh response. */
+/** The controller, its double, and a fresh response. */
 function harness() {
-  const auth = authDouble();
   const { double, signOut } = betterAuthDouble();
 
   return {
-    auth,
     signOut,
-    controller: new AuthController(auth, double),
+    controller: new AuthController(double),
     response: recordingResponse(),
   };
 }
 
-describe("reading the session", () => {
-  it("describes the person the guard resolved", async () => {
-    const { auth, controller } = harness();
+describe("the controller's surface", () => {
+  it("serves signing out and nothing else", () => {
+    // #711 deleted `GET me` and nothing under `/api/v1` replaced it. A second handler
+    // appearing here is the failure this guards: the session question belongs to
+    // BetterAuth's routes, and a route added here would be the duplicate the issue's
+    // acceptance criterion forbids. `openapi.spec.ts` asserts the same thing about the
+    // published contract; this asserts it about the class.
+    const handlers = Object.getOwnPropertyNames(AuthController.prototype).filter(
+      (name) => name !== "constructor",
+    );
 
-    await controller.read(principalFor());
-
-    expect(auth.describe).toHaveBeenCalledWith(userRow(FIXTURE_USER));
-  });
-
-  it("refuses a route with no session rather than describing nobody", () => {
-    // Reachable only by somebody adding @AllowAnonymous() to this handler. It is a
-    // programming mistake, and it fails here by name rather than as a 500 about a query.
-    const { controller } = harness();
-
-    expect(() => controller.read(null)).toThrow(/@AllowAnonymous/);
+    expect(handlers).toEqual(["logout"]);
   });
 });
 

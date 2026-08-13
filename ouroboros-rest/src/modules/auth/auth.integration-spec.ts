@@ -5,7 +5,7 @@ import { Test } from "@nestjs/testing";
 import { Pool } from "pg";
 import request from "supertest";
 
-import { configureApplication } from "../../application";
+import { API_BASE_PATH, configureApplication } from "../../application";
 import { bodyOf, integrationDatabaseUrl } from "../../testing/integration.fixture";
 import { GITHUB_PROVIDER_ID } from "../../auth/github.provider";
 import { AppModule } from "../app/app.module";
@@ -13,7 +13,6 @@ import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { SESSION_COOKIE, SESSION_DATA_COOKIE } from "../../auth/session.options";
 import { AUTH_ERRORS } from "./auth.errors";
-import type { SessionResource } from "./auth.resources";
 import { LEGACY_SESSION_COOKIE } from "./legacy.cookie";
 import { sessionExists, signInAs } from "./session.fixture";
 
@@ -43,11 +42,23 @@ import { sessionExists, signInAs } from "./session.fixture";
  *     automated suite for it, once #705's development password makes a sign-in reachable
  *     without github.com.
  *
+ * **Two things about this suite are older than it looks, and neither is #711's.**
+ * [#708](https://github.com/NobuData/ouroboros/issues/708)'s `V006__tenancy_extensions.sql`
+ * dropped `tenants`, `tenant_members`, `users` and `user_identities`, so every case below
+ * that seeds one of them is stale against a migrated database and fails on the insert.
+ * [#715](https://github.com/NobuData/ouroboros/issues/715) is the issue that rebuilds this
+ * suite against the organization tables, and is where those cases are re-seeded rather than
+ * here. What #711 changed is only that they no longer *read* a route that has been deleted.
+ *
  * What stays here is what this module still owns and a database still answers:
  *
- *   1. **The session the guard reads**, and everything `GET /api/v1/auth/me` joins to
- *      answer — memberships, the tenant suggestion, and a session whose person has been
- *      deleted since.
+ *   1. **The session the guard reads** — that a request with none, one whose person has
+ *      been deleted, one that has expired and one that was never issued are all refused.
+ *      Asserted against `GET /api/v1/tenants` since
+ *      [#711](https://github.com/NobuData/ouroboros/issues/711), because the route these
+ *      cases used to be asserted against — `GET /api/v1/auth/me` — was the second answer to
+ *      *who is signed in* and that issue deleted it. The guard is the subject either way;
+ *      the route was only ever a way to reach it.
  *   2. **[#703](https://github.com/NobuData/ouroboros/issues/703)'s revocation**, which is
  *      the one acceptance criterion in this issue that only a database can answer: sign out,
  *      present the very same cookie, and be refused. The session is a row here — minted by
@@ -167,58 +178,28 @@ describe("the auth surface, against a real database", () => {
     return { id, cookie: await signInAs(admin, id, lifetimeSeconds) };
   }
 
-  describe("reading the session back", () => {
-    it("answers with the person and their memberships", async () => {
-      const { id, cookie } = await signedInPerson();
-
-      const { rows } = await admin.query<{ id: string }>(
-        "insert into ouroboros.tenants (slug, display_name) values ($1, $2) returning id",
-        [`${TEST_PREFIX}-acme`, "Acme Integration"],
-      );
-      await admin.query(
-        "insert into ouroboros.tenant_members (tenant_id, user_id, role) values ($1, $2, 'owner')",
-        [rows[0].id, id],
-      );
-
-      const session = bodyOf<SessionResource>(
-        await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(200),
-      );
-
-      expect(session.user.email).toBe(EMAIL);
-      expect(session.memberships).toEqual([
-        expect.objectContaining({ slug: `${TEST_PREFIX}-acme`, role: "owner" }),
-      ]);
-      expect(session.tenantSuggestion).toBeNull();
-    });
-
-    it("suggests the tenant that owns the address's domain, when there are no memberships", async () => {
-      const { cookie } = await signedInPerson();
-
-      const { rows } = await admin.query<{ id: string }>(
-        "insert into ouroboros.tenants (slug, display_name) values ($1, $2) returning id",
-        [`${TEST_PREFIX}-domain`, "Domain Owner"],
-      );
-      await admin.query(
-        "insert into ouroboros.tenant_domains (tenant_id, domain) values ($1, $2)",
-        [rows[0].id, "example.test"],
-      );
-
-      const session = bodyOf<SessionResource>(
-        await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(200),
-      );
-
-      expect(session.memberships).toEqual([]);
-      expect(session.tenantSuggestion).toEqual({
-        tenantId: rows[0].id,
-        slug: `${TEST_PREFIX}-domain`,
-        displayName: "Domain Owner",
-      });
-    });
+  describe("the session the guard reads", () => {
+    // Asserted against an authenticated route rather than against *the* authenticated
+    // route: the subject is the guard, and `GET /api/v1/auth/me` was only ever the cheapest
+    // way to reach it. #711 deleted that route — it was the second answer to *who is signed
+    // in* — so these use the tenancy listing instead, which the guard protects the same way.
+    // A `401` is decided before any handler runs, so none of them touches a table.
+    const PROTECTED = `${API_BASE_PATH}/tenants`;
 
     it("refuses a request with no session", async () => {
-      const response = await request(server()).get(`${AUTH}/me`).expect(401);
+      const response = await request(server()).get(PROTECTED).expect(401);
 
       expect(bodyOf<ErrorEnvelope>(response).code).toBe(AUTH_ERRORS.unauthenticated);
+    });
+
+    it("admits one carrying a session it honours", async () => {
+      // The other direction, without which every case here would pass against a guard that
+      // simply refused everything.
+      const { cookie } = await signedInPerson();
+
+      const response = await request(server()).get(PROTECTED).set("Cookie", cookie);
+
+      expect(response.status).not.toBe(401);
     });
 
     it("refuses a session whose person has since been deleted", async () => {
@@ -229,7 +210,7 @@ describe("the auth surface, against a real database", () => {
       const { cookie } = await signedInPerson();
       await admin.query('delete from ouroboros."user" where "email" = $1', [EMAIL]);
 
-      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
+      await request(server()).get(PROTECTED).set("Cookie", cookie).expect(401);
     });
 
     it("refuses a session that has expired, whatever the cookie still says", async () => {
@@ -237,14 +218,23 @@ describe("the auth surface, against a real database", () => {
       // server rather than trusted to have stopped sending it.
       const { cookie } = await signedInPerson("Integration Person", -60);
 
-      await request(server()).get(`${AUTH}/me`).set("Cookie", cookie).expect(401);
+      await request(server()).get(PROTECTED).set("Cookie", cookie).expect(401);
     });
 
     it("refuses a cookie naming a session that was never issued", async () => {
       await request(server())
-        .get(`${AUTH}/me`)
+        .get(PROTECTED)
         .set("Cookie", `${SESSION_COOKIE}=never-issued`)
         .expect(401);
+    });
+  });
+
+  describe("the session route this service used to serve", () => {
+    it("answers 404, because #711 deleted it rather than keeping a second answer", async () => {
+      // The acceptance criterion from the outside. `GET /api/auth/get-session` is the one
+      // answer now; a route still replying here would be an undocumented duplicate rather
+      // than a removed one.
+      await request(server()).get(`${AUTH}/me`).expect(404);
     });
   });
 
@@ -419,6 +409,11 @@ describe("the auth surface, against a real database", () => {
       // What "the same person" is actually worth: `tenant_members.user_id` was written
       // against `users.id`, and the back-fill preserved it — so the workspace they were
       // invited to is still theirs after the move.
+      //
+      // Read in SQL rather than over HTTP since #711, which deleted the route that used to
+      // report it. The claim is unchanged and is about the *id*, so the row is the more
+      // direct evidence anyway; what a client is told about its memberships is
+      // `GET /api/auth/organization/list`, and #715 is the suite that covers that surface.
       const legacyId = await seedPreMigrationIdentity();
 
       const { rows } = await admin.query<{ id: string }>(
@@ -430,16 +425,13 @@ describe("the auth surface, against a real database", () => {
         [rows[0].id, legacyId],
       );
 
-      const session = bodyOf<SessionResource>(
-        await request(server())
-          .get(`${AUTH}/me`)
-          .set("Cookie", await signInAs(admin, legacyId))
-          .expect(200),
+      const held = await admin.query<{ slug: string; role: string }>(
+        "select t.slug, m.role from ouroboros.tenant_members m " +
+          "join ouroboros.tenants t on t.id = m.tenant_id where m.user_id = $1",
+        [legacyId],
       );
 
-      expect(session.memberships).toEqual([
-        expect.objectContaining({ slug: `${TEST_PREFIX}-kept`, role: "owner" }),
-      ]);
+      expect(held.rows).toEqual([{ slug: `${TEST_PREFIX}-kept`, role: "owner" }]);
     });
 
     it("arrives with a verified address, so account linking will attach to them", async () => {

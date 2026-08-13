@@ -1,7 +1,13 @@
 import { API_PREFIX, API_VERSION } from "../application";
 import { PROBE_PATHS } from "../modules/health/health.paths";
 import { AUTH_BASE_PATH } from "./auth.options";
-import { AUTH_PREFIX_EXCLUSIONS, AUTH_ROUTES, GITHUB_CALLBACK_PATH } from "./auth.routes";
+import {
+  AUTH_PREFIX_EXCLUSIONS,
+  AUTH_ROUTES,
+  GITHUB_CALLBACK_PATH,
+  authOperationKeys,
+  openApiPath,
+} from "./auth.routes";
 import { GITHUB_PROVIDER_ID } from "./github.provider";
 
 /**
@@ -30,6 +36,18 @@ const ORGANIZATION_REQUIRED = [
   "/organization/list",
   "/organization/create",
   "/organization/set-active",
+];
+
+/**
+ * The three routes that between them answer *who is signed in* — the question
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted `GET /api/v1/auth/me`
+ * in favour of. A map missing any one of them is a map somebody would build a fourth
+ * endpoint against.
+ */
+const SESSION_QUESTION = [
+  "/get-session",
+  "/organization/list",
+  "/organization/get-active-member-role",
 ];
 
 describe("the route map", () => {
@@ -67,6 +85,45 @@ describe("the route map", () => {
     const paths = AUTH_ROUTES.map((route) => `${route.methods.join(",")} ${route.path}`);
 
     expect(new Set(paths).size).toBe(paths.length);
+  });
+
+  it.each(SESSION_QUESTION)("documents %s, without which somebody builds an /auth/me", (path) => {
+    // #711 deleted `GET /api/v1/auth/me` because these three answer it between them. The
+    // day one of them leaves this map is the day the deletion stops being replaceable, and
+    // a hand-rolled duplicate becomes the obvious thing to write.
+    expect(AUTH_ROUTES.map((route) => route.path)).toContain(`${AUTH_BASE_PATH}${path}`);
+  });
+});
+
+describe("the map as a document keys it", () => {
+  it("spells a path parameter the way OpenAPI does", () => {
+    // The library and the router write `:id`; a document writes `{id}`. Publishing the map
+    // means translating exactly this, and doing it in one function is what stops the
+    // document and the map from naming different routes.
+    const callback = AUTH_ROUTES.find((route) => route.path.includes(":"));
+
+    expect(callback).toBeDefined();
+    expect(openApiPath(callback!)).toBe(`${AUTH_BASE_PATH}/callback/{id}`);
+  });
+
+  it("leaves a path without a parameter alone", () => {
+    const session = AUTH_ROUTES.find((route) => route.path.endsWith("/get-session"));
+
+    expect(openApiPath(session!)).toBe(`${AUTH_BASE_PATH}/get-session`);
+  });
+
+  it("is one operation per verb, because a document describes one per verb", () => {
+    // `get-session` answers both, and a document has to describe both — so a map row with
+    // two methods is two keys rather than one.
+    expect(authOperationKeys()).toContain(`GET ${AUTH_BASE_PATH}/get-session`);
+    expect(authOperationKeys()).toContain(`POST ${AUTH_BASE_PATH}/get-session`);
+  });
+
+  it("keys every method of every route, and nothing else", () => {
+    const methods = AUTH_ROUTES.reduce((total, route) => total + route.methods.length, 0);
+
+    expect(authOperationKeys()).toHaveLength(methods);
+    expect(new Set(authOperationKeys()).size).toBe(methods);
   });
 });
 

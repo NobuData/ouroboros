@@ -96,8 +96,9 @@ $ curl http://localhost:4000/api/v1
 | `GET /health/ready`                                 | [Readiness](#health-and-readiness) — the process and its dependencies |
 | `POST /api/auth/sign-in/social`                     | [Sign in](#signing-in) — BetterAuth's, outside the versioned API      |
 | `GET /api/auth/callback/github`                     | Where GitHub returns; BetterAuth's, and what an OAuth App registers   |
-| `GET /api/v1/auth/me`                               | Who is signed in, their memberships, and a tenant suggestion          |
-| `POST /api/v1/auth/logout`                          | Sign out — removes the session cookie                                 |
+| `GET POST /api/auth/get-session`                    | Who is signed in — BetterAuth's, and the only route that answers it   |
+| `GET /api/auth/organization/*`                      | Workspaces, membership and roles — the [organization plugin](#the-two-client-rule) |
+| `POST /api/v1/auth/logout`                          | Sign out — the versioned alias of `/api/auth/sign-out`                |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
@@ -619,7 +620,8 @@ plugin's — mockup 01 Step 2 and mockup 17, as routes:
 
 | Route                                          | What it is for                                                  |
 | ---------------------------------------------- | --------------------------------------------------------------- |
-| `GET  /api/auth/organization/list`             | the caller's organizations and the role held in each             |
+| `GET  /api/auth/organization/list`             | the caller's organizations — **without** the role held in each   |
+| `GET  /api/auth/organization/get-active-member-role` | the role, for one organization — the call `list` does not answer |
 | `POST /api/auth/organization/create`           | make one; the caller becomes its `owner`                         |
 | `POST /api/auth/organization/set-active`       | **choose where the loop runs** — writes `session."activeOrganizationId"` |
 | `GET  /api/auth/organization/get-full-organization` | one organization with its members and pending invitations   |
@@ -627,13 +629,45 @@ plugin's — mockup 01 Step 2 and mockup 17, as routes:
 | `POST /api/auth/organization/update-member-role` | change what somebody may do                                    |
 
 The same table is [`src/auth/auth.routes.ts`](src/auth/auth.routes.ts), as data, because
-[#711](https://github.com/NobuData/ouroboros/issues/711) publishes these paths and
-`ouroboros-ui`'s BetterAuth client calls them. It is **not the whole of what the plugin
-serves** — leaving, rejecting an invitation, deleting an organization and a dozen more are
-mounted too — only the ones the product uses today.
+[#711](https://github.com/NobuData/ouroboros/issues/711) publishes these paths in
+`openapi.yaml` and `ouroboros-ui`'s BetterAuth client calls them. `src/openapi/openapi.spec.ts`
+holds the document and that map to each other, which is what keeps the published surface
+honest: these routes are invisible to Nest's route table, so the map is the only thing the
+contract can be compared with. It is **not the whole of what the plugin serves** — leaving,
+rejecting an invitation, deleting an organization and a dozen more are mounted too — only the
+ones the product uses today.
 
 `GET /api/auth/ok` is not a health probe. It says nothing about this service's
 dependencies; [`/health/ready`](#health-and-readiness) stays the only readiness there is.
+
+### The two-client rule
+
+**A caller uses a different client for each family, and the boundary is the path.**
+
+| Family | Paths | Called through |
+|---|---|---|
+| Auth | `/api/auth/*` — the two tables above | **BetterAuth's own client** (`createAuthClient`) |
+| Everything else | `/api/v1/*` | **The client generated from `openapi.yaml`** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |
+
+The auth family is **excluded from code generation**. The library serves those routes itself
+and ships a typed client that already knows their bodies, their cookies and their error
+codes, so generating a second, worse copy of it would be work spent on drift. They are
+described in `openapi.yaml` anyway — tags `identity` and `organizations` — because a client
+author has to be able to read them.
+
+**Who is signed in is three calls, and there is no fourth**: `get-session` (the person),
+`organization/list` (the workspaces), `organization/get-active-member-role` (what they hold
+in one). `GET /api/v1/auth/me` answered all three at once until #711 deleted it — two routes
+answering the same question are two answers that can disagree, and the deleted one was
+answering from `tenant_members` and `tenants`, which
+`V006__tenancy_extensions.sql` had already dropped. **Do not add another.** The one part of
+its answer with no BetterAuth equivalent — *your organisation is already on Ouroboros* — is
+[#712](https://github.com/NobuData/ouroboros/issues/712)'s `POST /api/v1/auth/discover`,
+which belongs in the versioned family because it reads this service's own tenant domains.
+
+Two error shapes come with the split, and it is worth knowing before writing a client: the
+`/api/v1` routes answer `{code, message, details}` from one filter, and the auth routes
+answer BetterAuth's `{message, code}` with the library's screaming-case codes.
 
 ### Tenancy: the organization plugin
 
@@ -758,7 +792,7 @@ handshake and serves its own routes under `/api/auth`, outside the versioned API
 | ------------------------------------ | ------------------------------------------------------------------- |
 | `POST /api/auth/sign-in/social`      | `{ "provider": "github" }` in, the github.com authorization URL out  |
 | `GET  /api/auth/callback/github`     | Where GitHub returns the browser; upserts `"user"` + `account`       |
-| `GET  /api/v1/auth/me`               | The person, their memberships, and a tenant suggestion               |
+| `GET  /api/auth/get-session`         | The person and their session, or `null` for nobody                   |
 | `POST /api/auth/sign-out`            | Deletes the session row; clears its cookies                          |
 | `POST /api/v1/auth/logout`           | The same thing, versioned — delegates to `sign-out`. `204`           |
 
@@ -868,9 +902,13 @@ curl -sS -X POST http://localhost:4000/api/auth/sign-in/social \
         -c 'select "providerId", "accountId" from ouroboros.account;'
    ```
 
-4. **Ask who you are.** `GET /api/v1/auth/me`, with the cookies the browser now holds,
-   answers with the person, their memberships, and — for somebody brand new — the tenant
-   their address's domain points at.
+4. **Ask who you are.** `GET /api/auth/get-session`, with the cookies the browser now holds,
+   answers with the person and their session — or `null`, for a request carrying neither.
+   `GET /api/auth/organization/list` is where they belong and
+   `GET /api/auth/organization/get-active-member-role` is what they hold there. **Three
+   calls, and there is no fourth**: `GET /api/v1/auth/me` answered all of it at once until
+   [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it — see
+   [The two-client rule](#the-two-client-rule).
 
 ### Sessions
 
@@ -1007,13 +1045,18 @@ A handler declares what it needs with `@Roles(...ADMINISTRATORS)`; one that decl
 is open to every member, which is not the same laxity as `@Public()` — the tenant guard has
 already refused everybody else.
 
-### Three routes need no workspace
+### Two routes need no workspace
 
-`@TenantOptional()`, and all three are questions about the *person* rather than a workspace:
-`GET /api/v1/tenants` (which are mine), `POST /api/v1/tenants` (let me have one), and
-`GET /api/v1/auth/me` (who am I). Requiring a workspace first would be circular. Creating one
-makes you its `owner` in the same transaction, because a workspace with no members is one the
-`404` rule puts out of reach of the person who just made it.
+`@TenantOptional()`, and both are questions about the *person* rather than a workspace:
+`GET /api/v1/tenants` (which are mine) and `POST /api/v1/tenants` (let me have one).
+Requiring a workspace first would be circular. Creating one makes you its `owner` in the same
+transaction, because a workspace with no members is one the `404` rule puts out of reach of
+the person who just made it.
+
+There was a third — `GET /api/v1/auth/me`, *who am I* — and
+[#711](https://github.com/NobuData/ouroboros/issues/711) deleted the route rather than the
+exemption. `GET /api/auth/get-session` answers that question now, and BetterAuth serves it
+ahead of Nest's router, so it never reaches this middleware to need marking.
 
 ### Reaching it from a service
 

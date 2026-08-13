@@ -14,8 +14,15 @@
  * same thing to Nest a second time, out loud, and `src/application.ts` explains why the
  * belt is worn with the braces.
  *
+ * That same fact is why this file is the *only* thing `openapi.yaml`'s auth section can be
+ * checked against. Every other path in the document is compared with the route table Nest
+ * built, and these paths are not in it — so `src/openapi/openapi.spec.ts` compares the
+ * document with this map instead, through {@link openApiPath}.
+ *
  * @see auth.options.ts — `AUTH_BASE_PATH`, the prefix every path here is built from.
  * @see auth.module.ts — the mounting itself.
+ * @see ../openapi/openapi.spec.ts — where this map and the published document are held
+ *   to each other.
  */
 
 import { AUTH_BASE_PATH } from "./auth.options";
@@ -122,10 +129,24 @@ export const AUTH_ROUTES: readonly AuthRoute[] = [
     methods: ["GET"],
     path: `${AUTH_BASE_PATH}/organization/list`,
     purpose:
-      "The caller's organizations, with the role they hold in each — mockup 01 Step 2's " +
-      "list, and mockup 17's. `metadata.personal` is what renders the `personal` pill " +
-      "(#704). It answers from the session, so there is no id to pass and no way to ask " +
-      "about somebody else's memberships.",
+      "The caller's organizations — mockup 01 Step 2's list, and mockup 17's. " +
+      "`metadata.personal` is what renders the `personal` pill (#704). It answers from the " +
+      "session, so there is no id to pass and no way to ask about somebody else's " +
+      "memberships. **It carries no role**: the plugin's adapter reads the `member` rows " +
+      "and returns only the organizations they point at, so *what may I do here* is the " +
+      "separate question `get-active-member-role` below answers.",
+  },
+  {
+    methods: ["GET"],
+    path: `${AUTH_BASE_PATH}/organization/get-active-member-role`,
+    purpose:
+      "What the caller may do — `{ role }`, for the session's active organization or for " +
+      "whichever `?organizationId=` names, provided they belong to it. This is the third " +
+      "part of the session question, and the reason `GET /api/v1/auth/me` was deleted " +
+      "rather than reimplemented (#711): who you are is `get-session`, where you belong is " +
+      "`organization/list`, and what you hold there is this. Cheaper than " +
+      "`get-full-organization` for the purpose, and it discloses one role rather than the " +
+      "whole membership list.",
   },
   {
     methods: ["POST"],
@@ -170,6 +191,38 @@ export const AUTH_ROUTES: readonly AuthRoute[] = [
       "of the four resources at all (`organization.roles.ts`).",
   },
 ];
+
+/**
+ * One route's path, spelled the way OpenAPI spells a path parameter.
+ *
+ * The map writes `:id` because that is what the router and the library write; a document
+ * writes `{id}`. One function rather than a second copy of the paths, so the published
+ * contract and this map cannot name different routes — which is the whole of what
+ * `src/openapi/openapi.spec.ts` compares
+ * ([#711](https://github.com/NobuData/ouroboros/issues/711)).
+ *
+ * @param route - A route from {@link AUTH_ROUTES}.
+ * @returns Its path with every `:name` segment rewritten as `{name}`. A path with no
+ *   parameter comes back unchanged.
+ */
+export function openApiPath(route: AuthRoute): string {
+  return route.path.replaceAll(/:([^/]+)/g, "{$1}");
+}
+
+/**
+ * Every operation the map documents, keyed the way an OpenAPI document keys one.
+ *
+ * A route answering two verbs is two entries, because a document describes two operations —
+ * so this is directly comparable with the keys `openapi.spec.ts` flattens the published
+ * paths into.
+ *
+ * @returns `"<METHOD> <path>"` for every method of every route, in map order.
+ */
+export function authOperationKeys(): string[] {
+  return AUTH_ROUTES.flatMap((route) =>
+    route.methods.map((method) => `${method} ${openApiPath(route)}`),
+  );
+}
 
 /**
  * The paths `src/application.ts` keeps out of the `/api/v1` global prefix.

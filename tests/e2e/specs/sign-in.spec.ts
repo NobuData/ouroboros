@@ -96,8 +96,9 @@ test.describe("login → tenant select → dashboard", () => {
     // ---- Step: the workspace chooser -------------------------------------------------
     //
     // A session with memberships and no `ouro_tenant` cookie is `loginView`'s `choose`
-    // outcome (`app/login/view.ts`). Arriving here at all proves `GET /api/v1/auth/me`
-    // answered with the seed's membership rows.
+    // outcome (`app/login/view.ts`). Arriving here at all proves the session read — since
+    // [#711](https://github.com/NobuData/ouroboros/issues/711), `GET /api/auth/get-session`
+    // plus the organization listing — answered with the seed's membership rows.
     await page.goto("/login");
 
     const workspaceRow = page.getByRole("button", { name: new RegExp(SEED_TENANT.displayName) });

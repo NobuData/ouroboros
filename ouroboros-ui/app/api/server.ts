@@ -139,10 +139,18 @@ export function api(): ApiClient {
 /**
  * The same client, minus the redirect.
  *
- * The login screen has to ask *whether* anybody is signed in, and for it a `401` is an
- * answer rather than an accident: {@link api}'s handler would send the request to
- * {@link LOGIN_PATH}, which is the page asking — a redirect to itself, once per render,
- * for every signed-out visitor.
+ * For a caller on the login screen, a `401` is an answer rather than an accident:
+ * {@link api}'s handler would send the request to {@link LOGIN_PATH}, which is the page
+ * asking — a redirect to itself, once per render, for every signed-out visitor.
+ *
+ * **Nothing calls it at the moment, and it is kept rather than deleted.** Its one caller was
+ * `app/api/access.ts`, asking whether anybody was signed in;
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) moved that question onto
+ * `GET /api/auth/get-session`, which answers `null` for nobody and so needs no `401` to be
+ * heard. The need comes back with the next public route in the generated family:
+ * [#712](https://github.com/NobuData/ouroboros/issues/712)'s
+ * `POST /api/v1/auth/discover` is called from the login screen by a visitor who is signed
+ * in nowhere, which is exactly this client's case.
  *
  * Nothing else about it differs. It forwards the same session cookie and the same
  * workspace header, so a screen that uses it while a session *does* exist sees exactly

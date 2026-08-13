@@ -7,7 +7,7 @@
 > [visible control in the header](#theming)
 > ([#42](https://github.com/NobuData/ouroboros/issues/42)), wrapped in the
 > [app shell](#app-shell) ([#41](https://github.com/NobuData/ouroboros/issues/41)),
-> holding a [typed API client](#the-api-client) generated from the REST contract
+> holding a [typed API client](#the-generated-client) generated from the REST contract
 > ([#43](https://github.com/NobuData/ouroboros/issues/43)), serving
 > [sign-in and workspace selection](#sign-in--tenancy)
 > ([#44](https://github.com/NobuData/ouroboros/issues/44)) and, behind it, the
@@ -38,7 +38,7 @@ engine directly — that boundary is what keeps tenancy enforcement in one place
 | Language | TypeScript 5, `strict` |
 | Package manager | Yarn 4 via corepack (`nodeLinker: node-modules`) |
 | Runtime | Node 24 |
-| API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The API client](#the-api-client) |
+| API client | `openapi-typescript` (types) + `openapi-fetch` (calls), generated from `ouroboros-rest/openapi.json` — see [The generated client](#the-generated-client) |
 | Styling | CSS custom properties (design tokens) over plain global sheets — no CSS-in-JS, no component framework; the shared set is [`app/ui/`](#ui-primitives) |
 | Fonts | Chakra Petch (display), IBM Plex Sans (UI), IBM Plex Mono (data) via `next/font` |
 | Tests | Vitest + Testing Library |
@@ -100,19 +100,24 @@ resolves the listen port before it loads that file, so pass it on the command li
 trailing slash trimmed — and throws naming the variable when it is not. It is a function
 rather than a module constant on purpose: a constant would be evaluated while
 `next build` prerenders, failing the build on a machine that has no reason to know the
-address of a service it is not calling. [The API client](#the-api-client) is its caller,
+address of a service it is not calling. [The generated client](#the-generated-client) is its caller,
 and calls it lazily for the same reason.
 
 Two pieces of per-browser state belong to this module rather than to configuration: the
 [theme choice](#theming), in `localStorage` under `ouro-theme`, and the
 [active workspace](#access--who-is-signed-in-and-where), in an `HttpOnly` `ouro_tenant`
-cookie that [the login screen](#sign-in--tenancy) writes. The session cookie is
-`ouroboros-rest`'s — this module forwards it and never writes it. **It is still named
-`ouro_session` here**, which [#703](https://github.com/NobuData/ouroboros/issues/703) has
-made wrong: a session is now a row and the cookie naming it is BetterAuth's
-`better-auth.session_token`. Re-pointing this module at it is
-[#720](https://github.com/NobuData/ouroboros/issues/720), which that issue's body predicted;
-until then a completed sign-in does not reach these screens.
+cookie that [the login screen](#sign-in--tenancy) writes. The session cookies are
+`ouroboros-rest`'s — this module forwards them and never writes them.
+
+**Which cookies get forwarded now depends on which client is calling**, and the two do not
+agree yet. [`app/api/auth-client.ts`](app/api/auth-client.ts) forwards BetterAuth's
+`better-auth.session_token` and `better-auth.session_data`, so the session read works;
+[`app/api/client.ts`](app/api/client.ts) still forwards `ouro_session`, which
+[#703](https://github.com/NobuData/ouroboros/issues/703) made wrong — a session is a row now,
+and that cookie names nothing. Re-pointing the generated client and the route gates at
+BetterAuth's is [#720](https://github.com/NobuData/ouroboros/issues/720), which owns them
+together because they have to move in one step. Until it lands, a completed sign-in reaches
+the session read and no further.
 
 ## Container
 
@@ -188,16 +193,17 @@ ouroboros-ui/
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
 │   ├── paths.ts             # the two routes this application redirects to
-│   ├── api/                 # the typed client for ouroboros-rest — server-side
+│   ├── api/                 # the two clients for ouroboros-rest — both server-side
 │   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
 │   │   ├── client.ts        #   the wrapper: cookie · X-Ouro-Tenant · ApiError
+│   │   ├── auth-client.ts   #   the other family: /api/auth/* — never generated
 │   │   ├── errors.ts        #   ApiError, and the envelope it is parsed from
 │   │   ├── tenant.ts        #   the active-workspace vocabulary
 │   │   ├── membership.ts    #   what a person holds in a workspace — framework-free
 │   │   ├── server.ts        #   api() / anonymousApi(), and the workspace store
 │   │   ├── access.ts        #   the gate: currentAccess() / requireWorkspace()
 │   │   ├── tenants.ts       #   tenants.list() / tenants.read()
-│   │   ├── session.ts       #   session.read() — GET /auth/me
+│   │   ├── session.ts       #   session.read() — composed from three auth routes
 │   │   ├── members.ts       #   members.list() — the dashboard's count
 │   │   ├── orgs.ts          #   orgs.list() / orgs.setEnabled()
 │   │   ├── repos.ts         #   repos.list() / repos.setEnabled()
@@ -243,12 +249,51 @@ Tests live in `__tests__/` rather than beside the code they cover, so that no fi
 `app/` can ever be mistaken for a route segment. `yarn test` runs them once and exits;
 `yarn test:watch` is the interactive form.
 
-## The API client
+## The two-client rule
 
-This module talks to `ouroboros-rest` and to nothing else, through a client **generated
-from that service's contract** ([#43](https://github.com/NobuData/ouroboros/issues/43),
+This module talks to `ouroboros-rest` and to nothing else — but **through two clients, not
+one**, and which one a call goes through is decided by the path rather than by preference
+([#711](https://github.com/NobuData/ouroboros/issues/711)).
+
+| Family | Paths | Client | Generated? |
+|---|---|---|---|
+| Auth | `/api/auth/*` — sign-in, session, organizations | [`app/api/auth-client.ts`](app/api/auth-client.ts) | **No, deliberately** |
+| Everything else | `/api/v1/*` — tenants, enablement, engine | [`app/api/client.ts`](app/api/client.ts) | Yes, from the contract |
+
+`ouroboros-rest/openapi.yaml` describes both families and says the same thing at the top of
+its own description. The split exists because BetterAuth serves its routes itself and ships a
+typed client that already knows their bodies, their cookies and their error codes, so **the
+auth family is excluded from code generation** — `app/api/schema.d.ts` has no entry for any of
+those paths, which is what makes reaching for the wrong client a compile error rather than a
+convention.
+
+**Who is signed in is three calls, and there is no fourth.**
+[`session.read()`](app/api/session.ts) composes `get-session` (the person),
+`organization/list` (the workspaces) and `get-active-member-role` (what they hold in one).
+`GET /api/v1/auth/me` used to answer all three at once and was deleted in #711: two routes
+answering *who is signed in* are two answers that can disagree. **Do not add another** — if
+the generated client seems to be missing a session call, that is the rule working.
+
+Two settings are all the auth client configures, and both are named here because
+[#716](https://github.com/NobuData/ouroboros/issues/716) inherits them:
+
+| | |
+|---|---|
+| **Base URL** | `OURO_REST_URL`, the same origin the generated client uses — the families differ by prefix, not by host |
+| **Cookies** | `better-auth.session_token` **and** `better-auth.session_data`, forwarded from the request being served. The second is the signed five-minute snapshot that saves a database lookup; dropping it is a silent cost rather than a failure |
+
+`auth-client.ts` is a stand-in. #716 replaces it with
+`createAuthClient({plugins: [organizationClient()]})` — BetterAuth's own — and the shapes it
+returns are already the library's, so that is a swap of transport rather than of vocabulary.
+The per-workspace role calls collapse into one when
+[#714](https://github.com/NobuData/ouroboros/issues/714)'s `GET /api/v1/orgs` lands.
+
+## The generated client
+
+For everything under `/api/v1`, the client is **generated from the service's contract**
+([#43](https://github.com/NobuData/ouroboros/issues/43),
 decision D4 — [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md#51-ui--rest--the-public-contract)).
-Nothing here is hand-written against the API: `ouroboros-rest/openapi.yaml` is the
+Nothing in that family is hand-written against the API: `ouroboros-rest/openapi.yaml` is the
 contract, `yarn openapi` renders it to `openapi.json`, and `yarn api:sync` turns that into
 [`app/api/schema.d.ts`](app/api/schema.d.ts).
 
@@ -265,7 +310,7 @@ and no call should repeat:
 | | |
 |---|---|
 | **Base URL** | `OURO_REST_URL`, via [`app/env.ts`](app/env.ts) |
-| **Session** | the session cookie of the request being served, forwarded — and only that cookie. Still named `ouro_session`; #720 re-points it at BetterAuth's |
+| **Session** | the session cookie of the request being served, forwarded — and only that cookie. Still named `ouro_session`; #720 re-points it at BetterAuth's. The **auth** client already forwards BetterAuth's two, which is why the session read works and these calls do not yet |
 | **Workspace** | `X-Ouro-Tenant`, from the active-workspace store |
 | **Failure** | the contract's `{code, message, details}` envelope, parsed into a thrown `ApiError`; a `401` redirects to `/login` first |
 
@@ -322,7 +367,7 @@ returns both or redirects to [sign-in](#sign-in--tenancy); `currentAccess()` ans
 redirecting, for the screen that has to ask.
 
 **The cookie is a claim, not a fact.** `ouro_tenant` is whatever the browser was last given,
-so it is resolved against the memberships `GET /api/v1/auth/me` reports *in the same request*
+so it is resolved against the memberships [`session.read()`](#the-two-client-rule) reports *in the same request*
 ([`app/api/membership.ts`](app/api/membership.ts)). A hand-edited cookie, one naming a
 workspace somebody has been removed from, and one naming a suspended workspace all resolve to
 *no choice* — and land on the login screen rather than on a screen of somebody else's data.
@@ -461,7 +506,7 @@ Ken Suenobu · owner of acme-robotics            ↑ both inert, and say why
 ```
 
 **Two kinds of card sit on the same grid, and the difference is the point.** The stat row
-and the system card are drawn from `/auth/me`, the members listing, the enablement lists,
+and the system card are drawn from the session, the members listing, the enablement lists,
 `/health/ready` and `/api/v1/engine/status` — every figure on them came from the service.
 The mockup's three loop panels have no source in the contract at all, so they keep their
 place as designed empty states naming what will fill them.
