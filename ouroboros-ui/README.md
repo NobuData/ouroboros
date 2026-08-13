@@ -199,6 +199,8 @@ ouroboros-ui/
 │   ├── theme-provider.tsx   # ThemeProvider / useTheme()
 │   ├── env.ts               # OURO_REST_URL, read and validated
 │   ├── paths.ts             # the two routes this application redirects to
+│   ├── browser.ts           # window and localStorage, read in the way that cannot throw
+│   ├── media-query.ts       # useMediaQuery() — asking CSS a question from React
 │   ├── api/                 # the two clients for ouroboros-rest
 │   │   ├── schema.d.ts      #   generated from the contract by `yarn api:sync`
 │   │   ├── client.ts        #   the wrapper: cookie · X-Ouro-Tenant · ApiError
@@ -231,6 +233,12 @@ ouroboros-ui/
 │   │   ├── class-names.ts   #   cx(), the one class-list join
 │   │   └── index.ts         #   the barrel: `import { Button } from "@/app/ui"`
 │   ├── shell/               # the app shell: header, sidebar, pane, overlay layer
+│   │   ├── nav.ts           #   the navigation model — ordering, gating, active route
+│   │   ├── nav-registry.ts  #   the registry modules register into, plus badges
+│   │   ├── nav-modules.ts   #   the eleven seeded entries, registering at load
+│   │   ├── sidebar-state.ts #   the collapse choice and the drawer, plus a boot script
+│   │   ├── focus-trap.ts    #   the Tab cycle the overlay and the drawer share
+│   │   └── …                #   the components over them
 │   ├── login/               # the sign-in & tenancy screen's components
 │   ├── dashboard/           # the dashboard's reader, decisions, components, sheet
 │   ├── (app)/               # signed-in screens — inside the shell
@@ -741,7 +749,8 @@ the readers, the status logic and the redirect are what it builds on.
 
 Every signed-in screen renders inside the shell
 ([#41](https://github.com/NobuData/ouroboros/issues/41), completed by
-[CP.1 #643](https://github.com/NobuData/ouroboros/issues/643)), specified in
+[CP.1 #643](https://github.com/NobuData/ouroboros/issues/643) and
+[CP.2 #644](https://github.com/NobuData/ouroboros/issues/644)), specified in
 [`../docs/DESIGN_SYSTEM_APP_SHELL.md`](../docs/DESIGN_SYSTEM_APP_SHELL.md) § 1 — which
 supersedes the top-bar navigation the mockups were drawn with.
 
@@ -771,16 +780,40 @@ Five things are worth knowing before adding a screen to it.
    `data-shell-pane` so CP.5 ([#647](https://github.com/NobuData/ouroboros/issues/647))
    can audit exactly that, per route. A screen rendered *outside* the shell inherits the
    lock and owns its own scroll container.
-2. **Navigation is data.** [`app/shell/nav.ts`](app/shell/nav.ts) is the list the sidebar
-   renders and the rule that decides which entry a URL belongs to: `/` matches only `/`,
-   and every other entry owns its route and everything under it, so `/models/routing`
-   keeps **Models** highlighted. CP.2 ([#644](https://github.com/NobuData/ouroboros/issues/644))
-   replaces the list with a registry modules write into; the shape of an entry is already
-   the shape of a registration.
+2. **Navigation is a registry, and adding an entry needs no shell edit.** A module
+   registers itself and [`app/shell/sidebar-nav.tsx`](app/shell/sidebar-nav.tsx) renders
+   whatever is registered — it names no module and does not change to gain one:
+
+   ```ts
+   import { registerNavEntry } from "@/app/shell/nav-registry";
+   import { Telescope } from "lucide-react";
+
+   registerNavEntry({
+     id: "research", label: "Research", route: "/research",
+     icon: Telescope, group: "primary", sort: 80,
+   });
+   ```
+
+   [`nav-registry.ts`](app/shell/nav-registry.ts) is the registry,
+   [`nav-modules.ts`](app/shell/nav-modules.ts) seeds the eleven entries § 1.2 names (with
+   **lucide** icons, this module's recorded icon set), and [`nav.ts`](app/shell/nav.ts) is
+   the pure model over both: the ordering rule (`sort`, then id — never registration order,
+   which is a bundler's business), the capability filter, and the rule that decides which
+   entry a URL belongs to. `/` matches only `/`; every other entry owns its route **and
+   everything under it**, so `/models/registry` keeps **Models** highlighted.
+
+   Two things a registration may also carry. `badgeSource` names a count rather than
+   holding one — whoever can compute it calls `setNavBadge(source, count)`, and a source
+   that has published nothing draws **no badge**, because "we have not counted" is not the
+   same claim as "nothing is waiting". `capability` hides the entry, with no gap left
+   behind, until that capability is among the set `setNavCapabilities` published; both
+   publishers refuse to run outside the browser, since a module singleton on the server is
+   shared by every request the process handles.
 3. **An entry links only to a route that exists.** Ten of the eleven screens are unbuilt,
-   so their rows render as labelled *soon* text — not links, not in the tab order, each
-   naming the issue that will build it. Building one means flipping its `status` to
-   `"live"` in the same pull request as the route.
+   so their rows render as labelled *soon* text — not links, not in the tab order, not in
+   the arrow-key ring, each naming the issue that will build it (the registry refuses a
+   `soon` entry that does not). Building one means dropping its `status` in the same pull
+   request as the route.
 4. **What is a slot, not an omission.** The bar carries every slot § 1.1 names, in its
    order: the tenant chip beside the brand, then search · live-loops · needs-you ·
    notifications · [theme toggle](#theming)
@@ -805,13 +838,38 @@ Five things are worth knowing before adding a screen to it.
    padding. Anything full-viewport — a sheet, a confirmation, the palette — builds on this
    rather than on a `position: fixed` of its own.
 
-Responsive collapse below 1024px is CSS, not state: `--shell-sidebar` moves from
-`--shell-sidebar-wide` to `--shell-sidebar-rail`, the sidebar becomes a 64px icon rail and
-every name becomes its tooltip. All three widths § 1.2 names are declared on the shell, and
-the grid's first column is `auto`, so moving between them is a one-property change — which
-is how CP.2 adds the user-controlled collapse, its per-account persistence, and the overlay
-drawer below 768px (the drawer width is declared; the hamburger that opens it is that
-issue's).
+### The sidebar's three widths
+
+All three § 1.2 names are custom properties on the shell and the grid's first column is
+`auto`, so moving between them is a one-property change and no layout is touched:
+
+| Width | Reached by |
+|---|---|
+| 240px expanded | the default above 1024px, or the chevron at any width |
+| 64px icon rail | the default below 1024px, or the chevron at any width |
+| overlay drawer | below 768px, from the header's hamburger — out of flow, so the slot is 0 |
+
+The **rail's own treatment** — names becoming tooltips — is a container query on the
+sidebar's measured width rather than a rule per trigger, because "is there room for the
+word?" is one question however the width was arrived at (and the drawer, at 240px, keeps its
+labels). The label is hidden *visually* and left in the accessibility tree, so a row is
+announced identically at both widths.
+
+The **collapse choice is remembered per reader** and applied before the first paint:
+[`sidebar-state.ts`](app/shell/sidebar-state.ts) stamps `data-sidebar` on `<html>` from an
+inline boot script, the same pattern (and for the same reason) as the
+[theme engine](#theming) — a sidebar collapsed last week must not be seen collapsing again.
+A server-side account preference is CQ.2's
+([#649](https://github.com/NobuData/ouroboros/issues/649)); the local mirror is what boots
+either way.
+
+The **drawer** is focus-trapped and closes on Escape, on the ground behind it, on a link
+followed out of it, and on the window growing past 768px. The trap is
+[`focus-trap.ts`](app/shell/focus-trap.ts), shared with the overlay above.
+
+The **keyboard** through all of it: one roving tab stop, arrows and Home/End between entries
+(wrapping at both ends), and Enter needing no handler because every reachable entry is a
+real `<a href>`.
 
 ### The account menu
 

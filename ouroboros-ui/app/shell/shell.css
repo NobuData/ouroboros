@@ -26,28 +26,64 @@
  *
  * The first column is `auto` — the specification's own grid (§ 1.3) — so it is whatever the
  * sidebar is, and the sidebar is one custom property. The three widths § 1.2 names are
- * declared here rather than written into the rules that use them, because CP.2 (issue 644,
- * written without its hash for the reason the collapse rule at the foot of this file gives)
- * moves between them: a collapse control, its per-user persistence, and the overlay drawer
- * are that issue's, and all three amount to redefining `--shell-sidebar`. The grid holds at
- * every one of them without changing, which is what makes the slot a slot.
+ * declared here rather than written into the rules that use them, because three different
+ * things move between them: the collapse control and its per-user persistence (issue 644,
+ * written without its hash for the reason the rail rule further down this file gives), the
+ * 1024px default, and the drawer. All three amount to redefining a property, and the grid
+ * holds at every one of them without changing — which is what makes the slot a slot.
  *
  * `--shell-sidebar-drawer` is zero because a drawer is *out of flow*: the sidebar floats over
- * the pane rather than beside it, so the column it left behind has no width. It is declared
- * and not yet selected — CP.2 brings the hamburger that opens the drawer, and a sidebar with
- * no way to open it is navigation nobody can reach.
+ * the pane rather than beside it, so the column it left behind has no width.
+ *
+ * ### Two properties, because two different things decide
+ *
+ * `--shell-sidebar-choice` is what the *reader* is looking at — expanded or the rail — and it
+ * is decided either by the choice stamped on <html> or, absent one, by the 1024px query.
+ * `--shell-sidebar` is what the *layout* uses, which is that choice everywhere except below
+ * 768px, where the sidebar is a drawer and the column it left has no width whatever the
+ * reader chose.
+ *
+ * Splitting them is what keeps every rule below at its natural specificity. Written as one
+ * property, the stamped choice (a selector) would outrank the drawer breakpoint (a media
+ * query), and a reader who had expanded the sidebar would find it still sitting in the grid
+ * on a phone.
+ *
+ * `--shell-header` is here for the same reason the widths are: the drawer starts below the
+ * header and the header is 56px, and two files knowing that number is one file's chance to
+ * change it alone.
  */
 .app-shell {
+  --shell-header: 3.5rem;
   --shell-sidebar-wide: 15rem;
   --shell-sidebar-rail: 4rem;
   --shell-sidebar-drawer: 0rem;
-  --shell-sidebar: var(--shell-sidebar-wide);
+  --shell-sidebar-choice: var(--shell-sidebar-wide);
+  --shell-sidebar: var(--shell-sidebar-choice);
+  --shell-drawer-slide: 160ms;
 
   display: grid;
   grid-template-rows: auto 1fr;
   grid-template-columns: auto 1fr;
   height: 100%;
   overflow: hidden;
+}
+
+/*
+ * The reader's own choice, stamped on <html> by `app/shell/sidebar-state.ts` — and by the
+ * boot script it publishes, before the first paint, so a sidebar collapsed last week is not
+ * collapsed again in front of the reader on every load.
+ *
+ * The absence of the attribute is the third state, and it is the default: the query at the
+ * foot of this file decides, which is § 1.2's "below 1024px the rail is the default". These
+ * two rules outrank it by specificity, which is the right way round — a reader who has said
+ * what they want has said it at every width.
+ */
+:root[data-sidebar="wide"] .app-shell {
+  --shell-sidebar-choice: var(--shell-sidebar-wide);
+}
+
+:root[data-sidebar="rail"] .app-shell {
+  --shell-sidebar-choice: var(--shell-sidebar-rail);
 }
 
 /*
@@ -118,7 +154,7 @@
   display: flex;
   align-items: center;
   gap: var(--sp-6);
-  height: 3.5rem;
+  height: var(--shell-header);
   padding: 0 var(--sp-7);
   border-bottom: 1px solid var(--line);
   background: var(--surface);
@@ -358,6 +394,18 @@
 
 .shell-icon-button[aria-disabled="true"] {
   color: var(--ink-faint);
+}
+
+/*
+ * The hamburger that opens the drawer (§ 1.2). It borrows the cluster's icon-button shape and
+ * adds only its own visibility: there is no drawer above 768px, so the control is not drawn
+ * there — in CSS rather than in script, so the right answer is painted before hydration.
+ *
+ * After `.shell-icon-button` in the sheet on purpose. The two selectors have equal
+ * specificity and the component wears both, so which `display` wins is stylesheet order.
+ */
+.shell-burger {
+  display: none;
 }
 
 /* ---------- theme toggle ---------- */
@@ -623,8 +671,24 @@
 
 /* ---------- sidebar ---------- */
 
+/*
+ * The sidebar, and the container every rule about *rail mode* is asked of.
+ *
+ * `container-type: inline-size` is the whole of how the icon rail works. § 1.2's rail is
+ * reached three ways — the 1024px breakpoint, the reader's own chevron, and never by the
+ * drawer, which is 240px wide at every viewport — and a rule per trigger would be the same
+ * declarations written three times, drifting apart one at a time. A container query asks the
+ * one question that actually matters ("is there room for the word?") of the one element that
+ * can answer it, and is true however the width was arrived at.
+ *
+ * One consequence is load-bearing elsewhere: `container-type` applies layout containment,
+ * which makes this element the containing block for any `position: fixed` descendant. That is
+ * why the drawer's scrim is rendered as the sidebar's *sibling* — inside, it would cover the
+ * sidebar rather than the page.
+ */
 .shell-nav {
   grid-column: 1;
+  container: shell-sidebar / inline-size;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
@@ -650,7 +714,13 @@
   border-top: 1px solid var(--line);
 }
 
+/*
+ * One row. `position: relative` is not decoration: in rail mode the label is taken out of
+ * flow rather than removed, and the badge moves to the row's corner, and both need this row
+ * to be what they are placed against.
+ */
 .shell-nav__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-5);
@@ -705,50 +775,172 @@ a.shell-nav__item--active:hover {
   text-transform: uppercase;
 }
 
-/* ---------- responsive collapse ---------- */
+/*
+ * The badge slot (§ 1.2's "Needs You ③"). Its box is the #46 primitive's `.ou-badge`; all
+ * this adds is where it sits, which is the far end of the row it belongs to.
+ */
+.shell-nav__badge {
+  margin-left: auto;
+}
 
 /*
- * Below 1024px the sidebar is an icon rail and the names become tooltips — the width
- * the mockups' own rail rule uses, at the width the specification names. It is CSS
- * rather than state so it holds before hydration and without JavaScript; the
- * user-controlled collapse, its persistence, and the overlay drawer below 768px are
- * CP.2 — issue 644, written here without its hash: three hex digits behind one is a
- * colour literal to the check in __tests__/styles.test.ts, and that check is right to
- * be blunt about it.
+ * The collapse control § 1.2 puts at the sidebar's foot, below the secondary group.
+ *
+ * A quiet control: it is chrome for the chrome, and it sits under a hairline the eye already
+ * reads as the end of the list, so it does not need a second one of its own until it is
+ * hovered.
  */
-@media (max-width: 64rem) {
-  /* The slot, not the sidebar: the grid's first column is `auto`, so redefining the width the
-     sidebar reads is the whole of the change — which is also the move CP.2's collapse control
-     makes, from script rather than from a media query. */
-  .app-shell {
-    --shell-sidebar: var(--shell-sidebar-rail);
-  }
+.shell-nav__collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--sp-5);
+  padding: var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
 
-  .shell-nav {
-    padding-inline: var(--sp-4);
-  }
+.shell-nav__collapse:hover {
+  border-color: var(--line-strong);
+  color: var(--accent);
+}
 
+/*
+ * The ground the drawer sits over, below 768px.
+ *
+ * `display: none` here rather than only inside the breakpoint: the element is rendered by
+ * React whenever the drawer is open, and above 768px it would otherwise be a fourth child of
+ * a three-cell grid.
+ */
+.shell-nav__scrim {
+  display: none;
+}
+
+/* ---------- the icon rail ---------- */
+
+/*
+ * Rail mode: the names become tooltips and the row becomes its icon (§ 1.2).
+ *
+ * Asked of the sidebar's own measured width rather than of the viewport, so the same
+ * declarations serve all three ways of getting here — the 1024px default, the reader's
+ * chevron at any width, and neither below 768px, where the drawer is 240px wide and keeps its
+ * labels. 8rem is comfortably between the two widths it separates (4rem and 15rem), so no
+ * font scale can land the sidebar on the boundary.
+ */
+@container shell-sidebar (max-width: 8rem) {
   .shell-nav__item {
     justify-content: center;
     gap: 0;
     padding-inline: 0;
   }
 
+  /*
+   * Hidden from the page, kept in the accessibility tree — the technique `.sr-only` in
+   * app/globals.css uses, applied by measurement rather than by class, which is why the
+   * declarations are here rather than borrowed: a class cannot answer "is there room for the
+   * word?".
+   *
+   * `display: none` would be the shorter rule and the wrong one. It takes the label out of
+   * the accessibility tree with it, which would leave a rail of unnamed icons for exactly the
+   * readers who cannot see the icons — and the count in the badge unannounced beside them.
+   */
   .shell-nav__label,
   .shell-nav__soon {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* A count still has to be legible with no row left to sit in: it moves to the icon's
+     corner, which is where the mockups draw it on a rail. */
+  .shell-nav__badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0 var(--sp-2);
+  }
+}
+
+/* ---------- the drawer ---------- */
+
+/*
+ * Below 1024px the rail is the *default* — the reader's own choice, stamped at the top of
+ * this file, still wins. The slot moves, not the sidebar: the grid's first column is `auto`,
+ * so redefining the width the sidebar reads is the whole of the change, which is also the
+ * move the collapse control makes from script.
+ *
+ * Issue 644 is written here without its hash: three hex digits behind one is a colour literal
+ * to the check in __tests__/styles.test.ts, and that check is right to be blunt about it.
+ */
+@media (max-width: 64rem) {
+  .app-shell {
+    --shell-sidebar-choice: var(--shell-sidebar-rail);
   }
 }
 
 /*
- * The narrowest phones: the pills are the first thing to go, so the brand and the session
- * controls keep their room. They carry no information yet and will carry a count when they
- * do — a number that is legible in the sidebar's badge (CP.2) as well.
+ * Below 768px the sidebar stops being a column and becomes an overlay drawer (§ 1.2), opened
+ * from the header's hamburger. It leaves the grid — hence the zero-width slot — and covers
+ * the pane from under the header, which stays put and keeps the control that closes it.
  *
- * The search pill stays, because ⌘K is not reachable on a phone and the pill is the only way
- * in; it loses its word and its key cap and becomes the icon button it already looks like.
+ * Closed, it is `visibility: hidden` rather than merely translated off-screen: an off-screen
+ * sidebar that is still visible is a sidebar the keyboard tabs into and a screen reader reads
+ * out, both of them somewhere the reader cannot see.
+ *
+ * The narrowest phones also lose the header's pills, so the brand and the session controls
+ * keep their room; the search pill stays, because ⌘K is not reachable on a phone and the pill
+ * is the only way in, and it becomes the icon button it already looks like.
  */
 @media (max-width: 48rem) {
+  .app-shell {
+    --shell-sidebar: var(--shell-sidebar-drawer);
+  }
+
+  .shell-nav {
+    position: fixed;
+    z-index: 65;
+    top: var(--shell-header);
+    bottom: 0;
+    left: 0;
+    width: var(--shell-sidebar-wide);
+    visibility: hidden;
+    transform: translateX(-100%);
+  }
+
+  .shell-nav--open {
+    visibility: visible;
+    transform: none;
+  }
+
+  .shell-nav__scrim {
+    position: fixed;
+    z-index: 64;
+    inset: var(--shell-header) 0 0 0;
+    display: block;
+    background: var(--scrim);
+  }
+
+  /* Nothing to collapse down here: the drawer has one width, and a control that changes
+     nothing is a control that should not be offered. */
+  .shell-nav__collapse {
+    display: none;
+  }
+
+  .shell-burger {
+    display: grid;
+  }
+
   .shell-pill {
     display: none;
   }
@@ -764,6 +956,24 @@ a.shell-nav__item--active:hover {
 
   .shell-header {
     padding-inline: var(--sp-5);
+  }
+}
+
+/*
+ * The drawer's slide, for readers who have not asked for less motion. Guarded rather than
+ * standing, the same way the theme's cross-fade is (app/globals.css): a reader who has asked
+ * for less motion gets the drawer instantly, which is the behaviour that was there before the
+ * transition existed.
+ *
+ * `visibility` is in the list on purpose — it is not interpolated, but transitioning it is
+ * what holds the drawer visible for the length of the slide *out* instead of snapping it away
+ * on the first frame.
+ */
+@media (max-width: 48rem) and (prefers-reduced-motion: no-preference) {
+  .shell-nav {
+    transition:
+      transform var(--shell-drawer-slide) ease,
+      visibility var(--shell-drawer-slide);
   }
 }
 

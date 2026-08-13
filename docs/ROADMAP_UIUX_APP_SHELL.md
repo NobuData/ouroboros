@@ -127,7 +127,7 @@ Complexity chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CP.1 | #643 | 🟢 Done | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
-| CP.2 | #644 | 🟡 Open | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
+| CP.2 | #644 | 🟢 Done | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
 | CP.3 | #645 | 🟡 Open | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
 | CP.4 | #646 | 🟡 Open | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
 | CP.5 | #647 | 🟡 Open | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
@@ -221,7 +221,80 @@ pane: overflow-y auto · gutter stable · max 1440px  ─▶ the ONLY scrollbar
 
 ### Issue CP.2 — ouroboros-ui: [CP.2] Sidebar navigation & module registry
 
-> **GitHub issue:** #644 · **Status:** 🟡 Open · **Parent epic:** #640
+> **GitHub issue:** #644 · **Status:** 🟢 Done · **Parent epic:** #640
+
+> **Shipped.** The navigation is a **registry** — modules register entries and
+> [`app/shell/sidebar-nav.tsx`](../ouroboros-ui/app/shell/sidebar-nav.tsx) renders whatever
+> is registered. It names no module, and it did not change to gain one: the criterion
+> *"adding a fixture registry entry renders a working nav item with zero shell edits"* is
+> asserted in `__tests__/shell/sidebar-nav.test.tsx` against the real registry, seeded as
+> production seeds it.
+>
+> Four files hold the model, and the split is deliberate.
+> [`nav.ts`](../ouroboros-ui/app/shell/nav.ts) is pure — the entry type, the ordering rule,
+> the capability filter, and the exact-plus-section route match — so every rule can be tested
+> without a registry or a DOM. [`nav-registry.ts`](../ouroboros-ui/app/shell/nav-registry.ts)
+> is the singleton, framework-free, with `registerNavEntry` handing back the way to remove an
+> entry again (which is also why there is no reset hook production never calls).
+> [`nav-modules.ts`](../ouroboros-ui/app/shell/nav-modules.ts) is the seed: the eleven § 1.2
+> names, with **lucide** icons — the icon-set decision this issue was to record — registering
+> themselves at import. [`use-shell-nav.ts`](../ouroboros-ui/app/shell/use-shell-nav.ts) is
+> the one place either store meets React, as `useSyncExternalStore`.
+>
+> **Ordering is `sort` then id, never registration order**, which is import order and
+> therefore a bundler's business: a sidebar that reordered itself between builds is one
+> nobody could learn. The registry refuses an entry it cannot draw honestly — an off-origin
+> route, a route another entry has claimed, a `soon` row that does not say what it waits for
+> — because a registration that silently did nothing would be a module missing from the
+> navigation with nothing anywhere saying why.
+>
+> **The badge is a name, not a number.** An entry declares the *source* it reads
+> (`needs-you` declares `inbox`); whoever can compute a count publishes it with
+> `setNavBadge`. Nothing does yet — that is BN.4 (#464) — so the badge is **absent**, and
+> absent draws nothing. The #46 `Badge` primitive already refuses `0` for the same reason,
+> so the rule is enforced once rather than restated here. Both publishers refuse to run
+> outside the browser: a module singleton on the server is shared by every request the
+> process handles, and a count or a capability set is an answer about one reader.
+>
+> **Three widths, one custom property, and the rail is a container query.** § 1.2's rail is
+> reached two ways — the 1024px default and the reader's own chevron — and never by the
+> drawer, which is 240px wide at every viewport. Rather than write the same declarations per
+> trigger, `shell.css` makes the sidebar a container and asks the one question that matters:
+> *is there room for the word?* The reader's choice is stamped on `<html>` and applied by a
+> boot script before first paint, the #17 pattern exactly, so a sidebar collapsed last week
+> is not collapsed again in front of them. `--shell-sidebar-choice` and `--shell-sidebar`
+> are two properties on purpose: written as one, a stamped choice (a selector) would outrank
+> the drawer breakpoint (a media query), and an expanded sidebar would still sit in the grid
+> on a phone.
+>
+> **The drawer** is the sidebar out of flow below 768px, opened from a hamburger the header
+> draws only at that width. It is focus-trapped, closes on Escape, on the ground behind it,
+> on a link followed out of it, and on the window growing past the breakpoint — that last one
+> is not cosmetic, because the trap reads the same flag. Closed, it is `visibility: hidden`
+> rather than merely translated away: an off-screen sidebar that is still visible is one the
+> keyboard tabs into. The trap itself moved to
+> [`focus-trap.ts`](../ouroboros-ui/app/shell/focus-trap.ts), shared with CP.1's overlay —
+> two surfaces that cover the page, one cycle between them.
+>
+> **The keyboard** is a roving tab stop: one entry in the tab order, arrows and Home/End
+> between them, wrapping at both ends, and Enter needing no handler because every reachable
+> entry is a real `<a href>`. Rows that lead nowhere stay `<span>`s and stay out of both the
+> tab order and the ring. In rail mode the label is hidden **visually** and left in the
+> accessibility tree — `display: none` would take it out and leave a column of unnamed icons
+> for exactly the readers who cannot see icons — so a row is announced identically at both
+> widths, count and all.
+>
+> **Capability gating hides, and hides by default**: an entry naming a capability nobody has
+> published is not drawn, and a group with nothing left in it is not drawn either, hairline
+> and all. Nothing seeded declares one, so the gate is inert until a module opts in; the
+> direction it errs in is a missing entry rather than a visible link into a screen the
+> service will refuse.
+>
+> **On the tooltip contrast criterion:** the rail's tooltip is the platform's own `title`,
+> which no stylesheet can reach — its contrast is the operating system's, and the active and
+> inactive treatments are CP.1's measured pair, unchanged. The remaining browser-only checks
+> (both themes rendered, the drawer at a real 767px) belong to CP.5's e2e leg by this
+> roadmap's own split, as CP.1's did.
 
 - **Problem Statement:** Navigation moves from topbar links to a left
   sidebar of icon+name entries — driven by a registry so twelve modules
@@ -575,7 +648,8 @@ section — the sections themselves are already present in every roadmap under
 - Mockups: `docs/mockups/*.html` (page-content truth; topbar chrome
   superseded)
 - Scaffolding roadmap issues #16/#17/#31/#33/#39–#41/#46/#48/#49/#56
-- Icon set: lucide (ISC) — recorded in CP.2
+- Icon set: lucide (ISC) — recorded in CP.2, and seeded there
+  ([`app/shell/nav-modules.ts`](../ouroboros-ui/app/shell/nav-modules.ts))
 
 ## Next Step
 

@@ -30,9 +30,10 @@ export { CONTENT_ID } from "./regions";
  * every future page has to remember (decision S2).
  *
  * The sidebar's width is `--shell-sidebar`, declared in `shell.css` on the shell itself: the
- * grid's first column is `auto`, so it takes whatever the sidebar is, and CP.2
+ * grid's first column is `auto`, so it takes whatever the sidebar is. CP.2
  * ([#644](https://github.com/NobuData/ouroboros/issues/644)) moves the sidebar between its
- * three widths by redefining one custom property rather than by touching this grid.
+ * three widths — expanded, the icon rail, and out of flow as a drawer — by redefining that
+ * one property, and this grid did not change to allow it.
  *
  * ### The pane
  *
