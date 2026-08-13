@@ -25,6 +25,8 @@
  * amounts to.
  */
 
+import { ROLES, primaryRole, type Role } from "@/app/api/membership";
+
 /** The signed-in person, in the words the menu draws them in. */
 export interface MenuPerson {
   /** What to call them: their display name, or their address when they have no name. */
@@ -33,6 +35,12 @@ export interface MenuPerson {
   readonly email: string;
   /** Their picture, or `null`, which is what makes the menu draw a monogram instead. */
   readonly avatarUrl: string | null;
+  /**
+   * Their role in the acting workspace, or `null` while it is not known — the fetch still
+   * in flight, failed, or there being no acting workspace to hold a role in. Null renders
+   * as *nothing*, never as a guessed role: § 3.5's honesty rule, applied to a single word.
+   */
+  readonly role: Role | null;
 }
 
 /**
@@ -102,6 +110,14 @@ export interface AccountReading {
     | undefined;
   /** `useSession().isPending` — whether the answer is still on its way. */
   readonly pending: boolean;
+  /**
+   * `member.role` for the acting workspace, as `organization.getActiveMemberRole` answered
+   * it — raw text, possibly a comma-separated list (the plugin's `addMember` accepts an
+   * array and joins it), possibly carrying words this build does not know. `undefined` and
+   * `null` both mean *not known*: the fetch has not answered, failed, or there is no acting
+   * workspace. CP.3 ([#645](https://github.com/NobuData/ouroboros/issues/645)).
+   */
+  readonly activeRole?: string | null;
 }
 
 /**
@@ -123,6 +139,7 @@ export function accountView({
   activeOrganizationId,
   organizations,
   pending,
+  activeRole,
 }: AccountReading): AccountView {
   if (user === null || user === undefined) {
     return pending ? { state: "pending" } : { state: "signed-out" };
@@ -142,11 +159,39 @@ export function accountView({
       // An empty `image` is an absence rather than a picture at the empty URL, and `""` in
       // an `<img src>` re-requests the current page in every browser.
       avatarUrl: user.image?.trim() || null,
+      role: roleOf(activeRole, active),
     },
     workspaces,
     active,
     switchable: workspaces.some((workspace) => workspace.id !== active?.id),
   };
+}
+
+/**
+ * The one word the identity block says about the acting workspace, or nothing.
+ *
+ * @param activeRole What the plugin answered, raw — see {@link AccountReading.activeRole}.
+ * @param active The workspace the session is acting in, already resolved.
+ * @returns The strongest role the text grants, through `primaryRole` — the same collapse
+ *   the dashboard's subline makes, so "what am I here" reads identically everywhere. `null`
+ *   when there is nothing honest to say: no acting workspace (a role is a role *in*
+ *   somewhere), or an answer that has not arrived. The one asymmetry is deliberate: text
+ *   naming only words this build does not know still collapses to `viewer`, because the
+ *   service granted *something* and the least is the only safe reading of it — exactly
+ *   `primaryRole`'s published contract.
+ */
+function roleOf(
+  activeRole: string | null | undefined,
+  active: MenuWorkspace | undefined,
+): Role | null {
+  if (active === undefined || activeRole == null) return null;
+
+  const words = activeRole
+    .split(",")
+    .map((word) => word.trim())
+    .filter((word): word is Role => ROLES.includes(word as Role));
+
+  return primaryRole(words);
 }
 
 /**

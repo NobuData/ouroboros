@@ -24,7 +24,7 @@ import { ShellOverlay } from "./overlay";
  */
 
 /** What the shortcut is called on a Mac keyboard, which is what the specification draws. */
-const MAC_HINT = "⌘K";
+export const MAC_HINT = "⌘K";
 
 /** What it is called everywhere else. */
 const OTHER_HINT = "Ctrl K";
@@ -39,9 +39,12 @@ const OTHER_HINT = "Ctrl K";
  * One of two module constants, never a fresh string: {@link useClientValue} compares what it
  * reads by identity, and a value rebuilt on every render would be a change on every render.
  *
+ * Exported for the shortcuts sheet (CP.3, `app/shell/shortcuts-sheet.tsx`), which names the
+ * same key — one platform question, answered in one place, shown in two.
+ *
  * @returns The name of the modifier this platform spells the shortcut with.
  */
-function shortcutHint(): string {
+export function shortcutHint(): string {
   return /Mac|iPhone|iPad/i.test(navigator.userAgent) ? MAC_HINT : OTHER_HINT;
 }
 

@@ -128,7 +128,7 @@ Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CP.1 | #643 | 🟢 Done | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
 | CP.2 | #644 | 🟢 Done | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
-| CP.3 | #645 | 🟡 Open | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
+| CP.3 | #645 | 🟢 Done | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
 | CP.4 | #646 | 🟡 Open | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
 | CP.5 | #647 | 🟡 Open | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
 
@@ -334,9 +334,62 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 
 ### Issue CP.3 — ouroboros-ui: [CP.3] Profile & session menu
 
-> **GitHub issue:** #645 · **Status:** 🟡 Open · **Parent epic:** #640
+> **GitHub issue:** #645 · **Status:** 🟢 Done · **Parent epic:** #640
 
-- **Problem Statement:** "Profile information in the upper right-hand (as
+> **Shipped.** The § 1.1 menu, complete:
+> [`app/shell/user-menu.tsx`](../ouroboros-ui/app/shell/user-menu.tsx) now carries the
+> font-size stepper (live over #649's store, persisted through its Server Action), the
+> theme control as three `menuitemradio`s over the #17 engine, the person's role beside
+> their address, the keyboard-shortcuts sheet
+> ([`app/shell/shortcuts-sheet.tsx`](../ouroboros-ui/app/shell/shortcuts-sheet.tsx), on
+> the CP.1 overlay), and the sign-out and workspace switcher #721 had already built. Most
+> of this ticket's surface predated it — the interaction shell, ESC, the roving ring,
+> focus return, session truth — which is why building the menu before it had contents was
+> worth it; what CP.3 added is everything between the identity block and the switcher.
+>
+> **The header gave up two controls, and the correction is recorded where they were
+> promised a future.** § 1.1's upper-right enumeration draws the theme control *inside*
+> the profile menu — no slot beside it — so the #42 cycling button left the row when the
+> menu's radios learned its job (three visible states where the cycle folded them into
+> one icon, `aria-checked` where it needed a marker dot). The engine was reused untouched,
+> which is the half of ROADMAP_OOE_MVP's "second surface, not a replacement" note that
+> survives; both passages that predicted the button would stay are amended in their own
+> files. The disabled settings gear was absorbed by the menu's *Workspace settings* item —
+> still honestly `aria-disabled` naming #491, because the issue's "links → `/settings`"
+> clause has no route to point at until that ticket builds one. A link to a 404 is worse
+> than a marked wait.
+>
+> **The stepper's press is the preview.** `setFontScale` stamps `<html>` before the
+> Server Action is even called, so "live preview as you step" is the ordering of two
+> statements rather than a feature; the quiet-failure posture for the durable half is
+> #649's, restated at the call site. The two step buttons are ordinary `menuitem`s in the
+> ring — `aria-disabled` at the ends, never `disabled`, so the arrow walk never breaks —
+> and the announcement rides the menu's existing `role="status"` region.
+>
+> **The role is fetched apart from the session, and remembered with its workspace.** The
+> plugin's `organization.list` discards roles in its adapter, so the identity block asks
+> `getActiveMemberRole` (one word for one workspace — `GET /api/v1/orgs` is for screens
+> that need roles per row), collapses multi-role text with `primaryRole()`, and stores
+> the answer *paired with the workspace it was asked for* — a stale answer voids itself
+> by derivation the moment the session moves, with no reset to forget. Until an answer
+> arrives the address stands alone: no guessed word, per § 3.5.
+>
+> **"Portals over the pane" is satisfied by construction, not by a portal.** The panel is
+> an absolutely positioned child of the header — a sibling of the pane, which therefore
+> cannot clip it — and `__tests__/shell/shell-styles.test.ts` pins the position and
+> z-index facts. An actual portal through the overlay layer would buy nothing and cost
+> the pane a scroll lock a menu must not take. The shortcuts sheet, which *is* a dialog,
+> does ride the overlay layer, and lists only bindings that exist — ⌘K in the platform's
+> own spelling through the search pill's exported `shortcutHint()`, the two roving rings,
+> the dismissals — because documentation is held to the same honesty rule as controls.
+>
+> Proved in `__tests__/shell/user-menu.test.tsx` (stepper, radios, role, sheet, and the
+> full keyboard path around them), `__tests__/shell/account.test.ts` (the role's five
+> decisions), `__tests__/theme.test.ts` (`describeTheme`, moved with its function), and
+> `__tests__/shell/shell-header.test.tsx`, which now asserts the two controls stay *out*
+> of the row. **Left to CP.5 (#647) and CQ.3 (#650), by this roadmap's own split:** the
+> browser-observed legs — AA contrast at every scale × theme, and the cross-device
+> persistence walk a jsdom suite can only stub.
   with standard SaaS applications)" — the avatar must open a real account
   menu, and it is the spec'd home of the font-size quick control (spec
   §1.1, §4).

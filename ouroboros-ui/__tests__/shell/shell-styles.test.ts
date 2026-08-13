@@ -68,7 +68,7 @@ describe("the shell's components and its stylesheet", () => {
     "shell/sidebar-nav.tsx",
     "shell/sidebar-toggle.tsx",
     "shell/app-shell.tsx",
-    "shell/theme-toggle.tsx",
+    "shell/shortcuts-sheet.tsx",
     "shell/overlay.tsx",
     "shell/search-pill.tsx",
     "shell/tenant-chip.tsx",
@@ -247,6 +247,20 @@ describe("the shell frame", () => {
     // is the sentence that forbids taking the one part that has to stay readable down as well,
     // which is what an opacity on the row entire would do.
     expect(soon).not.toMatch(/opacity:/);
+  });
+
+  it("places the account menu's panel above the pane, where nothing can clip it", () => {
+    // CP.3's "portals over the pane, never clipped" criterion, satisfied by construction
+    // rather than by a portal: the panel is an absolutely positioned child of the header —
+    // a *sibling* of the pane, so the pane's overflow cannot reach it — and its z-index
+    // keeps it over everything in the pane's stacking order. An actual portal through the
+    // overlay layer would buy nothing and cost the pane a scroll lock a menu must not take.
+    const panel = rule(".shell-menu__panel");
+
+    expect(panel).toMatch(/position:\s*absolute/);
+    expect(panel).toMatch(/z-index:\s*60/);
+    // And the wrapper it is positioned against is the header's, not the pane's.
+    expect(rule(".shell-menu")).toMatch(/position:\s*relative/);
   });
 
   it("takes the header's height from the shell rather than restating it", () => {
