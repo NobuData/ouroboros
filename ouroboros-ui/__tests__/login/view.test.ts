@@ -27,8 +27,6 @@ function membership(over: Partial<Membership> = {}): Membership {
     displayName: "Acme Robotics",
     status: "active",
     role: "owner",
-    invitedAt: "2026-08-11T10:20:23.114Z",
-    joinedAt: "2026-08-11T10:20:23.114Z",
     ...over,
   };
 }

@@ -130,7 +130,11 @@ describe("the module, in a running application", () => {
     // `code: "unauthenticated"` — because the code is derived from the status
     // (`error.envelope.ts`), which is what keeps a swap of guard from being a change of
     // contract for `ouroboros-ui`.
-    const response = await request(server()).get(`${API_BASE_PATH}/auth/me`).expect(401);
+    //
+    // The engine gateway rather than `${API_BASE_PATH}/auth/me`, which was this assertion's
+    // route until [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it. What
+    // is being asked about is the guard, so any route that needs a session will do.
+    const response = await request(server()).get(`${API_BASE_PATH}/engine/status`).expect(401);
 
     expect((response.body as ErrorEnvelope).code).toBe(AUTH_ERRORS.unauthenticated);
   });

@@ -1,10 +1,35 @@
 /**
- * `/api/v1/auth` — find out who you are, and sign out.
+ * `/api/v1/auth` — signing out, and nothing else.
  *
- * The controller names routes and shapes and hands the rest to `AuthService`, exactly as
- * every tenancy controller does. `POST logout` is the one route here that is not the API's
- * usual JSON-in, JSON-out shape: it answers `204`, because there is nothing to say and the
- * `Set-Cookie` that removes the session is the whole of the answer.
+ * One route. It is not the API's usual JSON-in, JSON-out shape: it answers `204`, because
+ * there is nothing to say and the `Set-Cookie` that removes the session is the whole of the
+ * answer.
+ *
+ * ---
+ *
+ * **`GET me` is not here any more, and nothing replaced it under `/api/v1`.**
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it while publishing the
+ * auth surface, because two routes answering *who is signed in* are two answers that can
+ * disagree — and this one answered from `tenant_members` and `tenants`, which
+ * `V006__tenancy_extensions.sql` had already dropped
+ * ([#708](https://github.com/NobuData/ouroboros/issues/708)). It was a route that could
+ * only have answered `500`.
+ *
+ * The question it asked is now three calls against BetterAuth's own surface, and a client
+ * makes them through BetterAuth's client rather than through the generated one:
+ *
+ *   * `GET /api/auth/get-session` — the person.
+ *   * `GET /api/auth/organization/list` — the workspaces they belong to.
+ *   * `GET /api/auth/organization/get-active-member-role` — what they hold in one.
+ *
+ * `openapi.yaml` publishes all three and states the rule; `src/auth/auth.routes.ts` is the
+ * map. **Do not add a fourth here.** The tenant suggestion the old route also carried —
+ * *your organisation is already on Ouroboros* — is
+ * [#712](https://github.com/NobuData/ouroboros/issues/712)'s `POST /api/v1/auth/discover`,
+ * which is genuinely this service's because it reads this service's tenant domains.
+ *
+ * `AuthService` and `AuthRepository` went with the route: they existed to answer it, and
+ * what is left of this module is a forward to the library plus one piece of middleware.
  *
  * ---
  *
@@ -38,66 +63,24 @@
  *
  * ---
  *
- * Of the two routes, one is `@AllowAnonymous()` and one deliberately is not. `GET me` is the
- * route that answers *who is signed in*, so it is the one that must require being signed
- * in; `POST logout` cannot require a session, because it is disposing of one that may
- * already have expired.
- *
- * `GET me` is also `@TenantOptional()`, which is the other half of the same thought: it
- * needs a *person* and cannot need a *workspace*, because the workspaces are what it
- * answers with.
+ * The one route is `@AllowAnonymous()`, and has to be: `POST logout` cannot require a
+ * session, because it is disposing of one that may already have expired.
  */
 
-import { Controller, Get, HttpStatus, Post, Req, Res } from "@nestjs/common";
-import { AllowAnonymous, AuthService as BetterAuth, Session } from "@thallesp/nestjs-better-auth";
+import { Controller, HttpStatus, Post, Req, Res } from "@nestjs/common";
+import { AllowAnonymous, AuthService as BetterAuth } from "@thallesp/nestjs-better-auth";
 
 import type { Auth } from "../../auth/auth.factory";
-import { AuthService } from "./auth.service";
-import type { SessionResource } from "./auth.resources";
 import { appendSetCookie, cookieHeaders, type AuthRequest, type AuthResponse } from "./http";
-import { TenantOptional } from "../tenancy/tenant.decorators";
-import { principalUser, type Principal } from "./principal";
 
 @Controller("auth")
 export class AuthController {
   /**
-   * @param auth - The rules: what a signed-in person is told about themselves.
    * @param betterAuth - The library's typed access to `auth.api`, from `src/auth/`. Sign-out
    *   is the library's operation — it deletes the `session` row — and this is how a Nest
    *   handler calls it without holding the instance itself.
    */
-  constructor(
-    private readonly auth: AuthService,
-    private readonly betterAuth: BetterAuth<Auth>,
-  ) {}
-
-  /**
-   * `GET /api/v1/auth/me` — who is signed in, and where they belong.
-   *
-   * The first call `ouroboros-ui` makes on a page load, and the reason it is one call
-   * rather than three: the shell needs the person, the workspaces they may switch between,
-   * and — for somebody brand new — the tenant their email domain points at, before it can
-   * render anything.
-   *
-   * `@TenantOptional()` ([#32](https://github.com/NobuData/ouroboros/issues/32)), and it is
-   * the clearest case there is: this route's entire answer is the list of workspaces a
-   * tenant would have had to be resolved *from*. Requiring one first would make somebody
-   * with no memberships unable to discover that they have none.
-   *
-   * The person now comes from the session rather than from a row read per request — see
-   * `principal.ts`, which is where that trade and the id that makes it safe are argued.
-   *
-   * @param principal - The session, established by the global guard. Typed nullable because
-   *   the library's decorator is: a route that also carried `@AllowAnonymous()` would be
-   *   handed `null`, and `principalUser` is what refuses that loudly rather than three
-   *   layers down.
-   * @returns Them, their memberships, and the tenant suggestion when there are none.
-   */
-  @TenantOptional()
-  @Get("me")
-  read(@Session() principal: Principal | null): Promise<SessionResource> {
-    return this.auth.describe(principalUser(principal));
-  }
+  constructor(private readonly betterAuth: BetterAuth<Auth>) {}
 
   /**
    * `POST /api/v1/auth/logout` — sign out.

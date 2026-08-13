@@ -110,15 +110,26 @@ describe("the routes that need no tenant", () => {
   it.each([
     ["listing your workspaces", TenantsController, TenantsController.prototype.list],
     ["creating one", TenantsController, TenantsController.prototype.create],
-    ["reading the session", AuthController, AuthController.prototype.read],
   ])("%s is tenant-optional", (_description, target, handler) => {
     expect(isOptional(target as never, handler)).toBe(true);
   });
 
-  it("is a list of three, and every one of them is about the person", () => {
-    // Which workspaces are mine, let me have one, and who am I. A fourth entry would need
-    // the same justification.
+  it("is a list of two, and both of them are about the person", () => {
+    // Which workspaces are mine, and let me have one. A third entry would need the same
+    // justification.
+    //
+    // It was three until [#711](https://github.com/NobuData/ouroboros/issues/711): reading
+    // the session was the clearest case of all — its whole answer was the list of
+    // workspaces a tenant would have had to be resolved *from* — and the route was deleted,
+    // not the exemption. `GET /api/auth/get-session` is BetterAuth's and never reaches this
+    // middleware at all.
     expect(isOptional(TenantsController as never, TenantsController.prototype.read)).toBe(false);
+  });
+
+  it("leaves signing out to its own exemption, not this one", () => {
+    // `POST /api/v1/auth/logout` is `@AllowAnonymous()` rather than `@TenantOptional()`:
+    // it needs no session, so the question of which workspace it acts in never arises.
+    expect(isOptional(AuthController as never, AuthController.prototype.logout)).toBe(false);
   });
 });
 

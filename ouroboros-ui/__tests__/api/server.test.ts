@@ -255,8 +255,10 @@ describe("anonymousApi", () => {
   });
 
   it("lets a 401 reject as an ApiError instead of redirecting to the login screen", async () => {
-    // The login screen is the caller. `api()`'s handler would send it to LOGIN_PATH — which
-    // is itself — once per render, for every signed-out visitor.
+    // For a caller on the login screen, `api()`'s handler would send the request to
+    // LOGIN_PATH — which is the page asking — once per render, for every signed-out
+    // visitor. Any route in the generated family demonstrates it; this was `/auth/me` until
+    // [#711](https://github.com/NobuData/ouroboros/issues/711) deleted that route.
     respondWith(
       new Response(
         JSON.stringify({ code: "unauthenticated", message: "Sign in.", details: {} }),
@@ -265,7 +267,7 @@ describe("anonymousApi", () => {
     );
 
     const caught: unknown = await anonymousApi()
-      .GET("/api/v1/auth/me")
+      .GET("/api/v1/tenants")
       .catch((error: unknown) => error);
 
     expect(caught).toBeInstanceOf(ApiError);

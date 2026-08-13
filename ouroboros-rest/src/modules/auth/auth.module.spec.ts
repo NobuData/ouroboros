@@ -5,15 +5,16 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 
 import { createApplication } from "../../application";
+import { BetterAuthModule } from "../../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
+import { DbModule } from "../db/db.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { DatabaseService } from "../db/db.service";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { AuthController } from "./auth.controller";
 import { AUTH_ERRORS } from "./auth.errors";
 import { AuthModule } from "./auth.module";
-import { AuthRepository } from "./auth.repository";
-import { AuthService } from "./auth.service";
+import { LegacySessionCookieMiddleware } from "./legacy.cookie";
 
 /**
  * The wiring, and what this module contributes to a request now that it no longer
@@ -32,8 +33,12 @@ import { AuthService } from "./auth.service";
  * What this module contributes instead is one piece of middleware, and it is the other
  * thing asserted here: a browser still holding `ouro_session` is told to drop it.
  *
- * Nothing connects. `pg` connects lazily, so the real `DatabaseService` can be resolved by a
- * suite that starts no database.
+ * **And the database is not here either, since
+ * [#711](https://github.com/NobuData/ouroboros/issues/711).** `AuthService` and
+ * `AuthRepository` existed to answer `GET /api/v1/auth/me`, which that issue deleted along
+ * with them; nothing left in this module issues a statement, so the `DbModule` import went
+ * too. That is asserted rather than assumed below — an import that came back would be this
+ * module quietly acquiring a reason to reach the database again.
  */
 
 describe("the auth module", () => {
@@ -48,13 +53,12 @@ describe("the auth module", () => {
     await expect(compile()).resolves.toBeDefined();
   });
 
-  it.each([
-    ["the repository", AuthRepository],
-    ["the service", AuthService],
-  ])("resolves %s", async (_description, provider) => {
+  it("resolves the cookie eviction, which is the whole of what it provides", async () => {
     const moduleRef = await compile();
 
-    expect(moduleRef.get(provider)).toBeInstanceOf(provider);
+    expect(moduleRef.get(LegacySessionCookieMiddleware)).toBeInstanceOf(
+      LegacySessionCookieMiddleware,
+    );
   });
 
   it("publishes the auth controller", async () => {
@@ -63,18 +67,29 @@ describe("the auth module", () => {
     expect(moduleRef.get(AuthController)).toBeInstanceOf(AuthController);
   });
 
-  it("reaches the database through DbModule rather than assuming it", async () => {
-    // The import is the answer to "who can reach the users table". Resolving the real
-    // provider is what proves the import is there.
+  it("imports the database for no reason of its own", () => {
+    // The inverse of the assertion this replaced. `DbModule` was imported for the two reads
+    // that answered `GET /api/v1/auth/me`, and #711 deleted both — so an import that came
+    // back would be this module acquiring a reason to reach the database that its code no
+    // longer has.
+    //
+    // Read from the decorator rather than from the injector, and that distinction is the
+    // whole of what can honestly be claimed: `DatabaseService` is still *resolvable* here,
+    // because `BetterAuthModule` imports `DbModule` so the library's adapter can share the
+    // pool. What is gone is this module asking for it.
+    const imports = (Reflect.getMetadata("imports", AuthModule) ?? []) as unknown[];
+
+    expect(imports).not.toContain(DbModule);
+    expect(imports).toEqual([BetterAuthModule]);
+  });
+
+  it("still resolves the database through the library's own import", async () => {
+    // The other half, stated so the assertion above is not read as "nothing in this graph
+    // can reach the database". BetterAuth's adapter issues its statements over the pool
+    // `DbModule` owns, and that is why signing out works at all.
     const moduleRef = await compile();
 
     expect(moduleRef.get(DatabaseService, { strict: false })).toBeInstanceOf(DatabaseService);
-  });
-
-  it("exports the service, because #32 resolves memberships through it", async () => {
-    const moduleRef = await compile();
-
-    expect(moduleRef.select(AuthModule).get(AuthService)).toBeInstanceOf(AuthService);
   });
 });
 
@@ -154,7 +169,10 @@ describe("the authentication this module's routes sit behind", () => {
   });
 
   it("answers the envelope, so a 401 parses like every other failure", async () => {
-    const response = await request(server()).get("/api/v1/auth/me").expect(401);
+    // Any authenticated route: this was `/api/v1/auth/me` until
+    // [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it, and the envelope
+    // is the guard's rather than the route's.
+    const response = await request(server()).get("/api/v1/engine/status").expect(401);
 
     const envelope = response.body as ErrorEnvelope;
 

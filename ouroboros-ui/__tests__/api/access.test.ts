@@ -1,20 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Membership } from "@/app/api/membership";
 import { ACTIVE_TENANT_COOKIE } from "@/app/api/tenant";
 import { resetRestUrlCache } from "@/app/env";
 import { LOGIN_PATH } from "@/app/paths";
+
+import { authAnswer } from "../helpers/auth";
 
 /**
  * The data-access layer: who is signed in, which workspace they are in, and the gate every
  * screen in `app/(app)` goes through.
  *
- * This is the security-relevant half of #44, so what is tested is not "does it call
- * `/auth/me`" but the four decisions it makes about the answer: a `401` is *signed out*, a
- * `500` is not, the cookie is a claim rather than a fact, and a request without both halves
- * does not get to render.
+ * This is the security-relevant half of #44, so what is tested is not which routes it calls
+ * but the four decisions it makes about the answer: *nobody signed in* is a state rather
+ * than a failure, a `500` is not that state, the cookie is a claim rather than a fact, and a
+ * request without both halves does not get to render.
  *
  * The environment it needs is the same one `server.test.ts` builds — a cookie jar, a
- * redirect that signals by throwing — plus a `fetch` for the one call the layer makes.
+ * redirect that signals by throwing — plus a `fetch` for the auth family the layer reads
+ * through since [#711](https://github.com/NobuData/ouroboros/issues/711). What that family
+ * answers is `helpers/auth.ts`; what is decided about it is here.
  */
 
 /** The cookies of the request under test. */
@@ -52,34 +57,21 @@ const { currentAccess, requireWorkspace } = await import("@/app/api/access");
 const { resetApiClient } = await import("@/app/api/server");
 
 /** One membership, with the fields a case cares about overridden. */
-const ACME = {
+const ACME: Membership = {
   tenantId: "5eed0001-0000-4000-8000-000000000001",
   slug: "acme-robotics",
   displayName: "Acme Robotics",
   status: "active",
   role: "owner",
-  invitedAt: "2026-08-11T10:20:23.114Z",
-  joinedAt: "2026-08-11T10:20:23.114Z",
 };
 
-/** A session carrying the given memberships. */
-function session(memberships: unknown[] = [ACME]) {
-  return {
-    user: {
-      id: "5eed0003-0000-4000-8000-000000000001",
-      email: "ken@acme-robotics.dev",
-      displayName: "Ken Suenobu",
-      avatarUrl: null,
-      createdAt: "2026-08-11T10:20:23.114Z",
-      updatedAt: "2026-08-11T10:20:23.114Z",
-    },
-    memberships,
-    tenantSuggestion: null,
-  };
-}
+/** What this person belongs to. `null` is nobody signed in. */
+let memberships: Membership[] | null;
 
-/** What the stubbed service answers `/auth/me` with, and how many times it was asked. */
-let answer: { body: unknown; status: number };
+/** A failure to answer every call with instead, when a case is about one. */
+let failure: { body: unknown; status: number } | undefined;
+
+/** How many requests the layer made — the number `cache` exists to hold down. */
 let calls: number;
 
 beforeEach(() => {
@@ -89,14 +81,18 @@ beforeEach(() => {
   resetRestUrlCache();
   process.env.OURO_REST_URL = "http://rest.test:4000";
 
-  answer = { body: session(), status: 200 };
+  memberships = [ACME];
+  failure = undefined;
   calls = 0;
 
-  vi.stubGlobal("fetch", () => {
+  vi.stubGlobal("fetch", (input: Request | string) => {
     calls += 1;
+    const url = typeof input === "string" ? input : input.url;
+    const body = failure === undefined ? authAnswer(url, memberships) : failure.body;
+
     return Promise.resolve(
-      new Response(JSON.stringify(answer.body), {
-        status: answer.status,
+      new Response(body === null ? "null" : JSON.stringify(body), {
+        status: failure?.status ?? 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
@@ -111,25 +107,36 @@ afterEach(() => {
 });
 
 describe("currentAccess, with no session", () => {
-  it("reads a 401 as nobody signed in rather than as a failure", async () => {
-    answer = {
-      body: { code: "unauthenticated", message: "Sign in first.", details: {} },
-      status: 401,
-    };
+  it("reads the service's own null as nobody signed in", async () => {
+    // Since [#711](https://github.com/NobuData/ouroboros/issues/711) this is the service's
+    // answer rather than this layer's reading of a `401`: `GET /api/auth/get-session`
+    // replies `null` for a request carrying no session, which is what makes *signed out* a
+    // state the login screen can ask about rather than an error it has to translate.
+    memberships = null;
 
     expect(await currentAccess()).toEqual({ session: null, membership: undefined });
   });
 
   it("does not redirect, because the screen asking is the one it would redirect to", async () => {
-    answer = { body: { code: "unauthenticated", message: "no", details: {} }, status: 401 };
+    memberships = null;
 
     await currentAccess();
 
     expect(redirect).not.toHaveBeenCalled();
   });
 
-  it("lets any other failure reject, so an outage is not shown as a sign-in screen", async () => {
-    answer = { body: { code: "internal_error", message: "…", details: {} }, status: 500 };
+  it("asks nothing further, because there is nobody to ask about", async () => {
+    memberships = null;
+
+    await currentAccess();
+
+    expect(calls).toBe(1);
+  });
+
+  it("lets any failure reject, so an outage is not shown as a sign-in screen", async () => {
+    // Every refusal now, not merely "any other": a `401` from these routes means the
+    // request was refused, which is a different fact from *nobody is signed in*.
+    failure = { body: { code: "INTERNAL_SERVER_ERROR", message: "…" }, status: 500 };
 
     await expect(currentAccess()).rejects.toMatchObject({ status: 500 });
   });
@@ -168,12 +175,12 @@ describe("currentAccess, with a session", () => {
     expect((await currentAccess()).membership).toBeUndefined();
   });
 
-  it("treats a suspended workspace as no choice", async () => {
-    answer = { body: session([{ ...ACME, status: "suspended" }]), status: 200 };
-    jar.set(ACTIVE_TENANT_COOKIE, ACME.slug);
-
-    expect((await currentAccess()).membership).toBeUndefined();
-  });
+  // *Treats a suspended workspace as no choice* was here. It cannot be composed through the
+  // service after #711 — BetterAuth's organizations have no lifecycle column, so
+  // `app/api/session.ts` reports every one of them as `active`. The rule is unchanged and is
+  // asserted where it lives, in `__tests__/api/membership.test.ts`;
+  // [#714](https://github.com/NobuData/ouroboros/issues/714) is what gives the service a way
+  // to say `suspended` again.
 });
 
 describe("requireWorkspace", () => {
@@ -187,7 +194,7 @@ describe("requireWorkspace", () => {
   });
 
   it("sends a request with no session to the login screen", async () => {
-    answer = { body: { code: "unauthenticated", message: "no", details: {} }, status: 401 };
+    memberships = null;
 
     await expect(requireWorkspace()).rejects.toBeInstanceOf(RedirectSignal);
     expect(redirect).toHaveBeenCalledWith(LOGIN_PATH);

@@ -238,7 +238,6 @@ describe("the decisions, as answers rather than as metadata", () => {
   it.each([
     ["the tenancy API", "get", `${API_BASE_PATH}/tenants`],
     ["the engine gateway", "get", `${API_BASE_PATH}/engine/status`],
-    ["reading the session", "get", `${API_BASE_PATH}/auth/me`],
   ] as const)("refuses %s without one, in the envelope", async (_description, method, path) => {
     const response = await request(server())[method](path).expect(401);
 
@@ -266,8 +265,13 @@ describe("the decisions, as answers rather than as metadata", () => {
     // this one starts none — so past the guard is as far as a request gets, and it then
     // fails on a connection rather than on a session. `auth.integration-spec.ts` is where
     // the same request answers `200` against real rows.
+    //
+    // The tenancy listing rather than `GET /api/v1/auth/me`, which was this assertion's
+    // route until [#711](https://github.com/NobuData/ouroboros/issues/711) deleted it as the
+    // duplicate answer to *who is signed in*. Any authenticated route will do here — the
+    // subject is the guard.
     const response = await request(server())
-      .get(`${API_BASE_PATH}/auth/me`)
+      .get(`${API_BASE_PATH}/tenants`)
       .set("Cookie", grantSession());
 
     expect(response.status).not.toBe(401);

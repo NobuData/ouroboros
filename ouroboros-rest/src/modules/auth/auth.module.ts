@@ -1,10 +1,14 @@
 /**
- * What a signed-in person is told about themselves, and the eviction of the cookie that
- * used to sign them in ([#33](https://github.com/NobuData/ouroboros/issues/33),
+ * Signing out, and the eviction of the cookie that used to sign somebody in
+ * ([#33](https://github.com/NobuData/ouroboros/issues/33),
  * [#703](https://github.com/NobuData/ouroboros/issues/703)).
  *
- * Three layers, the same as `TenancyModule`: a controller that names routes, a service that
- * holds the rules, a repository that holds the statements.
+ * One layer. It had three — a controller, a service, a repository, the same shape as
+ * `TenancyModule` — and the service and the repository existed to answer
+ * `GET /api/v1/auth/me`, which
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) deleted along with them. Who is
+ * signed in is BetterAuth's question now, answered on BetterAuth's own routes; see
+ * `auth.controller.ts`, which names the three that replace it.
  *
  * **Sign-in is not one of them.** `GithubClient` — the boundary to GitHub, kept here as a
  * provider so a test could replace the whole of GitHub with an object — went with
@@ -28,19 +32,18 @@
  * to drop it. See `legacy.cookie.ts`, which is also where the date it can be deleted is
  * written down.
  *
- * It imports `DbModule` and not `TenancyModule`. The session's answer reads `tenant_members`
- * and `tenants` as statements of its own rather than through tenancy's services — those
- * enforce the tenancy API's rules, which are about a caller administering a workspace, and
- * none of them apply to the question "where does this person belong".
+ * **It no longer imports `DbModule`, and that is the shape of what #711 removed.** The only
+ * statements this module ever issued were the two that answered the session — a membership
+ * listing and a domain lookup — and both read `tenant_members` and `tenants`, which
+ * `V006__tenancy_extensions.sql` dropped
+ * ([#708](https://github.com/NobuData/ouroboros/issues/708)). Nothing here reaches the
+ * database at all now; signing out is a call into the library, which holds its own pool.
  */
 
 import { Module, RequestMethod, type MiddlewareConsumer, type NestModule } from "@nestjs/common";
 
 import { BetterAuthModule } from "../../auth/auth.module";
-import { DbModule } from "../db/db.module";
 import { AuthController } from "./auth.controller";
-import { AuthRepository } from "./auth.repository";
-import { AuthService } from "./auth.service";
 import { LegacySessionCookieMiddleware } from "./legacy.cookie";
 
 @Module({
@@ -49,12 +52,9 @@ import { LegacySessionCookieMiddleware } from "./legacy.cookie";
   // what makes the provider resolvable — it is what makes "this module depends on
   // BetterAuth" a line somebody can read in the `imports` list rather than a surprise in a
   // constructor.
-  imports: [BetterAuthModule, DbModule],
+  imports: [BetterAuthModule],
   controllers: [AuthController],
-  providers: [AuthRepository, AuthService, LegacySessionCookieMiddleware],
-  // `AuthService` is what [#32](https://github.com/NobuData/ouroboros/issues/32) resolves a
-  // request's memberships through. Exported for that, and only that.
-  exports: [AuthService],
+  providers: [LegacySessionCookieMiddleware],
 })
 export class AuthModule implements NestModule {
   /**

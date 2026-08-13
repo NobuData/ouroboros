@@ -358,8 +358,10 @@ sequenceDiagram
     R->>G: exchange code → profile + verified primary email
     R->>R: upsert "user" / account · create session row
     R-->>B: Set-Cookie (httpOnly) · 302 → the app
-    B->>R: GET /api/v1/auth/me
-    R-->>B: { user, memberships }
+    B->>R: GET /api/auth/get-session
+    R-->>B: { session, user }  (null for nobody)
+    B->>R: GET /api/auth/organization/list · get-active-member-role
+    R-->>B: the workspaces, and the role held in one
 ```
 
 A complete hand-rolled version of this flow shipped first, under #33 — state and PKCE over
@@ -368,6 +370,14 @@ a signed handshake cookie, a `GithubClient`, and a three-branch identity model w
 service, and V004's back-fill is what carries the people it created across: their
 `user_identities` rows became `account` rows with their ids intact, so the pair BetterAuth
 looks a sign-in up by — `(providerId, accountId)` — still finds them.
+
+**Who is signed in is three calls against the auth family, and no route of this service's
+own.** `GET /api/v1/auth/me` answered it as well until
+[#711](https://github.com/NobuData/ouroboros/issues/711) deleted it — two routes answering
+the same question are two answers that can disagree — and the same issue published the auth
+surface in `openapi.yaml` so a client can read what replaced it. Those routes are called
+through BetterAuth's own client rather than the generated one; `ouroboros-rest/README.md`
+§ The two-client rule is the whole of the boundary.
 
 The scopes are `read:user` and `user:email` and nothing else; account linking attaches an
 arriving GitHub account to an existing person only on an address GitHub says is *verified*.

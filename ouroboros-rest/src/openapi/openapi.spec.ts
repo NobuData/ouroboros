@@ -19,6 +19,8 @@ import {
   YAML_MEDIA_TYPE,
   createApplication,
 } from "../application";
+import { AUTH_BASE_PATH } from "../auth/auth.options";
+import { authOperationKeys } from "../auth/auth.routes";
 import { DEFAULT_PORT } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
 import { PROBE_PATHS } from "../modules/health/health.paths";
@@ -77,6 +79,24 @@ function operations(source: OpenAPIObject): Map<OperationKey, Record<string, unk
  */
 function served(app: INestApplication): Map<OperationKey, Record<string, unknown>> {
   return operations(SwaggerModule.createDocument(app, new DocumentBuilder().build()));
+}
+
+/**
+ * Whether an operation key names a route BetterAuth serves rather than one Nest routes.
+ *
+ * The auth family is described in the document and is invisible to
+ * `SwaggerModule.createDocument`, because the library registers one handler on the HTTP
+ * adapter ahead of Nest's router ([#701](https://github.com/NobuData/ouroboros/issues/701)).
+ * Every comparison below that has the router on one side therefore has to set them aside —
+ * and the comparison that replaces it, in *the auth family* further down, is what stops that
+ * from being a hole: the document is held to `src/auth/auth.routes.ts` instead, which is the
+ * map the routes are transcribed from and which has its own suite beside it.
+ *
+ * @param key - An operation key from {@link operations}, or a path.
+ * @returns `true` for anything under `/api/auth`.
+ */
+function isAuthFamily(key: string): boolean {
+  return key.includes(` ${AUTH_BASE_PATH}/`) || key.startsWith(`${AUTH_BASE_PATH}/`);
 }
 
 /** The authoritative file, parsed. */
@@ -227,17 +247,20 @@ describe("the specification as a document", () => {
     expect(server.url).toBe(`http://localhost:${DEFAULT_PORT}`);
   });
 
-  it("describes nothing outside the versioned base path but the probes", () => {
-    // The probes are the one exemption, and it is an enumerated one: they answer at the
+  it("describes nothing outside the versioned base path but the probes and the auth family", () => {
+    // Two exemptions, both enumerated, and for different reasons. The probes answer at the
     // origin root because a `HEALTHCHECK` and an orchestrator's probe have no notion of an
-    // API version (see `src/modules/health/health.paths.ts`). Anything else that escaped
-    // `/api/v1` would be a route published outside the contract's versioning, which is what
-    // this check exists to refuse.
+    // API version (see `src/modules/health/health.paths.ts`). The auth family answers one
+    // level up at `/api/auth` because the library serves and versions its own routes
+    // (#701, #711). Anything *else* that escaped `/api/v1` would be a route published
+    // outside the contract's versioning, which is what this check exists to refuse.
     const exempt: readonly string[] = PROBE_PATHS;
     const paths = Object.keys(document().paths);
 
     expect(paths).not.toHaveLength(0);
-    for (const path of paths.filter((candidate) => !exempt.includes(candidate))) {
+    for (const path of paths.filter(
+      (candidate) => !exempt.includes(candidate) && !isAuthFamily(candidate),
+    )) {
       expect(path.startsWith(API_BASE_PATH)).toBe(true);
     }
   });
@@ -280,14 +303,20 @@ describe("the document and the running application", () => {
   it("promises no route the application does not serve", () => {
     // The worse half of the same drift: a specification that offers an operation the
     // service has never had is a client that compiles and then 404s.
+    //
+    // The auth family is set aside here and nowhere silently: Nest's route table cannot see
+    // it, so its absence from `code` says nothing about whether it is served. What holds it
+    // to the service is *the auth family* below.
     const code = [...served(app).keys()];
 
-    for (const operation of operations(document()).keys()) {
+    for (const operation of [...operations(document()).keys()].filter(
+      (key) => !isAuthFamily(key),
+    )) {
       expect(code).toContain(operation);
     }
   });
 
-  it.each([...operations(document()).keys()])(
+  it.each([...operations(document()).keys()].filter((key) => !isAuthFamily(key)))(
     "answers %s with a status it documents",
     async (key) => {
       // Not `expect(200)`: this suite starts no database and no engine, so `/health/ready`
@@ -303,7 +332,7 @@ describe("the document and the running application", () => {
     },
   );
 
-  it.each([...operations(document()).keys()])(
+  it.each([...operations(document()).keys()].filter((key) => !isAuthFamily(key)))(
     "sends %s a body the schema documented for its answer accepts",
     async (key) => {
       const [method, path] = key.split(" ");
@@ -340,6 +369,137 @@ describe("the document and the running application", () => {
       expect(mismatch(body.example)).toBeUndefined();
     },
   );
+});
+
+describe("the auth family", () => {
+  /**
+   * The comparison that stands in for the router one, for the thirteen paths the router
+   * cannot see ([#711](https://github.com/NobuData/ouroboros/issues/711)).
+   *
+   * `src/auth/auth.routes.ts` is the map, transcribed from a real BetterAuth instance and
+   * held to the library's shape by its own suite; `application.spec.ts` is what proves the
+   * handler is really mounted. So the document being equal to the map is the last link:
+   * with all three, a published auth path that the service does not serve, or a served one
+   * it does not publish, is a red suite.
+   */
+  it("describes every route the map documents, and no other", () => {
+    const published = [...operations(document()).keys()].filter(isAuthFamily);
+
+    expect(published).not.toHaveLength(0);
+    expect(published.toSorted()).toEqual(authOperationKeys().toSorted());
+  });
+
+  it("tags every one of them as a family a client picks a library for", () => {
+    // The two-client rule is only useful if a reader can see which paths it applies to, and
+    // in Swagger UI what they see is the tag. An auth path filed under `auth` — this
+    // service's own `/api/v1` tag — would be one somebody generates a client for.
+    for (const [key, operation] of operations(document())) {
+      if (!isAuthFamily(key)) continue;
+
+      expect(["identity", "organizations"]).toContain((operation.tags as string[])[0]);
+    }
+  });
+
+  it("answers no route outside the auth base path from either of those tags", () => {
+    // The other direction: a `/api/v1` operation that wandered into the BetterAuth tags
+    // would be one a client author would try to call through the wrong library.
+    for (const [key, operation] of operations(document())) {
+      const tags = operation.tags as string[];
+
+      if (tags.includes("identity") || tags.includes("organizations")) {
+        expect(isAuthFamily(key)).toBe(true);
+      }
+    }
+  });
+
+  it("answers who is signed in exactly once", () => {
+    // The acceptance criterion, as an assertion. `GET /api/v1/auth/me` answered this
+    // question from this service's own tables until #711 deleted it, and the failure mode
+    // being closed here is somebody adding it back — or adding its equivalent under another
+    // name — because the generated client has no session call. It has none deliberately:
+    // the session is the BetterAuth client's, and two answers to "who is signed in" are two
+    // answers that can disagree.
+    const paths = Object.keys(document().paths);
+
+    expect(paths).not.toContain(`${API_BASE_PATH}/auth/me`);
+    expect(paths.filter((path) => /\/(me|session|whoami)$/.test(path))).toEqual([]);
+    expect(paths).toContain(`${AUTH_BASE_PATH}/get-session`);
+  });
+
+  it("publishes the three routes that answer it instead", () => {
+    // Deleting a route is only safe if what replaces it is written down where somebody
+    // looking for it will find it: the person, the workspaces, and the role.
+    const paths = Object.keys(document().paths);
+
+    expect(paths).toContain(`${AUTH_BASE_PATH}/get-session`);
+    expect(paths).toContain(`${AUTH_BASE_PATH}/organization/list`);
+    expect(paths).toContain(`${AUTH_BASE_PATH}/organization/get-active-member-role`);
+  });
+
+  it("describes a request and a response shape for every operation", () => {
+    // "shows the auth surface with request and response shapes" is the issue's first
+    // acceptance criterion, and a path item carrying only a summary would satisfy the check
+    // above while publishing nothing a client author can act on.
+    for (const [key, operation] of operations(document())) {
+      if (!isAuthFamily(key)) continue;
+
+      expect(Object.keys(operation.responses as object).length).toBeGreaterThan(0);
+      expect(typeof operation.description).toBe("string");
+      expect(operation.operationId).toBeDefined();
+    }
+  });
+
+  it("requires a body of every operation that takes one", () => {
+    // A `POST` documented without one is a `POST` a reader would call empty.
+    const bodiless = [`POST ${AUTH_BASE_PATH}/sign-out`, `POST ${AUTH_BASE_PATH}/get-session`];
+
+    for (const [key, operation] of operations(document())) {
+      if (!isAuthFamily(key) || !key.startsWith("POST ") || bodiless.includes(key)) continue;
+      if (key.startsWith(`POST ${AUTH_BASE_PATH}/callback/`)) continue;
+
+      expect(operation.requestBody).toBeDefined();
+    }
+  });
+});
+
+describe("the auth family, live", () => {
+  let app: INestApplication;
+
+  beforeEach(async () => {
+    app = await createApplication(testConfiguration(), { logger: false });
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it.each(
+    Object.keys(document().paths)
+      .filter(isAuthFamily)
+      .map((path) => path.replaceAll(/\{[^}]+\}/g, "github")),
+  )("serves %s from the library rather than from Nest's router", async (path) => {
+    // What a suite with no database can prove about thirteen published paths: that they are
+    // reached by the BetterAuth handler at all. `betterAuth: true` is the echo
+    // `src/auth/better-auth.fixture.ts` answers with, and Nest answering instead — a `404`
+    // from the global filter, or a controller — would mean the document had published paths
+    // nothing serves.
+    //
+    // The verb is `GET` throughout because the handler takes the subtree rather than an
+    // enumerated table, so what is being asked is *who answers here*, not *what does this
+    // route do*. A path parameter is filled with `github`, the one provider configured.
+    const response = await request(app.getHttpServer() as Server).get(path);
+
+    expect((response.body as { betterAuth?: boolean }).betterAuth).toBe(true);
+  });
+
+  it("no longer serves the session route the document stopped describing", async () => {
+    // The deletion, from the outside. A route still answering after being taken out of the
+    // contract would be an undocumented endpoint rather than a removed one.
+    await request(app.getHttpServer() as Server)
+      .get(`${API_BASE_PATH}/auth/me`)
+      .expect(404);
+  });
 });
 
 describe("publishing the specification", () => {

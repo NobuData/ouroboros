@@ -962,9 +962,37 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql ─▶ [cli generate ⟷ c
 
 ## Epic C (#697) — Login REST Services (`ouroboros-rest`)
 
+> **C.1 · #711 has shipped and has left the table below.** `openapi.yaml` publishes all
+> thirteen auth routes — tags `identity` and `organizations` — with their request and
+> response shapes, and states the **two-client rule** in its own description: the auth family
+> via BetterAuth's client, everything else via the generated one, and the auth family
+> excluded from codegen. The same rule is in both READMEs.
+> [`src/auth/auth.routes.ts`](../ouroboros-rest/src/auth/auth.routes.ts) is the map the
+> document is generated from by hand and checked against by `src/openapi/openapi.spec.ts` —
+> which is the only check available for these paths, because Nest's route table cannot see
+> them. Its issue section below is kept as the record of what was asked for.
+>
+> **`GET /api/v1/auth/me` was deleted rather than deprecated**, which is more than the issue
+> body asked for and less than it sounds: the route read `tenant_members` and `tenants`, and
+> **B.3 · #708 had already dropped both**, so it could only have answered `500`. Its service,
+> repository and resource module went with it. What replaces it is three calls —
+> `get-session`, `organization/list`, `get-active-member-role` — and `ouroboros-ui`'s
+> `app/api/session.ts` composes them through a new `app/api/auth-client.ts`, which is a
+> stand-in **D.1 · #716** replaces with `createAuthClient`.
+>
+> Two things it deliberately did **not** do. The tenant suggestion — *your organisation is
+> already on Ouroboros* — has no BetterAuth equivalent and is reported as `null` until
+> **C.2 · #712**'s `/auth/discover`; and a workspace's `status` is `active` for every row,
+> because an organization has no lifecycle column. **C.4 · #714**'s `GET /api/v1/orgs` is
+> what restores both a lifecycle and a one-call row model, and **D.4 · #719** re-points the
+> screens at it.
+>
+> One correction it made to the map: `organization/list` carries **no role**. The plugin's
+> adapter discards it, and the map had claimed otherwise — `get-active-member-role` is the
+> route that answers it, and it was added.
+
 | Issue | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| C.1 · #711 | ouroboros-rest: [C.1] Auth route surface & OpenAPI exposure | Document/expose auth + org endpoints for the UI contract | mvp, auth, rest | N (after A.5) | Y | S | ouroboros-rest |
 | C.2 · #712 | ouroboros-rest: [C.2] Domain discovery endpoint (`/auth/discover`) | Company-domain field backend: domain → tenant + SSO availability | mvp, auth, rest | N (after B.3) | Y | M | ouroboros-rest |
 | C.3 · #713 | ouroboros-rest: [C.3] Tenant context from session active organization | Rework #32's **shipped** middleware in place: `activeOrganizationId` primary, header override, role guards | mvp, auth, rest | N (after A.5, B.3) | Y | M | ouroboros-rest |
 | C.4 · #714 | ouroboros-rest: [C.4] Org & repo enablement API on org-plugin roles | Rewrite #31's **shipped** tenancy module: Step 2 toggles, member CRUD dropped to the plugin | mvp, auth, rest | N (after B.3, C.3) | Y | **L** ⬆ | ouroboros-rest |
@@ -1554,7 +1582,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    legs remain parked on two things outside A.6: B.4 #709, which teaches the seed to write
    BetterAuth's `"user"` and `account` rows, and a stack whose `ouroboros-rest` is not the
    production image — the password routes are gated on exactly that.)*
-4. **Phase 3 — REST services:** { C.1 #711 ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
+4. **Phase 3 — REST services:** { ~~C.1 #711~~ ⊕ C.2 #712 } → C.3 #713 → C.4 #714 → C.5 #715
    *(C.3 moved after B.3 — it reworks #32's live middleware against tables B.3
    creates.)*
 5. **Phase 4 — Login page UI:** D.1 #716 → { D.2 #717 ⊕ D.5 #720 ⊕ D.6 #721 } → D.3 #718 → D.4 #719

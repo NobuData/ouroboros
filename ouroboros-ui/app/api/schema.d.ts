@@ -29,7 +29,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/me": {
+    "/api/auth/sign-in/social": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Begin a social sign-in
+         * @description Start the GitHub handshake ([#702](https://github.com/NobuData/ouroboros/issues/702)).
+         *     `{"provider": "github"}` is the whole body; the answer carries the github.com
+         *     authorization URL for the browser to follow.
+         *
+         *     **A `POST` answering with a URL rather than a redirect**, so a script can decide what
+         *     to do with it — which is why `ouroboros-ui` calls `authClient.signIn.social` instead
+         *     of rendering a link. An anchor pointed at this path gets a `404`: it does not answer
+         *     `GET`.
+         *
+         *     `github` is the only provider configured, plus email/password in development
+         *     ([#705](https://github.com/NobuData/ouroboros/issues/705)). The scopes are
+         *     `read:user` and `user:email` and are this service's rather than the library's
+         *     defaults — see `src/auth/github.provider.ts`.
+         */
+        post: operations["signInSocial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/callback/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -37,21 +69,322 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Read the current session
-         * @description Who is signed in, which workspaces they belong to, and — for somebody who belongs
-         *     to none yet — the tenant their email domain points at.
+         * Complete a social sign-in
+         * @description Where the provider returns the browser. **This is the URL an OAuth App is registered
+         *     against** — `${BETTER_AUTH_URL}/api/auth/callback/github` — and github.com compares
+         *     what it was registered with against what the exchange presents, so a difference of
+         *     one character is a sign-in that fails at the last hop.
          *
-         *     One call rather than three, because it is what `ouroboros-ui`'s shell needs before
-         *     it can render anything: the person for the profile menu, the memberships for the
-         *     workspace switcher, and the suggestion for a first-run screen.
-         *
-         *     The person comes from the session BetterAuth resolved, which is a row rather than a
-         *     claim in a cookie — so a deleted account's outstanding session stops working
-         *     immediately, by the `on delete cascade` that removes their sessions with them.
+         *     The library checks the `state` it issued, exchanges the code for the profile and the
+         *     verified primary address, upserts `"user"` and `account`, creates the `session` row
+         *     and sets its cookies. Nothing here is this service's to call: it is a navigation the
+         *     browser makes.
          */
-        get: operations["readSession"];
+        get: operations["signInCallback"];
+        put?: never;
+        /**
+         * Complete a social sign-in (form post)
+         * @description The same operation for a provider that returns by form post rather than by
+         *     redirect. GitHub redirects, so this is the verb nothing in this installation uses —
+         *     described because the library answers it and a document that described half a route
+         *     would be describing something else.
+         */
+        post: operations["signInCallbackFormPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/get-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the session
+         * @description The caller's session and the person holding it, or `null` for nobody.
+         *
+         *     **This is the only route that answers *who is signed in*.** `GET /api/v1/auth/me`
+         *     answered it too until [#711](https://github.com/NobuData/ouroboros/issues/711)
+         *     deleted it; do not build another. The two questions it also used to answer are
+         *     `GET /api/auth/organization/list` (where do I belong) and
+         *     `GET /api/auth/organization/get-active-member-role` (what may I do here).
+         *
+         *     `null` rather than a `401`, which is what makes it callable from a login screen: the
+         *     absence of a session is the answer, not a failure. Since
+         *     [#703](https://github.com/NobuData/ouroboros/issues/703) the global guard calls it on
+         *     every request, and with the cookie cache fresh it answers from the signed snapshot in
+         *     `better-auth.session_data` and issues no statement at all.
+         *
+         *     `session.activeOrganizationId` is the tenant pointer — see the `organizations` tag.
+         */
+        get: operations["getSession"];
+        put?: never;
+        /**
+         * Read the session (post)
+         * @description The same answer for a caller that would rather not put anything in a URL. Identical
+         *     in every respect; the library accepts both verbs.
+         */
+        post: operations["getSessionPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign out
+         * @description End the session and clear its cookies. **It deletes the `session` row**
+         *     ([#703](https://github.com/NobuData/ouroboros/issues/703)), so revocation is
+         *     immediate rather than an expiry a copied cookie can outlive.
+         *
+         *     `POST /api/v1/auth/logout` is this service's versioned alias and delegates here; the
+         *     two are interchangeable, and which one a client calls is decided by which client it
+         *     is calling through.
+         */
+        post: operations["authSignOut"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/ok": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The handler answering for itself
+         * @description `{"ok": true}` — no database, no session, no configuration read.
+         *
+         *     **It is not a health probe.** It says the BetterAuth handler is mounted and nothing
+         *     else: not that the database is reachable, not that the engine is. `/health/ready` is
+         *     the readiness answer and this is deliberately not a second one.
+         */
+        get: operations["authOk"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a failed flow lands
+         * @description Where the library redirects a browser whose sign-in failed, with the reason in the
+         *     query string. It answers HTML for a person to read rather than JSON for a client to
+         *     parse, because whoever arrives here arrived by navigation.
+         */
+        get: operations["authError"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspaces you belong to
+         * @description Every organization the caller is a member of — mockup 01 Step 2's list, and
+         *     mockup 17's. `metadata.personal` is what renders the `personal` pill
+         *     ([#704](https://github.com/NobuData/ouroboros/issues/704)).
+         *
+         *     It answers **from the session**, so there is no id to pass and no way to ask about
+         *     somebody else's memberships.
+         *
+         *     **It carries no role.** The plugin reads the caller's `member` rows and returns the
+         *     organizations they point at, discarding the role on the way — so *what may I do
+         *     here* is `get-active-member-role`, a separate call because it is a separate
+         *     question.
+         */
+        get: operations["listOrganizations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a workspace
+         * @description The caller becomes its `owner` — the one role nobody else can grant — and it becomes
+         *     the session's active organization unless `keepCurrentActiveOrganization` says
+         *     otherwise.
+         *
+         *     **A `personal` flag in `metadata` is stripped before the row is written.** The pill
+         *     it would render means *this workspace is yours alone*, and a shared workspace wearing
+         *     it would be a label that lies on the one screen whose job is to say where somebody's
+         *     work is going. A personal organization is made by first sign-in and by nothing else —
+         *     see `stripPersonalFlag` in `src/auth/organization.plugin.ts`.
+         */
+        post: operations["createOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/set-active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Choose where the loop runs
+         * @description Mockup 01 Step 2's **Enter mission control →**. It **writes
+         *     `session.activeOrganizationId`**, which is what makes the tenant server state rather
+         *     than a header a client asserts (decision A5), and
+         *     [#713](https://github.com/NobuData/ouroboros/issues/713) is what teaches this
+         *     service's own middleware to read it.
+         *
+         *     Name the organization by id or by slug. `null` unsets the pointer, which is the
+         *     state somebody who has signed in and chosen nothing yet is in.
+         */
+        post: operations["setActiveOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/get-full-organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One workspace, with its members and invitations
+         * @description Mockup 17's members & roles table. Defaults to the session's active organization
+         *     when neither query parameter is given, and answers `null` when there is no active
+         *     one to default to.
+         */
+        get: operations["getFullOrganization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/get-active-member-role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What you may do here
+         * @description `{"role": "owner"}` for the session's active organization, or for whichever
+         *     `organizationId` names, provided the caller belongs to it.
+         *
+         *     **The third part of the session question**, and the reason `GET /api/v1/auth/me` was
+         *     deleted rather than reimplemented
+         *     ([#711](https://github.com/NobuData/ouroboros/issues/711)): who you are is
+         *     `get-session`, where you belong is `organization/list`, and what you hold there is
+         *     this. Cheaper than `get-full-organization` for the purpose, and it discloses one role
+         *     rather than a whole membership list.
+         */
+        get: operations["getActiveMemberRole"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/invite-member": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite somebody
+         * @description Writes an `invitation` row at the role given, and nothing else in MVP: **no email is
+         *     sent**. [#724](https://github.com/NobuData/ouroboros/issues/724) is the delivery, and
+         *     `expiresAt` is already on the row waiting for it
+         *     ([#707](https://github.com/NobuData/ouroboros/issues/707)).
+         *
+         *     Requires the `invitation: create` permission, which `owner` and `admin` hold and
+         *     `member` and `viewer` do not — see `src/auth/organization.roles.ts`.
+         */
+        post: operations["inviteOrganizationMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/organization/update-member-role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change what somebody may do
+         * @description Requires `member: update`, which `owner` and `admin` hold; `member` and `viewer` do
+         *     not, and `viewer` holds none of the four resources at all. This is the route
+         *     [#715](https://github.com/NobuData/ouroboros/issues/715) verifies a member-level
+         *     caller is refused on.
+         */
+        post: operations["updateMemberRole"];
         delete?: never;
         options?: never;
         head?: never;
@@ -559,37 +892,64 @@ export interface components {
             };
         };
         /**
-         * Session
-         * @description Who is signed in, and everything the application shell needs before it can render:
-         *     the person, the workspaces they may switch between, and — only when there are none —
-         *     the workspace their email domain points at.
+         * SignInSocialRequest
+         * @description Which provider to sign in with, and where to come back to.
          */
-        Session: {
-            user: components["schemas"]["SessionUser"];
+        SignInSocialRequest: {
             /**
-             * @description Every tenant this person belongs to, by the tenant's name and then its id.
-             *     Empty for somebody who has signed in and been invited nowhere.
+             * @description The provider's id. `github` is the only one configured — see
+             *     `src/auth/github.provider.ts`.
+             * @example github
              */
-            memberships: components["schemas"]["Membership"][];
+            provider: string;
             /**
-             * @description A workspace worth asking to join, or `null`.
-             *
-             *     Non-null only when `memberships` is empty *and* the domain of this person's
-             *     address is one some tenant has registered. It grants nothing: matching a domain
-             *     is not membership, and the tenant is named so a first-run screen can say "your
-             *     organisation is already here, ask an owner to add you" rather than dropping a
-             *     new signee into an empty product.
+             * @description Where to send the browser once the handshake completes.
+             * @example http://localhost:3000/login
              */
-            tenantSuggestion: components["schemas"]["TenantSuggestion"] | null;
+            callbackURL?: string;
+            /** @description Where to send it when the handshake fails, instead of `/api/auth/error`. */
+            errorCallbackURL?: string;
+            /**
+             * @description Answer with the URL only, setting no `Location` header. `ouroboros-ui` follows
+             *     the URL itself, which is what makes the sign-in button a script's decision
+             *     rather than a navigation the service forces.
+             */
+            disableRedirect?: boolean;
+        } & {
+            [key: string]: unknown;
         };
         /**
-         * SessionUser
-         * @description The signed-in person. Global rather than tenant-scoped: one human is one row however
-         *     many workspaces they belong to.
+         * SignInSocialResponse
+         * @description Where to send the browser to authorize.
          */
-        SessionUser: {
+        SignInSocialResponse: {
             /**
-             * Format: uuid
+             * @description The provider's authorization URL, carrying the `state` this service issued.
+             * @example https://github.com/login/oauth/authorize?client_id=…&state=…
+             */
+            url?: string;
+            /**
+             * @description Whether a `Location` header was set beside the body.
+             * @example true
+             */
+            redirect: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AuthUser
+         * @description The signed-in person, as BetterAuth holds them — the `"user"` table
+         *     ([#706](https://github.com/NobuData/ouroboros/issues/706)).
+         *
+         *     One human is one row however many organizations they belong to. `name` and `image`
+         *     are the library's field names; this API's own resources call the same two things
+         *     `displayName` and `avatarUrl`.
+         */
+        AuthUser: {
+            /**
+             * @description Stable for the person's whole life. A uuid rendered as text for everybody who
+             *     came across in V004's back-fill, and the library's own id for anybody who signed
+             *     in after it.
              * @example 5eed0003-0000-4000-8000-000000000001
              */
             id: string;
@@ -602,16 +962,18 @@ export interface components {
              */
             email: string;
             /**
-             * @description Their name on GitHub, or their login when they have set none. Refreshed on every
-             *     sign-in.
+             * @description Whether *this service* has verified the address. Not what authorises account
+             *     linking: that needs the **provider** to call it verified, which is the stricter
+             *     of the two — see `ACCOUNT_LINKING` in `src/auth/github.provider.ts`.
+             */
+            emailVerified: boolean;
+            /**
+             * @description Their name on GitHub, or their login when they have set none.
              * @example Ken Suenobu
              */
-            displayName: string;
-            /**
-             * @description The avatar GitHub hosts, or `null` when none is known — which is what makes the
-             *     UI draw a monogram instead.
-             */
-            avatarUrl: string | null;
+            name: string;
+            /** @description The avatar the provider hosts, or `null` — which is what makes the UI draw a monogram. */
+            image?: string | null;
             /**
              * Format: date-time
              * @example 2026-08-11T10:20:23.114Z
@@ -622,64 +984,320 @@ export interface components {
              * @example 2026-08-11T10:20:23.114Z
              */
             updatedAt: string;
+        } & {
+            [key: string]: unknown;
         };
         /**
-         * Membership
-         * @description One workspace the signed-in person belongs to, and the role they hold there.
-         *     Flattened rather than nested, because it is one row of a workspace switcher.
+         * AuthSession
+         * @description The session row itself. **A row, not a claim in a cookie** — which is what makes
+         *     sign-out immediate and a deleted account's outstanding session stop working at once
+         *     ([#703](https://github.com/NobuData/ouroboros/issues/703)).
          */
-        Membership: {
+        AuthSession: {
+            id: string;
+            /** @description The person this session belongs to. */
+            userId: string;
             /**
-             * Format: uuid
+             * @description The value the session cookie carries. Published because the shape has it, not
+             *     because a client should read it: the cookie is `HttpOnly` and nothing in a
+             *     browser can.
+             */
+            token: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * @description **The tenant pointer** — which organization this session is acting in, or `null`
+             *     for somebody who has signed in and chosen nothing yet. Written by
+             *     `POST /api/auth/organization/set-active` and by nothing a client can assert
+             *     (decision A5).
+             */
+            activeOrganizationId?: string | null;
+            ipAddress?: string | null;
+            userAgent?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AuthSessionEnvelope
+         * @description What `get-session` answers when there is a session to answer with.
+         */
+        AuthSessionEnvelope: {
+            session: components["schemas"]["AuthSession"];
+            user: components["schemas"]["AuthUser"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AuthSessionOrNull
+         * @description The session, or `null` for nobody.
+         *
+         *     `null` rather than a `401`, and that is the property a login screen is built on: it
+         *     has to be able to ask *is anybody signed in* and get an answer rather than a
+         *     redirect.
+         */
+        AuthSessionOrNull: components["schemas"]["AuthSessionEnvelope"] | null;
+        /**
+         * SignOutResponse
+         * @description `{"success": true}`, whether or not there was a session to end — the removal is
+         *     idempotent, because requiring a live session to clear an expired cookie would mean
+         *     the cookie could never be cleared.
+         */
+        SignOutResponse: {
+            /** @example true */
+            success: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AuthOk
+         * @description The BetterAuth handler answering for itself, and for nothing else.
+         */
+        AuthOk: {
+            /** @example true */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AuthError
+         * @description **BetterAuth's error shape, which is not this API's envelope.** The `/api/v1` routes
+         *     answer `{code, message, details}` from one filter; these routes are the library's
+         *     and it composes its own failures, so a client handling both families handles two
+         *     error shapes. That is a real cost of the two-client rule, and stating it is cheaper
+         *     than a client discovering it.
+         */
+        AuthError: {
+            /**
+             * @description Written for a person.
+             * @example You are not a member of this organization
+             */
+            message?: string;
+            /**
+             * @description The library's stable code, screaming case.
+             * @example YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION
+             */
+            code?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * MemberRole
+         * @description What somebody may do in an organization. Three are the plugin's; `viewer` is this
+         *     service's, added as a custom access-control role so the vocabulary
+         *     `V002__users_membership.sql` had been storing since
+         *     [#21](https://github.com/NobuData/ouroboros/issues/21) survived the move
+         *     (`src/auth/organization.roles.ts`).
+         * @example owner
+         * @enum {string}
+         */
+        MemberRole: "owner" | "admin" | "member" | "viewer";
+        /**
+         * MemberRoleResponse
+         * @description The role the caller holds in one organization.
+         */
+        MemberRoleResponse: {
+            role: components["schemas"]["MemberRole"];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * Organization
+         * @description A workspace — the tenancy backbone since
+         *     [#704](https://github.com/NobuData/ouroboros/issues/704). What `V001__tenants.sql`
+         *     called a `tenant`, holding the same ids: `V006__tenancy_extensions.sql` moved the
+         *     rows across without remapping them ([#708](https://github.com/NobuData/ouroboros/issues/708)).
+         */
+        Organization: {
+            /**
+             * @description Stable for the organization's whole life. The slug is not; this is what to store.
              * @example 9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10
              */
-            tenantId: string;
-            /** @example acme */
+            id: string;
+            /**
+             * @description What a person calls it.
+             * @example Acme, Inc.
+             */
+            name: string;
+            /**
+             * @description The URL- and CLI-safe handle, unique across the installation.
+             * @example acme
+             */
             slug: string;
-            /** @example Acme, Inc. */
-            displayName: string;
+            logo?: string | null;
             /**
-             * @description The tenant's lifecycle, so a switcher can render a suspended one as such.
-             * @example active
-             * @enum {string}
+             * @description `{"personal": true}` is the one key this installation writes, and it is what
+             *     renders mockup 01 Step 2's `personal` pill. **A client cannot set it**: it is
+             *     stripped from every creation request, so the pill can only ever be telling the
+             *     truth.
              */
-            status: "active" | "suspended" | "deleted";
-            /**
-             * @description What this person may do in this tenant.
-             * @example owner
-             * @enum {string}
-             */
-            role: "owner" | "admin" | "member" | "viewer";
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OrganizationMember
+         * @description One person's membership of one organization — the `(organization, person)` pair, and
+         *     the role they hold in it.
+         */
+        OrganizationMember: {
+            id: string;
+            organizationId: string;
+            userId: string;
+            role: components["schemas"]["MemberRole"];
             /**
              * Format: date-time
-             * @description When the invitation was issued; also when the membership came into being.
-             * @example 2026-08-11T10:20:23.114Z
+             * @description When the membership came into being. The plugin keeps one timestamp where
+             *     `tenant_members` kept two, so *invited* and *joined* are no longer separable —
+             *     an invitation lives on the `invitation` row until it is accepted, and the member
+             *     row is written at acceptance.
              */
-            invitedAt: string;
-            /**
-             * @description When it was accepted, or `null` while the invitation is outstanding. Null is
-             *     preserved rather than defaulted: "not joined yet" and "joined at the epoch" are
-             *     different facts.
-             */
-            joinedAt: string | null;
+            createdAt: string;
+            /** @description The person, when the caller asked for a listing that joins them in. */
+            user?: components["schemas"]["AuthUser"] | null;
+        } & {
+            [key: string]: unknown;
         };
         /**
-         * TenantSuggestion
-         * @description A tenant whose registered email domain matches the signed-in person's address.
-         *     Deliberately thin — an id, a handle and a name — because it is shown to somebody who
-         *     is *not* a member, so the tenant's lifecycle and timestamps are none of their
-         *     business.
+         * Invitation
+         * @description Somebody asked to join, at a role, before they are a member.
+         *
+         *     **No email is sent in MVP** — the row is the whole of the operation, and
+         *     [#724](https://github.com/NobuData/ouroboros/issues/724) is the delivery. `expiresAt`
+         *     is already here waiting for it.
          */
-        TenantSuggestion: {
+        Invitation: {
+            id: string;
+            organizationId: string;
             /**
-             * Format: uuid
-             * @example 9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10
+             * Format: email
+             * @description Who was invited. They need not have an account yet.
              */
-            tenantId: string;
-            /** @example acme */
+            email: string;
+            role: components["schemas"]["MemberRole"];
+            /**
+             * @example pending
+             * @enum {string}
+             */
+            status: "pending" | "accepted" | "rejected" | "canceled";
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Who issued it. */
+            inviterId: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * FullOrganization
+         * @description One organization with its people — mockup 17's members & roles table in a single
+         *     answer.
+         */
+        FullOrganization: {
+            id: string;
+            name: string;
             slug: string;
+            logo?: string | null;
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+            members?: components["schemas"]["OrganizationMember"][];
+            /** @description The outstanding ones. */
+            invitations?: components["schemas"]["Invitation"][];
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * FullOrganizationOrNull
+         * @description The organization, or `null` — which is what a session with no active organization
+         *     gets, rather than an error. Choosing nothing yet is a state the login screen exists
+         *     to resolve, not a failure.
+         */
+        FullOrganizationOrNull: components["schemas"]["FullOrganization"] | null;
+        /**
+         * CreatedOrganization
+         * @description The new organization, with the caller's own membership — the `owner` row created in
+         *     the same operation, so nothing has to be read back to find out what they hold.
+         */
+        CreatedOrganization: components["schemas"]["Organization"] & {
+            members?: components["schemas"]["OrganizationMember"][];
+        };
+        /**
+         * CreateOrganizationRequest
+         * @description A workspace to create. The caller becomes its `owner`.
+         */
+        CreateOrganizationRequest: {
             /** @example Acme, Inc. */
-            displayName: string;
+            name: string;
+            /**
+             * @description Unique across the installation; a taken one is a `400`.
+             * @example acme
+             */
+            slug: string;
+            logo?: string;
+            /**
+             * @description **`personal` is stripped from whatever is sent here.** See the operation's own
+             *     description for why the one flag a client may not set is the one that renders a
+             *     pill.
+             */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Create it without switching into it. Absent means the new organization becomes
+             *     the session's active one, which is what somebody creating their first workspace
+             *     wants.
+             */
+            keepCurrentActiveOrganization?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * SetActiveOrganizationRequest
+         * @description Which organization this session acts in. Give an id or a slug; give `null` to unset
+         *     the pointer.
+         */
+        SetActiveOrganizationRequest: {
+            organizationId?: string | null;
+            organizationSlug?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * OrgInviteMemberRequest
+         * @description Somebody to invite, and what they will hold when they accept.
+         */
+        OrgInviteMemberRequest: {
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["MemberRole"];
+            /** @description Which organization. Defaults to the session's active one. */
+            organizationId?: string;
+            /** @description Re-issue an outstanding invitation rather than refusing a duplicate. */
+            resend?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * UpdateMemberRoleRequest
+         * @description A membership, and the role it should now hold.
+         */
+        UpdateMemberRoleRequest: {
+            /** @description The membership row's id — not the person's. */
+            memberId: string;
+            role: components["schemas"]["MemberRole"];
+            /** @description Which organization. Defaults to the session's active one. */
+            organizationId?: string;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * Tenant
@@ -1274,6 +1892,14 @@ export interface components {
          */
         RepoName: string;
         /**
+         * @description The provider's name, as BetterAuth knows it. `github` is the only one configured, so
+         *     the callback github.com is registered against is `/api/auth/callback/github` — a
+         *     string three places have to agree on, and only one of them is code
+         *     (`GITHUB_CALLBACK_PATH` in `src/auth/auth.routes.ts`).
+         * @example github
+         */
+        AuthProviderId: string;
+        /**
          * @description The workspace this request is operating in — its slug or its uuid.
          *
          *     On the operations below it is **optional and redundant**: they already name a
@@ -1335,7 +1961,114 @@ export interface operations {
             };
         };
     };
-    readSession: {
+    signInSocial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignInSocialRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The authorization URL to send the browser to. `redirect` is `true` unless the
+             *     caller asked for none, in which case a `Location` header is also set.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignInSocialResponse"];
+                };
+            };
+            /**
+             * @description The provider is unknown or not configured. BetterAuth's error shape, not this
+             *     API's envelope — the library answers its own routes.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    signInCallback: {
+        parameters: {
+            query?: {
+                /** @description The provider's authorization code. */
+                code?: string;
+                /** @description The value issued when the sign-in began, echoed back for checking. */
+                state?: string;
+            };
+            header?: never;
+            path: {
+                /**
+                 * @description The provider's name, as BetterAuth knows it. `github` is the only one configured, so
+                 *     the callback github.com is registered against is `/api/auth/callback/github` — a
+                 *     string three places have to agree on, and only one of them is code
+                 *     (`GITHUB_CALLBACK_PATH` in `src/auth/auth.routes.ts`).
+                 * @example github
+                 */
+                id: components["parameters"]["AuthProviderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Signed in, and back to the application. `Set-Cookie` carries the session token
+             *     and its cache.
+             */
+            302: {
+                headers: {
+                    /** @description Where the browser is sent next — the application, or `/api/auth/error`. */
+                    Location?: string;
+                    /** @description `better-auth.session_token` and `better-auth.session_data`. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    signInCallbackFormPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The provider's name, as BetterAuth knows it. `github` is the only one configured, so
+                 *     the callback github.com is registered against is `/api/auth/callback/github` — a
+                 *     string three places have to agree on, and only one of them is code
+                 *     (`GITHUB_CALLBACK_PATH` in `src/auth/auth.routes.ts`).
+                 * @example github
+                 */
+                id: components["parameters"]["AuthProviderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description As the `GET` above. */
+            302: {
+                headers: {
+                    Location?: string;
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -1344,7 +2077,69 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The session. */
+            /** @description The session and its user, or `null` when the request carries neither. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionOrNull"];
+                };
+            };
+        };
+    };
+    getSessionPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description As the `GET` above. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSessionOrNull"];
+                };
+            };
+        };
+    };
+    authSignOut: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Signed out. The cookies are emptied with `Max-Age=0`. */
+            200: {
+                headers: {
+                    /** @description `better-auth.session_token` and `better-auth.session_data`, emptied. */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignOutResponse"];
+                };
+            };
+        };
+    };
+    authOk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The handler is mounted. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -1352,59 +2147,328 @@ export interface operations {
                 content: {
                     /**
                      * @example {
-                     *       "user": {
-                     *         "id": "5eed0003-0000-4000-8000-000000000001",
-                     *         "email": "ken@acme-robotics.dev",
-                     *         "displayName": "Ken Suenobu",
-                     *         "avatarUrl": null,
-                     *         "createdAt": "2026-08-11T10:20:23.114Z",
-                     *         "updatedAt": "2026-08-11T10:20:23.114Z"
-                     *       },
-                     *       "memberships": [
-                     *         {
-                     *           "tenantId": "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
-                     *           "slug": "acme",
-                     *           "displayName": "Acme, Inc.",
-                     *           "status": "active",
-                     *           "role": "owner",
-                     *           "invitedAt": "2026-08-11T10:20:23.114Z",
-                     *           "joinedAt": "2026-08-11T10:20:23.114Z"
-                     *         }
-                     *       ],
-                     *       "tenantSuggestion": null
+                     *       "ok": true
                      *     }
                      */
-                    "application/json": components["schemas"]["Session"];
+                    "application/json": components["schemas"]["AuthOk"];
                 };
             };
-            /**
-             * @description `unauthenticated` — this request carries no session, or one this service will
-             *     not honour. Sign in through `/api/auth/sign-in/social`.
-             *
-             *     Every way a session can fail is this one answer: absent, expired, signed with a
-             *     rotated key, forged, or naming a person who has since been deleted. A client
-             *     cannot act differently on any of them, and distinguishing them would tell
-             *     whoever is probing which part of their forgery was right.
-             */
+        };
+    };
+    authError: {
+        parameters: {
+            query?: {
+                /** @description The reason the flow failed, as the library names it. */
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page naming the failure. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    listOrganizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's organizations. Empty for somebody invited nowhere yet. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"][];
+                };
+            };
+            /** @description No session. BetterAuth's error shape, not this API's envelope. */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /**
-             * @description `internal_error` — the service itself failed. The message is a constant and
-             *     `details` is empty, deliberately: the real diagnosis names a query, a host or a
-             *     role, and it goes to the service log where only an operator reads it.
-             */
-            500: {
+        };
+    };
+    createOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description The organization, with the caller's own membership row. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Error"];
+                    "application/json": components["schemas"]["CreatedOrganization"];
+                };
+            };
+            /** @description The slug is already taken, or the body did not validate. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description No session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    setActiveOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetActiveOrganizationRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The organization now active, with its members and pending invitations — or
+             *     `null` when the pointer was unset.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FullOrganizationOrNull"];
+                };
+            };
+            /** @description No such organization. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /**
+             * @description The caller is not a member of it. The pointer is cleared on the way out, so a
+             *     session cannot be left pointing somewhere it may not go.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    getFullOrganization: {
+        parameters: {
+            query?: {
+                /** @description Which organization. Defaults to the session's active one. */
+                organizationId?: string;
+                /** @description The same, by slug. Takes precedence over `organizationId`. */
+                organizationSlug?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization, or `null` when there is no active one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FullOrganizationOrNull"];
+                };
+            };
+            /** @description No such organization. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description The caller is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    getActiveMemberRole: {
+        parameters: {
+            query?: {
+                /** @description Which organization. Defaults to the session's active one. */
+                organizationId?: string;
+                /** @description The same, by slug. */
+                organizationSlug?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The role the caller holds there. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberRoleResponse"];
+                };
+            };
+            /** @description No such organization, or no active one to default to. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description The caller is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    inviteOrganizationMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrgInviteMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation, pending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invitation"];
+                };
+            };
+            /** @description The address is already a member, or the body did not validate. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /**
+             * @description The caller's role does not carry `invitation: create` — `member` and `viewer`
+             *     do not.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    updateMemberRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMemberRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description The membership, as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMember"];
+                };
+            };
+            /** @description No such member, or the body did not validate. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /**
+             * @description The caller's role does not carry `member: update` — `member` and `viewer` do
+             *     not.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
                 };
             };
         };

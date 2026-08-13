@@ -14,8 +14,12 @@ import "server-only";
  * the page that forgot the check is also the page with no data to render.
  *
  * {@link currentAccess} is wrapped in React's `cache`, so the layout, the page and a
- * Server Action in the same request share one `GET /api/v1/auth/me` between them. That is
- * what makes calling it freely the right thing to do rather than a cost to budget.
+ * Server Action in the same request share one session read between them. That is what makes
+ * calling it freely the right thing to do rather than a cost to budget — and it matters more
+ * since [#711](https://github.com/NobuData/ouroboros/issues/711), because a read is now
+ * three calls against the auth family rather than one against a route of this service's own.
+ * See `app/api/session.ts` for which three, and for the single call
+ * [#714](https://github.com/NobuData/ouroboros/issues/714) collapses them into.
  *
  * Two rules the rest of the application inherits from here:
  *
@@ -34,9 +38,8 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 
-import { isApiError } from "@/app/api/errors";
 import { type Membership, activeMembership } from "@/app/api/membership";
-import { LOGIN_PATH, activeTenant, anonymousApi } from "@/app/api/server";
+import { LOGIN_PATH, activeTenant } from "@/app/api/server";
 import { type Session, session as sessionResource } from "@/app/api/session";
 
 /** What a request carries: a session or nothing, and a chosen workspace or nothing. */
@@ -65,14 +68,17 @@ export interface Workspace {
  * Memoised for the length of one request by React's `cache`, so every caller in a render
  * pass — a layout, a page, a Server Action — shares one call to the service.
  *
- * A `401` is *the answer* here rather than a failure, which is why this reaches for
- * `anonymousApi()`: the login screen is one of the callers, and {@link api}'s own `401`
- * handling would send it to itself. Every other failure is left to reject — a `500` from
- * the service is not a signed-out visitor, and rendering a sign-in screen for one would
- * hide an outage behind a login form.
+ * **Nobody signed in is an answer here rather than a failure**, and since
+ * [#711](https://github.com/NobuData/ouroboros/issues/711) it is the service's answer rather
+ * than this layer's translation of one: `GET /api/auth/get-session` replies `null` for a
+ * request carrying no session, so there is no `401` to read as *signed out* and no need for
+ * the `anonymousApi()` this used to reach for — the client whose `401` handling would have
+ * sent the login screen to itself. Every failure is now left to reject, which is the shape
+ * that was always wanted: a `500` from the service is not a signed-out visitor, and
+ * rendering a sign-in screen for one would hide an outage behind a login form.
  *
  * @returns The session and the active workspace, either of which may be absent.
- * @throws {ApiError} Any failure that is not a `401`.
+ * @throws {AuthError} Any refusal at all. See above for why none of them means *signed out*.
  */
 export const currentAccess = cache(async (): Promise<Access> => {
   // Prerendering stops here. Every screen that goes through this gate is per-request by
@@ -83,7 +89,7 @@ export const currentAccess = cache(async (): Promise<Access> => {
   // requirement the layer's own rather than an accident of statement order.
   await connection();
 
-  const current = await readSession();
+  const current = await sessionResource.read();
   if (current === null) return { session: null, membership: undefined };
 
   return {
@@ -113,22 +119,4 @@ export async function requireWorkspace(): Promise<Workspace> {
   }
 
   return { session, membership };
-}
-
-/**
- * Read the session, reading a `401` as *nobody is signed in*.
- *
- * Split out so the `try` wraps exactly one call and one status: a `catch` around the
- * membership matching above could swallow a bug in it as a signed-out visitor.
- *
- * @returns The session, or `null` when the request carries none the service will honour.
- * @throws {ApiError} Any failure that is not a `401`.
- */
-async function readSession(): Promise<Session | null> {
-  try {
-    return await sessionResource.read(anonymousApi());
-  } catch (error) {
-    if (isApiError(error) && error.isUnauthenticated) return null;
-    throw error;
-  }
 }

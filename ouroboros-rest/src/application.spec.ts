@@ -208,6 +208,14 @@ function routesTakingBodies(): [string, string][] {
   const routes: [string, string][] = [];
 
   for (const [path, item] of Object.entries(document().paths)) {
+    // The auth family is the one subtree the parsers are deliberately *not* added for —
+    // BetterAuth signs what it reads, so it reads the stream. Its bodies are published
+    // since [#711](https://github.com/NobuData/ouroboros/issues/711), which is what would
+    // otherwise sweep them in here; that they arrive unparsed is asserted directly, in
+    // *BetterAuth's route surface* above, and asserting the opposite of it here would be
+    // a suite arguing with itself.
+    if (path.startsWith(`${AUTH_BASE_PATH}/`)) continue;
+
     for (const [method, operation] of Object.entries(item)) {
       if (typeof operation === "object" && operation !== null && "requestBody" in operation) {
         routes.push([method, path.replace(/\{[^}]+\}/g, PATH_PARAMETER)]);
