@@ -75,6 +75,29 @@ describe("the dot", () => {
     expect(container.querySelector(".ou-chip__dot")).toHaveClass("ou-chip__dot--ring");
   });
 
+  it("carries the mockups' halo for a state that is happening right now", () => {
+    // The *live* pill over the active-loops table (#82), and at most one per view.
+    const { container } = render(
+      <Chip tone="accent" dot="pulse">
+        live
+      </Chip>,
+    );
+
+    expect(container.querySelector(".ou-chip__dot")).toHaveClass("ou-chip__dot--pulse");
+  });
+
+  it("says in words what the halo says in movement, so stillness loses nothing", () => {
+    // The animation is entirely inside a reduced-motion guard, so a reader who asked for
+    // less motion sees a chip that stands still — and it has to mean the same thing.
+    render(
+      <Chip tone="accent" dot="pulse">
+        live
+      </Chip>,
+    );
+
+    expect(screen.getByText("live")).toBeInTheDocument();
+  });
+
   it("is hidden from the accessibility tree — it repeats what the label says", () => {
     const { container } = render(
       <Chip tone="ok" dot="filled">

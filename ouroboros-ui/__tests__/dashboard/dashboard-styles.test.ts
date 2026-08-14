@@ -78,6 +78,25 @@ describe("the stat row's tones", () => {
   });
 });
 
+describe("the active loops table", () => {
+  it("fixes the stage column's width in rem, so the meter keeps its length at every scale", () => {
+    // The mockup's `<th style="width:180px">`. A px width is the one length on this page
+    // that would refuse to move with the reader's font-size preference — and the cell holds
+    // a caption over a bar, both of which grow with the type.
+    expect(CODE).toMatch(/\.dash-runs__stage\s*\{[^}]*width:\s*[\d.]+rem/);
+  });
+
+  it("holds a measure on the issue title rather than letting one row size the table", () => {
+    // The table scrolls inside its own box, so a long title lengthens the row rather than
+    // the page — but an unbounded one would push the five columns after it off the card.
+    expect(CODE).toMatch(/\.dash-run__title\s*\{[^}]*max-width:/);
+  });
+
+  it("stacks the stage caption over its bar", () => {
+    expect(CODE).toMatch(/\.dash-run__stage\s*\{[^}]*flex-direction:\s*column/);
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is

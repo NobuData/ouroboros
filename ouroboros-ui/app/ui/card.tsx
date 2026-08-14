@@ -113,17 +113,28 @@ export function Card({
 }
 
 /**
- * A card's head: its title, and whatever sits at the trailing edge beside it.
+ * A card's head: its title, whatever belongs *to* the title, and whatever sits at the
+ * trailing edge.
  *
- * The `trailing` slot is a slot rather than a second child so that the spacer between the
- * two is the component's business and not every caller's — the mockups put a status chip, a
- * count or a link there, and each one of them would otherwise re-invent the same flexible
- * gap.
+ * The two slots are slots rather than children so that the spacer between them is the
+ * component's business and not every caller's — the mockups put a status chip, a count or a
+ * link there, and each one of them would otherwise re-invent the same flexible gap.
  *
- * @param props.title What the card is called.
+ * **Which slot a thing goes in is a question about what it says.** The mockups' `.card-head`
+ * is *title · adornment · spacer · link*: a marker that reports on the card's own subject —
+ * the *live* pill over the active loops — sits against the title, and a control that acts on
+ * the card is pushed to the far edge. Putting the marker in `trailing` would float it away
+ * from the thing it is about; putting it inside `title` would make it part of the card's
+ * accessible name, so a region called "Active loops" would answer to "Active loops live" and
+ * change its name whenever a run started.
+ *
+ * @param props.title What the card is called. It alone is the heading, and therefore the
+ *   card's name.
  * @param props.titleId The id the card's `aria-labelledby` points at, when it is a region.
  * @param props.as The heading level, as the page's outline requires. Defaults to `h2`.
- * @param props.trailing What sits at the trailing edge — a chip, a count, a link.
+ * @param props.beside A marker belonging to the title — a state chip, a count of what is in
+ *   the card. Rendered against the heading, outside it.
+ * @param props.trailing What sits at the trailing edge — a link, an action.
  * @param props.className Classes from the page.
  * @returns The head.
  */
@@ -131,12 +142,14 @@ export function CardHead({
   title,
   titleId,
   as: Heading = "h2",
+  beside,
   trailing,
   className,
 }: Readonly<{
   title: ReactNode;
   titleId?: string;
   as?: ElementType;
+  beside?: ReactNode;
   trailing?: ReactNode;
   className?: string;
 }>) {
@@ -145,6 +158,7 @@ export function CardHead({
       <Heading className="ou-card__title" id={titleId}>
         {title}
       </Heading>
+      {beside}
       {trailing !== undefined && (
         <>
           <span className="ou-card__spacer" />

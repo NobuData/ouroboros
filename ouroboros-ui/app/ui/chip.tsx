@@ -42,7 +42,13 @@ export type ChipDot =
   /** Filled — a state that was reported. */
   | "filled"
   /** A ring — a state nobody could report. */
-  | "ring";
+  | "ring"
+  /**
+   * Filled, with the mockups' halo — a state that is happening *right now*, and at most one
+   * per view. The movement is inside a reduced-motion guard and carries nothing the label
+   * does not already say, so the chip means the same thing standing still.
+   */
+  | "pulse";
 
 /** What a chip takes. */
 export interface ChipProps {
@@ -62,6 +68,13 @@ export interface ChipProps {
   /** A tooltip, where the label is an abbreviation of something longer. */
   readonly title?: string;
 }
+
+/** The modifier each dot shape adds, or nothing for the plain filled one. */
+const DOT_CLASS: Record<ChipDot, string> = {
+  filled: "",
+  ring: "ou-chip__dot--ring",
+  pulse: "ou-chip__dot--pulse",
+};
 
 /** The modifier each tone adds, or nothing for the neutral one. */
 const TONE_CLASS: Record<ChipTone, string> = {
@@ -87,10 +100,7 @@ export function Chip({ tone = "neutral", dot, mono, children, className, title }
       title={title}
     >
       {dot !== undefined && (
-        <span
-          className={cx("ou-chip__dot", dot === "ring" && "ou-chip__dot--ring")}
-          aria-hidden
-        />
+        <span className={cx("ou-chip__dot", DOT_CLASS[dot])} aria-hidden />
       )}
       {children}
     </span>

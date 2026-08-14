@@ -111,6 +111,57 @@ export function durationOfMinutes(minutes: number): string {
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
 
+/** Seconds in a minute, and minutes in an hour, so the arithmetic below reads as what it is. */
+const SECONDS_PER_MINUTE = 60;
+
+/** Seconds in an hour. */
+const SECONDS_PER_HOUR = SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
+
+/**
+ * Two digits, for a part that follows a larger one.
+ *
+ * @param value The part.
+ * @returns It, padded — `05`, not `5`.
+ */
+function padded(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/**
+ * A duration measured to the second — `12m 40s`, `38m 05s`, `2h 05m 09s`.
+ *
+ * This is the mockups' *Elapsed* and *Cycle*, and it differs from
+ * {@link durationOfMinutes} in the one way that matters: **it is drawn while it is moving.**
+ * That is what fixes both of its rules —
+ *
+ * - **Every part but the leading one is padded to two digits.** `38m 5s` and `38m 05s` are
+ *   the same duration and different widths, and a column of them that changed width every
+ *   ten seconds would twitch once a second in the reader's peripheral vision. The mockup
+ *   draws `38m 05s` for exactly this reason.
+ * - **No part is dropped, and there is always a seconds figure.** A run at two hours exactly
+ *   reads `2h 00m 00s` rather than `2h`: this is a clock, and a clock that hides the part
+ *   that is moving looks stopped. An estimate drops its zero parts because it is not moving,
+ *   which is why the two functions are two functions.
+ *
+ * There is no day unit, for {@link durationOfMinutes}'s reason: a run that has been going
+ * `26h 10m 03s` is a more useful sentence to whoever has to decide about it than `1d 2h`.
+ *
+ * @param seconds How many seconds. Rounded down to a whole one — a duration should not
+ *   report a second that has not finished — and a negative one is drawn as zero, which is
+ *   what a clock in front of a run's own start time means.
+ * @returns The duration.
+ */
+export function elapsedOfSeconds(seconds: number): string {
+  const total = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+  const hours = Math.floor(total / SECONDS_PER_HOUR);
+  const minutes = Math.floor((total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const rest = total % SECONDS_PER_MINUTE;
+
+  return hours === 0
+    ? `${minutes}m ${padded(rest)}s`
+    : `${hours}h ${padded(minutes)}m ${padded(rest)}s`;
+}
+
 /** Cents in a dollar. */
 const CENTS_PER_DOLLAR = 100;
 

@@ -28,6 +28,15 @@ import "server-only";
  * two round trips per render, and per poll, to draw nothing. Both operations are unchanged
  * and still read elsewhere (`app/shell/`); what went is this page's use of them.
  *
+ * ### The page is measured from one clock reading
+ *
+ * The dashboard draws durations that are still running — a run's *Elapsed*
+ * ([#82](https://github.com/NobuData/ouroboros/issues/82)) — and `now` is therefore an input
+ * to the render rather than something a component may go and look up. It is read here, once,
+ * beside the reads it belongs with: two cards reading their own clocks would be two cards
+ * able to disagree about what time it is, and a clock read inside a component is a clock no
+ * test can pin.
+ *
  * ### The reads are independent, and so are their failures
  *
  * All three go out together and each of the two that can refuse is wrapped by
@@ -74,6 +83,9 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
   return {
     workspace: access.membership,
     user: access.session.user,
+    // Taken after the reads rather than before them, so a slow round trip is not counted as
+    // part of a run's elapsed time. One reading for the whole page: see `DashboardReadings`.
+    readAt: Date.now(),
     aggregate,
     readiness,
     engine: engineStatus,

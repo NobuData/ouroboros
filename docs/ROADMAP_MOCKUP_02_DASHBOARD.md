@@ -1344,7 +1344,7 @@ themes hold.
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | I.1 | #80 | 🟢 Done | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
 | I.2 | #81 | 🟢 Done | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.3 | #82 | 🟡 Open | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
+| I.3 | #82 | 🟢 Done | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
 | I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
 | I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
@@ -1567,7 +1567,76 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.3 — ouroboros-ui: [I.3] Active loops card
 
-> **GitHub issue:** #82 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #82 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The centrepiece card draws the aggregate's `activeRuns`:
+> [`active-loops-card.tsx`](../ouroboros-ui/app/dashboard/active-loops-card.tsx) over the #46
+> Table, with every row's arithmetic in
+> [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) — `stageCaption`, `stagePercent`,
+> `activeLoops`, `moreActiveLoops` — so each of the AC's figures is a unit test on a function
+> rather than an assertion about rendered text. The card itself holds two mappings and no
+> arithmetic: a status to its pill hue (`coding → run/accent`, `building → warn`,
+> `review → ok`) and a status to its meter tone.
+>
+> **The meter is a new #46 primitive** ([`meter.tsx`](../ouroboros-ui/app/ui/meter.tsx)),
+> because the mockups draw one shape for a stage, a merge rate and an intervention budget, and
+> I.4 needs three more of them. The fill's width is the one thing on this page that arrives
+> inline, as a custom property the sheet reads (`--ou-meter-fill`) rather than as a `width`
+> declaration — so the stylesheet still owns the property and the call site contributes only
+> the datum. `dashboard-screen.test.tsx` now asserts *that and nothing else* inline, which is a
+> tighter rule than the "no `style=` at all" it replaced. Two smaller primitive additions came
+> with it: `CardHead`'s `beside` slot (the mockups' `.card-head` is *title · adornment ·
+> spacer · link*, and putting the *live* pill in the title would have made the region answer to
+> "Active loops live") and a per-`Column` class, which is how the stage column gets the
+> mockup's 180px without a page sheet reaching into `.ou-table`.
+>
+> **`stagePercent` rounds down, and that is the AC's `66% / 71% / 100%`.** Four steps into six
+> is 66.67%; a progress bar is a claim about work that has *finished*, so the only honest way
+> to round one is towards the work that certainly has — which also keeps `100%` reachable only
+> by a run that has actually reached its last step. The mockup hand-draws its third bar at 94%
+> for a run at 6/6; the issue's own criterion says 100%, and the arithmetic agrees with the
+> issue.
+>
+> **Elapsed ticks from the origin, not from the figure.** The obvious implementation — take the
+> server's `12m 40s` and add a second per tick — cannot satisfy this card's criterion, because
+> it drifts on every throttled frame and has no idea what the real elapsed time is.
+> [`elapsed.tsx`](../ouroboros-ui/app/dashboard/elapsed.tsx) holds the run's `startedAt` and
+> recomputes `now − startedAt` against a clock, so **a poll cannot move it** (the same run
+> polls back with the same immutable `startedAt`) and a backgrounded tab catches up rather than
+> falling behind. The one moment it could still go backwards is hydration, where two machines
+> answer *what time is it* — so the server's own reading is a floor. The clock behind it is
+> [`app/shell/clock.ts`](../ouroboros-ui/app/shell/clock.ts): a `useSyncExternalStore` singleton
+> quantised to whole seconds, **one interval for the page** rather than one per row, cleared
+> when the last row unmounts. `DashboardReadings` gained `readAt` for the same reason the
+> greeting reads a browser clock — *now* is an input to this render, taken once in
+> [`data.ts`](../ouroboros-ui/app/dashboard/data.ts) so no two cards can disagree about it, and
+> so a duration is something a test can pin.
+>
+> **One deviation from the issue body, and it is #80's deviation again.** The AC asks that rows
+> be keyboard navigable and *activate the run link on Enter*; there is no run-detail route to
+> activate. Mockup 10's console is not built, #49 (its placeholder) is post-MVP, and #49's own
+> first criterion is *no dead nav links* — the sidebar already answers this for nine other
+> destinations by labelling rather than linking. So the issue cell is labelled with a tooltip
+> naming what is missing, and *Open run console →* and *+N more running →* are inert buttons
+> with their reason as the tooltip, which keeps the explanation in the tab order where an
+> `href`-less link would take it out. Each becomes an `href` the day #49 lands; none of them
+> fakes an outcome meanwhile.
+>
+> The empty state is deliberately minimal — *Nothing is running right now*, distinguished from
+> *the loops could not be read*, which carries the service's reason — because designing every
+> card's empty, loading and failure states together is [#86](https://github.com/NobuData/ouroboros/issues/86)'s.
+>
+> The proving tests are
+> [`active-loops-card.test.tsx`](../ouroboros-ui/__tests__/dashboard/active-loops-card.test.tsx)
+> (the mockup row by row, the pill classes, the meter widths, the live pill's absence, the
+> *+N more* footer, and the four rows a broken payload could produce),
+> [`view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts) (the rounding, the clamps,
+> the order, the unreadable timestamp),
+> [`elapsed.test.tsx`](../ouroboros-ui/__tests__/dashboard/elapsed.test.tsx) (advances between
+> polls; does not move when a poll re-renders it; the server reading as a floor),
+> [`clock.test.tsx`](../ouroboros-ui/__tests__/shell/clock.test.tsx) (one interval for many
+> readers, cleared at the last, restartable) and
+> [`meter.test.tsx`](../ouroboros-ui/__tests__/ui/meter.test.tsx).
 
 - **Problem Statement:** The `c-8` active-loops table is the page's centerpiece —
   issue link, workflow tag, stage label + progress meter, model pill, mono elapsed,

@@ -169,9 +169,11 @@ describe("the page head's actions", () => {
   it("offers the mockup's two, and neither of them acts", () => {
     // Both destinations are screens nobody has built. A control that appeared to pull an
     // issue would be the one dishonest thing on a screen built to be honest.
-    render(<DashboardScreen readings={readings()} />);
+    const { container } = render(<DashboardScreen readings={readings()} />);
 
-    const actions = screen.getAllByRole("button");
+    const head = container.querySelector(".dash__actions");
+    const actions = within(head as HTMLElement).getAllByRole("button");
+
     expect(actions.map((action) => action.textContent)).toEqual([
       "Edit workflows",
       "⟳ Pull next issue",
@@ -181,7 +183,8 @@ describe("the page head's actions", () => {
 
   it("says why each cannot act, in a tooltip the keyboard can still reach", () => {
     // `aria-disabled` rather than `disabled`: a disabled button leaves the tab order and
-    // takes its own explanation with it.
+    // takes its own explanation with it. Every inert control on the page is held to it, the
+    // cards' as much as the head's.
     render(<DashboardScreen readings={readings()} />);
 
     for (const action of screen.getAllByRole("button")) {
@@ -366,17 +369,17 @@ describe("the system card", () => {
   it("distinguishes its states in shape as well as in hue", () => {
     // Colour alone would leave a reader who cannot separate two hues with three identical
     // pills. Each state carries its own class, and the dot changes with it.
-    const { container } = render(
-      <DashboardScreen readings={readings({ readiness: null })} />,
-    );
+    render(<DashboardScreen readings={readings({ readiness: null })} />);
 
-    expect(container.querySelectorAll(".ou-chip--err").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".ou-chip--warn").length).toBeGreaterThan(0);
-    expect(container.querySelectorAll(".ou-chip__dot").length).toBe(
-      container.querySelectorAll(".ou-chip").length,
+    const card = systemCard();
+
+    expect(card.querySelectorAll(".ou-chip--err").length).toBeGreaterThan(0);
+    expect(card.querySelectorAll(".ou-chip--warn").length).toBeGreaterThan(0);
+    expect(card.querySelectorAll(".ou-chip__dot").length).toBe(
+      card.querySelectorAll(".ou-chip").length,
     );
     // The unknown state is the one that differs in shape rather than only in hue.
-    expect(container.querySelectorAll(".ou-chip__dot--ring").length).toBeGreaterThan(0);
+    expect(card.querySelectorAll(".ou-chip__dot--ring").length).toBeGreaterThan(0);
   });
 
   it("pairs every pill with the dependency it belongs to", () => {
@@ -388,23 +391,46 @@ describe("the system card", () => {
   });
 });
 
-describe("the panels with no data source yet", () => {
-  it("draws the mockup's three loop panels as designed empty states", () => {
+describe("the active loops card, on the page", () => {
+  it("draws the aggregate's runs as the mockup's `c-8` table", () => {
+    // The card's own columns, treatments and states are
+    // `__tests__/dashboard/active-loops-card.test.tsx`'s. What is here is that the page
+    // hands it the aggregate it already fetched, in the place the grid keeps for it.
     render(<DashboardScreen readings={readings()} />);
 
-    for (const title of [
-      "Active loops",
-      "Recently closed by the loop",
-      "Up next in queue",
-    ]) {
-      expect(screen.getByRole("region", { name: title })).toBeInTheDocument();
-    }
+    const card = screen.getByRole("region", { name: "Active loops" });
+
+    expect(within(card).getAllByRole("row").slice(1)).toHaveLength(3);
+    expect(within(card).getByText("Fix flaky CAN-bus telemetry test")).toBeInTheDocument();
   });
 
-  it("says 'No loops yet' rather than leaving the card blank", () => {
+  it("is the page's one table, since the other two cards still have no rows", () => {
+    const { container } = render(<DashboardScreen readings={readings()} />);
+
+    expect(container.querySelectorAll("table")).toHaveLength(1);
+  });
+
+  it("degrades with the rest of the page when the aggregate could not be read", () => {
+    // One failed read is one degraded card — and this one is the same read as the stat row's,
+    // so they report the same reason rather than one of them reporting an empty workspace.
+    render(<DashboardScreen readings={readings({ aggregate: failed("Nope.") })} />);
+
+    const card = screen.getByRole("region", { name: "Active loops" });
+
+    expect(within(card).getByText("The loops could not be read")).toBeInTheDocument();
+    expect(within(card).queryByRole("table")).not.toBeInTheDocument();
+  });
+});
+
+describe("the panels with no card drawing them yet", () => {
+  it("draws the two the mockup still has ahead of it as designed empty states", () => {
+    // *Active loops* left this list with #82. The completions table (#84) and the queue
+    // (#85) are what is left, and the aggregate already carries the rows for both.
     render(<DashboardScreen readings={readings()} />);
 
-    expect(screen.getByText("No loops yet")).toBeInTheDocument();
+    for (const title of ["Recently closed by the loop", "Up next in queue"]) {
+      expect(screen.getByRole("region", { name: title })).toBeInTheDocument();
+    }
   });
 
   it("names what will fill each one and what has to land first", () => {
@@ -412,23 +438,24 @@ describe("the panels with no data source yet", () => {
     // never dead, and never a blank region.
     render(<DashboardScreen readings={readings()} />);
 
-    for (const title of [
-      "Active loops",
-      "Recently closed by the loop",
-      "Up next in queue",
-    ]) {
+    for (const title of ["Recently closed by the loop", "Up next in queue"]) {
       const card = screen.getByRole("region", { name: title });
       expect(within(card).getByText(/mockup|once the loop has run/)).toBeInTheDocument();
     }
   });
 
-  it("invents no run, no pull request and no queued issue", () => {
-    // The mockup fills these three cards with fifteen plausible rows. Copying them would
-    // make this screen a picture of a product rather than a view of one.
-    const { container } = render(<DashboardScreen readings={readings()} />);
+  it("invents no pull request and no queued issue", () => {
+    // The mockup fills these two cards with eleven plausible rows. Copying them would make
+    // this screen a picture of a product rather than a view of one — which is exactly why
+    // the third card *does* draw rows now: it has a source, and these two do not.
+    render(<DashboardScreen readings={readings()} />);
 
-    expect(container.querySelectorAll("table")).toHaveLength(0);
-    expect(container.textContent).not.toMatch(/claude-|PR\s*#|#4\d\d/);
+    for (const title of ["Recently closed by the loop", "Up next in queue"]) {
+      const card = screen.getByRole("region", { name: title });
+
+      expect(card.querySelectorAll("table")).toHaveLength(0);
+      expect(card.textContent).not.toMatch(/PR\s*#|#\d{3}/);
+    }
   });
 });
 
@@ -452,12 +479,21 @@ describe("the grid", () => {
     ]);
   });
 
-  it("styles itself through classes only — no inline style survives review", () => {
+  it("styles itself through classes only, except for the one length that is data", () => {
     // The mockup carries a dozen `style=` attributes. Every one of them is a colour or a
-    // length that belongs in the sheet, where the theme can reach it.
+    // length that belongs in the sheet, where the theme can reach it — and every one of them
+    // is gone.
+    //
+    // A meter's fill is the exception and it is not a style at all: how far through its
+    // workflow a run is cannot be known until a run says, so it arrives as a custom property
+    // the sheet reads (`app/ui/meter.tsx`). The case is written as *only that* rather than
+    // deleted, because the rule it protects — no colour, no size, no spacing inline — is
+    // what keeps the theme able to reach every surface on this page.
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    expect(container.querySelectorAll("[style]")).toHaveLength(0);
+    for (const styled of container.querySelectorAll("[style]")) {
+      expect(styled.getAttribute("style")).toMatch(/^--ou-meter-fill:\s*[\d.]+%;?$/);
+    }
   });
 
   it("gives every card a heading or a name, so the grid is navigable", () => {

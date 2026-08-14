@@ -120,6 +120,31 @@ describe("the columns", () => {
     expect(screen.getByText("acme/helios")).toHaveClass("ou-table__cell--mono");
   });
 
+  it("gives a page's own class to the heading and the cells alike", () => {
+    // The one thing a column description cannot derive is how wide the column should be, and
+    // the mockups fix that per table. A page that had no way to say it here would reach into
+    // `.ou-table` from its own sheet, which is the fork of the design system this primitive
+    // exists to prevent.
+    render(
+      <Table
+        caption="Runs"
+        columns={[
+          {
+            key: "repo",
+            header: "Repository",
+            className: "dash-runs__stage",
+            cell: (run: Run) => run.repo,
+          },
+        ]}
+        rows={RUNS}
+        rowKey={(run) => run.id}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader")).toHaveClass("dash-runs__stage");
+    expect(screen.getByText("acme/helios")).toHaveClass("dash-runs__stage");
+  });
+
   it("leaves an ordinary text column unclassed", () => {
     render(
       <Table

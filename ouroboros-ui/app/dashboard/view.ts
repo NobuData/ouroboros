@@ -14,7 +14,13 @@
  * could not be read is an em dash beside the reason, never a zero.
  */
 
-import type { Dashboard, DashboardActivity, DashboardStats } from "@/app/api/dashboard";
+import type {
+  Dashboard,
+  DashboardActivity,
+  DashboardStats,
+  RunStatus,
+  RunSummary,
+} from "@/app/api/dashboard";
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { Membership } from "@/app/api/membership";
@@ -50,6 +56,16 @@ export interface DashboardReadings {
   readonly workspace: Membership;
   /** The signed-in person, from the gate. Present by construction. */
   readonly user: SessionUser;
+  /**
+   * When the page was read, in milliseconds since the epoch.
+   *
+   * One reading for the whole render, taken beside the reads themselves
+   * (`app/dashboard/data.ts`), because two cards measuring *now* separately are two cards
+   * that can disagree about it — and because a clock read inside a component is a clock no
+   * test can pin. Today the active-loops table is its only reader; the completions card's
+   * cycle times ([#84](https://github.com/NobuData/ouroboros/issues/84)) are the next.
+   */
+  readonly readAt: number;
   /**
    * The dashboard aggregate ([#70](https://github.com/NobuData/ouroboros/issues/70)), or why
    * it could not be read — every number, list and switch mockup 02 draws, in one payload.
@@ -517,6 +533,173 @@ const FAILED_ROW: readonly (readonly [id: string, label: string])[] = [
  */
 function failedStat(id: string, label: string, reason: string): Stat {
   return { id, label, value: NO_VALUE, accent: false, delta: reason, tone: "failed" };
+}
+
+/* ------------------------------------------------------------------ active loops */
+
+/**
+ * One run in flight, as the *Active loops* table draws it.
+ *
+ * Every field is already the thing the cell renders — a caption rather than three numbers, a
+ * percentage rather than a division — so the component holds no arithmetic and every rule
+ * below is a unit test on a function. The two exceptions are `status`, which decides two
+ * different hues and so is mapped where the hues live
+ * (`app/dashboard/active-loops-card.tsx`), and the pair of clock readings, which is the one
+ * value on this page that keeps changing after the render.
+ */
+export interface ActiveLoop {
+  /** The run — the React key, and what the run console will be addressed by. */
+  readonly id: string;
+  /** The issue's number, drawn in mono. */
+  readonly issueNumber: number;
+  /** Its title, as it was when the run started. */
+  readonly issueTitle: string;
+  /** The workflow's label, as free text — opaque, so it is rendered rather than parsed. */
+  readonly workflowTag: string;
+  /**
+   * The model identifier as recorded — `claude-fable-5`, `ollama/qwen3-coder`. **Opaque**
+   * (decision F8): there is no model catalogue in this product yet, so nothing here splits
+   * it on a slash, shortens it or maps it to a prettier name.
+   */
+  readonly model: string;
+  /** What the run is doing, which decides its pill and its meter. */
+  readonly status: RunStatus;
+  /** The caption over the meter — `Implementing · 4/6`. */
+  readonly stageCaption: string;
+  /** How far through its workflow it is, `0`–`100`. See {@link stagePercent}. */
+  readonly stagePercent: number;
+  /**
+   * When the run started, in whole seconds since the epoch, or `null` when the timestamp
+   * could not be read. The origin the elapsed column counts from — see {@link ActiveLoop.elapsedSeconds}.
+   */
+  readonly startedAtSeconds: number | null;
+  /**
+   * How long it had been running when this render was made, or `null` when there is no
+   * start to measure from.
+   *
+   * It is *the server's* reading, and the client keeps counting from the origin rather than
+   * from this figure (`app/dashboard/elapsed.tsx`), which is what makes the column tick
+   * between polls without a poll ever being able to move it backwards.
+   */
+  readonly elapsedSeconds: number | null;
+}
+
+/** Milliseconds in a second, for the two conversions below. */
+const MS_PER_SECOND = 1000;
+
+/**
+ * The caption over a stage meter — `Implementing · 4/6`.
+ *
+ * The workflow's own word for the step, then where in the workflow it is. Both come from the
+ * run: there is no workflow catalogue in this product (decision F8's sibling), so a run that
+ * reports `Build farm · 5/7` is drawn saying that whatever any workflow definition says
+ * today.
+ *
+ * @param label The workflow's word for the current step.
+ * @param index Which step it is on.
+ * @param total How many steps the workflow has.
+ * @returns The caption.
+ */
+export function stageCaption(label: string, index: number, total: number): string {
+  return `${label} · ${index}/${total}`;
+}
+
+/**
+ * How full a stage meter is drawn, as a whole percentage.
+ *
+ * **Rounded down, never up.** A run four steps into six is `66%`, not `67%`: a progress bar
+ * is a claim about work that has finished, and the only honest way to round one is towards
+ * the work that certainly has. It also means `100%` is reachable only by a run that has
+ * actually reached its last step — a bar that read *full* one step early would be the
+ * clearest possible way for this card to lie.
+ *
+ * @param index Which step the run is on. Clamped into `0…total`, so a run reporting a step
+ *   past the end of its own workflow draws a full bar rather than one past its track.
+ * @param total How many steps the workflow has. The contract guarantees at least one so that
+ *   a meter never divides by zero; a payload that broke that promise is drawn empty rather
+ *   than crashing the card.
+ * @returns The percentage, `0`–`100`.
+ */
+export function stagePercent(index: number, total: number): number {
+  if (!Number.isFinite(index) || !Number.isFinite(total) || total <= 0) return 0;
+
+  return Math.floor((Math.min(Math.max(index, 0), total) / total) * 100);
+}
+
+/**
+ * When a run started, in whole seconds since the epoch.
+ *
+ * @param startedAt The contract's `date-time`.
+ * @returns The instant, or `null` when the string is not one — every timestamp in the
+ *   contract is required and well formed, so this is the guard rather than the expected
+ *   case: a row carrying a broken stamp loses its elapsed cell and keeps its other five,
+ *   which beats a card that renders `NaNm NaNs` and beats one that throws.
+ */
+function startedAtSeconds(startedAt: string): number | null {
+  const parsed = Date.parse(startedAt);
+
+  return Number.isNaN(parsed) ? null : Math.floor(parsed / MS_PER_SECOND);
+}
+
+/**
+ * The runs in flight, as the table's rows.
+ *
+ * The order is the payload's — lifecycle order, oldest first within a stage, so the run that
+ * has been stuck longest is at the top of its group — and it is deliberately not re-sorted
+ * here: the endpoint sorts over the whole table, and a client that sorted its ten rows again
+ * would produce a different order from the drill-in that shows all of them.
+ *
+ * **At most ten arrive**, because the aggregate caps the slice there; this renders what it
+ * was given rather than capping again, so a cap that changes in one place does not have to be
+ * changed in two. What is *not* in the slice is reported by {@link moreActiveLoops}.
+ *
+ * @param runs The aggregate's `activeRuns`.
+ * @param nowMs What time it is, as one reading taken by the caller — one for the whole
+ *   table, so two rows of the same render can never be measured against two different
+ *   instants. It is a parameter rather than a `Date.now()` inside this module because this
+ *   module is pure, and because a duration nobody can pin is a duration nobody can test.
+ * @returns The rows, in the order they are drawn.
+ */
+export function activeLoops(
+  runs: readonly RunSummary[],
+  nowMs: number,
+): readonly ActiveLoop[] {
+  const now = Math.floor(nowMs / MS_PER_SECOND);
+
+  return runs.map((run) => {
+    const started = startedAtSeconds(run.startedAt);
+
+    return {
+      id: run.id,
+      issueNumber: run.issueNumber,
+      issueTitle: run.issueTitle,
+      workflowTag: run.workflowTag,
+      model: run.model,
+      status: run.status,
+      stageCaption: stageCaption(run.stageLabel, run.stageIndex, run.stageTotal),
+      stagePercent: stagePercent(run.stageIndex, run.stageTotal),
+      startedAtSeconds: started,
+      // Clamped at zero: a run whose start is in the future is a clock disagreeing with
+      // another clock, and `-3s` on the page would report that as a fact about the run.
+      elapsedSeconds: started === null ? null : Math.max(0, now - started),
+    };
+  });
+}
+
+/**
+ * How many runs are in flight that the table is not showing.
+ *
+ * The aggregate answers at most ten rows and a count that is not capped, so the two together
+ * are what the *+N more* footer says. It is a subtraction rather than a flag because the two
+ * figures are separately true: a workspace running twelve loops shows ten and says *2 more*.
+ *
+ * @param total The workspace's live count — `stats.loopsLive.total`.
+ * @param shown How many rows the table drew.
+ * @returns The remainder, or `0` — which is also what a count that somehow ran behind its own
+ *   slice produces, because *−1 more* is not a thing this card will ever say.
+ */
+export function moreActiveLoops(total: number, shown: number): number {
+  return Math.max(0, total - shown);
 }
 
 /* ------------------------------------------------------------------ the page head */

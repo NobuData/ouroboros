@@ -47,6 +47,16 @@ export interface Column<Row> {
   readonly align?: ColumnAlign;
   /** Whether its cells are values read character by character rather than prose. */
   readonly mono?: boolean;
+  /**
+   * Classes from the page, worn by this column's heading and every one of its cells —
+   * placement only, never colour or type.
+   *
+   * It exists for the one thing a column description cannot derive: how wide the column
+   * should be. The mockups set that per table (`<th style="width:180px">`), and a page that
+   * had no way to say it here would have to reach into `.ou-table` from its own sheet, which
+   * is the fork of the design system this primitive exists to prevent.
+   */
+  readonly className?: string;
   /** The cell for one row. */
   readonly cell: (row: Row) => ReactNode;
 }
@@ -131,5 +141,6 @@ function cellClass<Row>(column: Column<Row>): string {
   return cx(
     column.mono && "ou-table__cell--mono",
     column.align === "end" && "ou-table__cell--end",
+    column.className,
   );
 }

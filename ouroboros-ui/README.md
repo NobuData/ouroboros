@@ -658,8 +658,9 @@ is a `POST` rather than a `GET` to avoid.
 ## Dashboard
 
 `/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45); its frame and page head
-are [#80](https://github.com/NobuData/ouroboros/issues/80) and its stat row
-[#81](https://github.com/NobuData/ouroboros/issues/81)) is
+are [#80](https://github.com/NobuData/ouroboros/issues/80), its stat row
+[#81](https://github.com/NobuData/ouroboros/issues/81) and its active-loops table
+[#82](https://github.com/NobuData/ouroboros/issues/82)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
@@ -678,18 +679,21 @@ Ouroboros merged 6 pull requests since midnight UTC.
 │      3      ││      12       ││      27       ││       4.2M        │
 │ 1 coding ·… ││ est. 9h 40m … ││ ▲ 8 vs last … ││ ≈ $18.60 across 4 │
 └─────────────┘└───────────────┘└───────────────┘└───────────────────┘
-┌ ACTIVE LOOPS ──────────────────────┐┌ SYSTEM      ◐ operational ┐
-│    ┆ No loops yet                ┆ ││ REST API            [ up ]│
-│    ┆ …arrives with mockup 10     ┆ ││ Database            [ up ]│
-└────────────────────────────────────┘│ Engine              [ up ]│
-┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐└───────────────────────────┘
+┌ ACTIVE LOOPS  ● live ──────────────┐┌ SYSTEM      ◐ operational ┐
+│ #482 Fix flaky… [standard-fix]     ││ REST API            [ up ]│
+│   Implementing · 4/6  ▓▓▓▓▓▓▓░░░   ││ Database            [ up ]│
+│   [claude-fable-5]  12m 40s (coding)││ Engine             [ up ]│
+└────────────────────────────────────┘└───────────────────────────┘
+┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐
 ```
 
 **Two kinds of card sit on the same grid, and the difference is the point.** The stat row is
-drawn from the aggregate's `stats` and the system card from `/health/ready` and
-`/api/v1/engine/status` — every figure on them came from the service. The mockup's three
-loop panels have no source in the contract at all, so they keep their place as designed
-empty states naming what will fill them.
+drawn from the aggregate's `stats`, the active-loops table from its `activeRuns`, and the
+system card from `/health/ready` and `/api/v1/engine/status` — every figure on them came from
+the service. The two panels that have no card drawing them yet — the completions table
+([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
+([#85](https://github.com/NobuData/ouroboros/issues/85)) — keep their place as designed empty
+states naming what will fill them, rather than borrowing the mockup's rows.
 
 The route is three lines: [`app/api/access.ts`](app/api/access.ts) returns the workspace,
 [`app/dashboard/data.ts`](app/dashboard/data.ts) turns it into everything the screen draws,
@@ -772,6 +776,51 @@ Four rules the row is written under, and the third is the one worth stating twic
   zeros — and a workspace with nothing in it reads as four zeros and four sentences, which
   is a different thing and must not look alike.
 
+### The active loops table: six columns, two of them moving
+
+The `c-8` card ([#82](https://github.com/NobuData/ouroboros/issues/82)) is the one the page is
+named after — everything else on the grid measures the last day or the last week, and this is
+the present tense. It draws the aggregate's `activeRuns` through the #46
+[`Table`](app/ui/table.tsx), with each row's arithmetic in [`view.ts`](app/dashboard/view.ts)
+and no arithmetic at all in the card:
+
+| Column | What it draws |
+|---|---|
+| Issue | the mono number and the title the run recorded |
+| Workflow | the tag, as free text — there is no workflow catalogue to look it up in |
+| Stage | `Implementing · 4/6` over a [`Meter`](app/ui/meter.tsx) at `index/total`, ok-toned in review |
+| Model | the identifier, opaque (decision F8), in the model hue |
+| Elapsed | `now − startedAt`, counting |
+| Status | `coding → run` · `building → warn` · `review → ok` |
+
+**The meter rounds down.** Four steps into six is 66.67%, and a progress bar is a claim about
+work that has *finished* — so the only honest way to round one is towards the work that
+certainly has, which also keeps `100%` reachable only by a run that has actually reached its
+last step.
+
+**Elapsed counts from the run's start, not from the figure the server computed.** Adding a
+second per tick would drift on every throttled frame and could never be checked against
+anything; [`elapsed.tsx`](app/dashboard/elapsed.tsx) holds `startedAt` and recomputes the
+difference against a clock instead. Three properties fall out of that rather than out of a
+guard somebody has to remember: a poll cannot move the number (the same run polls back with
+the same immutable `startedAt`), a tab that was backgrounded catches up instead of falling
+behind, and the only moment the figure could go backwards — hydration, where two machines
+answer *what time is it* — is closed by treating the server's own reading as a floor. The
+clock behind it, [`app/shell/clock.ts`](app/shell/clock.ts), is one `useSyncExternalStore`
+singleton quantised to whole seconds: **one interval for the page**, so ten rows tick on one
+beat, and none at all once the last of them unmounts.
+
+*Now* is therefore an input to this render. [`data.ts`](app/dashboard/data.ts) reads it once,
+after the fetches, and puts it in `DashboardReadings.readAt` — two cards reading their own
+clocks could disagree about what time it is, and a clock read inside a component is a clock no
+test can pin.
+
+**Nothing in the card is a link yet.** The rows will open the run console, which is mockup 10;
+`Open run console →` and `+N more running →` will go to #49's placeholder routes. None of
+those exists, so all three are labelled with what is missing rather than pointed at a `404` —
+the same treatment the sidebar gives nine destinations, and the same reason: #49's own first
+criterion is *no dead nav links*.
+
 ### One failed read is one degraded card
 
 The three reads go out together — the aggregate, the readiness probe and the engine's status
@@ -816,10 +865,14 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 
 ### What it does not pretend
 
-- **No run is invented.** The stat row reports the aggregate's counts and nothing more; the
-  mockup's fifteen plausible rows in the three loop panels are not copied, because nothing
-  produces a run to put in them yet.
-- **Both page-head actions are inert**, and say why in a tooltip. Neither destination exists —
+- **No run is invented.** Every row in the active-loops table came from `activeRuns`; the
+  mockup's eleven plausible rows in the two panels that still have no card are not copied,
+  because nothing answers those questions yet.
+- **No model, workflow or stage name is interpreted.** They are opaque strings (decision F8),
+  so `ollama/qwen3-coder` is rendered rather than split into a vendor and a version, and a run
+  whose workflow has since been renamed still reads under the word it recorded.
+- **Both page-head actions are inert**, as are the active-loops card's two, and each says why
+  in a tooltip. Neither destination exists —
   [#49](https://github.com/NobuData/ouroboros/issues/49) holds their place and is post-MVP —
   and a control that appeared to pull an issue would be the one dishonest thing on the screen.
   It is the same treatment the sidebar gives `/issues` and `/workflows`; linking them to routes
@@ -835,11 +888,11 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 The real dashboard is specified card by card under
 [#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I).
 [#80](https://github.com/NobuData/ouroboros/issues/80) has replaced the frame and the page
-head on top of #45's route, readers, status logic and redirect, and
-[#81](https://github.com/NobuData/ouroboros/issues/81) the stat row. Each remaining card
-replaces one tile of the grid from the aggregate this page already fetches: active loops
-([#82](https://github.com/NobuData/ouroboros/issues/82)), the loop pulse
-([#83](https://github.com/NobuData/ouroboros/issues/83)), recently closed
+head on top of #45's route, readers, status logic and redirect,
+[#81](https://github.com/NobuData/ouroboros/issues/81) the stat row and
+[#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table. Each remaining
+card replaces one tile of the grid from the aggregate this page already fetches: the loop
+pulse ([#83](https://github.com/NobuData/ouroboros/issues/83)), recently closed
 ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
 ([#85](https://github.com/NobuData/ouroboros/issues/85)).
 
@@ -1109,6 +1162,7 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 | `Chip` / `EffortChip` | A small marker carrying a state in its hue, optionally with a dot; and the square XS–XL estimate | `.pill` / `.effort` |
 | `Tag` / `Badge` | Metadata with no state; and a count attached to something else | `.tag` / `.nav-badge` |
 | `Table` | Columns and rows, inside their own horizontal scroll container | `.tbl` |
+| `Meter` | A proportion drawn as a bar — a stage, a rate, a budget | `.meter` |
 | `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
 | `EmptyState` | A surface that is not ready, labelled rather than blank | — |
 | `Eyebrow` | The caption above a title | `.eyebrow` |
@@ -1146,6 +1200,12 @@ nobody could. Each tone is one of the token sheet's published triples (ink, a 35
 surface, and a translucent layer is not one of them — so a panel carrying sentences somebody
 is meant to read cannot be dimmed. The same rule is why the login screen's step 2 recedes
 onto the well before sign-in instead of taking the mockup's `opacity: 0.66`.
+
+**A number a component cannot know is passed as a custom property, not as a style.** `Meter`
+is the case: its height, radius, track and fill are the sheet's, and only *how full it is*
+comes from data — so that one value arrives as `--ou-meter-fill` and the sheet still owns the
+`width` declaration. It is the only inline style on the dashboard, and the screen's suite
+asserts that it is the only one there.
 
 **A primitive names no domain concept.** That is the line between this directory and a
 screen's own components: there is no `<WorkspaceCard>` here and there should not be. The

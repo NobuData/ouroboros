@@ -339,6 +339,31 @@
   box-shadow: inset 0 0 0 1px currentColor;
 }
 
+/*
+ * The mockups' `.dot.pulse`: the halo that says a thing is happening *now*, on the one chip
+ * per view that reports something live.
+ *
+ * The animation is the only difference from a filled dot, and it is entirely inside a
+ * reduced-motion guard — so a reader who has asked for less motion sees the same chip,
+ * carrying the same word, standing still. Nothing about the state is in the movement.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .ou-chip__dot--pulse {
+    animation: ou-chip-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes ou-chip-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 0 0.3125rem transparent;
+  }
+}
+
 /* ============================================================ tag & badge */
 
 /*
@@ -459,6 +484,49 @@
 .ou-table__cell--end {
   font-variant-numeric: tabular-nums;
   text-align: right;
+}
+
+/* ============================================================ meter */
+
+/*
+ * The mockups' `.meter`: a track, and a fill across some fraction of it.
+ *
+ * The fill's width is the one property this sheet does not set, because it is the one thing
+ * that is data — `app/ui/meter.tsx` passes it in `--ou-meter-fill`, so the declaration still
+ * lives here and only the number is written at the call site. The fallback is an empty bar:
+ * a meter whose component forgot to say how full it is should read as *nothing*, never as
+ * full.
+ *
+ * The default fill is the accent gradient, which is the treatment the sheet reserves for
+ * progress; the three status tones are flat, because a status is one colour and a gradient
+ * between two of them would be a second hue nobody measured.
+ */
+
+.ou-meter {
+  height: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--raised);
+  overflow: hidden;
+}
+
+.ou-meter__fill {
+  display: block;
+  width: var(--ou-meter-fill, 0%);
+  height: 100%;
+  border-radius: var(--r-xs);
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+}
+
+.ou-meter--ok .ou-meter__fill {
+  background: var(--ok);
+}
+
+.ou-meter--warn .ou-meter__fill {
+  background: var(--warn);
+}
+
+.ou-meter--err .ou-meter__fill {
+  background: var(--err);
 }
 
 /* ============================================================ fields */

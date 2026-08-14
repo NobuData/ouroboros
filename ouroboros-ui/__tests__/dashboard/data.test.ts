@@ -62,6 +62,18 @@ describe("readDashboard", () => {
     expect(readings.engine).toEqual({ ok: true, value: engineStatus() });
   });
 
+  it("stamps the page with one clock reading, taken after the reads", async () => {
+    // The active-loops table draws durations that are still running (#82), so `now` is an
+    // input to the render rather than something a component may look up — one reading for
+    // the page, so two cards cannot disagree about what time it is. Taken *after* the reads
+    // so a slow round trip is not counted as part of a run's elapsed time.
+    const before = Date.now();
+    const readings = await readDashboard(ACCESS);
+
+    expect(readings.readAt).toBeGreaterThanOrEqual(before);
+    expect(readings.readAt).toBeLessThanOrEqual(Date.now());
+  });
+
   it("issues the three reads together rather than one after another", async () => {
     // A screen whose job is reporting the system's health should not take three round trips
     // to do it. Each read is held open until all three have started, which only completes

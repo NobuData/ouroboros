@@ -112,6 +112,37 @@ describe("the head", () => {
 
     expect(container.querySelector(".ou-card__spacer")).not.toBeInTheDocument();
   });
+
+  it("keeps a marker that belongs to the title against it, before the spacer", () => {
+    // The mockups' `.card-head` is *title · adornment · spacer · link*: the active-loops
+    // card's *live* pill reports on the card's own subject and belongs beside its name, not
+    // pushed to the far edge with the controls.
+    const { container } = render(
+      <CardHead
+        title="Active loops"
+        beside={<span>live</span>}
+        trailing={<span>Open run console</span>}
+      />,
+    );
+
+    const parts = [...(container.firstElementChild?.children ?? [])].map(
+      (part) => part.textContent,
+    );
+
+    expect(parts).toEqual(["Active loops", "live", "", "Open run console"]);
+  });
+
+  it("leaves that marker out of the card's name, so a region cannot be renamed by a state", () => {
+    // `aria-labelledby` points at the heading. A pill rendered *inside* the title would make
+    // this region answer to "Active loops live" — and change its name whenever a run started.
+    render(
+      <Card as="section" aria-labelledby="head">
+        <CardHead title="Active loops" titleId="head" beside={<span>live</span>} />
+      </Card>,
+    );
+
+    expect(screen.getByRole("region", { name: "Active loops" })).toBeInTheDocument();
+  });
 });
 
 describe("both palettes", () => {
