@@ -635,7 +635,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 | G.1 | #70 | 🟢 Done | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
 | G.2 | #71 | 🟢 Done | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
 | G.3 | #72 | 🟢 Done | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
-| G.4 | #73 | 🟡 Open | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
+| G.4 | #73 | 🟢 Done | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
 | G.5 | #74 | 🟡 Open | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
 | G.6 | #75 | 🟡 Open | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
 | G.7 | #76 | 🟡 Open | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
@@ -843,7 +843,52 @@ runs(prior 7d)  ─▶ merged count    ─▶ Δ "▲ 8 vs last week"
 
 ### Issue G.4 — ouroboros-rest: [G.4] Queue endpoint
 
-> **GitHub issue:** #73 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #73 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped.** `GET /api/v1/queue`, in
+> [`ouroboros-rest/src/modules/queue/`](../ouroboros-rest/src/modules/queue/queue.module.ts) —
+> a module of its own, per the runs module's argument: the dashboard exports nothing so its
+> card-sized limits stay its own, and the drill-ins publish their own statements over the
+> same rows. What *is* shared is the one thing the ticket requires to be:
+> `QueueItemSummary` and its mapper, imported from `dashboard/resources.ts` as pure code,
+> so a queued issue has exactly one shape on the aggregate's `queueHead` and on these pages
+> — nulls preserved, because an unsized item is not a zero-minute one.
+>
+> **The Σ-estimate criterion is met by construction and held by an equality.** The totals
+> statement is the dashboard repository's own sentence — `count(*)::int` beside
+> `coalesce(sum(est_minutes), 0)::int`, one aggregate pass, so `total` and
+> `totalEstMinutes` describe one snapshot — restated rather than shared, because the
+> modules share no provider. `queue.integration-spec.ts` is what holds the two
+> repositories together: one population (eleven sized items and one unsized) must answer
+> the same numbers through `stats.queued` and through this page, and `queueHead` must equal
+> the listing's head as JSON over six items, one more than the card draws.
+>
+> **The order carries no tiebreak, deliberately** — V009 makes `position` unique within the
+> workspace, so `position asc` is already total and two rows cannot swap places between
+> polls; a tiebreak would be a second opinion about an order the schema settled.
+>
+> **The issue's "`totalEstMinutes` for the whole queue" is read as the whole *match*.**
+> Both totals ignore the window and both respect the `?repo=` filter (`github_repos.id`,
+> the value the H.1 focus preference #77 will hold) — a sum over rows the filtered listing
+> can never show would make the page disagree with itself, and unfiltered the numbers are
+> the stat row's exactly, which is the criterion as written. A foreign repo id narrows to
+> an empty page with zero totals rather than confirming anything exists. And BA-C.3, "not
+> yet filed" when the issue was written, had long since shipped as the tenancy module's
+> tenant context — the guard resolves and membership-checks the session's workspace before
+> the handler runs, which is the whole of the org-scoping criterion's plumbing.
+>
+> **The mutations' absence is in the contract itself.** The operation's description names
+> the issues screen (mockup 03) as where reorder, remove and enqueue belong,
+> `queue.controller.spec.ts` holds the published path to its one `GET`, and the module
+> exports nothing — so the issues screen's writes will publish their own statements rather
+> than reach through this surface.
+>
+> Proved in `queue.repository.spec.ts` (the org predicate on every statement, the totals
+> sentence, the filter narrowing page and totals alike), `queue.service.spec.ts` (the
+> aggregate's own mapper, the whole-match totals), `queue.dto.spec.ts` (the #31 window by
+> extension), `queue.controller.spec.ts` (no writes, and the contract's word for where they
+> went), and `queue.integration-spec.ts` (ordering, paging, the two aggregate equalities,
+> and isolation over two real workspaces).
 
 - **Problem Statement:** "Up next in queue" and its `Manage queue →` destination need
   the ordered queue with the estimate the stat row displays.

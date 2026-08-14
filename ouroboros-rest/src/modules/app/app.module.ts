@@ -5,6 +5,7 @@ import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
 import { DashboardModule } from "../dashboard/dashboard.module";
+import { QueueModule } from "../queue/queue.module";
 import { RunsModule } from "../runs/runs.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
@@ -39,9 +40,10 @@ import { AppService } from "./app.service";
  * whose route is tenant-*required* without naming a workspace in its path: it reads the one
  * `TenancyModule`'s guard resolved from the session, which is why it is listed after it and
  * could not be listed before. `RunsModule`
- * ([#71](https://github.com/NobuData/ouroboros/issues/71)) is last — the paged drill-ins
- * over the same read-model, tenant-required the same way, listed beside the aggregate they
- * page.
+ * ([#71](https://github.com/NobuData/ouroboros/issues/71)) and `QueueModule`
+ * ([#73](https://github.com/NobuData/ouroboros/issues/73)) close the list — the paged
+ * drill-ins over the same read-model, tenant-required the same way, listed beside the
+ * aggregate they page.
  *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
@@ -100,6 +102,7 @@ export class AppModule {
         PreferencesModule,
         DashboardModule,
         RunsModule,
+        QueueModule,
       ],
     };
   }
