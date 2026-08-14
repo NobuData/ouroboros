@@ -577,7 +577,6 @@ that roadmap's "Existing issues affected" section.
 | 74 | **G.2** | #71 | Runs endpoints (active & recent) | ouroboros-rest | S | C.3, F.1 |
 | 75 | **G.3** | #72 | Pulse metrics computation | ouroboros-rest | M | F.1 |
 | 76 | **G.5** | #74 | Auto-merge setting endpoint | ouroboros-rest | S | C.3, F.4 |
-| 77 | **F.6** | #69 | Read-model constraints in ci/db | ouroboros-db, .github | XS | 3.6, F.5 |
 | 78 | **G.1** | #70 | Dashboard aggregate endpoint with ETag | ouroboros-rest | L | C.3, F.5 |
 | 79 | **G.4** | #73 | Queue endpoint | ouroboros-rest | S | C.3, F.2 |
 | 80 | **H.1** | #77 | Tenant chip — org/repo context switcher | ouroboros-ui | M | 5.3, C.4, D.1 |
