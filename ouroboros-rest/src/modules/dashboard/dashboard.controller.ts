@@ -24,8 +24,9 @@
  * thing a serializer happens to do.
  */
 
-import { Controller, Get, HttpStatus, Req, Res } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Logger, Req, Res } from "@nestjs/common";
 
+import { AppConfigService } from "../config/config.service";
 import type { Organization } from "../db/schema";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
 import { DashboardService } from "./dashboard.service";
@@ -49,10 +50,26 @@ export const ETAG = "ETag";
  * It is also what makes switching workspaces safe without a `Vary`: a revalidation carries
  * the request's current session and `X-Ouro-Tenant`, the tag is derived from the workspace
  * as well as its rows, so a stored payload for one workspace can never be revalidated into
- * an answer for another. [#75](https://github.com/NobuData/ouroboros/issues/75) settles the
- * poll interval and the rest of the caching policy across the dashboard's endpoints.
+ * an answer for another. The rest of the polling contract — the interval, the backoff
+ * hint, the SSE upgrade path — is written down in `docs/ARCHITECTURE.md` § 5.4
+ * ([#75](https://github.com/NobuData/ouroboros/issues/75)).
  */
 export const CACHE_CONTROL = "private, no-cache";
+
+/**
+ * The backoff hint — how many seconds the server currently wants a client to wait before
+ * its next poll ([#75](https://github.com/NobuData/ouroboros/issues/75)).
+ *
+ * On every answer, `200` and `304` alike, and the client treats the latest value as its
+ * effective interval (#87's hook is the reader). That direction is the point of the
+ * header: the *server* owns the cadence, so a deployment under load raises
+ * `OURO_DASHBOARD_POLL_SECONDS` and every open dashboard slows down within one poll
+ * cycle, with nothing shipped to the client. `Retry-After` is deliberately not reused for
+ * this — that header belongs to `503` and `3xx` answers, and a proxy is entitled to act
+ * on it; this one is advice to one first-party hook, so it carries the `X-Ouro-` prefix
+ * the tenancy header established.
+ */
+export const POLL_AFTER = "X-Ouro-Poll-After";
 
 /**
  * The part of a platform request this controller reads.
@@ -77,7 +94,22 @@ export interface ConditionalResponse {
 
 @Controller("dashboard")
 export class DashboardController {
-  constructor(private readonly dashboard: DashboardService) {}
+  /**
+   * Instrumentation for the `304` fast path — the polling contract's one measured claim.
+   *
+   * [#75](https://github.com/NobuData/ouroboros/issues/75)'s acceptance criterion is that
+   * a poll which changes nothing serializes no rows, *verified by logging* rather than
+   * asserted in a comment. The `debug` line written below is that verification: it is
+   * emitted on the branch that returns before `DashboardService.read` is ever called, so
+   * its presence in a log is proof of the property, and it carries the measured cost of
+   * the version probe so a `304` that quietly got expensive is visible in the same line.
+   */
+  private readonly logger = new Logger(DashboardController.name);
+
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly config: AppConfigService,
+  ) {}
 
   /**
    * The whole dashboard for the workspace this session is acting in.
@@ -92,7 +124,8 @@ export class DashboardController {
    *   workspace it named is a `404`.
    * @param request - For `If-None-Match`, and nothing else.
    * @param response - Written directly: `304` with no body, or `200` with the payload. Both
-   *   carry the tag, because a `304` is how a client learns its tag is still current.
+   *   carry the tag, because a `304` is how a client learns its tag is still current — and
+   *   both carry the poll hint, because a backed-off server answers mostly `304`s.
    * @returns When the answer has been written.
    */
   @Get()
@@ -101,6 +134,7 @@ export class DashboardController {
     @Req() request: ConditionalRequest,
     @Res() response: ConditionalResponse,
   ): Promise<void> {
+    const started = performance.now();
     const windows = this.dashboard.windows();
     const etag = await this.dashboard.etag(tenant.id, windows);
 
@@ -109,6 +143,12 @@ export class DashboardController {
     if (matchesIfNoneMatch(typeof held === "string" ? held : undefined, etag)) {
       this.freshness(response, etag);
       response.status(HttpStatus.NOT_MODIFIED).end();
+      // Written after the answer, not before: the line certifies what this branch *did*,
+      // and the measurement should include everything the caller waited for.
+      this.logger.debug(
+        `304 for workspace ${tenant.id} in ${(performance.now() - started).toFixed(1)}ms — ` +
+          "version probe only, no rows read and none serialized",
+      );
       return;
     }
 
@@ -123,11 +163,13 @@ export class DashboardController {
   }
 
   /**
-   * Say what this answer is and how long it may be reused for.
+   * Say what this answer is, how long it may be reused for, and when to ask again.
    *
    * On both answers, and identically: a `304` that omitted the tag would leave a client
-   * unable to tell *still current* from *refused*, and one that omitted `Cache-Control`
-   * would let a browser apply its own heuristic freshness to a page of live numbers.
+   * unable to tell *still current* from *refused*, one that omitted `Cache-Control`
+   * would let a browser apply its own heuristic freshness to a page of live numbers, and
+   * one that omitted the poll hint would strand a client on whatever cadence it last
+   * heard — when the `304` is precisely the answer a backed-off server sends most.
    *
    * @param response - The response being written.
    * @param etag - The tag for the representation the caller holds or is about to receive.
@@ -135,5 +177,6 @@ export class DashboardController {
   private freshness(response: ConditionalResponse, etag: string): void {
     response.setHeader(ETAG, etag);
     response.setHeader("Cache-Control", CACHE_CONTROL);
+    response.setHeader(POLL_AFTER, String(this.config.dashboardPollSeconds));
   }
 }

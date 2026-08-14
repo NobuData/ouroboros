@@ -75,6 +75,26 @@ export const ALL_INTERFACES_HOST = "0.0.0.0";
 export const MINIMUM_SECRET_LENGTH = 16;
 
 /**
+ * Seconds between dashboard polls when `OURO_DASHBOARD_POLL_SECONDS` is not set.
+ *
+ * Fifteen: the interval the polling contract documents for a visible tab
+ * (`docs/ARCHITECTURE.md` § 5.4, [#75](https://github.com/NobuData/ouroboros/issues/75)),
+ * agreed with the UI hook that honours it (#87). Slow enough that a workspace of pollers
+ * costs the server four aggregate subqueries a minute each, fast enough that the page and
+ * the topbar pills read as live.
+ */
+export const DEFAULT_DASHBOARD_POLL_SECONDS = 15;
+
+/**
+ * Longest wait `OURO_DASHBOARD_POLL_SECONDS` may ask a client for — one hour.
+ *
+ * The header is a *backoff hint*, not an off switch: above this a dashboard would simply
+ * never refresh while somebody is looking at it, which is an outage spelled as a number.
+ * An operator who wants polling stopped stops the service, where the failure is visible.
+ */
+export const MAX_DASHBOARD_POLL_SECONDS = 3600;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -153,6 +173,18 @@ export interface Configuration {
    * list; never empty, and never a wildcard, because a credentialed request cannot use one.
    */
   readonly corsOrigins: readonly string[];
+  /**
+   * Seconds a dashboard client should wait between polls — the value of every
+   * `X-Ouro-Poll-After` header. From `OURO_DASHBOARD_POLL_SECONDS`,
+   * {@link DEFAULT_DASHBOARD_POLL_SECONDS} when unset.
+   *
+   * This is the server's half of the polling contract
+   * ([#75](https://github.com/NobuData/ouroboros/issues/75), `docs/ARCHITECTURE.md`
+   * § 5.4): the client polls at whatever the last answer said, so raising this value is
+   * how an operator slows every dashboard consumer under load — within one poll cycle,
+   * with no client change and no deploy on the client's side.
+   */
+  readonly dashboardPollSeconds: number;
 }
 
 /**
@@ -175,6 +207,7 @@ export const VARIABLES = {
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
   corsOrigins: "OURO_CORS_ORIGINS",
+  dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
 } as const satisfies Record<keyof Configuration, string>;
 
 /**
@@ -303,6 +336,21 @@ const environmentSchema = z.object({
       "expected a comma-separated list of browser origins, such as http://localhost:3000 — " +
         "an origin is a scheme, a host and an optional port, with no path and no wildcard",
     ),
+
+  // Read by the same rules as PORT — anchored digits, then a range — and for the same
+  // reason: `Number()` would accept "15s" and answer with something plausible.
+  OURO_DASHBOARD_POLL_SECONDS: z
+    .string()
+    .regex(
+      /^\d+$/,
+      `expected a whole number of seconds between 1 and ${MAX_DASHBOARD_POLL_SECONDS}`,
+    )
+    .transform(Number)
+    .refine(
+      (value) => value >= 1 && value <= MAX_DASHBOARD_POLL_SECONDS,
+      `expected between 1 and ${MAX_DASHBOARD_POLL_SECONDS} seconds`,
+    )
+    .default(DEFAULT_DASHBOARD_POLL_SECONDS),
 });
 
 /**
@@ -387,6 +435,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
+    dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
   });
 }
 

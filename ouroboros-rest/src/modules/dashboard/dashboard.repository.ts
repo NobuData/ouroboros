@@ -138,9 +138,9 @@ export class DashboardRepository {
    * while its seven-day counts drift. The calendar day is mixed into the tag by the service,
    * which closes the boundary that moves with no writes at all; the rest is the trade a
    * cheap version source makes, and it is bounded by the fact that a dashboard whose numbers
-   * are moving is a dashboard whose rows are being written.
-   * [#75](https://github.com/NobuData/ouroboros/issues/75) is where the polling contract —
-   * interval, `Cache-Control`, and how stale is too stale — is settled for the whole surface.
+   * are moving is a dashboard whose rows are being written. The polling contract settled on
+   * top of this — interval, `Cache-Control`, the backoff hint — is `docs/ARCHITECTURE.md`
+   * § 5.4 ([#75](https://github.com/NobuData/ouroboros/issues/75)).
    *
    * @param organizationId - The workspace, from the tenant context.
    * @returns One fingerprint per source table.
