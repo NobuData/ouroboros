@@ -704,6 +704,8 @@ describe("the keyboard-shortcuts sheet (#645)", () => {
     expect(within(sheet).getByText(/⌘K|Ctrl K/)).toBeInTheDocument();
     expect(within(sheet).getByText("Open search")).toBeInTheDocument();
     expect(within(sheet).getByText(/Close a menu, drawer or dialog/)).toBeInTheDocument();
+    // And the palette's own ring, which #79 wired in the change that added this row.
+    expect(within(sheet).getByText("Run the highlighted action")).toBeInTheDocument();
   });
 
   it("closes on Escape with focus back on the avatar", () => {

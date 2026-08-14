@@ -15,8 +15,10 @@ import { MAC_HINT, shortcutHint } from "./search-pill";
  * component: this file is only the content, exactly as the search pill's panel is.
  *
  * **It lists what exists, and nothing else.** Every row below is a binding something in
- * this product actually handles today — the palette shortcut (`search-pill.tsx`), the two
- * roving rings (`sidebar-nav.tsx`, `user-menu.tsx`) and the dismissals. The design
+ * this product actually handles today — the palette shortcut (`search-pill.tsx`), the
+ * palette's own ring and Enter (`command-palette.tsx`, added by
+ * [#79](https://github.com/NobuData/ouroboros/issues/79) in the change that wired them),
+ * the two roving rings (`sidebar-nav.tsx`, `user-menu.tsx`) and the dismissals. The design
  * system's honesty rule (§ 3.5) reads the same for documentation as for controls: a sheet
  * promising bindings nobody wired would be teaching readers presses that do nothing, which
  * is worse than a shorter sheet. New bindings add their row here in the change that wires
@@ -48,6 +50,13 @@ export function ShortcutsSheet({
       rows: [
         { keys: [search], does: "Open search" },
         { keys: ["Esc"], does: "Close a menu, drawer or dialog" },
+      ],
+    },
+    {
+      name: "Search palette",
+      rows: [
+        { keys: ["↑", "↓"], does: "Move between actions, wrapping at the ends" },
+        { keys: ["↵"], does: "Run the highlighted action" },
       ],
     },
     {

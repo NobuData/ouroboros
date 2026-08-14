@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ShellOverlay } from "@/app/shell/overlay";
@@ -247,6 +248,52 @@ describe("its focus", () => {
     );
 
     expect(screen.getByRole("dialog")).toHaveFocus();
+  });
+
+  it("moves into whatever the caller named instead, when it named one", () => {
+    // The command palette ([#79](https://github.com/NobuData/ouroboros/issues/79)) opens to be
+    // typed into. It cannot take focus for itself: React runs a child's effects before its
+    // parent's, so a child that focused its own box would be recorded below as the element to
+    // give focus back to — and Escape would restore it to a box that no longer exists.
+    shell();
+
+    function Palette() {
+      const box = useRef<HTMLInputElement>(null);
+
+      return (
+        <ShellOverlay open onClose={vi.fn()} label="Search" initialFocus={box}>
+          <input ref={box} aria-label="query" />
+        </ShellOverlay>
+      );
+    }
+
+    render(<Palette />);
+
+    expect(screen.getByRole("textbox", { name: "query" })).toHaveFocus();
+  });
+
+  it("still remembers the opener when the caller named somewhere else to land", () => {
+    shell();
+
+    const opener = document.createElement("button");
+    document.body.append(opener);
+    built.push(opener);
+    opener.focus();
+
+    function Palette({ open }: Readonly<{ open: boolean }>) {
+      const box = useRef<HTMLInputElement>(null);
+
+      return (
+        <ShellOverlay open={open} onClose={vi.fn()} label="Search" initialFocus={box}>
+          <input ref={box} aria-label="query" />
+        </ShellOverlay>
+      );
+    }
+
+    const { rerender } = render(<Palette open />);
+    rerender(<Palette open={false} />);
+
+    expect(opener).toHaveFocus();
   });
 
   it("goes back to whatever opened it", () => {

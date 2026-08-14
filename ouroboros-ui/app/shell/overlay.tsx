@@ -60,6 +60,21 @@ export interface ShellOverlayProps {
    * reader's day to say nothing.
    */
   readonly label: string;
+  /**
+   * Where focus should land on open, when the panel itself is the wrong place for it.
+   *
+   * A dialog whose first job is to be typed into — the command palette
+   * ([#79](https://github.com/NobuData/ouroboros/issues/79)) — has to open with focus in its
+   * box, and the child cannot simply take it: React runs a child's effects **before** its
+   * parent's, so focus moved from inside would be read by the effect below as the element to
+   * return to, and Escape would restore focus to a box that no longer exists rather than to
+   * the control that opened the dialog. Handing the target *up* keeps the whole move in one
+   * place, in the right order.
+   *
+   * A ref rather than a selector or a boolean, because the element does not exist when the
+   * caller renders and does by the time the effect runs.
+   */
+  readonly initialFocus?: React.RefObject<HTMLElement | null>;
   /** What the panel draws. */
   readonly children: React.ReactNode;
 }
@@ -71,7 +86,13 @@ export interface ShellOverlayProps {
  * @returns The portalled overlay while open; `null` otherwise, and `null` on the server,
  *   where there is no DOM to portal into.
  */
-export function ShellOverlay({ open, onClose, label, children }: ShellOverlayProps) {
+export function ShellOverlay({
+  open,
+  onClose,
+  label,
+  initialFocus,
+  children,
+}: ShellOverlayProps) {
   /**
    * The portal's target: `null` on the server, where there is no DOM to portal into, and the
    * shell's overlay layer in the browser. `app/shell/client-value.ts` is why it is read this
@@ -108,12 +129,16 @@ export function ShellOverlay({ open, onClose, label, children }: ShellOverlayPro
    * `layer` is in the dependencies because the panel does not exist until the portal has
    * somewhere to render: without it this would run once, against a ref that is still null,
    * and the dialog would open with focus left on the page behind it.
+   *
+   * **Where it came from is read before anything is moved**, which is what lets
+   * {@link ShellOverlayProps.initialFocus} exist at all: the opener is captured here, in the
+   * parent's effect, rather than by whichever child got to `focus()` first.
    */
   useEffect(() => {
     if (!open || layer === null) return;
 
     const returnTo = document.activeElement;
-    panel.current?.focus();
+    (initialFocus?.current ?? panel.current)?.focus();
 
     return () => {
       // The opener may have been unmounted while the overlay was up — a menu item that closed
@@ -121,7 +146,9 @@ export function ShellOverlay({ open, onClose, label, children }: ShellOverlayPro
       // (the body) is the honest answer.
       if (returnTo instanceof HTMLElement && returnTo.isConnected) returnTo.focus();
     };
-  }, [open, layer]);
+    // `initialFocus` is a ref object, whose identity is stable for the caller's lifetime; it
+    // is listed because it is a prop, not because it can change.
+  }, [open, layer, initialFocus]);
 
   if (!open || layer === null) return null;
 
