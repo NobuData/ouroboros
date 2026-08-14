@@ -634,7 +634,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | G.1 | #70 | 🟢 Done | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
 | G.2 | #71 | 🟢 Done | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
-| G.3 | #72 | 🟡 Open | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
+| G.3 | #72 | 🟢 Done | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
 | G.4 | #73 | 🟡 Open | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
 | G.5 | #74 | 🟡 Open | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
 | G.6 | #75 | 🟡 Open | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
@@ -781,7 +781,45 @@ aggregate.activeRuns (top10) ⊂ GET /runs?status=active (paged)  — same RunRo
 
 ### Issue G.3 — ouroboros-rest: [G.3] Pulse metrics computation
 
-> **GitHub issue:** #72 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #72 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped — inside G.1's landing, and this entry is the record of where.** The ticket
+> asked for a metrics service consumed by #70, and #70 could not ship without one: the
+> pulse computation landed in PR #810 as `dashboard.repository.ts`'s `runStatistics` — one
+> statement of filtered aggregates over `runs`, which is this ticket's single-SQL-pass
+> criterion, and the repository spec counts the statements to prove it — with the window
+> boundaries computed once per request in `windows.ts` and every definition published in
+> the OpenAPI description of the field that carries it. No separate module was added
+> afterwards, on purpose: a second home for the same four formulas would be a second
+> implementation of exactly the thing the #437 amendment exists to make singular.
+>
+> **Two of the issue's definitions are corrected by the arithmetic.** The merge rate is
+> measured over **fourteen days**, not the seven the issue's table says, because the
+> mockup's numbers cannot coexist over seven — 92% needs a denominator of 29.35 — and over
+> fourteen the seed gives 46 merged of 50 closed, which is 92% exactly (argued in full at
+> G.1's entry). The mean cycle time covers **every run that reached a terminal status**,
+> not only the merged ones the issue named: the two readings are distinguishable over the
+> seed — 14m 20s against 13m 19s — and the mockup's is the one that counts every run,
+> which is also the honest measurement, because a run that stopped for a human took the
+> time it took. And the question the issue delegated — whether `failed` belongs in the
+> denominator — is answered *yes, and `needs_human` too*: the meter asks how often the
+> loop finishes the job without us, and excluding either would make it say "of the runs
+> that went well, how many went well".
+>
+> **Every acceptance criterion is proven on `main`.** The seeded numbers — 92%, 860 s
+> (14m 20s), 2 interventions, ▲ 8 — are asserted field-for-field in
+> `dashboard.integration-spec.ts`; an empty window answers zeros through `rate()`'s guard
+> and the mean's `coalesce`, never a division or a `NaN`; and each window edge the issue
+> listed has its test — the empty organization, the window of exactly one run, the DST
+> matrix in `windows.spec.ts` (including the day whose midnight never happened), and the
+> run that closed just outside the boundary, counted in neither week's total.
+>
+> **The #437 amendment is a hand-off, not a gap.** The pulse card's four numbers become a
+> call into BJ.1's windowed metrics service when that service exists; the re-pointing is
+> #437's own acceptance criterion ("the dashboard's pulse card reads this service"), #437
+> depends on this ticket, and the amendment promises no contract change for the
+> dashboard's consumers — so it belongs to the service that will replace this computation,
+> not to the ticket that shipped it.
 
 - **Problem Statement:** The pulse card's three meters (92% merge rate, 14m 20s avg
   cycle, 2 interventions) and the stat row's ▲ delta are windowed aggregates that
