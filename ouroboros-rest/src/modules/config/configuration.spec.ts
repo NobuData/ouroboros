@@ -1,8 +1,10 @@
 import {
   ALL_INTERFACES_HOST,
   ConfigurationError,
+  DEFAULT_DASHBOARD_POLL_SECONDS,
   DEFAULT_PORT,
   LOOPBACK_HOST,
+  MAX_DASHBOARD_POLL_SECONDS,
   MAX_PORT,
   MINIMUM_SECRET_LENGTH,
   NODE_ENVIRONMENTS,
@@ -66,6 +68,7 @@ describe("the development defaults", () => {
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
       corsOrigins: ["http://localhost:3000"],
+      dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
     });
   });
 });
@@ -210,6 +213,52 @@ describe("PORT", () => {
       `PORT: expected a port between 1 and ${MAX_PORT}`,
     );
     expect(MAX_PORT).toBe(65535);
+  });
+});
+
+describe("OURO_DASHBOARD_POLL_SECONDS", () => {
+  it("falls back to the contract's documented interval when it is unset or blank", () => {
+    expect(loadConfiguration(testEnvironment()).dashboardPollSeconds).toBe(
+      DEFAULT_DASHBOARD_POLL_SECONDS,
+    );
+    expect(
+      loadConfiguration(testEnvironment({ OURO_DASHBOARD_POLL_SECONDS: "" })).dashboardPollSeconds,
+    ).toBe(DEFAULT_DASHBOARD_POLL_SECONDS);
+    // The number `docs/ARCHITECTURE.md` § 5.4 and the #87 hook agreed on.
+    expect(DEFAULT_DASHBOARD_POLL_SECONDS).toBe(15);
+  });
+
+  it.each(["1", "15", "30", "3600"])("reads %s", (value) => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_DASHBOARD_POLL_SECONDS: value }))
+        .dashboardPollSeconds,
+    ).toBe(Number(value));
+  });
+
+  // The same trap as PORT: every one of these is something Number() would have turned
+  // into a plausible interval instead of a named boot failure.
+  it.each([
+    ["a word", "fast"],
+    ["a unit", "15s"],
+    ["leading whitespace", " 15"],
+    ["a sign", "+15"],
+    ["scientific notation", "1e2"],
+    ["a fraction", "1.5"],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_DASHBOARD_POLL_SECONDS: value }))).toContain(
+      `OURO_DASHBOARD_POLL_SECONDS: expected a whole number of seconds between 1 and ` +
+        `${MAX_DASHBOARD_POLL_SECONDS}`,
+    );
+  });
+
+  it.each([
+    ["zero, which would tell every client to poll as fast as it can", "0"],
+    ["more than the hour that already means the dashboard never refreshes", "3601"],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_DASHBOARD_POLL_SECONDS: value }))).toContain(
+      `OURO_DASHBOARD_POLL_SECONDS: expected between 1 and ${MAX_DASHBOARD_POLL_SECONDS} seconds`,
+    );
+    expect(MAX_DASHBOARD_POLL_SECONDS).toBe(3600);
   });
 });
 

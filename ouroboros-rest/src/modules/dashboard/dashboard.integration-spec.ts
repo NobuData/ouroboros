@@ -569,6 +569,15 @@ describe("the dashboard endpoint", () => {
       expect(response.headers["cache-control"]).toBe("private, no-cache");
     });
 
+    it("says when to poll again, at the interval the contract documents", async () => {
+      // The #75 contract over a real socket: the hint is on the answer, it is whole
+      // seconds, and an unconfigured deployment says 15 — the number the #87 hook and
+      // `docs/ARCHITECTURE.md` § 5.4 agreed on.
+      const response = await read(owner, workspace).expect(200);
+
+      expect(response.headers["x-ouro-poll-after"]).toBe("15");
+    });
+
     it("answers 304 with no body when the caller already holds the tag", async () => {
       const first = await read(owner, workspace).expect(200);
 
@@ -580,6 +589,10 @@ describe("the dashboard endpoint", () => {
       expect(second.text).toBeFalsy();
       // The tag travels on the `304`: it is how a client learns what it holds is current.
       expect(second.headers.etag).toBe(first.headers.etag);
+      // And so do the caching policy and the poll hint: a backed-off server answers
+      // mostly `304`s, so the cheap answer is the one that must carry the cadence.
+      expect(second.headers["cache-control"]).toBe("private, no-cache");
+      expect(second.headers["x-ouro-poll-after"]).toBe("15");
     });
 
     it("honours a tag a proxy weakened on the way past", async () => {

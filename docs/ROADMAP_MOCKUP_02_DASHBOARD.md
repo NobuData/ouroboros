@@ -637,7 +637,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 | G.3 | #72 | 🟢 Done | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
 | G.4 | #73 | 🟢 Done | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
 | G.5 | #74 | 🟢 Done | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
-| G.6 | #75 | 🟡 Open | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
+| G.6 | #75 | 🟢 Done | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
 | G.7 | #76 | 🟡 Open | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
 
 ### Issue G.1 — ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag
@@ -983,7 +983,44 @@ PATCH /settings/auto-merge {enabled:true}  ─[owner/admin]─▶ workspace_sett
 
 ### Issue G.6 — ouroboros-rest: [G.6] Polling contract & cache headers
 
-> **GitHub issue:** #75 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #75 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped.** The contract is written where the ticket asked —
+> [`docs/ARCHITECTURE.md` § 5.4](ARCHITECTURE.md#54-the-polling-contract): the header
+> exchange G.1 landed, the 15-seconds-visible / paused-hidden cadence, the
+> `X-Ouro-Poll-After` backoff hint, and the J.1 SSE upgrade path with polling as the
+> transport underneath it. The OpenAPI document (0.22.5) states the hint on both the `200`
+> and the `304`, so the I.8 hook reads it from the contract rather than from folklore.
+>
+> **The backoff hint is a configuration value, not a load detector.** `X-Ouro-Poll-After`
+> is sent on every dashboard answer with the value of `OURO_DASHBOARD_POLL_SECONDS`
+> (default 15, bounds 1–3600 — an hour is already "never refreshes", so above it the knob
+> would be an off switch wearing a number). "The server can slow clients under load" is
+> therefore an operator raising one variable and every open dashboard slowing within one
+> poll cycle; inventing automatic load detection inside an S ticket would have been
+> machinery nobody asked for, and the contract is exactly what lets a future policy set
+> the same header from a measurement instead. The hint rides the `304` as well as the
+> `200` because a backed-off server answers mostly `304`s — the cheap answer must carry
+> the cadence or a slowed client would never hear it change.
+>
+> **The 304 path was already row-free; what this ticket adds is the *verification* the
+> acceptance criterion asked for.** The controller now logs a `debug` line — workspace,
+> measured milliseconds, "no rows read and none serialized" — on exactly the branch that
+> answers before payload assembly is ever invoked, and the controller spec asserts the
+> line and the never-called `read` together, which is the criterion as a test rather than
+> a comment. The integration suite asserts the hint and cache headers over a real socket
+> on both answers.
+>
+> **Half of one criterion lands in I.8, structurally.** "Emitted and honored by the #87
+> hook" splits across the boundary: emission is here, honoring can only ship with the
+> hook itself. The contract § 5.4 and the OpenAPI description state what the hook must do
+> — latest value wins, hidden tab paused, refresh on visibility return — so I.8 implements
+> against a written contract.
+>
+> **Not in this ticket:** no generalisation of the tag machinery onto the drill-in
+> endpoints (G.2/G.4 stay unconditional until one of them becomes a polled surface — the
+> contract names `etag.ts`'s two functions as what they lift that day), no SSE (J.1), and
+> the full ETag-cycle matrix stays G.7's.
 
 - **Problem Statement:** The page, the live pill, and the needs-you pill all want
   freshness; without a stated contract each consumer invents its own polling and the

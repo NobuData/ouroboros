@@ -46,6 +46,7 @@ describe("AppConfigService", () => {
     expect(config.githubClientId).toBe("dev-github-client-id");
     expect(config.githubClientSecret).toBe("dev-github-client-secret");
     expect(config.corsOrigins).toEqual(["http://localhost:3000"]);
+    expect(config.dashboardPollSeconds).toBe(15);
   });
 
   it("reassembles the whole configuration it was registered with", () => {

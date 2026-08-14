@@ -1,11 +1,14 @@
+import { Logger } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
+import type { AppConfigService } from "../config/config.service";
 import { REQUIRED_ROLES } from "../tenancy/roles.guard";
 import { TENANT_OPTIONAL } from "../tenancy/tenant.decorators";
 import {
   CACHE_CONTROL,
   DashboardController,
   ETAG,
+  POLL_AFTER,
   type ConditionalResponse,
 } from "./dashboard.controller";
 import type { DashboardService } from "./dashboard.service";
@@ -23,6 +26,19 @@ import { dashboardWindows } from "./windows";
 const WORKSPACE = { id: "acme-robotics-id", slug: "acme-robotics" };
 const TAG = '"abc123"';
 const PAYLOAD = { stats: {} } as never;
+
+/** The interval the configuration under test hands out, distinct from the default. */
+const POLL_SECONDS = 15;
+
+/**
+ * A configuration stub carrying only what this controller reads.
+ *
+ * @param dashboardPollSeconds - What `OURO_DASHBOARD_POLL_SECONDS` is set to.
+ * @returns Enough of an `AppConfigService` for the handler.
+ */
+function configWith(dashboardPollSeconds: number): AppConfigService {
+  return { dashboardPollSeconds } as AppConfigService;
+}
 
 /** A response that writes down what was written to it. */
 function recordingResponse(): ConditionalResponse & {
@@ -62,7 +78,7 @@ describe("the dashboard controller", () => {
       read: jest.fn().mockResolvedValue(PAYLOAD),
     } as unknown as jest.Mocked<DashboardService>;
 
-    controller = new DashboardController(service);
+    controller = new DashboardController(service, configWith(POLL_SECONDS));
   });
 
   it("answers a first request with the payload and its tag", async () => {
@@ -144,6 +160,73 @@ describe("the dashboard controller", () => {
     expect(CACHE_CONTROL).toContain("no-cache");
   });
 
+  it("hints when to poll again, on the answer that carries data", async () => {
+    const response = recordingResponse();
+
+    await controller.read(WORKSPACE as never, {}, response);
+
+    expect(response.headers[POLL_AFTER]).toBe(String(POLL_SECONDS));
+  });
+
+  it("hints when to poll again on a 304 too, which is the answer a backed-off server sends most", async () => {
+    const response = recordingResponse();
+
+    await controller.read(WORKSPACE as never, { headers: { "if-none-match": TAG } }, response);
+
+    expect(response.statusCode).toBe(304);
+    expect(response.headers[POLL_AFTER]).toBe(String(POLL_SECONDS));
+  });
+
+  it("answers with whatever interval the deployment is configured for", async () => {
+    // The whole mechanism for slowing clients under load: the operator raises
+    // OURO_DASHBOARD_POLL_SECONDS, and every poller hears the new cadence on its next
+    // answer. The value is the configuration's, not a constant of this controller's.
+    const slowed = new DashboardController(service, configWith(45));
+    const response = recordingResponse();
+
+    await slowed.read(WORKSPACE as never, {}, response);
+
+    expect(response.headers[POLL_AFTER]).toBe("45");
+  });
+
+  it("writes down that a 304 read the version and nothing else", async () => {
+    // #75's acceptance criterion — the fast path serializes no rows, *verified by
+    // logging*. The line is written on the branch that returns before `read` is called,
+    // so asserting the two together is asserting the criterion itself.
+    const debug = jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
+
+    try {
+      await controller.read(
+        WORKSPACE as never,
+        { headers: { "if-none-match": TAG } },
+        recordingResponse(),
+      );
+
+      expect(service.read).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledTimes(1);
+      expect(debug.mock.calls[0][0]).toContain("no rows read and none serialized");
+      expect(debug.mock.calls[0][0]).toContain(WORKSPACE.id);
+      // Measured, not merely claimed: the line carries how long the version probe took.
+      expect(debug.mock.calls[0][0]).toMatch(/in \d+(\.\d+)?ms/);
+    } finally {
+      debug.mockRestore();
+    }
+  });
+
+  it("logs nothing on the answer that pays full price", async () => {
+    // The instrumentation certifies the cheap branch; a line per 200 would be noise that
+    // drowns the one signal the criterion asks for.
+    const debug = jest.spyOn(Logger.prototype, "debug").mockImplementation(() => undefined);
+
+    try {
+      await controller.read(WORKSPACE as never, {}, recordingResponse());
+
+      expect(debug).not.toHaveBeenCalled();
+    } finally {
+      debug.mockRestore();
+    }
+  });
+
   it("ignores a header the adapter did not give it as a string", async () => {
     // Node folds a repeated header into one comma-separated value, so an array here means
     // something unusual happened; a full payload is the safe reading of it.
@@ -179,6 +262,9 @@ describe("the dashboard controller", () => {
     );
 
     expect(response.headers[ETAG]).toBeUndefined();
+    // The poll hint travels with the tag or not at all: a `500` is the envelope filter's
+    // to answer, and the client's backoff on an error is its own affair.
+    expect(response.headers[POLL_AFTER]).toBeUndefined();
     expect(response.statusCode).toBeUndefined();
   });
 

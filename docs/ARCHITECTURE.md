@@ -621,6 +621,59 @@ The one exemption is enumerated: `/health/live` and `/health/ready` answer in Te
 report shape, because their reader is a container platform rather than a browser and that
 body is what `openapi.yaml` describes. It is the same list that escapes the `/api` prefix.
 
+### 5.4 The polling contract
+
+**Running** ([#70](https://github.com/NobuData/ouroboros/issues/70) landed the
+conditional endpoint, [#75](https://github.com/NobuData/ouroboros/issues/75) this
+contract). The dashboard page, the topbar's live pill and its needs-you pill all want the
+same freshness, and roadmap decision **F4** says how they get it: **MVP is polling one
+cheap, conditional summary endpoint; v2 is server-sent events**. Without a stated
+contract each of those surfaces would invent its own cadence, the server would pay for
+all three, and two of them would disagree on one screen about how many loops are live.
+So the contract is written here, once, and both sides are held to it — the server's half
+in `ouroboros-rest/src/modules/dashboard/`, the client's in the shared polling hook
+([#87](https://github.com/NobuData/ouroboros/issues/87)) that feeds every consumer from
+one store, so however many components read the summary, one request leaves the browser
+per interval.
+
+**The exchange.** `GET /api/v1/dashboard` answers with a **strong `ETag`** derived from a
+version source — four aggregate subqueries over the read-model's tables, plus the
+calendar day — rather than from the payload, so computing it reads no rows. The client
+echoes the tag in `If-None-Match` (compared weakly, per RFC 9110 § 8.8.3.2, so a tag a
+proxy weakened still matches) and an unchanged dashboard is a **`304` with no body and no
+row serialization** — the request costs the version probe and headers, nothing else. That
+claim is instrumented rather than asserted: the controller logs a `debug` line, with the
+measured cost, on exactly the branch that answers before the payload assembly is ever
+called. `Cache-Control: private, no-cache` is on every answer — *private* because these
+are one workspace's operational numbers and no shared cache may hold them, *no-cache*
+because a browser may keep the body but must revalidate before reusing it, which is
+precisely the loop above. No `Vary` is needed when switching workspaces: the tag is
+derived from the workspace id as well as its rows, so a stored payload for one workspace
+can never be revalidated into an answer for another.
+
+**The cadence, and who owns it.** A visible tab polls every **15 seconds**; a hidden tab
+polls **not at all** and refreshes immediately when it becomes visible again. A workspace
+switch and the auto-merge write each trigger an immediate refetch rather than waiting out
+the interval. But the documented 15 is only the default, because every answer — `200` and
+`304` alike, since a backed-off server answers mostly `304`s — carries
+**`X-Ouro-Poll-After`**: how many whole seconds the server currently wants a client to
+wait before asking again. The client treats the latest value it heard as its effective
+interval, which puts the cadence in the server's hands: a deployment under load raises
+`OURO_DASHBOARD_POLL_SECONDS` and every open dashboard slows down within one poll cycle,
+with nothing shipped to a client. The header is deliberately not `Retry-After` — that one
+belongs to `503` and redirect answers and a proxy is entitled to act on it, while this is
+advice to one first-party hook, prefixed `X-Ouro-` like the tenant header it travels
+beside.
+
+**The upgrade path is SSE, and the contract survives it.**
+[#89](https://github.com/NobuData/ouroboros/issues/89) (v2) adds a NestJS-native `@Sse()`
+endpoint streaming versioned dashboard deltas from the same services the aggregate reads,
+once the engine drives real runs and a fifteen-second tick would make the stage meters
+lie by omission. The client goes EventSource-first and **falls back to this polling
+contract** — same payload, same tag discipline — so polling is not replaced by the
+stream; it is the transport of last resort underneath it, and everything above the hook
+is indifferent to which of the two is feeding it.
+
 ## 6. Configuration — the `OURO_*` registry
 
 ### 6.1 The rules
@@ -667,6 +720,7 @@ checkout runs with:
 | `OURO_GITHUB_CLIENT_ID` | `ouroboros-rest` | GitHub OAuth application, client id | `dev-github-client-id` |
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
+| `OURO_DASHBOARD_POLL_SECONDS` | `ouroboros-rest` | Whole seconds sent as `X-Ouro-Poll-After` on every dashboard answer — the poll interval the client honours ([§ 5.4](#54-the-polling-contract)); raising it slows every open dashboard within one poll cycle | `15` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 | `OURO_TEST_DATABASE_DISPOSABLE` | `ouroboros-rest` tests | Whether `yarn test:integration` may empty the database between tests. The harness normally starts a throwaway PostgreSQL, which is disposable by definition; this is consulted only when `OURO_DATABASE_URL` points the suite at somebody else's, where truncation would take the development seed with it | `false` |
 

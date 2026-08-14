@@ -3474,6 +3474,14 @@ export interface operations {
                      * @example private, no-cache
                      */
                     "Cache-Control"?: string;
+                    /**
+                     * @description How many seconds the server currently wants you to wait before polling
+                     *     again. Treat the latest value as the effective interval: it is how a
+                     *     deployment under load slows every dashboard consumer within one poll
+                     *     cycle, with no client change. Whole seconds, `15` by default.
+                     * @example 15
+                     */
+                    "X-Ouro-Poll-After"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -3594,6 +3602,13 @@ export interface operations {
                      * @example private, no-cache
                      */
                     "Cache-Control"?: string;
+                    /**
+                     * @description As on the `200`, and mattering more here: a server slowing its pollers
+                     *     answers mostly `304`s, so the hint has to travel on the answer that costs
+                     *     nothing or a backed-off client would never hear the new cadence.
+                     * @example 15
+                     */
+                    "X-Ouro-Poll-After"?: string;
                     [name: string]: unknown;
                 };
                 content?: never;

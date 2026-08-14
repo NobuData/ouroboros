@@ -88,6 +88,11 @@ export class AppConfigService {
     return this.config.getOrThrow<readonly string[]>("corsOrigins");
   }
 
+  /** Seconds between dashboard polls, sent as `X-Ouro-Poll-After` — `OURO_DASHBOARD_POLL_SECONDS`. */
+  get dashboardPollSeconds(): number {
+    return this.config.getOrThrow<number>("dashboardPollSeconds");
+  }
+
   /**
    * Is this a production deployment?
    *
@@ -130,6 +135,7 @@ export class AppConfigService {
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
       corsOrigins: this.corsOrigins,
+      dashboardPollSeconds: this.dashboardPollSeconds,
     };
   }
 

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.22.4"
+  version: "0.22.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -278,6 +278,13 @@ tags:
       page is made of, plus the calendar day. Echo it in `If-None-Match` and an unchanged
       dashboard is a `304` with no body. `Cache-Control: private, no-cache` is the other half:
       keep the body, but never reuse it without asking.
+
+      **The server owns the cadence** ([#75](https://github.com/NobuData/ouroboros/issues/75)).
+      Poll a visible tab every 15 seconds and a hidden one not at all — and treat the
+      `X-Ouro-Poll-After` header on every answer as the current interval, because it is how
+      a deployment under load slows its consumers without shipping them anything. The full
+      contract, including the SSE upgrade path that will eventually replace polling for
+      live runs, is `docs/ARCHITECTURE.md` § 5.4.
 
       **Every window is stated, because a number whose definition is not published is a
       number a screen renders under the wrong label.** The rolling windows — seven days, and
@@ -1157,6 +1164,15 @@ paths:
               schema:
                 type: string
               example: private, no-cache
+            X-Ouro-Poll-After:
+              description: |-
+                How many seconds the server currently wants you to wait before polling
+                again. Treat the latest value as the effective interval: it is how a
+                deployment under load slows every dashboard consumer within one poll
+                cycle, with no client change. Whole seconds, `15` by default.
+              schema:
+                type: string
+              example: "15"
           content:
             application/json:
               schema:
@@ -1252,6 +1268,14 @@ paths:
               schema:
                 type: string
               example: private, no-cache
+            X-Ouro-Poll-After:
+              description: |-
+                As on the `200`, and mattering more here: a server slowing its pollers
+                answers mostly `304`s, so the hint has to travel on the answer that costs
+                nothing or a backed-off client would never hear the new cadence.
+              schema:
+                type: string
+              example: "15"
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this

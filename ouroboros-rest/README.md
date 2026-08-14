@@ -219,6 +219,7 @@ service never starts half-configured.
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
+| `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -601,8 +602,10 @@ rather than from the payload: a row count and the newest change per source table
 calendar day, hashed. That is what a `304` costs — four aggregate subqueries returning no
 rows — and it is why the poll loop is cheap. The day is in the hash because two of the
 payload's numbers are calendar facts that change at midnight with no row having moved.
-[#75](https://github.com/NobuData/ouroboros/issues/75) settles the poll interval and the rest
-of the caching policy.
+The rest of the contract — the 15-second visible-tab interval, the `X-Ouro-Poll-After`
+backoff hint every answer carries, and the SSE upgrade path — is
+[`docs/ARCHITECTURE.md` § 5.4](../docs/ARCHITECTURE.md#54-the-polling-contract)
+([#75](https://github.com/NobuData/ouroboros/issues/75)).
 
 **Every window is published, because a number whose definition is not written down is a
 number a screen renders under the wrong label.** The rolling windows are durations back from
