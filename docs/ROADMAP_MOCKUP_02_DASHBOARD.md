@@ -632,7 +632,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| G.1 | #70 | 🟡 Open | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
+| G.1 | #70 | 🟢 Done | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
 | G.2 | #71 | 🟡 Open | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
 | G.3 | #72 | 🟡 Open | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
 | G.4 | #73 | 🟡 Open | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
@@ -642,7 +642,57 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 
 ### Issue G.1 — ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag
 
-> **GitHub issue:** #70 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #70 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped.** `GET /api/v1/dashboard` — one org-scoped payload carrying the stat row, the
+> pulse card, the runs in flight, the runs that have stopped, the head of the queue and the
+> page head's subline, in `ouroboros-rest/src/modules/dashboard/`. The read-model V008–V011
+> created is mirrored into `db/schema.ts` — four tables and both views — so every statement
+> is type-checked against the migrations and the drift check covers them.
+>
+> **The window question F.5 handed over is answered, and published.** The *autonomous merge
+> rate* is measured over **fourteen days** and the other two meters over **seven**, because
+> `92%` is exact over the fourteen the seed spans (46 merged of 50 closed) and is not
+> reachable over seven at all — 27 merged with 2 interventions is 93.1%, and 92% needs a
+> denominator of 29.35. Fourteen days is also the better measurement on its own terms (a
+> denominator of twenty-nine moves four points when one run fails) and it reaches over
+> exactly the rows the merged delta already compares across, so no number on the page is
+> computed from history another number does not already touch. The definition of every
+> aggregate — including which statuses are in the denominator, and that the mean cycle time
+> covers every run that closed rather than only the merged ones — is in the OpenAPI
+> description of the field that carries it. **I.4 (#83) should label the pulse card's merge
+> rate for its own window rather than assume the card's `7 days` chip covers all three.**
+>
+> **`byStatus` is the table, not the subline.** The mockup's `2 coding · 1 in review` is
+> drawn over a table holding one `coding`, one `building` and one `review`; F.5 settled that
+> in favour of the table, and the payload carries every active status as a key — zeros
+> included, in lifecycle order — so I.2 (#81) composes the subline without knowing which
+> statuses exist.
+>
+> **The ETag is derived from a version source, not from the payload.** Four aggregate
+> subqueries — a row count and the newest change per source table — plus the calendar day,
+> hashed. That is what a `304` costs, and it is the whole reason polling is cheap. The day
+> is in the hash because *Token spend · today* and *merged since this morning* are calendar
+> facts that change at midnight with no row having moved. What it deliberately does not
+> notice is rows aging out of a rolling window on a workspace where nothing is written; G.6
+> (#75) is where the poll interval and the rest of the caching policy are settled.
+>
+> **`unpricedEvents` joins `tokensToday`**, which the ticket's sketch did not name. V010
+> makes `cost_cents` nullable so that "nobody has priced this" is not zero, and the
+> acceptance criterion here forbids a null in the payload — so the count of unpriced events
+> is what carries the card's `≈` and lets I.2 tell a cost of zero from a cost nobody knows.
+>
+> **Per-row durations are deliberately absent.** *Elapsed* and *Cycle* are computed by the
+> client from `startedAt`/`finishedAt`: elapsed moves while nobody is asking, so a value
+> computed here would be stale before it was rendered. Aggregates over many rows are
+> computed here, because no client can derive them from a card-sized slice.
+>
+> **`RunSummary` is one shape for both run lists**, which is decision F2 read forwards and
+> what G.2 (#71) takes with it, so a card and its drill-in cannot drift apart.
+>
+> **Not in this ticket, by the roadmap's own split:** no paged runs endpoint (G.2), no queue
+> endpoint (G.4), no auto-merge *write* (G.5 — this reads the switch and writes nothing at
+> all), no polling contract beyond the tag itself (G.6), and no screen.
 
 - **Problem Statement:** The dashboard is a single glance-view
   ([`docs/mockups/02-dashboard.html`](mockups/02-dashboard.html)); painting it from
@@ -1418,11 +1468,14 @@ shipped what was genuinely missing** (`tests/verify-constraint-probes.sh`): the 
 those assertions are load-bearing, dropping each rule in turn and requiring the suite to go
 red naming the assertion that caught it, on every pull request rather than once by hand.
 **Epic F is complete**, and the seeds are the fixture every Epic G endpoint and Epic I
-screen is now measured against — **G.1 (#70) is the next row of this roadmap that can
-move**.
+screen is now measured against — which is what let **G.1 (#70) ship the same day**
+(`GET /api/v1/dashboard`). **Epic I is now unblocked at its root**: I.1 (#80) has a payload
+to render, and H.2 (#78) has the counts its pills need.
 
-> One thing #68 found and #70 inherits: **the mockup's `27 merged / 7d`, its `2
+> The question #68 left open, #70 has answered: **the mockup's `27 merged / 7d`, its `2
 > interventions` and its `92%` merge rate cannot all be true of one seven-day window.**
-> The seed makes 92% exact over the fourteen days it spans (46 merged of 50 closed) and
-> documents both that figure and the trailing week's 93.1%; the choice of window is G.1's,
-> and it is now a choice made against a fixture rather than discovered against one.
+> The merge rate is therefore measured over **fourteen** days, where 46 of 50 closed runs
+> merged and `92%` is exact with no rounding, while the average cycle time and the
+> intervention count keep the seven-day window the card's chip names. The definitions are
+> published in the OpenAPI description of each field, so **I.4 (#83) labels the meter for
+> the window it is actually measured over** rather than inheriting the chip.

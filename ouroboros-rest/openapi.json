@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.22.0",
+    "version": "0.22.1",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -49,6 +49,10 @@
     {
       "name": "preferences",
       "description": "**The caller's own product settings** ([#649](https://github.com/NobuData/ouroboros/issues/649))\n— starting with the font scale the design system's § 4 gives every reader.\n\nThese are the person's, not the workspace's: the value is the same whichever\norganization the session is acting in, because a font size is chosen by the reader's\neyes. That is why the path says `/me/`, why no operation here takes a workspace, and\nwhy a person who belongs to nothing yet still has preferences.\n\n**Absence is the defaults, never a `404`.** A preference always has a value; a person\nwho has never chosen reads back `fontScale: \"100\"`, and no row is written on the way\nto that answer. The server is the truth — signing in on a second machine brings the\nsetting along — and the browser's `localStorage` is only a mirror for the no-flash\nboot, reconciled against `GET` when the session loads."
+    },
+    {
+      "name": "dashboard",
+      "description": "**Mission control, in one request** ([#70](https://github.com/NobuData/ouroboros/issues/70))\n— what the loop is doing, what it will do next, what it has spent doing so, and how\nwell it has been doing it.\n\n**One endpoint paints six cards, and that is a decision rather than a convenience.**\nAssembling the page from six requests would tear it — the cards would land at different\nmoments, each with its own idea of where \"the last seven days\" begins — and would\nmultiply the cost of a loop that runs for as long as somebody is looking at the screen.\nSo the whole page is one payload, measured between one set of boundaries. The drill-in\nendpoints exist for the screens that go deeper, not for the dashboard to build itself\nout of.\n\n**It is polled, so it is conditional.** Every answer carries a strong `ETag` derived\nfrom a cheap version source — the row counts and newest change of the four tables the\npage is made of, plus the calendar day. Echo it in `If-None-Match` and an unchanged\ndashboard is a `304` with no body. `Cache-Control: private, no-cache` is the other half:\nkeep the body, but never reuse it without asking.\n\n**Every window is stated, because a number whose definition is not published is a\nnumber a screen renders under the wrong label.** The rolling windows — seven days, and\nfourteen for the merge rate — are durations back from the moment of the request, not\ncalendar weeks, so no timezone and no daylight-saving transition can move them. The two\nnumbers that *are* calendar facts — the day's token spend, and what has merged \"since\nthis morning\" — are measured from **midnight UTC**, which is the day\n`token_usage_daily` is keyed by. A workspace cannot yet state a timezone of its own;\nwhen it can, that is the boundary that will follow it.\n\n**Absence is a zero, never a null.** An organization with no runs, no queue and no spend\nanswers zeros and empty arrays throughout, so a card renders from this payload without a\nfallback branch and an empty state is a design decision rather than a crash."
     },
     {
       "name": "tenancy",
@@ -872,6 +876,203 @@
                   "code": "engine_unavailable",
                   "message": "The engine is not available right now. Try again in a moment.",
                   "details": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "The whole dashboard, in one payload",
+        "description": "Every number, list and switch mockup 02 draws, for the workspace this session is\nacting in — the four stat-row figures, the pulse meters, the runs in flight, the runs\nthat have stopped, the head of the queue, and the page head's subline.\n\n**The workspace is the session's.** There is no workspace in this path: it is the\nsession's active organization, overridden for one request by `X-Ouro-Tenant`. A\nsession acting in none is a `400` with `code: \"organization_required\"` — this is the\nfirst operation in the API that can answer it, since every other operation taking that\nheader also names a workspace in its path.\n\n**Poll it conditionally.** Send back the `ETag` you were given in `If-None-Match`; a\ndashboard nothing has changed answers `304` with no body, and costs four aggregate\nsubqueries rather than a payload. The tag is **strong** and it is derived from the\nversion of the four source tables plus the calendar day — so it also changes at\nmidnight, when the day's spend and \"since this morning\" start counting again with no\nrow having moved. Rows aging out of a rolling window are the one change it does not\nnotice; on a dashboard whose numbers are moving, rows are being written.\n\n**What each aggregate means** is on the field that carries it, and the two window\nlengths are the part worth reading before rendering a label: the merge rate is\nmeasured over **fourteen** days and the other two meters over **seven**. `LoopPulse`\nsays why.\n\n**Durations that belong to one row are not sent.** *Elapsed* is `now − startedAt` and\n*Cycle* is `finishedAt − startedAt`; both are computed by the client from the instants\nbelow, because elapsed is a number that moves while nobody is asking and a value\ncomputed here would be stale before it was rendered. Aggregates over many rows — the\naverage cycle time — are computed here, because no client can derive them from what it\nwas sent.",
+        "operationId": "readDashboard",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dashboard, as of the moment the request was answered.",
+            "headers": {
+              "ETag": {
+                "description": "A strong entity tag for this payload. Send it back in `If-None-Match` on the\nnext poll.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "\"9c1f0b7d4e2a86315f0c9d3b7a48e152\""
+              },
+              "Cache-Control": {
+                "description": "`private, no-cache` — one workspace's operational numbers, which no shared\ncache may store, and which a browser must revalidate rather than reuse.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dashboard"
+                },
+                "example": {
+                  "stats": {
+                    "loopsLive": {
+                      "total": 3,
+                      "byStatus": {
+                        "coding": 1,
+                        "building": 1,
+                        "review": 1
+                      }
+                    },
+                    "queued": {
+                      "count": 12,
+                      "estMinutes": 580
+                    },
+                    "merged7d": {
+                      "count": 27,
+                      "deltaVsPrior": 8
+                    },
+                    "tokensToday": {
+                      "tokens": 4200000,
+                      "costCents": 1860,
+                      "providers": 4,
+                      "unpricedEvents": 3
+                    }
+                  },
+                  "pulse": {
+                    "mergeRate": 0.92,
+                    "avgCycleSeconds": 860,
+                    "interventions7d": 2,
+                    "autoMerge": true
+                  },
+                  "activeRuns": [
+                    {
+                      "id": "5eed0009-0000-4000-8000-000000000482",
+                      "issueNumber": 482,
+                      "issueTitle": "Fix flaky CAN-bus telemetry test",
+                      "workflowTag": "standard-fix",
+                      "model": "claude-fable-5",
+                      "status": "coding",
+                      "stageLabel": "Implementing",
+                      "stageIndex": 4,
+                      "stageTotal": 6,
+                      "startedAt": "2026-08-13T14:25:01.000Z",
+                      "finishedAt": null,
+                      "prNumber": null,
+                      "checksPassed": null,
+                      "checksTotal": null
+                    }
+                  ],
+                  "recentRuns": [
+                    {
+                      "id": "5eed0009-0000-4000-8000-000000000474",
+                      "issueNumber": 474,
+                      "issueTitle": "Debounce e-stop interrupt handler",
+                      "workflowTag": "standard-fix",
+                      "model": "claude-fable-5",
+                      "status": "merged",
+                      "stageLabel": "Merged",
+                      "stageIndex": 6,
+                      "stageTotal": 6,
+                      "startedAt": "2026-08-13T13:44:41.000Z",
+                      "finishedAt": "2026-08-13T13:55:41.000Z",
+                      "prNumber": 512,
+                      "checksPassed": 14,
+                      "checksTotal": 14
+                    }
+                  ],
+                  "queueHead": [
+                    {
+                      "id": "5eed000a-0000-4000-8000-000000000485",
+                      "issueNumber": 485,
+                      "issueTitle": "Watchdog reset on I²C bus lockup",
+                      "effort": "m",
+                      "workflowTag": "standard-fix",
+                      "position": 1,
+                      "estMinutes": 45,
+                      "enqueuedAt": "2026-08-13T01:37:41.000Z"
+                    },
+                    {
+                      "id": "5eed000a-0000-4000-8000-000000000496",
+                      "issueNumber": 496,
+                      "issueTitle": "Telemetry: split ingest into a worker pool",
+                      "effort": "m",
+                      "workflowTag": "feature-loop",
+                      "position": 12,
+                      "estMinutes": null,
+                      "enqueuedAt": "2026-08-13T13:37:41.000Z"
+                    }
+                  ],
+                  "activity": {
+                    "inFlight": 3,
+                    "queued": 12,
+                    "mergedSinceMorning": 6
+                  }
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Nothing has changed since the tag you sent. **No body**, deliberately: the\nrepresentation you hold is the current one, and `ETag` on this answer is how you\nlearn that rather than merely being refused.",
+            "headers": {
+              "ETag": {
+                "description": "The same tag, still current.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "\"9c1f0b7d4e2a86315f0c9d3b7a48e152\""
+              },
+              "Cache-Control": {
+                "description": "`private, no-cache`, as on the `200`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`. It is what somebody whose workspace was\ndeleted, or who was removed from it, is answered — and what the workspace picker\nis for.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2370,7 +2571,7 @@
         "name": "X-Ouro-Tenant",
         "in": "header",
         "required": false,
-        "description": "The workspace this request is operating in — its slug or its uuid.\n\n**An override, not the answer.** Since\n[#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts\nin is the session's active organization, which is server state: it is set through\n`/api/auth/organization/set-active`, it is stamped onto every new session, and no\nheader can assert it. This header names a *different* workspace for one request —\nwhich is how a client acts outside the active one without changing it for every other\nrequest in flight. It is validated exactly as everything else is: a workspace the\ncaller is not a member of is a `404`, the same answer one that does not exist gets.\n\nOn the operations below it is **optional and redundant**: they already name a\nworkspace in their path, which is the more specific of the two, and a header that\nnames a *different* one is a `422` with `code: \"tenant_mismatch\"` rather than a\nsilent preference for either. It is accepted here so that one client can set it on\nevery request, and it is how the operations that have no workspace in their path say\nwhich workspace they mean.\n\nA caller who omits it is acting in their session's active organization. A session\nthat has none — a person who belongs to no workspace, one whose workspace was\ndeleted, one who was removed from it — gets a `400` with\n`code: \"organization_required\"` on any operation that names no workspace of its own.\nEvery operation that takes this header also names a workspace in its path, so none of\nthem can answer it; the one operation that names none is `GET /api/v1/orgs`, which\ndoes not take this header at all, because *which workspaces are yours* is the question\nsomebody in that state is asking.\n\nNothing is inferred from how many workspaces somebody belongs to: the choice is made\nonce, at sign-in or in the picker, and lives on the session.",
+        "description": "The workspace this request is operating in — its slug or its uuid.\n\n**An override, not the answer.** Since\n[#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts\nin is the session's active organization, which is server state: it is set through\n`/api/auth/organization/set-active`, it is stamped onto every new session, and no\nheader can assert it. This header names a *different* workspace for one request —\nwhich is how a client acts outside the active one without changing it for every other\nrequest in flight. It is validated exactly as everything else is: a workspace the\ncaller is not a member of is a `404`, the same answer one that does not exist gets.\n\nOn the operations that name a workspace in their path it is **optional and\nredundant**: the path is the more specific of the two, and a header that names a\n*different* workspace is a `422` with `code: \"tenant_mismatch\"` rather than a silent\npreference for either. It is accepted there so that one client can set it on every\nrequest, and it is how the operations that have no workspace in their path say which\nworkspace they mean.\n\nA caller who omits it is acting in their session's active organization. A session\nthat has none — a person who belongs to no workspace, one whose workspace was\ndeleted, one who was removed from it — gets a `400` with\n`code: \"organization_required\"` on any operation that names no workspace of its own.\n`GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is\nthe first such operation, and it is therefore the first that can answer that code: it\nis workspace-scoped and has no path to say so in, so this header is the only thing a\nclient can override it with. `GET /api/v1/orgs` names no workspace either and does\n**not** take this header at all — *which workspaces are yours* is precisely the\nquestion somebody in that state is asking, and answering it must not require them to\nhave already chosen one.\n\nNothing is inferred from how many workspaces somebody belongs to: the choice is made\nonce, at sign-in or in the picker, and lives on the session.",
         "schema": {
           "type": "string",
           "minLength": 1,
@@ -3877,6 +4078,446 @@
         "properties": {
           "fontScale": {
             "$ref": "#/components/schemas/FontScale"
+          }
+        }
+      },
+      "RunStatus": {
+        "type": "string",
+        "title": "RunStatus",
+        "description": "Where a run is in its life. The first three are **active** — the run is in flight and\nhas no `finishedAt` — and the last three are **terminal**.\n\nThe split is the dashboard's two run cards: *Active loops* is the runs holding one of\nthe first three, *Recently closed by the loop* is the runs holding one of the last\nthree. They are one table and one shape, queried twice; a run moving between the cards\n*is* the transition into a terminal status.",
+        "enum": [
+          "coding",
+          "building",
+          "review",
+          "merged",
+          "needs_human",
+          "failed"
+        ],
+        "example": "coding"
+      },
+      "QueueEffort": {
+        "type": "string",
+        "title": "QueueEffort",
+        "description": "The size somebody put on a queued issue — the chip the card renders, lower-case, which\nis also the class name the UI stamps.\n\nIt is a *judgement*, and deliberately not a function of `estMinutes`: the chip is a\nsize a person chose and the estimate is minutes something measured. If one were\nderived from the other, the queue's total would be a restatement of the chips rather\nthan a second fact.",
+        "enum": [
+          "xs",
+          "s",
+          "m",
+          "l",
+          "xl"
+        ],
+        "example": "m"
+      },
+      "RunSummary": {
+        "type": "object",
+        "title": "RunSummary",
+        "description": "One run of the loop against one issue, as every card that draws a run draws it.\n\n**One shape for both lists.** *Active loops* and *Recently closed* are two queries over\none table, so the columns a stopped run has and a running one does not — `finishedAt`,\n`prNumber`, the check counts — are `null` here rather than absent, and a client renders\nboth lists with one component. The paged runs endpoints\n([#71](https://github.com/NobuData/ouroboros/issues/71)) answer with this same shape,\nso a card and its drill-in cannot drift apart.\n\n**No duration is carried.** *Elapsed* is `now − startedAt`, *Cycle* is\n`finishedAt − startedAt`, and both are the client's to compute — see the operation's\ndescription for why.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "issueNumber",
+          "issueTitle",
+          "workflowTag",
+          "model",
+          "status",
+          "stageLabel",
+          "stageIndex",
+          "stageTotal",
+          "startedAt",
+          "finishedAt",
+          "prNumber",
+          "checksPassed",
+          "checksTotal"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The run — what the run console will be addressed by, and what a row links to."
+          },
+          "issueNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "issueTitle": {
+            "type": "string",
+            "description": "The title as it was when the run started, stored rather than fetched: a card\nrenders it on every poll, and a closed run should read as the work it actually did."
+          },
+          "workflowTag": {
+            "type": "string",
+            "description": "The workflow's label, as free text. **Opaque** — there is no workflow catalogue\nbehind it, so a run still renders under a workflow that has since been renamed."
+          },
+          "model": {
+            "type": "string",
+            "description": "The model identifier as recorded — `claude-fable-5`, `ollama/qwen3-coder`,\n`copilot/gpt-5-codex`. **Opaque**: nothing in this service interprets it, and a\nclient should render it rather than parse it.",
+            "examples": [
+              "claude-fable-5",
+              "ollama/qwen3-coder"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "stageLabel": {
+            "type": "string",
+            "description": "The workflow's own word for the current step, captioning the stage meter.",
+            "example": "Implementing"
+          },
+          "stageIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Where the run is in its workflow, out of `stageTotal`."
+          },
+          "stageTotal": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many steps the workflow has. At least one, so a meter never divides by zero."
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the loop started on this issue. Not when the row appeared."
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the run reached a terminal status, and `null` exactly while it has not."
+          },
+          "prNumber": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The pull request, or `null`. A run may fail, or stop for a human, before there is\nanything to open one for."
+          },
+          "checksPassed": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Checks that passed. Paired with `checksTotal`: both present, or both `null`."
+          },
+          "checksTotal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Total checks on the pull request. `0` of `0` is a repository with no checks, which\nis **not** the same as `null` — not knowing yet."
+          }
+        }
+      },
+      "QueueItemSummary": {
+        "type": "object",
+        "title": "QueueItemSummary",
+        "description": "One queued issue, as the *Up next in queue* card draws it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "issueNumber",
+          "issueTitle",
+          "effort",
+          "workflowTag",
+          "position",
+          "estMinutes",
+          "enqueuedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "issueNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "issueTitle": {
+            "type": "string"
+          },
+          "effort": {
+            "$ref": "#/components/schemas/QueueEffort"
+          },
+          "workflowTag": {
+            "type": "string"
+          },
+          "position": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Place in the queue; `1` is next. Positions are dense by the writer's convention\nrather than by constraint, so do not compute a queue length from the last one."
+          },
+          "estMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Expected minutes of autonomous work, or `null` for **not estimated** — which is\nnot zero. Rendering a `null` as `0m` would be inventing a claim about how long the\nwork takes; `stats.queued.estMinutes` sums the estimates and skips these."
+          },
+          "enqueuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the issue joined the queue. Not when the row appeared."
+          }
+        }
+      },
+      "LoopsLive": {
+        "type": "object",
+        "title": "LoopsLive",
+        "description": "*Loops live* — how many runs are in flight, and in which stage.",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "byStatus"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The card's big number, and the sum of `byStatus`."
+          },
+          "byStatus": {
+            "type": "object",
+            "description": "The same runs split by status, for the subline. **Every active status is a key,\nzeros included**, in lifecycle order — so a client composes \"2 coding · 1 in\nreview\" from this without knowing which statuses exist.",
+            "additionalProperties": false,
+            "required": [
+              "coding",
+              "building",
+              "review"
+            ],
+            "properties": {
+              "coding": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "building": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "review": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "QueuedWork": {
+        "type": "object",
+        "title": "QueuedWork",
+        "description": "*Queued issues* — how many are waiting, and how long they are expected to take.",
+        "additionalProperties": false,
+        "required": [
+          "count",
+          "estMinutes"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "estMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The **sum** of the queue's estimates, in minutes — rendered as `est. 9h 40m`. It\nskips items carrying no estimate rather than counting them as zero, so `count` may\nspeak for more issues than this total does. That is the honest shape of a queue\nwhere something has not been sized yet."
+          }
+        }
+      },
+      "MergedSevenDays": {
+        "type": "object",
+        "title": "MergedSevenDays",
+        "description": "*PRs merged · 7d* — the count, and how it compares with the week before.",
+        "additionalProperties": false,
+        "required": [
+          "count",
+          "deltaVsPrior"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Runs that reached `merged` in the trailing seven days."
+          },
+          "deltaVsPrior": {
+            "type": "integer",
+            "description": "This week's count less the previous seven days' — rendered as `▲ 8 vs last week`.\n**Signed**: a negative value is a week that merged less than the one before, and\nthe direction is read from the sign rather than from a separate flag."
+          }
+        }
+      },
+      "TokensToday": {
+        "type": "object",
+        "title": "TokensToday",
+        "description": "*Token spend · today* — the day's ledger, rolled up across providers.\n\n\"Today\" is the **UTC** calendar day, which is the day the usage rollup is keyed by. A\nclient rendering this beside a local clock should say so.",
+        "additionalProperties": false,
+        "required": [
+          "tokens",
+          "costCents",
+          "providers",
+          "unpricedEvents"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Input plus output tokens across every provider — rendered as `4.2M`."
+          },
+          "costCents": {
+            "type": "number",
+            "minimum": 0,
+            "description": "What the day's **priced** events cost, in cents. Cents rather than a decimal\ncurrency amount so that nothing rounds on the way through JSON; it may carry\nfractions of a cent.\n\nIt is a **lower bound** whenever `unpricedEvents` is non-zero."
+          },
+          "providers": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many distinct providers were paid — the `across 4 providers` in the subline."
+          },
+          "unpricedEvents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of the day's events carry no recorded cost. This is the `≈` on the card.\n\nCost is nullable in the ledger so that \"nobody has priced this\" has a value that\nis not zero — local inference on a workstation is the honest case of it — and a\ntotal that silently omitted those events would read as exact. Non-zero means\n`costCents` is a floor; equal to the day's event count means the cost is *unknown*\nrather than zero, which is the \"cost unavailable\" a card renders."
+          }
+        }
+      },
+      "DashboardStats": {
+        "type": "object",
+        "title": "DashboardStats",
+        "description": "The four numbers of the stat row.",
+        "additionalProperties": false,
+        "required": [
+          "loopsLive",
+          "queued",
+          "merged7d",
+          "tokensToday"
+        ],
+        "properties": {
+          "loopsLive": {
+            "$ref": "#/components/schemas/LoopsLive"
+          },
+          "queued": {
+            "$ref": "#/components/schemas/QueuedWork"
+          },
+          "merged7d": {
+            "$ref": "#/components/schemas/MergedSevenDays"
+          },
+          "tokensToday": {
+            "$ref": "#/components/schemas/TokensToday"
+          }
+        }
+      },
+      "LoopPulse": {
+        "type": "object",
+        "title": "LoopPulse",
+        "description": "*Loop pulse* — three windowed meters, and the one switch this page can change.\n\n**The three meters are not all measured over the same window**, and the reason is\nmockup 02's own arithmetic. See `mergeRate`.",
+        "additionalProperties": false,
+        "required": [
+          "mergeRate",
+          "avgCycleSeconds",
+          "interventions7d",
+          "autoMerge"
+        ],
+        "properties": {
+          "mergeRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "**Autonomous merge rate**: merged runs ÷ every run that reached a terminal status,\nover **fourteen days**, as a fraction between 0 and 1.\n\nEvery terminal status is in the denominator — merged, stopped for a human, and\nfailed. The meter's question is *how often does the loop finish the job without\nus*, and a run that stopped for a human is the clearest possible no; excluding it\nwould make the rate say \"of the runs that went well, how many went well\".\n\n**Fourteen days, where the two meters below are seven.** The three figures the\nmockup draws cannot all be true of one seven-day window: 27 merged against 2\ninterventions is 93.1%, and no integer count of closed runs makes 27 merged 92%.\nOver fourteen days the same rows give 46 merged of 50 closed, which is 92% exactly.\nA longer window is the better measurement on its own terms as well — a rate over a\ndenominator of twenty-nine moves four points when one run fails — and it reaches\nover exactly the rows `stats.merged7d.deltaVsPrior` already compares across.\n\n**`0` when nothing closed in the window.** That is a floor rather than a\nmeasurement: an organization with no history reads `0` here with `0` merged and `0`\ninterventions, and a meter should render *no data* rather than a bad week.",
+            "example": 0.92
+          },
+          "avgCycleSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "**Average cycle time**: the mean of `finishedAt − startedAt` over every run that\nreached a terminal status in the trailing **seven** days, in seconds.\n\nEvery terminal run, not only the merged ones — a run that stopped for a human took\nthe time it took, and a mean that dropped it would report the loop as faster than\nit is.\n\n`0` when nothing closed in the window, with the same reading as `mergeRate`'s zero.",
+            "example": 860
+          },
+          "interventions7d": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "**Human interventions**: runs that reached `needs_human` in the trailing seven\ndays. A count of *runs*, not of interruptions — a run handed back twice is one row\nand counts once, because the row is what the loop stopped on."
+          },
+          "autoMerge": {
+            "type": "boolean",
+            "description": "Whether this workspace merges on green checks without asking.\n\n`false` for a workspace that has never answered, resolved from the database rather\nthan defaulted here — so \"answered no\" and \"never asked\" read the same to the\nswitch and differently to anything that needs to know. Changing it is\n[#74](https://github.com/NobuData/ouroboros/issues/74)'s operation, not this one:\nthis endpoint writes nothing."
+          }
+        }
+      },
+      "DashboardActivity": {
+        "type": "object",
+        "title": "DashboardActivity",
+        "description": "The page head's subline — *\"3 issues in flight, 12 queued behind them. Ouroboros\nmerged 6 pull requests since this morning.\"*\n\nThe greeting beside it is the client's: it is composed from the session user's name and\nthe reader's own clock, and a server that rendered it would be rendering somebody's\nafternoon in the wrong hemisphere. These three are the half of the sentence that is\ndata, and the first two deliberately restate figures from `stats` under the names the\nsentence uses — one payload should not be able to disagree with itself.",
+        "additionalProperties": false,
+        "required": [
+          "inFlight",
+          "queued",
+          "mergedSinceMorning"
+        ],
+        "properties": {
+          "inFlight": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Runs in flight — the same number as `stats.loopsLive.total`."
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Issues waiting — the same number as `stats.queued.count`."
+          },
+          "mergedSinceMorning": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Runs merged since **midnight UTC**. The only figure on the page measured from a\ncalendar boundary rather than a rolling window, and therefore the only one that\nneeds a timezone to be well defined. It is the same day boundary\n`stats.tokensToday` uses, so the sentence and the card cannot mean different\nmornings."
+          }
+        }
+      },
+      "Dashboard": {
+        "type": "object",
+        "title": "Dashboard",
+        "description": "The whole dashboard for one workspace, measured between one set of boundaries.\n\n**Every field is always present.** An organization with nothing in it answers zeros\nand empty arrays — never `null`, and never an absent key — so a card renders from this\nwithout a fallback branch. The nullable values are all *inside* a row, where a null is\na fact about that row: a run in flight has no `finishedAt`, a queued issue may carry no\nestimate.",
+        "additionalProperties": false,
+        "required": [
+          "stats",
+          "pulse",
+          "activeRuns",
+          "recentRuns",
+          "queueHead",
+          "activity"
+        ],
+        "properties": {
+          "stats": {
+            "$ref": "#/components/schemas/DashboardStats"
+          },
+          "pulse": {
+            "$ref": "#/components/schemas/LoopPulse"
+          },
+          "activeRuns": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "The runs in flight, in **lifecycle order** — coding, then building, then review —\nand oldest first within a stage, so the run that has been stuck longest is at the\ntop of its group. At most ten; a workspace running more than that is one whose\ndrill-in the *Open run console →* link leads to.",
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            }
+          },
+          "recentRuns": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "The runs that have stopped, newest first by `finishedAt`. At most eight — the card\ndraws four, and the rest are what a client already holds if it expands.",
+            "items": {
+              "$ref": "#/components/schemas/RunSummary"
+            }
+          },
+          "queueHead": {
+            "type": "array",
+            "maxItems": 5,
+            "description": "The head of the queue in queue order — exactly what the card draws. The queue's\nfull length is `stats.queued.count`, and the whole of it is\n[#73](https://github.com/NobuData/ouroboros/issues/73)'s endpoint.",
+            "items": {
+              "$ref": "#/components/schemas/QueueItemSummary"
+            }
+          },
+          "activity": {
+            "$ref": "#/components/schemas/DashboardActivity"
           }
         }
       },
