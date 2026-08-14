@@ -817,9 +817,9 @@ Five things are worth knowing before adding a screen to it.
    request as the route.
 4. **What is a slot, not an omission.** The bar carries every slot § 1.1 names, in its
    order: the tenant chip beside the brand, then search · live-loops · needs-you ·
-   notifications · [account menu](#the-account-menu). The menu and the chip's *reading*
-   are finished; what fills the rest has an issue each — switching workspace from the
-   chip (#77), the ⌘K palette behind the search pill (#79), real counts in both pills
+   notifications · [account menu](#the-account-menu). The menu, the chip and
+   [the search pill's palette](#the-k-palette-and-its-action-registry) are finished; what
+   fills the rest has an issue each — real counts in both pills
    (#78). Nothing shows a number nobody computed: an unfilled count is an em dash, which
    is the design system's honesty rule (§ 3.5). The theme control and the settings entry
    live *inside* the profile menu since CP.3
@@ -869,6 +869,75 @@ followed out of it, and on the window growing past 768px. The trap is
 The **keyboard** through all of it: one roving tab stop, arrows and Home/End between entries
 (wrapping at both ends), and Enter needing no handler because every reachable entry is a
 real `<a href>`.
+
+### The ⌘K palette, and its action registry
+
+`⌘K` / `Ctrl+K` from any screen — or the header's search pill — opens
+[`app/shell/command-palette.tsx`](app/shell/command-palette.tsx)
+([#79](https://github.com/NobuData/ouroboros/issues/79)). **MVP scope is navigation**, which
+is the issue's own decision and the reason the palette says so on its face: content search
+needs issue and run data that only partly exists, and a search shipped now would be a search
+that finds nothing.
+
+```
+⌘K ─▶ ┌ Search screens and commands…──────────────┐
+      │ NAVIGATION                                │
+      │  ▸ Go to Dashboard                        │  ← ↑↓ walk these
+      │  ▸ Go to Issues       Issue intake · #115 │  ← and skip these
+      │ ACTIONS                                   │
+      │  ▸ Toggle theme                   to dark │
+      │  ▸ Sign out                               │
+      └───────────────────────────────────────────┘
+```
+
+**It names no source.** A surface registers what it can contribute and the palette renders
+whatever is registered — the same argument the sidebar's registry makes, and the reason
+[#93](https://github.com/NobuData/ouroboros/issues/93)'s content search is a new file rather
+than an edit to this one:
+
+```ts
+import { registerCommandSource } from "@/app/shell/command-registry";
+
+registerCommandSource({
+  id: "issues",
+  sort: 30,
+  async find(query, context, signal) {          // over the wire, debounced, abortable
+    const found = await searchIssues(query, { signal });
+    return found.map((issue) => ({
+      id: `issues:${issue.number}`,             // source-prefixed, unique across the palette
+      label: `#${issue.number} ${issue.title}`,
+      group: "Issues",                          // its own heading, below Navigation
+      run: () => context.navigate(`/issues/${issue.number}`),
+    }));
+  },
+});
+```
+
+A source has **two halves and needs at least one** (the registry refuses one with neither).
+`list(context)` answers synchronously from what the shell already knows and is filtered by the
+palette's own matcher; `find(query, context, signal)` answers over the wire, is asked only for
+a non-empty query, is **debounced by the palette** and handed a signal that fires when the
+query moves on — and its results are *not* re-filtered, because a source that searched has
+already decided what matches. A rejection contributes nothing; saying so is the source's own
+business, and the shape for it is an unavailable action carrying the reason. The `context` is
+what the shell knows and a source cannot ask for itself — the permitted navigation entries,
+`navigate`, the resolved theme and `setTheme`, and `signOut` — because a source is a plain
+object registered at module scope and has no hooks.
+
+An action either **does something or says why it cannot**, enforced by the type rather than by
+an assertion: `run` and `unavailable` are the two arms of a union. That is what lets the ten
+unbuilt screens be listed, marked and skipped by the arrow ring instead of dropped — answering
+*Issues* with "no matches" would claim there is no such screen, when the truth is that it is
+not built yet (§ 3.5). Matching is a **fuzzy subsequence** ([`command.ts`](app/shell/command.ts)):
+`gtd` reaches *Go to Dashboard*, contiguous runs and word starts score, gaps cost, and a label
+match always outranks a keyword one.
+
+It is a **combobox**, not a menu: focus stays in the text box and the highlighted row is named
+by `aria-activedescendant` rather than focused, which is what leaves every other key — Home and
+End included — to the query. Everything a dialog owes the keyboard is
+[`overlay.tsx`](app/shell/overlay.tsx)'s; the one thing the palette asks it for is
+`initialFocus`, because React runs a child's effects before its parent's and a box that focused
+itself would be recorded as the element Escape has to give focus back to.
 
 ### The account menu
 
@@ -1248,6 +1317,7 @@ design tokens [#16](https://github.com/NobuData/ouroboros/issues/16) ·
 theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
 theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
+⌘K navigation palette [#79](https://github.com/NobuData/ouroboros/issues/79) ·
 typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
 BetterAuth client & session store [#716](https://github.com/NobuData/ouroboros/issues/716) ·
 route guards & session-aware redirects [#720](https://github.com/NobuData/ouroboros/issues/720) ·

@@ -1,23 +1,41 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
-import { SearchPill } from "@/app/shell/search-pill";
+import { renderThemed } from "../helpers/theme";
 
 /**
  * The search pill and its shortcut
- * ([#643](https://github.com/NobuData/ouroboros/issues/643)).
+ * ([#643](https://github.com/NobuData/ouroboros/issues/643), completed by
+ * [#79](https://github.com/NobuData/ouroboros/issues/79)).
  *
- * Two of its three parts belong to this issue — the pill in the header's cluster, and ⌘K
- * wired to it. The third is what the palette searches, which is
- * [#79](https://github.com/NobuData/ouroboros/issues/79), so the last case here is about what
- * the panel says rather than what it finds: the design system's honesty rule (§ 3.5) asks a
- * surface that is not ready to be labelled, and "labelled" is testable.
+ * This suite is about the **opening**, which is all the pill was ever about: where the control
+ * is, what its key cap says, the two modifiers that reach it from anywhere, and that a
+ * dismissal puts focus back where it came from. What the surface behind it *contains* is
+ * `__tests__/shell/command-palette.test.tsx` — the pill names no row and asserts none.
  *
- * There is no shell around these renders, deliberately. The overlay falls back to `<body>`
- * where there is no layer, which is the same path the login screen takes, and it keeps this
- * suite about the pill rather than about the frame — `__tests__/shell/overlay.test.tsx` is
- * where the portal and the lock are asserted.
+ * The one case that crosses the line is the last, and deliberately: the palette holds a query,
+ * and *"a second opening starts empty"* is a claim about the pill's decision to mount it
+ * conditionally rather than about anything inside it.
+ *
+ * There is no shell around these renders. The overlay falls back to `<body>` where there is no
+ * layer, which is the same path the login screen takes, and it keeps this suite about the pill
+ * rather than about the frame — `__tests__/shell/overlay.test.tsx` is where the portal and the
+ * lock are asserted.
+ *
+ * The two stubs are the palette's, not the pill's: a router the app provides, and a Server
+ * Action over a `server-only` client (`__tests__/shell/actions.test.ts` is what that does).
  */
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
+
+vi.mock("@/app/shell/actions", () => ({ signOutOfSession: vi.fn() }));
+
+const { SearchPill } = await import("@/app/shell/search-pill");
+
+/** Render the pill, the way the header does. */
+function render(): void {
+  renderThemed(<SearchPill />);
+}
 
 /**
  * Open the palette and hand back the pill that opened it.
@@ -37,7 +55,7 @@ function open(): HTMLElement {
 
 describe("the pill", () => {
   it("says what it opens", () => {
-    render(<SearchPill />);
+    render();
 
     const pill = screen.getByRole("button", { name: /Search/ });
     expect(pill).toHaveAttribute("aria-haspopup", "dialog");
@@ -47,13 +65,13 @@ describe("the pill", () => {
   it("names the shortcut in the words of the keyboard in front of the reader", () => {
     // jsdom is not a Mac, so this is the PC spelling. The Mac one is the initial render's,
     // because the server has no keyboard to ask — see the component.
-    render(<SearchPill />);
+    render();
 
     expect(screen.getByRole("button", { name: /Search/ })).toHaveTextContent("Ctrl K");
   });
 
   it("reports itself open once it is", () => {
-    render(<SearchPill />);
+    render();
 
     const pill = open();
 
@@ -63,7 +81,7 @@ describe("the pill", () => {
 
 describe("opening it", () => {
   it("opens on a press", () => {
-    render(<SearchPill />);
+    render();
 
     open();
 
@@ -71,7 +89,7 @@ describe("opening it", () => {
   });
 
   it("opens on ⌘K from anywhere on the page", () => {
-    render(<SearchPill />);
+    render();
 
     fireEvent.keyDown(window, { key: "k", metaKey: true });
 
@@ -81,7 +99,7 @@ describe("opening it", () => {
   it("opens on Ctrl+K too", () => {
     // Both modifiers are accepted rather than one per platform: a Mac user on an external PC
     // keyboard presses Control, and accepting the other costs nothing.
-    render(<SearchPill />);
+    render();
 
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
 
@@ -89,7 +107,7 @@ describe("opening it", () => {
   });
 
   it("ignores a bare K, which is a letter somebody is typing", () => {
-    render(<SearchPill />);
+    render();
 
     fireEvent.keyDown(window, { key: "k" });
 
@@ -99,7 +117,7 @@ describe("opening it", () => {
   it("takes the shortcut away from the browser", () => {
     // Ctrl+K is Firefox's own search-bar shortcut. A palette that opens behind the address
     // bar is a palette nobody can type into.
-    render(<SearchPill />);
+    render();
 
     const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, cancelable: true });
     window.dispatchEvent(event);
@@ -110,7 +128,7 @@ describe("opening it", () => {
 
 describe("closing it", () => {
   it("closes on Escape, with focus back on the pill", () => {
-    render(<SearchPill />);
+    render();
 
     const pill = open();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -119,25 +137,39 @@ describe("closing it", () => {
     expect(pill).toHaveFocus();
   });
 
-  it("closes on its own dismissal", () => {
-    render(<SearchPill />);
+  it("closes on a press outside the panel", () => {
+    render();
 
     open();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // The overlay's backdrop, which is the parent of the panel and the only other element in
+    // the portal. `mousedown` rather than `click`, for the reason `app/shell/overlay.tsx`
+    // gives: a drag out of the panel must not dismiss it.
+    fireEvent.mouseDown(screen.getByRole("dialog").parentElement as HTMLElement);
 
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  it("opens empty the next time, having thrown the last query away with the palette", () => {
+    // The palette is mounted only while it is open, so the reset is the unmount rather than
+    // anything remembering to clear a box.
+    render();
+
+    open();
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "sign" } });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    open();
+
+    expect(screen.getByRole("combobox")).toHaveValue("");
+  });
 });
 
-describe("what the panel says", () => {
-  it("names the issue the palette arrives with rather than miming a result", () => {
-    render(<SearchPill />);
+describe("what it opens", () => {
+  it("is the palette, which the pill has been promising since it was drawn", () => {
+    render();
 
     open();
 
-    // Honesty (§ 3.5): a surface that is not ready is labelled, never dead — and never
-    // furnished with results nobody searched for.
-    expect(screen.getByRole("dialog")).toHaveTextContent("#79");
-    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 });

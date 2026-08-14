@@ -1123,7 +1123,7 @@ all three issues: the `.topbar` of
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | H.1 | #77 | 🟢 Done | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
 | H.2 | #78 | 🟡 Open | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
-| H.3 | #79 | 🟡 Open | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
+| H.3 | #79 | 🟢 Done | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
 
 ### Issue H.1 — ouroboros-ui: [H.1] Tenant chip — org/repo context switcher
 
@@ -1243,7 +1243,69 @@ summary.loopsLive=3 ─▶ [● 3 loops live]      summary.needsHuman=0 ─▶ (
 
 ### Issue H.3 — ouroboros-ui: [H.3] Search pill & ⌘K navigation palette
 
-> **GitHub issue:** #79 · **Status:** 🟡 Open · **Parent epic:** #61
+> **GitHub issue:** #79 · **Status:** 🟢 Done · **Parent epic:** #61
+
+> **Shipped 2026-08-14.** The pill opens the surface it has been promising.
+> [`app/shell/command-palette.tsx`](../ouroboros-ui/app/shell/command-palette.tsx) replaces
+> the panel CP.1 (#643) put behind it — the one that said *"the navigation palette arrives
+> with #79"* — and the pill itself keeps only what it was ever about: where the control sits,
+> what its key cap says, and the two modifiers that reach it from anywhere.
+>
+> **The scope is the issue's own decision, and the palette says so on its face.** Navigation
+> only, because content search needs issue and run data that only partly exists — so a line
+> under the search box reads *"Screens and commands. Searching issues, runs and the queue
+> arrives with #93."* rather than leaving a reader to interpret an empty answer to an issue
+> number. That is the honesty rule (§ 3.5) applied to a scope rather than to a control.
+>
+> **The real work was the seam, not the searching.** A source registers with
+> [`registerCommandSource`](../ouroboros-ui/app/shell/command-registry.ts) and has **two
+> halves**: `list(context)` answers synchronously from what the shell already knows and is
+> filtered by the palette's own matcher; `find(query, context, signal)` answers over the wire,
+> is asked only for a non-empty query, is **debounced by the palette** and handed a signal
+> that fires when the query moves on. Its results are deliberately *not* re-filtered — a
+> source that searched has already decided what matches, and a second opinion from a matcher
+> that never saw the data could only remove rows. J.5 (#93) therefore adds one file and edits
+> nothing: that is what *"without rework"* has to mean if it is to mean anything.
+>
+> Nothing in production has a `find` today, which is exactly why
+> [`__tests__/shell/use-command-actions.test.tsx`](../ouroboros-ui/__tests__/shell/use-command-actions.test.tsx)
+> drives one through a fixture source — the debounce, the abort, the stale answer, the failing
+> source. A seam nothing has ever been passed through is a seam that does not work yet and
+> nobody has found out.
+>
+> **An action does something or says why it cannot**, and that is a union rather than an
+> assertion, so the compiler holds the rule. It is what lets the ten unbuilt screens be
+> *listed* — marked, carrying the note that names the issue building them, and skipped by the
+> arrow ring — instead of dropped: answering *Issues* with "no matches" would be a claim that
+> there is no such screen, when the truth is that it is not built yet. The rows come from the
+> sidebar's own registry (CP.2), so **Settings is a navigation row rather than a command of
+> its own** — the scope line's "settings" is an entry in that registry, and a second copy of
+> it here would be a row that could disagree with the sidebar.
+>
+> **The theme row toggles and does not offer *system*.** A command is a thing that happens
+> when you press it; the three-way choice is a *setting*, which CP.3's account menu draws as
+> three radios because a menu row has room to show which is on. The hint says which palette
+> the press lands on, so the row is never ambiguous about what it is about to do.
+>
+> **It is a combobox, not a menu.** Focus stays in the text box and the highlighted row is
+> named by `aria-activedescendant` rather than focused, which is what leaves every other key
+> to the query — Home and End included, because in a text box they belong to the text. The
+> ring is ↑↓ and Enter, it walks only rows that can be run, and it wraps. Matching is a fuzzy
+> subsequence ([`command.ts`](../ouroboros-ui/app/shell/command.ts)): `gtd` reaches *Go to
+> Dashboard*, runs and word starts score, **gaps cost** — without that penalty `set` would
+> rank *Sign out — end the session* above *Settings*, which is the one ranking a reader would
+> call broken — and a label match always outranks a keyword one.
+>
+> **One change outside this issue's own files**, and it is required rather than incidental:
+> `ShellOverlay` gained `initialFocus`. A palette has to open with focus in its box, and the
+> box cannot take focus for itself — React runs a child's effects *before* its parent's, so a
+> child that focused itself would be recorded as the element Escape has to give focus back to,
+> and the pill would never get it. Handing the target up keeps the whole move in one place, in
+> the right order. The shortcuts sheet gained the palette's two bindings in the same change,
+> which is that sheet's own stated rule.
+>
+> **Not in this ticket:** nothing searches content, and nothing remembers a selection. Both
+> are J.5's, which is where the recent-selections memory belongs too.
 
 - **Problem Statement:** The mockup's `Search… ⌘K` pill promises a command surface;
   a dead control undermines the chrome, but full content search needs data that
