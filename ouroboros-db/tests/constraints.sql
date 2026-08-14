@@ -1752,6 +1752,567 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.queue_items where organization_id = 'org-queue'),
   'deleting an organization cascades through its orgs and repos to its queue');
 
+-- ===========================================================================
+-- V010 — token_usage and token_usage_daily, the spend ledger (#66)
+-- ===========================================================================
+--
+-- The third table of the dashboard read-model, behind the *Token spend · today* stat —
+-- `4.2M` over `≈ $18.60 across 4 providers`. Nothing writes it yet either (the engine is
+-- v2, #54; the seeds are #68 and the endpoint is #70), so the same rule as the two
+-- sections above applies: everything a reader depends on is a constraint here rather
+-- than an application invariant.
+--
+-- Fresh fixtures once more. `org-queue` was deleted by the cascade assertions above and
+-- `org-rival` kept its GitHub org but lost its repository, so there is again no
+-- organization-with-a-repository pair to hang a run off — and two workspaces are what
+-- the cross-tenant assertion needs, one to own the spend and one to own a run the spend
+-- must not be allowed to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-spend', 'Spend Works', 'spend-works', now()),
+  ('org-drift', 'Drift Works', 'drift-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('e0000000-0000-0000-0000-00000000000e', 'org-spend', 'spend-works', true),
+  ('e0000000-0000-0000-0000-00000000000f', 'org-drift', 'drift-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('efff0000-0000-0000-0000-00000000000e', 'e0000000-0000-0000-0000-00000000000e',
+   'helios-firmware', true, 'main'),
+  ('efff0000-0000-0000-0000-00000000000f', 'e0000000-0000-0000-0000-00000000000f',
+   'drift-firmware',  true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total)
+  values
+  ('e3000000-0000-0000-0000-000000000482', 'org-spend',
+   'efff0000-0000-0000-0000-00000000000e', 482, 'Fix flaky CAN-bus telemetry test',
+   'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 4, 6),
+  ('e3000000-0000-0000-0000-000000000499', 'org-drift',
+   'efff0000-0000-0000-0000-00000000000f', 499, 'Somebody else''s work',
+   'standard-fix', 'claude-fable-5', 'coding', 'Implementing', 1, 6);
+
+-- --- the stat card, exactly as mockup 02 renders it ---------------------------------
+--
+-- Acceptance criterion: the view returns per-day, per-organization, per-provider sums
+-- matching the events inserted underneath. The fixture is the card itself — a day of
+-- spend across the four providers mockup 07 lists, adding up to the `4.2M` and the
+-- `≈ $18.60` the stat shows.
+--
+-- Two of the rows are the same provider, which is what makes this a test of the rollup
+-- rather than a re-reading of the rows: `anthropic` appears twice and must come back
+-- once, summed. One is attributed to a run and the rest are not, because both are
+-- ordinary.
+--
+-- And `ollama` is unpriced — null, not zero. Local inference has no invoice to price it
+-- from until #92 says otherwise, and the day's cost is therefore the cost of what *is*
+-- priced. That is the `≈` in the mockup's own subline, and it is asserted below rather
+-- than assumed.
+insert into ouroboros.token_usage
+    (id, organization_id, run_id, provider, model, tokens_in, tokens_out, cost_cents)
+  values
+  ('e4000000-0000-0000-0000-00000000000a', 'org-spend',
+   'e3000000-0000-0000-0000-000000000482', 'anthropic', 'claude-fable-5',
+   1200000, 300000, 1100.0000),
+  ('e4000000-0000-0000-0000-00000000000b', 'org-spend',
+   'e3000000-0000-0000-0000-000000000482', 'anthropic', 'claude-sonnet-5',
+   400000, 100000, 320.0000),
+  ('e4000000-0000-0000-0000-00000000000c', 'org-spend', null,
+   'openai', 'gpt-5-codex', 700000, 200000, 380.0000),
+  ('e4000000-0000-0000-0000-00000000000d', 'org-spend', null,
+   'copilot', 'copilot/gpt-5-codex', 600000, 100000, 60.0000),
+  ('e4000000-0000-0000-0000-00000000000e', 'org-spend', null,
+   'ollama', 'ollama/qwen3-coder', 480000, 120000, null);
+
+-- One row per provider, not one per event: five events, four rows, and `anthropic`'s two
+-- calls summed into one.
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'),
+  'token_usage_daily rolls five events up into one row per provider');
+
+select pg_temp.must_hold(
+  (select events = 2 and tokens_in = 1600000 and tokens_out = 400000
+      and tokens_total = 2000000 and cost_cents = 1420.0000
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and provider = 'anthropic'),
+  'the provider''s two calls are summed into one row, in every column');
+
+-- The card's whole read, in the form #70 will write it — and the three numbers the
+-- mockup draws.
+select pg_temp.must_hold(
+  (select sum(tokens_total) = 4200000 and sum(cost_cents) = 1860.0000
+      and count(*) = 4
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'
+      and day = (now() at time zone 'utc')::date),
+  'the stat card reads 4.2M tokens and $18.60 across 4 providers from the view');
+
+-- --- a day is a day, and it is UTC --------------------------------------------------
+--
+-- The rollup's grouping key, exercised: an event two days old is the same organization
+-- and the same provider, and it must not join today's row. Backdated explicitly, because
+-- every default in this file is the same transaction's `now()`.
+insert into ouroboros.token_usage
+    (id, organization_id, provider, model, tokens_in, tokens_out, cost_cents,
+     occurred_at)
+  values ('e4000000-0000-0000-0000-00000000000f', 'org-spend', 'anthropic',
+          'claude-fable-5', 90000, 10000, 44.0000, now() - interval '2 days');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and provider = 'anthropic'),
+  'the same provider on two days is two rows, not one');
+
+select pg_temp.must_hold(
+  (select sum(tokens_total) = 4200000 and sum(cost_cents) = 1860.0000
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'
+      and day = (now() at time zone 'utc')::date),
+  'and the older day is not counted in today''s card');
+
+select pg_temp.must_hold(
+  (select day = (now() at time zone 'utc')::date - 2
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and provider = 'anthropic'
+      and tokens_total = 100000),
+  'the backdated event lands on its own UTC day');
+
+-- The day is UTC rather than the session's, which is the whole reason the view spells the
+-- conversion out instead of writing `date_trunc('day', occurred_at)`. That form resolves
+-- in the *session's* time zone, so the same ledger would answer the API server and a psql
+-- session differently — a rollup nobody can reconcile.
+--
+-- Two fixed instants half an hour either side of a UTC midnight, which is what makes this
+-- deterministic rather than a test that only fails when it happens to be run in the right
+-- hour: at 23:30Z a session east of UTC has already turned the page, and at 00:30Z a
+-- session west of it has not. Fixed rather than relative for the same reason — an instant
+-- computed from `now()` carries whatever time of day the suite was run at. The date is
+-- historical so that no relative day above can ever collide with it.
+insert into ouroboros.token_usage
+    (id, organization_id, provider, model, tokens_in, tokens_out, occurred_at)
+  values
+  ('e4000000-0000-0000-0000-000000002330', 'org-spend', 'anthropic', 'claude-fable-5',
+   2330, 0, timestamptz '2001-09-09 23:30:00+00'),
+  ('e4000000-0000-0000-0000-000000000030', 'org-spend', 'anthropic', 'claude-fable-5',
+   30, 0, timestamptz '2001-09-10 00:30:00+00');
+
+-- `set local`, so the zone is restored by the rollback at the foot of this file and no
+-- later assertion inherits it.
+set local timezone = 'Pacific/Kiritimati';  -- UTC+14
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and day = date '2001-09-09'
+      and tokens_total = 2330),
+  'a session fourteen hours ahead of UTC reads the same day out of the rollup');
+
+set local timezone = 'Pacific/Midway';      -- UTC-11
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and day = date '2001-09-10'
+      and tokens_total = 30),
+  'and so does a session eleven hours behind it');
+
+set local timezone = 'UTC';
+
+-- --- one workspace's spend is one workspace's ----------------------------------------
+--
+-- The rollup is grouped by organization, so another workspace's ledger cannot reach this
+-- one's card. Stated as an assertion because the stat is a `sum` with no join to check
+-- it: a leak here would render as a plausible number rather than as an error.
+insert into ouroboros.token_usage
+    (organization_id, run_id, provider, model, tokens_in, tokens_out, cost_cents)
+  values ('org-drift', 'e3000000-0000-0000-0000-000000000499', 'anthropic',
+          'claude-fable-5', 5000000, 5000000, 99999.0000);
+
+select pg_temp.must_hold(
+  (select sum(tokens_total) = 4200000
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'
+      and day = (now() at time zone 'utc')::date),
+  'another workspace''s spend does not appear in this workspace''s day');
+
+-- --- unpriced is null, and null is not zero ------------------------------------------
+--
+-- Acceptance criterion: `cost_cents` is nullable and means *unpriced until #92* — never
+-- defaulted to 0. Three halves to it, and each is a different way the card could lie.
+--
+-- First: the column takes no default, so an insert that omits it stores null rather than
+-- a free call.
+insert into ouroboros.token_usage
+    (id, organization_id, provider, model, tokens_in, tokens_out)
+  values ('e4000000-0000-0000-0000-000000001000', 'org-spend', 'ollama',
+          'ollama/qwen3-coder', 1000, 500);
+select pg_temp.must_hold(
+  (select cost_cents is null from ouroboros.token_usage
+    where id = 'e4000000-0000-0000-0000-000000001000'),
+  'an event inserted without a cost is unpriced, not free');
+
+-- Second: `sum` skips the nulls, so the day's cost is the cost of what is priced — and
+-- `unpriced_events` is how a reader learns that the total is a lower bound. Both of
+-- `ollama`'s events today are unpriced, and the day's cost is unchanged by them.
+select pg_temp.must_hold(
+  (select events = 2 and unpriced_events = 2 and cost_cents is null
+      and tokens_total = 601500
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and provider = 'ollama'
+      and day = (now() at time zone 'utc')::date),
+  'a wholly unpriced provider has null cost and a non-zero unpriced_events');
+
+select pg_temp.must_hold(
+  (select sum(cost_cents) = 1860.0000 and sum(unpriced_events) = 2
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'
+      and day = (now() at time zone 'utc')::date),
+  'the day''s cost is the cost of its priced events, and says how many were not');
+
+-- Third: nothing coalesces on the way out. A day with no priced event at all must come
+-- back null — the value the card renders as *cost unavailable* — rather than as `$0.00`,
+-- which is a claim about money.
+insert into ouroboros.token_usage
+    (organization_id, provider, model, tokens_in, tokens_out, occurred_at)
+  values ('org-spend', 'ollama', 'ollama/qwen3-coder', 2000, 1000,
+          now() - interval '5 days');
+select pg_temp.must_hold(
+  (select cost_cents is null and unpriced_events = 1
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and provider = 'ollama'
+      and day = (now() at time zone 'utc')::date - 5),
+  'a day with nothing priced reports null cost, not zero');
+
+-- Cents are stored exactly and to four places, because a single call is worth a fraction
+-- of one. Rounded to whole cents these three would be 0, 0 and 0; summed as `numeric`
+-- they are a tenth of a cent, and summed as `double precision` they would be nearly
+-- that.
+insert into ouroboros.token_usage
+    (organization_id, provider, model, tokens_in, tokens_out, cost_cents, occurred_at)
+  select 'org-spend', 'openai', 'gpt-5-codex', 100, 50, 0.0333,
+         now() - interval '9 days'
+    from generate_series(1, 3);
+select pg_temp.must_hold(
+  (select cost_cents = 0.0999 from ouroboros.token_usage_daily
+    where organization_id = 'org-spend' and provider = 'openai'
+      and day = (now() at time zone 'utc')::date - 9),
+  'sub-cent costs are stored and summed exactly, not rounded to nothing');
+
+-- --- the numbers are counts ----------------------------------------------------------
+--
+-- A negative token count is a parse error, not a refund, and it would subtract from the
+-- card in silence. Zero is legal in either column and is not the same thing: a refused
+-- call read its prompt and produced nothing.
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set tokens_in = -1
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.tokens_in cannot go negative',
+  'token_usage_tokens_in_nonnegative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set tokens_out = -1
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.tokens_out cannot go negative',
+  'token_usage_tokens_out_nonnegative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set cost_cents = -0.0001
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.cost_cents cannot go negative',
+  'token_usage_cost_cents_nonnegative');
+
+insert into ouroboros.token_usage
+    (id, organization_id, provider, model, tokens_in, tokens_out, cost_cents)
+  values ('e4000000-0000-0000-0000-000000001001', 'org-spend', 'anthropic',
+          'claude-fable-5', 1200, 0, 0.0000);
+select pg_temp.must_hold(
+  (select tokens_out = 0 and cost_cents = 0
+     from ouroboros.token_usage where id = 'e4000000-0000-0000-0000-000000001001'),
+  'zero tokens and a zero cost are storable — they are measurements, not absences');
+
+-- --- the provider is folded, the model is not -----------------------------------------
+--
+-- Decision F8 leaves both opaque, so a provider nobody has heard of stores. What
+-- `provider` carries beyond that is the stat's rule: the subline counts
+-- `distinct provider`, so `Anthropic` beside `anthropic` would be five providers where
+-- there are four, and the character class is what refuses it.
+insert into ouroboros.token_usage
+    (organization_id, provider, model, tokens_in, tokens_out)
+  values ('org-spend', 'a-provider.nobody_has-filed', 'some/model:v2', 10, 10);
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage
+    where provider = 'a-provider.nobody_has-filed'),
+  'token_usage.provider takes any provider — decision F8, no catalog here');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set provider = 'Anthropic'
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.provider is stored folded, so the card counts providers not spellings',
+  'token_usage_provider_format');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set provider = '   '
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.provider must not be blank', 'token_usage_provider_format');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set provider = repeat('p', 65)
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.provider is bounded', 'token_usage_provider_format');
+
+-- The model keeps its capitals — a model identifier is a name its provider chose, and
+-- some of them carry them — but is still bounded and non-blank.
+insert into ouroboros.token_usage
+    (organization_id, provider, model, tokens_in, tokens_out)
+  values ('org-spend', 'ollama', 'Qwen/Qwen3-Coder', 10, 10);
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage where model = 'Qwen/Qwen3-Coder'),
+  'token_usage.model is not folded — capitals are the provider''s to choose');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set model = '  '
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.model must not be blank', 'token_usage_model_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set model = repeat('m', 201)
+    where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'token_usage.model is bounded', 'token_usage_model_present');
+
+-- --- the run, and the workspace it must agree with -------------------------------------
+--
+-- The rule V008 and V009 wrote for `github_repo_id`, in the shape this table needs: it
+-- reaches a repository through its run rather than directly, which is why V009's shared
+-- function could not be reused and `ouroboros.run_in_organization()` exists. A usage row
+-- naming one workspace and another's run is one tenant's work appearing in another's
+-- spend — and, once mockup 15 joins the two, in another's cost attribution.
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage
+      (organization_id, run_id, provider, model, tokens_in, tokens_out)
+    values ('org-spend', 'e3000000-0000-0000-0000-000000000499', 'anthropic',
+            'claude-fable-5', 10, 10)$$,
+  'usage cannot be attributed to a run belonging to another organization',
+  'token_usage_run_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage
+       set run_id = 'e3000000-0000-0000-0000-000000000499'
+     where id = 'e4000000-0000-0000-0000-00000000000a'$$,
+  'usage cannot be moved onto another organization''s run',
+  'token_usage_run_in_organization');
+
+-- With a run named, the trigger runs ahead of the organization foreign key and subsumes
+-- it, exactly as the two tables above — so an organization that does not exist is
+-- refused under the trigger's name.
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage
+      (organization_id, run_id, provider, model, tokens_in, tokens_out)
+    values ('no-such-org', 'e3000000-0000-0000-0000-000000000482', 'anthropic',
+            'claude-fable-5', 10, 10)$$,
+  'usage naming an organization that does not exist is refused',
+  'token_usage_run_in_organization');
+
+-- With no run it does not, because there is nothing to look up: the foreign key is the
+-- whole of the rule then, and it is the constraint that reports. Asserted rather than
+-- left implied — the two refusals carry different names, and a caller reading them
+-- should find that documented rather than surprising.
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage
+      (organization_id, provider, model, tokens_in, tokens_out)
+    values ('no-such-org', 'anthropic', 'claude-fable-5', 10, 10)$$,
+  'usage with no run naming a missing organization is refused by the foreign key',
+  'token_usage_organization_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.token_usage
+      (organization_id, run_id, provider, model, tokens_in, tokens_out)
+    values ('org-spend', 'e3000000-0000-0000-0000-0000000000ff', 'anthropic',
+            'claude-fable-5', 10, 10)$$,
+  'token_usage.run_id references an existing run',
+  'token_usage_run_id_fkey');
+
+-- The two foreign keys are deliberately not the same: the workspace cascades, the run
+-- does not. Read from the catalogue, because it is the difference between a ledger and
+-- a set of rows that quietly shrinks.
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_constraint
+    where conrelid = 'ouroboros.token_usage'::regclass and contype = 'f'
+      and conname = 'token_usage_organization_id_fkey' and confdeltype = 'c'),
+  'token_usage cascades from the organization it bills');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_constraint
+    where conrelid = 'ouroboros.token_usage'::regclass and contype = 'f'
+      and conname = 'token_usage_run_id_fkey' and confdeltype = 'n'),
+  'and sets run_id null rather than cascading, so a deleted run does not un-spend money');
+
+-- --- deleting a run detaches the spend, it does not remove it ---------------------------
+--
+-- The character of the ledger, exercised end to end: the run goes, the events stay, the
+-- day's total is unchanged and only the attribution is lost — which is the thing that
+-- genuinely no longer exists. This is also the shape of a repository being disabled,
+-- since `github_repos` cascades into `runs`.
+delete from ouroboros.runs where id = 'e3000000-0000-0000-0000-000000000482';
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.token_usage
+    where id in ('e4000000-0000-0000-0000-00000000000a',
+                 'e4000000-0000-0000-0000-00000000000b')
+      and run_id is null),
+  'deleting a run leaves its usage events, with run_id set null');
+
+select pg_temp.must_hold(
+  (select sum(cost_cents) = 1860.0000
+     from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'
+      and day = (now() at time zone 'utc')::date),
+  'and the day''s priced total is exactly what it was before the run was deleted');
+
+-- --- the view is what it claims to be ---------------------------------------------------
+--
+-- A plain view, not materialized — decision F10's second half: a materialized rollup is a
+-- stored total wearing another hat, stale from the first correction until something
+-- refreshes it. Everything above would pass against one, since nothing above waits.
+select pg_temp.must_hold(
+  (select relkind = 'v' from pg_class
+    where oid = 'ouroboros.token_usage_daily'::regclass),
+  'token_usage_daily is a plain view, so it cannot be stale');
+
+-- And it reads with the caller's rights rather than its owner's, so it is a convenience
+-- on top of the insert-only posture rather than a way around it.
+select pg_temp.must_hold(
+  (select reloptions @> array['security_invoker=true'] from pg_class
+    where oid = 'ouroboros.token_usage_daily'::regclass),
+  'token_usage_daily is security_invoker, so it grants no read the table would not');
+
+-- --- the indexes, and the volume they are for --------------------------------------------
+--
+-- Acceptance criterion: a BRIN index on `occurred_at` is present. Read from the
+-- catalogue by access method rather than by name, because a b-tree called
+-- `…_brin` would satisfy the name and none of the reason for it.
+select pg_temp.must_hold(
+  (select am.amname = 'brin'
+     from pg_class c
+     join pg_am am on am.oid = c.relam
+    where c.oid = 'ouroboros.token_usage_occurred_at_brin'::regclass),
+  'occurred_at carries a real BRIN index, not a b-tree with a hopeful name');
+
+select pg_temp.must_hold(
+  (select reloptions @> array['autosummarize=on'] from pg_class
+    where oid = 'ouroboros.token_usage_occurred_at_brin'::regclass),
+  'and it summarises as it fills, so the newest window is as cheap as the oldest');
+
+-- Acceptance criterion: inserting seed volume completes in under a second. 5,000 events
+-- is two orders of magnitude past what the mockup-parity seed (#68) will hold, and the
+-- budget is the criterion's own — so the assertion has room for a loaded CI runner and
+-- still fails on the thing it is watching for, which is an index that makes writes to
+-- this table expensive.
+--
+-- Timed with `clock_timestamp()`, not `now()`: `now()` is the transaction's start and
+-- would report every insert in this file as having taken no time at all.
+create function pg_temp.must_insert_usage_within(events integer, budget interval)
+returns void language plpgsql as $$
+declare
+  started timestamptz;
+  elapsed interval;
+begin
+  started := clock_timestamp();
+
+  insert into ouroboros.token_usage
+      (organization_id, provider, model, tokens_in, tokens_out, occurred_at)
+  select 'org-drift', 'anthropic', 'claude-fable-5', 1000, 250,
+         now() - (g || ' seconds')::interval
+    from generate_series(1, events) g;
+
+  elapsed := clock_timestamp() - started;
+  if elapsed > budget then
+    raise exception 'FAILED: inserting % usage events took % (budget %)',
+      events, elapsed, budget;
+  end if;
+end;
+$$;
+
+select pg_temp.must_insert_usage_within(5000, interval '1 second');
+
+select pg_temp.must_hold(
+  (select count(*) = 5001 from ouroboros.token_usage
+    where organization_id = 'org-drift'),
+  'and every one of them is there');
+
+-- The plans, on a table that now holds enough rows for them to mean something.
+--
+-- Sequential scans are off for the reason every plan assertion in this file turns them
+-- off: the claim under test is that a usable index exists at production size, not that
+-- the planner prefers it over a handful of pages.
+set local enable_seqscan = off;
+
+-- The ledger's read — a window of time, whoever it belongs to. This is the BRIN's, and
+-- it is what #92's re-pricing pass and any retention work will ask.
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.token_usage
+     where occurred_at >= now() - interval '1 hour'$$,
+  'token_usage_occurred_at_brin');
+
+-- The card's read — one workspace, one window. This is the b-tree's, and the reason
+-- there are two indexes rather than one: the BRIN narrows to the window across every
+-- workspace and would leave the organization to a filter, which is the wrong way round
+-- for a stat rendered per workspace.
+select pg_temp.must_use_index(
+  $$select provider, sum(tokens_in + tokens_out) from ouroboros.token_usage
+     where organization_id = 'org-spend' and occurred_at >= now() - interval '1 day'
+     group by provider$$,
+  'token_usage_organization_occurred_at_idx');
+
+-- The view's own read is that b-tree's too — the organization reaches the index and the
+-- day becomes a filter over the workspace's range, since `at time zone` is stable rather
+-- than immutable and cannot be indexed. That is the shape #70 inherits: a caller that
+-- needs the window pruned as well adds an `occurred_at` range, which the view's grouping
+-- key cannot carry for it.
+select pg_temp.must_use_index(
+  $$select * from ouroboros.token_usage_daily
+     where organization_id = 'org-spend' and day = (now() at time zone 'utc')::date$$,
+  'token_usage_organization_occurred_at_idx');
+
+-- Not a read path today: the `set null` back-reference. Without this index every run
+-- deletion scans the largest table in the schema — and it is the index mockup 15's
+-- per-run attribution will read, the one query that starts from a run.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.token_usage
+     where run_id = 'e3000000-0000-0000-0000-000000000499'$$,
+  'token_usage_run_id_idx');
+
+set local enable_seqscan = on;
+
+-- --- an event is a fact, so it carries no updated_at --------------------------------------
+--
+-- The one table this repository creates without the V001 touch trigger, and deliberately:
+-- there is no edit to an event that this table is the record of. Asserted so that a later
+-- migration adding `updated_at` has to come past this line and say why.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'token_usage'
+      and column_name = 'updated_at'),
+  'token_usage has no updated_at — an event is not edited');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from pg_trigger
+    where tgrelid = 'ouroboros.token_usage'::regclass and not tgisinternal
+      and tgfoid = 'ouroboros.touch_updated_at()'::regprocedure),
+  'and so carries no touch trigger');
+
+-- --- the workspace cascade ------------------------------------------------------------------
+--
+-- The one deletion that removes events, and it removes all of that workspace's — which is
+-- what keeps every remaining total computable from what is left. End to end, one
+-- statement: organization → its ledger, and organization → github_orgs → github_repos →
+-- runs, whose own rows are gone rather than detached.
+delete from ouroboros.organization where "id" = 'org-spend';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.token_usage where organization_id = 'org-spend'),
+  'deleting an organization takes its whole ledger with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.token_usage_daily
+    where organization_id = 'org-spend'),
+  'and the rollup empties with it, because it is an aggregate rather than a copy');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

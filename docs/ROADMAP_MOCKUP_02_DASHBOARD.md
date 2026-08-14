@@ -163,7 +163,7 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | F.1 | #64 | 🟢 Done | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | F.2 | #65 | 🟢 Done | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
-| F.3 | #66 | 🟡 Open | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
+| F.3 | #66 | 🟢 Done | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.4 | #67 | 🟡 Open | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
 | F.5 | #68 | 🟡 Open | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
 | F.6 | #69 | 🟡 Open | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
@@ -328,7 +328,73 @@ queue_items(org, position ↑) ─▶ #485 M standard-fix · #486 L feature-loop
 
 ### Issue F.3 — ouroboros-db: [F.3] Token usage events table
 
-> **GitHub issue:** #66 · **Status:** 🟡 Open · **Parent epic:** #59
+> **GitHub issue:** #66 · **Status:** 🟢 Done · **Parent epic:** #59
+
+> **Shipped.** [`V010__dashboard_usage.sql`](../ouroboros-db/migrations/V010__dashboard_usage.sql)
+> creates `ouroboros.token_usage` with the column set below and the
+> `ouroboros.token_usage_daily` rollup over it — this schema's first view. The assertions
+> are a new section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db` runs them
+> against a database migrated from empty on every pull request. The fixture is the stat
+> card itself: a day of spend across the four providers mockup 07 lists, summing to the
+> `4.2M` tokens and the `≈ $18.60` the card renders.
+>
+> **A ledger, not a counter (decision F10).** The cheap shape for one number is one row
+> per organization that something increments, and it is wrong twice over: it drifts the
+> moment anything is corrected — a re-priced month, a double-counted retry, an invoice
+> that disagrees — with no record left to reconcile against, and it has no `run_id`, so it
+> cannot answer the question the product is already committed to asking. Per-run cost
+> attribution is what mockup 15's insights screen is made of. Spend is therefore stored as
+> the events that caused it and every total is an aggregate. The same reasoning makes the
+> rollup a plain view rather than a materialized one: a materialized rollup is a stored
+> total wearing another hat, stale from the first correction until something refreshes it.
+>
+> **`cost_cents` is nullable, and null means *unpriced*** — never 0, which would claim the
+> call was free. Nothing defaults it, nothing coalesces it, and the view propagates the
+> null so the card can render *cost unavailable* rather than an understated total.
+> `token_usage_daily.unpriced_events` is how a caller learns the total is a lower bound,
+> which is exactly what the mockup's own `≈` is already saying: local inference is
+> unpriced until J.4 (#92) lands the rate card. It is stored as `numeric(14,4)` rather
+> than integer cents, because per-token rates put a single call well under a cent and
+> integer cents would round an afternoon of them to nothing.
+>
+> **The day is UTC, fixed rather than session-dependent.** `date_trunc('day',
+> occurred_at)` on a `timestamptz` resolves in the *session's* time zone, which would make
+> the same ledger answer the API server and a psql session differently. The view spells
+> the conversion out, and the assertion for it reads the rollup from sessions fourteen
+> hours ahead of UTC and eleven behind. Rendering that day in a workspace's own zone is
+> G.1's question, not the table's.
+>
+> **Two indexes, and they are not two copies of one answer.** The BRIN on `occurred_at` is
+> the criterion's and the ledger's — append-only, physically ordered by the column being
+> indexed, so it stays kilobytes where a b-tree would be gigabytes, and it is what a
+> workspace-blind time range (#92's re-pricing pass, any retention work) reads. The b-tree
+> on `(organization_id, occurred_at desc)` is the card's, because every product read is
+> workspace-scoped and the BRIN would leave the organization to a filter. Inserting 5,000
+> events — two orders of magnitude past what the F.5 seed will hold — is asserted to stay
+> inside the criterion's one-second budget.
+>
+> **`run_id` sets null rather than cascading.** Deleting a run does not un-spend the
+> money: the event happened and the invoice will say so, and a day's total that shrank
+> because a repository was disabled is exactly the drift F10 exists to avoid. What is lost
+> is the attribution, which is the thing that genuinely no longer exists. The run and the
+> workspace must still agree — a usage row naming one workspace and another's run is one
+> tenant's work appearing in another's spend — and since this table reaches a repository
+> *through* its run, V009's shared `repo_in_organization()` cannot serve it;
+> `ouroboros.run_in_organization()` is its sibling, written generic over the table for the
+> same reason.
+>
+> **The insert-only grant posture is documented in the migration, not granted.** Every
+> module still connects as the migration user, so a `grant` naming a role would fail on a
+> clean database; per-role least privilege is #25's, and this is the posture it inherits.
+> Deliberately *not* a `before update or delete` trigger either: the two mutations this
+> table is designed for — #92 filling `cost_cents`, and the `set null` above — would both
+> have to be special-cased, at which point the trigger enforces "append-only except where
+> we said otherwise", which reads as a guarantee and is not one.
+>
+> **Not in this ticket, by the roadmap's own split:** no seed rows (F.5, #68) and no
+> endpoint (G.1, #70). The card's read is asserted with `EXPLAIN` all the same, since the
+> shape is what that endpoint will be held to.
 
 - **Problem Statement:** *Token spend · today* (`4.2M`, `≈ $18.60 across 4
   providers`) needs an append-only usage ledger; per-run cost attribution will matter
@@ -1205,6 +1271,8 @@ be filed and landed before Epic G can start in earnest.
 this one. `organization` exists (`V005`, #707), the extension tables were re-parented onto
 it (`V006`, #708), and `github_repos` has been there since `V003` (#22). That is the whole
 of what F.1 needed, so **#64 shipped on 2026-08-13** (`V008__dashboard_runs.sql`) and Epic
-F is unblocked. **#65 shipped the same day** (`V009__dashboard_queue.sql`), which leaves
-F.3 (#66) and F.4 (#67) as the next rows of this epic — they need only F.1 and BA-B.3
-respectively, and can go in parallel. F.5 (#68) waits on all four tables.
+F is unblocked. **#65 shipped the same day** (`V009__dashboard_queue.sql`), and **#66 with
+it** (`V010__dashboard_usage.sql`), which leaves **F.4 (#67)** as the last table of this
+epic — it needs only BA-B.3, so nothing is holding it. F.5 (#68) waits on all four
+tables; each table has arrived carrying its own section of `tests/constraints.sql`, which
+is most of what F.6 (#69) is left to finish.

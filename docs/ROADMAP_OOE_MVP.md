@@ -476,7 +476,7 @@ that roadmap's "Existing issues affected" section.
 
 ## P4 — Dashboard — the First Real Screen
 
-> **23 issues** · 55 complexity points · order **#68–#92**, less `69` and `71` · 7 dependency waves
+> **22 issues** · 53 complexity points · order **#68–#92**, less `69`, `71` and `72` · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_02_DASHBOARD.md` (Epics F–I)
 
 **Goal.** Build the dashboard read-model, its org-scoped REST endpoints with ETag polling, the mission-control topbar chrome (tenant switcher, live and needs-you pills, ⌘K palette), and mockup 02 as the real landing page.
@@ -487,9 +487,9 @@ that roadmap's "Existing issues affected" section.
 
 **Parallel:** the `F` (read-model) and `H` (topbar chrome) tracks are independent for their first three issues; `G` (services) and `I` (page UI) then pipeline behind them.
 
-> **`F.1` · `#64` and `F.2` · `#65` have shipped, and rows `69` and `71` have left the
-> table below** — which is why its order numbers step from `68` to `70` and from `70` to
-> `72`.
+> **`F.1` · `#64`, `F.2` · `#65` and `F.3` · `#66` have shipped, and rows `69`, `71` and
+> `72` have left the table below** — which is why its order numbers step from `68` to
+> `70` and from `70` to `73`.
 >
 > `#64`'s blockers were both already met, and one of them under another roadmap's name: `3.1`
 > is the Flyway scaffold (`#19`), and `B.3` — the organization and repo tables — is
@@ -517,14 +517,27 @@ that roadmap's "Existing issues affected" section.
 > share rather than copying it. Same assertion story: a section in `tests/constraints.sql`,
 > run by `ci/db` against a database migrated from empty.
 >
-> **`F.3` (`#66`) and `F.4` (`#67`) are the next rows of this phase that can move**, and
-> `F.5` (`#68`) once all four tables exist.
+> [`V010__dashboard_usage.sql`](../ouroboros-db/migrations/V010__dashboard_usage.sql) is
+> `F.3`'s pair — `token_usage`, the append-only ledger behind *Token spend · today*, and
+> `token_usage_daily`, the per-organization/UTC-day/provider rollup the card is rendered
+> from and this schema's first view. Spend is stored as the events that caused it rather
+> than as a total something increments: a total drifts the moment anything is corrected,
+> and it has no `run_id`, so it cannot answer the per-run cost attribution mockup 15 is
+> made of. `cost_cents` is nullable and null means *unpriced* — never 0, which would claim
+> the call was free — and the view propagates that null instead of coalescing it, which is
+> what the mockup's own `≈` is already saying while `J.4` (`#92`) is still to land. The
+> BRIN index on `occurred_at` is the criterion's and the ledger's; the b-tree on
+> `(organization_id, occurred_at desc)` is the card's. Same assertion story again: a
+> section in `tests/constraints.sql`, run by `ci/db` against a database migrated from
+> empty.
+>
+> **`F.4` (`#67`) is the next row of this phase that can move** — it needs only `B.3` —
+> and `F.5` (`#68`) once all four tables exist.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 68 | **H.3** | #79 | Search pill & ⌘K navigation palette | ouroboros-ui | M | 5.3 |
 | 70 | **F.4** | #67 | Workspace settings table | ouroboros-db | XS | B.3 |
-| 72 | **F.3** | #66 | Token usage events table | ouroboros-db | S | F.1 |
 | 73 | **F.5** | #68 | Dashboard dev seeds — mockup-02 parity | ouroboros-db | S | F.1, F.4 |
 | 74 | **G.2** | #71 | Runs endpoints (active & recent) | ouroboros-rest | S | C.3, F.1 |
 | 75 | **G.3** | #72 | Pulse metrics computation | ouroboros-rest | M | F.1 |
