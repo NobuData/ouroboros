@@ -476,7 +476,7 @@ that roadmap's "Existing issues affected" section.
 
 ## P4 — Dashboard — the First Real Screen
 
-> **21 issues** · 52 complexity points · order **#68–#92**, less `69`, `70`, `71` and `72` · 7 dependency waves
+> **20 issues** · 51 complexity points · order **#68–#92**, less `69`, `70`, `71`, `72` and `73` · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_02_DASHBOARD.md` (Epics F–I)
 
 **Goal.** Build the dashboard read-model, its org-scoped REST endpoints with ETag polling, the mission-control topbar chrome (tenant switcher, live and needs-you pills, ⌘K palette), and mockup 02 as the real landing page.
@@ -487,9 +487,9 @@ that roadmap's "Existing issues affected" section.
 
 **Parallel:** the `F` (read-model) and `H` (topbar chrome) tracks are independent for their first three issues; `G` (services) and `I` (page UI) then pipeline behind them.
 
-> **`F.1` · `#64`, `F.2` · `#65`, `F.3` · `#66` and `F.4` · `#67` have shipped, and rows
-> `69`, `70`, `71` and `72` have left the table below** — which is why its order numbers
-> step from `68` straight to `73`.
+> **`F.1` · `#64`, `F.2` · `#65`, `F.3` · `#66`, `F.4` · `#67` and `F.5` · `#68` have
+> shipped, and rows `69`–`73` have left the table below** — which is why its order numbers
+> step from `68` straight to `74`.
 >
 > `#64`'s blockers were both already met, and one of them under another roadmap's name: `3.1`
 > is the Flyway scaffold (`#19`), and `B.3` — the organization and repo tables — is
@@ -546,13 +546,34 @@ that roadmap's "Existing issues affected" section.
 > more: a section in `tests/constraints.sql`, run by `ci/db` against a database migrated
 > from empty.
 >
-> **All four read-model tables now exist, so `F.5` (`#68`) is the next row of this phase
-> that can move** — the seeds every remaining `G` and `I` row is measured against.
+> [`R__dev_seed_dashboard.sql`](../ouroboros-db/migrations/R__dev_seed_dashboard.sql) is
+> `F.5`, and it fills all four of those tables: **mockup 02 as rows** — 53 `runs`, 12
+> `queue_items`, 12 `token_usage` events and the one `workspace_settings` row, in
+> `acme-robotics`, behind the same `${ouro_dev_seed}` guard the workspace seed carries, with
+> every window relative to `now()` so the "today" and "seven day" arithmetic keeps holding.
+> The visible seven rows are the mockup's number for number; the other forty-six exist
+> because the stat row's numbers are *counts* and this roadmap's honesty rule is that no
+> number exists outside the seeds. A **second** seed file rather than an extension of the
+> first, and its name is load-bearing: Flyway orders repeatable migrations by description,
+> so `dev_seed_dashboard` sorts after `dev_seed` and finds the workspaces its rows hang off
+> — `dashboard_dev_seed` would sort before it and seed nothing, silently. `kensuenobu` gets
+> no rows at all, which is the empty-state fixture `I.7` renders against. Assertions are a
+> new section in [`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which `ci/db` already
+> runs against a *twice*-migrated seeded database, so the idempotency criterion is checked
+> by the same pass that checks the content.
+>
+> One thing `#68` found and `G.1` inherits: **the mockup's `27 merged / 7d`, its `2
+> interventions` and its `92%` merge rate cannot all be true of one seven-day window** —
+> 92% needs a denominator of 29.35. The seed makes 92% exact over the fourteen days it
+> spans (46 merged of 50 closed) and documents both that and the trailing week's 93.1%, so
+> the choice of window is one `#70` makes against a fixture rather than discovers against
+> one that will not add up.
+>
+> **With the seeds in place, `G.1` (`#70`) is the next row of this phase that can move.**
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 68 | **H.3** | #79 | Search pill & ⌘K navigation palette | ouroboros-ui | M | 5.3 |
-| 73 | **F.5** | #68 | Dashboard dev seeds — mockup-02 parity | ouroboros-db | S | F.1, F.4 |
 | 74 | **G.2** | #71 | Runs endpoints (active & recent) | ouroboros-rest | S | C.3, F.1 |
 | 75 | **G.3** | #72 | Pulse metrics computation | ouroboros-rest | M | F.1 |
 | 76 | **G.5** | #74 | Auto-merge setting endpoint | ouroboros-rest | S | C.3, F.4 |

@@ -47,7 +47,12 @@
 > view), and `workspace_settings`, the org-scoped home of the **Auto-merge when checks
 > pass** switch — the page's only *write*, read through
 > `workspace_settings_effective`. Each carries its own section in
-> [`tests/constraints.sql`](tests/constraints.sql).
+> [`tests/constraints.sql`](tests/constraints.sql). With all four in place,
+> [#68](https://github.com/NobuData/ouroboros/issues/68) fills them:
+> [`migrations/R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) is
+> **mockup 02 as rows** — every figure that screen renders, reproduced from data rather
+> than asserted by a mock — and the personal workspace deliberately left empty as the
+> zero-state fixture. See [The development seed](#the-development-seed).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -198,8 +203,25 @@ There is deliberately no `scripts/clean`.
 
 `docker compose up` leaves a database with data in it: the demo content every screen in
 [`../docs/mockups`](../docs/mockups) is drawn around — mockup 01 Step 2's three
-organizations, number for number — so a UI has something to render and an e2e test has
-something to assert against by name.
+organizations and mockup 02's dashboard, number for number — so a UI has something to
+render and an e2e test has something to assert against by name.
+
+It is **two migrations**, because they answer two questions and change on different days:
+
+| File | Holds | Issue |
+|---|---|---|
+| [`R__dev_seed.sql`](migrations/R__dev_seed.sql) | *Who exists* — the workspaces, the people, and where the loop may run | [#23](https://github.com/NobuData/ouroboros/issues/23) |
+| [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
+
+> **The names are load-bearing.** Flyway applies repeatable migrations in the order of
+> their *descriptions*, and every row the dashboard seed writes finds its parent by
+> natural key — so `dev_seed_dashboard` has to sort after `dev_seed`, and does.
+> `tests/seed.test.sh` asserts it, because the failure mode is silent: applied in the
+> wrong order, every join finds nothing, every insert inserts nothing, and a second
+> `migrate` does not put it right (Flyway re-applies a repeatable migration only when its
+> checksum changes).
+
+#### Who exists
 
 | Row | Value |
 |---|---|
@@ -212,12 +234,47 @@ something to assert against by name.
 | Orgs | `acme-robotics` enabled · `acme-labs` disabled · `kensuenobu` enabled |
 | Repos | acme-robotics: 4 enabled, incl. `helios-firmware` · acme-labs: none · kensuenobu: 2 enabled — all default branch `main` |
 
-Every seeded row carries an id beginning `5eed` —
-`5eed0001-0000-4000-8000-000000000001` is the acme-robotics organization — so demo data
-is recognisable on sight in a log or a URL, and a test can name a row without looking it
-up. [`migrations/R__dev_seed.sql`](migrations/R__dev_seed.sql) lists all of them.
+#### What the loop has done
 
-**It cannot run against anything but a development database.** Each statement in the
+All of it belongs to `acme-robotics`, and every window is relative to `now()`, so the
+"today" and "seven day" arithmetic holds however long after the seed was written the stack
+is brought up.
+
+| Table | Rows | What mockup 02 renders from them |
+|---|---|---|
+| `runs` | 53 | 3 live (`#482` coding · `#479` building · `#476` in review), 50 closed — of which the four newest are the *Recently closed* card, `#474 → PR #512` … `#465 → PR #504` |
+| `queue_items` | 12 | *Queued issues* `12`, `est. 9h 40m`, and the five the *Up next in queue* card draws — `#485` M, `#486` L, `#488` XS, `#490` XL, `#491` S |
+| `token_usage` | 12 | *Token spend · today* — `4.2M` tokens, `≈ $18.60 across 4 providers`; the `≈` is the three unpriced local-inference events |
+| `workspace_settings` | 1 | *Auto-merge when checks pass*, on |
+
+The *Loop pulse* metrics are aggregates over the same runs: **92%** autonomous merge rate
+(46 merged of the 50 closed), **14m 20s** average cycle time (over the 29 that closed in
+the trailing seven days), **2** human interventions this week, and **27** merged in seven
+days against **19** the week before — the `▲ 8`.
+
+> **One of the card's numbers cannot be true of one seven-day window**, and the migration
+> header says so at length rather than leaving #70 to find out: 27 merged and 2
+> interventions make the trailing week's merge rate 93.1%, and no integer count of closed
+> runs divides 27 into 92%. The seed makes 92% exact over the population it can — the whole
+> fourteen days it spans, 46 of 50 — and states both figures.
+
+**`kensuenobu` and `acme-labs` get no dashboard rows at all.** That is not an omission: the
+personal workspace is the *empty-state fixture* the zero-state cards
+([#86](https://github.com/NobuData/ouroboros/issues/86)) are rendered against, so switching
+the active organization to it is how a developer sees the empty dashboard. Neither gets a
+`workspace_settings` row either, which keeps "answered no" and "never asked" distinguishable
+— `workspace_settings_effective` resolves both to `false`, and only it says which.
+
+Every seeded row carries an id beginning `5eed` —
+`5eed0001-0000-4000-8000-000000000001` is the acme-robotics organization,
+`5eed0009-…-000000000482` the run against issue `#482` — so demo data is recognisable on
+sight in a log or a URL, and a test can name a row without looking it up. The workspace
+seed lists all of its ids; the dashboard seed builds its seventy-seven from three
+documented prefixes (`5eed0009…` runs, `5eed000a…` queue items, `5eed000b…` usage events)
+and the issue number or ordinal of the row, which is as deterministic and rather more
+readable than seventy-seven literals.
+
+**Neither can run against anything but a development database.** Each statement in either
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
 [`flyway.toml`](flyway.toml) — the configuration `scripts/migrate`, CI and every
 hand-run migration read. With it false the migration still applies and inserts nothing.
@@ -229,15 +286,15 @@ it for a database the stack does not own:
 ouroboros-db/scripts/migrate --config flyway.seed.toml
 ```
 
-It is a repeatable migration and it is idempotent: the ids are literals and every
-statement ends `on conflict do nothing`, so applying it twice writes nothing the second
-time and leaves even the timestamps alone. Child rows find their parent by slug or by
-email rather than by id, so a database somebody has edited by hand gets a seed that
-re-creates what it can instead of failing.
+Both are repeatable migrations and both are idempotent: every id is fixed and every
+statement ends `on conflict do nothing`, so applying either twice writes nothing the second
+time and leaves even the timestamps alone. Child rows find their parent by slug, by email
+or by repository name rather than by id, so a database somebody has edited by hand gets a
+seed that re-creates what it can instead of failing.
 
 > One consequence of Flyway's rules is worth knowing: a repeatable migration's checksum
 > is taken of the file, *before* placeholders are substituted. A database that has
-> already recorded this migration un-seeded therefore does not pick the data up merely
+> already recorded these migrations un-seeded therefore does not pick the data up merely
 > by being migrated again with the overlay — reachable only by pointing both
 > configurations at the same database. `scripts/clean-dev` then a seeded `migrate` fixes
 > it, or `docker compose down -v && docker compose up` for the stack's own database.
@@ -298,7 +355,8 @@ as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh)
 every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
 — because `validate` compares checksums rather than behaviour, and a `unique` on the
 wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
-what `R__dev_seed.sql` actually put in a development database, one assertion per row.
+what the two `R__dev_seed*.sql` migrations actually put in a development database, one
+assertion per row — the workspaces, and mockup 02's dashboard number for number.
 Run them against a migrated database:
 
 ```bash
@@ -409,9 +467,9 @@ Two details are the reason the job is worth its minute:
   `docker compose up` and a hand-run `scripts/migrate` do, so there is no configuration
   that only CI applies and none it can miss.
 - **The seed gets a database of its own.** The first one has to go on proving what a
-  production migration does — apply `R__dev_seed.sql` and insert nothing, because
-  `${ouro_dev_seed}` is `false` in `flyway.toml` — so the overlay is layered onto a
-  second database instead. Migrating it twice before asserting is the idempotency
+  production migration does — apply both `R__dev_seed*.sql` migrations and insert
+  nothing, because `${ouro_dev_seed}` is `false` in `flyway.toml` — so the overlay is
+  layered onto a second database instead. Migrating it twice before asserting is the idempotency
   criterion, since every assertion in `seed.sql` says *exactly one*.
 - **`OURO_*` enters the environment where the live pass begins**, not job-wide. Those
   variables are the last word in `run.sh`'s precedence, and the tooling suite two steps
@@ -559,10 +617,14 @@ again whenever the migrations are applied.
    schema that other migrations depend on.
 4. **Naming:** `V###__snake_case_description.sql` / `R__snake_case_description.sql`.
    `validateMigrationNaming` fails the build on anything else.
-5. **Dev seed data never runs in production** — every statement in `R__dev_seed.sql`
+5. **Dev seed data never runs in production** — every statement in every `R__dev_seed*.sql`
    ends `and ${ouro_dev_seed}`, which is `false` in `flyway.toml` and `true` only in
    `flyway.seed.toml`. A seed statement without that guard is the one thing
    `tests/seed.test.sh` counts.
+6. **A seed that depends on another seed is named to sort after it.** Flyway orders
+   repeatable migrations by description, so `R__dev_seed_dashboard.sql` runs after
+   `R__dev_seed.sql` and finds the workspaces its rows hang off. `tests/seed.test.sh`
+   asserts the ordering, because getting it wrong seeds nothing and says nothing.
 
 ## Layout
 
@@ -596,7 +658,8 @@ ouroboros-db/
 │   ├── V009__dashboard_queue.sql     # queue_items — the ordered issue queue — #65
 │   ├── V010__dashboard_usage.sql     # token_usage + token_usage_daily — the spend ledger — #66
 │   ├── V011__workspace_settings.sql  # workspace_settings + …_effective — the auto-merge switch — #67
-│   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, reshaped by #708
+│   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
+│   └── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 └── tests/
     ├── lib/
     │   ├── fixture.sh                # the synthetic module and stub runners the shell suites share
@@ -606,9 +669,9 @@ ouroboros-db/
     │   └── post.sql                  # what V006 must have done to those rows — #708
     ├── run.test.sh                   # the runner
     ├── scripts.test.sh               # the four commands and the project configuration
-    ├── seed.test.sh                  # the seed's guard, idempotency and determinism — #23
+    ├── seed.test.sh                  # both seeds' guard, order, idempotency and determinism — #23, #68
     ├── constraints.sql               # what the schema enforces, asserted against a live database
-    └── seed.sql                      # what the seed put there, asserted against a live database
+    └── seed.sql                      # what the seeds put there, asserted against a live database
 ```
 
 Everything below `V000` is named for the issue that lands it. `tests/constraints.sql` is

@@ -1,13 +1,19 @@
 #!/usr/bin/env sh
 #
-# seed.test.sh — tests for the development seed: migrations/R__dev_seed.sql and the
-# configuration that decides whether it does anything.
+# seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
+# migrations/R__dev_seed_dashboard.sql, and the configuration that decides whether they do
+# anything.
 #
-# The seed is the one migration in this module that must behave differently in two
-# places, so the properties worth testing are the ones that keep those two apart: that a
+# The seeds are the migrations in this module that must behave differently in two places,
+# so the properties worth testing are the ones that keep those two apart: that a
 # production run resolves the guard to `false`, that only the development stack and a
-# deliberate `--config` resolve it to `true`, and that every statement in the file is
+# deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
+#
+# There are two files because they answer different questions — R__dev_seed.sql (#23) is
+# *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done* — and the
+# structural rules below are asserted over both, in a loop, so that a third seed inherits
+# them by being added to one list.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
 # this needs no database, no Docker and no network — the same contract as
@@ -45,6 +51,7 @@ fixture_module "$base"
 BIN="$base/ouroboros-db/scripts"
 
 SEED="$MODULE_DIR/migrations/R__dev_seed.sql"
+DASHBOARD_SEED="$MODULE_DIR/migrations/R__dev_seed_dashboard.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -61,47 +68,106 @@ run_script() {
   status=$?
 }
 
-# The seed with its commentary removed. Every assertion about what the migration *does*
-# reads this rather than the file: the header explains the guard, names the ids and
-# states that no credential is seeded, so a grep for any of those over the whole file
-# would be answered by the prose that promises them.
-BODY="$work/seed-body.sql"
-grep -Ev '^[[:space:]]*--' "$SEED" > "$BODY" 2>/dev/null || :
-
-# count_lines PATTERN — how many lines of the seed's SQL match an extended regex.
-count_lines() {
-  grep -Ec -- "$1" "$BODY" 2>/dev/null || true
+# A seed with its commentary removed. Every assertion about what a migration *does* reads
+# this rather than the file: the headers explain the guard, name the ids and state that no
+# credential is seeded, so a grep for any of those over the whole file would be answered by
+# the prose that promises them.
+#
+#   seed_body FILE OUT — write FILE's statements, without comment lines, to OUT.
+seed_body() {
+  grep -Ev '^[[:space:]]*--' "$1" > "$2" 2>/dev/null || :
 }
 
-printf '\nouroboros-db — the development seed\n\n'
+BODY="$work/seed-body.sql"
+DASHBOARD_BODY="$work/seed-body-dashboard.sql"
+seed_body "$SEED" "$BODY"
+seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
+
+# count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
+# Defaults to R__dev_seed.sql, which is what the assertions written before there was a
+# second seed all mean.
+count_lines() {
+  grep -Ec -- "$1" "${2:-$BODY}" 2>/dev/null || true
+}
+
+printf '\nouroboros-db — the development seeds\n\n'
 
 # ---------------------------------------------------------------------------
-# The migration
+# The migrations
 # ---------------------------------------------------------------------------
 
-printf 'The migration\n'
+printf 'The migrations\n'
 
 check_exists "$SEED" 'migrations/R__dev_seed.sql exists'
+check_exists "$DASHBOARD_SEED" 'migrations/R__dev_seed_dashboard.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
-check_matches "$(basename -- "$SEED")" '^R__[a-z0-9_]+\.sql$' \
-  'the seed is a repeatable migration, so it re-applies when it changes'
+for seed_file in "$SEED" "$DASHBOARD_SEED"; do
+  check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
+    "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
+done
+
+# **The order the two are applied in, which is a correctness property and not a style.**
+#
+# Flyway applies repeatable migrations after every versioned one, in the order of their
+# *descriptions*. Every row the dashboard seed writes finds its parent by natural key — the
+# organization by slug, a repository by name — so it has to run after the seed that creates
+# them. `dev_seed` sorts before `dev_seed_dashboard`; `dashboard_dev_seed`, which is the
+# name #68's diagram suggests, would sort before `dev_seed` instead, and on a database
+# migrated from empty every join would find nothing, every insert would insert nothing, and
+# a second `migrate` would not put it right — Flyway re-applies a repeatable migration only
+# when its checksum changes. So the ordering is asserted here, where a rename fails the
+# pull request rather than the dashboard.
+base_description=$(basename -- "$SEED" .sql)
+base_description=${base_description#R__}
+dashboard_description=$(basename -- "$DASHBOARD_SEED" .sql)
+dashboard_description=${dashboard_description#R__}
+
+check_equals "$base_description" \
+  "$(printf '%s\n%s\n' "$base_description" "$dashboard_description" | LC_ALL=C sort | head -n 1)" \
+  'the dashboard seed sorts after the seed whose rows it hangs off, so Flyway applies it second'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
 # one of the two, which no fixed set of patterns would see.
-inserts=$(count_lines '^insert into ouroboros\.')
-guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\}$')
-conflicts=$(count_lines '^on conflict do nothing;$')
+#
+# `on conflict` takes an optional arbiter because one statement needs it: `queue_items`
+# carries a deferrable unique key, and PostgreSQL refuses a targetless `on conflict` on
+# such a table outright. Naming the primary key is what that statement does instead, and it
+# is still the "applied twice writes nothing" rule this check exists for.
+for seed_file in "$SEED" "$DASHBOARD_SEED"; do
+  name=$(basename -- "$seed_file")
+  body=$BODY
+  [ "$seed_file" = "$DASHBOARD_SEED" ] && body=$DASHBOARD_BODY
 
-check_matches "$inserts" '^[1-9][0-9]*$' 'the seed inserts something'
-check_equals "$inserts" "$guards" 'every insert in the seed is behind the ${ouro_dev_seed} guard'
-check_equals "$inserts" "$conflicts" 'every insert in the seed ends `on conflict do nothing`'
+  inserts=$(count_lines '^insert into ouroboros\.' "$body")
+  guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\}$' "$body")
+  conflicts=$(count_lines '^on conflict( \([a-z_]+\))? do nothing;$' "$body")
 
-# Deterministic ids are what let a test, a URL or a fixture name a seeded row. A
-# generated one would differ per machine and per reset.
-check_absent "$BODY" 'gen_random_uuid' 'the seed generates no ids — every one is a literal'
+  check_matches "$inserts" '^[1-9][0-9]*$' "$name inserts something"
+  check_equals "$inserts" "$guards" "every insert in $name is behind the \${ouro_dev_seed} guard"
+  check_equals "$inserts" "$conflicts" "every insert in $name ends \`on conflict do nothing\`"
+
+  # Deterministic ids are what let a test, a URL or a fixture name a seeded row. A
+  # generated one would differ per machine and per reset.
+  check_absent "$body" 'gen_random_uuid' "$name generates no ids"
+
+  # The seed writes to the product's tables and to nothing else — not to Flyway's own
+  # history, not to a table another module owns.
+  check_equals "$inserts" "$(count_lines '^insert into ' "$body")" \
+    "$name writes only into the ouroboros schema"
+  check_absent "$body" 'flyway_schema_history' \
+    "$name does not touch Flyway's history table"
+
+  # A seed is where a credential is most tempting to put and least likely to be noticed.
+  for secret in secret api_key; do
+    check_absent "$body" "$secret" "$name writes no $secret"
+  done
+done
+
+printf '\nR__dev_seed.sql — the workspaces\n'
+
 check_contains "$BODY" '5eed0001-0000-4000-8000-000000000001' \
   'the demo organization has the documented id'
 
@@ -113,20 +179,12 @@ seed_ids=$(grep -Eo "'5eed[0-9a-f]{4}-0000-4000-8000-[0-9a-f]{12}'" "$BODY" | so
 check_equals 26 "$(printf '%s' "$seed_ids" | tr -d ' ')" \
   'the seed uses twenty-six distinct 5eed… ids, one per row it creates'
 
-# The seed writes to the tenancy tables and to nothing else — not to Flyway's own
-# history, not to a table another module owns.
-check_equals "$inserts" "$(count_lines '^insert into ')" \
-  'the seed writes only into the ouroboros schema'
-check_absent "$BODY" 'flyway_schema_history' \
-  'the seed does not touch Flyway'"'"'s history table'
-
-# A seed is where a credential is most tempting to put and least likely to be noticed.
-# The `account` table *can* hold the library's encrypted tokens, and the seed
-# deliberately writes none of those columns (tests/seed.sql asserts the rows stay
-# null); this asserts no statement here even names one, whatever the schema grows.
-for secret in token secret api_key; do
-  check_absent "$BODY" "$secret" "the seed writes no $secret"
-done
+# The `account` table *can* hold the library's encrypted tokens, and this seed
+# deliberately writes none of those columns (tests/seed.sql asserts the rows stay null);
+# this asserts no statement here even names one, whatever the schema grows. It is this
+# file's rule rather than every seed's: the dashboard seed writes `token_usage`, where
+# "token" is a unit of work a model consumed and not a credential.
+check_absent "$BODY" 'token' 'the seed writes no token'
 
 # The one credential the seed *is* allowed to write (#709): the three password hashes
 # behind the documented development password, and nothing that merely resembles one.
@@ -139,6 +197,43 @@ check_equals 3 "$(printf '%s' "$hashes" | tr -d ' ')" \
   'the seed writes exactly three password hashes, one per demo person'
 check_absent "$BODY" 'ouroboros-dev-password' \
   'the development password appears in documentation, never in SQL'
+
+# ---------------------------------------------------------------------------
+# R__dev_seed_dashboard.sql — the dashboard read-model
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_dashboard.sql — the dashboard\n'
+
+# Ids are computed rather than written out — there are seventy-seven of them and a list of
+# seventy-seven literals is a list nobody proof-reads — so what this asserts is that every
+# one is still built from a `5eed…` prefix and a value the file names. Three prefixes, one
+# per table, which is what lets a run, a queue item and a usage event be told apart on
+# sight in a log or a URL. `gen_random_uuid` is refused for both seeds by the loop above,
+# which is the other half of the same property.
+for prefix in '5eed0009' '5eed000a' '5eed000b'; do
+  check_contains "$DASHBOARD_BODY" "'$prefix-0000-4000-8000-'" \
+    "the dashboard seed builds its ids from the $prefix… prefix"
+done
+
+# Every row this seed writes belongs to one of the four tables the read-model is, and to
+# no other. A seed that grew an insert into `organization` or `github_repos` would be
+# writing the other seed's rows from the wrong file, and the two would then have to agree.
+dashboard_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$DASHBOARD_BODY" |
+  sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
+check_equals 'queue_items runs token_usage workspace_settings ' "$dashboard_tables" \
+  'the dashboard seed writes the four read-model tables and nothing else'
+
+# The parents are found by natural key, never by naming an id a second time — which is
+# what makes the seed converge on a database somebody has edited instead of failing on a
+# foreign key. The organization is reached by slug in every statement.
+check_absent "$DASHBOARD_BODY" '5eed0001-0000-4000-8000' \
+  'the dashboard seed names no id from the other seed — it joins by slug and by name'
+
+# Every window is relative to `now()`, which is the acceptance criterion "the today and
+# 7-day math always holds": a literal timestamp would be correct on the day it was written
+# and would fall out of the seven-day window the week after.
+check_absent "$DASHBOARD_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the dashboard seed carries no literal date — every window is relative to now()'
 
 # ---------------------------------------------------------------------------
 # The guard is off by default
@@ -217,6 +312,7 @@ printf '\nDocumentation\n'
 
 README="$MODULE_DIR/README.md"
 check_contains "$README" 'R__dev_seed\.sql' 'README.md documents the seed migration'
+check_contains "$README" 'R__dev_seed_dashboard\.sql' 'README.md documents the dashboard seed'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
 check_contains "$README" 'acme-robotics' 'README.md names the demo tenant a developer will find'
 check_contains "$README" 'tests/seed\.sql' 'README.md says how to assert the seeded content'

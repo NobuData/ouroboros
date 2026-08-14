@@ -165,7 +165,7 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 | F.2 | #65 | 🟢 Done | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.3 | #66 | 🟢 Done | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.4 | #67 | 🟢 Done | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
-| F.5 | #68 | 🟡 Open | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
+| F.5 | #68 | 🟢 Done | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
 | F.6 | #69 | 🟡 Open | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue F.1 — ouroboros-db: [F.1] Runs table — loop lifecycle read-model
@@ -492,7 +492,58 @@ workspace_settings: organization_id PK · auto_merge_on_checks bool · updated_b
 
 ### Issue F.5 — ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity
 
-> **GitHub issue:** #68 · **Status:** 🟡 Open · **Parent epic:** #59
+> **GitHub issue:** #68 · **Status:** 🟢 Done · **Parent epic:** #59
+
+> **Shipped.** [`R__dev_seed_dashboard.sql`](../ouroboros-db/migrations/R__dev_seed_dashboard.sql)
+> is mockup 02 as rows: 53 `runs`, 12 `queue_items`, 12 `token_usage` events and the one
+> `workspace_settings` row, all in `acme-robotics`, all behind the same `${ouro_dev_seed}`
+> guard the workspace seed carries. The assertions are a new section in
+> [`tests/seed.sql`](../ouroboros-db/tests/seed.sql), which `ci/db` already runs against a
+> *twice*-migrated seeded database — so idempotency is checked by the same pass that checks
+> the content, since every count in it is exact.
+>
+> **A second file rather than an extension of the first**, because the two answer different
+> questions and change on different days: `R__dev_seed.sql` is *who exists* and is read by
+> the auth work and by `tests/e2e/support/seed.ts`; this is *what the loop has done*. The
+> **name is load-bearing**: Flyway orders repeatable migrations by description, every row
+> here finds its parent by natural key, and `dashboard_dev_seed` — the name this ticket's
+> diagram suggested — would sort *before* `dev_seed` and seed nothing at all, silently and
+> unrecoverably (a repeatable migration re-applies only when its checksum changes).
+> `tests/seed.test.sh` asserts the ordering.
+>
+> **Every number on the card is now a row or an aggregate over rows**, which is what the
+> seed costs: the stat row's counts are counts, so 27 merged in seven days means
+> twenty-seven runs, and `▲ 8` means nineteen more in the week before that. The visible
+> seven — three live loops, four recently closed — are the mockup's, number for number; the
+> other forty-six exist so the stats can be computed rather than asserted. The cycle-time
+> spread is built to sum so that **14m 20s** is exact over the twenty-nine runs that closed
+> this week, and `est_minutes` sums to exactly **580** so the queue reads `est. 9h 40m`.
+>
+> **Where the mockup's arithmetic does not close, and what was done about it.** *PRs merged
+> · 7d* is `27` and *Human interventions* is `2 this week`, which makes the trailing week's
+> merge rate `27/29 = 93.1%`; there is **no integer count of closed runs for which 27 merged
+> is 92%**, since 92% needs a denominator of 29.35. The seed makes 92% exact over the
+> population it can — the whole fourteen days it spans, **46 merged of 50 closed**, with no
+> rounding — and both the migration header and this entry state both figures, so **G.1
+> (#70) chooses the window against a documented fixture rather than discovering the problem
+> against one that will not add up**.
+>
+> Two smaller decisions worth carrying forward. `cost_cents` is **filled in** for the three
+> priced providers and left null for `ollama`, which is what makes the card's `≈ $18.60`
+> honest — the total is a lower bound because local inference is unpriced, and
+> `token_usage_daily.unpriced_events` is how a reader finds that out; F.3's #92 still owns
+> the rate card, and finds nothing here to re-price that it did not write. And one queue
+> item carries **no estimate at all**, so the nullable-`est_minutes` path has a fixture
+> rather than being a branch nothing exercises.
+>
+> **`kensuenobu` and `acme-labs` get no dashboard rows**, as specified — and no
+> `workspace_settings` row either, which keeps "answered no" and "never asked" apart for
+> I.7 (#86) and G.5 (#74). Both read `auto_merge_on_checks = false, is_explicit = false`
+> through `workspace_settings_effective`.
+>
+> **Not in this ticket, by the roadmap's own split:** no endpoint (G.1, #70), no screen
+> (I.*), and no e2e leg — `tests/e2e/support/seed.ts` gains dashboard constants when there
+> is a dashboard to assert them against.
 
 - **Problem Statement:** Design review and e2e need the dashboard to render exactly
   the mockup's demo content; a fresh workspace must instead show empty states — both
@@ -1324,6 +1375,15 @@ it (`V006`, #708), and `github_repos` has been there since `V003` (#22). That is
 of what F.1 needed, so **#64 shipped on 2026-08-13** (`V008__dashboard_runs.sql`) and Epic
 F is unblocked. **#65 shipped the same day** (`V009__dashboard_queue.sql`), **#66 with
 it** (`V010__dashboard_usage.sql`), and **#67 too** (`V011__workspace_settings.sql`) — so
-**all four tables of the read-model now exist** and **F.5 (#68)**, which waited on all of
-them, is the next row of this epic that can move. Each table arrived carrying its own
-section of `tests/constraints.sql`, which is most of what F.6 (#69) is left to finish.
+**all four tables of the read-model now exist**, and **#68 filled them the same day**
+(`R__dev_seed_dashboard.sql`): mockup 02 as rows, with the personal workspace deliberately
+left empty as the zero-state fixture. Each table arrived carrying its own section of
+`tests/constraints.sql`, which is most of what F.6 (#69) is left to finish, and the seeds
+are the fixture every Epic G endpoint and Epic I screen is now measured against — **G.1
+(#70) is the next row of this roadmap that can move**.
+
+> One thing #68 found and #70 inherits: **the mockup's `27 merged / 7d`, its `2
+> interventions` and its `92%` merge rate cannot all be true of one seven-day window.**
+> The seed makes 92% exact over the fourteen days it spans (46 merged of 50 closed) and
+> documents both that figure and the trailing week's 93.1%; the choice of window is G.1's,
+> and it is now a choice made against a fixture rather than discovered against one.
