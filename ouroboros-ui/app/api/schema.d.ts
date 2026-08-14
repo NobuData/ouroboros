@@ -520,6 +520,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The whole dashboard, in one payload
+         * @description Every number, list and switch mockup 02 draws, for the workspace this session is
+         *     acting in — the four stat-row figures, the pulse meters, the runs in flight, the runs
+         *     that have stopped, the head of the queue, and the page head's subline.
+         *
+         *     **The workspace is the session's.** There is no workspace in this path: it is the
+         *     session's active organization, overridden for one request by `X-Ouro-Tenant`. A
+         *     session acting in none is a `400` with `code: "organization_required"` — this is the
+         *     first operation in the API that can answer it, since every other operation taking that
+         *     header also names a workspace in its path.
+         *
+         *     **Poll it conditionally.** Send back the `ETag` you were given in `If-None-Match`; a
+         *     dashboard nothing has changed answers `304` with no body, and costs four aggregate
+         *     subqueries rather than a payload. The tag is **strong** and it is derived from the
+         *     version of the four source tables plus the calendar day — so it also changes at
+         *     midnight, when the day's spend and "since this morning" start counting again with no
+         *     row having moved. Rows aging out of a rolling window are the one change it does not
+         *     notice; on a dashboard whose numbers are moving, rows are being written.
+         *
+         *     **What each aggregate means** is on the field that carries it, and the two window
+         *     lengths are the part worth reading before rendering a label: the merge rate is
+         *     measured over **fourteen** days and the other two meters over **seven**. `LoopPulse`
+         *     says why.
+         *
+         *     **Durations that belong to one row are not sent.** *Elapsed* is `now − startedAt` and
+         *     *Cycle* is `finishedAt − startedAt`; both are computed by the client from the instants
+         *     below, because elapsed is a number that moves while nobody is asking and a value
+         *     computed here would be stale before it was rendered. Aggregates over many rows — the
+         *     average cycle time — are computed here, because no client can derive them from what it
+         *     was sent.
+         */
+        get: operations["readDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/preferences": {
         parameters: {
             query?: never;
@@ -1795,6 +1843,338 @@ export interface components {
             fontScale?: components["schemas"]["FontScale"];
         };
         /**
+         * RunStatus
+         * @description Where a run is in its life. The first three are **active** — the run is in flight and
+         *     has no `finishedAt` — and the last three are **terminal**.
+         *
+         *     The split is the dashboard's two run cards: *Active loops* is the runs holding one of
+         *     the first three, *Recently closed by the loop* is the runs holding one of the last
+         *     three. They are one table and one shape, queried twice; a run moving between the cards
+         *     *is* the transition into a terminal status.
+         * @example coding
+         * @enum {string}
+         */
+        RunStatus: "coding" | "building" | "review" | "merged" | "needs_human" | "failed";
+        /**
+         * QueueEffort
+         * @description The size somebody put on a queued issue — the chip the card renders, lower-case, which
+         *     is also the class name the UI stamps.
+         *
+         *     It is a *judgement*, and deliberately not a function of `estMinutes`: the chip is a
+         *     size a person chose and the estimate is minutes something measured. If one were
+         *     derived from the other, the queue's total would be a restatement of the chips rather
+         *     than a second fact.
+         * @example m
+         * @enum {string}
+         */
+        QueueEffort: "xs" | "s" | "m" | "l" | "xl";
+        /**
+         * RunSummary
+         * @description One run of the loop against one issue, as every card that draws a run draws it.
+         *
+         *     **One shape for both lists.** *Active loops* and *Recently closed* are two queries over
+         *     one table, so the columns a stopped run has and a running one does not — `finishedAt`,
+         *     `prNumber`, the check counts — are `null` here rather than absent, and a client renders
+         *     both lists with one component. The paged runs endpoints
+         *     ([#71](https://github.com/NobuData/ouroboros/issues/71)) answer with this same shape,
+         *     so a card and its drill-in cannot drift apart.
+         *
+         *     **No duration is carried.** *Elapsed* is `now − startedAt`, *Cycle* is
+         *     `finishedAt − startedAt`, and both are the client's to compute — see the operation's
+         *     description for why.
+         */
+        RunSummary: {
+            /**
+             * Format: uuid
+             * @description The run — what the run console will be addressed by, and what a row links to.
+             */
+            id: string;
+            issueNumber: number;
+            /**
+             * @description The title as it was when the run started, stored rather than fetched: a card
+             *     renders it on every poll, and a closed run should read as the work it actually did.
+             */
+            issueTitle: string;
+            /**
+             * @description The workflow's label, as free text. **Opaque** — there is no workflow catalogue
+             *     behind it, so a run still renders under a workflow that has since been renamed.
+             */
+            workflowTag: string;
+            /**
+             * @description The model identifier as recorded — `claude-fable-5`, `ollama/qwen3-coder`,
+             *     `copilot/gpt-5-codex`. **Opaque**: nothing in this service interprets it, and a
+             *     client should render it rather than parse it.
+             * @example claude-fable-5
+             * @example ollama/qwen3-coder
+             */
+            model: string;
+            status: components["schemas"]["RunStatus"];
+            /**
+             * @description The workflow's own word for the current step, captioning the stage meter.
+             * @example Implementing
+             */
+            stageLabel: string;
+            /** @description Where the run is in its workflow, out of `stageTotal`. */
+            stageIndex: number;
+            /** @description How many steps the workflow has. At least one, so a meter never divides by zero. */
+            stageTotal: number;
+            /**
+             * Format: date-time
+             * @description When the loop started on this issue. Not when the row appeared.
+             */
+            startedAt: string;
+            /**
+             * Format: date-time
+             * @description When the run reached a terminal status, and `null` exactly while it has not.
+             */
+            finishedAt: string | null;
+            /**
+             * @description The pull request, or `null`. A run may fail, or stop for a human, before there is
+             *     anything to open one for.
+             */
+            prNumber: number | null;
+            /** @description Checks that passed. Paired with `checksTotal`: both present, or both `null`. */
+            checksPassed: number | null;
+            /**
+             * @description Total checks on the pull request. `0` of `0` is a repository with no checks, which
+             *     is **not** the same as `null` — not knowing yet.
+             */
+            checksTotal: number | null;
+        };
+        /**
+         * QueueItemSummary
+         * @description One queued issue, as the *Up next in queue* card draws it.
+         */
+        QueueItemSummary: {
+            /** Format: uuid */
+            id: string;
+            issueNumber: number;
+            issueTitle: string;
+            effort: components["schemas"]["QueueEffort"];
+            workflowTag: string;
+            /**
+             * @description Place in the queue; `1` is next. Positions are dense by the writer's convention
+             *     rather than by constraint, so do not compute a queue length from the last one.
+             */
+            position: number;
+            /**
+             * @description Expected minutes of autonomous work, or `null` for **not estimated** — which is
+             *     not zero. Rendering a `null` as `0m` would be inventing a claim about how long the
+             *     work takes; `stats.queued.estMinutes` sums the estimates and skips these.
+             */
+            estMinutes: number | null;
+            /**
+             * Format: date-time
+             * @description When the issue joined the queue. Not when the row appeared.
+             */
+            enqueuedAt: string;
+        };
+        /**
+         * LoopsLive
+         * @description *Loops live* — how many runs are in flight, and in which stage.
+         */
+        LoopsLive: {
+            /** @description The card's big number, and the sum of `byStatus`. */
+            total: number;
+            /**
+             * @description The same runs split by status, for the subline. **Every active status is a key,
+             *     zeros included**, in lifecycle order — so a client composes "2 coding · 1 in
+             *     review" from this without knowing which statuses exist.
+             */
+            byStatus: {
+                coding: number;
+                building: number;
+                review: number;
+            };
+        };
+        /**
+         * QueuedWork
+         * @description *Queued issues* — how many are waiting, and how long they are expected to take.
+         */
+        QueuedWork: {
+            count: number;
+            /**
+             * @description The **sum** of the queue's estimates, in minutes — rendered as `est. 9h 40m`. It
+             *     skips items carrying no estimate rather than counting them as zero, so `count` may
+             *     speak for more issues than this total does. That is the honest shape of a queue
+             *     where something has not been sized yet.
+             */
+            estMinutes: number;
+        };
+        /**
+         * MergedSevenDays
+         * @description *PRs merged · 7d* — the count, and how it compares with the week before.
+         */
+        MergedSevenDays: {
+            /** @description Runs that reached `merged` in the trailing seven days. */
+            count: number;
+            /**
+             * @description This week's count less the previous seven days' — rendered as `▲ 8 vs last week`.
+             *     **Signed**: a negative value is a week that merged less than the one before, and
+             *     the direction is read from the sign rather than from a separate flag.
+             */
+            deltaVsPrior: number;
+        };
+        /**
+         * TokensToday
+         * @description *Token spend · today* — the day's ledger, rolled up across providers.
+         *
+         *     "Today" is the **UTC** calendar day, which is the day the usage rollup is keyed by. A
+         *     client rendering this beside a local clock should say so.
+         */
+        TokensToday: {
+            /** @description Input plus output tokens across every provider — rendered as `4.2M`. */
+            tokens: number;
+            /**
+             * @description What the day's **priced** events cost, in cents. Cents rather than a decimal
+             *     currency amount so that nothing rounds on the way through JSON; it may carry
+             *     fractions of a cent.
+             *
+             *     It is a **lower bound** whenever `unpricedEvents` is non-zero.
+             */
+            costCents: number;
+            /** @description How many distinct providers were paid — the `across 4 providers` in the subline. */
+            providers: number;
+            /**
+             * @description How many of the day's events carry no recorded cost. This is the `≈` on the card.
+             *
+             *     Cost is nullable in the ledger so that "nobody has priced this" has a value that
+             *     is not zero — local inference on a workstation is the honest case of it — and a
+             *     total that silently omitted those events would read as exact. Non-zero means
+             *     `costCents` is a floor; equal to the day's event count means the cost is *unknown*
+             *     rather than zero, which is the "cost unavailable" a card renders.
+             */
+            unpricedEvents: number;
+        };
+        /**
+         * DashboardStats
+         * @description The four numbers of the stat row.
+         */
+        DashboardStats: {
+            loopsLive: components["schemas"]["LoopsLive"];
+            queued: components["schemas"]["QueuedWork"];
+            merged7d: components["schemas"]["MergedSevenDays"];
+            tokensToday: components["schemas"]["TokensToday"];
+        };
+        /**
+         * LoopPulse
+         * @description *Loop pulse* — three windowed meters, and the one switch this page can change.
+         *
+         *     **The three meters are not all measured over the same window**, and the reason is
+         *     mockup 02's own arithmetic. See `mergeRate`.
+         */
+        LoopPulse: {
+            /**
+             * @description **Autonomous merge rate**: merged runs ÷ every run that reached a terminal status,
+             *     over **fourteen days**, as a fraction between 0 and 1.
+             *
+             *     Every terminal status is in the denominator — merged, stopped for a human, and
+             *     failed. The meter's question is *how often does the loop finish the job without
+             *     us*, and a run that stopped for a human is the clearest possible no; excluding it
+             *     would make the rate say "of the runs that went well, how many went well".
+             *
+             *     **Fourteen days, where the two meters below are seven.** The three figures the
+             *     mockup draws cannot all be true of one seven-day window: 27 merged against 2
+             *     interventions is 93.1%, and no integer count of closed runs makes 27 merged 92%.
+             *     Over fourteen days the same rows give 46 merged of 50 closed, which is 92% exactly.
+             *     A longer window is the better measurement on its own terms as well — a rate over a
+             *     denominator of twenty-nine moves four points when one run fails — and it reaches
+             *     over exactly the rows `stats.merged7d.deltaVsPrior` already compares across.
+             *
+             *     **`0` when nothing closed in the window.** That is a floor rather than a
+             *     measurement: an organization with no history reads `0` here with `0` merged and `0`
+             *     interventions, and a meter should render *no data* rather than a bad week.
+             * @example 0.92
+             */
+            mergeRate: number;
+            /**
+             * @description **Average cycle time**: the mean of `finishedAt − startedAt` over every run that
+             *     reached a terminal status in the trailing **seven** days, in seconds.
+             *
+             *     Every terminal run, not only the merged ones — a run that stopped for a human took
+             *     the time it took, and a mean that dropped it would report the loop as faster than
+             *     it is.
+             *
+             *     `0` when nothing closed in the window, with the same reading as `mergeRate`'s zero.
+             * @example 860
+             */
+            avgCycleSeconds: number;
+            /**
+             * @description **Human interventions**: runs that reached `needs_human` in the trailing seven
+             *     days. A count of *runs*, not of interruptions — a run handed back twice is one row
+             *     and counts once, because the row is what the loop stopped on.
+             */
+            interventions7d: number;
+            /**
+             * @description Whether this workspace merges on green checks without asking.
+             *
+             *     `false` for a workspace that has never answered, resolved from the database rather
+             *     than defaulted here — so "answered no" and "never asked" read the same to the
+             *     switch and differently to anything that needs to know. Changing it is
+             *     [#74](https://github.com/NobuData/ouroboros/issues/74)'s operation, not this one:
+             *     this endpoint writes nothing.
+             */
+            autoMerge: boolean;
+        };
+        /**
+         * DashboardActivity
+         * @description The page head's subline — *"3 issues in flight, 12 queued behind them. Ouroboros
+         *     merged 6 pull requests since this morning."*
+         *
+         *     The greeting beside it is the client's: it is composed from the session user's name and
+         *     the reader's own clock, and a server that rendered it would be rendering somebody's
+         *     afternoon in the wrong hemisphere. These three are the half of the sentence that is
+         *     data, and the first two deliberately restate figures from `stats` under the names the
+         *     sentence uses — one payload should not be able to disagree with itself.
+         */
+        DashboardActivity: {
+            /** @description Runs in flight — the same number as `stats.loopsLive.total`. */
+            inFlight: number;
+            /** @description Issues waiting — the same number as `stats.queued.count`. */
+            queued: number;
+            /**
+             * @description Runs merged since **midnight UTC**. The only figure on the page measured from a
+             *     calendar boundary rather than a rolling window, and therefore the only one that
+             *     needs a timezone to be well defined. It is the same day boundary
+             *     `stats.tokensToday` uses, so the sentence and the card cannot mean different
+             *     mornings.
+             */
+            mergedSinceMorning: number;
+        };
+        /**
+         * Dashboard
+         * @description The whole dashboard for one workspace, measured between one set of boundaries.
+         *
+         *     **Every field is always present.** An organization with nothing in it answers zeros
+         *     and empty arrays — never `null`, and never an absent key — so a card renders from this
+         *     without a fallback branch. The nullable values are all *inside* a row, where a null is
+         *     a fact about that row: a run in flight has no `finishedAt`, a queued issue may carry no
+         *     estimate.
+         */
+        Dashboard: {
+            stats: components["schemas"]["DashboardStats"];
+            pulse: components["schemas"]["LoopPulse"];
+            /**
+             * @description The runs in flight, in **lifecycle order** — coding, then building, then review —
+             *     and oldest first within a stage, so the run that has been stuck longest is at the
+             *     top of its group. At most ten; a workspace running more than that is one whose
+             *     drill-in the *Open run console →* link leads to.
+             */
+            activeRuns: components["schemas"]["RunSummary"][];
+            /**
+             * @description The runs that have stopped, newest first by `finishedAt`. At most eight — the card
+             *     draws four, and the rest are what a client already holds if it expands.
+             */
+            recentRuns: components["schemas"]["RunSummary"][];
+            /**
+             * @description The head of the queue in queue order — exactly what the card draws. The queue's
+             *     full length is `stats.queued.count`, and the whole of it is
+             *     [#73](https://github.com/NobuData/ouroboros/issues/73)'s endpoint.
+             */
+            queueHead: components["schemas"]["QueueItemSummary"][];
+            activity: components["schemas"]["DashboardActivity"];
+        };
+        /**
          * EngineStatus
          * @description The body of a `GET /api/v1/engine/status` response.
          */
@@ -1972,21 +2352,24 @@ export interface components {
          *     request in flight. It is validated exactly as everything else is: a workspace the
          *     caller is not a member of is a `404`, the same answer one that does not exist gets.
          *
-         *     On the operations below it is **optional and redundant**: they already name a
-         *     workspace in their path, which is the more specific of the two, and a header that
-         *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-         *     silent preference for either. It is accepted here so that one client can set it on
-         *     every request, and it is how the operations that have no workspace in their path say
-         *     which workspace they mean.
+         *     On the operations that name a workspace in their path it is **optional and
+         *     redundant**: the path is the more specific of the two, and a header that names a
+         *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+         *     preference for either. It is accepted there so that one client can set it on every
+         *     request, and it is how the operations that have no workspace in their path say which
+         *     workspace they mean.
          *
          *     A caller who omits it is acting in their session's active organization. A session
          *     that has none — a person who belongs to no workspace, one whose workspace was
          *     deleted, one who was removed from it — gets a `400` with
          *     `code: "organization_required"` on any operation that names no workspace of its own.
-         *     Every operation that takes this header also names a workspace in its path, so none of
-         *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-         *     does not take this header at all, because *which workspaces are yours* is the question
-         *     somebody in that state is asking.
+         *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+         *     the first such operation, and it is therefore the first that can answer that code: it
+         *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+         *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+         *     **not** take this header at all — *which workspaces are yours* is precisely the
+         *     question somebody in that state is asking, and answering it must not require them to
+         *     have already chosen one.
          *
          *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
          *     once, at sign-in or in the picker, and lives on the session.
@@ -2736,6 +3119,243 @@ export interface operations {
             };
         };
     };
+    readDashboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard, as of the moment the request was answered. */
+            200: {
+                headers: {
+                    /**
+                     * @description A strong entity tag for this payload. Send it back in `If-None-Match` on the
+                     *     next poll.
+                     * @example "9c1f0b7d4e2a86315f0c9d3b7a48e152"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description `private, no-cache` — one workspace's operational numbers, which no shared
+                     *     cache may store, and which a browser must revalidate rather than reuse.
+                     * @example private, no-cache
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "stats": {
+                     *         "loopsLive": {
+                     *           "total": 3,
+                     *           "byStatus": {
+                     *             "coding": 1,
+                     *             "building": 1,
+                     *             "review": 1
+                     *           }
+                     *         },
+                     *         "queued": {
+                     *           "count": 12,
+                     *           "estMinutes": 580
+                     *         },
+                     *         "merged7d": {
+                     *           "count": 27,
+                     *           "deltaVsPrior": 8
+                     *         },
+                     *         "tokensToday": {
+                     *           "tokens": 4200000,
+                     *           "costCents": 1860,
+                     *           "providers": 4,
+                     *           "unpricedEvents": 3
+                     *         }
+                     *       },
+                     *       "pulse": {
+                     *         "mergeRate": 0.92,
+                     *         "avgCycleSeconds": 860,
+                     *         "interventions7d": 2,
+                     *         "autoMerge": true
+                     *       },
+                     *       "activeRuns": [
+                     *         {
+                     *           "id": "5eed0009-0000-4000-8000-000000000482",
+                     *           "issueNumber": 482,
+                     *           "issueTitle": "Fix flaky CAN-bus telemetry test",
+                     *           "workflowTag": "standard-fix",
+                     *           "model": "claude-fable-5",
+                     *           "status": "coding",
+                     *           "stageLabel": "Implementing",
+                     *           "stageIndex": 4,
+                     *           "stageTotal": 6,
+                     *           "startedAt": "2026-08-13T14:25:01.000Z",
+                     *           "finishedAt": null,
+                     *           "prNumber": null,
+                     *           "checksPassed": null,
+                     *           "checksTotal": null
+                     *         }
+                     *       ],
+                     *       "recentRuns": [
+                     *         {
+                     *           "id": "5eed0009-0000-4000-8000-000000000474",
+                     *           "issueNumber": 474,
+                     *           "issueTitle": "Debounce e-stop interrupt handler",
+                     *           "workflowTag": "standard-fix",
+                     *           "model": "claude-fable-5",
+                     *           "status": "merged",
+                     *           "stageLabel": "Merged",
+                     *           "stageIndex": 6,
+                     *           "stageTotal": 6,
+                     *           "startedAt": "2026-08-13T13:44:41.000Z",
+                     *           "finishedAt": "2026-08-13T13:55:41.000Z",
+                     *           "prNumber": 512,
+                     *           "checksPassed": 14,
+                     *           "checksTotal": 14
+                     *         }
+                     *       ],
+                     *       "queueHead": [
+                     *         {
+                     *           "id": "5eed000a-0000-4000-8000-000000000485",
+                     *           "issueNumber": 485,
+                     *           "issueTitle": "Watchdog reset on I²C bus lockup",
+                     *           "effort": "m",
+                     *           "workflowTag": "standard-fix",
+                     *           "position": 1,
+                     *           "estMinutes": 45,
+                     *           "enqueuedAt": "2026-08-13T01:37:41.000Z"
+                     *         },
+                     *         {
+                     *           "id": "5eed000a-0000-4000-8000-000000000496",
+                     *           "issueNumber": 496,
+                     *           "issueTitle": "Telemetry: split ingest into a worker pool",
+                     *           "effort": "m",
+                     *           "workflowTag": "feature-loop",
+                     *           "position": 12,
+                     *           "estMinutes": null,
+                     *           "enqueuedAt": "2026-08-13T13:37:41.000Z"
+                     *         }
+                     *       ],
+                     *       "activity": {
+                     *         "inFlight": 3,
+                     *         "queued": 12,
+                     *         "mergedSinceMorning": 6
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            /**
+             * @description Nothing has changed since the tag you sent. **No body**, deliberately: the
+             *     representation you hold is the current one, and `ETag` on this answer is how you
+             *     learn that rather than merely being refused.
+             */
+            304: {
+                headers: {
+                    /**
+                     * @description The same tag, still current.
+                     * @example "9c1f0b7d4e2a86315f0c9d3b7a48e152"
+                     */
+                    ETag?: string;
+                    /**
+                     * @description `private, no-cache`, as on the `200`.
+                     * @example private, no-cache
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`. It is what somebody whose workspace was
+             *     deleted, or who was removed from it, is answered — and what the workspace picker
+             *     is for.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     readPreferences: {
         parameters: {
             query?: never;
@@ -3065,21 +3685,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -3213,21 +3836,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -3392,21 +4018,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -3545,21 +4174,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -3732,21 +4364,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -3881,21 +4516,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -4061,21 +4699,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -4210,21 +4851,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -4400,21 +5044,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -4556,21 +5203,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
@@ -4711,21 +5361,24 @@ export interface operations {
                  *     request in flight. It is validated exactly as everything else is: a workspace the
                  *     caller is not a member of is a `404`, the same answer one that does not exist gets.
                  *
-                 *     On the operations below it is **optional and redundant**: they already name a
-                 *     workspace in their path, which is the more specific of the two, and a header that
-                 *     names a *different* one is a `422` with `code: "tenant_mismatch"` rather than a
-                 *     silent preference for either. It is accepted here so that one client can set it on
-                 *     every request, and it is how the operations that have no workspace in their path say
-                 *     which workspace they mean.
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
                  *
                  *     A caller who omits it is acting in their session's active organization. A session
                  *     that has none — a person who belongs to no workspace, one whose workspace was
                  *     deleted, one who was removed from it — gets a `400` with
                  *     `code: "organization_required"` on any operation that names no workspace of its own.
-                 *     Every operation that takes this header also names a workspace in its path, so none of
-                 *     them can answer it; the one operation that names none is `GET /api/v1/orgs`, which
-                 *     does not take this header at all, because *which workspaces are yours* is the question
-                 *     somebody in that state is asking.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
                  *
                  *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
                  *     once, at sign-in or in the picker, and lives on the session.
