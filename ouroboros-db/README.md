@@ -33,14 +33,17 @@
 > [Continuous integration](#continuous-integration). What that pass proves is now also
 > what ships: [`Dockerfile`](Dockerfile) is this module as a one-shot migration task, and
 > `publish/db` pushes it once `ci/db` is green on `main` — see [The image](#the-image).
-> Three product tables have landed on that base since the cut-over: `V007`
+> Four product tables have landed on that base since the cut-over: `V007`
 > ([#649](https://github.com/NobuData/ouroboros/issues/649)) adds `user_preferences`, the
 > per-person font scale, and `V008`
-> ([#64](https://github.com/NobuData/ouroboros/issues/64)) and `V009`
-> ([#65](https://github.com/NobuData/ouroboros/issues/65)) add the first two tables of the
-> **dashboard read-model** — `runs`, the entity mockup 02's stat row, *Active loops* and
-> *Recently closed* cards are all views over, and `queue_items`, the ordered queue behind
-> *Up next in queue* and the *Queued issues* estimate. Each carries its own section in
+> ([#64](https://github.com/NobuData/ouroboros/issues/64)), `V009`
+> ([#65](https://github.com/NobuData/ouroboros/issues/65)) and `V010`
+> ([#66](https://github.com/NobuData/ouroboros/issues/66)) add the first three tables of
+> the **dashboard read-model** — `runs`, the entity mockup 02's stat row, *Active loops*
+> and *Recently closed* cards are all views over, `queue_items`, the ordered queue behind
+> *Up next in queue* and the *Queued issues* estimate, and `token_usage`, the append-only
+> spend ledger behind *Token spend · today* (with `token_usage_daily`, this schema's first
+> view). Each carries its own section in
 > [`tests/constraints.sql`](tests/constraints.sql).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
@@ -66,8 +69,9 @@ The **tenancy database** — the PostgreSQL schema every other module hangs off,
 Flyway migrations that own it. Organizations and their sign-in domains, people and the
 accounts they authenticate with, per-organization membership roles, sessions, and GitHub
 org/repo enablement live here — and, since `V008`, the **read-model** the product renders
-over that boundary: what the loop has been doing, one row per run, and since `V009` what
-it will do next, one row per queued issue.
+over that boundary: what the loop has been doing, one row per run, since `V009` what
+it will do next, one row per queued issue, and since `V010` what it has spent doing so,
+one row per call.
 
 Flyway is the **sole owner of DDL**. No application module creates or alters tables;
 `ouroboros-rest` reads and writes through Kysely against a schema this module defines.
@@ -586,6 +590,7 @@ ouroboros-db/
 │   ├── V007__user_preferences.sql    # user_preferences — the font scale — #649
 │   ├── V008__dashboard_runs.sql      # runs — the loop lifecycle read-model — #64
 │   ├── V009__dashboard_queue.sql     # queue_items — the ordered issue queue — #65
+│   ├── V010__dashboard_usage.sql     # token_usage + token_usage_daily — the spend ledger — #66
 │   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, reshaped by #708
 └── tests/
     ├── lib/
@@ -625,6 +630,14 @@ outside this module alters it.
 | `user_preferences` | `V007` | Per-person product preferences — today the font scale | One row per person, absent while every setting is at its default; `font_scale` is one of § 4's five steps; cascades from `"user"` |
 | `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
+| `token_usage` | `V010` | What the loop has spent — one append-only event per provider call, not one total per organization | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization |
+
+One **view**, and so far the only one: **`token_usage_daily`** (`V010`) rolls
+`token_usage` up per organization, UTC day and provider — the read behind mockup 02's
+*Token spend · today*. It is a plain view rather than a materialized one on purpose: a
+stored total drifts the moment an event is corrected or back-filled. Its `cost_cents`
+propagates null rather than coalescing to zero, and `unpriced_events` is how a caller
+knows the total is a lower bound.
 
 `V001`'s `tenants`, `V002`'s `users`, `user_identities` and `tenant_members` are **gone**:
 `V006` ([#708](https://github.com/NobuData/ouroboros/issues/708)) moved their rows into
