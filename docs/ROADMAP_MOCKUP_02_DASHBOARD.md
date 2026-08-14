@@ -633,7 +633,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | G.1 | #70 | 🟢 Done | ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag | One org-scoped payload: stats, pulse, actives, recents, queue head | mvp, dashboard, rest | N (after F.5, BA-C.3) | Y | L | ouroboros-rest |
-| G.2 | #71 | 🟡 Open | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
+| G.2 | #71 | 🟢 Done | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
 | G.3 | #72 | 🟡 Open | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
 | G.4 | #73 | 🟡 Open | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
 | G.5 | #74 | 🟡 Open | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
@@ -721,7 +721,47 @@ GET /api/v1/dashboard (org from session) ─▶ { stats · pulse · activeRuns �
 
 ### Issue G.2 — ouroboros-rest: [G.2] Runs endpoints (active & recent)
 
-> **GitHub issue:** #71 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #71 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped.** `GET /api/v1/runs?status=active|terminal` and `GET /api/v1/runs/{id}`, in
+> [`ouroboros-rest/src/modules/runs/`](../ouroboros-rest/src/modules/runs/runs.module.ts) —
+> a module of its own rather than more controllers in the dashboard's, which is that
+> module's stated design: it exports nothing so its card-sized limits stay its own, and the
+> drill-ins publish their own statements over the same rows. What *is* shared is the one
+> thing the ticket requires to be: `RunSummary` and its mapper, imported from
+> `dashboard/resources.ts` as pure code, so a run row has exactly one shape on the
+> aggregate, on these pages, and on the detail.
+>
+> **The contract test is an equality, not a schema check.** The orderings are stated twice —
+> the dashboard repository's card queries and the runs repository's paged ones — because the
+> modules share no provider, so `runs.integration-spec.ts` builds one population (eleven
+> actives, nine terminals — one more than each slice carries) and requires the aggregate's
+> `activeRuns`/`recentRuns` to equal the listings' heads **as JSON**. That also proves the
+> slices are *heads* of the listings rather than merely subsets, which is the sketch's `⊂`
+> made exact.
+>
+> **The issue's `GET /runs/recent` became `?status=terminal`** — the issue body itself had
+> already moved on from the title's sketch, and one listing with a required family beats two
+> routes that differ by a `where`. The family is **required** rather than defaulted because
+> the two have different natural orders (lifecycle-then-oldest for active, newest-stopped
+> for terminal), and a mixed listing would need an interleaving no screen asks for; a client
+> that wants both asks twice, exactly as the two cards do. The repo filter takes
+> `github_repos.id` — the value the H.1 focus preference (#77) will hold — not the name,
+> which is unique only within one GitHub organisation; a foreign repo id narrows to an
+> empty page rather than confirming anything exists.
+>
+> **The cross-org `404` is an information-flow property, not a check.** `find` is scoped to
+> the workspace before it is keyed by the id, so "no such run" and "somebody else's run" are
+> one `undefined` from the repository up — nothing downstream *can* leak the difference, and
+> the integration suite asserts the two absences answer with the same envelope. Malformed
+> ids are the pipe's `422` instead, so a probe cannot read validation as existence.
+>
+> Proved in `runs.repository.spec.ts` (org predicate on every statement, orderings, the
+> filter narrowing page and total alike), `runs.service.spec.ts` (the aggregate's own mapper,
+> absence → `run_not_found`), `runs.dto.spec.ts`, `runs.errors.spec.ts` (the code is in the
+> specification), and the integration suite above. OpenAPI describes both operations, the
+> `RunPage` schema and the `RunId` parameter; `openapi.spec.ts` holds the document to the
+> route table in both directions.
 
 - **Problem Statement:** The aggregate carries card-sized slices; the `Open run
   console →` and `All issues →` destinations (and future screens 03/10) need full

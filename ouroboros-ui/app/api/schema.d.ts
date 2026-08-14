@@ -568,6 +568,83 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's runs, paged
+         * @description The drill-in behind the dashboard's `Open run console →` and `All issues →` links
+         *     ([#71](https://github.com/NobuData/ouroboros/issues/71)): the same rows the
+         *     aggregate's `activeRuns` and `recentRuns` slices carry, without their card-sized
+         *     limits, one family at a time.
+         *
+         *     **`status` is required, and names a family rather than a status.** `active` is the
+         *     runs still moving, in lifecycle order — coding, building, review — oldest first
+         *     within a stage, which is the *Active loops* card's own order extended past its ten.
+         *     `terminal` is the runs that have stopped, newest first, the *Recently closed* card's
+         *     order past its eight. The two orders answer different questions, which is why there
+         *     is no unfiltered listing: a screen that wants both asks twice, exactly as the two
+         *     cards do.
+         *
+         *     **The aggregate's slices are pages of these listings — as a contract.** A row here
+         *     and the same run in `Dashboard.activeRuns` are byte-identical: one `RunSummary`
+         *     schema, one mapper in the service, and an integration test that holds the two
+         *     answers equal over one population. A client may therefore paint a card from the
+         *     aggregate and a full screen from this listing without reconciling shapes.
+         *
+         *     **`repo` narrows to one repository** — `github_repos.id`, which is what the
+         *     focus-repo preference ([#77](https://github.com/NobuData/ouroboros/issues/77))
+         *     holds. The id rather than the name, because a name is unique only within its GitHub
+         *     organisation. A repository that is not this workspace's narrows to an empty page
+         *     rather than erroring: under the workspace scope the filter is a predicate, and an
+         *     empty page is the honest answer to "your runs, in a repository that is not yours".
+         *
+         *     **The workspace is the session's**, exactly as the dashboard's: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership
+         *     is checked before this operation runs.
+         */
+        get: operations["listRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One run
+         * @description The run a card links to, in exactly the shape every listing row and every aggregate
+         *     slice has — `RunSummary` is the one shape a run takes on this API, and this
+         *     operation is the third place it is served rather than a second definition of it.
+         *
+         *     **A run that is not yours does not exist.** A well-formed id belonging to another
+         *     workspace answers `404` with `run_not_found`, indistinguishably from an id that
+         *     names nothing at all — the query that reads the row is scoped to the workspace
+         *     before it is keyed by the id, so the distinction is not represented anywhere a
+         *     response could leak it. A `403` would confirm that an identifier names something
+         *     real, which is the whole of what somebody enumerating uuids is trying to learn.
+         */
+        get: operations["readRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/preferences": {
         parameters: {
             query?: never;
@@ -1942,6 +2019,25 @@ export interface components {
             checksTotal: number | null;
         };
         /**
+         * RunPage
+         * @description One page of runs ([#71](https://github.com/NobuData/ouroboros/issues/71)) — the #31
+         *     pagination convention over `RunSummary` rows, in the order the requested family
+         *     documents. The items are byte-identical to the aggregate's `activeRuns` and
+         *     `recentRuns` entries: one schema, one mapper, one shape for a run everywhere.
+         */
+        RunPage: {
+            items: components["schemas"]["RunSummary"][];
+            /**
+             * @description How many runs match the family — and the repo filter, if one narrows it.
+             * @example 53
+             */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
+        };
+        /**
          * QueueItemSummary
          * @description One queued issue, as the *Up next in queue* card draws it.
          */
@@ -2387,6 +2483,12 @@ export interface components {
          * @example 0
          */
         Offset: number;
+        /**
+         * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+         *     uuid is a `422` naming the field, before anything is read.
+         * @example 5eed0009-0000-4000-8000-000000000482
+         */
+        RunId: string;
     };
     requestBodies: never;
     headers: never;
@@ -3335,6 +3437,321 @@ export interface operations {
              *     are a member of. The two are deliberately one answer.
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRuns: {
+        parameters: {
+            query: {
+                /** @description Which family — see the operation description for the two orders. */
+                status: "active" | "terminal";
+                /** @description Narrow to one repository, by `github_repos.id`. */
+                repo?: string;
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page. A workspace with no runs in the family — or none in the repository the
+             *     filter named — gets an empty one, which is a state to render and not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "5eed0009-0000-4000-8000-000000000482",
+                     *           "issueNumber": 482,
+                     *           "issueTitle": "Fix flaky CAN-bus telemetry test",
+                     *           "workflowTag": "standard-fix",
+                     *           "model": "claude-fable-5",
+                     *           "status": "coding",
+                     *           "stageLabel": "Implementing",
+                     *           "stageIndex": 4,
+                     *           "stageTotal": 6,
+                     *           "startedAt": "2026-08-13T14:25:01.000Z",
+                     *           "finishedAt": null,
+                     *           "prNumber": null,
+                     *           "checksPassed": null,
+                     *           "checksTotal": null
+                     *         }
+                     *       ],
+                     *       "total": 3,
+                     *       "limit": 25,
+                     *       "offset": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `status` missing or naming no family, `repo` not a uuid, or
+             *     the window out of range. `details` carries one entry per field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed0009-0000-4000-8000-000000000482",
+                     *       "issueNumber": 482,
+                     *       "issueTitle": "Fix flaky CAN-bus telemetry test",
+                     *       "workflowTag": "standard-fix",
+                     *       "model": "claude-fable-5",
+                     *       "status": "coding",
+                     *       "stageLabel": "Implementing",
+                     *       "stageIndex": 4,
+                     *       "stageTotal": 6,
+                     *       "startedAt": "2026-08-13T14:25:01.000Z",
+                     *       "finishedAt": null,
+                     *       "prNumber": null,
+                     *       "checksPassed": null,
+                     *       "checksTotal": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunSummary"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `run_not_found` — no run with that id, **or none this caller may know about**:
+             *     an id belonging to another workspace is the same answer, deliberately.
+             *     `details.runId` echoes what was asked for. (`tenant_not_found` is the other
+             *     `404` here, when `X-Ouro-Tenant` names a workspace you are not a member of.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "run_not_found",
+                     *       "message": "No such run.",
+                     *       "details": {
+                     *         "runId": "5eed0009-0000-4000-8000-000000000999"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the id is not a uuid. Malformed is the caller's mistake,
+             *     answered before anything is read; well-formed-but-absent is the `404` above.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -102,6 +102,8 @@ $ curl http://localhost:4000/api/v1
 | `POST /api/v1/auth/discover`                        | [Company domain → SSO?](#domain-discovery) — public, and uniform for every domain |
 | `GET PATCH /api/v1/me/preferences`                  | The caller's own settings (#649) — the font scale; per person, no workspace required |
 | `GET /api/v1/dashboard`                             | [The dashboard](#the-dashboard) (#70) — mockup 02's six cards in one payload, with an `ETag` |
+| `GET /api/v1/runs`                                  | The paged run listings (#71) — `status=active\|terminal`, optional `repo` filter; the aggregate's slices are pages of these |
+| `GET /api/v1/runs/{id}`                             | One run, in the same `RunSummary` shape everywhere; another workspace's id is a `404`, never a `403` |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
