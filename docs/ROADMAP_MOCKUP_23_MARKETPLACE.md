@@ -317,17 +317,17 @@ weighted votes with brigading defence (CX.7).
 ## Epics, Labels & Milestones
 
 Each epic is a parent tracking issue on GitHub; every roadmap issue below is
-filed as one of its sub-issues (GitHub Relationships). **Nothing here is filed
-yet** — the GitHub column is populated by `/create-issues`.
+filed as one of its sub-issues (GitHub Relationships). **Filed 2026-08-13** —
+issues #765–#808 under epics #759–#764.
 
 | Epic | GitHub | Status | Name | Goal | Modules | Milestone |
 |------|:------:|:------:|------|------|---------|-----------|
-| CS | — | ⚪ Not filed | Marketplace Domain | Catalog cache, installations & provenance, votes/reviews, publications, policy & trust store, seeds, CI probes | ouroboros-db | Marketplace MVP |
-| CT | — | ⚪ Not filed | Package, Safety & Splice Engine | Package format, builder from selection, safety pipeline, signing/verification, fit analysis, splice/upgrade/uninstall planner, conformance kit | ouroboros-rest, ouroboros-engine | Marketplace MVP |
-| CU | — | ⚪ Not filed | Marketplace Hub Service | New `ouroboros-hub` module: publishing, catalog & search, ranking, votes/reviews, telemetry, moderation, seeds & tests | ouroboros-hub | Marketplace MVP |
-| CV | — | ⚪ Not filed | Marketplace Client Services | Hub client & cache, catalogue APIs, install/update/uninstall, publish & submissions, votes, policy/audit, integration tests | ouroboros-rest | Marketplace MVP |
-| CW | — | ⚪ Not filed | Marketplace UI | Route & stats, rail & leaderboard, catalogue grid, detail panel, install flow + Studio integration, publish wizard, states, e2e | ouroboros-ui | Marketplace MVP |
-| CX | — | ⚪ Not filed | Marketplace at Scale (v2) | Federation, mirrors, quality gauntlet, author analytics, suggestions & collections, more listing kinds, anti-abuse | all | Marketplace v2 |
+| CS | #759 | 🟡 Open | Marketplace Domain | Catalog cache, installations & provenance, votes/reviews, publications, policy & trust store, seeds, CI probes | ouroboros-db | Marketplace MVP |
+| CT | #760 | 🟡 Open | Package, Safety & Splice Engine | Package format, builder from selection, safety pipeline, signing/verification, fit analysis, splice/upgrade/uninstall planner, conformance kit | ouroboros-rest, ouroboros-engine | Marketplace MVP |
+| CU | #761 | 🟡 Open | Marketplace Hub Service | New `ouroboros-hub` module: publishing, catalog & search, ranking, votes/reviews, telemetry, moderation, seeds & tests | ouroboros-hub | Marketplace MVP |
+| CV | #762 | 🟡 Open | Marketplace Client Services | Hub client & cache, catalogue APIs, install/update/uninstall, publish & submissions, votes, policy/audit, integration tests | ouroboros-rest | Marketplace MVP |
+| CW | #763 | 🟡 Open | Marketplace UI | Route & stats, rail & leaderboard, catalogue grid, detail panel, install flow + Studio integration, publish wizard, states, e2e | ouroboros-ui | Marketplace MVP |
+| CX | #764 | 🟡 Open | Marketplace at Scale (v2) | Federation, mirrors, quality gauntlet, author analytics, suggestions & collections, more listing kinds, anti-abuse | all | Marketplace v2 |
 
 Issue naming: `<project>: [<epic>.<issue>] <title>`. Labels: existing set
 (`mvp`, `v2`, `db`, `rest`, `ui`, `engine`, `ci`, `design`, `infra`,
@@ -345,21 +345,21 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 
 ---
 
-## Epic CS — Marketplace Domain (`ouroboros-db`)
+## Epic CS (#759) — Marketplace Domain (`ouroboros-db`)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CS.1 | — | ⚪ Not filed | ouroboros-db: [CS.1] Listing catalog cache & version schema | Cached listings/versions/publishers with digests, stats, categories | mvp, marketplace, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| CS.2 | — | ⚪ Not filed | ouroboros-db: [CS.2] Installations, node provenance & drift state | Installs pinned to (slug, version, digest); node id map; managed/modified/detached | mvp, marketplace, db, workflow | N (after CS.1, WF-P.1) | Y | M | ouroboros-db |
-| CS.3 | — | ⚪ Not filed | ouroboros-db: [CS.3] Votes, reviews & eligibility mirror | One vote per org per listing, version voted, review text, retraction history | mvp, marketplace, db | N (after CS.1, CS.2) | Y | S | ouroboros-db |
-| CS.4 | — | ⚪ Not filed | ouroboros-db: [CS.4] Publications & submission records | This org's packages, submission state, safety report, hub listing refs | mvp, marketplace, db | N (after CS.1) | Y | S | ouroboros-db |
-| CS.5 | — | ⚪ Not filed | ouroboros-db: [CS.5] Marketplace policy, grant vocabulary & trust store | Policy section, closed grant vocab, hub keys/pins, publisher & listing blocklists | mvp, marketplace, db, settings | N (after CS.1, BQ.1) | Y | M | ouroboros-db |
-| CS.6 | — | ⚪ Not filed | ouroboros-db: [CS.6] Marketplace dev seeds — mockup-23 parity | Six listings, 14 installs, votes/reviews, leaderboard, one update-available | mvp, marketplace, db | N (after CS.2–CS.5, WF-P.5) | Y | M | ouroboros-db |
-| CS.7 | — | ⚪ Not filed | ouroboros-db: [CS.7] Marketplace constraints in ci/db | Digest immutability, one-vote-per-org, provenance integrity, grant vocab drift | mvp, marketplace, db, ci | N (after CS.6, #24) | Y | S | ouroboros-db, .github |
+| CS.1 | #765 | 🟡 Open | ouroboros-db: [CS.1] Listing catalog cache & version schema | Cached listings/versions/publishers with digests, stats, categories | mvp, marketplace, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| CS.2 | #766 | 🟡 Open | ouroboros-db: [CS.2] Installations, node provenance & drift state | Installs pinned to (slug, version, digest); node id map; managed/modified/detached | mvp, marketplace, db, workflow | N (after CS.1, WF-P.1) | Y | M | ouroboros-db |
+| CS.3 | #767 | 🟡 Open | ouroboros-db: [CS.3] Votes, reviews & eligibility mirror | One vote per org per listing, version voted, review text, retraction history | mvp, marketplace, db | N (after CS.1, CS.2) | Y | S | ouroboros-db |
+| CS.4 | #768 | 🟡 Open | ouroboros-db: [CS.4] Publications & submission records | This org's packages, submission state, safety report, hub listing refs | mvp, marketplace, db | N (after CS.1) | Y | S | ouroboros-db |
+| CS.5 | #769 | 🟡 Open | ouroboros-db: [CS.5] Marketplace policy, grant vocabulary & trust store | Policy section, closed grant vocab, hub keys/pins, publisher & listing blocklists | mvp, marketplace, db, settings | N (after CS.1, BQ.1) | Y | M | ouroboros-db |
+| CS.6 | #770 | 🟡 Open | ouroboros-db: [CS.6] Marketplace dev seeds — mockup-23 parity | Six listings, 14 installs, votes/reviews, leaderboard, one update-available | mvp, marketplace, db | N (after CS.2–CS.5, WF-P.5) | Y | M | ouroboros-db |
+| CS.7 | #771 | 🟡 Open | ouroboros-db: [CS.7] Marketplace constraints in ci/db | Digest immutability, one-vote-per-org, provenance integrity, grant vocab drift | mvp, marketplace, db, ci | N (after CS.6, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue CS.1 — ouroboros-db: [CS.1] Listing catalog cache & version schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #765 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** Every card, filter, sort and count on the page reads
   from a catalog this deployment does not have. The hub is the source of truth
@@ -419,7 +419,7 @@ erDiagram
 
 ### Issue CS.2 — ouroboros-db: [CS.2] Installations, node provenance & drift state
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #766 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** `INSTALLED HERE 14 · across 5 workflows`, the
   `Update to v4.0` button, the Studio's provenance chip and every honest
@@ -463,7 +463,7 @@ installation{hil-bench-smoke@2.3 sha256:9f1c…}
 
 ### Issue CS.3 — ouroboros-db: [CS.3] Votes, reviews & eligibility mirror
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #767 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** The thumbs are the product's only quality signal, so
   the rule *one workspace, one vote, only after installing* has to be a
@@ -499,7 +499,7 @@ vote_history: up(2.2) → down(2.3) → up(2.3) ─▶ hub sees the pattern, not
 
 ### Issue CS.4 — ouroboros-db: [CS.4] Publications & submission records
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #768 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** `YOUR SNIPPETS 3 · 1.9k installs · 92%` and **My
   contributions** need the publishing side: what this workspace packaged, what
@@ -528,7 +528,7 @@ publication draft ─▶ checking ─(safety findings)─▶ failed ⤾ fix ⤿
 
 ### Issue CS.5 — ouroboros-db: [CS.5] Marketplace policy, grant vocabulary & trust store
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #769 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** Installing a stranger's stages is a governance
   decision. The grant vocabulary must be closed and stored (MP6), the org's
@@ -567,7 +567,7 @@ grant vocab (closed)                     policy(marketplace)            trust st
 
 ### Issue CS.6 — ouroboros-db: [CS.6] Marketplace dev seeds — mockup-23 parity
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #770 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** Design review, integration tests and the e2e leg all
   need the mockup's exact catalogue state — including the awkward rows (the 71%
@@ -604,7 +604,7 @@ seeds ─▶ 6 listings · 10 categories · 5 publishers · 14 installs · 1 upd
 
 ### Issue CS.7 — ouroboros-db: [CS.7] Marketplace constraints in ci/db
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CS
+> **GitHub issue:** #771 · **Status:** 🟡 Open · **Parent epic:** #759
 
 - **Problem Statement:** Four invariants carry this plane: versions are
   immutable, one workspace votes once, an install always knows exactly which
@@ -628,21 +628,21 @@ ci/db: migrate ─▶ constraints (+CS probes) ─▶ seeds ⊨ package schema �
 
 ---
 
-## Epic CT — Package, Safety & Splice Engine (`ouroboros-rest` + `ouroboros-engine`)
+## Epic CT (#760) — Package, Safety & Splice Engine (`ouroboros-rest` + `ouroboros-engine`)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CT.1 | — | ⚪ Not filed | ouroboros-rest: [CT.1] Snippet package format & fragment schema | `docs/SNIPPET_PACKAGE.md` + JSON Schema; zod/pydantic parity; inlet/outlet contract | mvp, marketplace, rest, engine, workflow | N (after WF-P.2) | Y | L | ouroboros-rest, ouroboros-engine |
-| CT.2 | — | ⚪ Not filed | ouroboros-rest: [CT.2] Package builder from canvas selection | Subgraph extraction, parameterization, requirement & grant inference | mvp, marketplace, rest, workflow | N (after CT.1) | Y | L | ouroboros-rest |
-| CT.3 | — | ⚪ Not filed | ouroboros-rest: [CT.3] Publish-time safety pipeline | Secret scan, static lints, license, DSL validation, R.2 dry-run smoke | mvp, marketplace, rest, engine | N (after CT.2) | Y | L | ouroboros-rest, ouroboros-engine |
-| CT.4 | — | ⚪ Not filed | ouroboros-rest: [CT.4] Manifest signing, digests & verification | Canonical JSON digests, Ed25519 verify, key pinning & rotation | mvp, marketplace, rest | N (after CT.1, CS.5) | Y | M | ouroboros-rest |
-| CT.5 | — | ⚪ Not filed | ouroboros-rest: [CT.5] Fit & compatibility analyzer | Requirement resolution, conflict detection, insertion-point proposal, cost estimate | mvp, marketplace, rest, workflow | N (after CT.1, CS.1) | Y | L | ouroboros-rest |
-| CT.6 | — | ⚪ Not filed | ouroboros-rest: [CT.6] Splice, upgrade & uninstall planner | Edge splice + id remap, 3-way merge upgrade, fork, reversible removal | mvp, marketplace, rest, workflow | N (after CT.5, CS.2) | Y | L | ouroboros-rest |
-| CT.7 | — | ⚪ Not filed | ouroboros-rest: [CT.7] Package & splice conformance kit | Golden packages, property tests, adversarial fixtures shared with the hub | mvp, marketplace, rest, ci | N (after CT.6) | Y | M | ouroboros-rest, ouroboros-engine |
+| CT.1 | #772 | 🟡 Open | ouroboros-rest: [CT.1] Snippet package format & fragment schema | `docs/SNIPPET_PACKAGE.md` + JSON Schema; zod/pydantic parity; inlet/outlet contract | mvp, marketplace, rest, engine, workflow | N (after WF-P.2) | Y | L | ouroboros-rest, ouroboros-engine |
+| CT.2 | #773 | 🟡 Open | ouroboros-rest: [CT.2] Package builder from canvas selection | Subgraph extraction, parameterization, requirement & grant inference | mvp, marketplace, rest, workflow | N (after CT.1) | Y | L | ouroboros-rest |
+| CT.3 | #774 | 🟡 Open | ouroboros-rest: [CT.3] Publish-time safety pipeline | Secret scan, static lints, license, DSL validation, R.2 dry-run smoke | mvp, marketplace, rest, engine | N (after CT.2) | Y | L | ouroboros-rest, ouroboros-engine |
+| CT.4 | #775 | 🟡 Open | ouroboros-rest: [CT.4] Manifest signing, digests & verification | Canonical JSON digests, Ed25519 verify, key pinning & rotation | mvp, marketplace, rest | N (after CT.1, CS.5) | Y | M | ouroboros-rest |
+| CT.5 | #776 | 🟡 Open | ouroboros-rest: [CT.5] Fit & compatibility analyzer | Requirement resolution, conflict detection, insertion-point proposal, cost estimate | mvp, marketplace, rest, workflow | N (after CT.1, CS.1) | Y | L | ouroboros-rest |
+| CT.6 | #777 | 🟡 Open | ouroboros-rest: [CT.6] Splice, upgrade & uninstall planner | Edge splice + id remap, 3-way merge upgrade, fork, reversible removal | mvp, marketplace, rest, workflow | N (after CT.5, CS.2) | Y | L | ouroboros-rest |
+| CT.7 | #778 | 🟡 Open | ouroboros-rest: [CT.7] Package & splice conformance kit | Golden packages, property tests, adversarial fixtures shared with the hub | mvp, marketplace, rest, ci | N (after CT.6) | Y | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue CT.1 — ouroboros-rest: [CT.1] Snippet package format & fragment schema
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #772 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** A snippet must be one document that the product, the
   hub, the author and a reviewer all read the same way — and it must be
@@ -687,7 +687,7 @@ package.json ─▶ schema (committed, $id: snippet/v1)
 
 ### Issue CT.2 — ouroboros-rest: [CT.2] Package builder from canvas selection
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #773 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** The publish card promises *"select stages on the
   canvas … declare what they need … and publish"*. Between selection and
@@ -732,7 +732,7 @@ selection {n_a31, n_c07, n_8f2} ─▶ induced subgraph ─▶ inlet/outlet chec
 
 ### Issue CT.3 — ouroboros-rest: [CT.3] Publish-time safety pipeline
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #774 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** The author's laptop is not a trust boundary (MP12).
   Everything published has to survive an automated pass that catches the three
@@ -775,7 +775,7 @@ submit ─▶ [secrets][lints][license][schema][R.2 smoke][hygiene] ─▶ repor
 
 ### Issue CT.4 — ouroboros-rest: [CT.4] Manifest signing, digests & verification
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #775 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** A catalog that can serve a different body under the
   same name is not a catalog you install from (MP4, MP12). Digests and
@@ -811,7 +811,7 @@ fetch version ─▶ recompute sha256(JCS(package)) == digest ?
 
 ### Issue CT.5 — ouroboros-rest: [CT.5] Fit & compatibility analyzer
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #776 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** The detail panel makes four claims — *pool tagged hil:
   available*, *skill installed*, *drops in between Test and Review*, *no
@@ -861,7 +861,7 @@ fit(hil-bench-smoke@2.3, standard-fix)
 
 ### Issue CT.6 — ouroboros-rest: [CT.6] Splice, upgrade & uninstall planner
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #777 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** *"Inserting creates draft v15"*, *`Update to v4.0`*,
   **Fork** and uninstall are all graph surgery on someone's live workflow. Each
@@ -906,7 +906,7 @@ fork     copy subgraph, drop link            uninstall  remove ▸ restore from�
 
 ### Issue CT.7 — ouroboros-rest: [CT.7] Package & splice conformance kit
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CT
+> **GitHub issue:** #778 · **Status:** 🟡 Open · **Parent epic:** #760
 
 - **Problem Statement:** Two independent implementations read packages (the
   product and the hub) and three operations mutate graphs. Without a shared
@@ -937,22 +937,22 @@ props/  install∘uninstall = id · merge idempotent · no id collisions · no o
 
 ---
 
-## Epic CU — Marketplace Hub Service (`ouroboros-hub`, new module)
+## Epic CU (#761) — Marketplace Hub Service (`ouroboros-hub`, new module)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CU.1 | — | ⚪ Not filed | ouroboros-hub: [CU.1] Module scaffold, ADR & deployment | New Nest module, Flyway schema, compose service, `ci/hub`, OpenAPI, ADR | mvp, marketplace, infra, ci | N (after #8, #11, #55) | Y | L | ouroboros-hub, .github, docs |
-| CU.2 | — | ⚪ Not filed | ouroboros-hub: [CU.2] Publisher identity, tokens & verification | GitHub OAuth accounts, workspace publish tokens, ownership verification | mvp, marketplace, rest | N (after CU.1) | Y | L | ouroboros-hub |
-| CU.3 | — | ⚪ Not filed | ouroboros-hub: [CU.3] Listing & version publishing API | Submit, immutable versions, changelog, signing, yank & deprecate | mvp, marketplace, rest | N (after CU.2, CT.1, CT.3) | Y | L | ouroboros-hub |
-| CU.4 | — | ⚪ Not filed | ouroboros-hub: [CU.4] Catalog, search, facets & ranking | FTS + facets, Wilson/trending/installed/newest sorts, honest unrated state | mvp, marketplace, rest | N (after CU.3) | Y | L | ouroboros-hub |
-| CU.5 | — | ⚪ Not filed | ouroboros-hub: [CU.5] Votes & reviews API | Eligibility, one-vote-per-workspace, retraction, review moderation queue | mvp, marketplace, rest | N (after CU.4) | Y | M | ouroboros-hub |
-| CU.6 | — | ⚪ Not filed | ouroboros-hub: [CU.6] Install resolution, counts & opt-in telemetry | Deduped install counts, k-anonymous cost/time aggregates, leaderboard points | mvp, marketplace, rest | N (after CU.4) | Y | M | ouroboros-hub |
-| CU.7 | — | ⚪ Not filed | ouroboros-hub: [CU.7] Moderation, takedown, abuse reports & rate limits | Staff queue, yank/unlist propagation, reports, per-org & per-IP limits | mvp, marketplace, rest | N (after CU.3, CU.5) | Y | M | ouroboros-hub |
-| CU.8 | — | ⚪ Not filed | ouroboros-hub: [CU.8] Hub seeds, conformance & integration tests | Mockup-parity dataset, CT.7 corpus in hub CI, lifecycle tests | mvp, marketplace, ci | N (after CU.3–CU.7) | Y | M | ouroboros-hub, .github |
+| CU.1 | #779 | 🟡 Open | ouroboros-hub: [CU.1] Module scaffold, ADR & deployment | New Nest module, Flyway schema, compose service, `ci/hub`, OpenAPI, ADR | mvp, marketplace, infra, ci | N (after #8, #11, #55) | Y | L | ouroboros-hub, .github, docs |
+| CU.2 | #780 | 🟡 Open | ouroboros-hub: [CU.2] Publisher identity, tokens & verification | GitHub OAuth accounts, workspace publish tokens, ownership verification | mvp, marketplace, rest | N (after CU.1) | Y | L | ouroboros-hub |
+| CU.3 | #781 | 🟡 Open | ouroboros-hub: [CU.3] Listing & version publishing API | Submit, immutable versions, changelog, signing, yank & deprecate | mvp, marketplace, rest | N (after CU.2, CT.1, CT.3) | Y | L | ouroboros-hub |
+| CU.4 | #782 | 🟡 Open | ouroboros-hub: [CU.4] Catalog, search, facets & ranking | FTS + facets, Wilson/trending/installed/newest sorts, honest unrated state | mvp, marketplace, rest | N (after CU.3) | Y | L | ouroboros-hub |
+| CU.5 | #783 | 🟡 Open | ouroboros-hub: [CU.5] Votes & reviews API | Eligibility, one-vote-per-workspace, retraction, review moderation queue | mvp, marketplace, rest | N (after CU.4) | Y | M | ouroboros-hub |
+| CU.6 | #784 | 🟡 Open | ouroboros-hub: [CU.6] Install resolution, counts & opt-in telemetry | Deduped install counts, k-anonymous cost/time aggregates, leaderboard points | mvp, marketplace, rest | N (after CU.4) | Y | M | ouroboros-hub |
+| CU.7 | #785 | 🟡 Open | ouroboros-hub: [CU.7] Moderation, takedown, abuse reports & rate limits | Staff queue, yank/unlist propagation, reports, per-org & per-IP limits | mvp, marketplace, rest | N (after CU.3, CU.5) | Y | M | ouroboros-hub |
+| CU.8 | #786 | 🟡 Open | ouroboros-hub: [CU.8] Hub seeds, conformance & integration tests | Mockup-parity dataset, CT.7 corpus in hub CI, lifecycle tests | mvp, marketplace, ci | N (after CU.3–CU.7) | Y | M | ouroboros-hub, .github |
 
 ### Issue CU.1 — ouroboros-hub: [CU.1] Module scaffold, ADR & deployment
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #779 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** The catalog spans deployments, so it cannot live in a
   tenant-scoped service; and it is internet-facing with a different threat
@@ -995,7 +995,7 @@ trust boundary #4: rest ──HTTPS+token──▶ hub   (browser never)
 
 ### Issue CU.2 — ouroboros-hub: [CU.2] Publisher identity, tokens & verification
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #780 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** Every card carries a human name, and one carries
   `✦ verified`. Both need an identity model that spans deployments — and the
@@ -1033,7 +1033,7 @@ publish_token(hashed) ⟷ workspace_id(opaque, from rest) ─▶ publish · vote
 
 ### Issue CU.3 — ouroboros-hub: [CU.3] Listing & version publishing API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #781 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** Publishing is where the catalog's integrity is either
   established or lost: slug ownership, immutable versions, a signature, and a
@@ -1073,7 +1073,7 @@ yank(v2.2) ─▶ hidden from search · still resolvable by digest · installs w
 
 ### Issue CU.4 — ouroboros-hub: [CU.4] Catalog, search, facets & ranking
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #782 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** The grid, the four sorts, the ten category counts, the
   `hil OR bench` query and `9 results` are one endpoint — and the sort order is
@@ -1115,7 +1115,7 @@ facets        ▸ counts for the *current* query, not a static rail
 
 ### Issue CU.5 — ouroboros-hub: [CU.5] Votes & reviews API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #783 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** *"a ranking built from thumbs up and down cast by the
   workspaces actually running it"* is the description's core promise. It holds
@@ -1157,7 +1157,7 @@ PUT /vote {up, v2.3, ws#7f3}
 
 ### Issue CU.6 — ouroboros-hub: [CU.6] Install resolution, counts & opt-in telemetry
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #784 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** `3,142 installs`, `INSTALLED HERE 14`, the leaderboard
   points and `~$0.11 & ~2 min added per run` are four different numbers with
@@ -1196,7 +1196,7 @@ points_90d = Σ installs × thumbs-up-rate   (the leaderboard caption, computed)
 
 ### Issue CU.7 — ouroboros-hub: [CU.7] Moderation, takedown, abuse reports & rate limits
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #785 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** A public catalog acquires spam, typosquats, licence
   complaints and — eventually — something malicious that passed the automated
@@ -1234,7 +1234,7 @@ advisories feed ─▶ CV.1 poll ─▶ inbox decision item "installed version y
 
 ### Issue CU.8 — ouroboros-hub: [CU.8] Hub seeds, conformance & integration tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CU
+> **GitHub issue:** #786 · **Status:** 🟡 Open · **Parent epic:** #761
 
 - **Problem Statement:** The product's tests need a hub that behaves like the
   real one, and both sides must agree about packages — or the mockup renders
@@ -1263,21 +1263,21 @@ lifecycle: publish▸list▸search▸resolve▸vote▸review▸yank▸advisory  
 
 ---
 
-## Epic CV — Marketplace Client Services (`ouroboros-rest`)
+## Epic CV (#762) — Marketplace Client Services (`ouroboros-rest`)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CV.1 | — | ⚪ Not filed | ouroboros-rest: [CV.1] Hub client, catalog sync & offline mode | Typed client, ETag/TTL cache, advisories poll, degraded states | mvp, marketplace, rest | N (after CS.1, CU.4, CT.4) | Y | L | ouroboros-rest |
-| CV.2 | — | ⚪ Not filed | ouroboros-rest: [CV.2] Catalogue, detail & stats read APIs | Grid/facets/leaderboard/stat-strip payloads with fit annotations | mvp, marketplace, rest | N (after CV.1, CT.5) | Y | M | ouroboros-rest |
-| CV.3 | — | ⚪ Not filed | ouroboros-rest: [CV.3] Install, update & uninstall API | Policy gate, grants consent, splice into draft, update diff, removal | mvp, marketplace, rest, workflow | N (after CT.6, CV.1, CS.5) | Y | L | ouroboros-rest |
-| CV.4 | — | ⚪ Not filed | ouroboros-rest: [CV.4] Publish & submission API | Build from selection, safety report, submit, my-contributions | mvp, marketplace, rest | N (after CT.3, CU.3) | Y | M | ouroboros-rest |
-| CV.5 | — | ⚪ Not filed | ouroboros-rest: [CV.5] Vote & review API | Eligibility, one-vote-per-org, cast state, review submission | mvp, marketplace, rest | N (after CV.1, CS.3, CU.5) | Y | S | ouroboros-rest |
-| CV.6 | — | ⚪ Not filed | ouroboros-rest: [CV.6] Marketplace policy, capabilities & audit wiring | Policy section enforcement, admin approval decisions, audit events | mvp, marketplace, rest, settings | N (after CS.5, BQ.2, BR.2) | Y | M | ouroboros-rest |
-| CV.7 | — | ⚪ Not filed | ouroboros-rest: [CV.7] Marketplace integration tests | Lifecycle, tamper, policy, isolation, offline and conformance suites | mvp, marketplace, rest, ci | N (after CV.1–CV.6) | Y | M | ouroboros-rest |
+| CV.1 | #787 | 🟡 Open | ouroboros-rest: [CV.1] Hub client, catalog sync & offline mode | Typed client, ETag/TTL cache, advisories poll, degraded states | mvp, marketplace, rest | N (after CS.1, CU.4, CT.4) | Y | L | ouroboros-rest |
+| CV.2 | #788 | 🟡 Open | ouroboros-rest: [CV.2] Catalogue, detail & stats read APIs | Grid/facets/leaderboard/stat-strip payloads with fit annotations | mvp, marketplace, rest | N (after CV.1, CT.5) | Y | M | ouroboros-rest |
+| CV.3 | #789 | 🟡 Open | ouroboros-rest: [CV.3] Install, update & uninstall API | Policy gate, grants consent, splice into draft, update diff, removal | mvp, marketplace, rest, workflow | N (after CT.6, CV.1, CS.5) | Y | L | ouroboros-rest |
+| CV.4 | #790 | 🟡 Open | ouroboros-rest: [CV.4] Publish & submission API | Build from selection, safety report, submit, my-contributions | mvp, marketplace, rest | N (after CT.3, CU.3) | Y | M | ouroboros-rest |
+| CV.5 | #791 | 🟡 Open | ouroboros-rest: [CV.5] Vote & review API | Eligibility, one-vote-per-org, cast state, review submission | mvp, marketplace, rest | N (after CV.1, CS.3, CU.5) | Y | S | ouroboros-rest |
+| CV.6 | #792 | 🟡 Open | ouroboros-rest: [CV.6] Marketplace policy, capabilities & audit wiring | Policy section enforcement, admin approval decisions, audit events | mvp, marketplace, rest, settings | N (after CS.5, BQ.2, BR.2) | Y | M | ouroboros-rest |
+| CV.7 | #793 | 🟡 Open | ouroboros-rest: [CV.7] Marketplace integration tests | Lifecycle, tamper, policy, isolation, offline and conformance suites | mvp, marketplace, rest, ci | N (after CV.1–CV.6) | Y | M | ouroboros-rest |
 
 ### Issue CV.1 — ouroboros-rest: [CV.1] Hub client, catalog sync & offline mode
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #787 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** `ouroboros-rest` is the hub's only client (MP2). It has
   to be fast (the grid is a browse surface), honest when the hub is unreachable
@@ -1316,7 +1316,7 @@ rest ──token──▶ hub  (ETag · TTL · circuit breaker)
 
 ### Issue CV.2 — ouroboros-rest: [CV.2] Catalogue, detail & stats read APIs
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #788 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** The page needs five payloads — grid, facets/rail,
   leaderboard, stat strip, detail — and every one of them mixes hub data with
@@ -1356,7 +1356,7 @@ GET /stats ─▶ {published 412(+37), installed_here 14/5wf, votes30d 9.4k/88%,
 
 ### Issue CV.3 — ouroboros-rest: [CV.3] Install, update & uninstall API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #789 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** This is the endpoint that changes someone's workflow.
   It must refuse more often than it accepts: unmet requirements, forbidden or
@@ -1400,7 +1400,7 @@ uninstall ─▶ restore plan ─▶ draft   (refuse ⇒ reason + "detach instea
 
 ### Issue CV.4 — ouroboros-rest: [CV.4] Publish & submission API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #790 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** The publish card's promise has to survive contact with
   a real selection: build, check, explain what it found, submit, and then tell
@@ -1437,7 +1437,7 @@ check ─▶ report{block×0, warn×2}  ─▶ submit ─▶ hub listing  ─▶
 
 ### Issue CV.5 — ouroboros-rest: [CV.5] Vote & review API
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #791 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** The vote buttons are one click, but the rules behind
   them (installed, once, changeable, not your own) are the reason the number on
@@ -1471,7 +1471,7 @@ hub down ─▶ pending_sync (retry) ─▶ UI: "your vote will count once the h
 
 ### Issue CV.6 — ouroboros-rest: [CV.6] Marketplace policy, capabilities & audit wiring
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #792 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** Installing third-party stages is exactly the kind of
   act the workspace's existing governance was built for — it should arrive
@@ -1510,7 +1510,7 @@ audit: install(slug@v, digest, grants, actor) · vote · publish · policy_chang
 
 ### Issue CV.7 — ouroboros-rest: [CV.7] Marketplace integration tests
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CV
+> **GitHub issue:** #793 · **Status:** 🟡 Open · **Parent epic:** #762
 
 - **Problem Statement:** The properties that make this plane safe are the ones
   that silently rot: verification, one-vote-per-org, grants enforcement,
@@ -1541,7 +1541,7 @@ each ⊢ "remove the guard ⇒ this suite is red"   (verified once, in review)
 
 ---
 
-## Epic CW — Marketplace UI (`ouroboros-ui`)
+## Epic CW (#763) — Marketplace UI (`ouroboros-ui`)
 
 Every issue here builds against
 [`docs/mockups/23-marketplace.html`](mockups/23-marketplace.html) inside the
@@ -1550,18 +1550,18 @@ the #16 tokens and both themes.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CW.1 | — | ⚪ Not filed | ouroboros-ui: [CW.1] Marketplace route, head, stats strip & shell entry | `/marketplace`, page head actions, four stat tiles, sidebar registry entry | mvp, marketplace, ui, design | N (after CP.2, CV.2) | Y | M | ouroboros-ui |
-| CW.2 | — | ⚪ Not filed | ouroboros-ui: [CW.2] Category rail, filters & contributor leaderboard | Categories with live facet counts, four filter switches, leaderboard incl. `(you)` | mvp, marketplace, ui, design | N (after CW.1) | Y | M | ouroboros-ui |
-| CW.3 | — | ⚪ Not filed | ouroboros-ui: [CW.3] Catalogue grid, search & sort | Snippet cards with ranking bar, badges, actions; search pill; four sorts; publish card | mvp, marketplace, ui, design | N (after CW.1) | Y | L | ouroboros-ui |
-| CW.4 | — | ⚪ Not filed | ouroboros-ui: [CW.4] Snippet detail panel | Chain preview, requires, fit, versions, reviews, contributor, vote controls | mvp, marketplace, ui, design | N (after CW.3, CV.5) | Y | L | ouroboros-ui |
-| CW.5 | — | ⚪ Not filed | ouroboros-ui: [CW.5] Install flow & Studio integration | Consent + fit dialog, insertion picker, update diff, provenance chips, Studio entry points | mvp, marketplace, ui, workflow, design | N (after CW.4, CV.3, S.5) | Y | L | ouroboros-ui |
-| CW.6 | — | ⚪ Not filed | ouroboros-ui: [CW.6] Publish wizard from canvas selection | Selection → metadata → requirements/params → safety report → submit | mvp, marketplace, ui, design | N (after CW.3, CV.4) | Y | L | ouroboros-ui |
-| CW.7 | — | ⚪ Not filed | ouroboros-ui: [CW.7] Marketplace states & guards | Offline/stale, unrated, empty, policy-blocked, non-admin, incompatible, yanked | mvp, marketplace, ui, design | N (after CW.2–CW.6) | Y | M | ouroboros-ui |
-| CW.8 | — | ⚪ Not filed | ouroboros-ui: [CW.8] Marketplace e2e leg | browse → install → draft → publish → vote, plus shell assertions | mvp, marketplace, ui, ci | N (after CW.7, CU.8) | Y | M | ouroboros-ui, tests/e2e |
+| CW.1 | #794 | 🟡 Open | ouroboros-ui: [CW.1] Marketplace route, head, stats strip & shell entry | `/marketplace`, page head actions, four stat tiles, sidebar registry entry | mvp, marketplace, ui, design | N (after CP.2, CV.2) | Y | M | ouroboros-ui |
+| CW.2 | #795 | 🟡 Open | ouroboros-ui: [CW.2] Category rail, filters & contributor leaderboard | Categories with live facet counts, four filter switches, leaderboard incl. `(you)` | mvp, marketplace, ui, design | N (after CW.1) | Y | M | ouroboros-ui |
+| CW.3 | #796 | 🟡 Open | ouroboros-ui: [CW.3] Catalogue grid, search & sort | Snippet cards with ranking bar, badges, actions; search pill; four sorts; publish card | mvp, marketplace, ui, design | N (after CW.1) | Y | L | ouroboros-ui |
+| CW.4 | #797 | 🟡 Open | ouroboros-ui: [CW.4] Snippet detail panel | Chain preview, requires, fit, versions, reviews, contributor, vote controls | mvp, marketplace, ui, design | N (after CW.3, CV.5) | Y | L | ouroboros-ui |
+| CW.5 | #798 | 🟡 Open | ouroboros-ui: [CW.5] Install flow & Studio integration | Consent + fit dialog, insertion picker, update diff, provenance chips, Studio entry points | mvp, marketplace, ui, workflow, design | N (after CW.4, CV.3, S.5) | Y | L | ouroboros-ui |
+| CW.6 | #799 | 🟡 Open | ouroboros-ui: [CW.6] Publish wizard from canvas selection | Selection → metadata → requirements/params → safety report → submit | mvp, marketplace, ui, design | N (after CW.3, CV.4) | Y | L | ouroboros-ui |
+| CW.7 | #800 | 🟡 Open | ouroboros-ui: [CW.7] Marketplace states & guards | Offline/stale, unrated, empty, policy-blocked, non-admin, incompatible, yanked | mvp, marketplace, ui, design | N (after CW.2–CW.6) | Y | M | ouroboros-ui |
+| CW.8 | #801 | 🟡 Open | ouroboros-ui: [CW.8] Marketplace e2e leg | browse → install → draft → publish → vote, plus shell assertions | mvp, marketplace, ui, ci | N (after CW.7, CU.8) | Y | M | ouroboros-ui, tests/e2e |
 
 ### Issue CW.1 — ouroboros-ui: [CW.1] Marketplace route, head, stats strip & shell entry
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #794 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** The surface needs its route, its place in the shell,
   and the four numbers that frame it — replacing the #49 placeholder.
@@ -1591,7 +1591,7 @@ the #16 tokens and both themes.
 
 ### Issue CW.2 — ouroboros-ui: [CW.2] Category rail, filters & contributor leaderboard
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #795 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** The rail is three components that all have to stay true
   to the current query: counts that move with facets, switches that mean
@@ -1619,7 +1619,7 @@ rail: categories(facets) · switches(URL-reflected) · leaderboard(+you)
 
 ### Issue CW.3 — ouroboros-ui: [CW.3] Catalogue grid, search & sort
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #796 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** The card is the product's argument: name, version,
   what it does, who wrote it, how it is rated, and what you can do about it —
@@ -1654,7 +1654,7 @@ unrated: "not enough votes yet"  ·  installed: [Update to v4.0]
 
 ### Issue CW.4 — ouroboros-ui: [CW.4] Snippet detail panel
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #797 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** The detail panel is where a workspace decides whether
   to trust a stranger's stages: what it will insert, what it needs, what it may
@@ -1695,7 +1695,7 @@ detail: 96% (1,204 votes) [▲ Helpful cast][▼ Not helpful]  "You voted"
 
 ### Issue CW.5 — ouroboros-ui: [CW.5] Install flow & Studio integration
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #798 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** `Insert into workflow ▾` has to become an informed
   decision and then a visible change — in the Studio, where the stages actually
@@ -1734,7 +1734,7 @@ update: changelog ─ diff ─ per-node keep local | take incoming
 
 ### Issue CW.6 — ouroboros-ui: [CW.6] Publish wizard from canvas selection
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #799 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** *"Select stages on the canvas … and publish"* is four
   screens of work: prove the selection is spliceable, name the thing, confirm
@@ -1769,7 +1769,7 @@ update: changelog ─ diff ─ per-node keep local | take incoming
 
 ### Issue CW.7 — ouroboros-ui: [CW.7] Marketplace states & guards
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #800 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** Most of this surface's honesty lives in its unhappy
   states: the hub is down, the catalog is stale, the listing is unrated, the
@@ -1801,7 +1801,7 @@ states: hub down(stale) · disabled · private-only · empty · unrated · block
 
 ### Issue CW.8 — ouroboros-ui: [CW.8] Marketplace e2e leg
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CW
+> **GitHub issue:** #801 · **Status:** 🟡 Open · **Parent epic:** #763
 
 - **Problem Statement:** The MVP gate: the loop the description asks for —
   contribute a snippet, find someone else's, drop it into a workflow, rate it —
@@ -1832,21 +1832,21 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ---
 
-## Epic CX — Marketplace at Scale (v2 · milestone `Marketplace v2`)
+## Epic CX (#764) — Marketplace at Scale (v2 · milestone `Marketplace v2`)
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CX.1 | — | ⚪ Not filed | ouroboros-hub: [CX.1] Private registries & federation | Self-hosted hub mode, upstream allow-lists, pull-through mirroring | v2, marketplace, rest, infra | Y | N | L | ouroboros-hub, ouroboros-rest |
-| CX.2 | — | ⚪ Not filed | ouroboros-rest: [CX.2] Air-gapped mirror bundles | Signed catalog export/import, offline install, bundle verification | v2, marketplace, rest | Y | N | M | ouroboros-rest, ouroboros-hub |
-| CX.3 | — | ⚪ Not filed | ouroboros-hub: [CX.3] Quality gauntlet, provenance & badges | Reference dry-run scoring, Sigstore/CI provenance, earned badges | v2, marketplace, engine, rest | Y | N | L | ouroboros-hub, ouroboros-engine |
-| CX.4 | — | ⚪ Not filed | ouroboros-hub: [CX.4] Author analytics, follows & notifications | Per-listing adoption funnels, version uptake, Follow + notifications | v2, marketplace, rest, ui | Y | N | M | ouroboros-hub, ouroboros-ui |
-| CX.5 | — | ⚪ Not filed | ouroboros-rest: [CX.5] Snippet suggestions & curated collections | Copilot/Analyzer suggestion rules, staff picks, collections | v2, marketplace, copilot, analyzer | Y | N | M | ouroboros-rest, ouroboros-ui |
-| CX.6 | — | ⚪ Not filed | ouroboros-rest: [CX.6] Additional listing kinds & dependencies | Whole workflows, skills, playbooks; snippet-depends-on-snippet | v2, marketplace, workflow, knowledge | Y | N | L | ouroboros-rest, ouroboros-hub |
-| CX.7 | — | ⚪ Not filed | ouroboros-hub: [CX.7] Reputation, weighted votes & anti-brigading | Trust-weighted ranking, coordinated-voting defence, decay | v2, marketplace, rest | Y | N | M | ouroboros-hub |
+| CX.1 | #802 | 🟡 Open | ouroboros-hub: [CX.1] Private registries & federation | Self-hosted hub mode, upstream allow-lists, pull-through mirroring | v2, marketplace, rest, infra | Y | N | L | ouroboros-hub, ouroboros-rest |
+| CX.2 | #803 | 🟡 Open | ouroboros-rest: [CX.2] Air-gapped mirror bundles | Signed catalog export/import, offline install, bundle verification | v2, marketplace, rest | Y | N | M | ouroboros-rest, ouroboros-hub |
+| CX.3 | #804 | 🟡 Open | ouroboros-hub: [CX.3] Quality gauntlet, provenance & badges | Reference dry-run scoring, Sigstore/CI provenance, earned badges | v2, marketplace, engine, rest | Y | N | L | ouroboros-hub, ouroboros-engine |
+| CX.4 | #805 | 🟡 Open | ouroboros-hub: [CX.4] Author analytics, follows & notifications | Per-listing adoption funnels, version uptake, Follow + notifications | v2, marketplace, rest, ui | Y | N | M | ouroboros-hub, ouroboros-ui |
+| CX.5 | #806 | 🟡 Open | ouroboros-rest: [CX.5] Snippet suggestions & curated collections | Copilot/Analyzer suggestion rules, staff picks, collections | v2, marketplace, copilot, analyzer | Y | N | M | ouroboros-rest, ouroboros-ui |
+| CX.6 | #807 | 🟡 Open | ouroboros-rest: [CX.6] Additional listing kinds & dependencies | Whole workflows, skills, playbooks; snippet-depends-on-snippet | v2, marketplace, workflow, knowledge | Y | N | L | ouroboros-rest, ouroboros-hub |
+| CX.7 | #808 | 🟡 Open | ouroboros-hub: [CX.7] Reputation, weighted votes & anti-brigading | Trust-weighted ranking, coordinated-voting defence, decay | v2, marketplace, rest | Y | N | M | ouroboros-hub |
 
 ### Issue CX.1 — ouroboros-hub: [CX.1] Private registries & federation
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #802 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** An enterprise wants its own catalog with its own rules,
   and often wants the public one visible through it rather than beside it.
@@ -1864,7 +1864,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ### Issue CX.2 — ouroboros-rest: [CX.2] Air-gapped mirror bundles
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #803 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** Some of the deployments that most want vetted snippets
   are the ones with no route to the internet at all.
@@ -1882,7 +1882,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ### Issue CX.3 — ouroboros-hub: [CX.3] Quality gauntlet, provenance & badges
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #804 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** Automated checks currently prove a package is
   well-formed and inert; they do not prove it *works*, and the `✦ verified`
@@ -1904,7 +1904,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ### Issue CX.4 — ouroboros-hub: [CX.4] Author analytics, follows & notifications
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #805 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** Contributors keep contributing when they can see the
   effect; the mockup's **Follow** control needs a service behind it before it
@@ -1922,7 +1922,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ### Issue CX.5 — ouroboros-rest: [CX.5] Snippet suggestions & curated collections
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #806 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** The best moment to suggest a snippet is when a dry run
   or an analysis has just proved you need one — which is exactly what
@@ -1942,7 +1942,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ### Issue CX.6 — ouroboros-rest: [CX.6] Additional listing kinds & dependencies
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #807 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** Once stage fragments are shareable, the next requests
   are inevitable: whole workflows (the template library's public cousin),
@@ -1962,7 +1962,7 @@ e2e: browse▸filter▸sort▸detail▸install(consent)▸draft v15✓▸publish
 
 ### Issue CX.7 — ouroboros-hub: [CX.7] Reputation, weighted votes & anti-brigading
 
-> **GitHub issue:** — · **Status:** ⚪ Not filed · **Parent epic:** CX
+> **GitHub issue:** #808 · **Status:** 🟡 Open · **Parent epic:** #764
 
 - **Problem Statement:** One-vote-per-workspace stops the cheapest attack, not a
   determined one; a catalog worth gaming will be gamed.
@@ -2045,33 +2045,37 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#480/#481/#485/#486/#487), inbox kinds (#457/#461/#462), guardrails
    (#305/#319), shell (#643/#644/#646/#648), scaffolding (#8/#11/#19/#24/#46/
    #49/#55/#56) and BetterAuth tenancy (#708/#713/#714/#720).
-2. **Phase 1 — Domain & format:** CT.1 ⊕ { CS.1 → { CS.2 ⊕ CS.4 ⊕ CS.5 } →
-   CS.3 } → CS.6 → CS.7
-3. **Phase 2 — Engine:** CT.2 → CT.3; CT.4 ⊕ CT.5 → CT.6 → CT.7
-4. **Phase 3 — Hub:** CU.1 → CU.2 → CU.3 → CU.4 → CU.6 → CU.5 → CU.7 → CU.8
-   *(CU.1's ADR is a validation point: the new module is a decision, not an
+2. **Phase 1 — Domain & format:** CT.1 (#772) ⊕ { CS.1 (#765) → { CS.2 (#766) ⊕ CS.4 (#768) ⊕ CS.5 (#769) } →
+   CS.3 (#767) } → CS.6 (#770) → CS.7 (#771)
+3. **Phase 2 — Engine:** CT.2 (#773) → CT.3 (#774); CT.4 (#775) ⊕ CT.5 (#776) → CT.6 (#777) → CT.7 (#778)
+4. **Phase 3 — Hub:** CU.1 (#779) → CU.2 (#780) → CU.3 (#781) → CU.4 (#782) → CU.6 (#784) → CU.5 (#783) → CU.7 (#785) → CU.8 (#786)
+   *(#779's ADR is a validation point: the new module is a decision, not an
    implementation detail)*
-5. **Phase 4 — Client services:** CV.6 ⊕ CV.1 → { CV.2 ⊕ CV.4 ⊕ CV.5 } ⊕
-   CV.3 → CV.7
-6. **Phase 5 — UI:** CW.1 → { CW.2 ⊕ CW.3 } → { CW.4 → CW.5 } ⊕ CW.6 → CW.7 →
-   **CW.8** *(MVP gate, amending #56)*
-7. **v2:** CX.1 ⊕ CX.2 ⊕ CX.4 ⊕ CX.5 ⊕ CX.6; CX.3 after the gauntlet's
-   reference-workflow corpus exists; CX.7 once there is enough vote traffic to
+5. **Phase 4 — Client services:** CV.6 (#792) ⊕ CV.1 (#787) → { CV.2 (#788) ⊕ CV.4 (#790) ⊕ CV.5 (#791) } ⊕
+   CV.3 (#789) → CV.7 (#793)
+6. **Phase 5 — UI:** CW.1 (#794) → { CW.2 (#795) ⊕ CW.3 (#796) } → { CW.4 (#797) → CW.5 (#798) } ⊕ CW.6 (#799) → CW.7 (#800) →
+   **CW.8 (#801)** *(MVP gate, amending #56)*
+7. **v2:** CX.1 (#802) ⊕ CX.2 (#803) ⊕ CX.4 (#805) ⊕ CX.5 (#806) ⊕ CX.6 (#807); CX.3 (#804) after the gauntlet's
+   reference-workflow corpus exists; CX.7 (#808) once there is enough vote traffic to
    calibrate against.
 
 ## Totals
 
 | | Epic | Issues | MVP | v2 |
 |---|:---:|:---:|:---:|:---:|
-| Epic CS — Marketplace Domain | — | 7 | 7 | 0 |
-| Epic CT — Package, Safety & Splice Engine | — | 7 | 7 | 0 |
-| Epic CU — Marketplace Hub Service | — | 8 | 8 | 0 |
-| Epic CV — Marketplace Client Services | — | 7 | 7 | 0 |
-| Epic CW — Marketplace UI | — | 8 | 8 | 0 |
-| Epic CX — Marketplace at Scale | — | 7 | 0 | 7 |
+| Epic CS — Marketplace Domain | #759 | 7 | 7 | 0 |
+| Epic CT — Package, Safety & Splice Engine | #760 | 7 | 7 | 0 |
+| Epic CU — Marketplace Hub Service | #761 | 8 | 8 | 0 |
+| Epic CV — Marketplace Client Services | #762 | 7 | 7 | 0 |
+| Epic CW — Marketplace UI | #763 | 8 | 8 | 0 |
+| Epic CX — Marketplace at Scale | #764 | 7 | 0 | 7 |
 | **Total** | **6 epics** | **44** | **37** | **7** |
 
-Amendments to post at filing:
+Issues **#765–#808**, filed 2026-08-13 as sub-issues of their epics
+(**#759–#764**), with the new `marketplace` label and the `Marketplace MVP` /
+`Marketplace v2` milestones.
+
+Amendments posted at filing:
 
 | Amend | Comment |
 |---|---|
@@ -2166,13 +2170,15 @@ Issue-level impact:
 
 ## Next Step
 
-**Not filed.** This document is Phase 1 of `/create-roadmap`: validate it, then
-run `/create-issues ROADMAP_MOCKUP_23_MARKETPLACE` to create the `marketplace`
-label, the `Marketplace MVP` / `Marketplace v2` milestones, the six epics and
-the forty-four issues, writing their numbers back into the tables above.
+**Filed 2026-08-13.** The `marketplace` label (`.github/labels.yml`, synced) and
+the `Marketplace MVP` / `Marketplace v2` milestones were created; the six epics
+(#759–#764) and forty-four issues (#765–#808) are on GitHub with parent
+relationships, milestones, labels and types set, and the amendment comments
+listed above are posted on the issues they affect.
 
-**Validate these five decisions before filing**, because each one changes the
-shape of the work rather than its details:
+**Validate these five decisions before execution starts**, because each one
+changes the shape of the work rather than its details — and the first of them
+gates a whole epic:
 
 1. **MP2 — a new module.** `ouroboros-hub` adds a fifth service, a fourth trust
    boundary and an operational commitment (moderation, key custody, uptime). The
@@ -2196,13 +2202,15 @@ shape of the work rather than its details:
    the MVP. If they should converge, that decision belongs before CS.1, not
    after CX.6.
 
-**Execution starts at CT.1** (the package format — everything else reads it) in
-parallel with **CS.1**, and the critical path to the MVP gate runs CT.1 → CT.5 →
-CT.6 → CU.1 → CU.3 → CU.4 → CV.1 → CV.3 → CW.3 → CW.4 → CW.5 → **CW.8**, with
-the hub's vote/telemetry half (CU.5/CU.6) and the publish half (CT.2/CT.3/CV.4/
-CW.6) fanning out beside it.
+**Execution starts at CT.1 (#772)** — the package format, which everything else
+reads — in parallel with **CS.1 (#765)**. The critical path to the MVP gate runs
+#772 → #776 → #777 → #779 → #781 → #782 → #787 → #789 → #796 → #797 → #798 →
+**#801**, with the hub's vote/telemetry half (#783, #784) and the publish half
+(#773, #774, #790, #799) fanning out beside it. **CU.1 (#779) is a validation
+point in its own right:** its ADR decides whether the new module exists at all,
+and no other CU issue starts before it merges.
 
-**The deepest risk is CT.4 + CV.3: the trust seam.** Everything else on this
+**The deepest risk is CT.4 (#775) + CV.3 (#789): the trust seam.** Everything else on this
 page is a browsing experience; those two issues are the moment a stranger's
 stages enter a customer's build. If verification can be bypassed, if consent is
 not bound to the digest the user was shown, or if an install can reach a
@@ -2211,7 +2219,7 @@ efficient supply-chain attack this product has — the 2026 VS Code marketplace
 incidents are the same feature with the same promise and weaker seams. CV.7's
 tamper suite exists to stay red when any of those three guards is removed.
 
-**The second risk is CT.6: graph surgery.** A splice that mislays an edge, or a
+**The second risk is CT.6 (#777): graph surgery.** A splice that mislays an edge, or a
 3-way merge that silently drops a local edit, damages the artifact people care
 about most — and it damages it quietly, one workflow at a time. The
 install/uninstall round-trip property test is the check that has to hold for the

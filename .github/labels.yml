@@ -171,6 +171,10 @@
   color: "0b6b4f"
   description: "Research (mockup 22) — investigations, tool SPI, citations, regression watch, roadmap pipeline"
 
+- name: "marketplace"
+  color: "0e7490"
+  description: "Snippet Marketplace (mockup 23) — packages, hub, ranking, install & publish"
+
 - name: "sources"
   color: "006b75"
   description: "Pluggable ticket sources — provider SPI, GitHub/Jira/Linear/GitLab"
