@@ -825,7 +825,7 @@ supersedes the top-bar navigation the mockups were drawn with.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ ◎ OUROBOROS [acme-robotics]                                      │  header —
-│           [Search ⌘K] [● — loops live] [Needs you —] [🔔][◐][⚙][KS ▾] │  no nav links
+│        [Search ⌘K] [● 3 loops live] [● Needs you · 2] [🔔] [KS ▾] │  no nav links
 ├───────────────┬──────────────────────────────────────────────────┤
 │ ▦ Dashboard   │                                                  │
 │ ◉ Issues soon │   {page}                                       ░ │  ← the only
@@ -884,11 +884,15 @@ Five things are worth knowing before adding a screen to it.
    request as the route.
 4. **What is a slot, not an omission.** The bar carries every slot § 1.1 names, in its
    order: the tenant chip beside the brand, then search · live-loops · needs-you ·
-   notifications · [account menu](#the-account-menu). The menu and the chip's *reading*
-   are finished; what fills the rest has an issue each — switching workspace from the
-   chip (#77), the ⌘K palette behind the search pill (#79), real counts in both pills
-   (#78). Nothing shows a number nobody computed: an unfilled count is an em dash, which
-   is the design system's honesty rule (§ 3.5). The theme control and the settings entry
+   notifications · [account menu](#the-account-menu). The menu, the chip and both pills are
+   finished; the ⌘K palette behind the search pill is #79. Nothing shows a number nobody
+   computed, which is the design system's honesty rule (§ 3.5) — and since H.2
+   ([#78](https://github.com/NobuData/ouroboros/issues/78)) that cuts both ways: the pills
+   carry the [store](#the-polling-store)'s real counts, and a pill with nothing to report is
+   **not drawn at all** rather than drawn as a zero, so an empty workspace gets an empty slot
+   instead of a pair of noughts. The count that moves does so inside an `aria-live="polite"`
+   region that was already on the page, so a change is announced as an update rather than
+   missed as an insertion. The theme control and the settings entry
    live *inside* the profile menu since CP.3
    ([#645](https://github.com/NobuData/ouroboros/issues/645)) — § 1.1 puts them there,
    and a control drawn twice is a state that can be read twice differently.
