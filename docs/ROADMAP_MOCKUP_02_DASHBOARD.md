@@ -636,7 +636,7 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 | G.2 | #71 | 🟢 Done | ouroboros-rest: [G.2] Runs endpoints (active & recent) | `GET /runs?status=active`, `GET /runs/recent` — card drill-in reuse | mvp, dashboard, rest | N (after F.1, BA-C.3) | Y | S | ouroboros-rest |
 | G.3 | #72 | 🟢 Done | ouroboros-rest: [G.3] Pulse metrics computation | Merge rate, avg cycle, interventions over a 7-day window (F3) | mvp, dashboard, rest | N (after F.1) | Y | M | ouroboros-rest |
 | G.4 | #73 | 🟢 Done | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
-| G.5 | #74 | 🟡 Open | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
+| G.5 | #74 | 🟢 Done | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
 | G.6 | #75 | 🟡 Open | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
 | G.7 | #76 | 🟡 Open | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
 
@@ -908,7 +908,62 @@ GET /queue ─▶ [{#485, effort:m, tag:standard-fix}…] + totalEstMinutes (→
 
 ### Issue G.5 — ouroboros-rest: [G.5] Auto-merge setting endpoint
 
-> **GitHub issue:** #74 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #74 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped.** `GET`/`PATCH /api/v1/settings/auto-merge`, in
+> [`ouroboros-rest/src/modules/settings/`](../ouroboros-rest/src/modules/settings/settings.module.ts) —
+> a module of its own, per the runs and queue modules' argument sharpened by what this one
+> does: the dashboard *reads*, and a module that exists to display numbers should not
+> acquire the page's only mutation as a side room. The split is V011's, held as SQL: the
+> `GET` reads `workspace_settings_effective` (any member — a viewer is a role that exists
+> to be able to look), the `PATCH` upserts `workspace_settings` under
+> `@Roles(...ADMINISTRATORS)`, refused by the globally registered roles guard before a body
+> is even validated — which is what the ticket's does-not-write criterion means in
+> pipeline order. BA-C.3, "not yet filed" when the issue was written, had long since
+> shipped as the tenancy module's tenant context and roles guard; this is the first module
+> outside `tenancy` to lean on the latter.
+>
+> **One wording correction the diagram inherits: the refusal's code is `forbidden`, not
+> `forbidden_role`.** The API has exactly one `403` and one word for it
+> (`tenancy.errors.ts`, documented per-operation in `openapi.yaml`), carrying
+> `details.role` and `details.required`; a second code for the same refusal would be drift
+> dressed as precision, and a client branching on the envelope already has the role it
+> needs in `details`.
+>
+> **The ETag criterion is met by construction and held by a cycle.** G.1's version
+> fingerprint already counts and stamps `workspace_settings`, so a persisted flip bumps
+> the aggregate's tag with no new plumbing; `settings.integration-spec.ts` holds the whole
+> contract end to end — `200` → `304` on the held tag → `PATCH` → `200` again with a new
+> tag and `pulse.autoMerge` carrying the flip.
+>
+> **Lazy creation is one upsert, and attribution rides it.** A workspace that has never
+> chosen has no row and reads `false` with both stamps null — the "never chosen" signal,
+> resolved in the database rather than defaulted in code. The first flip creates the row,
+> every flip records `updated_by` from the session user, and `updated_at` stays the
+> trigger's: nothing in the statement names the column, so the server clock is its only
+> writer.
+>
+> **The audit emission point is a seam, not a log line.** `SettingsAudit.autoMergeChanged`
+> receives `settings.auto_merge_changed` fully assembled — workspace, position, actor, and
+> the *row's* stamp rather than a second clock — and deliberately does nothing: half an
+> audit trail would read as durable and not be. J.2 (#90) replaces a method body rather
+> than re-deriving where "it changed" is decided.
+>
+> **One deviation from the service's usual PATCH grammar, argued in the DTO:**
+> `@ValidateIf` rather than `@IsOptional()`, because `@IsOptional()` waves an explicit
+> `null` through and the write path would hand a `boolean not null` column the one
+> non-boolean the type let past — a `500` where the caller deserved the `422` the contract
+> now promises. Absence still means "no change asked", per the preferences surface.
+>
+> Proved in `settings.repository.spec.ts` (read-the-view-write-the-table, the org key on
+> every statement, the single upsert, the untouched trigger column),
+> `settings.service.spec.ts` (defaults without a written-on-read row, attribution, the
+> audit call on a persisted write and its absence otherwise), `settings.controller.spec.ts`
+> (the role metadata on the write and its absence on the read), `settings.dto.spec.ts`
+> (the null refusal), `resources.spec.ts` (view row and table row mapping to one resource),
+> and `settings.integration-spec.ts` (the four-role matrix over real sessions, lazy
+> creation, stamps on every write, the ETag cycle, and isolation over two workspaces).
+> The G.7 harness (#76) extends the matrix; the switch's UI is I.4 (#83).
 
 - **Problem Statement:** The pulse card's switch (decision F6) needs read/write with
   role enforcement — the page's only mutation.

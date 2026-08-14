@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.22.3"
+  version: "0.22.4"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1617,6 +1617,185 @@ paths:
           description: |-
             `validation_failed` — `repo` not a uuid, or the window out of range. `details`
             carries one entry per field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/settings/auto-merge:
+    get:
+      tags: [dashboard]
+      summary: The auto-merge setting
+      description: |-
+        The position of mockup 02's **Auto-merge when checks pass** switch
+        ([#74](https://github.com/NobuData/ouroboros/issues/74)): whether this workspace
+        merges on green checks without asking.
+
+        **Any member may read it**, viewers included — a role that exists to be able to look
+        at the switch it may not flip. Never a `404` and never empty: the setting always has
+        a position, `false` for a workspace that has never chosen, resolved from the database
+        rather than defaulted in code.
+
+        **The stamps are null together, and that is the "never chosen" signal.** `updatedAt`
+        and `updatedBy` are both null exactly when no administrator has ever written the
+        setting, so a client can tell a chosen `false` from a default one without a boolean
+        invented for the purpose. `updatedBy` alone may also be null on a chosen setting
+        whose setter was since deleted — the choice outlives the chooser.
+
+        **The workspace is the session's**, exactly as the dashboard's: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership
+        is checked before this operation runs. The dashboard aggregate reports the same
+        value as `pulse.autoMerge`; this operation is where a client reads it with its
+        attribution.
+      operationId: readAutoMergeSetting
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The setting. `enabled: false` with null stamps for a workspace that has never
+            chosen — a state to render, not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoMergeSetting"
+              example:
+                enabled: true
+                updatedAt: "2026-08-13T09:00:00.000Z"
+                updatedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [dashboard]
+      summary: Flip the auto-merge switch
+      description: |-
+        The dashboard's **one mutation** (decision F6). Send the switch's new position; the
+        answer is the setting as it now stands, read back from the row rather than from the
+        request. A body carrying nothing changes nothing and answers the current state —
+        PATCH means "what is present changed", per the preferences surface's own grammar.
+
+        **`owner` or `admin`, and nobody else.** Flipping this changes what the loop does
+        without a human, so the write is role-gated where reads are not: a `member` or a
+        `viewer` gets the API's one `403` and writes nothing. It is also attributed —
+        `updatedBy` records the session user on every write — and will be audited:
+        [#90](https://github.com/NobuData/ouroboros/issues/90) emits
+        `settings.auto_merge_changed` through the #26 audit path this operation already
+        stubs the seam for.
+
+        **The write is an upsert keyed on the workspace.** A workspace that has never chosen
+        has no settings row — the first flip creates it, the fortieth updates it, and two
+        racing administrators are arbitrated by the database rather than by whichever
+        arrived second overwriting a read.
+
+        **The next dashboard poll notices.** The aggregate's `ETag` fingerprints the
+        settings table, so a persisted flip turns the poller's `304` back into a `200` whose
+        `pulse.autoMerge` carries the new position.
+      operationId: patchAutoMergeSetting
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoMergeSettingPatch"
+            example:
+              enabled: true
+      responses:
+        "200":
+          description: The setting after the change, attribution included.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoMergeSetting"
+              example:
+                enabled: true
+                updatedAt: "2026-08-13T09:00:00.000Z"
+                updatedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Administering a workspace is `owner` or `admin`; `member` and `viewer` may
+            read it.
+
+            The one place this API answers `403` rather than `404`. Everywhere else, "you
+            may not" would confirm that an identifier names something real — here the caller
+            has already proved they are a member, so the workspace is no secret from them
+            and their role is the only thing left to tell them. `details.role` is what they
+            hold and `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `enabled` was not a boolean. `details` carries the entry
+            keyed by the field. A `"true"`, a `1` or a `null` is refused, not coerced,
+            because a workspace's merge posture is nothing to flip by accident of type.
           content:
             application/json:
               schema:
@@ -4802,6 +4981,52 @@ components:
             $ref: "#/components/schemas/QueueItemSummary"
         activity:
           $ref: "#/components/schemas/DashboardActivity"
+
+    AutoMergeSetting:
+      type: object
+      title: AutoMergeSetting
+      description: |-
+        The position of the **Auto-merge when checks pass** switch, with its attribution —
+        what both operations on `/api/v1/settings/auto-merge` answer.
+
+        The stamps are nullable **together**: both are null exactly when the workspace has
+        never written a settings row, which is how a client tells a chosen `false` from a
+        default one. `updatedBy` alone may also be null on a chosen setting whose setter was
+        since deleted — the choice outlives the chooser.
+      additionalProperties: false
+      required: [enabled, updatedAt, updatedBy]
+      properties:
+        enabled:
+          type: boolean
+          description: |-
+            Whether this workspace merges on green checks without asking. `false` for a
+            workspace that has never chosen — the safe default for "merge without review"
+            is never yes.
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When a setting last changed, or null when nothing ever has.
+        updatedBy:
+          type: [string, "null"]
+          description: |-
+            Who last changed it — a `"user".id` — or null: never set, or the setter was
+            since deleted. An opaque string with the same two shapes every id in this
+            document has (see `{orgId}`): 32-character alphanumeric from BetterAuth, uuid
+            for rows that predate it. Never parse it as a uuid.
+
+    AutoMergeSettingPatch:
+      type: object
+      title: AutoMergeSettingPatch
+      description: |-
+        The body of `PATCH /api/v1/settings/auto-merge`: send what changed. A body carrying
+        nothing changes nothing and answers the current state.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: |-
+            The switch's new position. A boolean and nothing else — a `"true"`, a `1` or a
+            `null` is a `422` naming the field, never a coercion.
 
     EngineStatus:
       type: object
