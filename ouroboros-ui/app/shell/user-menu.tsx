@@ -18,8 +18,10 @@ import { useFontScale } from "@/app/use-font-scale";
 
 import { type AccountView, type MenuWorkspace, accountMenuLabel, accountView } from "./account";
 import { signOutOfSession } from "./actions";
+import { menuConsumesKey, menuFocusTarget, menuItems, menuKeyAction } from "./menu";
 import { saveFontScale } from "./preference-actions";
 import { ShortcutsSheet } from "./shortcuts-sheet";
+import { switchWorkspace } from "./switch-workspace";
 
 /**
  * The account menu in the top-right corner of the header — the full § 1.1 shape, at last
@@ -231,23 +233,24 @@ export function UserMenu() {
   // Opening moves focus into the menu, which is what makes the keyboard path work: the arrow
   // keys below are handled on the menu, and Escape has somewhere to return from.
   useEffect(() => {
-    if (open) items(menu.current)[0]?.focus();
+    if (open) menuItems(menu.current)[0]?.focus();
   }, [open]);
 
   // And opening the submenu moves it on again, which is what the ARIA menu pattern asks of a
   // submenu that was opened deliberately.
   useEffect(() => {
-    if (switching) items(submenu.current)[0]?.focus();
+    if (switching) menuItems(submenu.current)[0]?.focus();
   }, [switching]);
 
   /**
    * Move the session into another workspace.
    *
-   * The call is made from the browser rather than through a Server Action, and the two
-   * consequences are the point of that choice: BetterAuth's refreshed `session_data` cookie
-   * reaches the browser that asked for it, and the plugin's own stores invalidate, so the
-   * menu redraws itself. `router.refresh()` is what tells the *server* — every Server
-   * Component on the route re-renders against the workspace the session now names.
+   * The call itself is `app/shell/switch-workspace.ts`'s, shared with the tenant chip
+   * ([#77](https://github.com/NobuData/ouroboros/issues/77)), which offers the same switch
+   * from the other end of the header — one write, one sentence for a refusal. What stays here
+   * is what this menu does around it, and `router.refresh()` is the part that matters: it
+   * tells the *server*, so every Server Component on the route re-renders against the
+   * workspace the session now names.
    *
    * @param workspace The workspace to move to.
    */
@@ -264,21 +267,17 @@ export function UserMenu() {
     setMoving(workspace.id);
     setFailure(null);
 
-    try {
-      unwrap(
-        await organization.setActive({ organizationId: workspace.id }),
-        "/organization/set-active",
-      );
-    } catch (error) {
+    const refused = await switchWorkspace(workspace.id);
+    setMoving(null);
+
+    if (refused !== null) {
       // A refusal is a state to render, not an error boundary over the whole application:
       // the menu is chrome, and replacing every screen because one workspace could not be
       // opened would lose the screen the person is still entitled to be on.
-      setFailure(error instanceof Error ? error.message : "That workspace could not be opened.");
-      setMoving(null);
+      setFailure(refused);
       return;
     }
 
-    setMoving(null);
     setAnnouncement(`Workspace: ${workspace.slug}.`);
     close(true);
     router.refresh();
@@ -333,58 +332,45 @@ export function UserMenu() {
    * Keyboard handling for the open menu.
    *
    * One handler on the menu container — the submenu is inside it, so its keys bubble here —
-   * which keeps the roving focus with a single source of truth: the DOM.
+   * which keeps the roving focus with a single source of truth: the DOM. What each key
+   * *means* is `app/shell/menu.ts`'s since H.1
+   * ([#77](https://github.com/NobuData/ouroboros/issues/77)) gave the header a second menu:
+   * the pattern is one pattern, and Escape closing the innermost open thing is the kind of
+   * rule that goes wrong in one copy at a time.
    *
    * @param event The key press.
    */
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
-    const entries = items(menu.current);
-    const at = entries.indexOf(document.activeElement as HTMLElement);
-    const inSubmenu =
-      document.activeElement instanceof Node &&
-      (submenu.current?.contains(document.activeElement) ?? false);
+    const focused = document.activeElement;
+    const inSubmenu = focused instanceof Node && (submenu.current?.contains(focused) ?? false);
 
-    switch (event.key) {
-      case "Escape":
-        event.preventDefault();
-        // Innermost first: Escape closes what is open, and inside a submenu that is the
-        // submenu. Closing the whole menu would throw away a choice still being made.
-        if (inSubmenu) closeSwitcher();
-        else close(true);
-        break;
-      case "ArrowRight":
-        if (document.activeElement === switcher.current) {
-          event.preventDefault();
-          setSwitching(true);
-        }
-        break;
-      case "ArrowLeft":
-        if (inSubmenu) {
-          event.preventDefault();
-          closeSwitcher();
-        }
-        break;
-      case "ArrowDown":
-        event.preventDefault();
-        entries[(at + 1) % entries.length]?.focus();
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        entries[(at - 1 + entries.length) % entries.length]?.focus();
-        break;
-      case "Home":
-        event.preventDefault();
-        entries[0]?.focus();
-        break;
-      case "End":
-        event.preventDefault();
-        entries[entries.length - 1]?.focus();
-        break;
-      case "Tab":
+    const action = menuKeyAction(event, { inSubmenu, onBranch: focused === switcher.current });
+    if (menuConsumesKey(action)) event.preventDefault();
+
+    switch (action) {
+      case "close":
+        close(true);
+        return;
+      case "close-submenu":
+        closeSwitcher();
+        return;
+      case "open-submenu":
+        setSwitching(true);
+        return;
+      case "dismiss":
         // Tabbing out is a dismissal, and the browser's own focus move is the right one — so
         // this closes without preventing it or dragging focus back.
         close(false);
-        break;
+        return;
+      default: {
+        const entries = menuItems(menu.current);
+        const target = menuFocusTarget(
+          action,
+          entries.indexOf(focused as HTMLElement),
+          entries.length,
+        );
+        if (target !== undefined) entries[target]?.focus();
+      }
     }
   }
 
@@ -442,7 +428,7 @@ export function UserMenu() {
               The font-size stepper (§ 1.1, over #649's engine). role="none" on the row is
               the <li role="none"> of the ARIA menu pattern: the two buttons are the menu's
               items, the label and the dots are furniture. The buttons stay in the tab-less
-              roving ring like every other item — `items()` reads roles, not markup shape.
+              roving ring like every other item — `menuItems()` reads roles, not markup shape.
             */}
             <div role="none" className="shell-menu__row" title={`Font size ${scale}%`}>
               <span className="shell-menu__label">Font size</span>
@@ -766,22 +752,5 @@ function Face({ view }: Readonly<{ view: AccountView }>) {
     <span className="shell-avatar__initials" aria-hidden>
       {initials(name)}
     </span>
-  );
-}
-
-/**
- * The menu's focusable items, in document order.
- *
- * Read from the DOM rather than held in a ref array, so that the roving focus follows
- * whatever is *currently rendered* — which is what makes the submenu's items part of the
- * same Up/Down walk while it is open, and absent from it the moment it closes, with no list
- * to keep in step.
- *
- * @param panel The menu or submenu to read, or null when it is closed.
- * @returns The items, or an empty list when there is no menu.
- */
-function items(panel: HTMLElement | null): HTMLElement[] {
-  return Array.from(
-    panel?.querySelectorAll<HTMLElement>('[role="menuitem"],[role="menuitemradio"]') ?? [],
   );
 }

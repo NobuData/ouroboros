@@ -58,6 +58,54 @@ export interface Enablement {
 }
 
 /**
+ * One repository Ouroboros may actually work in — what {@link enabledRepos} answers with.
+ *
+ * Narrower than the contract's `Repo` on purpose: this is the row a *chooser* draws
+ * ([#77](https://github.com/NobuData/ouroboros/issues/77)), and the timestamps and the
+ * default branch beside it are noise in a menu. It carries the organisation's `login`
+ * because a repository name is unique only within one, so a workspace with two
+ * organisations can hold two repositories called `docs` and the menu has to be able to say
+ * which is which.
+ */
+export interface EnabledRepo {
+  /**
+   * `github_repos.id`. The `repo` query parameter `GET /api/v1/runs` (#71) and
+   * `GET /api/v1/queue` (#73) accept, and what the focus-repo preference holds.
+   */
+  readonly id: string;
+  /** Its name within its organisation. */
+  readonly name: string;
+  /** The GitHub organisation it hangs from, lower-cased. */
+  readonly login: string;
+}
+
+/**
+ * The repositories in an enablement list that Ouroboros may operate in.
+ *
+ * **Both flags, which is the whole of this function.** The module's own opening rule is that
+ * a repository is in scope only when its `enabled` *and* its organisation's are both true,
+ * and that the reads do not apply it — so somebody has to, and a chooser offering a
+ * repository under a switched-off organisation would be offering a filter that narrows every
+ * listing to nothing.
+ *
+ * A pure derivation over an already-read list rather than a second read: the caller has the
+ * list, and this is a rule about it.
+ *
+ * @param list What {@link readEnablement} answered.
+ * @returns The repositories, in the order the service listed them — organisations first,
+ *   repositories within each. Empty when nothing is enabled, which is a state to draw.
+ */
+export function enabledRepos(list: Enablement): EnabledRepo[] {
+  return list.orgs
+    .filter(({ org }) => org.enabled)
+    .flatMap(({ org, repos: under }) =>
+      under
+        .filter((one) => one.enabled)
+        .map((one) => ({ id: one.id, name: one.name, login: org.login })),
+    );
+}
+
+/**
  * Read a workspace's organisations and their repositories.
  *
  * @param tenantId The workspace's uuid.

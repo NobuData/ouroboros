@@ -29,9 +29,13 @@ import { UserMenu } from "./user-menu";
  * What fills each one is somebody else's issue, and the ones still waiting say so rather than
  * showing a number nobody computed — the design system's honesty rule (§ 3.5). The counts are
  * [#78](https://github.com/NobuData/ouroboros/issues/78); the palette behind the search pill
- * is [#79](https://github.com/NobuData/ouroboros/issues/79); switching workspace from the chip
- * is [#77](https://github.com/NobuData/ouroboros/issues/77); the settings screen is
+ * is [#79](https://github.com/NobuData/ouroboros/issues/79); the settings screen is
  * [#491](https://github.com/NobuData/ouroboros/issues/491).
+ *
+ * The chip is no longer one of them: H.1
+ * ([#77](https://github.com/NobuData/ouroboros/issues/77)) gave it the switch menu § 1.1
+ * always drew it with, so it now carries the workspace *and* the focus repository and
+ * changes either — `app/shell/tenant-chip.tsx`.
  *
  * Two controls left this bar with CP.3
  * ([#645](https://github.com/NobuData/ouroboros/issues/645)), exactly as the paragraph that

@@ -1121,13 +1121,76 @@ all three issues: the `.topbar` of
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| H.1 | #77 | 🟡 Open | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
+| H.1 | #77 | 🟢 Done | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
 | H.2 | #78 | 🟡 Open | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
 | H.3 | #79 | 🟡 Open | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
 
 ### Issue H.1 — ouroboros-ui: [H.1] Tenant chip — org/repo context switcher
 
-> **GitHub issue:** #77 · **Status:** 🟡 Open · **Parent epic:** #61
+> **GitHub issue:** #77 · **Status:** 🟢 Done · **Parent epic:** #61
+
+> **Shipped 2026-08-14.** The chip earns the caret CP.1 refused to draw it with. #643 shipped
+> it as a statement — "a caret on a control that does not open is the kind of lie the design
+> system's honesty rule (§ 3.5) is aimed at" — and this issue is the one that opens it:
+> [`app/shell/tenant-chip.tsx`](../ouroboros-ui/app/shell/tenant-chip.tsx) is now
+> `acme-robotics / helios-firmware ▾` over a menu with two branches (switch workspace, focus
+> repository) and the *Workspace settings* row that still waits on #491.
+>
+> **The two halves are not the same kind of thing, and that is the ticket's one real
+> decision.** The workspace is server state — `session."activeOrganizationId"`, written by
+> `set-active`, which every Server Component on the route is scoped by (#713) — so switching
+> is a browser call followed by `router.refresh()`, which repaints the route's data with no
+> navigation and no reload. The focus repository is a **client-side filter preference**, held
+> per workspace in `localStorage` by
+> [`app/shell/focus-repo.ts`](../ouroboros-ui/app/shell/focus-repo.ts): it narrows what a
+> screen *asks for* rather than what it may see, it changes several times an hour, and the
+> server does not read it — so a round trip per press would buy nothing. It holds the
+> **id and the name**, because G.2/G.4 take `?repo=` as `github_repos.id` (the contract says
+> so and names this issue while saying it) and the chip has to paint a word without first
+> listing every repository in the workspace on every page load.
+>
+> **BA-C.4 and BA-D.1 were never blocking, and this is the correction to the dependency
+> line.** Both are unfiled entries on a roadmap whose issues do not exist, and the
+> capabilities they name are already in the product: organization switching is
+> `organization.setActive`, which #645 has been calling from the account menu since it
+> landed, and the enabled-repo list is `orgs.list` + `repos.list` composed by
+> `readEnablement()` — the same read the login screen's step 2 makes. What this ticket added
+> was the *rule* neither read applies: `enabledRepos()` in
+> [`app/api/enablement.ts`](../ouroboros-ui/app/api/enablement.ts), which is the module's own
+> both-flags rule ("a repository is in scope only when its own `enabled` and its
+> organisation's are both true") written down at last, because a focus repository under a
+> switched-off organisation is a filter that narrows every listing to nothing.
+>
+> **The listing is read when the menu opens, not when the page loads.** `readEnablement()` is
+> `1 + n` requests, so [`repo-actions.ts`](../ouroboros-ui/app/shell/repo-actions.ts) is
+> asked for it on open — and the answer is also what corrects a stored choice that has
+> stopped being true: a repository somebody has since disabled goes back to *All repos*
+> rather than quietly returning an empty product. The action **takes no arguments**, which is
+> the whole of its authorization: the workspace is the caller's own session's, so there is no
+> reference in the call for anybody to point somewhere else.
+>
+> **The truncation rule, stated.** The chip gives way before the session controls do
+> (`min-width: 0` against the cluster's `flex: none`, capped at `22rem`); within it the
+> organization gives way first — it shrinks at twice the rate and ellipsises, because it is
+> the context and the repository is the thing in focus — and neither disappears, both keeping
+> a four-character floor. Below 768px the organization is dropped rather than the whole chip:
+> the mockup hides it below 1500px, which it could afford because its topbar carried the
+> navigation, and § 1.1's header does not — this is the only control in the product that sets
+> a focus repository. Nothing is lost to a screen reader, because the button's accessible name
+> carries both names at every width, verbatim (WCAG 2.5.3, *Label in Name*).
+>
+> **Two extractions, because the header now has two menus.**
+> [`app/shell/menu.ts`](../ouroboros-ui/app/shell/menu.ts) holds the ARIA menu keyboard as a
+> decision — the roving walk, Escape closing the innermost open thing, Right/Left through a
+> submenu, Tab as a dismissal — and
+> [`switch-workspace.ts`](../ouroboros-ui/app/shell/switch-workspace.ts) holds the one write
+> and the one sentence for a refusal. Both are shared with #645's account menu, which loses
+> its private copies; `app/shell/focus-trap.ts` is the same argument one layer up.
+>
+> **Not in this ticket:** nothing sends the filter anywhere yet. The read APIs accept it
+> (#71, #73) and the hook that will carry it with each poll is **I.8 (#87)**, which reads the
+> store rather than being handed anything by the chip — so H.1 publishes the preference and
+> #87 spends it.
 
 - **Problem Statement:** Mockup 02's topbar pins the working context —
   `acme-robotics / helios-firmware ▾` — between brand and nav. The shell (#41) has
@@ -1751,3 +1814,14 @@ that holds the five surfaces to each other, on a shared F.5 fixture now living i
 harness. So **every REST dependency Epic I and Epic H name is landed**: the remaining work
 on this roadmap is the shell chrome (H.1–H.3) and the page itself (I.1–I.9), whose gate is
 I.9. Nothing in Epic J is MVP.
+
+**Epic H opened the same day.** **H.1 (#77) shipped** — the tenant chip is a control, and the
+focus-repo preference it publishes is the `?repo=` filter G.2 and G.4 have been accepting
+since they landed. Two of this roadmap's standing prerequisites can be struck with it:
+**BA-C.4 (enabled repos) and BA-D.1 (org switching) were never blocking** — both name
+capabilities the product already had (`readEnablement()`, `organization.setActive`), and the
+only thing genuinely missing was the both-flags rule over the first, which H.1 wrote down.
+The remaining unfiled BetterAuth entries are BA-C.3 and BA-D.5, and Epic G shipped without
+either. **H.2 (#78) and H.3 (#79) are unblocked and parallel**; the shell keyboard and the
+one-write-one-message rules they will meet are now `app/shell/menu.ts`'s and
+`app/shell/switch-workspace.ts`'s rather than the account menu's private business.

@@ -102,12 +102,18 @@ describe("the shell frame", () => {
   /**
    * One rule's declarations.
    *
+   * Anchored on a rule boundary — the start of the sheet, or the `}` that ended the rule
+   * before — so a class is found where it *is* the selector rather than where it is the tail
+   * of a longer one. Without it, `.shell-menu__panel` is answered by the first rule that
+   * merely ends in it (`.shell-menu--start .shell-menu__panel`, H.1), which is a different
+   * rule and would report the base one's declarations missing.
+   *
    * @param selector The selector, as it is written in the sheet.
    * @returns What is between its braces, or `""` when the sheet has no such rule — which
    *   fails the assertion that follows rather than passing it vacuously.
    */
   function rule(selector: string): string {
-    const pattern = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`);
+    const pattern = new RegExp(`(?:^|\\})\\s*\\${selector}\\s*\\{([^}]*)\\}`);
     return SHEET.match(pattern)?.[1] ?? "";
   }
 
@@ -320,6 +326,97 @@ describe("the shell frame", () => {
     // `fixed`, not `absolute`: the shell grid is the same size as the viewport today and would
     // stop being so the moment anything about the frame changed.
     expect(rule(".shell-overlay")).toMatch(/position:\s*fixed/);
+  });
+});
+
+/**
+ * The tenant chip's truncation rule (H.1,
+ * [#77](https://github.com/NobuData/ouroboros/issues/77)).
+ *
+ * The criterion is *"long names truncate per the stated rule without breaking the shell
+ * header layout"*, and the rule is entirely CSS — jsdom computes no styles, so the honest
+ * unit-level assertion is the one the frame's own suite makes: that the declarations are
+ * written down. That a browser then does what they say is the e2e leg's.
+ *
+ * Each of these is a line somebody could delete without a rendering test going red, and each
+ * one deleted is a different way two long names break the header.
+ */
+describe("the tenant chip", () => {
+  /**
+   * One rule's declarations. The chip's own copy of the frame suite's helper, anchored the
+   * same way and for the same reason.
+   *
+   * @param selector The selector, as it is written in the sheet.
+   * @returns What is between its braces, or `""` when there is no such rule.
+   */
+  function rule(selector: string): string {
+    return SHEET.match(new RegExp(`(?:^|\\})\\s*\\${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+  }
+
+  it("gives way before the session controls do, and is capped besides", () => {
+    // A truncated workspace name is legible; a missing account menu is not. The cluster is
+    // `flex: none`, so `min-width: 0` here is what decides which of the two shrinks.
+    expect(rule(".shell-tenant")).toMatch(/min-width:\s*0/);
+    expect(rule(".shell-tenant")).toMatch(/max-width:\s*22rem/);
+    expect(rule(".shell-header__cluster")).toMatch(/flex:\s*none/);
+  });
+
+  it("truncates the organization before the repository, and neither to nothing", () => {
+    // The stated rule: the organization is the context and shrinks at twice the rate; the
+    // repository is the thing in focus. Both keep a four-character floor, so the chip
+    // degrades to two clipped names rather than to an ellipsis beside a full one.
+    const org = rule(".shell-tenant__org");
+    const repo = rule(".shell-tenant__repo");
+
+    expect(org).toMatch(/flex:\s*0 2 auto/);
+    expect(repo).toMatch(/flex:\s*0 1 auto/);
+
+    for (const part of [org, repo]) {
+      expect(part).toMatch(/min-width:\s*4ch/);
+      expect(part).toMatch(/text-overflow:\s*ellipsis/);
+      expect(part).toMatch(/white-space:\s*nowrap/);
+      expect(part).toMatch(/overflow:\s*hidden/);
+    }
+  });
+
+  it("draws the two halves in the inks the mockup separates them by", () => {
+    // `.tenant-chip .org` is muted and the repository is bright: the context recedes and the
+    // thing in focus does not.
+    expect(rule(".shell-tenant__org")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule(".shell-tenant__repo")).toMatch(/color:\s*var\(--ink\)/);
+  });
+
+  it("never lets the caret shrink", () => {
+    // It is one glyph; a caret squeezed between two ellipses is a control that looks broken.
+    expect(rule(".shell-tenant__caret")).toMatch(/flex:\s*none/);
+  });
+
+  it("looks pressable only since it became pressable", () => {
+    // Before H.1 the chip was a statement and the decorative hairline was right for it. A
+    // control takes the interactive one, and lifts to the 3:1 boundary on hover.
+    expect(rule(".shell-tenant")).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(rule(".shell-tenant--control")).toMatch(/border-color:\s*var\(--line-strong\)/);
+    expect(rule(".shell-tenant--control")).toMatch(/cursor:\s*pointer/);
+    expect(rule(".shell-tenant--control:hover")).toMatch(/border-color:\s*var\(--line-control\)/);
+  });
+
+  it("keeps the repository half on the narrowest phones and drops the muted one", () => {
+    // The mockup drops the whole chip below 1500px, which it could afford because its topbar
+    // carried the navigation. § 1.1's header does not, and this is the only control that sets
+    // a focus repository — so what goes is the organization, and only below 768px.
+    const drawer = SHEET.match(/@media \(max-width: 48rem\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(drawer).toMatch(/\.shell-tenant__org\s*\{\s*display:\s*none/);
+    expect(drawer).not.toContain(".shell-tenant__repo");
+  });
+
+  it("hangs its panel from the left edge, where the chip sits", () => {
+    // The account menu's panel is anchored right, which is the only difference between a menu
+    // at the end of the header and one at its start.
+    expect(rule(".shell-menu--start .shell-menu__panel")).toMatch(/left:\s*0/);
+    expect(rule(".shell-menu--start .shell-menu__panel")).toMatch(/right:\s*auto/);
+    // And the wrapper shrinks, without which the whole truncation rule above is inert.
+    expect(rule(".shell-menu--start")).toMatch(/min-width:\s*0/);
   });
 });
 

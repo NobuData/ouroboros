@@ -12,7 +12,9 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { ENABLEMENT_LIMIT, readEnablement } = await import("@/app/api/enablement");
+const { ENABLEMENT_LIMIT, enabledRepos, readEnablement } = await import(
+  "@/app/api/enablement"
+);
 
 /**
  * The one read behind the enablement step: organisations, then their repositories.
@@ -175,5 +177,85 @@ describe("readEnablement", () => {
     }));
 
     await expect(readEnablement(TENANT, client)).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+/**
+ * The rule the reads deliberately do not apply — *both* flags — as the one function that
+ * does ([#77](https://github.com/NobuData/ouroboros/issues/77)).
+ *
+ * The module's opening paragraph says a repository is in scope only when its own `enabled`
+ * and its organisation's are both true, and that neither operation applies it. The tenant
+ * chip is the first caller that has to: a focus repository under a switched-off organisation
+ * is a filter that narrows every listing to nothing.
+ */
+describe("enabledRepos", () => {
+  /**
+   * An enablement list from organisations paired with their repositories.
+   *
+   * @param entries Each organisation row and the repositories under it.
+   * @returns The list, with the totals the rows imply.
+   */
+  function list(entries: readonly (readonly [unknown, unknown[]])[]) {
+    return {
+      orgTotal: entries.length,
+      orgs: entries.map(([one, under]) => ({
+        org: one,
+        repos: under,
+        repoTotal: under.length,
+      })),
+    } as Parameters<typeof enabledRepos>[0];
+  }
+
+  it("keeps the repositories whose organisation is on and whose own flag is on", () => {
+    const found = enabledRepos(
+      list([[org("acme-robotics"), [repo("helios-firmware"), repo("atlas-scheduler", false)]]]),
+    );
+
+    expect(found).toEqual([
+      { id: "repo-helios-firmware", name: "helios-firmware", login: "acme-robotics" },
+    ]);
+  });
+
+  it("drops everything under a switched-off organisation, however it is flagged", () => {
+    // The trap the screen that renders these switches has to explain in words: two flags that
+    // read independently but act together.
+    const found = enabledRepos(
+      list([[org("acme-labs", false), [repo("labs-sandbox"), repo("labs-archive")]]]),
+    );
+
+    expect(found).toEqual([]);
+  });
+
+  it("carries the organisation each repository hangs from", () => {
+    // A repository name is unique only within its organisation, so a workspace with two of
+    // them may hold two called the same thing.
+    const found = enabledRepos(
+      list([
+        [org("acme-robotics"), [repo("docs")]],
+        [org("kensuenobu"), [repo("docs")]],
+      ]),
+    );
+
+    expect(found.map((one) => one.login)).toEqual(["acme-robotics", "kensuenobu"]);
+  });
+
+  it("keeps the order the service listed them in", () => {
+    const found = enabledRepos(
+      list([
+        [org("acme-robotics"), [repo("helios-firmware"), repo("helios-console")]],
+        [org("kensuenobu"), [repo("dotfiles")]],
+      ]),
+    );
+
+    expect(found.map((one) => one.name)).toEqual([
+      "helios-firmware",
+      "helios-console",
+      "dotfiles",
+    ]);
+  });
+
+  it("answers nothing for a workspace with nothing recorded", () => {
+    expect(enabledRepos(list([]))).toEqual([]);
   });
 });
