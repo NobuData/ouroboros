@@ -476,7 +476,7 @@ that roadmap's "Existing issues affected" section.
 
 ## P4 — Dashboard — the First Real Screen
 
-> **20 issues** · 51 complexity points · order **#68–#92**, less `69`, `70`, `71`, `72` and `73` · 7 dependency waves
+> **18 issues** · 44 complexity points · order **#68–#92**, less `69`–`73`, `77` and `78` · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_02_DASHBOARD.md` (Epics F–I)
 
 **Goal.** Build the dashboard read-model, its org-scoped REST endpoints with ETag polling, the mission-control topbar chrome (tenant switcher, live and needs-you pills, ⌘K palette), and mockup 02 as the real landing page.
@@ -569,7 +569,20 @@ that roadmap's "Existing issues affected" section.
 > the choice of window is one `#70` makes against a fixture rather than discovers against
 > one that will not add up.
 >
-> **With the seeds in place, `G.1` (`#70`) is the next row of this phase that can move.**
+> **`G.1` (`#70`) shipped the same day, and row `78` has left the table with it.**
+> `GET /api/v1/dashboard` is one org-scoped payload for all six card surfaces (decision
+> `F5`) with a strong `ETag` over a cheap version source — four aggregate subqueries and the
+> calendar day — so a poll that changes nothing is a `304` and a header exchange. The window
+> question above is answered in favour of the *rate*: the merge rate is measured over
+> **fourteen** days, where `92%` is exact, and the other two meters keep the seven the card's
+> chip names. Every definition is published in the OpenAPI description of the field that
+> carries it, so `I.4` (`#83`) labels each meter for the window it is actually measured over.
+>
+> **What that unblocks:** `I.1` (`#80`) has a payload to render, `H.2` (`#78`) has its
+> counts, and `G.6` (`#75`) has a tag to formalise a polling contract around. `G.2`, `G.3`,
+> `G.4` and `G.5` remain their own rows — `#70` reads the auto-merge switch and writes
+> nothing — and `G.3`'s metrics are computed inside the aggregate's single pass over `runs`,
+> which is the shape that issue asked for.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
@@ -577,7 +590,6 @@ that roadmap's "Existing issues affected" section.
 | 74 | **G.2** | #71 | Runs endpoints (active & recent) | ouroboros-rest | S | C.3, F.1 |
 | 75 | **G.3** | #72 | Pulse metrics computation | ouroboros-rest | M | F.1 |
 | 76 | **G.5** | #74 | Auto-merge setting endpoint | ouroboros-rest | S | C.3, F.4 |
-| 78 | **G.1** | #70 | Dashboard aggregate endpoint with ETag | ouroboros-rest | L | C.3, F.5 |
 | 79 | **G.4** | #73 | Queue endpoint | ouroboros-rest | S | C.3, F.2 |
 | 80 | **H.1** | #77 | Tenant chip — org/repo context switcher | ouroboros-ui | M | 5.3, C.4, D.1 |
 | 81 | **G.6** | #75 | Polling contract & cache headers | ouroboros-rest | S | G.1 |

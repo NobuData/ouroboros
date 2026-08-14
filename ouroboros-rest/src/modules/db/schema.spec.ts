@@ -7,13 +7,19 @@ import {
 } from "kysely";
 
 import {
+  ACTIVE_RUN_STATUSES,
+  QUEUE_EFFORTS,
+  READ_ONLY_VIEWS,
   SCHEMA_NAME,
   TABLE_COLUMNS,
   TABLE_NAMES,
+  TERMINAL_RUN_STATUSES,
   LIBRARY_OWNED_TABLES,
   type Database,
   type NewGithubOrg,
+  type NewRun,
   type NewTenantDomain,
+  type RunStatus,
 } from "./schema";
 
 /**
@@ -219,7 +225,38 @@ describe("TABLE_COLUMNS", () => {
     // against: `organization` and `member`. It was nine until #714; V006 dropped `tenants`,
     // `tenant_members`, `users` and `user_identities`, and this number is what fails if one
     // of them is ever mirrored again.
-    expect(TABLE_NAMES).toHaveLength(6);
+    //
+    // Six more arrived with the dashboard read-model (#70): V008–V011's `runs`,
+    // `queue_items`, `token_usage` and `workspace_settings`, and the two views V010 and V011
+    // publish over the last two of them.
+    expect(TABLE_NAMES).toHaveLength(12);
+  });
+
+  it("mirrors the dashboard read-model V008–V011 created", () => {
+    // The named form of the count above, for the half of it #70 added. A mirror missing one
+    // of these is an aggregate the dashboard cannot compute; the drift check in
+    // `db.integration-spec.ts` is what proves the columns are the migrations'.
+    for (const table of ["runs", "queue_items", "token_usage", "workspace_settings"]) {
+      expect(TABLE_NAMES).toContain(table);
+    }
+  });
+
+  it("declares both views, and declares them as views", () => {
+    // A view is in `Database` because it is read, and in `READ_ONLY_VIEWS` because it may not
+    // be written — `Database` itself has no way to say the second thing. The pairing is what
+    // stops a view being added to the mirror and quietly acquiring an `insertInto`.
+    for (const view of READ_ONLY_VIEWS) {
+      expect(TABLE_NAMES).toContain(view);
+    }
+    expect(READ_ONLY_VIEWS).toHaveLength(2);
+  });
+
+  it("mirrors, for each view, the table a write to it belongs in", () => {
+    // The rule `READ_ONLY_VIEWS` states, as an assertion about the mirror rather than about a
+    // caller: refusing a write is only useful if the mirror also declares somewhere for that
+    // write to go.
+    expect(TABLE_NAMES).toContain("token_usage");
+    expect(TABLE_NAMES).toContain("workspace_settings");
   });
 
   it("mirrors no table V006 dropped", () => {
@@ -267,6 +304,98 @@ describe("TABLE_COLUMNS", () => {
     // snake_cased one here would be a mirror that had started translating.
     expect(TABLE_COLUMNS.member).toContain("organizationId");
     expect(TABLE_COLUMNS.organization).toContain("createdAt");
+  });
+});
+
+describe("the dashboard read-model's vocabularies", () => {
+  /**
+   * Both halves of `runs_status`, as one list.
+   *
+   * The CHECK names six words and the mirror splits them in two, so what has to be asserted
+   * is that the split loses none of them and invents none — the failure that would let a
+   * status the database accepts fall out of every query that reads by status.
+   */
+  const everyStatus: readonly RunStatus[] = [...ACTIVE_RUN_STATUSES, ...TERMINAL_RUN_STATUSES];
+
+  it("splits the six statuses V008 declares into active and terminal, losing none", () => {
+    expect(everyStatus).toEqual([
+      "coding",
+      "building",
+      "review",
+      "merged",
+      "needs_human",
+      "failed",
+    ]);
+    expect(new Set(everyStatus).size).toBe(everyStatus.length);
+  });
+
+  it("keeps the active statuses in lifecycle order, which the active card sorts by", () => {
+    // Not alphabetical, and the difference is what the card reads like: a loop is coded,
+    // then built, then reviewed, and `dashboard/repository` orders by the index into this
+    // list. Sorting it would reorder the card.
+    expect([...ACTIVE_RUN_STATUSES]).toEqual(["coding", "building", "review"]);
+  });
+
+  it("names the five effort chips smallest first", () => {
+    expect([...QUEUE_EFFORTS]).toEqual(["xs", "s", "m", "l", "xl"]);
+  });
+
+  it("does not compile a run whose status is not one of the six", () => {
+    const run: NewRun = {
+      organization_id: "org",
+      github_repo_id: "00000000-0000-4000-8000-000000000000",
+      issue_number: 482,
+      issue_title: "Fix flaky CAN-bus telemetry test",
+      workflow_tag: "standard-fix",
+      model: "claude-fable-5",
+      // @ts-expect-error — `queued` is not a status V008's CHECK admits. The union is the
+      // CHECK, mirrored; a value outside it is a `23514` at run time and this is where it
+      // becomes a compile error instead.
+      status: "queued",
+      stage_label: "Implementing",
+      stage_index: 4,
+      stage_total: 6,
+    };
+
+    expect(run.issue_number).toBe(482);
+  });
+
+  it("does not compile a query against a view's base column that the view does not publish", () => {
+    const query = db
+      .selectFrom("token_usage_daily")
+      // @ts-expect-error — `run_id` is a column of `token_usage`, not of the rollup over it.
+      // The view groups by workspace, day and provider, so a run is not a thing it can name.
+      .select("run_id");
+
+    expect(query.compile().sql).toContain("run_id");
+  });
+
+  it("selects the aggregate the token stat is rendered from", () => {
+    const { sql } = db
+      .selectFrom("token_usage_daily")
+      .select(["tokens_total", "cost_cents", "unpriced_events"])
+      .where("organization_id", "=", "org")
+      .compile();
+
+    expect(sql).toBe(
+      'select "tokens_total", "cost_cents", "unpriced_events" from "token_usage_daily" ' +
+        'where "organization_id" = $1',
+    );
+  });
+
+  it("resolves a workspace's settings through the view rather than the table", () => {
+    // The read side of V011's lazy-creation decision: a workspace with no row still has an
+    // answer, and it comes from the database rather than from an application default.
+    const { sql } = db
+      .selectFrom("workspace_settings_effective")
+      .select("auto_merge_on_checks")
+      .where("organization_id", "=", "org")
+      .compile();
+
+    expect(sql).toBe(
+      'select "auto_merge_on_checks" from "workspace_settings_effective" ' +
+        'where "organization_id" = $1',
+    );
   });
 });
 

@@ -101,6 +101,7 @@ $ curl http://localhost:4000/api/v1
 | `POST /api/v1/auth/logout`                          | Sign out — the versioned alias of `/api/auth/sign-out`                |
 | `POST /api/v1/auth/discover`                        | [Company domain → SSO?](#domain-discovery) — public, and uniform for every domain |
 | `GET PATCH /api/v1/me/preferences`                  | The caller's own settings (#649) — the font scale; per person, no workspace required |
+| `GET /api/v1/dashboard`                             | [The dashboard](#the-dashboard) (#70) — mockup 02's six cards in one payload, with an `ETag` |
 | `GET POST /api/v1/tenants`                          | [Tenants](#the-tenancy-api) — list yours, create one                  |
 | `GET PATCH /api/v1/tenants/{id}`                    | Read one; rename, re-slug or change its status                        |
 | `GET POST /api/v1/tenants/{id}/domains`             | The email domains that resolve it at sign-in                          |
@@ -370,8 +371,11 @@ sending traffic. Two pools, two questions.
 **Kysely over `pg`, and no ORM** — decision **D3** in
 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md). `ouroboros-db`'s Flyway migrations own
 every table, index, constraint and trigger; this module writes no DDL, and
-[`src/modules/db/schema.ts`](src/modules/db/schema.ts) _mirrors_ V001–V003 so a query can be
-type-checked.
+[`src/modules/db/schema.ts`](src/modules/db/schema.ts) _mirrors_ the migrations so a query
+can be type-checked — the tenancy tables of V001–V007, and since
+[#70](https://github.com/NobuData/ouroboros/issues/70) the dashboard read-model of V008–V011
+with the two views V010 and V011 publish over it. A view is read and never written, which
+`Database` has no vocabulary for; `READ_ONLY_VIEWS` beside it is that vocabulary.
 
 ```ts
 @Injectable()
@@ -565,6 +569,54 @@ the contract by accident.
 **and a workspace** ([#32](https://github.com/NobuData/ouroboros/issues/32)) — a workspace
 you are not a member of answers `404`, and the ten mutations above need `owner` or `admin`.
 See [The tenant context](#the-tenant-context).
+
+## The dashboard
+
+**One request paints the whole page** ([#70](https://github.com/NobuData/ouroboros/issues/70)).
+`GET /api/v1/dashboard` answers with everything
+[`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) draws: the four stat-row
+figures, the pulse card's three meters and its auto-merge switch, the runs in flight, the runs
+that have stopped, the head of the queue, and the page head's subline.
+
+```
+GET /api/v1/dashboard                    ─▶ 200 + ETag "9c1f…"   { stats · pulse · activeRuns
+      If-None-Match: "9c1f…"  unchanged  ─▶ 304 · no body          · recentRuns · queueHead
+                              changed    ─▶ 200 + ETag "4b7e…"     · activity }
+```
+
+**Six cards and not six requests**, which is decision F5 of the dashboard roadmap. Assembling
+the page from one request per card would tear it — the cards would land at different moments,
+each with its own idea of where "the last seven days" begins — and would multiply the cost of
+a loop that polls for as long as somebody is looking at the screen. The drill-in endpoints
+([#71](https://github.com/NobuData/ouroboros/issues/71),
+[#73](https://github.com/NobuData/ouroboros/issues/73)) exist for the screens that go deeper,
+not for the dashboard to build itself out of.
+
+**Polling is a header exchange.** The `ETag` is strong and is derived from a *version source*
+rather than from the payload: a row count and the newest change per source table, plus the
+calendar day, hashed. That is what a `304` costs — four aggregate subqueries returning no
+rows — and it is why the poll loop is cheap. The day is in the hash because two of the
+payload's numbers are calendar facts that change at midnight with no row having moved.
+[#75](https://github.com/NobuData/ouroboros/issues/75) settles the poll interval and the rest
+of the caching policy.
+
+**Every window is published, because a number whose definition is not written down is a
+number a screen renders under the wrong label.** The rolling windows are durations back from
+the request instant, so no timezone and no daylight-saving transition can move them; the two
+calendar figures — the day's token spend and what has merged "since this morning" — are
+measured from **midnight UTC**, which is the day `token_usage_daily` is keyed by. The
+autonomous merge rate is measured over **fourteen** days and the other two meters over
+**seven**: `92%` is exact over the fourteen the seed spans and is not reachable over seven at
+all. `openapi.yaml`'s `LoopPulse` carries the full argument, and
+`src/modules/dashboard/resources.ts` carries it beside the code.
+
+**An empty organization answers zeros and empty arrays** — never a `null` a card would divide
+by, and never an absent key. That is what makes the empty state a design decision
+([#86](https://github.com/NobuData/ouroboros/issues/86)) rather than a crash.
+
+This module **writes nothing**: every statement it issues is a `select`, including the one
+that reads the auto-merge switch. Changing that switch is
+[#74](https://github.com/NobuData/ouroboros/issues/74)'s endpoint.
 
 ## BetterAuth
 
@@ -1346,7 +1398,9 @@ ouroboros-rest/
 │       ├── db/             # schema types, pool, Kysely instance, lifecycle
 │       ├── tenancy/        # tenants, domains, members, enablement · #31 · context #32
 │       ├── auth/           # sign-out, the legacy cookie · #33 #703 · discovery #712
-│       └── engine/         # typed internal client + /engine/status       · #35
+│       ├── engine/         # typed internal client + /engine/status       · #35
+│       ├── preferences/    # the caller's own font scale                  · #649
+│       └── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 ├── Dockerfile              # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore # …and the context that image is built from
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML

@@ -4,6 +4,7 @@ import { BetterAuthModule } from "../../auth/auth.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
+import { DashboardModule } from "../dashboard/dashboard.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { HealthModule } from "../health/health.module";
@@ -32,7 +33,11 @@ import { AppService } from "./app.service";
  * and it is a route only because both guards are already registered above it.
  * `PreferencesModule` ([#649](https://github.com/NobuData/ouroboros/issues/649)) follows
  * for the same reason again — two authenticated, tenant-optional routes, listed after the
- * guards they depend on.
+ * guards they depend on. `DashboardModule`
+ * ([#70](https://github.com/NobuData/ouroboros/issues/70)) is last and is the first module
+ * whose route is tenant-*required* without naming a workspace in its path: it reads the one
+ * `TenancyModule`'s guard resolved from the session, which is why it is listed after it and
+ * could not be listed before.
  *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
@@ -89,6 +94,7 @@ export class AppModule {
         TenancyModule,
         EngineModule,
         PreferencesModule,
+        DashboardModule,
       ],
     };
   }
