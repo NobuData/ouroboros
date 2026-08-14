@@ -23,8 +23,8 @@
 -- and V001's `tenants`, no longer exist, and the last section asserts they stay gone.
 -- What V006 *did to the rows it found* is asserted where it can be observed:
 -- tests/rehearsal/, which applies it to a database seeded with the pre-migration seed.
--- The two product tables added since stand on that base and have a section each:
--- `user_preferences` (V007, #649) and `runs` (V008, #64).
+-- The three product tables added since stand on that base and have a section each:
+-- `user_preferences` (V007, #649), `runs` (V008, #64) and `queue_items` (V009, #65).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -1322,6 +1322,435 @@ delete from ouroboros.organization where "id" = 'org-other';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.runs where organization_id = 'org-other'),
   'deleting an organization cascades through its orgs and repos to their runs');
+
+-- ===========================================================================
+-- V009 — queue_items, the ordered per-organization issue queue (#65)
+-- ===========================================================================
+--
+-- The second table of the dashboard read-model, behind *Up next in queue* and the
+-- *Queued issues* stat. Nothing writes it yet either — reorder and remove are the
+-- issues screen's (#73) — so, as with `runs`, every rule a reader depends on is a
+-- constraint rather than an application invariant, and this section holds them to it.
+--
+-- Its own fixtures again: the V008 section deleted `org-other` and both of the
+-- repositories it used, so there is no organization-with-a-repository pair left. Two
+-- fresh workspaces, for the same reason as before — one to own the queue, one to own a
+-- repository the queue must not be allowed to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-queue', 'Queue Works', 'queue-works', now()),
+  ('org-rival', 'Rival Works', 'rival-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('e0000000-0000-0000-0000-00000000000c', 'org-queue', 'queue-works', true),
+  ('e0000000-0000-0000-0000-00000000000d', 'org-rival', 'rival-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('efff0000-0000-0000-0000-00000000000c', 'e0000000-0000-0000-0000-00000000000c',
+   'helios-firmware', true, 'main'),
+  ('efff0000-0000-0000-0000-00000000000d', 'e0000000-0000-0000-0000-00000000000d',
+   'rival-firmware',  true, 'main');
+
+-- --- the card, exactly as mockup 02 draws it ----------------------------------
+--
+-- The five rows of `c-5` in their order, with the five chips the mockup renders — one
+-- each, which is what makes this fixture also the proof that the effort vocabulary is
+-- the mockup's. The estimates sum to 580 minutes, the `est. 9h 40m of autonomous work`
+-- the stat's subline reads.
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort,
+     workflow_tag, position, est_minutes)
+  values
+  ('e2000000-0000-0000-0000-000000000485', 'org-queue',
+   'efff0000-0000-0000-0000-00000000000c', 485, 'Watchdog reset on I²C bus lockup',
+   'm',  'standard-fix', 1,  90),
+  ('e2000000-0000-0000-0000-000000000486', 'org-queue',
+   'efff0000-0000-0000-0000-00000000000c', 486, 'Expose battery health over BLE GATT',
+   'l',  'feature-loop', 2, 180),
+  ('e2000000-0000-0000-0000-000000000488', 'org-queue',
+   'efff0000-0000-0000-0000-00000000000c', 488, 'Typo sweep in operator manual',
+   'xs', 'docs-loop',    3,  15),
+  ('e2000000-0000-0000-0000-000000000490', 'org-queue',
+   'efff0000-0000-0000-0000-00000000000c', 490, 'Migrate build to Zephyr 4.2',
+   'xl', 'deps-refresh', 4, 240),
+  ('e2000000-0000-0000-0000-000000000491', 'org-queue',
+   'efff0000-0000-0000-0000-00000000000c', 491, 'Add CRC to config persistence layer',
+   's',  'standard-fix', 5,  55);
+
+select pg_temp.must_hold(
+  (select array_agg(issue_number order by position) = array[485, 486, 488, 490, 491]
+     from ouroboros.queue_items where organization_id = 'org-queue'),
+  'the queue reads back in position order — the c-5 card''s query');
+
+select pg_temp.must_hold(
+  (select sum(est_minutes) = 580 from ouroboros.queue_items
+   where organization_id = 'org-queue'),
+  'the Queued issues stat is sum(est_minutes) — 580 minutes, "est. 9h 40m"');
+
+-- --- the five chips, and nothing else -------------------------------------------
+--
+-- Acceptance criterion: the effort CHECK matches the mockup's five chips exactly. All
+-- five are already stored above, one per row; what is left is that a sixth is refused.
+select pg_temp.must_hold(
+  (select count(distinct effort) = 5 from ouroboros.queue_items
+   where organization_id = 'org-queue'),
+  'all five of decision F9''s effort chips are storable');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set effort = 'xxl'
+    where id = 'e2000000-0000-0000-0000-000000000485'$$,
+  'queue_items.effort rejects a sixth size', 'queue_items_effort');
+
+-- Lower-case is the stored form — it is a class name, not a caption, and the card
+-- upper-cases it. An upper-case chip would be a value no `where effort = 'm'` finds.
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set effort = 'M'
+    where id = 'e2000000-0000-0000-0000-000000000485'$$,
+  'queue_items.effort is stored lower-case', 'queue_items_effort');
+
+-- --- an issue queues once ---------------------------------------------------------
+--
+-- Acceptance criterion: `(organization_id, issue_number)` uniqueness rejects a duplicate
+-- enqueue. Immediately, at the statement — see the migration for why this key does not
+-- defer and the position key does.
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 485,
+            'Watchdog reset on I²C bus lockup', 'm', 'standard-fix', 6)$$,
+  'the same issue cannot be queued twice in one workspace',
+  'queue_items_organization_issue_key');
+
+-- Scoped to the workspace, though: another organization numbering an issue `485` is
+-- numbering a different issue, and its queue is a different queue.
+insert into ouroboros.queue_items
+    (organization_id, github_repo_id, issue_number, issue_title, effort,
+     workflow_tag, position)
+  values ('org-rival', 'efff0000-0000-0000-0000-00000000000d', 485,
+          'A different #485 entirely', 'm', 'standard-fix', 1);
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.queue_items where issue_number = 485),
+  'two workspaces may each queue their own issue #485');
+
+-- And so is the position key: both workspaces have an item at position 1.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.queue_items where position = 1),
+  'position uniqueness is per workspace, not global');
+
+-- --- reordering ---------------------------------------------------------------------
+--
+-- Acceptance criterion: position uniqueness per organization is enforced, *and* a
+-- position swap inside a transaction succeeds. The constraint is deferred, so the swap
+-- is plain SQL: the intermediate state where two rows share a position exists only
+-- inside the transaction, which is where an ordering is allowed to be momentarily
+-- invalid.
+--
+-- Two statements first — the form a reorder actually takes, one row moved at a time.
+update ouroboros.queue_items set position = 2
+  where id = 'e2000000-0000-0000-0000-000000000485';
+update ouroboros.queue_items set position = 1
+  where id = 'e2000000-0000-0000-0000-000000000486';
+select pg_temp.must_hold(
+  (select array_agg(issue_number order by position) = array[486, 485, 488, 490, 491]
+     from ouroboros.queue_items where organization_id = 'org-queue'),
+  'a two-statement position swap succeeds inside a transaction');
+
+-- And the single-statement form, which an immediate constraint would also refuse —
+-- PostgreSQL checks a unique index as each row version is written, not at the end of the
+-- statement. Swaps them back.
+update ouroboros.queue_items
+   set position = case id when 'e2000000-0000-0000-0000-000000000485' then 1
+                          when 'e2000000-0000-0000-0000-000000000486' then 2 end
+ where id in ('e2000000-0000-0000-0000-000000000485',
+              'e2000000-0000-0000-0000-000000000486');
+select pg_temp.must_hold(
+  (select array_agg(issue_number order by position) = array[485, 486, 488, 490, 491]
+     from ouroboros.queue_items where organization_id = 'org-queue'),
+  'a one-statement position swap succeeds too');
+
+-- Deferred is not unenforced. `set constraints … immediate` is the check happening early
+-- — at commit it happens on its own — and a duplicate position does not survive it.
+-- Both statements are one string so the rejection is caught in the savepoint the helper
+-- opens; the constraint's deferred mode is restored with it.
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 492,
+            'Two issues in one place', 'm', 'standard-fix', 1);
+    set constraints ouroboros.queue_items_organization_position_key immediate$$,
+  'two queue items cannot share a position in one workspace',
+  'queue_items_organization_position_key');
+
+-- The deferral is the property the swap depends on, so it is asserted from the
+-- catalogue rather than inferred from the swap having worked: deferrable, and deferred
+-- by default, which is what makes a reorder plain SQL with no `set constraints` in it.
+select pg_temp.must_hold(
+  (select condeferrable and condeferred from pg_constraint
+   where conrelid = 'ouroboros.queue_items'::regclass
+     and conname = 'queue_items_organization_position_key'),
+  'the position key is deferrable and initially deferred');
+
+-- The natural key is the opposite, deliberately: a duplicate enqueue is a thing a person
+-- can ask for and must be told about where it happened, not at commit.
+select pg_temp.must_hold(
+  (select not condeferrable from pg_constraint
+   where conrelid = 'ouroboros.queue_items'::regclass
+     and conname = 'queue_items_organization_issue_key'),
+  'the natural key is immediate, so a duplicate enqueue fails at the statement');
+
+-- --- the numbers ---------------------------------------------------------------------
+--
+-- The head of the queue is *next*, not zeroth, and there is no issue `#0`.
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set position = 0
+    where id = 'e2000000-0000-0000-0000-000000000485'$$,
+  'queue_items.position starts at 1', 'queue_items_position_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 0,
+            'There is no issue 0', 'm', 'standard-fix', 6)$$,
+  'queue_items.issue_number is a positive counter',
+  'queue_items_issue_number_positive');
+
+-- --- an estimate is absent or real ------------------------------------------------
+--
+-- Null means *not estimated*, and it is not zero: an unestimated item is an ordinary
+-- queue row that contributes nothing to the stat, while zero would claim the loop needs
+-- no time at all. `sum` skips the nulls without being asked, which is why the stat needs
+-- no coalesce.
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort,
+     workflow_tag, position, est_minutes)
+  values ('e2000000-0000-0000-0000-000000000493', 'org-queue',
+          'efff0000-0000-0000-0000-00000000000c', 493, 'Nobody has sized this yet',
+          'm', 'standard-fix', 6, null);
+select pg_temp.must_hold(
+  (select count(*) = 6 and sum(est_minutes) = 580 from ouroboros.queue_items
+   where organization_id = 'org-queue'),
+  'an unestimated item queues and adds nothing to the estimate');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set est_minutes = 0
+    where id = 'e2000000-0000-0000-0000-000000000493'$$,
+  'queue_items.est_minutes rejects zero — null is how "not estimated" is said',
+  'queue_items_est_minutes_sane');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items set est_minutes = 20161
+    where id = 'e2000000-0000-0000-0000-000000000493'$$,
+  'queue_items.est_minutes is bounded, so a units mistake cannot add a century',
+  'queue_items_est_minutes_sane');
+
+-- --- decision F8: the tag is opaque, not unchecked ----------------------------------
+--
+-- Workflow entities are mockup 04's, so a tag naming a workflow nobody has filed must
+-- store — and a blank or runaway one must not.
+insert into ouroboros.queue_items
+    (organization_id, github_repo_id, issue_number, issue_title, effort,
+     workflow_tag, position)
+  values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 494,
+          'Queued under a workflow nobody has filed', 'l',
+          'nobody-has-filed-this-workflow-yet', 7);
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.queue_items where issue_number = 494),
+  'queue_items.workflow_tag takes any tag — decision F8, no catalog here');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 495,
+            'Blank tag', 'm', '   ', 8)$$,
+  'queue_items.workflow_tag must not be blank', 'queue_items_workflow_tag_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 496,
+            'Runaway tag', 'm', repeat('t', 65), 8)$$,
+  'queue_items.workflow_tag is bounded', 'queue_items_workflow_tag_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000c', 497,
+            ' ', 'm', 'standard-fix', 8)$$,
+  'queue_items.issue_title must not be blank', 'queue_items_issue_title_present');
+
+-- --- both parents must exist, and must agree ------------------------------------------
+--
+-- The rule V008 wrote for `runs`, now shared with this table — and the reason the
+-- migration re-pointed the runs trigger rather than copying the function. A queue item
+-- naming one workspace and another's repository is not a broken join: it is one
+-- tenant's issue titles rendering on another's dashboard, in the card that says what
+-- the loop will do next.
+--
+-- As on `runs`, the trigger fires ahead of the organization foreign key's own check and
+-- subsumes it — every organization it accepts is one that exists — so a row naming no
+-- organization at all is refused under the trigger's name too.
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('no-such-org', 'efff0000-0000-0000-0000-00000000000c', 498,
+            'Orphan item', 'm', 'standard-fix', 8)$$,
+  'a queue item naming an organization that does not exist is refused',
+  'queue_items_repo_in_organization');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from pg_constraint
+    where conrelid = 'ouroboros.queue_items'::regclass and contype = 'f'
+      and confdeltype = 'c'
+      and conname in ('queue_items_organization_id_fkey',
+                      'queue_items_github_repo_id_fkey')),
+  'both of queue_items'' foreign keys exist and cascade on delete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-0000000000ff', 499,
+            'Orphan item', 'm', 'standard-fix', 8)$$,
+  'queue_items.github_repo_id references an existing repository',
+  'queue_items_github_repo_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort,
+       workflow_tag, position)
+    values ('org-queue', 'efff0000-0000-0000-0000-00000000000d', 500,
+            'Somebody else''s repo', 'm', 'standard-fix', 8)$$,
+  'a queue item cannot target a repository belonging to another organization',
+  'queue_items_repo_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.queue_items
+       set github_repo_id = 'efff0000-0000-0000-0000-00000000000d'
+     where id = 'e2000000-0000-0000-0000-000000000485'$$,
+  'a queue item cannot be updated onto another organization''s repository',
+  'queue_items_repo_in_organization');
+
+-- --- one copy of that rule, for both tables --------------------------------------------
+--
+-- V009 generalised V008's function rather than writing a second one, and re-pointed the
+-- runs trigger at it — which is why the runs assertions above still report
+-- `runs_repo_in_organization`: the name callers see is the trigger's, and the trigger
+-- kept its name. Both halves are asserted, because a copy left behind would drift.
+select pg_temp.must_hold(
+  (select count(*) = 2 from pg_trigger
+    where tgfoid = 'ouroboros.repo_in_organization()'::regprocedure
+      and tgrelid in ('ouroboros.runs'::regclass,
+                      'ouroboros.queue_items'::regclass)),
+  'runs and queue_items share one repo-in-organization function');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'ouroboros' and p.proname = 'runs_repo_in_organization'),
+  'and the per-table copy V008 created is gone');
+
+-- --- the indexes the card needs ----------------------------------------------------
+--
+-- The queue's two reads are both served by the position key's index — the ordered head
+-- of the queue, and the stat that aggregates the same range — so what is asserted here
+-- is that they are index range scans, and that nothing else was created to do the same
+-- job.
+--
+-- Sequential scans are off for the reason every plan assertion in this file turns them
+-- off: a handful of fixture rows is genuinely cheaper to scan, and the claim under test
+-- is that a usable index exists at production size. Sorting is off as well for the first
+-- one, and that is the sharper half of the claim: with a sort available the planner will
+-- happily read the rows through *either* unique key and order them afterwards, which
+-- proves nothing about the ordering. Refused the sort, it has to find an index that
+-- already delivers `position` in order — and the plan is an index scan on the position
+-- key with no sort node above it, which is what makes the card's `order by position
+-- limit 5` a range read rather than a read of the whole queue.
+set local enable_seqscan = off;
+set local enable_sort    = off;
+
+select pg_temp.must_use_index(
+  $$select issue_number, effort, workflow_tag from ouroboros.queue_items
+     where organization_id = 'org-queue'
+     order by position limit 5$$,
+  'queue_items_organization_position_key');
+
+set local enable_sort = on;
+
+-- The stat asks only for the workspace's range, in no order, so *either* unique key
+-- answers it identically — both lead with `organization_id` — and which one the planner
+-- picks is its business. Naming one would be asserting a coin toss; what matters, and
+-- what is asserted, is that the aggregate is an index range scan rather than a read of
+-- every workspace's queue.
+select pg_temp.must_use_index(
+  $$select count(*), sum(est_minutes) from ouroboros.queue_items
+     where organization_id = 'org-queue'$$,
+  'Index Scan on queue_items_organization');
+
+-- Not a read path: the cascade's. `github_repos` cascades into this table, and an
+-- unindexed referencing column makes every repository deletion a full scan of the queue.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.queue_items
+     where github_repo_id = 'efff0000-0000-0000-0000-00000000000c'$$,
+  'queue_items_github_repo_id_idx');
+
+set local enable_seqscan = on;
+
+-- The unique constraint's index *is* the card's index, so a second one over the same
+-- leading columns would be the same b-tree maintained twice on every reorder.
+select pg_temp.must_hold(
+  (select count(*) = 1 from pg_indexes
+    where schemaname = 'ouroboros' and tablename = 'queue_items'
+      and indexdef like '%(organization_id, "position")%'),
+  'exactly one index leads with (organization_id, position)');
+
+-- --- updated_at moves on its own ------------------------------------------------------
+-- On a queue this column answers "when was this row last reordered or re-estimated",
+-- which is the question a queue that looks stale is asked.
+update ouroboros.queue_items set updated_at = '2000-01-01T00:00:00Z'
+  where id = 'e2000000-0000-0000-0000-000000000485';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.queue_items
+   where id = 'e2000000-0000-0000-0000-000000000485'),
+  'queue_items.updated_at is stamped from the server clock by its touch trigger');
+
+-- And `enqueued_at` does not move with it: it is the queue's fact rather than the row's,
+-- so a reorder or a re-estimate must not make an item look freshly queued. Back-dated
+-- explicitly first, because every default in this file is the same transaction's `now()`
+-- — an item queued and updated in one transaction cannot tell the two columns apart, and
+-- an assertion that cannot fail is not one.
+update ouroboros.queue_items set enqueued_at = now() - interval '3 days'
+  where id = 'e2000000-0000-0000-0000-000000000485';
+update ouroboros.queue_items set est_minutes = 95
+  where id = 'e2000000-0000-0000-0000-000000000485';
+select pg_temp.must_hold(
+  (select enqueued_at = now() - interval '3 days' and updated_at = now()
+     from ouroboros.queue_items
+    where id = 'e2000000-0000-0000-0000-000000000485'),
+  'queue_items.enqueued_at is left alone by an update that touches updated_at');
+
+-- --- the cascades, in both directions --------------------------------------------------
+--
+-- Deleting a repository takes its queued issues with it: an item whose row links into a
+-- repository nobody can reach is not a plan, it is a broken row.
+delete from ouroboros.github_repos where id = 'efff0000-0000-0000-0000-00000000000d';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.queue_items
+   where github_repo_id = 'efff0000-0000-0000-0000-00000000000d'),
+  'deleting a github_repo cascades to the queue items that named it');
+
+-- And the workspace cascade, end to end — organization → github_orgs → github_repos →
+-- queue_items, one statement and every hop.
+delete from ouroboros.organization where "id" = 'org-queue';
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.queue_items where organization_id = 'org-queue'),
+  'deleting an organization cascades through its orgs and repos to its queue');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

@@ -162,7 +162,7 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | F.1 | #64 | 🟢 Done | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| F.2 | #65 | 🟡 Open | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
+| F.2 | #65 | 🟢 Done | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.3 | #66 | 🟡 Open | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.4 | #67 | 🟡 Open | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
 | F.5 | #68 | 🟡 Open | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
@@ -259,7 +259,52 @@ erDiagram
 
 ### Issue F.2 — ouroboros-db: [F.2] Queue items table
 
-> **GitHub issue:** #65 · **Status:** 🟡 Open · **Parent epic:** #59
+> **GitHub issue:** #65 · **Status:** 🟢 Done · **Parent epic:** #59
+
+> **Shipped.** [`V009__dashboard_queue.sql`](../ouroboros-db/migrations/V009__dashboard_queue.sql)
+> creates `ouroboros.queue_items` with the column set below, both unique keys and its
+> rules as named constraints; the assertions are a new section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db` runs them
+> against a database migrated from empty on every pull request. The fixture is mockup
+> 02's own card — `#485`–`#491` with one row per effort chip, and estimates that sum to
+> the 580 minutes the stat renders as `est. 9h 40m`.
+>
+> **The position key is `deferrable initially deferred`, and that is the whole of the
+> reorder criterion.** The two halves the criterion asks for are in tension: PostgreSQL
+> checks a unique index as each row version is written — mid-statement, not at the end of
+> it — so under an immediate constraint *every* reorder fails, both the one-row-at-a-time
+> form and the single-statement `case` swap. Deferring moves the check to commit, where
+> the ordering is valid again, and reordering becomes plain SQL with no ceremony for the
+> writer (#73) to know about: no `set constraints`, no shuffle through a temporary
+> position. It is asserted from the catalogue as well as exercised, and a duplicate
+> position is proved to still be refused by asking for the check early. The natural key
+> `(organization_id, issue_number)` is deliberately *not* deferred — a duplicate enqueue
+> is something a person can ask for and should be told about at the statement.
+>
+> **Dense ordering is a convention, not a constraint.** Density is a property of the set
+> rather than of any row, so it cannot be a CHECK, and as a constraint trigger over the
+> whole queue it would serialise every reorder to buy nothing a reader can see — the card
+> is `order by position`, which renders 1, 2, 5 exactly as it renders 1, 2, 3. What a
+> reader depends on is that the order is *total*, and that is what is enforced.
+>
+> **One repo-in-organization rule, now shared.** `queue_items` names the same two parents
+> `runs` does and needs the same agreement between them, so V009 generalised V008's
+> trigger function into `ouroboros.repo_in_organization()` and re-pointed the `runs`
+> trigger at it rather than writing a second copy. The trigger names are unchanged, and
+> the error still reports the trigger's own name — `runs_repo_in_organization` for a run,
+> `queue_items_repo_in_organization` for a queue item — so nothing downstream moves. Both
+> the sharing and the absence of the superseded copy are asserted.
+>
+> **`est_minutes` is nullable and null means *not estimated*,** which is not zero: an
+> unestimated item is an ordinary queue row that adds nothing to the stat, and `sum`
+> skips nulls without being asked. It is deliberately not derived from `effort` — the
+> chip is a size a person chose, the estimate is minutes something measured, and
+> collapsing them would make the stat a restatement of the chips.
+>
+> **Not in this ticket, by the roadmap's own split:** no seed rows (F.5, #68 — the queue
+> the mockup draws), and no writes — reorder and remove are the issues screen's, read by
+> #73's `GET /api/v1/queue`. Both of the card's read paths are asserted with `EXPLAIN`
+> all the same, since the shape is what that endpoint will be held to.
 
 - **Problem Statement:** "Up next in queue" and the *Queued issues* stat (`est. 9h
   40m of autonomous work`) need an ordered, estimable queue per organization.
@@ -1160,4 +1205,6 @@ be filed and landed before Epic G can start in earnest.
 this one. `organization` exists (`V005`, #707), the extension tables were re-parented onto
 it (`V006`, #708), and `github_repos` has been there since `V003` (#22). That is the whole
 of what F.1 needed, so **#64 shipped on 2026-08-13** (`V008__dashboard_runs.sql`) and Epic
-F is unblocked: F.2 (#65), F.3 (#66) and F.4 (#67) are next, and can go in parallel.
+F is unblocked. **#65 shipped the same day** (`V009__dashboard_queue.sql`), which leaves
+F.3 (#66) and F.4 (#67) as the next rows of this epic — they need only F.1 and BA-B.3
+respectively, and can go in parallel. F.5 (#68) waits on all four tables.
