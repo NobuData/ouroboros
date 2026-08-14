@@ -207,6 +207,25 @@ jobs:
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$OURO_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/constraints.sql
 
+      # And the half that step cannot answer about itself (#69). A green constraints.sql
+      # proves the schema satisfies its assertions; it does not prove the assertions are
+      # load-bearing, because a file asserting nothing would be exactly as green. This
+      # drops one rule of the dashboard read-model at a time — the status and effort
+      # vocabularies, the terminal-run rule, the queue's two keys, the settings key — and
+      # rewrites the two expressions `token_usage_daily` computes its sums from, then
+      # requires the suite to go red *naming the assertion that caught it*. A probe that
+      # went red for some other reason would otherwise read as a probe doing its job.
+      #
+      # Each mutation runs against a throwaway copy of a database this step migrates for
+      # itself, and is made inside a transaction that is never committed — so it touches
+      # neither the database above nor the steps below. Nothing new is installed: the same
+      # postgres service, the same pinned client image, the same `scripts/migrate`.
+      #
+      # --runner docker for the reason the step above uses that image rather than the
+      # runner's own psql: the client stays pinned to the server's major version.
+      - name: Assert those assertions are load-bearing
+        run: ouroboros-db/tests/verify-constraint-probes.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes

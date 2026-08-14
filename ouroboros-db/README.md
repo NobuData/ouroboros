@@ -378,6 +378,38 @@ A passing run prints one line; a failure names the rule and exits non-zero, whic
 makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
 into `ci/db`, below. A migration that adds a rule adds its assertion in the same change.
 
+### Proving the assertions are load-bearing
+
+A green `constraints.sql` does not prove its assertions are doing anything. A file that
+asserted nothing at all would be exactly as green, and so would one whose probes had
+drifted off the constraints they were written for — the two are indistinguishable from the
+outside. The only way to tell them apart is to break a rule on purpose and check that the
+right probe goes red for the right reason.
+
+[`tests/verify-constraint-probes.sh`](tests/verify-constraint-probes.sh) is that check for
+the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)). It drops
+one rule at a time — the `runs.status` and `queue_items.effort` vocabularies, the
+terminal-run rule, the queue's position and issue keys, the `workspace_settings` primary
+key — and rewrites the two expressions `token_usage_daily` computes its sums from, since
+that bullet is arithmetic rather than a constraint and no drop can falsify it. For each, it
+requires the suite to fail **and** to name the assertion that caught it: a bare non-zero
+status would also be produced by a mutation that broke on its own statement.
+
+```bash
+PGPASSWORD=ouroboros ouroboros-db/tests/verify-constraint-probes.sh
+```
+
+It reads where to connect from `run.sh --print-target`, so the same `.env` precedence
+applies; `PGPASSWORD` is the one thing it needs from the environment, because that is the
+one thing `--print-target` will not print. Every mutation runs against a throwaway copy of
+a template database it migrates for itself, inside a transaction that is never committed,
+so it changes nothing that outlives the run — including the database you point it at. The
+copy is what makes the runs *deterministic*: `constraints.sql` carries plan assertions, and
+a plan is chosen from catalogue statistics rather than from the schema, so a database the
+suite has already been run against and left dead rows in can plan differently once
+autovacuum has recorded those tables as empty. A copy of a freshly migrated template always
+has the statistics a freshly migrated database has.
+
 ### The drift check
 
 Every table BetterAuth uses is hand-ported into a `V###__*.sql` migration here, because
@@ -444,6 +476,7 @@ before a database is waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
+| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped | yes (copies of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
@@ -670,6 +703,8 @@ ouroboros-db/
     ├── run.test.sh                   # the runner
     ├── scripts.test.sh               # the four commands and the project configuration
     ├── seed.test.sh                  # both seeds' guard, order, idempotency and determinism — #23, #68
+    ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
+    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```

@@ -166,7 +166,7 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 | F.3 | #66 | 🟢 Done | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.4 | #67 | 🟢 Done | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
 | F.5 | #68 | 🟢 Done | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
-| F.6 | #69 | 🟡 Open | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
+| F.6 | #69 | 🟢 Done | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue F.1 — ouroboros-db: [F.1] Runs table — loop lifecycle read-model
 
@@ -574,7 +574,42 @@ kensuenobu (personal) ─▶ zero rows ─▶ empty-state fixture (I.7)
 
 ### Issue F.6 — ouroboros-db: [F.6] Read-model constraints in ci/db
 
-> **GitHub issue:** #69 · **Status:** 🟡 Open · **Parent epic:** #59
+> **GitHub issue:** #69 · **Status:** 🟢 Done · **Parent epic:** #59
+
+> **Shipped, and the scope split in two on contact.** Each of F.1–F.4 arrived carrying its
+> own section of [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), and `ci/db`
+> has run that file since #24 — so **all five probes this issue asks for already existed**
+> when it came up: the `runs.status` and `queue_items.effort` vocabularies, the
+> terminal-requires-`finished_at` rule, position uniqueness per organization (with the
+> deferral and the natural key beside it), `token_usage_daily`'s sums against the fixtures,
+> and one `workspace_settings` row per workspace. Nothing was added to that file, because a
+> probe written to satisfy a checklist that already has one is a second assertion of the
+> same rule.
+>
+> **What was missing is the second acceptance criterion**, and it is the one that gives the
+> first its meaning: a green `constraints.sql` does not prove its assertions are
+> load-bearing, since a file asserting nothing would be exactly as green.
+> [`tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh)
+> drops each rule in turn and requires the suite to go red **naming the assertion that
+> caught it** — a bare non-zero status is also what a mutation that broke on its own
+> statement produces. It runs in `ci/db` after the unmutated pass, so the criterion is
+> checked on every pull request rather than spot-verified once and trusted thereafter.
+>
+> **Two of the eight mutations are view rewrites rather than dropped constraints**, because
+> the `token_usage_daily` bullet is the one rule of the five that is *arithmetic*: no
+> `drop constraint` can falsify a sum. They take the view's current definition from the
+> catalogue and swap one expression — `tokens_total`'s sum, and the UTC day the rollup is
+> grouped by, which is the mistake V010's own header warns about — so they cannot rot into
+> mutating a view this schema no longer has.
+>
+> **One thing this surfaced and deliberately did not fix.** `constraints.sql` describes
+> itself as safe to repeat, and for rows it is. Its *plan* assertions are not: V005's pair
+> lookup (`member_organization_user_key`) chooses between two indexes that cost the same at
+> fixture size, and the planner changes its answer once autovacuum has recorded those tables
+> as empty — so a second run against the same database fails on an assertion no migration
+> broke. That predates the read-model and belongs to #707's section, so it is reported
+> rather than quietly rewritten here; the probe script is immune to it by construction,
+> running every mutation against a copy of a template it migrates for itself.
 
 - **Problem Statement:** Status vocabularies, queue ordering, and append-only usage
   are contracts the UI trusts; PR-time assertions keep them true.
@@ -1378,9 +1413,13 @@ it** (`V010__dashboard_usage.sql`), and **#67 too** (`V011__workspace_settings.s
 **all four tables of the read-model now exist**, and **#68 filled them the same day**
 (`R__dev_seed_dashboard.sql`): mockup 02 as rows, with the personal workspace deliberately
 left empty as the zero-state fixture. Each table arrived carrying its own section of
-`tests/constraints.sql`, which is most of what F.6 (#69) is left to finish, and the seeds
-are the fixture every Epic G endpoint and Epic I screen is now measured against — **G.1
-(#70) is the next row of this roadmap that can move**.
+`tests/constraints.sql`, which was most of what F.6 (#69) had left to finish — so **#69
+shipped what was genuinely missing** (`tests/verify-constraint-probes.sh`): the proof that
+those assertions are load-bearing, dropping each rule in turn and requiring the suite to go
+red naming the assertion that caught it, on every pull request rather than once by hand.
+**Epic F is complete**, and the seeds are the fixture every Epic G endpoint and Epic I
+screen is now measured against — **G.1 (#70) is the next row of this roadmap that can
+move**.
 
 > One thing #68 found and #70 inherits: **the mockup's `27 merged / 7d`, its `2
 > interventions` and its `92%` merge rate cannot all be true of one seven-day window.**
