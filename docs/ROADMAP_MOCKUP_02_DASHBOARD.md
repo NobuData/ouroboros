@@ -164,7 +164,7 @@ set (`mvp`, `v2`, `rest`, `db`, `ui`, `ci`, `design`, `engine`) plus new **`dash
 | F.1 | #64 | 🟢 Done | ouroboros-db: [F.1] Runs table — loop lifecycle read-model | `runs` with stages, model, timing, PR/checks, terminal outcomes | mvp, dashboard, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | F.2 | #65 | 🟢 Done | ouroboros-db: [F.2] Queue items table | Ordered per-org issue queue with effort + workflow tag + estimate | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
 | F.3 | #66 | 🟢 Done | ouroboros-db: [F.3] Token usage events table | Append-only usage events (provider, model, tokens, cost) + daily view | mvp, dashboard, db | N (after F.1) | Y | S | ouroboros-db |
-| F.4 | #67 | 🟡 Open | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
+| F.4 | #67 | 🟢 Done | ouroboros-db: [F.4] Workspace settings table | Org-scoped typed settings; first column: `auto_merge_on_checks` | mvp, dashboard, db | N (after BA-B.3) | Y | XS | ouroboros-db |
 | F.5 | #68 | 🟡 Open | ouroboros-db: [F.5] Dashboard dev seeds — mockup-02 parity | Seed runs/queue/usage/settings reproducing the mockup demo content | mvp, dashboard, db | N (after F.1–F.4) | Y | S | ouroboros-db |
 | F.6 | #69 | 🟡 Open | ouroboros-db: [F.6] Read-model constraints in ci/db | Constraint assertions for statuses, ordering, append-only usage | mvp, dashboard, db, ci | N (after F.5, #24) | Y | XS | ouroboros-db, .github |
 
@@ -418,7 +418,58 @@ token_usage(append-only) ── group by day/provider ──▶ token_usage_dail
 
 ### Issue F.4 — ouroboros-db: [F.4] Workspace settings table
 
-> **GitHub issue:** #67 · **Status:** 🟡 Open · **Parent epic:** #59
+> **GitHub issue:** #67 · **Status:** 🟢 Done · **Parent epic:** #59
+
+> **Shipped.** [`V011__workspace_settings.sql`](../ouroboros-db/migrations/V011__workspace_settings.sql)
+> creates `ouroboros.workspace_settings` with the column set below, plus
+> `ouroboros.workspace_settings_effective`, the view every reader resolves it through. The
+> assertions are a new section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db` runs them
+> against a database migrated from empty on every pull request. This is the fourth and last
+> table of Epic F's read-model, and the only one behind a *write*.
+>
+> **Typed columns, not key/value**, as the scope says — restated here because a settings
+> table is the classic place that rule gets broken. A `(key, value)` pair buys adding a
+> setting without a migration and pays for it with everything that makes a database worth
+> having: `auto_merge_on_checks` stops being a boolean and becomes text that is usually
+> `'true'`, no CHECK can describe a column whose meaning depends on a sibling row, Kysely
+> infers `string` for every setting in the product, and a typo in a key is a silently
+> absent setting rather than a compile error.
+>
+> **Row creation is lazy — the acceptance criterion's open decision, and the argument for
+> it is in the migration header.** There is no creation trigger; a workspace with no row is
+> at every default, which is the shape `V007` settled for `user_preferences`. A trigger on
+> `organization` would write a row recording a choice nobody made — an audit trail whose
+> `updated_by` is null and whose `updated_at` is the workspace's creation date asserts
+> something that did not happen — would hang product behaviour off a table BetterAuth
+> writes, and would still need a backfill, so the "every organization has a row" invariant
+> would be maintained in two places from the first day.
+>
+> **What is new against `V007` is that the default is not left to the API.**
+> `workspace_settings_effective` is `organization LEFT JOIN workspace_settings` with the
+> defaults coalesced in, so every organization has exactly one row in it whether or not it
+> has ever set anything, and *a newly created workspace reads `auto_merge_on_checks =
+> false` from the database* rather than from an application's memory of what the default
+> was. `is_explicit` is the one column that keeps the two states apart, for onboarding
+> (mockup 13) and for audit lines; `updated_at`/`updated_by` pass through unresolved,
+> because coalescing them would have to invent a time at which nothing happened. The write
+> side is the table, through one `on conflict (organization_id) do update` upsert that
+> serves the first write and every later one — which is why the primary key matters beyond
+> "one row per organization": it is the arbiter that stops two concurrent PATCHes both
+> deciding the row is missing.
+>
+> **`updated_by` sets null rather than cascading.** Cascade would delete the settings row
+> when the person who last touched it left, which does not un-answer the question — it
+> silently reverts the workspace's auto-merge posture to `false` because the row the answer
+> lived in is gone. A security-relevant setting turning itself off as a side effect of an
+> unrelated account deletion, with nothing recording that it happened. It is deliberately
+> *not* additionally constrained to a member of the organization: authorization is BA-C.3's
+> role guard on G.5, and membership is revocable, so a write-time trigger could assert it
+> at the moment of the write but could not maintain it — an ordinary departure would leave
+> rows this table considered invalid.
+>
+> **Not in this ticket, by the roadmap's own split:** no seed rows (F.5, #68 — the
+> `auto_merge_on_checks = true` the demo workspace wants) and no endpoint (G.5, #74).
 
 - **Problem Statement:** The loop-pulse card's **Auto-merge when checks pass** switch
   is the page's only write (decision F6); it needs a durable, org-scoped home that
@@ -1271,8 +1322,8 @@ be filed and landed before Epic G can start in earnest.
 this one. `organization` exists (`V005`, #707), the extension tables were re-parented onto
 it (`V006`, #708), and `github_repos` has been there since `V003` (#22). That is the whole
 of what F.1 needed, so **#64 shipped on 2026-08-13** (`V008__dashboard_runs.sql`) and Epic
-F is unblocked. **#65 shipped the same day** (`V009__dashboard_queue.sql`), and **#66 with
-it** (`V010__dashboard_usage.sql`), which leaves **F.4 (#67)** as the last table of this
-epic — it needs only BA-B.3, so nothing is holding it. F.5 (#68) waits on all four
-tables; each table has arrived carrying its own section of `tests/constraints.sql`, which
-is most of what F.6 (#69) is left to finish.
+F is unblocked. **#65 shipped the same day** (`V009__dashboard_queue.sql`), **#66 with
+it** (`V010__dashboard_usage.sql`), and **#67 too** (`V011__workspace_settings.sql`) — so
+**all four tables of the read-model now exist** and **F.5 (#68)**, which waited on all of
+them, is the next row of this epic that can move. Each table arrived carrying its own
+section of `tests/constraints.sql`, which is most of what F.6 (#69) is left to finish.

@@ -2313,6 +2313,237 @@ select pg_temp.must_hold(
     where organization_id = 'org-spend'),
   'and the rollup empties with it, because it is an aggregate rather than a copy');
 
+-- ===========================================================================
+-- V011 — workspace_settings and workspace_settings_effective (#67)
+-- ===========================================================================
+--
+-- The fourth table of the dashboard read-model and the only one behind a *write*: mockup
+-- 02's **Auto-merge when checks pass** switch (decision F6). Nothing writes it yet either
+-- — the seeds are #68 and the endpoint is #74 — so, as in the three sections above, every
+-- rule the switch depends on is a database constraint here rather than an application
+-- invariant.
+--
+-- What this section is really testing is the row-creation decision in V011's header: rows
+-- are created lazily, absence means "every setting is at its default", and
+-- `workspace_settings_effective` is what makes absence and an explicit default the same
+-- answer to a reader. So the fixtures are two workspaces that differ in exactly that way
+-- — one that has written a settings row and one that never has — and most of what
+-- follows is the assertion that they read alike.
+--
+-- Fresh fixtures once more. `org-spend` was deleted by the cascade assertion above, and a
+-- person is needed for `updated_by` that this section can delete without disturbing
+-- anything earlier — Jorge (`8888…`) still carries V007's preferences row.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-switch',    'Switch Works',    'switch-works',    now()),
+  ('org-untouched', 'Untouched Works', 'untouched-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Priya Raman',
+   'priya@switch-works.example', true);
+
+-- --- a workspace nobody has configured is off ---------------------------------------
+--
+-- Acceptance criterion: `auto_merge_on_checks` defaults to false for a newly created
+-- organization. Both workspaces above were created a moment ago and neither has a
+-- settings row, which under the lazy-creation decision is the *normal* state — so this is
+-- the criterion asked exactly as the product asks it, through the view, of a workspace
+-- that has never been near a settings screen.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.workspace_settings_effective
+    where organization_id = 'org-untouched'),
+  'every organization has exactly one row in workspace_settings_effective, row or no row');
+
+select pg_temp.must_hold(
+  (select auto_merge_on_checks = false
+     from ouroboros.workspace_settings_effective
+    where organization_id = 'org-untouched'),
+  'a workspace with no settings row reads auto_merge_on_checks = false');
+
+-- And the switch is genuinely the *only* place the workspace appears: absence is a state
+-- of the view, not of the table.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workspace_settings
+    where organization_id = 'org-untouched'),
+  'and it reads that way without a row having been written for it');
+
+-- Nothing has happened to this workspace's settings, so the audit pair is null rather
+-- than invented. Coalescing either would have to name a time at which nothing occurred.
+select pg_temp.must_hold(
+  (select updated_at is null and updated_by is null and not is_explicit
+     from ouroboros.workspace_settings_effective
+    where organization_id = 'org-untouched'),
+  'an unconfigured workspace carries no audit trail and is not is_explicit');
+
+-- --- the column default and the view default are one answer ---------------------------
+--
+-- The one duplication the view costs (V011's header): `false` is written as the column
+-- default and again as the coalesce, and no view can spell "whatever that column
+-- defaults to". This pair is what binds them — a later migration that moves one without
+-- the other makes the second assertion fail, which is the whole reason it is written as
+-- a comparison rather than as two separate `= false` checks.
+insert into ouroboros.workspace_settings (organization_id) values ('org-switch');
+
+select pg_temp.must_hold(
+  (select auto_merge_on_checks = false from ouroboros.workspace_settings
+    where organization_id = 'org-switch'),
+  'a settings row written with no auto_merge_on_checks is off — the column default');
+
+select pg_temp.must_hold(
+  (select explicit.auto_merge_on_checks = absent.auto_merge_on_checks
+     from ouroboros.workspace_settings_effective explicit,
+          ouroboros.workspace_settings_effective absent
+    where explicit.organization_id = 'org-switch'
+      and absent.organization_id   = 'org-untouched'),
+  'the view''s default is the column''s default — a defaulted row and no row read alike');
+
+-- `is_explicit` is the one place the two states stay apart, for onboarding and for audit
+-- lines. The value above is deliberately identical; this is not.
+select pg_temp.must_hold(
+  (select is_explicit from ouroboros.workspace_settings_effective
+    where organization_id = 'org-switch'),
+  'is_explicit is the one column that distinguishes a written default from no row');
+
+-- --- one row per workspace ------------------------------------------------------------
+--
+-- The acceptance criterion, and the arbiter the settings upsert conflicts on: without it
+-- two concurrent PATCHes could both find no row and both insert one, leaving the
+-- workspace with two answers and the endpoint reading whichever it happened to get.
+select pg_temp.must_reject(
+  $$insert into ouroboros.workspace_settings (organization_id, auto_merge_on_checks)
+    values ('org-switch', true)$$,
+  'a second settings row for the same workspace is refused', 'workspace_settings_pkey');
+
+-- --- settings belong to a workspace that exists -----------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.workspace_settings (organization_id) values ('org-nowhere')$$,
+  'workspace_settings.organization_id must name a real workspace',
+  'workspace_settings_organization_id_fkey');
+
+-- --- the switch has two positions, not three --------------------------------------------
+--
+-- Null would be a third state — "unset" — and the point of the view is that unset is not
+-- a state the product has: absence of the *row* carries it, in one place. A nullable
+-- column would put that distinction in two places and let them disagree.
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set auto_merge_on_checks = null
+    where organization_id = 'org-switch'$$,
+  'auto_merge_on_checks cannot be null — absence of the row is the only "unset"');
+
+-- --- the audit column names a real person ------------------------------------------------
+--
+-- The acceptance criterion that `updated_by` references the BetterAuth `user` table.
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set updated_by = 'nobody-at-all'
+    where organization_id = 'org-switch'$$,
+  'workspace_settings.updated_by must name a real person',
+  'workspace_settings_updated_by_fkey');
+
+-- --- the write path is one upsert, and it covers both arms --------------------------------
+--
+-- What #74's PATCH runs, verbatim. Lazy creation means the endpoint cannot know whether a
+-- row exists, so the same statement has to serve the first write and every later one —
+-- and both arms are exercised here, because a migration that dropped the primary key
+-- would still pass an insert-only test.
+--
+-- The insert arm: `org-untouched` has no row.
+insert into ouroboros.workspace_settings
+       (organization_id, auto_merge_on_checks, updated_by)
+  values ('org-untouched', true, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+on conflict (organization_id) do update
+  set auto_merge_on_checks = excluded.auto_merge_on_checks,
+      updated_by           = excluded.updated_by;
+
+select pg_temp.must_hold(
+  (select auto_merge_on_checks and is_explicit
+      and updated_by = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+     from ouroboros.workspace_settings_effective
+    where organization_id = 'org-untouched'),
+  'the settings upsert creates the row on a workspace that had none');
+
+-- The update arm: `org-switch` already has the defaulted row written above.
+insert into ouroboros.workspace_settings
+       (organization_id, auto_merge_on_checks, updated_by)
+  values ('org-switch', true, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb')
+on conflict (organization_id) do update
+  set auto_merge_on_checks = excluded.auto_merge_on_checks,
+      updated_by           = excluded.updated_by;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.workspace_settings
+    where organization_id = 'org-switch' and auto_merge_on_checks),
+  'and updates in place on a workspace that had one, rather than adding a second');
+
+-- --- updated_at moves on its own -------------------------------------------------------
+--
+-- On a settings table this column answers "when did this workspace last change its
+-- posture", which is the question asked of a switch nobody remembers flipping. Back-dated
+-- explicitly first: every default in this file is the same transaction's `now()`, so an
+-- assertion that did not supply a stale value could not fail.
+select pg_temp.must_hold(
+  (select tgname = 'workspace_settings_touch_updated_at' from pg_trigger
+   where tgrelid = 'ouroboros.workspace_settings'::regclass and not tgisinternal),
+  'workspace_settings carries the touch_updated_at trigger');
+
+update ouroboros.workspace_settings set updated_at = '2000-01-01T00:00:00Z'
+  where organization_id = 'org-switch';
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.workspace_settings
+   where organization_id = 'org-switch'),
+  'workspace_settings.updated_at is stamped from the server clock, not from the writer');
+
+-- --- deleting the person forgets who, not what ---------------------------------------------
+--
+-- The reason `updated_by` sets null rather than cascading, asserted rather than trusted.
+-- A cascade here would delete the settings row when the person who last touched it left,
+-- which does not un-answer the question — it silently reverts the workspace to `false`,
+-- turning off a setting somebody deliberately turned on, as a side effect of an unrelated
+-- account deletion. So: the attribution goes, the posture stays.
+delete from ouroboros."user" where "id" = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+select pg_temp.must_hold(
+  (select auto_merge_on_checks and updated_by is null
+     from ouroboros.workspace_settings where organization_id = 'org-switch'),
+  'deleting the person who set a switch clears the attribution and leaves the switch on');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.workspace_settings
+    where organization_id = 'org-untouched' and auto_merge_on_checks),
+  'and does not remove the settings row it was named on');
+
+-- --- the view is what it claims to be -------------------------------------------------------
+--
+-- A plain view over a primary-key join, not a materialized one: there is nothing to
+-- precompute over the smallest table in the schema, and a stale copy of a security-relevant
+-- setting is worse than no copy. Every assertion above would pass against a materialized
+-- view, since nothing above waits — which is why this is asked of the catalogue directly.
+select pg_temp.must_hold(
+  (select relkind = 'v' from pg_class
+    where oid = 'ouroboros.workspace_settings_effective'::regclass),
+  'workspace_settings_effective is a plain view, so it cannot be stale');
+
+select pg_temp.must_hold(
+  (select reloptions @> array['security_invoker=true'] from pg_class
+    where oid = 'ouroboros.workspace_settings_effective'::regclass),
+  'workspace_settings_effective is security_invoker, so it grants no read the tables would not');
+
+-- --- the workspace cascade ---------------------------------------------------------------------
+--
+-- Settings for a workspace that no longer exists are unreachable by definition, and
+-- leaving them would let a later workspace that reused the id inherit somebody else's
+-- auto-merge posture. The view empties with it because it is a join rather than a copy.
+delete from ouroboros.organization where "id" = 'org-switch';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workspace_settings
+    where organization_id = 'org-switch'),
+  'deleting an organization takes its settings with it');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workspace_settings_effective
+    where organization_id = 'org-switch'),
+  'and the workspace leaves the effective view entirely, rather than reverting to defaults');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

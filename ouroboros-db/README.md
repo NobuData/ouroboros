@@ -33,17 +33,20 @@
 > [Continuous integration](#continuous-integration). What that pass proves is now also
 > what ships: [`Dockerfile`](Dockerfile) is this module as a one-shot migration task, and
 > `publish/db` pushes it once `ci/db` is green on `main` — see [The image](#the-image).
-> Four product tables have landed on that base since the cut-over: `V007`
+> Five product tables have landed on that base since the cut-over: `V007`
 > ([#649](https://github.com/NobuData/ouroboros/issues/649)) adds `user_preferences`, the
 > per-person font scale, and `V008`
 > ([#64](https://github.com/NobuData/ouroboros/issues/64)), `V009`
-> ([#65](https://github.com/NobuData/ouroboros/issues/65)) and `V010`
-> ([#66](https://github.com/NobuData/ouroboros/issues/66)) add the first three tables of
-> the **dashboard read-model** — `runs`, the entity mockup 02's stat row, *Active loops*
+> ([#65](https://github.com/NobuData/ouroboros/issues/65)), `V010`
+> ([#66](https://github.com/NobuData/ouroboros/issues/66)) and `V011`
+> ([#67](https://github.com/NobuData/ouroboros/issues/67)) add the whole of the
+> **dashboard read-model** — `runs`, the entity mockup 02's stat row, *Active loops*
 > and *Recently closed* cards are all views over, `queue_items`, the ordered queue behind
-> *Up next in queue* and the *Queued issues* estimate, and `token_usage`, the append-only
+> *Up next in queue* and the *Queued issues* estimate, `token_usage`, the append-only
 > spend ledger behind *Token spend · today* (with `token_usage_daily`, this schema's first
-> view). Each carries its own section in
+> view), and `workspace_settings`, the org-scoped home of the **Auto-merge when checks
+> pass** switch — the page's only *write*, read through
+> `workspace_settings_effective`. Each carries its own section in
 > [`tests/constraints.sql`](tests/constraints.sql).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
@@ -70,8 +73,9 @@ Flyway migrations that own it. Organizations and their sign-in domains, people a
 accounts they authenticate with, per-organization membership roles, sessions, and GitHub
 org/repo enablement live here — and, since `V008`, the **read-model** the product renders
 over that boundary: what the loop has been doing, one row per run, since `V009` what
-it will do next, one row per queued issue, and since `V010` what it has spent doing so,
-one row per call.
+it will do next, one row per queued issue, since `V010` what it has spent doing so,
+one row per call, and since `V011` what each workspace has told the loop it may do
+unattended, one row per organization.
 
 Flyway is the **sole owner of DDL**. No application module creates or alters tables;
 `ouroboros-rest` reads and writes through Kysely against a schema this module defines.
@@ -591,6 +595,7 @@ ouroboros-db/
 │   ├── V008__dashboard_runs.sql      # runs — the loop lifecycle read-model — #64
 │   ├── V009__dashboard_queue.sql     # queue_items — the ordered issue queue — #65
 │   ├── V010__dashboard_usage.sql     # token_usage + token_usage_daily — the spend ledger — #66
+│   ├── V011__workspace_settings.sql  # workspace_settings + …_effective — the auto-merge switch — #67
 │   └── R__dev_seed.sql               # deterministic demo data, dev only — #23, reshaped by #708
 └── tests/
     ├── lib/
@@ -631,13 +636,23 @@ outside this module alters it.
 | `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010` | What the loop has spent — one append-only event per provider call, not one total per organization | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization |
+| `workspace_settings` | `V011` | Org-scoped typed product settings — today the auto-merge switch, the dashboard's only write | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
 
-One **view**, and so far the only one: **`token_usage_daily`** (`V010`) rolls
-`token_usage` up per organization, UTC day and provider — the read behind mockup 02's
-*Token spend · today*. It is a plain view rather than a materialized one on purpose: a
-stored total drifts the moment an event is corrected or back-filled. Its `cost_cents`
-propagates null rather than coalescing to zero, and `unpriced_events` is how a caller
-knows the total is a lower bound.
+Two **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
+UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
+view rather than a materialized one on purpose: a stored total drifts the moment an event
+is corrected or back-filled. Its `cost_cents` propagates null rather than coalescing to
+zero, and `unpriced_events` is how a caller knows the total is a lower bound.
+
+**`workspace_settings_effective`** (`V011`) is `organization LEFT JOIN
+workspace_settings` with the defaults coalesced in — one row per organization whether or
+not it has ever set anything. It exists because `workspace_settings` creates its rows
+**lazily**: there is no creation trigger, and a workspace with no row is at every default.
+This view is what keeps that decision out of every caller, so a newly created workspace
+reads `auto_merge_on_checks = false` from the database rather than from an application's
+memory of the default. Read settings here; write the table, with an `on conflict
+(organization_id) do update` upsert. `is_explicit` is the one column that still tells a
+written default from no row, for onboarding and audit lines.
 
 `V001`'s `tenants`, `V002`'s `users`, `user_identities` and `tenant_members` are **gone**:
 `V006` ([#708](https://github.com/NobuData/ouroboros/issues/708)) moved their rows into
