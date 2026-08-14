@@ -160,11 +160,26 @@ describe("the dashboard", () => {
   it("draws its cards, actions, chips and empty states out of the primitives", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
+    // The page head's two actions, plus the active-loops card's *Open run console* (#82).
+    // Two empty panels are left: the completions table (#84) and the queue (#85).
     expect(container.querySelectorAll(".ou-card")).toHaveLength(8);
-    expect(container.querySelectorAll(".ou-btn")).toHaveLength(2);
-    expect(container.querySelectorAll(".ou-empty")).toHaveLength(3);
+    expect(container.querySelectorAll(".ou-btn")).toHaveLength(3);
+    expect(container.querySelectorAll(".ou-empty")).toHaveLength(2);
     expect(container.querySelectorAll(".ou-eyebrow")).toHaveLength(1);
     expect(container.querySelectorAll(".ou-chip").length).toBeGreaterThan(0);
+  });
+
+  it("draws the active-loops table out of them too, rather than out of a second table", () => {
+    // The card with the most shapes on it: a table, a tag, two kinds of chip and a meter per
+    // row. Each of them is #46's, so the one table in the product that is on a dashboard
+    // cannot drift away from the one on a drill-in screen.
+    const { container } = render(<DashboardScreen readings={readings()} />);
+
+    expect(container.querySelectorAll(".ou-table")).toHaveLength(1);
+    expect(container.querySelectorAll(".ou-table-scroll")).toHaveLength(1);
+    expect(container.querySelectorAll(".ou-tag")).toHaveLength(3);
+    expect(container.querySelectorAll(".ou-meter")).toHaveLength(3);
+    expect(container.querySelectorAll(".ou-chip--model")).toHaveLength(3);
   });
 
   it("has no shape of its own left", () => {

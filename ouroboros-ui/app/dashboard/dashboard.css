@@ -207,6 +207,74 @@
   color: var(--err);
 }
 
+/* ---------- the active loops table ---------- */
+
+/*
+ * The mockup's `c-8` table (#82). The table itself is the primitive (app/ui/table.tsx) and so
+ * are the tag, the chips and the meter in it; what is here is what belongs to this table and
+ * no other — the one column whose width the design fixes, and the three compositions its
+ * cells are.
+ */
+
+/*
+ * The mockup's `<th style="width:180px">`, in rem so it follows the reader's font-size
+ * preference. It is a floor rather than a cap: the column has to hold a caption and a meter
+ * on two lines, and the meter reads as a bar rather than as a dash only if it is given a
+ * length. Everything else in the row sizes itself from its content.
+ */
+.dash-runs__stage {
+  width: 11.25rem;
+}
+
+/*
+ * The issue cell: a mono number, then the title in the row's own type. `baseline` rather than
+ * `center`, so the two sit on one line the way the mockup draws them even though they are
+ * different sizes.
+ */
+.dash-run__issue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+}
+
+.dash-run__number {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The title takes what is left. The table already scrolls sideways inside its own box, so a
+ * long title lengthens the row rather than the page — but a title of arbitrary length would
+ * push the five columns after it off the card on every viewport, so this holds a measure and
+ * lets the rest wrap.
+ */
+.dash-run__title {
+  max-width: 28ch;
+  color: var(--ink);
+}
+
+/* The stage cell: the caption, then the bar under it. */
+.dash-run__stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.dash-run__stage-label {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The *+N more* footer. It sits under the table rather than in the card head because it is a
+ * fact about the rows — what the ten on screen leave out — and it is a paragraph so that the
+ * margin a browser gives one does not have to be undone twice.
+ */
+.dash-runs__more {
+  margin: var(--sp-6) 0 0;
+}
+
 /* ---------- the system card ---------- */
 
 .dash-system {

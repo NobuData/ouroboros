@@ -37,6 +37,7 @@ export { Card, CardHead, type CardProps, type CardSize, type CardTone } from "./
 export { Chip, EffortChip, type ChipDot, type ChipProps, type ChipTone, type Effort } from "./chip";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Eyebrow, type EyebrowTone } from "./eyebrow";
+export { Meter, type MeterProps, type MeterTone } from "./meter";
 export {
   SelectField,
   TextField,

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { compactNumber, durationOfMinutes, moneyOfCents } from "@/app/format";
+import {
+  compactNumber,
+  durationOfMinutes,
+  elapsedOfSeconds,
+  moneyOfCents,
+} from "@/app/format";
 
 /**
  * The formatters, at their boundaries.
@@ -109,6 +114,57 @@ describe("durationOfMinutes", () => {
     expect(durationOfMinutes(90.4)).toBe("1h 30m");
     expect(durationOfMinutes(90.6)).toBe("1h 31m");
     expect(durationOfMinutes(-5)).toBe("0m");
+  });
+});
+
+describe("elapsedOfSeconds", () => {
+  it("draws the mockup's three elapsed figures", () => {
+    // The `c-8` table's own column (#82), at the seeds' own durations.
+    expect(elapsedOfSeconds(760)).toBe("12m 40s");
+    expect(elapsedOfSeconds(2285)).toBe("38m 05s");
+    expect(elapsedOfSeconds(432)).toBe("7m 12s");
+  });
+
+  it("pads every part but the leading one, so a ticking column does not twitch", () => {
+    // `38m 5s` and `38m 05s` are the same duration and different widths. A column that
+    // changed width every ten seconds would move in the reader's peripheral vision once a
+    // second, which on a page somebody leaves open is the difference between calm and
+    // restless.
+    expect(elapsedOfSeconds(5)).toBe("0m 05s");
+    expect(elapsedOfSeconds(65)).toBe("1m 05s");
+    expect(elapsedOfSeconds(3665)).toBe("1h 01m 05s");
+  });
+
+  it("keeps the seconds even when they are zero, because this is a clock", () => {
+    // The opposite rule from `durationOfMinutes`, and deliberately: an estimate drops its
+    // empty parts because it is standing still, and a clock that hid the part that is moving
+    // would look stopped.
+    expect(elapsedOfSeconds(0)).toBe("0m 00s");
+    expect(elapsedOfSeconds(7200)).toBe("2h 00m 00s");
+  });
+
+  it("crosses the minute and the hour exactly once each", () => {
+    expect(elapsedOfSeconds(59)).toBe("0m 59s");
+    expect(elapsedOfSeconds(60)).toBe("1m 00s");
+    expect(elapsedOfSeconds(3599)).toBe("59m 59s");
+    expect(elapsedOfSeconds(3600)).toBe("1h 00m 00s");
+  });
+
+  it("goes on counting hours past a day, as the queue estimate goes on counting them", () => {
+    expect(elapsedOfSeconds(94_203)).toBe("26h 10m 03s");
+  });
+
+  it("rounds a part-second down rather than up", () => {
+    // A duration should not report a second that has not finished — and a counter that
+    // rounded up would show `13m 00s` for a run that has been going twelve and a half
+    // minutes, then show it again a second later.
+    expect(elapsedOfSeconds(59.9)).toBe("0m 59s");
+  });
+
+  it("draws a negative or unreadable duration as zero rather than as a minus sign", () => {
+    // Two clocks disagreeing is not a fact about the run.
+    expect(elapsedOfSeconds(-30)).toBe("0m 00s");
+    expect(elapsedOfSeconds(Number.NaN)).toBe("0m 00s");
   });
 });
 

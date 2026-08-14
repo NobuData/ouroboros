@@ -1,5 +1,6 @@
 import { Button, type ButtonTone, Eyebrow, cx } from "@/app/ui";
 
+import { ActiveLoopsCard } from "./active-loops-card";
 import { type EmptyPanel, EmptyCard } from "./empty-card";
 import { Greeting } from "./greeting";
 import { StatCard } from "./stat-card";
@@ -35,14 +36,18 @@ import "./dashboard.css";
  * Two kinds of card sit on the same grid, and the difference is the point of this screen:
  *
  * - **Read.** The stat row is drawn from the aggregate's `stats`
- *   ([#81](https://github.com/NobuData/ouroboros/issues/81)) and the system card from
- *   `/health/ready` and `/api/v1/engine/status`. Every figure on them came from the
+ *   ([#81](https://github.com/NobuData/ouroboros/issues/81)), the active-loops table from its
+ *   `activeRuns` ([#82](https://github.com/NobuData/ouroboros/issues/82)), and the system card
+ *   from `/health/ready` and `/api/v1/engine/status`. Every figure on them came from the
  *   service, and a figure that could not be read is an em dash beside the reason rather
  *   than a zero.
- * - **Waiting.** The mockup's three loop panels have no source in the contract at all —
- *   nothing runs loops yet — so they keep their place in the grid as designed empty states
- *   naming what will fill them. Inventing three rows of plausible runs would make this
- *   screen a picture of a product rather than a view of one.
+ * - **Waiting.** Two of the mockup's panels still have no card drawing them — the
+ *   completions table ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
+ *   ([#85](https://github.com/NobuData/ouroboros/issues/85)) — so they keep their place in
+ *   the grid as designed empty states naming what will fill them. Copying the mockup's rows
+ *   into them would make this screen a picture of a product rather than a view of one; the
+ *   aggregate already carries `recentRuns` and `queueHead`, and each card draws them when its
+ *   issue lands.
  *
  * @param props.readings Everything the reader was able to read, and why not for the rest.
  * @returns The screen.
@@ -80,7 +85,7 @@ export function DashboardScreen({
           <StatCard key={stat.id} stat={stat} />
         ))}
 
-        <EmptyCard panel={ACTIVE_LOOPS} />
+        <ActiveLoopsCard aggregate={aggregate} readAt={readings.readAt} />
         <SystemCard rows={systemRows(readings.readiness, readings.engine)} />
         <EmptyCard panel={RECENTLY_CLOSED} />
         <EmptyCard panel={UP_NEXT} />
@@ -145,17 +150,6 @@ const ACTIONS: readonly Action[] = [
       "#49 holds its placeholder route.",
   },
 ];
-
-/** The mockup's `ACTIVE LOOPS` table, before there is a loop to put in it. */
-const ACTIVE_LOOPS: EmptyPanel = {
-  id: "active-loops",
-  title: "Active loops",
-  headline: "No loops yet",
-  note:
-    "This table lists what Ouroboros is working on right now. Nothing runs loops yet — " +
-    "the run console and its data arrive with mockup 10.",
-  span: 8,
-};
 
 /** The mockup's `RECENTLY CLOSED BY THE LOOP` table. */
 const RECENTLY_CLOSED: EmptyPanel = {

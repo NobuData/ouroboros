@@ -10,21 +10,28 @@ import {
   QUIET_SUBLINE,
   STATE_LABEL,
   UNSIZED_QUEUE,
+  activeLoops,
   countOf,
   daypartAt,
   firstName,
   greeting,
   loopsLiveStat,
   mergedStat,
+  moreActiveLoops,
   overallState,
   pageSubline,
   queuedStat,
+  stageCaption,
+  stagePercent,
   statRow,
   systemRows,
   tokensStat,
 } from "@/app/dashboard/view";
 
 import {
+  READ_AT,
+  SEEDED_RUNS,
+  activeRun,
   activity,
   dashboardPayload,
   emptyDashboard,
@@ -32,6 +39,7 @@ import {
   failed,
   healthReport,
   read,
+  startedSecondsAgo,
 } from "../helpers/dashboard";
 
 /**
@@ -421,6 +429,138 @@ describe("the stat row", () => {
       statRow(read(dashboardPayload())).map((stat) => stat.label),
     );
     expect(row.some((stat) => stat.accent)).toBe(false);
+  });
+});
+
+describe("stageCaption", () => {
+  it("draws the mockup's caption, from the run's own words and numbers", () => {
+    expect(stageCaption("Implementing", 4, 6)).toBe("Implementing · 4/6");
+    expect(stageCaption("Build farm", 5, 7)).toBe("Build farm · 5/7");
+  });
+
+  it("prints the run's label whatever it says, since nothing here has a workflow catalogue", () => {
+    // The label is free text (decision F8's sibling): a run whose workflow has since been
+    // renamed still renders under the word it recorded.
+    expect(stageCaption("Waiting on the build farm", 1, 1)).toBe(
+      "Waiting on the build farm · 1/1",
+    );
+  });
+});
+
+describe("stagePercent", () => {
+  it("fills the meter to the run's position in its workflow", () => {
+    // The acceptance criterion's own three figures, from the seeded runs' 4/6, 5/7 and 6/6.
+    expect(stagePercent(4, 6)).toBe(66);
+    expect(stagePercent(5, 7)).toBe(71);
+    expect(stagePercent(6, 6)).toBe(100);
+  });
+
+  it("rounds down, so a bar never claims work that has not finished", () => {
+    // 4/6 is 66.67%, and the honest way to round a progress bar is towards the work that
+    // certainly has happened. It is also what keeps `100%` reachable only by a run that has
+    // actually reached its last step.
+    expect(stagePercent(2, 3)).toBe(66);
+    expect(stagePercent(5, 6)).toBe(83);
+  });
+
+  it("draws a run that has not started a step as empty", () => {
+    expect(stagePercent(0, 6)).toBe(0);
+  });
+
+  it("clamps a step past the end of its own workflow rather than overflowing the track", () => {
+    expect(stagePercent(9, 6)).toBe(100);
+    expect(stagePercent(-2, 6)).toBe(0);
+  });
+
+  it("draws a workflow with no steps as empty rather than dividing by zero", () => {
+    // The contract promises at least one step so that a meter never has to; this is what
+    // happens if that promise is ever broken, and it is a bar rather than a crash.
+    expect(stagePercent(1, 0)).toBe(0);
+    expect(stagePercent(1, Number.NaN)).toBe(0);
+  });
+});
+
+describe("activeLoops", () => {
+  it("draws the mockup's three runs, in the order the payload gave them", () => {
+    // Lifecycle order — coding, building, review — is the endpoint's, over the whole table.
+    // A client that sorted its ten rows again would disagree with the drill-in that shows
+    // all of them.
+    const rows = activeLoops(SEEDED_RUNS, READ_AT);
+
+    expect(rows.map((row) => row.issueNumber)).toEqual([482, 479, 476]);
+    expect(rows.map((row) => row.status)).toEqual(["coding", "building", "review"]);
+  });
+
+  it("composes each row's stage caption and meter from the run's own figures", () => {
+    const [first] = activeLoops(SEEDED_RUNS, READ_AT);
+
+    expect(first?.stageCaption).toBe("Implementing · 4/6");
+    expect(first?.stagePercent).toBe(66);
+  });
+
+  it("measures every row against one instant, so no two of them disagree about now", () => {
+    // The reason `readAt` is read once, in `data.ts`, rather than per card or per row.
+    const rows = activeLoops(SEEDED_RUNS, READ_AT);
+
+    expect(rows.map((row) => row.elapsedSeconds)).toEqual([760, 2285, 432]);
+  });
+
+  it("carries the start as well as the duration, which is what lets the column tick", () => {
+    // The client counts from the origin rather than adding to the server's figure — see
+    // `app/dashboard/elapsed.tsx`.
+    const [first] = activeLoops([activeRun()], READ_AT);
+
+    expect(first?.startedAtSeconds).toBe(Math.floor(READ_AT / 1000) - 760);
+  });
+
+  it("passes the opaque strings through untouched", () => {
+    // Decision F8, and the workflow tag under the same rule: rendered, never parsed.
+    const [row] = activeLoops(
+      [activeRun({ model: "ollama/qwen3-coder", workflowTag: "deps-refresh" })],
+      READ_AT,
+    );
+
+    expect(row?.model).toBe("ollama/qwen3-coder");
+    expect(row?.workflowTag).toBe("deps-refresh");
+  });
+
+  it("reads a run that started in the future as zero rather than as a negative duration", () => {
+    // Two clocks disagreeing is not a fact about the run.
+    const [row] = activeLoops([activeRun({ startedAt: startedSecondsAgo(-90) })], READ_AT);
+
+    expect(row?.elapsedSeconds).toBe(0);
+  });
+
+  it("keeps a row whose start could not be read, and says so with a null", () => {
+    // Every timestamp in the contract is required and well formed, so this is the guard
+    // rather than the expected case — and a guard that dropped the row would lose a run that
+    // is really happening.
+    const [row] = activeLoops([activeRun({ startedAt: "not a timestamp" })], READ_AT);
+
+    expect(row?.startedAtSeconds).toBeNull();
+    expect(row?.elapsedSeconds).toBeNull();
+    expect(row?.issueNumber).toBe(482);
+  });
+
+  it("draws nothing at all for a workspace with nothing running", () => {
+    expect(activeLoops([], READ_AT)).toEqual([]);
+  });
+});
+
+describe("moreActiveLoops", () => {
+  it("counts what the table's rows leave out", () => {
+    // The aggregate answers at most ten rows and a count that is not capped.
+    expect(moreActiveLoops(12, 10)).toBe(2);
+  });
+
+  it("counts nothing when the table is showing all of them", () => {
+    expect(moreActiveLoops(3, 3)).toBe(0);
+  });
+
+  it("never goes below zero, whatever the two figures disagree about", () => {
+    // They are separate queries and a run can stop between them; *−1 more* is not something
+    // this card will ever say.
+    expect(moreActiveLoops(1, 3)).toBe(0);
   });
 });
 

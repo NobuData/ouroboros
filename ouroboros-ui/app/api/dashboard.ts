@@ -59,6 +59,31 @@ export type Dashboard = components["schemas"]["Dashboard"];
 export type DashboardStats = components["schemas"]["DashboardStats"];
 
 /**
+ * One run of the loop against one issue, as every card that draws a run draws it.
+ *
+ * **One shape for both lists.** *Active loops* and *Recently closed* are two queries over one
+ * table, so the columns a stopped run has and a running one does not — `finishedAt`,
+ * `prNumber`, the check counts — are `null` here rather than absent, and both cards render
+ * from one type. The paged runs endpoint
+ * ([#71](https://github.com/NobuData/ouroboros/issues/71)) answers with the same shape, so a
+ * card and its drill-in cannot drift apart.
+ *
+ * **No duration is carried.** *Elapsed* is `now − startedAt` and *Cycle* is
+ * `finishedAt − startedAt`; both are the client's to compute, which is why
+ * `app/dashboard/view.ts` takes a clock reading rather than reading one.
+ */
+export type RunSummary = components["schemas"]["RunSummary"];
+
+/**
+ * Where a run is in its life: the three that put it in *Active loops*, and the three that
+ * put it in *Recently closed*.
+ *
+ * Named here because two cards branch on it and the union is the contract's, so a status
+ * added to the service is a type error in the screens rather than a silent neutral pill.
+ */
+export type RunStatus = components["schemas"]["RunStatus"];
+
+/**
  * The three figures the page head's subline is made of.
  *
  * The greeting beside it is the client's — it needs the reader's own clock (decision F7) —
