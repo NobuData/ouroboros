@@ -34,10 +34,11 @@ import "./dashboard.css";
  *
  * Two kinds of card sit on the same grid, and the difference is the point of this screen:
  *
- * - **Read.** The stat row and the system card are drawn from `/auth/me`, the members
- *   listing, the enablement lists, `/health/ready` and `/api/v1/engine/status`. Every
- *   figure on them came from the service, and a figure that could not be read is an em dash
- *   beside the reason rather than a zero.
+ * - **Read.** The stat row is drawn from the aggregate's `stats`
+ *   ([#81](https://github.com/NobuData/ouroboros/issues/81)) and the system card from
+ *   `/health/ready` and `/api/v1/engine/status`. Every figure on them came from the
+ *   service, and a figure that could not be read is an em dash beside the reason rather
+ *   than a zero.
  * - **Waiting.** The mockup's three loop panels have no source in the contract at all —
  *   nothing runs loops yet — so they keep their place in the grid as designed empty states
  *   naming what will fill them. Inventing three rows of plausible runs would make this
@@ -75,7 +76,7 @@ export function DashboardScreen({
       </div>
 
       <div className="dash-grid">
-        {statRow(readings.members, readings.enablement).map((stat) => (
+        {statRow(aggregate).map((stat) => (
           <StatCard key={stat.id} stat={stat} />
         ))}
 

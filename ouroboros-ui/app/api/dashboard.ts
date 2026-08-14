@@ -49,6 +49,16 @@ import { api } from "@/app/api/server";
 export type Dashboard = components["schemas"]["Dashboard"];
 
 /**
+ * The four numbers of the stat row, each with the breakdown its card draws beneath it.
+ *
+ * Named separately from {@link Dashboard} because the row is composed card by card
+ * (`app/dashboard/view.ts`), and a function that decides one card should take that card's
+ * figures rather than the whole payload — which is what lets each of them be a unit test on
+ * a small object instead of on an aggregate.
+ */
+export type DashboardStats = components["schemas"]["DashboardStats"];
+
+/**
  * The three figures the page head's subline is made of.
  *
  * The greeting beside it is the client's — it needs the reader's own clock (decision F7) —

@@ -5,15 +5,15 @@ import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
 import { NO_VALUE, QUIET_SUBLINE } from "@/app/dashboard/view";
 
 import {
+  dashboardPayload,
   emptyDashboard,
   engineStatus,
   failed,
   healthReport,
-  memberPage,
   read,
   readings,
 } from "../helpers/dashboard";
-import { enablement, org, repo, sessionUser } from "../helpers/login";
+import { sessionUser } from "../helpers/login";
 
 /**
  * The dashboard as a screen: mockup 02's frame drawn from what was actually read.
@@ -28,8 +28,49 @@ import { enablement, org, repo, sessionUser } from "../helpers/login";
  * that carry the layout.
  */
 
-/** The seeded world's enablement list: one organisation, one repository, both on. */
-const SEEDED = enablement([[org(), [repo()]]]);
+/** The four tiles of the stat row, by the name each is announced under. */
+const STAT_LABELS = [
+  "Loops live",
+  "Queued issues",
+  "PRs merged · 7d",
+  "Token spend · today",
+] as const;
+
+/**
+ * The seeded aggregate, with one week's merges fewer than the week before it.
+ *
+ * @returns The payload.
+ */
+function fewerMerges() {
+  return dashboardPayload({
+    stats: { ...dashboardPayload().stats, merged7d: { count: 19, deltaVsPrior: -8 } },
+  });
+}
+
+/**
+ * The seeded aggregate, with a week that matched the one before it exactly.
+ *
+ * @returns The payload.
+ */
+function levelWeek() {
+  return dashboardPayload({
+    stats: { ...dashboardPayload().stats, merged7d: { count: 27, deltaVsPrior: 0 } },
+  });
+}
+
+/**
+ * The seeded aggregate on a day where nothing that was recorded carries a price.
+ *
+ * @returns The payload.
+ */
+function unpricedDay() {
+  return dashboardPayload({
+    stats: {
+      ...dashboardPayload().stats,
+      tokensToday: { tokens: 4_200_000, costCents: 0, providers: 1, unpricedEvents: 12 },
+    },
+  });
+}
 
 /** The system card, by its heading. */
 function systemCard(): HTMLElement {
@@ -100,8 +141,12 @@ describe("the page head", () => {
       <DashboardScreen readings={readings({ aggregate: failed("Choose a workspace first.") })} />,
     );
 
-    expect(screen.getByText("Choose a workspace first.")).toBeInTheDocument();
-    expect(container.querySelectorAll(".dash__sub--failed")).toHaveLength(1);
+    // The stat row carries the same reason on each of its four cards, since it is the same
+    // read (`view.ts`), so the subline is asserted by its own class rather than by text.
+    const subline = container.querySelectorAll(".dash__sub--failed");
+
+    expect(subline).toHaveLength(1);
+    expect(subline[0]).toHaveTextContent("Choose a workspace first.");
     expect(container.textContent).not.toContain(QUIET_SUBLINE);
   });
 
@@ -153,60 +198,116 @@ describe("the page head's actions", () => {
 });
 
 describe("the stat row, on seeded data", () => {
-  it("renders the seed's three members and the roles behind them", () => {
+  it("draws the mockup's four figures", () => {
+    // The acceptance criterion, in one case: the seeded organization reproduces the
+    // mockup's values. The arithmetic behind each is `view.test.ts`'s.
     render(<DashboardScreen readings={readings()} />);
 
-    const card = screen.getByRole("region", { name: "Members" });
-    expect(within(card).getByText("3")).toBeInTheDocument();
-    expect(within(card).getByText("1 owner · 1 admin · 1 member")).toBeInTheDocument();
+    for (const [label, value] of [
+      ["Loops live", "3"],
+      ["Queued issues", "12"],
+      ["PRs merged · 7d", "27"],
+      ["Token spend · today", "4.2M"],
+    ]) {
+      const card = screen.getByRole("region", { name: label });
+      expect(within(card).getByText(value!)).toBeInTheDocument();
+    }
   });
 
-  it("renders the seed's one organisation and one repository", () => {
+  it("draws the line under each of them", () => {
     render(<DashboardScreen readings={readings()} />);
 
-    const orgs = screen.getByRole("region", { name: "Organisations" });
-    const repos = screen.getByRole("region", { name: "Repositories" });
-
-    expect(within(orgs).getByText("1")).toBeInTheDocument();
-    expect(within(orgs).getByText("of 1 recorded")).toBeInTheDocument();
-    expect(within(repos).getByText("1")).toBeInTheDocument();
-  });
-
-  it("draws the loop count as an em dash, because nothing can answer it yet", () => {
-    render(<DashboardScreen readings={readings()} />);
-
-    const card = screen.getByRole("region", { name: "Loops live" });
-    expect(within(card).getByText(NO_VALUE)).toBeInTheDocument();
-    expect(within(card).getByText(/No run data yet/)).toBeInTheDocument();
+    for (const [label, delta] of [
+      ["Loops live", "1 coding · 1 building · 1 in review"],
+      ["Queued issues", "est. 9h 40m of autonomous work"],
+      ["PRs merged · 7d", "▲ 8 vs last week"],
+      ["Token spend · today", "≈ $18.60 across 4 providers"],
+    ]) {
+      const card = screen.getByRole("region", { name: label });
+      expect(within(card).getByText(delta!)).toBeInTheDocument();
+    }
   });
 
   it("names each tile, so four figures are not four unlabelled numbers", () => {
     render(<DashboardScreen readings={readings()} />);
 
-    for (const label of ["Loops live", "Members", "Organisations", "Repositories"]) {
+    for (const label of STAT_LABELS) {
       expect(screen.getByRole("region", { name: label })).toBeInTheDocument();
     }
   });
 
-  it("degrades one tile to an em dash and the reason, leaving the others reading", () => {
-    render(
-      <DashboardScreen readings={readings({ members: failed("No such tenant.") })} />,
-    );
+  it("accents the one figure the mockup accents", () => {
+    const { container } = render(<DashboardScreen readings={readings()} />);
 
-    const members = screen.getByRole("region", { name: "Members" });
-    expect(within(members).getByText(NO_VALUE)).toBeInTheDocument();
-    expect(within(members).getByText("No such tenant.")).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Organisations" })).getByText("1"),
-    ).toBeInTheDocument();
+    const accented = container.querySelectorAll(".dash-stat__value--accent");
+    expect(accented).toHaveLength(1);
+    expect(accented[0]).toHaveTextContent("3");
   });
 
-  it("marks a failed caption as one, so it is not read as a description of a figure", () => {
+  it("colours the merged delta by its sign, and marks it in shape as well as in hue", () => {
+    const { container } = render(<DashboardScreen readings={readings()} />);
+
+    const up = container.querySelector(".dash-stat__delta--up");
+    expect(up).toHaveTextContent("▲ 8 vs last week");
+    expect(container.querySelectorAll(".dash-stat__delta--down")).toHaveLength(0);
+  });
+
+  it("turns that colour over for a week that merged less than the last", () => {
     const { container } = render(
-      <DashboardScreen readings={readings({ members: failed("No such tenant.") })} />,
+      <DashboardScreen readings={readings({ aggregate: read(fewerMerges()) })} />,
     );
 
-    expect(container.querySelectorAll(".dash-stat__delta--failed")).toHaveLength(1);
+    const down = container.querySelector(".dash-stat__delta--down");
+    expect(down).toHaveTextContent("▼ 8 vs last week");
+    expect(container.querySelectorAll(".dash-stat__delta--up")).toHaveLength(0);
+  });
+
+  it("leaves a level week uncoloured, rather than calling it good news", () => {
+    const { container } = render(
+      <DashboardScreen readings={readings({ aggregate: read(levelWeek()) })} />,
+    );
+
+    expect(container.querySelectorAll(".dash-stat__delta--up")).toHaveLength(0);
+    expect(container.querySelectorAll(".dash-stat__delta--down")).toHaveLength(0);
+    expect(screen.getByText("Level with last week")).toBeInTheDocument();
+  });
+
+  it("draws no cost line at all when nothing recorded today has a price", () => {
+    // Never `$0.00`: a day of unpriced usage cost something nobody can name. The card keeps
+    // its caption and its figure and says nothing further.
+    render(<DashboardScreen readings={readings({ aggregate: read(unpricedDay()) })} />);
+
+    const card = screen.getByRole("region", { name: "Token spend · today" });
+
+    expect(within(card).getByText("4.2M")).toBeInTheDocument();
+    expect(card.textContent).not.toContain("$");
+    expect(within(card).queryByText(/across/)).not.toBeInTheDocument();
+  });
+
+  it("reads a workspace with nothing in it as zeros and sentences, not em dashes", () => {
+    render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
+
+    const loops = screen.getByRole("region", { name: "Loops live" });
+
+    expect(within(loops).getByText("0")).toBeInTheDocument();
+    expect(within(loops).getByText("Nothing is running right now.")).toBeInTheDocument();
+    expect(screen.queryAllByText(NO_VALUE)).toHaveLength(0);
+  });
+
+  it("degrades the whole row to em dashes when the aggregate could not be read", () => {
+    // The row is one read, so it fails as one — and every card says why rather than
+    // reporting a zero.
+    const { container } = render(
+      <DashboardScreen readings={readings({ aggregate: failed("Choose a workspace first.") })} />,
+    );
+
+    for (const label of STAT_LABELS) {
+      const card = screen.getByRole("region", { name: label });
+      expect(within(card).getByText(NO_VALUE)).toBeInTheDocument();
+      expect(within(card).getByText("Choose a workspace first.")).toBeInTheDocument();
+    }
+    expect(container.querySelectorAll(".dash-stat__delta--failed")).toHaveLength(4);
+    expect(container.querySelectorAll(".dash-stat__value--accent")).toHaveLength(0);
   });
 });
 
@@ -373,26 +474,16 @@ describe("the grid", () => {
 });
 
 describe("a workspace that is not the seeded one", () => {
-  it("reads sensibly with nothing enabled and nobody but the owner", () => {
-    // The first minute of a new workspace. Every figure is real and every caption points
-    // somewhere; no card is blank and none of them is an error.
-    render(
-      <DashboardScreen
-        readings={readings({
-          members: read(memberPage([{ ...memberPage().items[0]!, role: "owner" }])),
-          enablement: read(enablement([])),
-        })}
-      />,
-    );
+  it("reads sensibly on the first minute of a new workspace", () => {
+    // Every figure is real and every caption points somewhere; no card is blank, none of
+    // them is an error, and nothing is drawn as an em dash — these zeros were read.
+    render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
 
-    expect(
-      within(screen.getByRole("region", { name: "Members" })).getByText("1"),
-    ).toBeInTheDocument();
-    expect(
-      within(screen.getByRole("region", { name: "Organisations" })).getByText(
-        "None recorded — enable one on the sign-in screen.",
-      ),
-    ).toBeInTheDocument();
+    for (const label of STAT_LABELS) {
+      const card = screen.getByRole("region", { name: label });
+      expect(within(card).getByText("0")).toBeInTheDocument();
+      expect(card.textContent).not.toContain(NO_VALUE);
+    }
   });
 
   // *Says a workspace is suspended* was here. `OrgRow` publishes no lifecycle since
@@ -400,13 +491,11 @@ describe("a workspace that is not the seeded one", () => {
   // reported and the subline no longer has a branch for it — see `view.test.ts`.
 
   it("renders every card even when every read failed", () => {
-    // One failed read is one degraded card, and four are four — never a blank page.
+    // One failed read is one degraded card, and three are the whole page — never a blank one.
     const { container } = render(
       <DashboardScreen
         readings={readings({
           aggregate: failed("Something went wrong."),
-          members: failed("Something went wrong."),
-          enablement: failed("Something went wrong."),
           readiness: null,
           engine: failed("The engine is not available right now."),
         })}
@@ -422,10 +511,10 @@ describe("a workspace that is not the seeded one", () => {
 });
 
 describe("the composition, and what it is protected from", () => {
-  it("renders SEEDED without the reader, so the screen depends on no server module", () => {
+  it("renders the seeded world without the reader, so the screen depends on no server module", () => {
     // The screen takes data and draws it. That is what lets this whole suite run with no
     // environment, no cookies and no `server-only` mock in sight.
-    render(<DashboardScreen readings={readings({ enablement: read(SEEDED) })} />);
+    render(<DashboardScreen readings={readings()} />);
 
     expect(screen.getByRole("main")).toBeInTheDocument();
   });

@@ -172,10 +172,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The mockup accents exactly one figure of the four — `Loops live`, the only one of them
+ * that is in the present tense. It is the accent rather than a second ink because the
+ * accent is what this product reserves for live things, and both palettes publish its
+ * contrast against `--surface`.
+ */
+.dash-stat__value--accent {
+  color: var(--accent);
+}
+
 .dash-stat__delta {
   color: var(--ink-mut);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/*
+ * The mockup's `.delta.up` and `.delta.down`, which name **goodness rather than
+ * direction** — mockup 15 draws a falling cycle time as `up`, because a loop that got
+ * faster is good news. The direction is carried by the arrow in the text, so a reader who
+ * cannot separate the two hues still has a glyph that points.
+ */
+.dash-stat__delta--up {
+  color: var(--ok);
+}
+
+.dash-stat__delta--down {
+  color: var(--err);
 }
 
 /* The caption of a figure that could not be read, rather than of one that is zero. */

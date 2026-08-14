@@ -1,22 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EMPTY_QUEUE,
+  LEVEL_WITH_LAST_WEEK,
   NEUTRAL_GREETING,
+  NO_LOOPS,
+  NO_USAGE_TODAY,
   NO_VALUE,
   QUIET_SUBLINE,
   STATE_LABEL,
+  UNSIZED_QUEUE,
   countOf,
   daypartAt,
   firstName,
   greeting,
-  memberStat,
-  orgStat,
+  loopsLiveStat,
+  mergedStat,
   overallState,
   pageSubline,
-  repoStat,
-  roleBreakdown,
+  queuedStat,
   statRow,
   systemRows,
+  tokensStat,
 } from "@/app/dashboard/view";
 
 import {
@@ -26,11 +31,8 @@ import {
   engineStatus,
   failed,
   healthReport,
-  memberPage,
   read,
-  seededMembers,
 } from "../helpers/dashboard";
-import { enablement, org, repo } from "../helpers/login";
 
 /**
  * Every decision the dashboard makes, as functions.
@@ -184,170 +186,241 @@ describe("overallState", () => {
   });
 });
 
-describe("memberStat", () => {
-  it("counts the seeded workspace and names the roles in it", () => {
-    const stat = memberStat(read(memberPage()));
+describe("loopsLiveStat", () => {
+  it("counts the seeded workspace's runs and names what each is doing", () => {
+    // The mockup prints "2 coding · 1 in review" over a table holding one run in each of
+    // three statuses. Decision F.5 settled that disagreement in favour of the table, so the
+    // seeded workspace reads as its rows do.
+    const stat = loopsLiveStat(dashboardPayload().stats.loopsLive);
 
     expect(stat.value).toBe("3");
-    expect(stat.delta).toBe("1 owner · 1 admin · 1 member");
-    expect(stat.failed).toBe(false);
+    expect(stat.delta).toBe("1 coding · 1 building · 1 in review");
+    expect(stat.tone).toBe("muted");
   });
 
-  it("counts the service's total, not the rows that fitted in the window", () => {
-    const stat = memberStat(read(memberPage(seededMembers(), 412)));
-
-    expect(stat.value).toBe("412");
+  it("is the one figure of the four drawn in the accent", () => {
+    // It is the only card of the row that is in the present tense.
+    expect(loopsLiveStat(dashboardPayload().stats.loopsLive).accent).toBe(true);
   });
 
-  it("says so when the breakdown describes only part of the workspace", () => {
-    // Describing a hundred people as though they were all four hundred is the specific way
-    // this card could lie.
-    const stat = memberStat(read(memberPage(seededMembers(), 412)));
+  it("keeps the statuses in lifecycle order however the payload is keyed", () => {
+    const stat = loopsLiveStat({ total: 6, byStatus: { review: 1, coding: 3, building: 2 } });
 
-    expect(stat.delta).toContain("of the first 3");
+    expect(stat.delta).toBe("3 coding · 2 building · 1 in review");
   });
 
-  it("is an em dash and the reason when the listing failed, never a zero", () => {
-    const stat = memberStat(failed("No such tenant."));
+  it("leaves out a status holding nothing rather than printing its zero", () => {
+    const stat = loopsLiveStat({ total: 3, byStatus: { coding: 2, building: 0, review: 1 } });
 
-    expect(stat.value).toBe(NO_VALUE);
-    expect(stat.delta).toBe("No such tenant.");
-    expect(stat.failed).toBe(true);
+    expect(stat.delta).toBe("2 coding · 1 in review");
   });
 
-  it("reads sensibly for a workspace nobody has joined", () => {
-    const stat = memberStat(read(memberPage([])));
+  it("says nothing is running rather than drawing an empty line", () => {
+    const stat = loopsLiveStat({ total: 0, byStatus: { coding: 0, building: 0, review: 0 } });
 
     expect(stat.value).toBe("0");
-    expect(stat.delta).toBe("Nobody has joined yet.");
+    expect(stat.delta).toBe(NO_LOOPS);
   });
 });
 
-describe("roleBreakdown", () => {
-  it("orders by seniority rather than by count, so it reads the same every render", () => {
-    expect(roleBreakdown(["viewer", "owner", "member", "admin"])).toBe(
-      "1 owner · 1 admin · 1 member · 1 viewer",
+describe("queuedStat", () => {
+  it("counts the queue and estimates the work in it", () => {
+    const stat = queuedStat(dashboardPayload().stats.queued);
+
+    expect(stat.value).toBe("12");
+    expect(stat.delta).toBe("est. 9h 40m of autonomous work");
+  });
+
+  it("draws an estimate under an hour without an empty hour on it", () => {
+    expect(queuedStat({ count: 1, estMinutes: 45 }).delta).toBe(
+      "est. 45m of autonomous work",
     );
   });
 
-  it("pluralises each count", () => {
-    expect(roleBreakdown(["owner", "owner", "member"])).toBe("2 owners · 1 member");
+  it("says the queue is empty rather than estimating nothing", () => {
+    const stat = queuedStat({ count: 0, estMinutes: 0 });
+
+    expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(EMPTY_QUEUE);
   });
 
-  it("names only the roles actually held", () => {
-    expect(roleBreakdown(["viewer"])).toBe("1 viewer");
+  it("distinguishes an unsized queue from an empty one", () => {
+    // `estMinutes` skips the issues carrying no estimate rather than counting them as zero,
+    // so a queue where nothing has been sized sums to zero while holding twelve issues.
+    // `est. 0m of autonomous work` would be the card reading that as *no work*.
+    const stat = queuedStat({ count: 12, estMinutes: 0 });
+
+    expect(stat.value).toBe("12");
+    expect(stat.delta).toBe(UNSIZED_QUEUE);
   });
 
-  it("is empty for nobody, so the caller can say something else", () => {
-    expect(roleBreakdown([])).toBe("");
+  it("takes no accent, which the row gives to one card only", () => {
+    expect(queuedStat(dashboardPayload().stats.queued).accent).toBe(false);
   });
 });
 
-describe("orgStat", () => {
-  it("counts the enabled organisations against the ones recorded", () => {
-    const stat = orgStat(read(enablement([[org(), [repo()]]])));
+describe("mergedStat", () => {
+  it("counts the week and compares it with the one before", () => {
+    const stat = mergedStat(dashboardPayload().stats.merged7d);
 
-    expect(stat.value).toBe("1");
-    expect(stat.delta).toBe("of 1 recorded");
+    expect(stat.value).toBe("27");
+    expect(stat.delta).toBe("▲ 8 vs last week");
+    expect(stat.tone).toBe("up");
   });
 
-  it("separates *known* from *switched on*, which are two different numbers", () => {
-    const list = enablement([
-      [org({ login: "acme-robotics" }), []],
-      [org({ id: "b", login: "acme-labs", enabled: false }), []],
-    ]);
+  it("turns the arrow and the tone over for a week that merged less", () => {
+    const stat = mergedStat({ count: 19, deltaVsPrior: -8 });
 
-    expect(orgStat(read(list)).value).toBe("1");
-    expect(orgStat(read(list)).delta).toBe("of 2 recorded");
+    expect(stat.delta).toBe("▼ 8 vs last week");
+    expect(stat.tone).toBe("down");
   });
 
-  it("says how much of a long list it actually read", () => {
-    const list = enablement([[org(), []]], 340);
-
-    expect(orgStat(read(list)).delta).toBe("of 340 recorded, 1 read");
+  it("drops the sign from the sentence, because the arrow already carries it", () => {
+    // `▼ -8 vs last week` reads as eight fewer than eight fewer.
+    expect(mergedStat({ count: 19, deltaVsPrior: -8 }).delta).not.toContain("-");
   });
 
-  it("points somewhere when there is nothing recorded at all", () => {
-    expect(orgStat(read(enablement([]))).delta).toBe(
-      "None recorded — enable one on the sign-in screen.",
-    );
+  it("draws a level week as neither, rather than as an up week with a zero on it", () => {
+    const stat = mergedStat({ count: 27, deltaVsPrior: 0 });
+
+    expect(stat.delta).toBe(LEVEL_WITH_LAST_WEEK);
+    expect(stat.tone).toBe("muted");
   });
 
-  it("is an em dash and the reason when the read failed", () => {
-    const stat = orgStat(failed("The engine is not available right now."));
+  it("carries the direction in the glyph as well as in the hue", () => {
+    // Colour alone would leave a reader who cannot separate green from red with two
+    // identical sentences.
+    expect(mergedStat({ count: 30, deltaVsPrior: 3 }).delta).toContain("▲");
+    expect(mergedStat({ count: 24, deltaVsPrior: -3 }).delta).toContain("▼");
+  });
 
-    expect(stat.value).toBe(NO_VALUE);
-    expect(stat.failed).toBe(true);
+  it("reads sensibly for a workspace that has merged nothing either week", () => {
+    const stat = mergedStat({ count: 0, deltaVsPrior: 0 });
+
+    expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(LEVEL_WITH_LAST_WEEK);
   });
 });
 
-describe("repoStat", () => {
-  it("counts the seeded repository", () => {
-    const stat = repoStat(read(enablement([[org(), [repo()]]])));
+describe("tokensStat", () => {
+  it("draws the mockup's day: a compact count over an approximate cost", () => {
+    const stat = tokensStat(dashboardPayload().stats.tokensToday);
 
-    expect(stat.value).toBe("1");
-    expect(stat.delta).toBe("of 1 recorded");
+    expect(stat.value).toBe("4.2M");
+    expect(stat.delta).toBe("≈ $18.60 across 4 providers");
   });
 
-  it("counts a repository as live only when its organisation is on too", () => {
-    // Both flags, not one: a repository is in scope only when its own `enabled` and its
-    // organisation's are both true. Counting the repository's alone would report it as
-    // live while the switch above it is off.
-    const held = enablement([[org({ enabled: false }), [repo()]]]);
+  it("drops the ≈ on a day where every event carries a price", () => {
+    // The `≈` is `unpricedEvents`, not decoration: it is what makes the total a floor.
+    const stat = tokensStat({
+      tokens: 4_200_000,
+      costCents: 1860,
+      providers: 4,
+      unpricedEvents: 0,
+    });
 
-    expect(repoStat(read(held)).value).toBe("0");
+    expect(stat.delta).toBe("$18.60 across 4 providers");
   });
 
-  it("says out loud how many are held back by a disabled organisation", () => {
-    // The trap the two-flag rule exists to name. Silently counting them out would leave
-    // somebody looking for a repository they can see is switched on.
-    const held = enablement([
-      [org(), [repo()]],
-      [org({ id: "b", login: "acme-labs", enabled: false }), [repo({ id: "r2", name: "atlas" })]],
-    ]);
+  it("agrees with the number of providers it counted", () => {
+    const stat = tokensStat({ tokens: 12_000, costCents: 40, providers: 1, unpricedEvents: 0 });
 
-    expect(repoStat(read(held)).value).toBe("1");
-    expect(repoStat(read(held)).delta).toBe(
-      "of 2 recorded · 1 held by a disabled organisation",
-    );
+    expect(stat.delta).toBe("$0.40 across 1 provider");
   });
 
-  it("does not count a repository that is switched off itself", () => {
-    const off = enablement([[org(), [repo({ enabled: false })]]]);
+  it("hides the cost line — never $0 — when nothing recorded today has a price", () => {
+    // The ticket's own criterion. A day of purely unpriced usage (local inference on a
+    // workstation is the honest case) sums to zero while having cost *something unknown*;
+    // #92 is what will make that a `cost unavailable` line rather than a missing one.
+    const stat = tokensStat({
+      tokens: 4_200_000,
+      costCents: 0,
+      providers: 1,
+      unpricedEvents: 12,
+    });
 
-    expect(repoStat(read(off)).value).toBe("0");
-    expect(repoStat(read(off)).delta).toBe("of 1 recorded");
+    expect(stat.value).toBe("4.2M");
+    expect(stat.delta).toBeNull();
   });
 
-  it("reads sensibly for an organisation with nothing under it", () => {
-    expect(repoStat(read(enablement([[org(), []]]))).delta).toBe("None recorded yet.");
+  it("says nothing was recorded rather than pricing a day that did not happen", () => {
+    const stat = tokensStat(emptyDashboard().stats.tokensToday);
+
+    expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(NO_USAGE_TODAY);
+  });
+
+  it("keeps a genuine zero cost, which is not the same as an unknown one", () => {
+    // Every event was priced, and every price was zero. That is a fact, so it is drawn.
+    const stat = tokensStat({ tokens: 900, costCents: 0, providers: 1, unpricedEvents: 0 });
+
+    expect(stat.delta).toBe("$0.00 across 1 provider");
   });
 });
 
 describe("the stat row", () => {
   it("is the mockup's four tiles, in its order", () => {
-    const row = statRow(read(memberPage()), read(enablement([[org(), [repo()]]])));
+    const row = statRow(read(dashboardPayload()));
 
-    expect(row.map((stat) => stat.id)).toEqual(["loops", "members", "orgs", "repos"]);
+    expect(row.map((stat) => stat.id)).toEqual(["loops", "queued", "merged", "tokens"]);
+    expect(row.map((stat) => stat.label)).toEqual([
+      "Loops live",
+      "Queued issues",
+      "PRs merged · 7d",
+      "Token spend · today",
+    ]);
   });
 
-  it("draws the loop count as an em dash, because nothing can answer it yet", () => {
-    // "Zero loops are running" and "nothing can tell you how many are running" are
-    // different facts, and only the second is true. A zero here would be the screen
-    // inventing a loop engine.
-    const [loops] = statRow(read(memberPage()), read(enablement([])));
+  it("reproduces the mockup on the seeded organization", () => {
+    const row = statRow(read(dashboardPayload()));
 
-    expect(loops?.value).toBe(NO_VALUE);
-    expect(loops?.delta).toContain("No run data yet");
-    expect(loops?.failed).toBe(false);
+    expect(row.map((stat) => stat.value)).toEqual(["3", "12", "27", "4.2M"]);
+    expect(row.map((stat) => stat.delta)).toEqual([
+      "1 coding · 1 building · 1 in review",
+      "est. 9h 40m of autonomous work",
+      "▲ 8 vs last week",
+      "≈ $18.60 across 4 providers",
+    ]);
   });
 
-  it("degrades one tile without touching the others", () => {
-    // The property the whole screen is built on: one failed read is one degraded card.
-    const row = statRow(failed("No such tenant."), read(enablement([[org(), [repo()]]])));
+  it("accents exactly one figure", () => {
+    expect(statRow(read(dashboardPayload())).filter((stat) => stat.accent)).toHaveLength(1);
+  });
 
-    expect(row.filter((stat) => stat.failed).map((stat) => stat.id)).toEqual(["members"]);
-    expect(row.find((stat) => stat.id === "orgs")?.value).toBe("1");
+  it("reads a workspace with nothing in it as four zeros and four sentences", () => {
+    // Not an em dash: these figures were read, and they are zero. The row a workspace
+    // could not read is the case below, and the two must not look alike.
+    const row = statRow(read(emptyDashboard()));
+
+    expect(row.map((stat) => stat.value)).toEqual(["0", "0", "0", "0"]);
+    expect(row.every((stat) => stat.tone !== "failed")).toBe(true);
+    expect(row.map((stat) => stat.delta)).toEqual([
+      NO_LOOPS,
+      EMPTY_QUEUE,
+      LEVEL_WITH_LAST_WEEK,
+      NO_USAGE_TODAY,
+    ]);
+  });
+
+  it("degrades as one, because it is one read", () => {
+    // Every figure on the row is the aggregate's — decision F5's single round trip — so a
+    // refusal takes the whole row rather than one card of it. Four em dashes and the
+    // service's reason, never four zeros.
+    const row = statRow(failed("Choose a workspace first."));
+
+    expect(row.map((stat) => stat.value)).toEqual([NO_VALUE, NO_VALUE, NO_VALUE, NO_VALUE]);
+    expect(row.every((stat) => stat.tone === "failed")).toBe(true);
+    expect(row.every((stat) => stat.delta === "Choose a workspace first.")).toBe(true);
+  });
+
+  it("keeps its captions when it could read nothing at all", () => {
+    // A page reporting a failure, rather than a page that lost its stat row.
+    const row = statRow(failed("Choose a workspace first."));
+
+    expect(row.map((stat) => stat.label)).toEqual(
+      statRow(read(dashboardPayload())).map((stat) => stat.label),
+    );
+    expect(row.some((stat) => stat.accent)).toBe(false);
   });
 });
 
