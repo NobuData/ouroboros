@@ -1343,7 +1343,7 @@ themes hold.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | I.1 | #80 | 🟢 Done | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
-| I.2 | #81 | 🟡 Open | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.2 | #81 | 🟢 Done | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.3 | #82 | 🟡 Open | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
 | I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
 | I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
@@ -1465,7 +1465,83 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.2 — ouroboros-ui: [I.2] Stat row — four metric cards
 
-> **GitHub issue:** #81 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #81 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The four tiles are now the aggregate's own figures, composed in
+> [`app/dashboard/view.ts`](../ouroboros-ui/app/dashboard/view.ts) and drawn by
+> [`stat-card.tsx`](../ouroboros-ui/app/dashboard/stat-card.tsx) over the #46 Card. The
+> component gained two presentational mappings only — a tone to the class that colours it,
+> and the accent on the one figure the mockup accents — and decides nothing else, so every
+> sentence on the row is a unit test on a function.
+>
+> **The formatters are written out rather than delegated to `Intl.NumberFormat`**, which the
+> ticket's own problem statement is really about.
+> [`app/format.ts`](../ouroboros-ui/app/format.ts) holds compact counts, durations and money;
+> `Intl`'s compact notation depends on the ICU data the runtime was built with — a small-icu
+> Node and a browser disagree about the same figure, which is a hydration mismatch on a
+> server-rendered card — and it cannot be asked for the `1.0M` this design draws, rounding
+> `999,950` to `1M`. The AC's two boundaries are cases in
+> [`__tests__/format.test.ts`](../ouroboros-ui/__tests__/format.test.ts) along with the rest
+> of them: rounding **promotes** a figure over its own unit (`999,950` → `1.0M`, never
+> `1000.0k`, and the same carry at `B` and `T`), and a duration drops the part that is zero
+> (`580` → `9h 40m`, `60` → `1h`, `59` → `59m`).
+>
+> **Three decisions worth carrying forward.**
+>
+> 1. **The seeded organization reads `1 coding · 1 building · 1 in review`, not the mockup's
+>    `2 coding · 1 in review`.** That is F.5's own settlement — `byStatus` is the run table's
+>    arithmetic, and the mockup's caption disagrees with the table it sits above — and the
+>    payload carries every active status as a key so the subline is composed without knowing
+>    which statuses exist. A status holding nothing is left out rather than printed as a zero.
+>    Every other figure on the row is the mockup's exactly: `12`, `27`, `4.2M`,
+>    `est. 9h 40m of autonomous work`, `▲ 8 vs last week`, `≈ $18.60 across 4 providers`.
+> 2. **`up` and `down` name goodness, not direction**, which is how the mockups' own
+>    stylesheet uses them — mockup 15 draws *"▼ 2m faster"* as `up`. The two happen to agree
+>    on this card, and the type is named `DeltaTone` so the next card to use it does not read
+>    `up` as *the number went up*. A level week is neither: no arrow, no colour, *"Level with
+>    last week"* — not an up week with a zero on it. The arrow is what carries the direction
+>    without colour vision.
+> 3. **The `≈` is `unpricedEvents`, and a cost of zero is not a cost of nothing.**
+>    `costCents` sums only the events that carry a price, so a day of purely unpriced usage
+>    sums to zero while having cost something unknown; the line is **hidden** in that state
+>    rather than drawn as `$0`, which is this ticket's own criterion and what J.4 (#92) will
+>    replace with an explicit *cost unavailable*. A day where every event is priced gets no
+>    `≈` at all, because the figure is then exact. The fixture in
+>    `__tests__/helpers/dashboard.ts` was corrected to the seed's `unpricedEvents: 3` — the
+>    seed leaves `ollama` unpriced, which is exactly what makes the mockup's `≈` honest.
+>
+> **`readDashboard` went from five reads to three.** The members listing and the enablement
+> lists fed #45's stat row, which counted people, organisations and repositories while nothing
+> could report on a loop. The row is now the aggregate's four figures, so both reads lost their
+> card — and a page that kept making them would pay two round trips per render, and per poll
+> once I.8 (#87) lands, to draw nothing. Both operations are untouched and still read by the
+> shell. The row therefore **fails as one**, since every figure on it is decision F5's single
+> round trip: a refused aggregate leaves four em dashes and the service's reason where #80 had
+> a stat row that kept reading. Replacing four repetitions of one sentence with a single
+> per-card treatment is I.7 (#86)'s, which is where the empty and error states of every card
+> are settled together.
+>
+> The proving tests are
+> [`__tests__/format.test.ts`](../ouroboros-ui/__tests__/format.test.ts) (the boundaries),
+> [`view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts) (every card's sentence,
+> the three delta states, the hidden cost line, the empty workspace and the failure) and
+> [`dashboard-screen.test.tsx`](../ouroboros-ui/__tests__/dashboard/dashboard-screen.test.tsx)
+> (what reaches the DOM, under which accessible names, and which classes carry the hues).
+>
+> **Checked against the running stack**, seeds applied and the page fetched from `next dev`
+> as `ouroboros-rest` served it. On `acme-robotics` the four tiles render `3`, `12`, `27`,
+> `4.2M` over `1 coding · 1 building · 1 in review`, `est. 9h 40m of autonomous work`,
+> `▲ 8 vs last week` and `≈ $18.60 across 4 providers` — the mockup's row, with
+> `dash-stat__value--accent` on the first tile and `dash-stat__delta--up` on the third — and
+> the live aggregate's `tokensToday` comes back `{4200000, 1860, 4, unpricedEvents: 3}`,
+> which is what the corrected fixture now mirrors. On the personal workspace, which the F.5
+> seeds deliberately leave empty, the same row renders four zeros over four sentences and no
+> em dash anywhere. **What was not checked in a browser** is the two palettes and the
+> viewport steps: every hue on this row is a token (`--accent`, `--ok`, `--err`) that both
+> palettes publish contrast for, asserted in
+> [`dashboard-styles.test.ts`](../ouroboros-ui/__tests__/dashboard/dashboard-styles.test.ts),
+> and the tiles' spans are unchanged from the frame I.1 shipped and verified. I.9 (#88) is
+> where the rendered page is asserted end to end.
 
 - **Problem Statement:** The four `c-3` stat cards are the loop's vital signs; the
   mockup gives each an exact anatomy (label / large value / delta line, accent value

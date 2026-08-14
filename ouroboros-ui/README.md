@@ -658,7 +658,8 @@ is a `POST` rather than a `GET` to avoid.
 ## Dashboard
 
 `/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45); its frame and page head
-are [#80](https://github.com/NobuData/ouroboros/issues/80)) is
+are [#80](https://github.com/NobuData/ouroboros/issues/80) and its stat row
+[#81](https://github.com/NobuData/ouroboros/issues/81)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
@@ -673,10 +674,10 @@ Good afternoon, Ken — the loop is turning.  [ Edit workflows ] [ ⟳ Pull next
 3 issues in flight, 12 queued behind them.      ↑ both inert, and say why
 Ouroboros merged 6 pull requests since midnight UTC.
 
-┌ LOOPS LIVE ─┐┌ MEMBERS ────┐┌ ORGANISATIONS ┐┌ REPOSITORIES ┐
-│      —      ││      3      ││       1       ││      1       │
-│ no run data ││ 1 owner ·  …││ of 1 recorded ││of 1 recorded │
-└─────────────┘└─────────────┘└───────────────┘└──────────────┘
+┌ LOOPS LIVE ─┐┌ QUEUED ISSUES ┐┌ PRS MERGED·7D ┐┌ TOKEN SPEND·TODAY ┐
+│      3      ││      12       ││      27       ││       4.2M        │
+│ 1 coding ·… ││ est. 9h 40m … ││ ▲ 8 vs last … ││ ≈ $18.60 across 4 │
+└─────────────┘└───────────────┘└───────────────┘└───────────────────┘
 ┌ ACTIVE LOOPS ──────────────────────┐┌ SYSTEM      ◐ operational ┐
 │    ┆ No loops yet                ┆ ││ REST API            [ up ]│
 │    ┆ …arrives with mockup 10     ┆ ││ Database            [ up ]│
@@ -684,11 +685,11 @@ Ouroboros merged 6 pull requests since midnight UTC.
 ┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐└───────────────────────────┘
 ```
 
-**Two kinds of card sit on the same grid, and the difference is the point.** The stat row
-and the system card are drawn from the session, the members listing, the enablement lists,
-`/health/ready` and `/api/v1/engine/status` — every figure on them came from the service.
-The mockup's three loop panels have no source in the contract at all, so they keep their
-place as designed empty states naming what will fill them.
+**Two kinds of card sit on the same grid, and the difference is the point.** The stat row is
+drawn from the aggregate's `stats` and the system card from `/health/ready` and
+`/api/v1/engine/status` — every figure on them came from the service. The mockup's three
+loop panels have no source in the contract at all, so they keep their place as designed
+empty states naming what will fill them.
 
 The route is three lines: [`app/api/access.ts`](app/api/access.ts) returns the workspace,
 [`app/dashboard/data.ts`](app/dashboard/data.ts) turns it into everything the screen draws,
@@ -728,16 +729,65 @@ things it will not do —
   reason there in the error hue, and the heading drops its closing clause rather than claiming
   a loop is turning that nobody could ask about.
 
+### The stat row: four figures, and one line that is allowed to be absent
+
+Each of the mockup's four `c-3` tiles is a caption, a figure and a line explaining the
+figure, and three of the four derive that line rather than printing one
+([`view.ts`](app/dashboard/view.ts)):
+
+| Card | Figure | Line beneath it |
+|---|---|---|
+| Loops live | the total, in the accent | `1 coding · 1 building · 1 in review`, from `byStatus` |
+| Queued issues | the count | `est. 9h 40m of autonomous work`, from `estMinutes` |
+| PRs merged · 7d | the count | `▲ 8 vs last week` — arrow, wording and hue from the sign |
+| Token spend · today | compact tokens, `4.2M` | `≈ $18.60 across 4 providers` |
+
+The formatters behind them are [`app/format.ts`](app/format.ts) — compact counts, durations
+and money — written out rather than delegated to `Intl.NumberFormat`, whose compact output
+depends on the ICU data the runtime was built with (a server render and its hydration would
+disagree about the same figure) and which cannot be asked for the `1.0M` this design draws.
+Their boundaries are the things that make a page look designed rather than generated, so
+each is a case in [`__tests__/format.test.ts`](__tests__/format.test.ts): `999,950` is
+`1.0M` and never `1000.0k`; `580` minutes is `9h 40m` and never `9.7h`; `60` is `1h` and not
+`1h 0m`.
+
+Four rules the row is written under, and the third is the one worth stating twice:
+
+- **`byStatus` is the run table's arithmetic, not the mockup's caption.** The mockup prints
+  *"2 coding · 1 in review"* over a table holding one run in each of three statuses;
+  decision F.5 settled that in favour of the table. A status holding nothing is left out
+  rather than printed as a zero.
+- **The delta's direction is in the glyph as well as the hue**, so `▲` and `▼` separate an
+  up week from a down one without colour vision — and a week that matched the one before is
+  *"Level with last week"*, neither arrow nor colour, rather than an up week with a zero
+  on it.
+- **A cost nobody has priced is not `$0`.** `costCents` sums only the events that carry a
+  price, so a day of purely unpriced usage — local inference on a workstation is the honest
+  case — sums to zero while having cost something unknown. The line is **hidden** in that
+  state. The `≈` is not decoration either: it appears exactly when `unpricedEvents` is
+  non-zero, which is what makes *"≈ $18.60"* an honest floor. Giving that state its own
+  *cost unavailable* line is [#92](https://github.com/NobuData/ouroboros/issues/92)'s.
+- **The row is one read, so it fails as one.** Every figure comes from the aggregate, so a
+  refusal leaves all four carrying an em dash and the service's reason rather than four
+  zeros — and a workspace with nothing in it reads as four zeros and four sentences, which
+  is a different thing and must not look alike.
+
 ### One failed read is one degraded card
 
-The five reads go out together — the aggregate, the members listing, the enablement lists, the
-readiness probe and the engine's status — and each is wrapped independently, so a members
-listing that fails leaves the enablement counts and the status pills intact. The wrapper catches an
-`ApiError` and **nothing else**: a `401` arrives here as Next.js's redirect signal rather
-than as an error, and a `catch` wide enough to hold it would swallow the navigation to the
-login screen and draw a dashboard captioned with the framework's internal message.
+The three reads go out together — the aggregate, the readiness probe and the engine's status
+— and each is wrapped independently, so an aggregate that fails leaves the status pills
+intact. The wrapper catches an `ApiError` and **nothing else**: a `401` arrives here as
+Next.js's redirect signal rather than as an error, and a `catch` wide enough to hold it would
+swallow the navigation to the login screen and draw a dashboard captioned with the
+framework's internal message.
 
-One of the five is the aggregate, and it is **one** call by design (decision F5):
+It was five until #81. The members listing and the enablement lists fed #45's stat row, which
+counted people, organisations and repositories while nothing could report on a loop; the row
+is now the aggregate's own four figures, so both reads lost their card — and a page that
+fetched them anyway would pay for two round trips per render, and per poll, to draw nothing.
+Both operations are unchanged and still read elsewhere ([app shell](#app-shell)).
+
+One of the three is the aggregate, and it is **one** call by design (decision F5):
 [`app/api/dashboard.ts`](app/api/dashboard.ts) wraps `GET /api/v1/dashboard`, which answers
 every number, list and switch the mockup draws in a single payload, so the page paints in one
 round trip rather than in eight. It sends no `If-None-Match` — this is the *first* read, made
@@ -766,9 +816,9 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 
 ### What it does not pretend
 
-- **No loop is invented.** Nothing produces one yet, so the loop count is an em dash rather
-  than a zero — "zero loops are running" and "nothing can tell you how many are running" are
-  different facts — and the mockup's fifteen plausible rows are not copied.
+- **No run is invented.** The stat row reports the aggregate's counts and nothing more; the
+  mockup's fifteen plausible rows in the three loop panels are not copied, because nothing
+  produces a run to put in them yet.
 - **Both page-head actions are inert**, and say why in a tooltip. Neither destination exists —
   [#49](https://github.com/NobuData/ouroboros/issues/49) holds their place and is post-MVP —
   and a control that appeared to pull an issue would be the one dishonest thing on the screen.
@@ -778,18 +828,16 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 - **A figure that could not be read is an em dash beside the reason**, never a zero.
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
   reads *degraded* rather than *operational* when any row is.
-- **Both flags, not one**, in the repository count: a repository is in scope only when its
-  own `enabled` and its organisation's are both true, so the ones held back by a disabled
-  organisation are counted separately and said out loud.
+- **A cost nobody has priced is hidden, not drawn as `$0`.**
 - **The pills differ in shape as well as in hue**, so *operational* and *degraded* are
-  distinguishable without colour vision.
+  distinguishable without colour vision — as do the stat row's deltas, which carry an arrow.
 
 The real dashboard is specified card by card under
 [#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I).
 [#80](https://github.com/NobuData/ouroboros/issues/80) has replaced the frame and the page
-head on top of #45's route, readers, status logic and redirect. Each remaining card replaces
-one tile of the grid from the aggregate this page already fetches: the stat row
-([#81](https://github.com/NobuData/ouroboros/issues/81)), active loops
+head on top of #45's route, readers, status logic and redirect, and
+[#81](https://github.com/NobuData/ouroboros/issues/81) the stat row. Each remaining card
+replaces one tile of the grid from the aggregate this page already fetches: active loops
 ([#82](https://github.com/NobuData/ouroboros/issues/82)), the loop pulse
 ([#83](https://github.com/NobuData/ouroboros/issues/83)), recently closed
 ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue

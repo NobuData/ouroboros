@@ -14,13 +14,12 @@
  * could not be read is an em dash beside the reason, never a zero.
  */
 
-import type { Dashboard, DashboardActivity } from "@/app/api/dashboard";
-import type { Enablement } from "@/app/api/enablement";
+import type { Dashboard, DashboardActivity, DashboardStats } from "@/app/api/dashboard";
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
-import type { MemberPage } from "@/app/api/members";
-import type { Membership, Role } from "@/app/api/membership";
+import type { Membership } from "@/app/api/membership";
 import type { SessionUser } from "@/app/api/identity";
+import { compactNumber, durationOfMinutes, moneyOfCents } from "@/app/format";
 
 /**
  * One read that was attempted: what it returned, or why it did not.
@@ -55,15 +54,11 @@ export interface DashboardReadings {
    * The dashboard aggregate ([#70](https://github.com/NobuData/ouroboros/issues/70)), or why
    * it could not be read — every number, list and switch mockup 02 draws, in one payload.
    *
-   * The page head reads its `activity`; the cards of I.2–I.6 read the rest. It is one
-   * {@link Reading} rather than six because it is one request: the endpoint is decision F5's
-   * single round trip, so its failure is single too.
+   * The page head reads its `activity` and the stat row its `stats`; the cards of I.3–I.6
+   * read the rest. It is one {@link Reading} rather than six because it is one request: the
+   * endpoint is decision F5's single round trip, so its failure is single too.
    */
   readonly aggregate: Reading<Dashboard>;
-  /** The workspace's members, or why the listing failed. */
-  readonly members: Reading<MemberPage>;
-  /** Its organisations and their repositories, or why the read failed. */
-  readonly enablement: Reading<Enablement>;
   /**
    * The readiness probe's answer, or `null` when it could not be read. Not a
    * {@link Reading}: that route's failure *is* its answer and it never throws
@@ -239,6 +234,26 @@ export const STATE_LABEL: Record<SystemState, string> = {
 
 /* ------------------------------------------------------------------ the stat row */
 
+/**
+ * How the line under a figure is drawn.
+ *
+ * It is a *tone* rather than a colour, because the sheet decides the colour and this
+ * decides what the line is saying. The two directional ones are the mockups' own `up` and
+ * `down` classes, and those name **goodness rather than direction** — mockup 15 draws
+ * *"▼ 2m faster"* as `up`, because a cycle time that fell is good news. What is drawn on
+ * this screen happens to agree in both directions, and the distinction is worth keeping in
+ * the name so that the next card to use it does not read `up` as *the number went up*.
+ */
+export type DeltaTone =
+  /** The default: a line describing what the figure is made of. */
+  | "muted"
+  /** Good news — the mockups' `--ok`. */
+  | "up"
+  /** Bad news — the mockups' `--err`. */
+  | "down"
+  /** Not news at all: the reason the figure could not be read. */
+  | "failed";
+
 /** One card in the stat row: a caption, a figure, and a line under it. */
 export interface Stat {
   /** Stable identifier, and the React key. */
@@ -247,149 +262,247 @@ export interface Stat {
   readonly label: string;
   /** The figure, already formatted — {@link NO_VALUE} when it could not be read. */
   readonly value: string;
-  /** The line under it: what the figure is made of, or why there is not one. */
-  readonly delta: string;
-  /** Whether {@link Stat.delta} is reporting a failure rather than describing a figure. */
-  readonly failed: boolean;
+  /**
+   * Whether the figure is drawn in the accent colour. The mockup gives exactly one card of
+   * the four that treatment — *Loops live*, the one thing on the page that is happening
+   * right now.
+   */
+  readonly accent: boolean;
+  /**
+   * The line under the figure: what it is made of, or why there is not one — or `null` for
+   * a card that has nothing it can honestly say. {@link tokensStat} is the one case, and it
+   * is there rather than a `$0.00` for a cost nobody has priced.
+   */
+  readonly delta: string | null;
+  /** How that line is drawn. */
+  readonly tone: DeltaTone;
 }
 
 /**
- * The members card: how many people are in this workspace, and in what roles.
+ * The active run statuses, in lifecycle order, and the word each one takes in the subline.
  *
- * `total` is the workspace's whole membership; the roles are counted from the rows that
- * came back, which is a page. When the two differ the caption says so rather than
- * describing a hundred people as though they were all of them.
+ * The contract carries **every** active status as a key with a zero rather than omitting
+ * the empty ones (`LoopsLive.byStatus`), precisely so this list is the only place that has
+ * to know which statuses exist. `review` reads *in review* because the mockup's sentence
+ * does — *"2 coding · 1 in review"* — and because *1 review* would count reviews rather
+ * than runs.
+ */
+const LOOP_STATUSES: readonly (readonly [
+  key: keyof DashboardStats["loopsLive"]["byStatus"],
+  word: string,
+])[] = [
+  ["coding", "coding"],
+  ["building", "building"],
+  ["review", "in review"],
+];
+
+/** What the loops card says when the number under it is zero. */
+export const NO_LOOPS = "Nothing is running right now.";
+
+/**
+ * *Loops live* — how many runs are in flight, and what each of them is doing.
  *
- * @param members The members listing, or why it failed.
+ * The figure is accented because this is the card the page is named after: everything else
+ * in the row is a measurement of the past day or week, and this one is the present tense.
+ *
+ * **The subline is composed from `byStatus`, which is the run table's own arithmetic.** The
+ * mockup prints *"2 coding · 1 in review"* over a table holding one run in each of three
+ * statuses; decision F.5 settled that disagreement in favour of the table, so the seeded
+ * workspace reads *"1 coding · 1 building · 1 in review"* here. Statuses holding nothing are
+ * left out rather than printed as zeros — a queue of three should not read *"3 coding · 0
+ * building · 0 in review"*.
+ *
+ * @param live The aggregate's `stats.loopsLive`.
  * @returns The card.
  */
-export function memberStat(members: Reading<MemberPage>): Stat {
-  if (!members.ok) return failedStat("members", "Members", members.reason);
-
-  const page = members.value;
-  const roles = roleBreakdown(page.items.map((member) => member.role));
-  const partial = page.items.length < page.total;
-
-  return {
-    id: "members",
-    label: "Members",
-    value: String(page.total),
-    delta:
-      roles === ""
-        ? "Nobody has joined yet."
-        : partial
-          ? `${roles} — of the first ${page.items.length}`
-          : roles,
-    failed: false,
-  };
-}
-
-/** The roles a workspace can hold, in the order a breakdown lists them. */
-const ROLE_ORDER: readonly Role[] = ["owner", "admin", "member", "viewer"];
-
-/**
- * Count roles into a phrase — `2 owners · 1 member`.
- *
- * Ordered by seniority rather than by count, so the same workspace reads the same way from
- * one render to the next.
- *
- * @param roles One role per member, in any order.
- * @returns The phrase, or `""` when there are no members to count.
- */
-export function roleBreakdown(roles: readonly Role[]): string {
-  return ROLE_ORDER.filter((role) => roles.includes(role))
-    .map((role) => {
-      const count = roles.filter((held) => held === role).length;
-      return `${count} ${count === 1 ? role : `${role}s`}`;
-    })
+export function loopsLiveStat(live: DashboardStats["loopsLive"]): Stat {
+  const breakdown = LOOP_STATUSES.filter(([key]) => live.byStatus[key] > 0)
+    .map(([key, word]) => `${live.byStatus[key]} ${word}`)
     .join(" · ");
-}
 
-/**
- * The organisations card: how many are switched on, out of how many are recorded.
- *
- * A row records that an organisation is *known*; its flag records that somebody
- * deliberately turned it on (`app/api/orgs.ts`), so those are two different numbers and
- * both are shown.
- *
- * @param enablement The workspace's organisations and their repositories, or why it failed.
- * @returns The card.
- */
-export function orgStat(enablement: Reading<Enablement>): Stat {
-  if (!enablement.ok) return failedStat("orgs", "Organisations", enablement.reason);
-
-  const { orgs, orgTotal } = enablement.value;
-  const enabled = orgs.filter((entry) => entry.org.enabled).length;
-
-  return {
-    id: "orgs",
-    label: "Organisations",
-    value: String(enabled),
-    delta:
-      orgTotal === 0
-        ? "None recorded — enable one on the sign-in screen."
-        : `of ${orgTotal} recorded${orgs.length < orgTotal ? `, ${orgs.length} read` : ""}`,
-    failed: false,
-  };
-}
-
-/**
- * The repositories card: how many Ouroboros may actually work in.
- *
- * "In scope" is both flags, not one: a repository is in scope only when its own `enabled`
- * **and** its organisation's are true (`app/api/repos.ts`). Counting only the repository's
- * flag would report repositories as live while the switch above them is off, which is the
- * trap that rule exists to name — so the ones held back are counted separately and said out
- * loud.
- *
- * @param enablement The workspace's organisations and their repositories, or why it failed.
- * @returns The card.
- */
-export function repoStat(enablement: Reading<Enablement>): Stat {
-  if (!enablement.ok) return failedStat("repos", "Repositories", enablement.reason);
-
-  const { orgs } = enablement.value;
-  const total = orgs.reduce((sum, entry) => sum + entry.repoTotal, 0);
-  const live = orgs
-    .filter((entry) => entry.org.enabled)
-    .reduce((sum, entry) => sum + entry.repos.filter((repo) => repo.enabled).length, 0);
-  const held = orgs
-    .filter((entry) => !entry.org.enabled)
-    .reduce((sum, entry) => sum + entry.repos.filter((repo) => repo.enabled).length, 0);
-
-  return {
-    id: "repos",
-    label: "Repositories",
-    value: String(live),
-    delta:
-      total === 0
-        ? "None recorded yet."
-        : held === 0
-          ? `of ${total} recorded`
-          : `of ${total} recorded · ${held} held by a disabled organisation`,
-    failed: false,
-  };
-}
-
-/**
- * The loops card, which has no source to read.
- *
- * Nothing produces a loop yet — the engine gateway reports that the engine is *up*, not
- * what it is doing — so this is an em dash rather than a zero. "Zero loops are running" and
- * "nothing can tell you how many are running" are different facts, and only one of them is
- * true here.
- *
- * @returns The card.
- */
-export function loopStat(): Stat {
   return {
     id: "loops",
     label: "Loops live",
-    value: NO_VALUE,
-    delta: "No run data yet — the loop engine arrives with mockup 10.",
-    failed: false,
+    value: String(live.total),
+    accent: true,
+    delta: breakdown === "" ? NO_LOOPS : breakdown,
+    tone: "muted",
   };
 }
+
+/** What the queue card says when nothing is waiting. */
+export const EMPTY_QUEUE = "Nothing is waiting for a loop.";
+
+/** What it says when there are issues waiting but nobody has sized any of them. */
+export const UNSIZED_QUEUE = "None of them has been sized yet.";
+
+/**
+ * *Queued issues* — how many are waiting, and how long they are expected to take.
+ *
+ * **`estMinutes` skips the issues carrying no estimate rather than counting them as zero**
+ * (`QueuedWork.estMinutes`), so the count can speak for more issues than the estimate does.
+ * The line says *est.* for that reason and does not try to name the gap: the payload
+ * carries the sum, not how many rows went into it, and a sentence that guessed would be the
+ * one dishonest thing on the card. A queue where *nothing* is sized has no estimate at all,
+ * which is a sentence rather than `est. 0m`.
+ *
+ * @param queued The aggregate's `stats.queued`.
+ * @returns The card.
+ */
+export function queuedStat(queued: DashboardStats["queued"]): Stat {
+  return {
+    id: "queued",
+    label: "Queued issues",
+    value: String(queued.count),
+    accent: false,
+    delta:
+      queued.count === 0
+        ? EMPTY_QUEUE
+        : queued.estMinutes === 0
+          ? UNSIZED_QUEUE
+          : `est. ${durationOfMinutes(queued.estMinutes)} of autonomous work`,
+    tone: "muted",
+  };
+}
+
+/** The glyph on a week that merged more than the one before it. */
+const UP_ARROW = "▲";
+
+/** The glyph on a week that merged less. */
+const DOWN_ARROW = "▼";
+
+/** What the merged card says when the two weeks came out the same. */
+export const LEVEL_WITH_LAST_WEEK = "Level with last week";
+
+/**
+ * *PRs merged · 7d* — the count, and how it compares with the week before.
+ *
+ * `deltaVsPrior` is signed (`MergedSevenDays.deltaVsPrior`), so the direction is read from
+ * the sign and nothing else. Three cases, and the third is the one that is easy to get
+ * wrong: a week that matched the one before is **not** an up week with a zero on it, so it
+ * takes neither an arrow nor a colour.
+ *
+ * **The arrow is the direction, not the colour.** A reader who cannot separate green from
+ * red still has a glyph that points, which is the design system's rule about never carrying
+ * meaning in hue alone (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.4) applied to a line of text.
+ *
+ * @param merged The aggregate's `stats.merged7d`.
+ * @returns The card.
+ */
+export function mergedStat(merged: DashboardStats["merged7d"]): Stat {
+  const change = merged.deltaVsPrior;
+  const rose = change > 0;
+
+  return {
+    id: "merged",
+    label: "PRs merged · 7d",
+    value: String(merged.count),
+    accent: false,
+    delta:
+      change === 0
+        ? LEVEL_WITH_LAST_WEEK
+        : `${rose ? UP_ARROW : DOWN_ARROW} ${Math.abs(change)} vs last week`,
+    tone: change === 0 ? "muted" : rose ? "up" : "down",
+  };
+}
+
+/** What the token card says on a day nothing has been spent on. */
+export const NO_USAGE_TODAY = "No usage recorded today.";
+
+/**
+ * *Token spend · today* — the day's tokens, and what they cost.
+ *
+ * The figure is the compacted token count (`4.2M`); the line under it is the money, and it
+ * is the one line on this row that can be **absent**. See {@link costLine}.
+ *
+ * @param today The aggregate's `stats.tokensToday`.
+ * @returns The card.
+ */
+export function tokensStat(today: DashboardStats["tokensToday"]): Stat {
+  return {
+    id: "tokens",
+    label: "Token spend · today",
+    value: compactNumber(today.tokens),
+    accent: false,
+    delta: costLine(today),
+    tone: "muted",
+  };
+}
+
+/**
+ * What the day cost, or nothing at all.
+ *
+ * Three states, and the middle one is this card's whole reason for existing:
+ *
+ * - **Nothing was recorded.** No provider was called today, so there is no cost and no
+ *   lower bound either — a sentence, not `$0.00 across 0 providers`.
+ * - **Nothing that was recorded has a price.** `costCents` is a sum over the events that
+ *   carry one (`TokensToday.costCents`), so a day of purely unpriced usage — local
+ *   inference on a workstation is the honest case of it — sums to zero while having cost
+ *   *something unknown*. **The line is hidden rather than drawn as `$0`**, which is the
+ *   ticket's own acceptance criterion and the rule
+ *   [#92](https://github.com/NobuData/ouroboros/issues/92) is being written to satisfy
+ *   properly: it makes the cost explicitly null and gives the card a *cost unavailable*
+ *   line to draw. Until then, saying nothing beats saying zero.
+ * - **Something was priced.** The amount, with `≈` in front of it whenever
+ *   `unpricedEvents` is non-zero — that is exactly what the `≈` in the mockup means, and it
+ *   is what makes *"≈ $18.60"* an honest floor rather than a rounded total. A day where
+ *   every event is priced gets no `≈`, because the figure is then exact.
+ *
+ * @param today The aggregate's `stats.tokensToday`.
+ * @returns The line, or `null` when there is no honest one to draw.
+ */
+function costLine(today: DashboardStats["tokensToday"]): string | null {
+  if (today.providers === 0) return NO_USAGE_TODAY;
+  if (today.costCents === 0 && today.unpricedEvents > 0) return null;
+
+  const approximately = today.unpricedEvents > 0 ? "≈ " : "";
+
+  return `${approximately}${moneyOfCents(today.costCents)} across ${countOf(today.providers, "provider")}`;
+}
+
+/**
+ * The four cards, in the order the mockup's columns take them.
+ *
+ * **The stat row is one read, so it fails as one.** Every figure on it comes from the
+ * aggregate — decision F5's single round trip — and a refused aggregate leaves all four
+ * carrying an em dash and the service's reason rather than four zeros. That is the same
+ * rule the page head's subline is written under: *nothing is running* and *nobody could ask
+ * what is running* must not render alike. The per-card treatment of that state — a banner
+ * rather than four repetitions of one sentence — is
+ * [#86](https://github.com/NobuData/ouroboros/issues/86)'s.
+ *
+ * @param aggregate The dashboard aggregate, or why it could not be read.
+ * @returns The four cards.
+ */
+export function statRow(aggregate: Reading<Dashboard>): readonly Stat[] {
+  if (!aggregate.ok) {
+    return FAILED_ROW.map(([id, label]) => failedStat(id, label, aggregate.reason));
+  }
+
+  const { stats } = aggregate.value;
+
+  return [
+    loopsLiveStat(stats.loopsLive),
+    queuedStat(stats.queued),
+    mergedStat(stats.merged7d),
+    tokensStat(stats.tokensToday),
+  ];
+}
+
+/**
+ * The row's four identities, for the render where no figure could be read.
+ *
+ * The captions still come from here rather than from the payload, so a page whose aggregate
+ * was refused keeps its shape and its labels — four named cards holding em dashes, which is
+ * a page reporting a failure rather than a page that lost its stat row.
+ */
+const FAILED_ROW: readonly (readonly [id: string, label: string])[] = [
+  ["loops", "Loops live"],
+  ["queued", "Queued issues"],
+  ["merged", "PRs merged · 7d"],
+  ["tokens", "Token spend · today"],
+];
 
 /**
  * A card standing in for a figure that could not be read.
@@ -399,24 +512,11 @@ export function loopStat(): Stat {
  * @param reason What the service said. Shown as-is: every message in the contract's
  *   envelope is written for a person and names nothing about the service's internals
  *   (`app/api/errors.ts`).
- * @returns The card, carrying an em dash rather than a zero.
+ * @returns The card, carrying an em dash rather than a zero — and never the accent, which
+ *   is reserved for a figure that is actually reporting something.
  */
 function failedStat(id: string, label: string, reason: string): Stat {
-  return { id, label, value: NO_VALUE, delta: reason, failed: true };
-}
-
-/**
- * Every card of the stat row, in the order the mockup's four columns take.
- *
- * @param members The members listing, or why it failed.
- * @param enablement The enablement list, or why it failed.
- * @returns The four cards.
- */
-export function statRow(
-  members: Reading<MemberPage>,
-  enablement: Reading<Enablement>,
-): readonly Stat[] {
-  return [loopStat(), memberStat(members), orgStat(enablement), repoStat(enablement)];
+  return { id, label, value: NO_VALUE, accent: false, delta: reason, tone: "failed" };
 }
 
 /* ------------------------------------------------------------------ the page head */

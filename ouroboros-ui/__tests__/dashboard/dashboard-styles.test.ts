@@ -59,6 +59,25 @@ describe("the page head", () => {
   });
 });
 
+describe("the stat row's tones", () => {
+  it("defines a class for every tone the tile can be given", () => {
+    // `StatCard` names these as class suffixes, so a tone with no rule behind it is a delta
+    // that silently draws muted — a down week rendering as a neutral one — rather than a
+    // build error.
+    for (const tone of ["up", "down", "failed"]) {
+      expect(CODE).toMatch(new RegExp(`\\.dash-stat__delta--${tone}\\s*\\{[^}]*color:`));
+    }
+  });
+
+  it("takes each of them from the palette's own status tokens", () => {
+    // Both palettes publish contrast for these against `--surface`; a hand-picked green
+    // would be legible in one theme and not the other.
+    expect(CODE).toMatch(/\.dash-stat__delta--up\s*\{[^}]*color:\s*var\(--ok\)/);
+    expect(CODE).toMatch(/\.dash-stat__delta--down\s*\{[^}]*color:\s*var\(--err\)/);
+    expect(CODE).toMatch(/\.dash-stat__value--accent\s*\{[^}]*color:\s*var\(--accent\)/);
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is

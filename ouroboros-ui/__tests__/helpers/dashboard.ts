@@ -1,87 +1,24 @@
 import type { Dashboard, DashboardActivity } from "@/app/api/dashboard";
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
-import type { Member, MemberPage } from "@/app/api/members";
-import type { Role } from "@/app/api/membership";
 import type { DashboardReadings, Reading } from "@/app/dashboard/view";
 
-import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "./login";
+import { membership, sessionUser } from "./login";
 
 /**
  * The seeded world as the dashboard reads it.
  *
  * `helpers/login.ts` builds the half of it the login screen needed — the workspace, the
- * person, the organisation and its repository. This adds the four the dashboard also asks
- * about: the aggregate, the members listing, the readiness probe and the engine's status,
- * and then the one object the screen takes.
+ * person, the organisation and its repository. This adds the three the dashboard also asks
+ * about: the aggregate, the readiness probe and the engine's status, and then the one
+ * object the screen takes.
  *
  * It is the same world on purpose (`ouroboros-db/migrations/R__dev_seed.sql` and
- * `R__dev_seed_dashboard.sql`): three members in `acme-robotics`, one organisation, one
- * repository, both enabled, three loops in flight and twelve issues queued. The acceptance
- * criteria are written against those numbers, so a case that changes one says so by passing
- * an override and every other case reads as the seed.
+ * `R__dev_seed_dashboard.sql`): `acme-robotics` with one organisation and one repository,
+ * three loops in flight and twelve issues queued. The acceptance criteria are written
+ * against those numbers, so a case that changes one says so by passing an override and
+ * every other case reads as the seed.
  */
-
-/** The seeded people, in the roles the seed gives them. */
-const SEEDED_MEMBERS: readonly (readonly [string, string, Role])[] = [
-  ["5eed0003-0000-4000-8000-000000000001", "Ken Suenobu", "owner"],
-  ["5eed0003-0000-4000-8000-000000000002", "Maya Chen", "admin"],
-  ["5eed0003-0000-4000-8000-000000000003", "Jorge Reyes", "member"],
-];
-
-/**
- * One member of the workspace.
- *
- * @param over The fields this case is about.
- * @returns A complete member.
- */
-export function member(over: Partial<Member> = {}): Member {
-  return {
-    orgId: TENANT_ID,
-    userId: "5eed0003-0000-4000-8000-000000000001",
-    email: "ken@acme-robotics.dev",
-    displayName: "Ken Suenobu",
-    avatarUrl: null,
-    role: "owner",
-    // One timestamp where `tenant_members` kept two: the organization plugin writes the
-    // member row at acceptance, so *invited* and *joined* are no longer separable.
-    joinedAt: "2026-08-11T10:20:23.114Z",
-    ...over,
-  };
-}
-
-/**
- * A page of members.
- *
- * @param items The rows it carries. Defaults to the seed's three.
- * @param total How many the workspace has. Defaults to the number of rows — pass a larger
- *   one for the case where the window did not cover the workspace.
- * @returns The page.
- */
-export function memberPage(items: readonly Member[] = seededMembers(), total?: number): MemberPage {
-  return {
-    items: [...items],
-    total: total ?? items.length,
-    limit: 100,
-    offset: 0,
-  };
-}
-
-/**
- * The seed's three members: an owner, an admin and a member.
- *
- * @returns The rows, in the order the service returns them (by name).
- */
-export function seededMembers(): Member[] {
-  return SEEDED_MEMBERS.map(([userId, displayName, role]) =>
-    member({
-      userId,
-      displayName,
-      role,
-      email: `${displayName.split(" ")[0]?.toLowerCase()}@acme-robotics.dev`,
-    }),
-  );
-}
 
 /**
  * A readiness report, from what each dependency is doing.
@@ -144,9 +81,10 @@ export function activity(over: Partial<DashboardActivity> = {}): DashboardActivi
  * The whole dashboard aggregate, at the mockup's own figures.
  *
  * The row arrays are empty and the numbers are the mockup's: I.1 (#80) draws the frame and
- * the page head, so `activity` is the part of this payload it reads. The cards of I.2–I.6
- * fill in `activeRuns`, `recentRuns` and `queueHead` as each lands, which is why the
- * factory takes an override rather than being written per suite.
+ * the page head and I.2 (#81) the stat row, so `activity` and `stats` are the parts of this
+ * payload they read. The cards of I.3–I.6 fill in `activeRuns`, `recentRuns` and
+ * `queueHead` as each lands, which is why the factory takes an override rather than being
+ * written per suite.
  *
  * The two window lengths are the contract's: the merge rate is measured over fourteen days
  * (46 merged of 50 closed — `0.92` exactly) while the cycle time and the intervention count
@@ -162,7 +100,10 @@ export function dashboardPayload(over: Partial<Dashboard> = {}): Dashboard {
       // `est. 9h 40m of autonomous work`, in the minutes the contract carries.
       queued: { count: 12, estMinutes: 580 },
       merged7d: { count: 27, deltaVsPrior: 8 },
-      tokensToday: { tokens: 4_200_000, costCents: 1860, providers: 4, unpricedEvents: 0 },
+      // The seed leaves `ollama` unpriced (`R__dev_seed_dashboard.sql`), which is what makes
+      // the mockup's `≈ $18.60` a lower bound rather than an exact total — three of the
+      // day's events carry no cost, and `unpricedEvents` is how the card knows to say `≈`.
+      tokensToday: { tokens: 4_200_000, costCents: 1860, providers: 4, unpricedEvents: 3 },
     },
     pulse: { mergeRate: 0.92, avgCycleSeconds: 860, interventions7d: 2, autoMerge: true },
     activeRuns: [],
@@ -226,8 +167,6 @@ export function readings(over: Partial<DashboardReadings> = {}): DashboardReadin
     workspace: membership(),
     user: sessionUser(),
     aggregate: read(dashboardPayload()),
-    members: read(memberPage()),
-    enablement: read(enablement([[org(), [repo()]]])),
     readiness: healthReport(),
     engine: read(engineStatus()),
     ...over,
