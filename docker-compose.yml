@@ -93,8 +93,9 @@ services:
   # This stack is a developer's laptop and nothing else — it publishes a well-known
   # password on loopback — so it is also the one place the development seed is turned
   # on, by layering ouroboros-db/flyway.seed.toml over that project configuration
-  # (issue #23). That overlay sets one placeholder, `ouro_dev_seed`, which is `false`
-  # everywhere else; R__dev_seed.sql inserts nothing without it. -configFiles *replaces*
+  # (issues #23 and #68). That overlay sets one placeholder, `ouro_dev_seed`, which is
+  # `false` everywhere else; neither R__dev_seed.sql nor R__dev_seed_dashboard.sql
+  # inserts anything without it. -configFiles *replaces*
   # the file Flyway would have auto-loaded rather than adding to it, which is why
   # flyway.toml is named here as well.
   #

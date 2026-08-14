@@ -1,11 +1,15 @@
--- seed.sql — what R__dev_seed.sql put in the database, as assertions.
+-- seed.sql — what the development seeds put in the database, as assertions.
 --
--- The other half of the seed's tests. tests/seed.test.sh reads the migration and the two
--- configuration files and asserts the properties that make the seed safe — guarded,
+-- The other half of the seeds' tests. tests/seed.test.sh reads the two migrations and the
+-- two configuration files and asserts the properties that make them safe — guarded,
 -- idempotent, deterministic. This asserts the one thing a file read cannot: that
--- applying it to a real PostgreSQL produces exactly the demo content every mockup, and
+-- applying them to a real PostgreSQL produces exactly the demo content every mockup, and
 -- every e2e test written against it, expects to find — mockup 01 Step 2's three
--- organizations, number for number.
+-- organizations and mockup 02's dashboard, number for number.
+--
+-- Two migrations, one suite, because they describe one database: R__dev_seed.sql (#23) is
+-- *who exists* and R__dev_seed_dashboard.sql (#68) is *what the loop has done*, and a
+-- dashboard assertion that could not name `acme-robotics` would be asserting nothing.
 --
 -- Run it against a database migrated **with the seed enabled** — the compose stack, or
 -- `scripts/migrate --config flyway.seed.toml`:
@@ -26,7 +30,8 @@
 -- against a database somebody is working in.
 --
 -- Filed as issue #23; moved to the BetterAuth shape by #708; grown to the full
--- auth-aware demo set — three organizations, password sign-in — by #709.
+-- auth-aware demo set — three organizations, password sign-in — by #709; extended with
+-- the dashboard read-model — mockup 02, number for number — by #68.
 
 \set ON_ERROR_STOP on
 
@@ -316,6 +321,323 @@ select pg_temp.must_hold(
      select id::text from ouroboros.github_repos where id::text like '5eed%'
    ) as seeded),
   'the seed created its twenty fixed-id rows and no twenty-first');
+
+-- ===========================================================================
+-- R__dev_seed_dashboard.sql — mockup 02, number for number.
+--
+-- Every assertion below is scoped to the ids the dashboard seed creates
+-- (`5eed0009…` runs, `5eed000a…` queue items, `5eed000b…` usage events) rather than to
+-- the tables at large. A developer who inserted a run of their own to try something must
+-- not fail this suite, and an aggregate over "every row in `runs`" would be an assertion
+-- about their afternoon rather than about the seed.
+--
+-- The counts are exact, which is what makes this file the idempotency test for the
+-- dashboard seed as well: applying it twice would double every one of them.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- Active loops — the `c-8` card and the *Loops live* stat.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" = 'acme-robotics'
+      and run.id::text like '5eed0009%'
+      and run.finished_at is null),
+  'three loops are live in acme-robotics — the Loops live stat');
+
+-- Row for row, with the stage meter and the model pill the card renders. `finished_at` is
+-- null on all three (runs_terminal_finished_at), which is what puts them in this card and
+-- not the completions one.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.runs run
+    where run.id::text like '5eed0009%'
+      and (run.issue_number, run.workflow_tag, run.model, run.status,
+           run.stage_label, run.stage_index, run.stage_total) in (
+        (482, 'standard-fix', 'claude-fable-5',     'coding',   'Implementing', 4, 6),
+        (479, 'feature-loop', 'claude-sonnet-5',    'building', 'Build farm',   5, 7),
+        (476, 'deps-refresh', 'ollama/qwen3-coder', 'review',   'Self-review',  6, 6))),
+  'the three live runs are #482 coding, #479 building and #476 in review, as the mockup draws them');
+
+-- No pull request on a live run: the active table has no PR column, and a number here
+-- would be a number outside the mockup.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs run
+    where run.id::text like '5eed0009%'
+      and run.finished_at is null
+      and (run.pr_number is not null or run.checks_total is not null)),
+  'no live run claims a pull request or a check count');
+
+-- ---------------------------------------------------------------------------
+-- Recently closed by the loop — the four rows of the `c-7` card.
+--
+-- The card is `order by finished_at desc limit 4`, so this asserts both the content and
+-- that these four are the newest terminal runs in the workspace — a fifth, newer row
+-- would render in their place.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 4 from (
+     select run.issue_number, run.pr_number, run.model, run.status,
+            run.checks_passed, run.checks_total,
+            (run.finished_at - run.started_at) as cycle
+       from ouroboros.runs run
+       join ouroboros.organization org on org."id" = run.organization_id
+      where org."slug" = 'acme-robotics'
+        and run.id::text like '5eed0009%'
+        and run.finished_at is not null
+      order by run.finished_at desc
+      limit 4) as newest
+   where (newest.issue_number, newest.pr_number, newest.model, newest.status,
+          newest.checks_passed, newest.checks_total, newest.cycle) in (
+     (474, 512, 'claude-fable-5',      'merged',      14, 14, interval '11 minutes'),
+     (471, 509, 'copilot/gpt-5-codex', 'merged',      14, 14, interval '19 minutes'),
+     (468, 507, 'ollama/qwen3-coder',  'merged',      12, 12, interval  '6 minutes'),
+     (465, 504, 'claude-sonnet-5',     'needs_human', 13, 14, interval '42 minutes'))),
+  'the four newest closed runs are #474→PR#512 … #465→PR#504, with the mockup''s cycles and checks');
+
+-- ---------------------------------------------------------------------------
+-- The stat row's history, and the loop-pulse metrics.
+--
+-- These are the numbers #70 computes; asserting them here is what makes "the aggregate
+-- endpoint reproduces every mockup number" a property of the data rather than a hope
+-- about the query.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 27 from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" = 'acme-robotics'
+      and run.id::text like '5eed0009%'
+      and run.status = 'merged'
+      and run.finished_at >= now() - interval '7 days'),
+  'twenty-seven runs merged in the trailing seven days — PRs merged · 7d');
+
+-- `▲ 8 vs last week` is a comparison, so the week before has to hold nineteen.
+select pg_temp.must_hold(
+  (select count(*) = 19 from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" = 'acme-robotics'
+      and run.id::text like '5eed0009%'
+      and run.status = 'merged'
+      and run.finished_at >= now() - interval '14 days'
+      and run.finished_at <  now() - interval  '7 days'),
+  'nineteen merged in the week before that, which is what makes the delta ▲ 8');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" = 'acme-robotics'
+      and run.id::text like '5eed0009%'
+      and run.status = 'needs_human'
+      and run.finished_at >= now() - interval '7 days'),
+  'two runs stopped for a human this week — Human interventions');
+
+-- *Avg. cycle time* — over every run that closed in the window, including the two that
+-- stopped for a human. Exact rather than approximate: the seed's cycle spread is built to
+-- sum to 29 × 860s, and a row added or removed without re-doing that arithmetic fails
+-- here rather than quietly rendering 14m 19s.
+select pg_temp.must_hold(
+  (select avg(run.finished_at - run.started_at) = interval '14 minutes 20 seconds'
+     from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" = 'acme-robotics'
+      and run.id::text like '5eed0009%'
+      and run.finished_at >= now() - interval '7 days'),
+  'the twenty-nine runs closed this week average exactly 14m 20s — Avg. cycle time');
+
+-- *Autonomous merge rate* — 46 merged of 50 closed across the whole seeded history, which
+-- is 92% with no rounding. See R__dev_seed_dashboard.sql's header for why the population
+-- is the seeded history and not the trailing week: 27 merged of *any* integer number of
+-- closed runs cannot be 92%.
+select pg_temp.must_hold(
+  (select count(*) filter (where run.status = 'merged') = 46 and count(*) = 50
+     from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" = 'acme-robotics'
+      and run.id::text like '5eed0009%'
+      and run.finished_at is not null),
+  'forty-six of the fifty closed runs merged — 92% exactly, the Autonomous merge rate');
+
+-- Every status the CHECK admits is exercised, `failed` included — the one outcome no card
+-- on mockup 02 draws, and the one a fixture is otherwise least likely to have.
+select pg_temp.must_hold(
+  (select count(distinct run.status) = 6 from ouroboros.runs run
+    where run.id::text like '5eed0009%'),
+  'the seeded runs exercise all six statuses, including failed');
+
+-- The failed run is the one with no pull request — a run can fail before it opens one,
+-- which is the case runs_merged_has_pr deliberately permits and runs_checks_paired
+-- requires to be both-null rather than 0/0.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs run
+    where run.id::text like '5eed0009%'
+      and run.status = 'failed'
+      and run.pr_number is null
+      and run.checks_passed is null and run.checks_total is null),
+  'the one failed run carries no pull request and no checks');
+
+select pg_temp.must_hold(
+  (select count(*) = 53 from ouroboros.runs run
+    where run.id::text like '5eed0009%'),
+  'the dashboard seed created fifty-three runs and no fifty-fourth');
+
+-- ---------------------------------------------------------------------------
+-- Up next in queue — the `c-5` card and the *Queued issues* stat.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 12 and sum(item.est_minutes) = 580
+     from ouroboros.queue_items item
+     join ouroboros.organization org on org."id" = item.organization_id
+    where org."slug" = 'acme-robotics'
+      and item.id::text like '5eed000a%'),
+  'twelve issues are queued and their estimates total 580 minutes — 12, est. 9h 40m');
+
+-- The five the card draws, in the order it draws them.
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.queue_items item
+    where item.id::text like '5eed000a%'
+      and (item.position, item.issue_number, item.effort, item.workflow_tag) in (
+        (1, 485, 'm',  'standard-fix'),
+        (2, 486, 'l',  'feature-loop'),
+        (3, 488, 'xs', 'docs-loop'),
+        (4, 490, 'xl', 'deps-refresh'),
+        (5, 491, 's',  'standard-fix'))),
+  'the queue head is #485 M, #486 L, #488 XS, #490 XL, #491 S — the five rows the card draws');
+
+-- Dense from 1, which is the writer's convention rather than a constraint (V009 leaves
+-- density to the writer so a reorder can defer). The seed is that writer, so it keeps it.
+select pg_temp.must_hold(
+  (select min(item.position) = 1 and max(item.position) = 12
+          and count(distinct item.position) = 12
+     from ouroboros.queue_items item
+    where item.id::text like '5eed000a%'),
+  'the queue is densely ordered from 1 to 12, with no position claimed twice');
+
+-- All five chips, which is what makes the card's styling and #73's filters honest.
+select pg_temp.must_hold(
+  (select count(distinct item.effort) = 5 from ouroboros.queue_items item
+    where item.id::text like '5eed000a%'),
+  'the queue exercises all five effort chips');
+
+-- One item is deliberately unestimated — null is *not estimated*, which is not zero, and
+-- `sum` skipping it is what the 580 above already depends on.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.queue_items item
+    where item.id::text like '5eed000a%' and item.est_minutes is null),
+  'exactly one queued issue carries no estimate, so the null path has a fixture');
+
+-- ---------------------------------------------------------------------------
+-- Token spend · today — the ledger behind the fourth stat.
+--
+-- The day is UTC, fixed by `token_usage_daily` rather than by the session (V010), so this
+-- reads the view rather than the table and gets the same answer from any connection.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select sum(day.tokens_total) = 4200000 and count(*) = 4 and sum(day.events) = 12
+     from ouroboros.token_usage_daily day
+     join ouroboros.organization org on org."id" = day.organization_id
+    where org."slug" = 'acme-robotics'
+      and day.day = (now() at time zone 'utc')::date),
+  'today holds 4.2M tokens across four providers, in twelve events — Token spend · today');
+
+-- `≈ $18.60`, and the `≈` itself: the priced events total 1 860 cents, and the three
+-- unpriced ones (local inference on the workstation) are why the figure is a lower bound.
+select pg_temp.must_hold(
+  (select sum(day.cost_cents) = 1860 and sum(day.unpriced_events) = 3
+     from ouroboros.token_usage_daily day
+     join ouroboros.organization org on org."id" = day.organization_id
+    where org."slug" = 'acme-robotics'
+      and day.day = (now() at time zone 'utc')::date),
+  'the priced events total $18.60 and three are unpriced — which is what the card''s ≈ means');
+
+-- Every event is today's, whatever hour the stack came up at. An event that fell into
+-- yesterday would silently shrink the card rather than fail anything.
+select pg_temp.must_hold(
+  (select count(*) = 12 from ouroboros.token_usage usage
+    where usage.id::text like '5eed000b%'
+      and (usage.occurred_at at time zone 'utc')::date = (now() at time zone 'utc')::date
+      and usage.occurred_at <= now()),
+  'all twelve usage events fall inside the current UTC day, and none is in the future');
+
+-- Attribution follows the model, and the events no run caused are the ordinary case V010
+-- made `run_id` nullable for.
+select pg_temp.must_hold(
+  (select count(*) filter (where usage.run_id is not null) = 5
+      and count(*) filter (where usage.run_id is null)     = 7
+     from ouroboros.token_usage usage
+    where usage.id::text like '5eed000b%'),
+  'five usage events are attributed to a run and seven are not');
+
+-- ---------------------------------------------------------------------------
+-- Auto-merge when checks pass — the page's only write.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.workspace_settings settings
+     join ouroboros.organization org on org."id" = settings.organization_id
+     join ouroboros."user" person   on person."id" = settings.updated_by
+    where org."slug" = 'acme-robotics'
+      and settings.auto_merge_on_checks
+      and person."email" = 'ken@acme-robotics.dev'),
+  'acme-robotics has auto-merge on, attributed to the person who owns it');
+
+-- ---------------------------------------------------------------------------
+-- The empty-state fixture.
+--
+-- `kensuenobu` is the personal workspace #86 renders the zero-state cards against, and
+-- `acme-labs` is empty for the same reason. This is the acceptance criterion "switching
+-- the active organization to kensuenobu yields all-empty cards", stated where it can be
+-- observed: the seed puts nothing in any of the four tables for either of them.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'neither the personal workspace nor acme-labs has a run');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.queue_items item
+     join ouroboros.organization org on org."id" = item.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'neither the personal workspace nor acme-labs has a queued issue');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'neither the personal workspace nor acme-labs has spent a token');
+
+-- No settings *row*, which is not the same as a row saying false — and the difference is
+-- what V011's lazy creation is about. The view is what resolves it, so both halves are
+-- asserted: no row, and a `false` that is not explicit.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workspace_settings settings
+     join ouroboros.organization org on org."id" = settings.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'neither the personal workspace nor acme-labs has a settings row');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.workspace_settings_effective effective
+     join ouroboros.organization org on org."id" = effective.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')
+      and not effective.auto_merge_on_checks
+      and not effective.is_explicit),
+  'both empty workspaces read auto-merge off, and read it as a default rather than a choice');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the dashboard seed's own rows.
+--
+-- Seventy-seven rows, seventy-seven `5eed…` ids, each under the prefix its table was
+-- given — so a run, a queue item and a usage event are told apart on sight in a log or a
+-- URL, and a row added later with a generated id is caught here rather than by nobody.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 77 from (
+     select id from ouroboros.runs        where id::text like '5eed0009-0000-4000-8000-%'
+     union all
+     select id from ouroboros.queue_items where id::text like '5eed000a-0000-4000-8000-%'
+     union all
+     select id from ouroboros.token_usage where id::text like '5eed000b-0000-4000-8000-%'
+   ) as seeded),
+  'the dashboard seed created its seventy-seven prefixed rows and no seventy-eighth');
 
 \o
 \echo 'seed.sql: all assertions passed'
