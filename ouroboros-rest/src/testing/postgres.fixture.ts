@@ -12,7 +12,7 @@
  * `migrations/*.sql` and executed them in order would be a second implementation of the one
  * thing `ouroboros-db` exists to own — it would apply a repeatable migration in the wrong
  * place, ignore `validateMigrationNaming`, and leave no `flyway_schema_history` to compare a
- * deployment against. So the same `flyway/flyway:11-alpine` the compose stack runs is
+ * deployment against. So the same `flyway/flyway:13-alpine` the compose stack runs is
  * started against the same `flyway.toml`, with the same arguments, over a private network.
  * `migration.fixture.ts` holds those arguments and `migration.fixture.spec.ts` compares them
  * with `docker-compose.yml` on every unit run, so the two cannot drift apart quietly.

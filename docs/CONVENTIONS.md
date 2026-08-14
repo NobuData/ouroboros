@@ -336,7 +336,7 @@ of entry points pointing at nothing.
 **A task image answers to fewer of these rules, and says which.** Not every image is a
 service. [`ouroboros-db/Dockerfile`](../ouroboros-db/Dockerfile) is the migrations, the
 Flyway project configuration that applies them and the entrypoint that turns the module's
-`OURO_*` variables into a connection, on the `flyway/flyway:11-alpine` the rest of the
+`OURO_*` variables into a connection, on the `flyway/flyway:13-alpine` the rest of the
 repository already migrates with — it starts, applies what is pending, and exits. So it is a single stage (the
 artefact is the committed `.sql` files; there is no build to keep out of a runtime),
 installs nothing (its one dependency is the base image), and declares no `HEALTHCHECK`
@@ -376,7 +376,7 @@ database wherever it happens to be, and reads the module's own `.env` to do it.
 
 Six rules keep it reproducible:
 
-1. **Images are pinned** to a major version (`postgres:17-alpine`, `flyway/flyway:11`),
+1. **Images are pinned** to a major version (`postgres:17-alpine`, `flyway/flyway:13`),
    never `latest`, so two developers a month apart get the same database.
 2. **Dependencies wait on healthchecks, never on sleeps.** The migrator starts on
    `condition: service_healthy`, which is what stops the first migration racing the

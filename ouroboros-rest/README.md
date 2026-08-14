@@ -442,7 +442,7 @@ yarn test:integration     # Docker is the only prerequisite
 ```
 
 The run starts `postgres:17-alpine` through Testcontainers, applies `ouroboros-db`'s Flyway
-project to it with the pinned `flyway/flyway:11-alpine`, boots the application on a random
+project to it with the pinned `flyway/flyway:13-alpine`, boots the application on a random
 port, and throws the container away when it ends. `ci/rest` runs the same command with no
 setup around it, so what a pull request proves is what you just ran.
 

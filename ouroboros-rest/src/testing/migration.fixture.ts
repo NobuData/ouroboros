@@ -23,7 +23,7 @@ import { resolve } from "node:path";
 export const POSTGRES_IMAGE = "postgres:17-alpine";
 
 /** The Flyway that applies the migrations — the same tag compose and `run.sh` pin. */
-export const FLYWAY_IMAGE = "flyway/flyway:11-alpine";
+export const FLYWAY_IMAGE = "flyway/flyway:13-alpine";
 
 /**
  * The role, database and schema the container is created with.

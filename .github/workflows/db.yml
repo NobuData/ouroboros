@@ -176,7 +176,7 @@ jobs:
       # `scripts/migrate` rather than a `flyway` command written out here, so CI applies
       # migrations the same way a developer does: it reads ouroboros-db/flyway.toml
       # through -workingDirectory exactly as the compose stack does, and with no `flyway`
-      # on the runner's PATH it picks the pinned flyway/flyway:11-alpine image by itself.
+      # on the runner's PATH it picks the pinned flyway/flyway:13-alpine image by itself.
       #
       # This is the whole point of the job. A migration that does not apply, applies out
       # of order, or contradicts one already applied fails here — on the pull request,
@@ -338,7 +338,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # The published artefact — ouroboros-db/Dockerfile, which is this module in the
   # form something other than a laptop can apply: the migrations, flyway.toml, the seed
-  # overlay and the entrypoint that turns OURO_DB_* into a connection, on the Flyway 11
+  # overlay and the entrypoint that turns OURO_DB_* into a connection, on the Flyway 13
   # image the rest of the repository already migrates with.
   #
   # `needs: ci` is the point of publishing from this workflow rather than from one of its

@@ -409,7 +409,7 @@ YAML
   # The image that job publishes. Only its presence is this script's business — what is
   # inside it is scripts/verify-dev-env.sh's, and the tests for that are its own suite.
   mkdir -p "$fixture/ouroboros-db"
-  printf 'FROM flyway/flyway:11-alpine\n' > "$fixture/ouroboros-db/Dockerfile"
+  printf 'FROM flyway/flyway:13-alpine\n' > "$fixture/ouroboros-db/Dockerfile"
 
   # The development stack, present because ci/db's whole purpose is to migrate the
   # PostgreSQL it pins — so the pin is cross-checked against this file rather than

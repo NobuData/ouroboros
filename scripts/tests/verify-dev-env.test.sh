@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
 
   flyway:
-    image: flyway/flyway:11-alpine
+    image: flyway/flyway:13-alpine
     depends_on:
       db:
         condition: service_healthy
@@ -270,7 +270,7 @@ TOML
 #!/usr/bin/env sh
 : "${OURO_DB_HOST?} ${OURO_DB_PORT?} ${OURO_DB_NAME?}"
 : "${OURO_DB_USER?} ${OURO_DB_PASSWORD?} ${OURO_DB_SCHEMA?}"
-exec docker run --rm flyway/flyway:11-alpine \
+exec docker run --rm flyway/flyway:13-alpine \
   -workingDirectory=/flyway/project -password="$db_password" migrate
 RUNNER
   chmod +x "$fixture/ouroboros-db/run.sh"
@@ -292,7 +292,7 @@ RUNNER
   # project directory all three use, and the guards that keep a credential and a `clean`
   # out of a layer.
   cat > "$fixture/ouroboros-db/Dockerfile" <<'IMAGE'
-FROM flyway/flyway:11-alpine
+FROM flyway/flyway:13-alpine
 
 COPY migrations/ /flyway/project/migrations/
 COPY flyway.toml flyway.seed.toml /flyway/project/
@@ -439,8 +439,8 @@ check_break 'publishing the database on every interface is reported' \
   'sed -i "s|- \"127\.0\.0\.1:|- \"|" "$root/docker-compose.yml"'
 
 check_break 'an unpinned Flyway image is reported' \
-  'flyway pins the Flyway 11 image' \
-  'sed -i "s|flyway/flyway:11-alpine|flyway/flyway:latest|" "$root/docker-compose.yml"'
+  'flyway pins the Flyway 13 image' \
+  'sed -i "s|flyway/flyway:13-alpine|flyway/flyway:latest|" "$root/docker-compose.yml"'
 
 check_break 'starting the migrator before the healthcheck is reported' \
   'flyway waits for the healthcheck' \
@@ -809,8 +809,8 @@ check_break 'a runner that has drifted from the stack is reported' \
   'sed -i "s|-workingDirectory=/flyway/project ||" "$root/ouroboros-db/run.sh"'
 
 check_break 'a runner on a different Flyway is reported' \
-  'run\.sh pins the same Flyway 11 image' \
-  'sed -i "s|flyway/flyway:11-alpine|flyway/flyway:10|" "$root/ouroboros-db/run.sh"'
+  'run\.sh pins the same Flyway 13 image' \
+  'sed -i "s|flyway/flyway:13-alpine|flyway/flyway:10|" "$root/ouroboros-db/run.sh"'
 
 check_break 'a literal password in the runner is reported' \
   'run\.sh holds no literal password' \
@@ -846,8 +846,8 @@ check_break 'a missing image is reported' \
   'rm "$root/ouroboros-db/Dockerfile"'
 
 check_break 'an image on a different Flyway is reported' \
-  'the image pins the same Flyway 11 image' \
-  'sed -i "s|flyway/flyway:11-alpine|flyway/flyway:10|" "$root/ouroboros-db/Dockerfile"'
+  'the image pins the same Flyway 13 image' \
+  'sed -i "s|flyway/flyway:13-alpine|flyway/flyway:10|" "$root/ouroboros-db/Dockerfile"'
 
 check_break 'an image without the migrations is reported' \
   'the image carries the migrations' \

@@ -23,7 +23,7 @@ modules, the boundaries between them, the request paths, and the `OURO_*` regist
 | [`ouroboros-ui/`](ouroboros-ui) | Product UI — the application users sign into | Next.js (App Router), TypeScript, Yarn | 3000 | [#5](https://github.com/NobuData/ouroboros/issues/5) |
 | [`ouroboros-rest/`](ouroboros-rest) | Communications layer — auth, tenancy, gateway | NestJS 11, TypeScript, Kysely, Yarn | 4000 | [#4](https://github.com/NobuData/ouroboros/issues/4) |
 | [`ouroboros-engine/`](ouroboros-engine) | Backend work execution | Python 3.12, FastAPI, uv | 8000 | [#6](https://github.com/NobuData/ouroboros/issues/6) |
-| [`ouroboros-db/`](ouroboros-db) | Tenancy schema and migrations | PostgreSQL 17, Flyway 11, SQL | 5432 | [#3](https://github.com/NobuData/ouroboros/issues/3) |
+| [`ouroboros-db/`](ouroboros-db) | Tenancy schema and migrations | PostgreSQL 17, Flyway 13, SQL | 5432 | [#3](https://github.com/NobuData/ouroboros/issues/3) |
 | [`ouroboros-web/`](ouroboros-web) | Marketing site — [ouroboros.build](https://ouroboros.build) | Next.js, TypeScript, Yarn | 3000 | — |
 | [`docs/`](docs) | Mockups, design system, brand assets, roadmaps, architecture | Markdown, HTML | — | — |
 

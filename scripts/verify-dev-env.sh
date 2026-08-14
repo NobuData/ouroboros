@@ -154,7 +154,7 @@ check_contains "$COMPOSE" '^volumes:$' "$COMPOSE declares its volumes"
 check_contains "$COMPOSE" '^  ouroboros-db-data:$' 'the data volume is named, so down -v reclaims it'
 
 printf '\nMigration service\n'
-check_contains "$COMPOSE" '^    image: flyway/flyway:11' 'flyway pins the Flyway 11 image'
+check_contains "$COMPOSE" '^    image: flyway/flyway:13' 'flyway pins the Flyway 13 image'
 check_contains "$COMPOSE" '^      db:$' 'flyway depends on db'
 check_contains "$COMPOSE" '^        condition: service_healthy$' 'flyway waits for the healthcheck, not a sleep'
 check_contains "$COMPOSE" "^      - \\./$FLYWAY_CONFIG:$PROJECT/flyway\\.toml:ro\$" 'flyway mounts the project configuration read-only'
@@ -496,7 +496,7 @@ done
 # #19 that is the project directory and the image: the rules themselves are in the one
 # flyway.toml they both read from it.
 check_contains ouroboros-db/run.sh '\-workingDirectory=' 'run.sh reads flyway.toml, as the stack does'
-check_contains ouroboros-db/run.sh 'flyway/flyway:11' 'run.sh pins the same Flyway 11 image'
+check_contains ouroboros-db/run.sh 'flyway/flyway:13' 'run.sh pins the same Flyway 13 image'
 # A password that comes from a variable opens with `"` or `$`, and the redaction branch
 # opens with `*`; anything alphanumeric is a credential someone typed in.
 check_absent ouroboros-db/run.sh '\-password=[[:alnum:]]' 'run.sh holds no literal password'
@@ -515,7 +515,7 @@ check_exists "$DOCKERFILE" "$DOCKERFILE exists"
 # The third place Flyway is pinned, after the compose stack and run.sh. An image that
 # applied these migrations with a different Flyway than the one the pull request proved
 # them against would make ci/db prove something other than what ships.
-check_contains "$DOCKERFILE" '^FROM flyway/flyway:11' 'the image pins the same Flyway 11 image'
+check_contains "$DOCKERFILE" '^FROM flyway/flyway:13' 'the image pins the same Flyway 13 image'
 # The same directory the other two runners use, so flyway.toml's relative
 # `filesystem:migrations` resolves to the migrations in all three.
 check_contains "$DOCKERFILE" "^COPY migrations/ $PROJECT/migrations/\$" 'the image carries the migrations'

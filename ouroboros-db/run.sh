@@ -74,7 +74,7 @@ ENV_FILES="$MODULE_DIR/.env $ROOT/.env"
 
 # Matches the flyway service in ../docker-compose.yml, so both apply the same migrations
 # the same way.
-FLYWAY_IMAGE=flyway/flyway:11-alpine
+FLYWAY_IMAGE=flyway/flyway:13-alpine
 
 TAB=$(printf '\t')
 dry_run=0

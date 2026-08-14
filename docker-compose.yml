@@ -81,7 +81,7 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # Flyway 11 — the sole owner of DDL (docs/CONVENTIONS.md § 10, invariant 2).
+  # Flyway 13 — the sole owner of DDL (docs/CONVENTIONS.md § 10, invariant 2).
   #
   # Runs once per `up`, applies what is pending, and exits. How it is configured is not
   # written here: ouroboros-db/flyway.toml holds where the migrations are, that the
@@ -107,7 +107,7 @@ services:
   # what Flyway reads is mounted — the module's .env belongs to the developer.
   # ---------------------------------------------------------------------------
   flyway:
-    image: flyway/flyway:11-alpine
+    image: flyway/flyway:13-alpine
     depends_on:
       db:
         condition: service_healthy

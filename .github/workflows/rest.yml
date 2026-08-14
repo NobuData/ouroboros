@@ -65,7 +65,7 @@ jobs:
 
     # No service container, and no migration step, since #37. The integration harness
     # starts `postgres:17-alpine` through Testcontainers and migrates it with the pinned
-    # `flyway/flyway:11-alpine` against this checkout's `ouroboros-db/flyway.toml` — the
+    # `flyway/flyway:13-alpine` against this checkout's `ouroboros-db/flyway.toml` — the
     # same two images and the same arguments the development stack uses, which the unit
     # suite checks against docker-compose.yml on every run.
     #

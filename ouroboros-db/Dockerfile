@@ -41,7 +41,7 @@
 # ../scripts/verify-dev-env.sh fails if the three ever disagree. A published image that
 # applied these migrations with a different Flyway than the one a pull request proved
 # them against would make the gate mean less than it appears to.
-FROM flyway/flyway:11-alpine
+FROM flyway/flyway:13-alpine
 
 # Only what Flyway reads, laid out the way both other runners lay it out: /flyway/project
 # is the -workingDirectory in the compose stack and in run.sh's container arm, so the

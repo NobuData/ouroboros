@@ -207,7 +207,7 @@ rather than duplicated behind it.
 
 ### 2.4 `ouroboros-db` — the tenancy database
 
-**Running.** PostgreSQL 17, Flyway 11, schema `ouroboros`, port 5432.
+**Running.** PostgreSQL 17, Flyway 13, schema `ouroboros`, port 5432.
 
 Flyway is the **sole owner of DDL** — no application module creates or alters schema.
 Migrations live in [`ouroboros-db/migrations/`](../ouroboros-db/migrations) as plain SQL,

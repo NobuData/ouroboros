@@ -408,8 +408,8 @@ done
 # The two migration paths must not drift: whatever compose applies, this applies too.
 # Since #19 that is one assertion rather than one per setting — both are pointed at the
 # same project directory, and the settings live in the file they find there.
-check_contains "$MODULE_DIR/run.sh" 'flyway/flyway:11' 'run.sh pins the Flyway 11 image'
-check_contains "$REPO_ROOT/docker-compose.yml" 'flyway/flyway:11' \
+check_contains "$MODULE_DIR/run.sh" 'flyway/flyway:13' 'run.sh pins the Flyway 13 image'
+check_contains "$REPO_ROOT/docker-compose.yml" 'flyway/flyway:13' \
   'docker-compose.yml pins the same image'
 check_contains "$MODULE_DIR/run.sh" '\-workingDirectory=' 'run.sh reads the project config'
 check_contains "$REPO_ROOT/docker-compose.yml" '\-workingDirectory=/flyway/project' \

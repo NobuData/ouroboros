@@ -81,7 +81,7 @@ Flyway is the **sole owner of DDL**. No application module creates or alters tab
 | Concern | Choice |
 |---|---|
 | Database | PostgreSQL 17 |
-| Migrations | Flyway 11, run from its container — no local Java required |
+| Migrations | Flyway 13, run from its container — no local Java required |
 | Language | Plain SQL (no templating, no ORM DSL) |
 | Schema | `ouroboros` |
 | Configuration | [`flyway.toml`](flyway.toml) — one file, read by every path |
@@ -255,7 +255,7 @@ Flyway itself comes from whichever is available, and `--runner` overrides the ch
 | Runner | What it uses | When it is chosen |
 |---|---|---|
 | `flyway` | the `flyway` on your PATH | automatically, if you have one — no Docker at all |
-| `docker` | the pinned `flyway/flyway:11` image | otherwise, so no local Java is needed |
+| `docker` | the pinned `flyway/flyway:13` image | otherwise, so no local Java is needed |
 
 When the container runs against a database on this machine it is given host networking,
 because a server bound to loopback — which both a default PostgreSQL install and the
@@ -435,7 +435,7 @@ Everything above assumes a checkout: `docker compose up` mounts this directory, 
 `scripts/` commands read it from disk. A deployment has neither. [`Dockerfile`](Dockerfile)
 is this module in the form that needs no checkout — the migrations, `flyway.toml`, the
 seed overlay and [`docker-entrypoint.sh`](docker-entrypoint.sh), on the same
-`flyway/flyway:11-alpine` the compose stack and `run.sh` already use — and `publish/db`
+`flyway/flyway:13-alpine` the compose stack and `run.sh` already use — and `publish/db`
 pushes it as `ouroboros-db:latest` and `ouroboros-db:<commit sha>`.
 
 **It is a task, not a service.** It applies what is pending and exits, and its exit
