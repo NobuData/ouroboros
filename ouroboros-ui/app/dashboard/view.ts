@@ -18,6 +18,7 @@ import type {
   Dashboard,
   DashboardActivity,
   DashboardStats,
+  LoopPulse,
   RunStatus,
   RunSummary,
 } from "@/app/api/dashboard";
@@ -25,7 +26,12 @@ import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { Membership } from "@/app/api/membership";
 import type { SessionUser } from "@/app/api/identity";
-import { compactNumber, durationOfMinutes, moneyOfCents } from "@/app/format";
+import {
+  compactNumber,
+  durationOfMinutes,
+  elapsedOfSeconds,
+  moneyOfCents,
+} from "@/app/format";
 
 /**
  * One read that was attempted: what it returned, or why it did not.
@@ -701,6 +707,230 @@ export function activeLoops(
 export function moreActiveLoops(total: number, shown: number): number {
   return Math.max(0, total - shown);
 }
+
+/* -------------------------------------------------------------------- the loop pulse */
+
+/**
+ * Which hue a pulse meter takes.
+ *
+ * A subset of the design system's meter tones (`app/ui/meter.tsx`), written as its own union
+ * so this module stays what its header says it is — pure, and dependent on nothing that
+ * draws. The three hues are fixed by the mockup rather than derived from data: a merge rate
+ * reports an outcome (`ok`), a cycle time reports progress through a budget (`accent`), and
+ * an intervention is by definition something that wanted a person (`warn`). None of them
+ * changes with the figure, which is deliberate — a bar that turned red when a number got
+ * worse would be this card inventing a threshold nobody has agreed on.
+ */
+export type PulseTone = "ok" | "accent" | "warn";
+
+/** One row of the pulse card: a caption, a figure, and the bar under them. */
+export interface PulseMeter {
+  /** Stable identifier, and the React key. */
+  readonly id: string;
+  /** What the row is called, as the mockup captions it. */
+  readonly label: string;
+  /** The window it is measured over, in words — the card prints it beside the caption. */
+  readonly window: string;
+  /** The figure, in the mono treatment the mockup gives it. */
+  readonly value: string;
+  /**
+   * How full the bar is, `0`–`1`.
+   *
+   * **Rounded to a whole percent.** A proportion measured against a target somebody chose
+   * is a gauge, not a measurement, and a bar drawn to a tenth of a percent would claim a
+   * precision its own denominator does not have. It also keeps the bar and the figure
+   * beside it from ever disagreeing: `92%` printed is `92%` drawn.
+   */
+  readonly fill: number;
+  /** Which hue the bar and the figure take. */
+  readonly tone: PulseTone;
+  /** What a screen reader hears instead of the bare percentage. */
+  readonly valueText: string;
+}
+
+/**
+ * The window the merge rate is measured over, in words.
+ *
+ * **Fourteen days, where the two below are seven**, and the card prints it because the head's
+ * `7 days` tag would otherwise speak for a figure it does not cover. The contract's own
+ * description of `pulse.mergeRate` is where the reason lives: the mockup's `92%`, its `27
+ * merged / 7d` and its `2 interventions` cannot all be true of one seven-day window, and over
+ * fourteen the seeded rows give 46 merged of 50 closed — `0.92` exactly.
+ */
+export const MERGE_RATE_WINDOW = "14 days";
+
+/** The window the cycle time and the intervention count are measured over. */
+export const PULSE_WINDOW = "7 days";
+
+/**
+ * The cycle time a full bar stands for — thirty minutes, in seconds.
+ *
+ * The mockup draws `14m 20s` at 48% of its track, and this is that number written down: a
+ * bar needs a denominator, the payload carries none, and a width nobody can explain is a
+ * width nobody can check. Thirty minutes is the round figure closest to what the mockup drew
+ * (860 ÷ 1800 = 47.8%, which rounds to the mockup's 48%), and it reads as a target rather
+ * than as a limit: **the bar fills as a cycle uses up the half hour**, so less is better and
+ * a full bar is a loop taking longer than the workspace hoped.
+ *
+ * A cycle longer than the target clamps at full rather than overflowing — `app/ui/meter.tsx`
+ * refuses to draw past its own track — and the figure beside it is the measurement, always.
+ */
+export const CYCLE_TIME_TARGET_SECONDS = 30 * 60;
+
+/**
+ * The interventions a full bar stands for — a week's budget.
+ *
+ * The mockup draws `2` at 8%, which is 2 ÷ 25 exactly, and twenty-five is a reasonable week's
+ * tolerance for a workspace running the loop continuously. Like the cycle target it is a
+ * number this product chose rather than one the service reports, so it is written down here,
+ * exported, and covered by a test — and the day a workspace can set its own, this constant is
+ * the one thing that changes.
+ */
+export const INTERVENTION_BUDGET_7D = 25;
+
+/** What the pulse card says when nothing has closed in either window. */
+export const PULSE_UNMEASURED =
+  "No runs have finished yet, so these three have nothing to measure.";
+
+/**
+ * A number the contract promised, or zero.
+ *
+ * The three pulse figures are `number` in the schema and the service computes each of them
+ * from a query that cannot answer anything else — but a card is drawn from a payload, and a
+ * `NaN` reaching a meter would draw a bar of `NaN%` rather than fail. Zero is the honest
+ * reading of a figure that arrived as no figure at all.
+ *
+ * @param value Whatever arrived.
+ * @returns It, or `0` when it is not a finite number.
+ */
+function measured(value: number): number {
+  return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * A fraction as a whole percent, `0`–`1`.
+ *
+ * @param part The numerator.
+ * @param whole The denominator. A zero or a negative one reads as *nothing to measure*
+ *   rather than as a division: an empty bar is the honest drawing of a ratio nobody can take.
+ * @returns The fraction, rounded to a whole percent and clamped to the track — so no figure,
+ *   however unlikely, can draw a bar past its own end or behind its own start.
+ */
+function barFill(part: number, whole: number): number {
+  if (!(whole > 0)) return 0;
+
+  return Math.min(1, Math.max(0, Math.round((measured(part) / whole) * 100) / 100));
+}
+
+/**
+ * Whether the pulse has anything to report at all.
+ *
+ * All three figures are floors rather than measurements when no run has closed in the
+ * window — the contract says so of each of them — and a workspace that has never finished a
+ * run would otherwise read as one that merges nothing, takes no time and needs no help. The
+ * three are checked together because that is the only state in which all three are zero at
+ * once: a workspace that has closed runs has a cycle time, and one that closed them badly has
+ * interventions.
+ *
+ * The card draws a note for it. **The designed zero state is
+ * [#86](https://github.com/NobuData/ouroboros/issues/86)'s**, which does this for every card
+ * at once; this is the sentence that keeps the meters honest until then.
+ *
+ * @param pulse The aggregate's pulse figures.
+ * @returns Whether every one of them is a floor.
+ */
+export function pulseIsUnmeasured(pulse: LoopPulse): boolean {
+  return pulse.mergeRate === 0 && pulse.avgCycleSeconds === 0 && pulse.interventions7d === 0;
+}
+
+/**
+ * The pulse card's three meters, in the mockup's order.
+ *
+ * Every width on this card is a ratio against a denominator, and only one of the three
+ * denominators comes from the service — the merge rate is already a fraction. The other two
+ * are {@link CYCLE_TIME_TARGET_SECONDS} and {@link INTERVENTION_BUDGET_7D}, chosen here,
+ * written down, and exported so a test can state the arithmetic rather than a screenshot.
+ *
+ * @param pulse The aggregate's pulse figures.
+ * @returns The three rows, each with its figure and its bar.
+ */
+export function pulseMeters(pulse: LoopPulse): readonly PulseMeter[] {
+  const rate = Math.round(measured(pulse.mergeRate) * 100);
+  const interventions = measured(pulse.interventions7d);
+
+  return [
+    {
+      id: "merge-rate",
+      label: "Autonomous merge rate",
+      window: MERGE_RATE_WINDOW,
+      value: `${rate}%`,
+      // The rate is a fraction already, so its bar is the figure itself rather than a
+      // proportion of anything this module chose. It is the one meter here that needs no
+      // denominator, and the one whose width nobody has to be told how to read.
+      fill: barFill(rate, 100),
+      tone: "ok",
+      valueText: `${rate}% of runs merged without a person, over ${MERGE_RATE_WINDOW}`,
+    },
+    {
+      id: "cycle-time",
+      label: "Avg. cycle time",
+      window: PULSE_WINDOW,
+      value: elapsedOfSeconds(pulse.avgCycleSeconds),
+      fill: barFill(pulse.avgCycleSeconds, CYCLE_TIME_TARGET_SECONDS),
+      tone: "accent",
+      valueText:
+        `${elapsedOfSeconds(pulse.avgCycleSeconds)} of the ` +
+        `${elapsedOfSeconds(CYCLE_TIME_TARGET_SECONDS)} target, over ${PULSE_WINDOW}`,
+    },
+    {
+      id: "interventions",
+      label: "Human interventions",
+      window: PULSE_WINDOW,
+      // The mockup's own words. A count with no unit beside it would be the one figure on
+      // this card that does not say what it is a count of.
+      value: `${interventions} this week`,
+      fill: barFill(interventions, INTERVENTION_BUDGET_7D),
+      tone: "warn",
+      valueText:
+        `${countOf(interventions, "run")} needed a person, of the ` +
+        `${INTERVENTION_BUDGET_7D} this workspace allows for in ${PULSE_WINDOW}`,
+    },
+  ];
+}
+
+/**
+ * Why a reader may look at the auto-merge switch and not press it.
+ *
+ * The design system's § 3.3 permission-limited state in one sentence: the control renders,
+ * in its real position, with this as its tooltip and its description. Hiding it from a member
+ * would leave a card that looks like it has no setting, and disabling the button would take
+ * the explanation out of the tab order along with the control.
+ *
+ * It is the same fact `app/dashboard/pulse-actions.ts` answers a forged write with, in the
+ * same words — the switch's tooltip and the service's refusal should not read as two
+ * different rules.
+ */
+export const AUTO_MERGE_READ_ONLY =
+  "Only an owner or an admin can change auto-merge for this workspace.";
+
+/** What the switch says when the service refused and gave nothing a person could read. */
+export const AUTO_MERGE_WRITE_FAILURE = "Auto-merge could not be changed.";
+
+/**
+ * What the switch's write answers.
+ *
+ * It describes a Server Action's return value and lives here rather than beside the action
+ * for a mechanical reason worth knowing: a `"use server"` module may export nothing but async
+ * functions, so a type or a constant declared in one is a build error. Everything about this
+ * card that is not the call itself is therefore in this module — which is also where the
+ * sentence a refusal carries is written, so the switch's tooltip and the action's answer
+ * cannot drift into two different rules.
+ */
+export type AutoMergeResult =
+  /** It persisted. The position is read back from the row, not echoed from the request. */
+  | { readonly ok: true; readonly enabled: boolean }
+  /** It did not, with the sentence to show for it. */
+  | { readonly ok: false; readonly reason: string };
 
 /* ------------------------------------------------------------------ the page head */
 

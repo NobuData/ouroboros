@@ -1,5 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
 import { NO_VALUE, QUIET_SUBLINE } from "@/app/dashboard/view";
@@ -13,7 +13,7 @@ import {
   read,
   readings,
 } from "../helpers/dashboard";
-import { sessionUser } from "../helpers/login";
+import { membership, sessionUser } from "../helpers/login";
 
 /**
  * The dashboard as a screen: mockup 02's frame drawn from what was actually read.
@@ -27,6 +27,14 @@ import { sessionUser } from "../helpers/login";
  * about what reaches the DOM, the landmarks and names it reaches it under, and the classes
  * that carry the layout.
  */
+
+// The pulse card's switch is a Client Component over a Server Action, and both halves reach
+// for something a jsdom render has not got: the action module sits on the server-only client,
+// and `useRouter()` wants the App Router mounted. Replacing both is what lets the whole screen
+// be rendered here at all — the same reason `__tests__/ui/screens.test.tsx` replaces the login
+// screen's actions. What the switch does with them is `auto-merge-switch.test.tsx`.
+vi.mock("@/app/dashboard/pulse-actions", () => ({ setAutoMerge: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 /** The four tiles of the stat row, by the name each is announced under. */
 const STAT_LABELS = [
@@ -422,6 +430,49 @@ describe("the active loops card, on the page", () => {
   });
 });
 
+describe("the loop pulse card, on the page", () => {
+  it("draws the aggregate's pulse as the mockup's `c-4` card", () => {
+    // The card's meters, glyph and switch are `__tests__/dashboard/pulse-card.test.tsx`'s.
+    // What is here is that the page hands it the aggregate it already fetched.
+    render(<DashboardScreen readings={readings()} />);
+
+    const card = screen.getByRole("region", { name: "Loop pulse" });
+
+    expect(within(card).getByText("92%")).toBeInTheDocument();
+    expect(within(card).getByRole("switch")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("hands it the workspace, so the switch answers to the reader's own role", () => {
+    // The page is where the two halves meet: the gate resolved the membership and the
+    // aggregate carries the setting, and a card given only the second would offer every
+    // reader a control the service would refuse.
+    render(
+      <DashboardScreen readings={readings({ workspace: membership({ roles: ["member"] }) })} />,
+    );
+
+    const card = screen.getByRole("region", { name: "Loop pulse" });
+
+    expect(within(card).getByRole("switch")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("is the page's one control that changes anything", () => {
+    // Everything else on this screen is inert and says why (#80, #82). A second switch here
+    // would be a second thing this page can do without the roadmap having said so.
+    const { container } = render(<DashboardScreen readings={readings()} />);
+
+    expect(container.querySelectorAll("[role='switch']")).toHaveLength(1);
+  });
+
+  it("degrades with the rest of the page when the aggregate could not be read", () => {
+    render(<DashboardScreen readings={readings({ aggregate: failed("Nope.") })} />);
+
+    const card = screen.getByRole("region", { name: "Loop pulse" });
+
+    expect(within(card).getByText("Nope.")).toBeInTheDocument();
+    expect(within(card).queryByRole("switch")).toBeNull();
+  });
+});
+
 describe("the panels with no card drawing them yet", () => {
   it("draws the two the mockup still has ahead of it as designed empty states", () => {
     // *Active loops* left this list with #82. The completions table (#84) and the queue
@@ -473,6 +524,10 @@ describe("the grid", () => {
       "dash-col--3",
       "dash-col--3",
       "dash-col--8",
+      // The mockup's own first row: the loops table and the pulse card, twelve columns
+      // between them. The system card is the one card on this grid the mockup does not
+      // draw (#45), so it follows the pair it shares a width with rather than splitting it.
+      "dash-col--4",
       "dash-col--4",
       "dash-col--7",
       "dash-col--5",
@@ -489,10 +544,18 @@ describe("the grid", () => {
     // the sheet reads (`app/ui/meter.tsx`). The case is written as *only that* rather than
     // deleted, because the rule it protects — no colour, no size, no spacing inline — is
     // what keeps the theme able to reach every surface on this page.
+    //
+    // The pulse card's glyph (#83) adds the second exception, and it is the framework's
+    // rather than this page's: `next/image` writes `color: transparent` onto every image it
+    // renders, so that the alt text of one that has not loaded is not drawn over the box it
+    // reserved. It is allowed on an `img` and nowhere else.
     const { container } = render(<DashboardScreen readings={readings()} />);
 
     for (const styled of container.querySelectorAll("[style]")) {
-      expect(styled.getAttribute("style")).toMatch(/^--ou-meter-fill:\s*[\d.]+%;?$/);
+      const allowed =
+        styled.tagName === "IMG" ? /^color:\s*transparent;?$/ : /^--ou-meter-fill:\s*[\d.]+%;?$/;
+
+      expect(styled.getAttribute("style")).toMatch(allowed);
     }
   });
 
@@ -500,7 +563,7 @@ describe("the grid", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
     const cards = [...container.querySelectorAll(".dash-grid > .ou-card")];
-    expect(cards).toHaveLength(8);
+    expect(cards).toHaveLength(9);
     for (const card of cards) {
       expect(
         card.hasAttribute("aria-label") || card.hasAttribute("aria-labelledby"),
@@ -538,7 +601,7 @@ describe("a workspace that is not the seeded one", () => {
       />,
     );
 
-    expect(container.querySelectorAll(".dash-grid > .ou-card")).toHaveLength(8);
+    expect(container.querySelectorAll(".dash-grid > .ou-card")).toHaveLength(9);
     // The greeting survives every failed read: it is the session's, which the gate resolved.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/, Ken/);
     expect(screen.getAllByText(NO_VALUE).length).toBeGreaterThan(0);

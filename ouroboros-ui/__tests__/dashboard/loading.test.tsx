@@ -14,7 +14,7 @@ import Loading from "@/app/(app)/dashboard/loading";
  */
 
 describe("the dashboard's skeleton", () => {
-  it("stands in for the same eight cards, at the same column spans", () => {
+  it("stands in for the same nine cards, at the same column spans", () => {
     // Not "some boxes": the grid the reader is about to see, so nothing moves when it does.
     const { container } = render(<Loading />);
 
@@ -28,6 +28,7 @@ describe("the dashboard's skeleton", () => {
       "dash-col--3",
       "dash-col--3",
       "dash-col--8",
+      "dash-col--4",
       "dash-col--4",
       "dash-col--7",
       "dash-col--5",

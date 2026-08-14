@@ -19,6 +19,12 @@ vi.mock("@/app/login/actions", () => ({
   ),
 }));
 
+// The dashboard has one of its own since #83 — the pulse card's auto-merge switch, whose
+// action module sits on the server-only client and whose `useRouter()` wants the App Router
+// mounted. What the switch does with either is `__tests__/dashboard/auto-merge-switch.test.tsx`.
+vi.mock("@/app/dashboard/pulse-actions", () => ({ setAutoMerge: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
 const { LoginScreen } = await import("@/app/login/login-screen");
 type LoginScreenState = Parameters<typeof LoginScreen>[0]["state"];
 
@@ -162,11 +168,14 @@ describe("the dashboard", () => {
 
     // The page head's two actions, plus the active-loops card's *Open run console* (#82).
     // Two empty panels are left: the completions table (#84) and the queue (#85).
-    expect(container.querySelectorAll(".ou-card")).toHaveLength(8);
+    expect(container.querySelectorAll(".ou-card")).toHaveLength(9);
     expect(container.querySelectorAll(".ou-btn")).toHaveLength(3);
     expect(container.querySelectorAll(".ou-empty")).toHaveLength(2);
     expect(container.querySelectorAll(".ou-eyebrow")).toHaveLength(1);
     expect(container.querySelectorAll(".ou-chip").length).toBeGreaterThan(0);
+    // The page's one control that changes something (#83) is the primitives' switch, the
+    // same one the login screen's workspace rows are turned on with.
+    expect(container.querySelectorAll(".ou-switch")).toHaveLength(1);
   });
 
   it("draws the active-loops table out of them too, rather than out of a second table", () => {
@@ -177,8 +186,11 @@ describe("the dashboard", () => {
 
     expect(container.querySelectorAll(".ou-table")).toHaveLength(1);
     expect(container.querySelectorAll(".ou-table-scroll")).toHaveLength(1);
-    expect(container.querySelectorAll(".ou-tag")).toHaveLength(3);
-    expect(container.querySelectorAll(".ou-meter")).toHaveLength(3);
+    // Three workflow tags, one per run, and the pulse card's `7 days` (#83).
+    expect(container.querySelectorAll(".ou-tag")).toHaveLength(4);
+    // One stage meter per run, and the pulse card's three (#83) — which is the reason the
+    // meter is a primitive at all rather than a shape this table drew for itself.
+    expect(container.querySelectorAll(".ou-meter")).toHaveLength(6);
     expect(container.querySelectorAll(".ou-chip--model")).toHaveLength(3);
   });
 

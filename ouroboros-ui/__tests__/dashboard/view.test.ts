@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 
+import type { LoopPulse } from "@/app/api/dashboard";
+
 import {
+  CYCLE_TIME_TARGET_SECONDS,
   EMPTY_QUEUE,
+  INTERVENTION_BUDGET_7D,
   LEVEL_WITH_LAST_WEEK,
+  MERGE_RATE_WINDOW,
   NEUTRAL_GREETING,
   NO_LOOPS,
   NO_USAGE_TODAY,
   NO_VALUE,
+  PULSE_WINDOW,
   QUIET_SUBLINE,
   STATE_LABEL,
   UNSIZED_QUEUE,
@@ -20,6 +26,8 @@ import {
   moreActiveLoops,
   overallState,
   pageSubline,
+  pulseIsUnmeasured,
+  pulseMeters,
   queuedStat,
   stageCaption,
   stagePercent,
@@ -561,6 +569,162 @@ describe("moreActiveLoops", () => {
     // They are separate queries and a run can stop between them; *−1 more* is not something
     // this card will ever say.
     expect(moreActiveLoops(1, 3)).toBe(0);
+  });
+});
+
+describe("pulseMeters", () => {
+  /**
+   * The pulse of the seeded workspace, with whatever this case is about changed.
+   *
+   * @param over The figures this case is about.
+   * @returns A complete pulse.
+   */
+  function pulse(over: Partial<LoopPulse> = {}): LoopPulse {
+    return { ...dashboardPayload().pulse, ...over };
+  }
+
+  it("draws the mockup's three figures, in its order", () => {
+    // The card's acceptance criterion, as three strings: `92%`, `14m 20s` and `2 this week`,
+    // from the seeded `0.92`, `860` seconds and `2` runs.
+    const meters = pulseMeters(pulse());
+
+    expect(meters.map((meter) => meter.id)).toEqual([
+      "merge-rate",
+      "cycle-time",
+      "interventions",
+    ]);
+    expect(meters.map((meter) => meter.value)).toEqual(["92%", "14m 20s", "2 this week"]);
+  });
+
+  it("draws the mockup's three widths, from denominators that are written down", () => {
+    // The other half of the same criterion, and the half that could otherwise be anything:
+    // 92% is the rate itself, 48% is 860 seconds of the half-hour target, and 8% is two
+    // interventions of a week's twenty-five. Every one of the three is arithmetic over an
+    // exported constant rather than a number somebody matched to a screenshot.
+    const [rate, cycle, interventions] = pulseMeters(pulse());
+
+    expect(rate?.fill).toBe(0.92);
+    expect(cycle?.fill).toBe(Math.round((860 / CYCLE_TIME_TARGET_SECONDS) * 100) / 100);
+    expect(cycle?.fill).toBe(0.48);
+    expect(interventions?.fill).toBe(2 / INTERVENTION_BUDGET_7D);
+    expect(interventions?.fill).toBe(0.08);
+  });
+
+  it("gives each meter the hue the mockup gives it, whatever the figure says", () => {
+    // A merge rate reports an outcome, a cycle time reports progress through a budget, and
+    // an intervention is by definition something that wanted a person. None of the three
+    // changes with the number: a bar that turned red at a threshold would be this card
+    // inventing one nobody has agreed on.
+    expect(pulseMeters(pulse()).map((meter) => meter.tone)).toEqual([
+      "ok",
+      "accent",
+      "warn",
+    ]);
+    expect(
+      pulseMeters(pulse({ mergeRate: 0.1, interventions7d: 40 })).map((meter) => meter.tone),
+    ).toEqual(["ok", "accent", "warn"]);
+  });
+
+  it("labels the merge rate for the window it is actually measured over", () => {
+    // The roadmap asks this card for it by name: the head's tag says `7 days` and the merge
+    // rate is fourteen, because the mockup's own figures cannot all be true of one window.
+    const [rate, cycle, interventions] = pulseMeters(pulse());
+
+    expect(rate?.window).toBe(MERGE_RATE_WINDOW);
+    expect(MERGE_RATE_WINDOW).toBe("14 days");
+    expect(cycle?.window).toBe(PULSE_WINDOW);
+    expect(interventions?.window).toBe(PULSE_WINDOW);
+  });
+
+  it("announces each bar as its own measurement rather than as a bare percentage", () => {
+    // The figure beside a bar is hidden from the accessibility tree (`pulse-card.tsx`), so
+    // this text is the *only* statement of it a screen reader gets — which is why it carries
+    // the window and the denominator that the sighted reader infers from the caption.
+    const [rate, cycle, interventions] = pulseMeters(pulse());
+
+    expect(rate?.valueText).toBe("92% of runs merged without a person, over 14 days");
+    expect(cycle?.valueText).toBe("14m 20s of the 30m 00s target, over 7 days");
+    expect(interventions?.valueText).toBe(
+      "2 runs needed a person, of the 25 this workspace allows for in 7 days",
+    );
+  });
+
+  it("agrees with itself: the width drawn is the figure printed", () => {
+    // Both are rounded to a whole percent, so `92%` printed can never sit over a bar drawn
+    // at 91.5%. A ratio against a target somebody chose is a gauge, not a measurement.
+    const [rate] = pulseMeters(pulse({ mergeRate: 0.9249 }));
+
+    expect(rate?.value).toBe("92%");
+    expect(rate?.fill).toBe(0.92);
+  });
+
+  it("clamps a cycle longer than the target rather than drawing past the track", () => {
+    // The bar is a budget being used up, so an hour against a half-hour target is *full*,
+    // and the figure beside it is still the measurement.
+    const [, cycle] = pulseMeters(pulse({ avgCycleSeconds: 5400 }));
+
+    expect(cycle?.fill).toBe(1);
+    expect(cycle?.value).toBe("1h 30m 00s");
+  });
+
+  it("clamps a week that spent its whole intervention budget and more", () => {
+    const [, , interventions] = pulseMeters(pulse({ interventions7d: 90 }));
+
+    expect(interventions?.fill).toBe(1);
+    expect(interventions?.value).toBe("90 this week");
+  });
+
+  it("draws a workspace with nothing to measure as empty rather than as a bad week", () => {
+    // Every figure is a floor rather than a measurement when nothing has closed in the
+    // window — the contract says so of each — so the bars are empty and the card says why.
+    const meters = pulseMeters(emptyDashboard().pulse);
+
+    expect(meters.map((meter) => meter.fill)).toEqual([0, 0, 0]);
+    expect(meters.map((meter) => meter.value)).toEqual(["0%", "0m 00s", "0 this week"]);
+  });
+
+  it("draws a figure that arrived as no figure at all as zero, rather than as `NaN%`", () => {
+    // The contract promises three numbers and the service computes each from a query that
+    // cannot answer anything else. This is what a card does if that promise is ever broken,
+    // and it is a bar at rest rather than a page of `NaN`.
+    const meters = pulseMeters(
+      pulse({
+        mergeRate: Number.NaN,
+        avgCycleSeconds: Number.NaN,
+        interventions7d: Number.NaN,
+      }),
+    );
+
+    expect(meters.map((meter) => meter.fill)).toEqual([0, 0, 0]);
+    expect(meters.map((meter) => meter.value)).toEqual(["0%", "0m 00s", "0 this week"]);
+  });
+
+  it("counts one intervention in the singular", () => {
+    const [, , interventions] = pulseMeters(pulse({ interventions7d: 1 }));
+
+    expect(interventions?.value).toBe("1 this week");
+    expect(interventions?.valueText).toContain("1 run needed a person");
+  });
+});
+
+describe("pulseIsUnmeasured", () => {
+  it("is true only when all three figures are floors at once", () => {
+    // Which is the one state that means it: a workspace that has closed runs has a cycle
+    // time, and one that closed them badly has interventions.
+    expect(pulseIsUnmeasured(emptyDashboard().pulse)).toBe(true);
+    expect(pulseIsUnmeasured(dashboardPayload().pulse)).toBe(false);
+  });
+
+  it("is false for a workspace that merged nothing but did finish something", () => {
+    const pulse = { ...emptyDashboard().pulse, avgCycleSeconds: 400 };
+
+    expect(pulseIsUnmeasured(pulse)).toBe(false);
+  });
+
+  it("ignores the switch, which is a setting rather than a measurement", () => {
+    const pulse = { ...emptyDashboard().pulse, autoMerge: true };
+
+    expect(pulseIsUnmeasured(pulse)).toBe(true);
   });
 });
 

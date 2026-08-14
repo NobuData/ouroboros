@@ -32,7 +32,7 @@ export default function Loading() {
 
       <div className="dash-grid" aria-hidden>
         {SPANS.map((span, index) => (
-          // A plain card, not a region: it names nothing, and eight unnamed regions in the
+          // A plain card, not a region: it names nothing, and nine unnamed regions in the
           // accessibility tree would be worse than the `aria-hidden` this grid already
           // carries.
           <Card className={`dash-col--${span}`} key={index}>
@@ -50,10 +50,11 @@ export default function Loading() {
 
 /**
  * The column spans of the cards being waited for, in the order the screen lays them out:
- * the four-tile stat row, then the mockup's two wide pairs.
+ * the four-tile stat row, then the mockup's wide pairs with the two `c-4` cards between
+ * them.
  *
  * Written down here rather than derived from the screen because they are the *shape* of the
  * page, which is exactly what a skeleton is for — a skeleton computed from the data it is
  * standing in for would have nothing to draw.
  */
-const SPANS = [3, 3, 3, 3, 8, 4, 7, 5] as const;
+const SPANS = [3, 3, 3, 3, 8, 4, 4, 7, 5] as const;

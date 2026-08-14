@@ -275,6 +275,188 @@
   margin: var(--sp-6) 0 0;
 }
 
+/* ---------- the loop pulse card ---------- */
+
+/*
+ * The mockup's `c-4` card (#83): a mark, three meters, a divider and the page's one switch.
+ * The meter, the tag, the card and the switch are all primitives (app/ui/); what is here is
+ * the column they stand in and the two compositions this card is — a captioned meter, and
+ * the switch row under the rule.
+ */
+
+.dash-pulse {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/*
+ * The mark's box, reserved at the asset's own ratio so nothing moves when the file arrives.
+ * Both treatments are stacked in one grid cell and both are laid out at all times, so the
+ * swap is an opacity change rather than a layout change — the header's technique
+ * (app/shell/shell.css) and the login lockup's (app/login/login.css), for the same reason.
+ *
+ * The width is a rem length rather than the mockup's 150px so the mark keeps its proportion
+ * to the type around it at every font scale, and `max-width` is what keeps it inside the
+ * card on a narrow column.
+ */
+.dash-pulse__glyph {
+  display: grid;
+  align-self: center;
+  width: 9.375rem;
+  max-width: 100%;
+  margin: var(--sp-2) 0 var(--sp-4);
+  aspect-ratio: 512 / 296;
+}
+
+/*
+ * Placement, and nothing else. The mockup hangs `mix-blend-mode: screen` and a 24px
+ * `drop-shadow(var(--glow))` on its mark; both are the same workaround for a crop that still
+ * had its background attached, and docs/BRAND.md § Rules bans each of them on the #14 pair by
+ * name — it is de-grounded and carries its own glow in the artwork. On a light card the blend
+ * would have erased the mark outright.
+ */
+.dash-pulse__mark {
+  grid-area: 1 / 1;
+  width: 100%;
+  height: auto;
+}
+
+.dash-pulse__mark--dark {
+  opacity: 0;
+}
+
+:root[data-theme="dark"] .dash-pulse__mark--light {
+  opacity: 0;
+}
+
+:root[data-theme="dark"] .dash-pulse__mark--dark {
+  opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .dash-pulse__mark--light {
+    opacity: 0;
+  }
+
+  :root:not([data-theme="light"]) .dash-pulse__mark--dark {
+    opacity: 1;
+  }
+}
+
+.dash-pulse__meters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* One meter: the caption row, then the bar under it. */
+.dash-pulse__meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.dash-pulse__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-5);
+}
+
+.dash-pulse__label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The window a row was measured over. Quieter than the caption it follows, because it is a
+ * qualification of the caption rather than a second one — and present on every row, since a
+ * marker on only the row that differs would read as a footnote rather than as a fact each
+ * meter states about itself.
+ */
+.dash-pulse__window {
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The figure. Mono, as every number in this product that is meant to be compared down a
+ * column is, and hued by what the row reports.
+ */
+.dash-pulse__value {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.dash-pulse__value--ok {
+  color: var(--ok);
+}
+
+.dash-pulse__value--warn {
+  color: var(--warn);
+}
+
+/*
+ * The cycle time takes the page's ordinary ink rather than a status hue, which is the
+ * mockup's own treatment: it is the one figure of the three that reports neither a success
+ * nor a warning, and colouring it would claim a threshold nobody has agreed on. The class is
+ * written out so the tone union and the sheet cannot drift apart silently.
+ */
+.dash-pulse__value--accent {
+  color: var(--ink);
+}
+
+/*
+ * The mockup's `<hr class="divider">`, pushed to the bottom of the card: the meters sit under
+ * the mark and the switch sits under the rule, however tall the card's row makes it.
+ */
+.dash-pulse__divider {
+  height: 1px;
+  margin: auto 0 0;
+  border: none;
+  background: var(--line);
+}
+
+.dash-pulse__control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.dash-pulse__switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+}
+
+.dash-pulse__switch-label {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/*
+ * What the card has to say for itself — why a switch cannot be pressed, why a press did not
+ * take, or why there is nothing to measure yet. A paragraph, so the margin a browser gives
+ * one is undone here rather than in three places.
+ */
+.dash-pulse__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+.dash-pulse__note--err {
+  color: var(--err);
+}
+
 /* ---------- the system card ---------- */
 
 .dash-system {

@@ -659,15 +659,16 @@ is a `POST` rather than a `GET` to avoid.
 
 `/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45); its frame and page head
 are [#80](https://github.com/NobuData/ouroboros/issues/80), its stat row
-[#81](https://github.com/NobuData/ouroboros/issues/81) and its active-loops table
-[#82](https://github.com/NobuData/ouroboros/issues/82)) is
+[#81](https://github.com/NobuData/ouroboros/issues/81), its active-loops table
+[#82](https://github.com/NobuData/ouroboros/issues/82) and its loop pulse
+[#83](https://github.com/NobuData/ouroboros/issues/83)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
 (design system § 2). Its cards, actions, status chips and empty states are
 [UI primitives](#ui-primitives); [`app/dashboard/`](app/dashboard) owns the page head, the
-twelve-column grid, and the two compositions built on top — the stat tile and the system
-list.
+twelve-column grid, and the compositions built on top — the stat tile, the system list and
+the pulse card's captioned meters.
 
 ```
 MISSION CONTROL
@@ -679,21 +680,29 @@ Ouroboros merged 6 pull requests since midnight UTC.
 │      3      ││      12       ││      27       ││       4.2M        │
 │ 1 coding ·… ││ est. 9h 40m … ││ ▲ 8 vs last … ││ ≈ $18.60 across 4 │
 └─────────────┘└───────────────┘└───────────────┘└───────────────────┘
-┌ ACTIVE LOOPS  ● live ──────────────┐┌ SYSTEM      ◐ operational ┐
-│ #482 Fix flaky… [standard-fix]     ││ REST API            [ up ]│
-│   Implementing · 4/6  ▓▓▓▓▓▓▓░░░   ││ Database            [ up ]│
-│   [claude-fable-5]  12m 40s (coding)││ Engine             [ up ]│
-└────────────────────────────────────┘└───────────────────────────┘
+┌ ACTIVE LOOPS  ● live ──────────────┐┌ LOOP PULSE       7 days ─┐
+│ #482 Fix flaky… [standard-fix]     ││          ( ◎ )           │
+│   Implementing · 4/6  ▓▓▓▓▓▓▓░░░   ││ merge rate 14d  92% ▓▓▓▓▓░│
+│   [claude-fable-5]  12m 40s (coding)││ cycle 7d    14m 20s ▓▓░░░│
+└────────────────────────────────────┘│ ─────────────────────────│
+┌ SYSTEM      ◐ operational ┐         │ Auto-merge …      [ on ]  │
+│ REST API            [ up ]│         └──────────────────────────┘
+└───────────────────────────┘
 ┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐
 ```
 
 **Two kinds of card sit on the same grid, and the difference is the point.** The stat row is
-drawn from the aggregate's `stats`, the active-loops table from its `activeRuns`, and the
-system card from `/health/ready` and `/api/v1/engine/status` — every figure on them came from
-the service. The two panels that have no card drawing them yet — the completions table
+drawn from the aggregate's `stats`, the active-loops table from its `activeRuns`, the loop
+pulse from its `pulse`, and the system card from `/health/ready` and
+`/api/v1/engine/status` — every figure on them came from the service. The two panels that
+have no card drawing them yet — the completions table
 ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
 ([#85](https://github.com/NobuData/ouroboros/issues/85)) — keep their place as designed empty
 states naming what will fill them, rather than borrowing the mockup's rows.
+
+**One control on the whole page changes anything**, and it is the pulse card's auto-merge
+switch ([#74](https://github.com/NobuData/ouroboros/issues/74)'s operation). Everything else
+here reads.
 
 The route is three lines: [`app/api/access.ts`](app/api/access.ts) returns the workspace,
 [`app/dashboard/data.ts`](app/dashboard/data.ts) turns it into everything the screen draws,
@@ -821,6 +830,66 @@ those exists, so all three are labelled with what is missing rather than pointed
 the same treatment the sidebar gives nine destinations, and the same reason: #49's own first
 criterion is *no dead nav links*.
 
+### The loop pulse: three meters, two windows, and the page's one write
+
+The `c-4` card ([#83](https://github.com/NobuData/ouroboros/issues/83)) is the qualitative
+read on the loop — how often it finishes without a person, how long a cycle takes, how often
+it stops for one — over the aggregate's `pulse`, with every figure and every width decided in
+[`view.ts`](app/dashboard/view.ts) (`pulseMeters`).
+
+| Meter | Figure | Bar | Window |
+|---|---|---|---|
+| Autonomous merge rate | `92%` | the rate itself | **14 days** |
+| Avg. cycle time | `14m 20s` | against a 30-minute target | 7 days |
+| Human interventions | `2 this week` | against a budget of 25 | 7 days |
+
+**Two of the three bars needed a denominator the payload does not carry**, and both are
+exported constants — `CYCLE_TIME_TARGET_SECONDS` and `INTERVENTION_BUDGET_7D` — that
+reproduce the mockup's widths exactly (860 ÷ 1800 rounds to 48%; 2 ÷ 25 *is* 8%). A width
+nobody can explain is a width nobody can check, so neither is a number matched to a
+screenshot. Both round to a whole percent, because a ratio against a target somebody chose is
+a gauge rather than a measurement — and because a bar drawn at 91.5% under a figure printed
+`92%` is a card disagreeing with itself.
+
+**Each row prints the window it was measured over.** The head keeps the mockup's `7 days`
+tag and the merge rate says `14 days`, which is the window the contract publishes it under:
+the mockup's own `27 merged`, `2 interventions` and `92%` cannot all be true of one
+seven-day window. The figure beside each bar is hidden from the accessibility tree and the
+bar carries it in words instead — `92% of runs merged without a person, over 14 days` — so
+the caption speaks for the eye and the bar for the reader, never both.
+
+**The glyph is the [#14](https://github.com/NobuData/ouroboros/issues/14) asset, drawn and
+not painted over.** Both treatments are stacked in one grid cell with CSS choosing between
+them, exactly as the header's mark and the login lockup are, so the right one is painted
+before any JavaScript runs and the card renders identically under both palettes. The mockup's
+`mix-blend-mode: screen` and its `drop-shadow` are gone: they are one workaround for a crop
+that still had its background attached, `docs/BRAND.md` § Rules bans both on this pair, and
+on a light card the blend would erase the mark outright.
+
+**The switch is optimistic, and its failure is loud.**
+[`auto-merge-switch.tsx`](app/dashboard/auto-merge-switch.tsx) is a Client Component over the
+Server Action in [`pulse-actions.ts`](app/dashboard/pulse-actions.ts) — the browser cannot
+reach REST, so a write goes through the same seam the font scale and the repository listing
+use. The optimistic position is `useOptimistic`'s, which means it lives exactly as long as
+the transition that set it, and three bugs stop being possible: a failed `PATCH` needs no
+rollback path to remember, a write that landed on a different value than it sent is drawn
+from the row rather than from the request, and a change nobody made in this browser arrives
+as a changed prop and is simply drawn. A landed write calls `router.refresh()` *inside* that
+transition, so the route's Server Components re-render from a fresh aggregate — which is the
+issue's *"verified by the next poll"* until [#87](https://github.com/NobuData/ouroboros/issues/87)'s
+polling hook lands.
+
+Where the login screen's switches are submit buttons in one-field forms — that screen is the
+first one, on an unknown connection, and working before hydration is worth more there than an
+animation — this one is a setting on a page nobody reaches without a session, beside a table
+already ticking a clock.
+
+**A `member` or a `viewer` sees the switch, disabled, with the reason in its tooltip and its
+description** (§ 3.3), `aria-disabled` rather than `disabled` so the explanation keeps its
+place in the tab order. The gate that decides is the service's: a Server Action is a POST
+endpoint anybody can reach, so the browser's copy of the rule is presentation, and a forged
+write is answered with the `403` in the same sentence the tooltip carries.
+
 ### One failed read is one degraded card
 
 The three reads go out together — the aggregate, the readiness probe and the engine's status
@@ -882,6 +951,12 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
   reads *degraded* rather than *operational* when any row is.
 - **A cost nobody has priced is hidden, not drawn as `$0`.**
+- **A pulse with nothing to measure says so**, rather than reporting a 0% merge rate: all
+  three of its figures are floors when no run has closed in the window, and a workspace that
+  has never finished one has not merged nothing — it has not started.
+- **A switch is never drawn in a position the server does not hold.** An aggregate nobody
+  could read has no position, so the row says that instead of defaulting to `off`; an
+  optimistic flip that did not persist goes back and says why.
 - **The pills differ in shape as well as in hue**, so *operational* and *degraded* are
   distinguishable without colour vision — as do the stat row's deltas, which carry an arrow.
 
@@ -889,10 +964,10 @@ The real dashboard is specified card by card under
 [#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I).
 [#80](https://github.com/NobuData/ouroboros/issues/80) has replaced the frame and the page
 head on top of #45's route, readers, status logic and redirect,
-[#81](https://github.com/NobuData/ouroboros/issues/81) the stat row and
-[#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table. Each remaining
-card replaces one tile of the grid from the aggregate this page already fetches: the loop
-pulse ([#83](https://github.com/NobuData/ouroboros/issues/83)), recently closed
+[#81](https://github.com/NobuData/ouroboros/issues/81) the stat row,
+[#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table and
+[#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse. Each remaining card
+replaces one tile of the grid from the aggregate this page already fetches: recently closed
 ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
 ([#85](https://github.com/NobuData/ouroboros/issues/85)).
 

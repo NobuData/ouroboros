@@ -97,6 +97,50 @@ describe("the active loops table", () => {
   });
 });
 
+describe("the loop pulse card", () => {
+  it("reserves the glyph's box at the asset's own ratio, so nothing moves when it loads", () => {
+    // 512×296 is the #14 file's size, and the pair is pixel-identical — which is what makes
+    // stacking both treatments in one grid cell safe.
+    expect(CODE).toMatch(/\.dash-pulse__glyph\s*\{[^}]*aspect-ratio:\s*512\s*\/\s*296/);
+    expect(CODE).toMatch(/\.dash-pulse__glyph\s*\{[^}]*width:\s*[\d.]+rem/);
+  });
+
+  it("chooses a treatment in CSS, under the same three selectors the token sheet uses", () => {
+    // The mark has to be right before any JavaScript runs, so the palette decides it here
+    // rather than a component reading the theme — which is also what makes the card render
+    // identically on the server and in the browser.
+    expect(CODE).toMatch(/\.dash-pulse__mark--dark\s*\{[^}]*opacity:\s*0/);
+    expect(CODE).toMatch(/:root\[data-theme="dark"\]\s*\.dash-pulse__mark--light/);
+    expect(CODE).toMatch(/@media \(prefers-color-scheme: dark\)/);
+  });
+
+  it("paints neither of the mockup's two workarounds over the asset", () => {
+    // docs/BRAND.md § Rules bans both on this pair by name: the mockup's crop still had its
+    // background attached and needed blending onto the card, then a shadow to give back the
+    // glow the blend flattened. On a light card the blend would erase the mark outright.
+    expect(CODE).not.toMatch(/mix-blend-mode|drop-shadow/);
+  });
+
+  it("hues the two figures that report something, and leaves the third the page's ink", () => {
+    // The tones are `view.ts`'s union, and a tone with no rule behind it is a figure
+    // silently drawing in the default ink rather than a build error.
+    expect(CODE).toMatch(/\.dash-pulse__value--ok\s*\{[^}]*color:\s*var\(--ok\)/);
+    expect(CODE).toMatch(/\.dash-pulse__value--warn\s*\{[^}]*color:\s*var\(--warn\)/);
+    expect(CODE).toMatch(/\.dash-pulse__value--accent\s*\{[^}]*color:\s*var\(--ink\)/);
+  });
+
+  it("marks a note that is a failure rather than an explanation", () => {
+    expect(CODE).toMatch(/\.dash-pulse__note--err\s*\{[^}]*color:\s*var\(--err\)/);
+  });
+
+  it("pushes the switch to the foot of the card, whatever height the grid row gives it", () => {
+    // The mockup's own layout: the meters sit under the mark and the switch under the rule,
+    // so two cards on one row have their switches on one line.
+    expect(CODE).toMatch(/\.dash-pulse__divider\s*\{[^}]*margin:\s*auto 0 0/);
+    expect(CODE).toMatch(/\.dash-pulse\s*\{[^}]*flex:\s*1/);
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is

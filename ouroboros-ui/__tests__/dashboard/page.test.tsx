@@ -24,6 +24,13 @@ const requireWorkspace = vi.fn();
 /** What the reader answers with. */
 const readDashboard = vi.fn();
 
+// The screen this route renders now holds a Client Component over a Server Action (the pulse
+// card's switch), and neither half survives a jsdom render on its own: the action module sits
+// on the server-only client, and `useRouter()` wants the App Router mounted. Both are subjects
+// of their own suites — `auto-merge-switch.test.tsx` and `pulse-actions.test.ts`.
+vi.mock("@/app/dashboard/pulse-actions", () => ({ setAutoMerge: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/dashboard/data", () => ({
   readDashboard: (access: unknown) => readDashboard(access),
