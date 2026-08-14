@@ -56,6 +56,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   domainId: "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10",
   login: "acme-robotics",
   name: "ouroboros",
+  // `GET /api/v1/runs/:id` (#71). A well-formed uuid, so the guard's answer — not the
+  // pipe's 422 — is what this suite observes.
+  id: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
 };
 
 /**

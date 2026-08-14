@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.22.1"
+  version: "0.22.2"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1275,6 +1275,219 @@ paths:
           description: |-
             `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
             are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/runs:
+    get:
+      tags: [dashboard]
+      summary: The workspace's runs, paged
+      description: |-
+        The drill-in behind the dashboard's `Open run console →` and `All issues →` links
+        ([#71](https://github.com/NobuData/ouroboros/issues/71)): the same rows the
+        aggregate's `activeRuns` and `recentRuns` slices carry, without their card-sized
+        limits, one family at a time.
+
+        **`status` is required, and names a family rather than a status.** `active` is the
+        runs still moving, in lifecycle order — coding, building, review — oldest first
+        within a stage, which is the *Active loops* card's own order extended past its ten.
+        `terminal` is the runs that have stopped, newest first, the *Recently closed* card's
+        order past its eight. The two orders answer different questions, which is why there
+        is no unfiltered listing: a screen that wants both asks twice, exactly as the two
+        cards do.
+
+        **The aggregate's slices are pages of these listings — as a contract.** A row here
+        and the same run in `Dashboard.activeRuns` are byte-identical: one `RunSummary`
+        schema, one mapper in the service, and an integration test that holds the two
+        answers equal over one population. A client may therefore paint a card from the
+        aggregate and a full screen from this listing without reconciling shapes.
+
+        **`repo` narrows to one repository** — `github_repos.id`, which is what the
+        focus-repo preference ([#77](https://github.com/NobuData/ouroboros/issues/77))
+        holds. The id rather than the name, because a name is unique only within its GitHub
+        organisation. A repository that is not this workspace's narrows to an empty page
+        rather than erroring: under the workspace scope the filter is a predicate, and an
+        empty page is the honest answer to "your runs, in a repository that is not yours".
+
+        **The workspace is the session's**, exactly as the dashboard's: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership
+        is checked before this operation runs.
+      operationId: listRuns
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: status
+          in: query
+          required: true
+          description: Which family — see the operation description for the two orders.
+          schema:
+            type: string
+            enum: [active, terminal]
+        - name: repo
+          in: query
+          required: false
+          description: Narrow to one repository, by `github_repos.id`.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: |-
+            The page. A workspace with no runs in the family — or none in the repository the
+            filter named — gets an empty one, which is a state to render and not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPage"
+              example:
+                items:
+                  - id: 5eed0009-0000-4000-8000-000000000482
+                    issueNumber: 482
+                    issueTitle: Fix flaky CAN-bus telemetry test
+                    workflowTag: standard-fix
+                    model: claude-fable-5
+                    status: coding
+                    stageLabel: Implementing
+                    stageIndex: 4
+                    stageTotal: 6
+                    startedAt: "2026-08-13T14:25:01.000Z"
+                    finishedAt: null
+                    prNumber: null
+                    checksPassed: null
+                    checksTotal: null
+                total: 3
+                limit: 25
+                offset: 0
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `status` missing or naming no family, `repo` not a uuid, or
+            the window out of range. `details` carries one entry per field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/runs/{id}:
+    get:
+      tags: [dashboard]
+      summary: One run
+      description: |-
+        The run a card links to, in exactly the shape every listing row and every aggregate
+        slice has — `RunSummary` is the one shape a run takes on this API, and this
+        operation is the third place it is served rather than a second definition of it.
+
+        **A run that is not yours does not exist.** A well-formed id belonging to another
+        workspace answers `404` with `run_not_found`, indistinguishably from an id that
+        names nothing at all — the query that reads the row is scoped to the workspace
+        before it is keyed by the id, so the distinction is not represented anywhere a
+        response could leak it. A `403` would confirm that an identifier names something
+        real, which is the whole of what somebody enumerating uuids is trying to learn.
+      operationId: readRun
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunSummary"
+              example:
+                id: 5eed0009-0000-4000-8000-000000000482
+                issueNumber: 482
+                issueTitle: Fix flaky CAN-bus telemetry test
+                workflowTag: standard-fix
+                model: claude-fable-5
+                status: coding
+                stageLabel: Implementing
+                stageIndex: 4
+                stageTotal: 6
+                startedAt: "2026-08-13T14:25:01.000Z"
+                finishedAt: null
+                prNumber: null
+                checksPassed: null
+                checksTotal: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `run_not_found` — no run with that id, **or none this caller may know about**:
+            an id belonging to another workspace is the same answer, deliberately.
+            `details.runId` echoes what was asked for. (`tenant_not_found` is the other
+            `404` here, when `X-Ouro-Tenant` names a workspace you are not a member of.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: run_not_found
+                message: No such run.
+                details:
+                  runId: 5eed0009-0000-4000-8000-000000000999
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid. Malformed is the caller's mistake,
+            answered before anything is read; well-formed-but-absent is the `404` above.
           content:
             application/json:
               schema:
@@ -2780,6 +2993,18 @@ components:
         default: 0
       example: 0
 
+    RunId:
+      name: id
+      in: path
+      required: true
+      description: |-
+        The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+        uuid is a `422` naming the field, before anything is read.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0009-0000-4000-8000-000000000482
+
   schemas:
     Error:
       type: object
@@ -4066,6 +4291,36 @@ components:
           description: |-
             Total checks on the pull request. `0` of `0` is a repository with no checks, which
             is **not** the same as `null` — not knowing yet.
+
+    RunPage:
+      type: object
+      title: RunPage
+      description: |-
+        One page of runs ([#71](https://github.com/NobuData/ouroboros/issues/71)) — the #31
+        pagination convention over `RunSummary` rows, in the order the requested family
+        documents. The items are byte-identical to the aggregate's `activeRuns` and
+        `recentRuns` entries: one schema, one mapper, one shape for a run everywhere.
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunSummary"
+        total:
+          type: integer
+          minimum: 0
+          description: How many runs match the family — and the repo filter, if one narrows it.
+          examples: [53]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          examples: [25]
+        offset:
+          type: integer
+          minimum: 0
+          examples: [0]
 
     QueueItemSummary:
       type: object
