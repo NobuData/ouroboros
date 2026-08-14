@@ -139,9 +139,14 @@ export async function forgetWorkspace(): Promise<void> {
  * answers from without a database lookup, so a client that dropped it would turn every call
  * into a query. `app/api/auth-server.ts` reads the same pair for the same reason.
  *
+ * **Exported since [#87](https://github.com/NobuData/ouroboros/issues/87)**, for the reader
+ * that forwards a session without the typed client — `app/api/dashboard-summary.ts`, whose
+ * `304` the client's middleware would turn into a throw. It is the resolver below either
+ * way, so the poll and every other call read the same cookies out of the same request.
+ *
  * @returns The cookies present, or `undefined` when the browser sent neither.
  */
-async function sessionCookies(): Promise<SessionCookies | undefined> {
+export async function sessionCookies(): Promise<SessionCookies | undefined> {
   const jar = await cookies();
 
   const present: Record<string, string> = {};

@@ -1,6 +1,7 @@
 "use client";
 
 import { organization, unwrap } from "@/app/api/auth-client";
+import { requestSummaryRefresh } from "@/app/dashboard/summary-refresh";
 
 /**
  * Moving the session into another workspace — the one call, made from the two places that
@@ -27,6 +28,16 @@ import { organization, unwrap } from "@/app/api/auth-client";
  * the framework's own words. It is left to the caller rather than done here because this
  * module must not import `next/navigation`: a router is a caller's, and a shared write that
  * navigated would be one the two menus could not sequence differently.
+ *
+ * ### The third thing a switch has to move, since #87
+ *
+ * `router.refresh()` re-renders the server's half. It does not touch the polling store,
+ * which is client state holding one workspace's numbers and an `ETag` that revalidates
+ * against that workspace's rows — so without a word from here the topbar's pills would go
+ * on reporting the workspace the reader has just left, for up to a poll interval. Saying so
+ * *is* done here rather than left to the caller, because unlike the router it is the same
+ * sentence for every caller: `requestSummaryRefresh()` publishes a signal, the store decides
+ * what it costs, and neither menu has to remember (`app/dashboard/summary-refresh.ts`).
  */
 
 /** What is said when the service refuses and gives nothing a person could read. */
@@ -47,6 +58,11 @@ export async function switchWorkspace(organizationId: string): Promise<string | 
   } catch (error) {
     return error instanceof Error && error.message !== "" ? error.message : SWITCH_FAILURE;
   }
+
+  // Only on the way out of the success path: a switch that was refused left the session
+  // where it was, and asking the poll to re-read a workspace it never left would spend a
+  // request to be told the same thing.
+  requestSummaryRefresh();
 
   return null;
 }

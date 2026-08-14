@@ -142,12 +142,20 @@ function assertCookieValue(name: string, value: string): string {
 /**
  * Compose the `Cookie` header for one request.
  *
+ * **Exported for the one caller that forwards a session without going through this
+ * client.** `app/api/dashboard-summary.ts` reads a route whose `304` the middleware below
+ * would turn into a throw, so it reads with `fetch` — exactly as `app/api/health.ts` does,
+ * and for the same kind of reason — but it still has to send the session, and the rules for
+ * composing that header are the ones written here: these two cookies, in this order, each
+ * checked before it goes into a header. A second copy of them would be a second place for
+ * the credential-handling to be got wrong.
+ *
  * @param present The cookies this request carries.
  * @returns The header value, or `undefined` when there is nothing to send — in which case
  *   no header is set at all, rather than an empty one.
  * @throws {Error} From {@link assertCookieValue}, for a value that cannot be forwarded.
  */
-function sessionCookieHeader(present: SessionCookies | undefined): string | undefined {
+export function sessionCookieHeader(present: SessionCookies | undefined): string | undefined {
   if (present === undefined) {
     return undefined;
   }

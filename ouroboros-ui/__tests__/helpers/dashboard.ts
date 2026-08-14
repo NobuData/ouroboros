@@ -2,6 +2,7 @@ import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { Member, MemberPage } from "@/app/api/members";
 import type { Role } from "@/app/api/membership";
+import type { DashboardSummary } from "@/app/dashboard/summary";
 import type { DashboardReadings, Reading } from "@/app/dashboard/view";
 
 import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "./login";
@@ -139,6 +140,65 @@ export function read<T>(value: T): Reading<T> {
  */
 export function failed<T>(reason: string): Reading<T> {
   return { ok: false, reason };
+}
+
+/**
+ * The seeded organization's dashboard aggregate, number for number
+ * ([#87](https://github.com/NobuData/ouroboros/issues/87)).
+ *
+ * The same figures `ouroboros-rest`'s own `MOCKUP_02` fixture asserts against the seed
+ * (`ouroboros-rest/src/testing/dashboard.fixture.ts`): three loops live, twelve queued,
+ * twenty-seven merged in seven days, two human interventions. A suite whose subject is one
+ * of those numbers passes an override and every other case reads as the seed — so a
+ * disagreement between what this application draws and what the service seeds is a failing
+ * assertion rather than a fixture quietly copied out of date.
+ *
+ * The rows are left empty on purpose. Nothing that reads this fixture today draws a table —
+ * the pills and the freshness store read `stats` and `pulse` — and a fabricated run row
+ * would be a fixture inviting a card to be written against it rather than against the
+ * contract.
+ *
+ * @param over The parts this case is about — anything not named is the seed's own.
+ * @returns The payload, exactly as `GET /api/v1/dashboard` answers it.
+ */
+export function summary(over: Partial<DashboardSummary> = {}): DashboardSummary {
+  return {
+    stats: {
+      loopsLive: { total: 3, byStatus: { coding: 1, building: 1, review: 1 } },
+      queued: { count: 12, estMinutes: 580 },
+      merged7d: { count: 27, deltaVsPrior: 8 },
+      tokensToday: { tokens: 4_200_000, costCents: 1860, providers: 4, unpricedEvents: 3 },
+    },
+    pulse: { mergeRate: 0.92, avgCycleSeconds: 860, interventions7d: 2, autoMerge: true },
+    activeRuns: [],
+    recentRuns: [],
+    queueHead: [],
+    activity: { inFlight: 3, queued: 12, mergedSinceMorning: 6 },
+    ...over,
+  };
+}
+
+/**
+ * The same payload for an organization with nothing in it — the seed's personal workspace,
+ * which `R__dev_seed_dashboard.sql` leaves deliberately empty as the zero-state fixture.
+ *
+ * Zeros and empty arrays, never nulls and never absent keys: that is the endpoint's promise
+ * about an empty workspace, and it is what lets a consumer read `0` as *nothing is live*
+ * rather than as *nobody has said*.
+ *
+ * @returns The payload an empty workspace answers with.
+ */
+export function emptySummary(): DashboardSummary {
+  return summary({
+    stats: {
+      loopsLive: { total: 0, byStatus: { coding: 0, building: 0, review: 0 } },
+      queued: { count: 0, estMinutes: 0 },
+      merged7d: { count: 0, deltaVsPrior: 0 },
+      tokensToday: { tokens: 0, costCents: 0, providers: 0, unpricedEvents: 0 },
+    },
+    pulse: { mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0, autoMerge: false },
+    activity: { inFlight: 0, queued: 0, mergedSinceMorning: 0 },
+  });
 }
 
 /**

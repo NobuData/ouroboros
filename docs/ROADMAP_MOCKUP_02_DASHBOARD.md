@@ -1287,7 +1287,7 @@ themes hold.
 | I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
-| I.8 | #87 | 🟡 Open | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
+| I.8 | #87 | 🟢 Done | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
 | I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
 
 ### Issue I.1 — ouroboros-ui: [I.1] Dashboard route, grid & page head
@@ -1484,7 +1484,62 @@ poll ✗  ─▶ [stale since 14:02 · retry] + last good data stays
 
 ### Issue I.8 — ouroboros-ui: [I.8] Polling hook & freshness wiring
 
-> **GitHub issue:** #87 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #87 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped.** `useDashboardSummary()` is provided at the `(app)` layout and every consumer
+> reads the one store beneath it — [`app/dashboard/summary-store.tsx`](../ouroboros-ui/app/dashboard/summary-store.tsx)
+> over the framework-free loop in
+> [`summary-poll.ts`](../ouroboros-ui/app/dashboard/summary-poll.ts), with the contract's
+> vocabulary written once in [`summary.ts`](../ouroboros-ui/app/dashboard/summary.ts) so the
+> two sides cannot spell a header differently. Every clause of § 5.4 is a case in
+> `__tests__/dashboard/summary-poll.test.ts` against mocked timers — the fifteen-second
+> cadence, the tag echoed and replaced, the hidden tab that issues nothing and refreshes on
+> return, the `X-Ouro-Poll-After` that overrides the default and survives an answer that lost
+> the header, and the *one request per interval* criterion in
+> `summary-store.test.tsx`, where three consumers render at once and one request goes out.
+>
+> **The poll needed a route handler, and it is this module's first.** Everything else the UI
+> reads, it reads while rendering; a Server Action would have had to carry the tag as an
+> argument and mime the `304` as a return value — the same exchange with the status line
+> rewritten as data, and a second contract to keep in step with the first. So
+> [`app/api/dashboard/route.ts`](../ouroboros-ui/app/api/dashboard/route.ts) answers
+> `GET /api/dashboard` on this origin and forwards the conditional exchange unchanged, and
+> [`app/api/dashboard-summary.ts`](../ouroboros-ui/app/api/dashboard-summary.ts) is the
+> server-side read behind it. That read deliberately does **not** go through the typed
+> client, for the reason `app/api/health.ts` does not either: the middleware turns every
+> non-`ok` response into a throw, and a `304` is not `ok` — the cheapest answer in the whole
+> contract would have arrived as a rejection about an empty body. Nothing is lost by it;
+> the path is still typed as one the contract publishes and the payload as the generated
+> schema type, so `yarn api:sync` breaks the file rather than a browser.
+>
+> **A `401` is an answer here, never a redirect.** A poll is not a render: throwing Next.js's
+> redirect signal out of a route handler would answer the poll with a login page, which it
+> would then try to read as a dashboard. So the session ending is `{state: "gone"}`, the loop
+> stops asking on the interval — a dead session does not mend itself, and asking anyway is one
+> request per interval that cannot succeed — and coming back to the tab tries once more, which
+> is what makes signing in again in another tab enough to bring this one back. The screen is
+> still the reader's to be on; the next render of any `(app)` screen goes through
+> `requireWorkspace()`, which is the thing that actually sends them to the login page.
+>
+> **The workspace switch says so rather than being asked.**
+> [`summary-refresh.ts`](../ouroboros-ui/app/dashboard/summary-refresh.ts) is a signal, not
+> data, published by `switchWorkspace()` — the one write both menus make — because the
+> publishers are in the shell and the store is at the layout, and threading a poll through two
+> menus and a chip that have no other interest in it would be worse than either. I.4 (#83)
+> publishes the same signal after the auto-merge `PATCH`. Subscribing to BetterAuth's session
+> instead would have caught the switch and *not* the write, so the signal would still be
+> needed and the surface would have grown two ways to say one thing.
+>
+> **One correction to H.1's shipped note.** It says the focus-repo preference is what "#87
+> spends". It is not, and cannot be: `GET /api/v1/dashboard` declares `query?: never` — the
+> aggregate takes no parameters at all, because it is the *whole* workspace in one payload.
+> The `?repo=` filter is G.2's and G.4's, so the preference is spent by the drill-in screens
+> behind *Open run console →* and *Manage queue →*, not by this poll.
+>
+> **Not in this ticket:** no server-rendered first payload — the store's first answer is its
+> own immediate request, and I.1 (#80) is where a page hands one down if it wants the first
+> paint to carry numbers; no stale banner (I.7, #86), which is what `updatedAt` and `error`
+> exist for; and no EventSource (J.1, #89), which this loop is the fallback underneath.
 
 - **Problem Statement:** One polling loop must feed the page and the topbar pills
   (H.2) per the G.6 contract — multiple independent pollers would multiply load and
@@ -1822,6 +1877,17 @@ since they landed. Two of this roadmap's standing prerequisites can be struck wi
 capabilities the product already had (`readEnablement()`, `organization.setActive`), and the
 only thing genuinely missing was the both-flags rule over the first, which H.1 wrote down.
 The remaining unfiled BetterAuth entries are BA-C.3 and BA-D.5, and Epic G shipped without
-either. **H.2 (#78) and H.3 (#79) are unblocked and parallel**; the shell keyboard and the
-one-write-one-message rules they will meet are now `app/shell/menu.ts`'s and
-`app/shell/switch-workspace.ts`'s rather than the account menu's private business.
+either. **H.3 (#79) is unblocked**; the shell keyboard and the one-write-one-message rules
+it will meet are now `app/shell/menu.ts`'s and `app/shell/switch-workspace.ts`'s rather than
+the account menu's private business.
+
+**Epic I opened at its root on 2026-08-14, out of order.** **I.8 (#87) shipped** ahead of
+I.1, because H.2 (#78) was the ticket in hand and the hook is what it reads — the polling
+store is provided at the `(app)` layout, so it feeds the topbar pills on every signed-in
+screen whether or not the dashboard page has been rebuilt yet. Three things arrived with it
+that the rest of Epic I inherits: `GET /api/dashboard` on this origin (the module's first
+route handler, and the reason a poll can carry `If-None-Match` and hear `X-Ouro-Poll-After`
+at all), `useDashboardSummary()` exposing `{data, updatedAt, error}` — which is what I.7
+(#86) draws its stale banner from — and the refresh signal I.4 (#83) publishes after the
+auto-merge write. **H.2 (#78) is unblocked by it**, and I.1–I.7 now have a store to render
+from rather than a fetch each.
