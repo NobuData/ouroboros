@@ -214,3 +214,27 @@ export function accountMenuLabel(view: AccountView): string {
 
   return `Account menu — ${view.person.name}${where}`;
 }
+
+/**
+ * The tenant chip's accessible name (H.1,
+ * [#77](https://github.com/NobuData/ouroboros/issues/77)).
+ *
+ * The chip draws `acme-robotics / helios-firmware ▾` and the caret is decoration, so what a
+ * screen reader would otherwise be given is two identifiers and no word saying what either
+ * of them is. This is that word — and it **contains the visible text verbatim**, which is
+ * WCAG 2.5.3's *Label in Name*: somebody driving the product by voice says what they can see,
+ * and a name that paraphrased the chip would leave them naming a control that does not
+ * answer to it.
+ *
+ * What kind of control it is comes from `aria-haspopup="menu"` on the button and is not
+ * written into the name, so the word "menu" is announced once rather than twice.
+ *
+ * @param workspace The active workspace's slug, as the chip draws it.
+ * @param repo The focus repository's name, or the words the chip uses for *all of them* —
+ *   already decided by the caller, because the absence of a choice is the focus-repo store's
+ *   fact and not this module's (`app/shell/focus-repo.ts`).
+ * @returns The name.
+ */
+export function tenantChipLabel(workspace: string, repo: string): string {
+  return `Workspace and focus repository: ${workspace} / ${repo}`;
+}

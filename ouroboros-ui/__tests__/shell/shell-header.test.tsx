@@ -42,6 +42,13 @@ vi.mock("@/app/shell/preference-actions", () => ({
   saveFontScale: vi.fn().mockResolvedValue(true),
 }));
 
+// The tenant chip reads its repositories through a Server Action over the same server-only
+// client (H.1, #77) — same mock, same reason. What the chip does is `tenant-chip.test.tsx`'s;
+// all this suite asks of it is that the header offers it.
+vi.mock("@/app/shell/repo-actions", () => ({
+  readFocusRepos: vi.fn().mockResolvedValue({ ok: true, organizationId: "none", repos: [] }),
+}));
+
 const { ShellHeader } = await import("@/app/shell/shell-header");
 
 beforeEach(() => {
@@ -141,10 +148,13 @@ describe("the shell header", () => {
   });
 
   it("names the workspace between the brand and the cluster", () => {
+    // "Immediately right of the brand" (§ 1.1). Since H.1 (#77) the chip is a control rather
+    // than a statement, so it is found by the name it announces; what it *does* is
+    // `tenant-chip.test.tsx`.
     renderThemed(<ShellHeader />);
 
     const brand = screen.getByRole("link", { name: /OUROBOROS/ });
-    const chip = screen.getByTitle(/#77/);
+    const chip = screen.getByRole("button", { name: /^Workspace and focus repository/ });
     const search = screen.getByRole("button", { name: /Search/ });
 
     expect(brand.compareDocumentPosition(chip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

@@ -232,29 +232,86 @@
 }
 
 /*
- * The tenant chip, immediately right of the brand (§ 1.1).
+ * The tenant chip, immediately right of the brand (§ 1.1) — mockup 02's `.tenant-chip`:
+ * muted organization, bright repository, caret.
  *
- * `min-width: 0` with the ellipsis below is what keeps a long slug from pushing the cluster
- * off the right edge: the chip gives way before the session controls do, because a truncated
- * workspace name is legible and a missing account menu is not.
+ * ### The truncation rule, in three parts (H.1, issue 77)
+ *
+ * 1. **The chip gives way before the cluster does.** `min-width: 0` here against the
+ *    `flex: none` on `.shell-header__cluster`, because a truncated workspace name is legible
+ *    and a missing account menu is not. `max-width` caps it besides: two long names are
+ *    allowed to cost the header a third of its width, not half of it.
+ * 2. **The organization gives way first.** It shrinks at twice the repository's rate and
+ *    ellipsises, because it is the context and the repository is the thing in focus — which
+ *    is the same order the mockup states in ink, one muted and one bright.
+ * 3. **Neither disappears.** Both keep a floor of four characters, so the chip degrades to
+ *    `acme…/ heli…` rather than to an ellipsis beside a full name.
+ *
+ * The separator is written into the organization's own span rather than drawn between the
+ * two, so it travels with the half that truncates first and never floats between two
+ * ellipses.
  */
 .shell-tenant {
   display: inline-flex;
   align-items: center;
+  gap: var(--sp-4);
   min-width: 0;
+  max-width: 22rem;
   padding: var(--sp-2) var(--sp-5);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
   background: var(--raised);
-}
-
-.shell-tenant__value {
-  overflow: hidden;
   color: var(--ink-dim);
   font-family: var(--f-mono);
   font-size: var(--t-xs);
+}
+
+/*
+ * The chip as a control, which it became when it got a menu to open. `font: inherit` first
+ * because a button does not inherit the page's type, then the face and size back — the order
+ * the search pill's rule keeps, for the same reason.
+ *
+ * The hairline is the interactive one and lifts to the 3:1 control boundary on hover: before
+ * this issue the chip was a statement and `--line` was right for it, and the difference
+ * between a thing that can be pressed and a thing that cannot should be visible before it is
+ * hovered.
+ */
+.shell-tenant--control {
+  border-color: var(--line-strong);
+  font: inherit;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.shell-tenant--control:hover {
+  border-color: var(--line-control);
+}
+
+.shell-tenant__org {
+  flex: 0 2 auto;
+  min-width: 4ch;
+  overflow: hidden;
+  color: var(--ink-faint);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The repository: the bright half, and the one the reader is actually looking at. */
+.shell-tenant__repo {
+  flex: 0 1 auto;
+  min-width: 4ch;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The mockups' disclosure caret. Decoration: aria-expanded is what says the same thing. */
+.shell-tenant__caret {
+  flex: none;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
 }
 
 .shell-header__cluster {
@@ -416,6 +473,7 @@
   display: flex;
 }
 
+
 /*
  * No drop shadow: the token sheet publishes no shadow, and a shadow drawn from an
  * opaque surface token is a block, not a shadow. The hairline and the raised surface
@@ -434,6 +492,20 @@
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
+}
+/*
+ * A menu at the *start* of the header rather than at its end — the tenant chip's (H.1, issue
+ * 77). Two things follow from where it sits: its panel hangs from the left edge instead of
+ * the right, and the wrapper has to be able to shrink, because the chip's whole truncation
+ * rule depends on a flex item that may become narrower than its contents.
+ */
+.shell-menu--start {
+  min-width: 0;
+}
+
+.shell-menu--start .shell-menu__panel {
+  right: auto;
+  left: 0;
 }
 
 /*
@@ -710,6 +782,20 @@
   margin: var(--sp-4) 0 0;
   padding: 0 var(--sp-5);
   color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * What a submenu says about its own list, beyond the choices in it — the tenant chip's
+ * repositories still being read, or none being enabled (H.1, issue 77). Quiet, because it is
+ * a fact about the list rather than a thing to press, and it is the submenu's
+ * `aria-describedby` rather than an item in it for exactly that reason.
+ */
+.shell-menu__note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-5);
+  color: var(--ink-faint);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
 }
@@ -1028,6 +1114,18 @@ a.shell-nav__item--active:hover {
   }
 
   .shell-pill {
+    display: none;
+  }
+
+  /*
+   * The chip keeps its repository half and loses its organization (H.1, issue 77). The
+   * mockup drops the whole chip below 1500px, which it could afford because its topbar
+   * carried the navigation; § 1.1's header does not, and this is the only control in the
+   * product that sets a focus repository — so what goes is the muted half, not the control.
+   * Nothing is lost to a screen reader: the button's own name carries both names at every
+   * width (`app/shell/account.ts`'s `tenantChipLabel`).
+   */
+  .shell-tenant__org {
     display: none;
   }
 

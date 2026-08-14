@@ -161,6 +161,15 @@ Complexity chips: **XS · S · M · L**.
 > a tooltip pointing at the account menu, which does switch today. The theme toggle and
 > the settings gear stay in the row until CP.3 folds them into the profile menu.
 >
+> > **Amended 2026-08-14 by [#77](https://github.com/NobuData/ouroboros/issues/77) (H.1).**
+> > The chip is a control now: `acme-robotics / helios-firmware ▾` over a menu that switches
+> > workspace and picks a focus repository, so the caret this issue refused to draw is
+> > earned and the tooltip pointing at the account menu is gone. The em dash stays for the
+> > one state it is still the right answer to — a session that names no workspace, where
+> > every branch of that menu would be about nowhere. #77 also lifted this shell's menu
+> > keyboard into `app/shell/menu.ts` and its workspace write into
+> > `app/shell/switch-workspace.ts`, both now shared with CP.3's account menu.
+>
 > Third, and the part with no precedent in the module: **the overlay layer**. § 1.3's last
 > clause asks that dialogs, sheets and the palette render outside the pane and lock its
 > scroll, and the subtlety is the lock.

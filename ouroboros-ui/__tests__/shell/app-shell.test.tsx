@@ -38,6 +38,12 @@ vi.mock("@/app/shell/preference-actions", () => ({
   saveFontScale: vi.fn().mockResolvedValue(true),
 }));
 
+// The tenant chip reads its repositories through a Server Action over the same server-only
+// client (H.1, #77). What it does with the answer is `tenant-chip.test.tsx`'s.
+vi.mock("@/app/shell/repo-actions", () => ({
+  readFocusRepos: vi.fn().mockResolvedValue({ ok: true, organizationId: "none", repos: [] }),
+}));
+
 const { default: AppLayout } = await import("@/app/(app)/layout");
 const { AppShell, CONTENT_ID } = await import("@/app/shell/app-shell");
 const { OVERLAY_LAYER_ID, PANE_ATTRIBUTE } = await import("@/app/shell/regions");
