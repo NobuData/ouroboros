@@ -3,6 +3,7 @@ import { Button, type ButtonTone, Eyebrow, cx } from "@/app/ui";
 import { ActiveLoopsCard } from "./active-loops-card";
 import { type EmptyPanel, EmptyCard } from "./empty-card";
 import { Greeting } from "./greeting";
+import { PulseCard } from "./pulse-card";
 import { StatCard } from "./stat-card";
 import { SystemCard } from "./system-card";
 import { type DashboardReadings, pageSubline, statRow, systemRows } from "./view";
@@ -37,10 +38,15 @@ import "./dashboard.css";
  *
  * - **Read.** The stat row is drawn from the aggregate's `stats`
  *   ([#81](https://github.com/NobuData/ouroboros/issues/81)), the active-loops table from its
- *   `activeRuns` ([#82](https://github.com/NobuData/ouroboros/issues/82)), and the system card
+ *   `activeRuns` ([#82](https://github.com/NobuData/ouroboros/issues/82)), the loop pulse from
+ *   its `pulse` ([#83](https://github.com/NobuData/ouroboros/issues/83)), and the system card
  *   from `/health/ready` and `/api/v1/engine/status`. Every figure on them came from the
  *   service, and a figure that could not be read is an em dash beside the reason rather
  *   than a zero.
+ * - **Written.** One control on the whole page changes anything: the pulse card's auto-merge
+ *   switch, which is [#74](https://github.com/NobuData/ouroboros/issues/74)'s operation and
+ *   the workspace's own setting rather than a preference of this browser's. It is the only
+ *   reason this screen's card list includes a Client Component that writes.
  * - **Waiting.** Two of the mockup's panels still have no card drawing them — the
  *   completions table ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
  *   ([#85](https://github.com/NobuData/ouroboros/issues/85)) — so they keep their place in
@@ -86,6 +92,7 @@ export function DashboardScreen({
         ))}
 
         <ActiveLoopsCard aggregate={aggregate} readAt={readings.readAt} />
+        <PulseCard aggregate={aggregate} workspace={readings.workspace} />
         <SystemCard rows={systemRows(readings.readiness, readings.engine)} />
         <EmptyCard panel={RECENTLY_CLOSED} />
         <EmptyCard panel={UP_NEXT} />

@@ -1345,7 +1345,7 @@ themes hold.
 | I.1 | #80 | 🟢 Done | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
 | I.2 | #81 | 🟢 Done | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.3 | #82 | 🟢 Done | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
-| I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
+| I.4 | #83 | 🟢 Done | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
 | I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
@@ -1663,7 +1663,84 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.4 — ouroboros-ui: [I.4] Loop pulse card
 
-> **GitHub issue:** #83 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #83 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The `c-4` card draws the aggregate's `pulse`:
+> [`pulse-card.tsx`](../ouroboros-ui/app/dashboard/pulse-card.tsx), with every figure and every
+> width decided in [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) (`pulseMeters`,
+> `pulseIsUnmeasured`) so the AC's `92% / 14m 20s / 2 this week` and its `92% / 48% / 8%` are
+> unit tests on a function rather than assertions about rendered text.
+>
+> **Two of the three bars needed a denominator, and both are now written down.** The merge rate
+> is a fraction already; a cycle time and an intervention count are not, and the mockup's 48%
+> and 8% came from nowhere. `CYCLE_TIME_TARGET_SECONDS` (thirty minutes) and
+> `INTERVENTION_BUDGET_7D` (twenty-five) are exported constants that reproduce both widths
+> exactly — 860 ÷ 1800 rounds to 48%, 2 ÷ 25 *is* 8% — so a width on this card is arithmetic
+> somebody can check rather than a number matched to a screenshot. Both fills round to a whole
+> percent: a ratio against a target somebody chose is a gauge rather than a measurement, and it
+> keeps the bar and the figure beside it from ever disagreeing.
+>
+> **Each meter states its own window**, which is what this roadmap asked I.4 for by name. The
+> head keeps the mockup's `7 days` tag, and the merge-rate row prints `14 days` beside its
+> caption — the window G.1 published it under, because the mockup's own three figures cannot
+> all be true of one. The bar's `aria-valuetext` carries the window and the denominator too,
+> since the figure beside it is hidden from the accessibility tree: the caption speaks for the
+> eye and the bar speaks for the reader, never both.
+>
+> **The glyph is the #14 asset and nothing else.** `docs/brand/glyph-*.png` is copied to
+> `public/brand/` (the copy is held byte-identical by
+> [`brand-assets.test.ts`](../ouroboros-ui/__tests__/brand-assets.test.ts)) and both treatments
+> are stacked in one grid cell with CSS choosing between them — the shell header's technique and
+> the login lockup's, so the right one is painted before any JavaScript runs and the card renders
+> identically under both palettes. The mockup's `mix-blend-mode: screen` and its 24px
+> `drop-shadow` are both gone: they are one workaround for a crop that still had its background
+> attached, `docs/BRAND.md` § Rules bans each of them on this pair by name, and on a light card
+> the blend would have erased the mark outright.
+>
+> **The switch is the page's one write, and it is optimistic with a real rollback.**
+> [`auto-merge-switch.tsx`](../ouroboros-ui/app/dashboard/auto-merge-switch.tsx) is a Client
+> Component over [`pulse-actions.ts`](../ouroboros-ui/app/dashboard/pulse-actions.ts), the
+> Server Action seam every write in this module uses — the browser cannot reach REST. The
+> optimistic position is `useOptimistic`'s, so it lives exactly as long as the transition that
+> set it: a failed `PATCH` needs no rollback path to remember, because the value expires with
+> its own transition and the reason is drawn under the row as an `alert`. A landed write calls
+> `router.refresh()` *inside* that transition, which re-renders the route's Server Components
+> from a fresh aggregate — the AC's *"verified by the next poll"* until
+> [#87](https://github.com/NobuData/ouroboros/issues/87) lands, and I.8's *"refetch triggered by
+> the auto-merge PATCH"* in the framework's own words.
+>
+> **A member sees the switch, disabled, with the reason in its tooltip and its description** —
+> § 3.3's permission-limited state, `aria-disabled` rather than `disabled` so the explanation
+> keeps its place in the tab order. The gate that *decides* is G.5's: a Server Action is a POST
+> endpoint anybody can reach, so the browser's copy of the rule is presentation only, and a
+> forged write is answered with the service's `403` in the switch's own words (one sentence,
+> written once in `view.ts`, used by both).
+>
+> **Two things the card does that the issue did not ask for**, both from the honesty rule. A
+> workspace where nothing has closed in either window reads all three figures as *floors* rather
+> than measurements, so the card says so in a line instead of reporting a 0% merge rate — the
+> designed zero state is [#86](https://github.com/NobuData/ouroboros/issues/86)'s, and this is
+> the sentence that keeps the meters honest until then. And an aggregate nobody could read draws
+> the service's reason with an em dash where the switch would be, rather than a switch defaulted
+> to `off`: that would be this card inventing the one fact on the page that changes what the loop
+> does without asking a person.
+>
+> **The system card moved one place along the grid.** The mockup's first row is the loops table
+> and the pulse card — `8 + 4` — and the system card is the one card on this grid the mockup does
+> not draw (it is #45's), so it now follows the pair it shares a width with. Both `c-4` cards
+> therefore pair off at the 68.75rem breakpoint instead of each taking half a row alone.
+>
+> The proving tests are
+> [`pulse-card.test.tsx`](../ouroboros-ui/__tests__/dashboard/pulse-card.test.tsx) (the mockup's
+> figures and widths, the tones, the glyph pair under both palettes, the role matrix, the
+> unmeasured and unreadable states),
+> [`auto-merge-switch.test.tsx`](../ouroboros-ui/__tests__/dashboard/auto-merge-switch.test.tsx)
+> (the position before the answer, the refresh after it, the rollback and its alert, a second
+> press ignored mid-flight, a change nobody made in this browser),
+> [`pulse-actions.test.ts`](../ouroboros-ui/__tests__/dashboard/pulse-actions.test.ts) (the
+> refusals as values, the redirect signal travelling),
+> [`settings.test.ts`](../ouroboros-ui/__tests__/api/settings.test.ts) and the `pulseMeters`
+> cases in [`view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts).
 
 - **Problem Statement:** The `c-4` pulse card is the qualitative read on the loop —
   glyph centerpiece, three labeled meters with mono values (ok/neutral/warn), and

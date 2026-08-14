@@ -59,6 +59,25 @@ export type Dashboard = components["schemas"]["Dashboard"];
 export type DashboardStats = components["schemas"]["DashboardStats"];
 
 /**
+ * The pulse card's three windowed meters, and the one switch this page can change.
+ *
+ * Named separately from {@link Dashboard} for {@link DashboardStats}'s reason — the card is
+ * decided figure by figure in `app/dashboard/view.ts`, and a function that decides one meter
+ * should take the meters rather than the whole payload.
+ *
+ * **The three are not all measured over the same window**, and the contract is where that is
+ * written down: the merge rate covers **fourteen** days and the other two **seven**, because
+ * the mockup's own figures cannot all be true of one window (46 merged of 50 closed is `0.92`
+ * exactly; no integer count of closed runs makes 27 merged 92% over seven days). That is why
+ * the card labels the merge rate for its own window rather than letting the head's `7 days`
+ * tag speak for all three.
+ *
+ * **`autoMerge` is the switch's position, not a way to change it.** The aggregate reports it
+ * so the card paints in the page's one round trip; the write is `app/api/settings.ts`.
+ */
+export type LoopPulse = components["schemas"]["LoopPulse"];
+
+/**
  * One run of the loop against one issue, as every card that draws a run draws it.
  *
  * **One shape for both lists.** *Active loops* and *Recently closed* are two queries over one
