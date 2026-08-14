@@ -476,7 +476,7 @@ that roadmap's "Existing issues affected" section.
 
 ## P4 — Dashboard — the First Real Screen
 
-> **22 issues** · 53 complexity points · order **#68–#92**, less `69`, `71` and `72` · 7 dependency waves
+> **21 issues** · 52 complexity points · order **#68–#92**, less `69`, `70`, `71` and `72` · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_02_DASHBOARD.md` (Epics F–I)
 
 **Goal.** Build the dashboard read-model, its org-scoped REST endpoints with ETag polling, the mission-control topbar chrome (tenant switcher, live and needs-you pills, ⌘K palette), and mockup 02 as the real landing page.
@@ -487,9 +487,9 @@ that roadmap's "Existing issues affected" section.
 
 **Parallel:** the `F` (read-model) and `H` (topbar chrome) tracks are independent for their first three issues; `G` (services) and `I` (page UI) then pipeline behind them.
 
-> **`F.1` · `#64`, `F.2` · `#65` and `F.3` · `#66` have shipped, and rows `69`, `71` and
-> `72` have left the table below** — which is why its order numbers step from `68` to
-> `70` and from `70` to `73`.
+> **`F.1` · `#64`, `F.2` · `#65`, `F.3` · `#66` and `F.4` · `#67` have shipped, and rows
+> `69`, `70`, `71` and `72` have left the table below** — which is why its order numbers
+> step from `68` straight to `73`.
 >
 > `#64`'s blockers were both already met, and one of them under another roadmap's name: `3.1`
 > is the Flyway scaffold (`#19`), and `B.3` — the organization and repo tables — is
@@ -531,13 +531,27 @@ that roadmap's "Existing issues affected" section.
 > section in `tests/constraints.sql`, run by `ci/db` against a database migrated from
 > empty.
 >
-> **`F.4` (`#67`) is the next row of this phase that can move** — it needs only `B.3` —
-> and `F.5` (`#68`) once all four tables exist.
+> [`V011__workspace_settings.sql`](../ouroboros-db/migrations/V011__workspace_settings.sql)
+> is `F.4` and the last table of the read-model — `workspace_settings`, the org-scoped home
+> of the *Auto-merge when checks pass* switch, which is the dashboard's only *write*. Typed
+> columns rather than key/value, so a setting stays a `boolean` the compiler and a CHECK
+> can both see and a new one is an ordinary additive migration. Row creation is **lazy**:
+> there is no creation trigger, a workspace with no row is at every default, and
+> `workspace_settings_effective` — `organization LEFT JOIN workspace_settings` with the
+> defaults coalesced — is what makes absence and an explicit default read alike, so a newly
+> created workspace reads `auto_merge_on_checks = false` from the database rather than from
+> an application's memory of the default. `updated_by` references the BetterAuth `user`
+> table and **sets null** rather than cascading: deleting the person who flipped the switch
+> must not delete the row and silently turn the switch back off. Same assertion story once
+> more: a section in `tests/constraints.sql`, run by `ci/db` against a database migrated
+> from empty.
+>
+> **All four read-model tables now exist, so `F.5` (`#68`) is the next row of this phase
+> that can move** — the seeds every remaining `G` and `I` row is measured against.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 68 | **H.3** | #79 | Search pill & ⌘K navigation palette | ouroboros-ui | M | 5.3 |
-| 70 | **F.4** | #67 | Workspace settings table | ouroboros-db | XS | B.3 |
 | 73 | **F.5** | #68 | Dashboard dev seeds — mockup-02 parity | ouroboros-db | S | F.1, F.4 |
 | 74 | **G.2** | #71 | Runs endpoints (active & recent) | ouroboros-rest | S | C.3, F.1 |
 | 75 | **G.3** | #72 | Pulse metrics computation | ouroboros-rest | M | F.1 |
