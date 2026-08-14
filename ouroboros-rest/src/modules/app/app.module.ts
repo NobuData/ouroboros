@@ -11,6 +11,7 @@ import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { HealthModule } from "../health/health.module";
 import { PreferencesModule } from "../preferences/preferences.module";
+import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
@@ -41,9 +42,13 @@ import { AppService } from "./app.service";
  * `TenancyModule`'s guard resolved from the session, which is why it is listed after it and
  * could not be listed before. `RunsModule`
  * ([#71](https://github.com/NobuData/ouroboros/issues/71)) and `QueueModule`
- * ([#73](https://github.com/NobuData/ouroboros/issues/73)) close the list — the paged
+ * ([#73](https://github.com/NobuData/ouroboros/issues/73)) follow — the paged
  * drill-ins over the same read-model, tenant-required the same way, listed beside the
- * aggregate they page.
+ * aggregate they page. `SettingsModule`
+ * ([#74](https://github.com/NobuData/ouroboros/issues/74)) closes the list: the page's one
+ * write, tenant-required again and the first module outside `tenancy` to lean on the roles
+ * guard — registered globally by `TenancyModule`, which is one more reason nothing here
+ * could precede it.
  *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
@@ -103,6 +108,7 @@ export class AppModule {
         DashboardModule,
         RunsModule,
         QueueModule,
+        SettingsModule,
       ],
     };
   }
