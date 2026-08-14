@@ -2,10 +2,18 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
-import { NO_VALUE } from "@/app/dashboard/view";
+import { NO_VALUE, QUIET_SUBLINE } from "@/app/dashboard/view";
 
-import { engineStatus, failed, healthReport, memberPage, read, readings } from "../helpers/dashboard";
-import { enablement, membership, org, repo, sessionUser } from "../helpers/login";
+import {
+  emptyDashboard,
+  engineStatus,
+  failed,
+  healthReport,
+  memberPage,
+  read,
+  readings,
+} from "../helpers/dashboard";
+import { enablement, org, repo, sessionUser } from "../helpers/login";
 
 /**
  * The dashboard as a screen: mockup 02's frame drawn from what was actually read.
@@ -40,12 +48,14 @@ function systemRow(label: string): string {
 }
 
 describe("the page head", () => {
-  it("names the workspace as the page's one top-level heading", () => {
+  it("greets the signed-in person as the page's one top-level heading", () => {
+    // The daypart is the browser's, so the case names the person rather than the hour —
+    // `greeting.test.tsx` is where the clock is pinned.
     render(<DashboardScreen readings={readings()} />);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Acme Robotics" }),
-    ).toBeInTheDocument();
+    const title = screen.getByRole("heading", { level: 1 });
+
+    expect(title).toHaveTextContent(/, Ken — the loop is turning\.$/);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
@@ -55,17 +65,50 @@ describe("the page head", () => {
     expect(screen.getByText("Mission Control")).toBeInTheDocument();
   });
 
-  it("says who is looking and what they hold, from the gate rather than from a guess", () => {
+  it("greets whoever the gate resolved, rather than a name from a guess", () => {
     render(
       <DashboardScreen
-        readings={readings({
-          workspace: membership({ roles: ["viewer"], slug: "acme-labs" }),
-          user: sessionUser({ displayName: "Maya Chen" }),
-        })}
+        readings={readings({ user: sessionUser({ displayName: "Maya Chen" }) })}
       />,
     );
 
-    expect(screen.getByText("Maya Chen · viewer of acme-labs")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/, Maya —/);
+  });
+
+  it("says what the loop is doing right now, from the aggregate", () => {
+    // The subline is the page's other piece of page-level truth (#70's `activity`), and on
+    // the seeded workspace it is the mockup's own sentence.
+    render(<DashboardScreen readings={readings()} />);
+
+    expect(
+      screen.getByText(/^3 issues in flight, 12 queued behind them\./),
+    ).toBeInTheDocument();
+  });
+
+  it("reads quietly for a workspace with nothing in it", () => {
+    render(
+      <DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />,
+    );
+
+    expect(screen.getByText(QUIET_SUBLINE)).toBeInTheDocument();
+  });
+
+  it("puts the service's reason in the subline when the aggregate could not be read", () => {
+    // Never a workspace that looks empty: an unread aggregate and an idle loop must not
+    // render the same, which is the rule the stat row's em dash is written under.
+    const { container } = render(
+      <DashboardScreen readings={readings({ aggregate: failed("Choose a workspace first.") })} />,
+    );
+
+    expect(screen.getByText("Choose a workspace first.")).toBeInTheDocument();
+    expect(container.querySelectorAll(".dash__sub--failed")).toHaveLength(1);
+    expect(container.textContent).not.toContain(QUIET_SUBLINE);
+  });
+
+  it("makes no claim about the loop in the heading when nothing could be read", () => {
+    render(<DashboardScreen readings={readings({ aggregate: failed("Nope.") })} />);
+
+    expect(screen.getByRole("heading", { level: 1 })).not.toHaveTextContent(/loop/);
   });
 
   it("is a main landmark, so the shell (#41) has something to wrap", () => {
@@ -361,6 +404,7 @@ describe("a workspace that is not the seeded one", () => {
     const { container } = render(
       <DashboardScreen
         readings={readings({
+          aggregate: failed("Something went wrong."),
           members: failed("Something went wrong."),
           enablement: failed("Something went wrong."),
           readiness: null,
@@ -370,7 +414,8 @@ describe("a workspace that is not the seeded one", () => {
     );
 
     expect(container.querySelectorAll(".dash-grid > .ou-card")).toHaveLength(8);
-    expect(screen.getByRole("heading", { level: 1, name: "Acme Robotics" })).toBeInTheDocument();
+    // The greeting survives every failed read: it is the session's, which the gate resolved.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/, Ken/);
     expect(screen.getAllByText(NO_VALUE).length).toBeGreaterThan(0);
     expect(container.textContent).not.toMatch(/\bundefined\b|\bNaN\b|\[object/);
   });

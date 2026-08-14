@@ -62,7 +62,10 @@ describe("the dashboard route", () => {
   it("draws what the reader returned", async () => {
     render(await Page());
 
-    expect(screen.getByRole("heading", { level: 1, name: "Acme Robotics" })).toBeInTheDocument();
+    // The seeded aggregate's own sentence, so this asserts the reader's payload reached the
+    // screen rather than that the screen has a page head at all.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/, Ken —/);
+    expect(screen.getByText(/^3 issues in flight, 12 queued behind them\./)).toBeInTheDocument();
     expect(screen.getByText("Mission Control")).toBeInTheDocument();
   });
 

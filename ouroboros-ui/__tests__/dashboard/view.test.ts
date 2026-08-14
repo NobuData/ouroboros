@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  NEUTRAL_GREETING,
   NO_VALUE,
+  QUIET_SUBLINE,
   STATE_LABEL,
+  countOf,
+  daypartAt,
+  firstName,
+  greeting,
   memberStat,
   orgStat,
   overallState,
@@ -13,8 +19,18 @@ import {
   systemRows,
 } from "@/app/dashboard/view";
 
-import { engineStatus, failed, healthReport, memberPage, read, seededMembers } from "../helpers/dashboard";
-import { enablement, membership, org, repo } from "../helpers/login";
+import {
+  activity,
+  dashboardPayload,
+  emptyDashboard,
+  engineStatus,
+  failed,
+  healthReport,
+  memberPage,
+  read,
+  seededMembers,
+} from "../helpers/dashboard";
+import { enablement, org, repo } from "../helpers/login";
 
 /**
  * Every decision the dashboard makes, as functions.
@@ -335,32 +351,162 @@ describe("the stat row", () => {
   });
 });
 
+describe("countOf", () => {
+  it("agrees with the number it is counting", () => {
+    // The acceptance criterion says "correct pluralization", which is one rule rather than
+    // one per sentence — so it is a function, and this is it.
+    expect(countOf(1, "issue")).toBe("1 issue");
+    expect(countOf(3, "issue")).toBe("3 issues");
+    expect(countOf(0, "issue")).toBe("0 issues");
+  });
+
+  it("counts a two-word noun without splitting it", () => {
+    expect(countOf(1, "pull request")).toBe("1 pull request");
+    expect(countOf(6, "pull request")).toBe("6 pull requests");
+  });
+
+  it("takes an irregular plural rather than inventing one", () => {
+    expect(countOf(2, "person", "people")).toBe("2 people");
+  });
+});
+
+describe("daypartAt", () => {
+  it("names the three parts of the day at their boundaries", () => {
+    expect(daypartAt(5)).toBe("morning");
+    expect(daypartAt(11)).toBe("morning");
+    expect(daypartAt(12)).toBe("afternoon");
+    expect(daypartAt(17)).toBe("afternoon");
+    expect(daypartAt(18)).toBe("evening");
+    expect(daypartAt(23)).toBe("evening");
+  });
+
+  it("keeps the small hours in the evening rather than inventing a fourth part", () => {
+    // The mockup's greeting has three. Somebody working at two in the morning is at the end
+    // of a long evening rather than at the start of a night that needs its own word.
+    expect(daypartAt(0)).toBe("evening");
+    expect(daypartAt(4)).toBe("evening");
+  });
+
+  it("covers every hour a clock can report", () => {
+    for (let hour = 0; hour < 24; hour += 1) {
+      expect(["morning", "afternoon", "evening"]).toContain(daypartAt(hour));
+    }
+  });
+});
+
+describe("firstName", () => {
+  it("takes the name a person is called by", () => {
+    expect(firstName("Ken Suenobu")).toBe("Ken");
+  });
+
+  it("leaves a single-word name whole", () => {
+    expect(firstName("Ken")).toBe("Ken");
+  });
+
+  it("survives the names a session can actually carry", () => {
+    expect(firstName("  Maya   Chen ")).toBe("Maya");
+    expect(firstName("")).toBe("");
+    expect(firstName("   ")).toBe("");
+  });
+});
+
+describe("greeting", () => {
+  it("is the mockup's sentence, from the daypart, the name and the loop", () => {
+    expect(greeting("afternoon", "Ken Suenobu", activity())).toBe(
+      "Good afternoon, Ken — the loop is turning.",
+    );
+  });
+
+  it("says the loop is idle when nothing is in flight", () => {
+    // "The loop is turning" is a claim about a workspace, not a decoration on a heading.
+    expect(greeting("morning", "Ken Suenobu", activity({ inFlight: 0 }))).toBe(
+      "Good morning, Ken — the loop is idle.",
+    );
+  });
+
+  it("makes no claim at all when the aggregate could not be read", () => {
+    expect(greeting("evening", "Ken Suenobu", null)).toBe("Good evening, Ken.");
+  });
+
+  it("greets neutrally where no clock has answered yet", () => {
+    // The server render and the hydration pass that must match it. A daypart guessed on the
+    // server is a wrong word half the time; this one is never wrong.
+    expect(greeting(null, "Ken Suenobu", activity())).toBe(
+      `${NEUTRAL_GREETING}, Ken — the loop is turning.`,
+    );
+  });
+
+  it("is a whole sentence for a session carrying no name", () => {
+    // A session may. "Good afternoon, ." would be worse than no name at all.
+    expect(greeting("afternoon", "", activity())).toBe(
+      "Good afternoon — the loop is turning.",
+    );
+    expect(greeting(null, "", null)).toBe(`${NEUTRAL_GREETING}.`);
+  });
+});
+
 describe("pageSubline", () => {
-  it("names who is looking and what they hold", () => {
-    expect(pageSubline(membership(), "Ken Suenobu")).toBe(
-      "Ken Suenobu · owner of acme-robotics",
+  it("is the mockup's line, on the seeded workspace", () => {
+    // The acceptance criterion, quoted: "3 issues in flight, 12 queued…".
+    expect(pageSubline(read(dashboardPayload())).text).toBe(
+      "3 issues in flight, 12 queued behind them. " +
+        "Ouroboros merged 6 pull requests since midnight UTC.",
     );
   });
 
-  it("says nothing about a lifecycle, because the contract publishes none", () => {
-    // *Names a lifecycle that is not the normal one* was here. `OrgRow` carries no `status`
-    // ([#719](https://github.com/NobuData/ouroboros/issues/719)) — the organization plugin
-    // has no lifecycle column — so every workspace a session can reach is one you can work
-    // in, and there is nothing left for this line to warn about.
-    expect(pageSubline(membership(), "Ken Suenobu")).not.toContain("workspace");
+  it("agrees with itself about one of anything", () => {
+    const one = pageSubline(
+      read(dashboardPayload({ activity: activity({ inFlight: 1, queued: 1, mergedSinceMorning: 1 }) })),
+    ).text;
+
+    expect(one).toContain("1 issue in flight, 1 queued behind it.");
+    expect(one).toContain("merged 1 pull request since");
   });
 
-  it("reports the role the gate resolved rather than assuming one", () => {
-    expect(pageSubline(membership({ roles: ["viewer"] }), "Maya Chen")).toContain(
-      "viewer of acme-robotics",
-    );
+  it("says the queue is empty rather than counting to zero", () => {
+    expect(
+      pageSubline(read(dashboardPayload({ activity: activity({ queued: 0 }) }))).text,
+    ).toContain("3 issues in flight, and nothing queued behind them.");
   });
 
-  it("names the strongest role held, where the contract carries a list", () => {
-    // There is room for a word and the truthful word is the strongest: somebody who is an
-    // owner and a member may do everything an owner may.
-    expect(pageSubline(membership({ roles: ["member", "owner"] }), "Ken Suenobu")).toContain(
-      "owner of",
-    );
+  it("says nothing is in flight without pretending the queue is too", () => {
+    expect(
+      pageSubline(read(dashboardPayload({ activity: activity({ inFlight: 0 }) }))).text,
+    ).toContain("Nothing in flight; 12 issues waiting for a loop.");
+  });
+
+  it("reports a day with no merges as a day with no merges", () => {
+    expect(
+      pageSubline(read(dashboardPayload({ activity: activity({ mergedSinceMorning: 0 }) })))
+        .text,
+    ).toContain("Nothing has merged since midnight UTC.");
+  });
+
+  it("names the boundary the figure is actually counted from", () => {
+    // The mockup says "since this morning"; the contract counts from midnight UTC, which is
+    // the same boundary the day's token spend uses. For a reader thirteen hours away those
+    // are different mornings, and this page's whole argument is that its numbers are real.
+    const line = pageSubline(read(dashboardPayload())).text;
+
+    expect(line).toContain("since midnight UTC");
+    expect(line).not.toContain("this morning");
+  });
+
+  it("reads quietly for a workspace with nothing in it", () => {
+    // Three zeros are arithmetically true and useless. A fresh workspace has not failed at
+    // anything; it has not started.
+    const empty = pageSubline(read(emptyDashboard()));
+
+    expect(empty.text).toBe(QUIET_SUBLINE);
+    expect(empty.failed).toBe(false);
+    expect(empty.text).not.toMatch(/\b0\b/);
+  });
+
+  it("carries the service's reason when the aggregate could not be read", () => {
+    // Never an empty workspace: "nothing is running" and "nobody could ask what is running"
+    // are different facts, which is the rule the stat row's em dash is written under too.
+    const failure = pageSubline(failed("Choose a workspace first."));
+
+    expect(failure).toEqual({ text: "Choose a workspace first.", failed: true });
   });
 });

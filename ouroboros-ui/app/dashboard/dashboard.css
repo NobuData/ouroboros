@@ -70,6 +70,16 @@
   color: var(--ink-mut);
 }
 
+/*
+ * The subline of a page whose aggregate could not be read, which carries the service's
+ * reason rather than a description of the workspace. The same treatment the stat row's
+ * failed caption takes, for the same reason: "nothing is running" and "nobody could ask
+ * what is running" must not look alike.
+ */
+.dash__sub--failed {
+  color: var(--err);
+}
+
 .dash__actions {
   display: flex;
   flex-wrap: wrap;

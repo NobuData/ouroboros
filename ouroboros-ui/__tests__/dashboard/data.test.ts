@@ -3,26 +3,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 import type { Workspace } from "@/app/api/access";
 
-import { engineStatus, healthReport, memberPage } from "../helpers/dashboard";
+import { dashboardPayload, engineStatus, healthReport, memberPage } from "../helpers/dashboard";
 import { enablement, membership, org, repo, sessionUser } from "../helpers/login";
 
 /**
- * The dashboard's reader: four calls, one object, and a failure that stays inside its own
+ * The dashboard's reader: five calls, one object, and a failure that stays inside its own
  * card.
  *
- * The four resources are replaced rather than driven — each has a suite of its own in
+ * The five resources are replaced rather than driven — each has a suite of its own in
  * `__tests__/api/`, and repeating them here would be testing the client twice while testing
  * the composition once. What is under test is what this layer adds: that the reads go out
  * together, that one failing leaves the others alone, and — the case that matters most —
  * that a redirect is *not* caught on its way past.
  */
 
+const read = vi.fn();
 const list = vi.fn();
 const readEnablement = vi.fn();
 const readReadiness = vi.fn();
 const status = vi.fn();
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/app/api/dashboard", () => ({ dashboard: { read: () => read() } }));
 vi.mock("@/app/api/members", () => ({ members: { list: (...args: unknown[]) => list(...args) } }));
 vi.mock("@/app/api/enablement", () => ({
   readEnablement: (...args: unknown[]) => readEnablement(...args),
@@ -48,6 +50,7 @@ const ACCESS: Workspace = {
 const SEEDED = enablement([[org(), [repo()]]]);
 
 beforeEach(() => {
+  read.mockReset().mockResolvedValue(dashboardPayload());
   list.mockReset().mockResolvedValue(memberPage());
   readEnablement.mockReset().mockResolvedValue(SEEDED);
   readReadiness.mockReset().mockResolvedValue(healthReport());
@@ -60,6 +63,7 @@ describe("readDashboard", () => {
 
     expect(readings.workspace).toEqual(membership());
     expect(readings.user).toEqual(sessionUser());
+    expect(readings.aggregate).toEqual({ ok: true, value: dashboardPayload() });
     expect(readings.members).toEqual({ ok: true, value: memberPage() });
     expect(readings.enablement).toEqual({ ok: true, value: SEEDED });
     expect(readings.readiness).toEqual(healthReport());
@@ -81,18 +85,19 @@ describe("readDashboard", () => {
     expect(MEMBER_LIMIT).toBe(100);
   });
 
-  it("issues the four reads together rather than one after another", async () => {
-    // A screen whose job is reporting the system's health should not take four round trips
-    // to do it. Each read is held open until all four have started, which only completes if
+  it("issues the five reads together rather than one after another", async () => {
+    // A screen whose job is reporting the system's health should not take five round trips
+    // to do it. Each read is held open until all five have started, which only completes if
     // they were in flight at once.
     const started: string[] = [];
     const gate = Promise.withResolvers<void>();
     const hold = (name: string) => () => {
       started.push(name);
-      if (started.length === 4) gate.resolve();
+      if (started.length === 5) gate.resolve();
       return gate.promise;
     };
 
+    read.mockImplementation(hold("aggregate"));
     list.mockImplementation(hold("members"));
     readEnablement.mockImplementation(hold("enablement"));
     readReadiness.mockImplementation(hold("readiness"));
@@ -100,7 +105,22 @@ describe("readDashboard", () => {
 
     await readDashboard(ACCESS);
 
-    expect(started.sort()).toEqual(["enablement", "engine", "members", "readiness"]);
+    expect(started.sort()).toEqual([
+      "aggregate",
+      "enablement",
+      "engine",
+      "members",
+      "readiness",
+    ]);
+  });
+
+  it("names no workspace on the aggregate, because the session already does", async () => {
+    // `GET /api/v1/dashboard` is scoped to the session's active organization and this
+    // client sends no `X-Ouro-Tenant` override (`app/api/server.ts`), so the call takes no
+    // argument at all. A workspace passed here would be a second opinion about tenancy.
+    await readDashboard(ACCESS);
+
+    expect(read).toHaveBeenCalledExactlyOnceWith();
   });
 });
 
@@ -111,9 +131,25 @@ describe("a read that fails", () => {
     const readings = await readDashboard(ACCESS);
 
     expect(readings.members).toEqual({ ok: false, reason: "No such tenant." });
+    expect(readings.aggregate.ok).toBe(true);
     expect(readings.enablement.ok).toBe(true);
     expect(readings.engine.ok).toBe(true);
     expect(readings.readiness).not.toBeNull();
+  });
+
+  it("keeps a failed aggregate out of the cards that do not come from it", async () => {
+    // The page head is the aggregate's; the stat row and the system card are the four #45
+    // reads'. An aggregate the service refused degrades one and leaves the others reading.
+    read.mockRejectedValue(
+      new ApiError(400, "organization_required", "Choose a workspace first.", {}),
+    );
+
+    const readings = await readDashboard(ACCESS);
+
+    expect(readings.aggregate).toEqual({ ok: false, reason: "Choose a workspace first." });
+    expect(readings.members.ok).toBe(true);
+    expect(readings.enablement.ok).toBe(true);
+    expect(readings.engine.ok).toBe(true);
   });
 
   it("carries the message the service wrote, which is written for a person", async () => {
@@ -131,6 +167,7 @@ describe("a read that fails", () => {
 
   it("can fail in every card at once and still return a page to draw", async () => {
     const boom = (code: string) => new ApiError(500, code, "Something went wrong.", {});
+    read.mockRejectedValue(boom("internal_error"));
     list.mockRejectedValue(boom("internal_error"));
     readEnablement.mockRejectedValue(boom("internal_error"));
     status.mockRejectedValue(boom("internal_error"));
@@ -138,6 +175,7 @@ describe("a read that fails", () => {
 
     const readings = await readDashboard(ACCESS);
 
+    expect(readings.aggregate.ok).toBe(false);
     expect(readings.members.ok).toBe(false);
     expect(readings.enablement.ok).toBe(false);
     expect(readings.engine.ok).toBe(false);

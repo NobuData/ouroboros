@@ -14,11 +14,12 @@
  * could not be read is an em dash beside the reason, never a zero.
  */
 
+import type { Dashboard, DashboardActivity } from "@/app/api/dashboard";
 import type { Enablement } from "@/app/api/enablement";
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { MemberPage } from "@/app/api/members";
-import { type Membership, type Role, primaryRole } from "@/app/api/membership";
+import type { Membership, Role } from "@/app/api/membership";
 import type { SessionUser } from "@/app/api/identity";
 
 /**
@@ -50,6 +51,15 @@ export interface DashboardReadings {
   readonly workspace: Membership;
   /** The signed-in person, from the gate. Present by construction. */
   readonly user: SessionUser;
+  /**
+   * The dashboard aggregate ([#70](https://github.com/NobuData/ouroboros/issues/70)), or why
+   * it could not be read — every number, list and switch mockup 02 draws, in one payload.
+   *
+   * The page head reads its `activity`; the cards of I.2–I.6 read the rest. It is one
+   * {@link Reading} rather than six because it is one request: the endpoint is decision F5's
+   * single round trip, so its failure is single too.
+   */
+  readonly aggregate: Reading<Dashboard>;
   /** The workspace's members, or why the listing failed. */
   readonly members: Reading<MemberPage>;
   /** Its organisations and their repositories, or why the read failed. */
@@ -412,19 +422,211 @@ export function statRow(
 /* ------------------------------------------------------------------ the page head */
 
 /**
- * The line under the page's heading: who is looking, and at what.
+ * Count something, in words that agree with the number.
  *
- * **One role rather than the list the contract carries**, because there is room for a word
- * and the truthful word is the strongest one held — `app/api/membership.ts`'s
- * `primaryRole`. The workspace's lifecycle was named here too, when it was not `active`;
- * `OrgRow` publishes no lifecycle ([#719](https://github.com/NobuData/ouroboros/issues/719)),
- * so every workspace a session can reach is one you can work in and there is nothing left
- * for the line to warn about.
+ * Exported because the page head is not the last place on this screen that has to say
+ * *1 issue* and *12 issues* without a second copy of the rule — the queue card and the
+ * completions card both count rows — and because "correct pluralization" is an acceptance
+ * criterion, which makes it worth a test of its own rather than one inferred from a
+ * sentence.
  *
- * @param workspace The active workspace, as the gate resolved it.
- * @param displayName The signed-in person's name.
- * @returns The subline.
+ * @param count How many.
+ * @param singular The noun for exactly one.
+ * @param plural The noun for any other number. Defaults to `singular` with an `s`, which
+ *   is right for every noun this screen counts; pass one for the day it is not.
+ * @returns The number and the noun — `1 issue`, `12 issues`, `0 issues`.
  */
-export function pageSubline(workspace: Membership, displayName: string): string {
-  return `${displayName} · ${primaryRole(workspace.roles)} of ${workspace.slug}`;
+export function countOf(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+/**
+ * Which part of the day it is where the reader is.
+ *
+ * A named part rather than an hour, because that is all the greeting needs and it makes the
+ * boundaries something a test can name.
+ */
+export type Daypart = "morning" | "afternoon" | "evening";
+
+/** The hour the morning starts. Before it, the night is still the evening's. */
+const MORNING_FROM = 5;
+
+/** The hour the afternoon starts — noon, which is what the word means. */
+const AFTERNOON_FROM = 12;
+
+/** The hour the evening starts, and runs to the following {@link MORNING_FROM}. */
+const EVENING_FROM = 18;
+
+/**
+ * The daypart an hour falls in.
+ *
+ * The hours before {@link MORNING_FROM} are the *evening's* rather than a fourth part: the
+ * mockup's greeting has three, and somebody working at two in the morning is at the end of
+ * a long evening rather than at the start of a night that would need its own word.
+ *
+ * @param hour The reader's local hour, `0`–`23`, as `Date.getHours()` reports it.
+ * @returns Which part of the day it is.
+ */
+export function daypartAt(hour: number): Daypart {
+  if (hour >= MORNING_FROM && hour < AFTERNOON_FROM) return "morning";
+  if (hour >= AFTERNOON_FROM && hour < EVENING_FROM) return "afternoon";
+  return "evening";
+}
+
+/** What each daypart is greeted with. */
+const DAYPART_GREETING: Record<Daypart, string> = {
+  morning: "Good morning",
+  afternoon: "Good afternoon",
+  evening: "Good evening",
+};
+
+/**
+ * The greeting for a render that does not know what time it is where the reader is.
+ *
+ * The server is one such render and so is the hydration pass that has to match it
+ * (`app/shell/client-value.ts`), so this is what the heading says for the moment between
+ * the two. It is a greeting rather than a blank or a skeleton because the heading is the
+ * page's `h1`: a title that appears after hydration is a page with no outline until then.
+ */
+export const NEUTRAL_GREETING = "Hello";
+
+/**
+ * The first name to greet somebody by.
+ *
+ * The mockup says *Ken*, not *Ken Suenobu* — a greeting uses the name a person is called,
+ * and the session carries the one they registered with. Everything after the first
+ * whitespace is dropped rather than parsed: a display name has no reliable structure, and
+ * the first word is the only part of one that is usually a given name.
+ *
+ * @param displayName The signed-in person's name, as the session reports it.
+ * @returns The first word of it, or `""` when there is no name to use — a session may
+ *   carry an empty one, and *Good afternoon, .* would be worse than no name at all.
+ */
+export function firstName(displayName: string): string {
+  return displayName.trim().split(/\s+/, 1)[0] ?? "";
+}
+
+/**
+ * What the loop is doing, as the greeting's closing clause.
+ *
+ * @param activity The aggregate's activity, or `null` when it could not be read.
+ * @returns The clause, or `null` when nothing can say — in which case the greeting ends
+ *   after the name rather than making a claim about a loop nobody could ask about.
+ */
+function loopClause(activity: DashboardActivity | null): string | null {
+  if (activity === null) return null;
+  return activity.inFlight > 0 ? "the loop is turning" : "the loop is idle";
+}
+
+/**
+ * The page's heading — *"Good afternoon, Ken — the loop is turning."*
+ *
+ * **The daypart is the client's** (decision F7): it comes from the browser's clock, because
+ * a server rendering somebody's afternoon renders it in the wrong hemisphere, and it is
+ * `null` on the server render and on the hydration pass that must match it.
+ *
+ * **The closing clause is the server's**, and it is a fact rather than a flourish. The
+ * mockup's *"the loop is turning"* is true of a workspace with three runs in flight and
+ * false of a workspace with none, so it is read from the aggregate; a workspace that could
+ * not be read gets no clause at all rather than an optimistic one.
+ *
+ * @param daypart Which part of the day it is where the reader is, or `null` where nothing
+ *   knows yet.
+ * @param displayName The signed-in person's name, as the session reports it.
+ * @param activity The aggregate's activity, or `null` when it could not be read.
+ * @returns One sentence, complete in every combination of the three.
+ */
+export function greeting(
+  daypart: Daypart | null,
+  displayName: string,
+  activity: DashboardActivity | null,
+): string {
+  const word = daypart === null ? NEUTRAL_GREETING : DAYPART_GREETING[daypart];
+  const name = firstName(displayName);
+  const clause = loopClause(activity);
+
+  return `${word}${name === "" ? "" : `, ${name}`}${clause === null ? "" : ` — ${clause}`}.`;
+}
+
+/**
+ * What a workspace with nothing in it says instead of three zeros.
+ *
+ * The acceptance criterion asks that the line "read sensibly for an empty organization",
+ * and *0 issues in flight, 0 queued behind them* is sensible only in the sense of being
+ * arithmetically true. A fresh workspace has not failed at anything; it has not started,
+ * and the honest quiet version of the sentence says what would make it start.
+ */
+export const QUIET_SUBLINE =
+  "Nothing is running yet — the loop starts when an issue reaches the queue.";
+
+/**
+ * What is in flight and what is behind it — the subline's first sentence.
+ *
+ * @param inFlight Runs in flight.
+ * @param queued Issues waiting.
+ * @returns The sentence, in whichever of its four shapes the two numbers call for.
+ */
+function flightSentence(inFlight: number, queued: number): string {
+  const behind = inFlight === 1 ? "it" : "them";
+
+  if (inFlight === 0) {
+    return queued === 0
+      ? "Nothing in flight, and the queue is empty."
+      : `Nothing in flight; ${countOf(queued, "issue")} waiting for a loop.`;
+  }
+
+  return queued === 0
+    ? `${countOf(inFlight, "issue")} in flight, and nothing queued behind ${behind}.`
+    : `${countOf(inFlight, "issue")} in flight, ${queued} queued behind ${behind}.`;
+}
+
+/**
+ * What has merged since the day began — the subline's second sentence.
+ *
+ * **It names the boundary rather than saying "this morning".** The mockup's prose is
+ * *"merged 6 pull requests since this morning"*, and the figure behind it is counted from
+ * **midnight UTC** — the same boundary the day's token spend uses, so the sentence and the
+ * card cannot mean different mornings. For a reader thirteen hours away that is not this
+ * morning, and a page whose whole argument is that its numbers are real should not round a
+ * timezone off the only figure on it that has one.
+ *
+ * @param merged Runs merged since midnight UTC.
+ * @returns The sentence.
+ */
+function mergedSentence(merged: number): string {
+  return merged === 0
+    ? "Nothing has merged since midnight UTC."
+    : `Ouroboros merged ${countOf(merged, "pull request")} since midnight UTC.`;
+}
+
+/** The page head's subline, and whether it is reporting a failure rather than an activity. */
+export interface Subline {
+  /** The line itself. */
+  readonly text: string;
+  /** Whether {@link Subline.text} is why the aggregate could not be read. */
+  readonly failed: boolean;
+}
+
+/**
+ * The line under the greeting: what the loop is doing right now.
+ *
+ * @param aggregate The dashboard aggregate, or why it could not be read.
+ * @returns The line, marked as a failure when it is the service's reason rather than a
+ *   description of the workspace. A failed read is *never* rendered as an empty workspace:
+ *   "nothing is running" and "nobody could ask what is running" are different facts, which
+ *   is the same rule the stat row's em dash is written under.
+ */
+export function pageSubline(aggregate: Reading<Dashboard>): Subline {
+  if (!aggregate.ok) return { text: aggregate.reason, failed: true };
+
+  const { inFlight, queued, mergedSinceMorning } = aggregate.value.activity;
+
+  if (inFlight === 0 && queued === 0 && mergedSinceMorning === 0) {
+    return { text: QUIET_SUBLINE, failed: false };
+  }
+
+  return {
+    text: `${flightSentence(inFlight, queued)} ${mergedSentence(mergedSinceMorning)}`,
+    failed: false,
+  };
 }
