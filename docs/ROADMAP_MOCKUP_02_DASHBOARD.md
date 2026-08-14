@@ -1122,7 +1122,7 @@ all three issues: the `.topbar` of
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | H.1 | #77 | 🟢 Done | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
-| H.2 | #78 | 🟡 Open | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
+| H.2 | #78 | 🟢 Done | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
 | H.3 | #79 | 🟡 Open | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
 
 ### Issue H.1 — ouroboros-ui: [H.1] Tenant chip — org/repo context switcher
@@ -1220,7 +1220,54 @@ all three issues: the `.topbar` of
 
 ### Issue H.2 — ouroboros-ui: [H.2] Live & needs-you pills with real counts
 
-> **GitHub issue:** #78 · **Status:** 🟡 Open · **Parent epic:** #61
+> **GitHub issue:** #78 · **Status:** 🟢 Done · **Parent epic:** #61
+
+> **Shipped.** CP.1's two em dashes are counts —
+> [`app/shell/loop-pills.tsx`](../ouroboros-ui/app/shell/loop-pills.tsx), reading the I.8
+> store and issuing **no request of its own**, which is decision F4 and the reason #87 is
+> provided at the `(app)` layout rather than inside the dashboard route. The seeded
+> organization shows `3 loops live` and `Needs you · 2`, both asserted against the same
+> figures `ouroboros-rest`'s `MOCKUP_02` fixture holds the seed to; the empty organization
+> shows **neither pill, not a zero**, which is the honesty rule (§ 3.5) the em dashes were
+> keeping in the first place. `__tests__/shell/loop-pills.test.tsx` is where each of those is.
+>
+> **The needs-you count is `pulse.interventions7d`, and the pill says so.** The issue and this
+> roadmap both call it the "`needs_human` active count", and there is no such number: in the
+> read-model `needs_human` is a **terminal** status — `V008__dashboard_runs.sql` makes
+> `finished_at` not-null for it — so nothing is ever *actively* needs-human. What the aggregate
+> carries is the pulse card's own figure, runs that reached `needs_human` in the trailing seven
+> days, which is 2 for the seed and the `2 interventions` the mockup draws. It is the right
+> number and it is not a live queue, so the pill's tooltip states the window rather than
+> letting `Needs you · 2` read as two things waiting at this moment. **J.2 (#90) is what
+> replaces the source** with a real inbox feed, exactly as the issue's own *upgraded by #90*
+> says.
+>
+> **It does not link, and that is the same rule again.** The issue asks for a link to the #49
+> inbox placeholder; #49 has not landed, so `/inbox` is a `404` — and the sidebar's own *Needs
+> You* entry already declines to link there for precisely that reason (`nav-modules.ts`, a
+> `soon` row with a note). A pill linking to a 404 would be the one dishonest thing in the
+> chrome, so the tooltip names both mockup 16 and #49 and the link arrives when the route
+> does.
+>
+> **Both dot treatments are #16 tokens, and only one of them moves.** The live dot takes
+> `--accent` with `--accent-glow` — "the glow reserved for live things" — and pulses under a
+> `prefers-reduced-motion: no-preference` guard, the same shape `dashboard.css`'s skeleton
+> uses. The needs-you pill takes the warn trio (`--warn`, `--warn-line`, `--warn-tint`) that
+> mockup 02's `.needs-pill` draws, and its dot deliberately does **not** pulse: the pulse is
+> what separates *running right now* from *waiting for you*, and two throbbing pills would say
+> one thing twice.
+>
+> **The live region is the wrapper, not the pills.** `aria-live="polite"` sits on a container
+> that is always rendered and is `:empty` when both counts are zero, because a live region has
+> to be in the accessibility tree *before* the content that changes inside it — one inserted
+> along with its own first announcement is one a screen reader may never read. So a count
+> moving from 3 to 4 is an update to an existing region rather than an insertion, which is the
+> criterion.
+>
+> **Not in this ticket:** the sidebar's *Needs You* badge, whose source (`INBOX_BADGE_SOURCE`)
+> is still unpublished and belongs to #464's counts endpoint rather than to a seven-day
+> intervention count; and the notifications bell, which stays `aria-disabled` until there is an
+> inbox to notify about.
 
 - **Problem Statement:** The mockup's `● 3 loops live` (pulsing accent dot) and
   `● Needs you · 3` (warn dot, links to inbox) are ambient truth about the loop —
@@ -1889,5 +1936,14 @@ that the rest of Epic I inherits: `GET /api/dashboard` on this origin (the modul
 route handler, and the reason a poll can carry `If-None-Match` and hear `X-Ouro-Poll-After`
 at all), `useDashboardSummary()` exposing `{data, updatedAt, error}` — which is what I.7
 (#86) draws its stale banner from — and the refresh signal I.4 (#83) publishes after the
-auto-merge write. **H.2 (#78) is unblocked by it**, and I.1–I.7 now have a store to render
-from rather than a fetch each.
+auto-merge write. I.1–I.7 now have a store to render from rather than a fetch each.
+
+**H.2 (#78) shipped on top of it the same day**, which is what the hook was pulled forward
+for: the topbar's two pills carry the seed's `3 loops live` and `Needs you · 2` on every
+signed-in screen, drawn from that one poll and hidden entirely rather than zeroed for a
+workspace with nothing in it. Two corrections came out of it, both recorded above: there is
+no "`needs_human` active count" to read — the status is terminal, so the number is the pulse
+card's `interventions7d` and the pill states its window — and the pill does not link to the
+inbox, because #49 has not landed and `/inbox` is a 404. **Epic H has one issue left, H.3
+(#79)**, and the next thing on this roadmap is I.1 (#80), which replaces the #45 page body
+and hands its cards to the store the pills are already reading.

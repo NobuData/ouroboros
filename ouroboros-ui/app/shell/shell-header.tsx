@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { DASHBOARD_PATH } from "@/app/paths";
 
+import { LoopPills } from "./loop-pills";
 import { SearchPill } from "./search-pill";
 import { SidebarToggle } from "./sidebar-toggle";
 import { TenantChip } from "./tenant-chip";
@@ -27,10 +28,15 @@ import { UserMenu } from "./user-menu";
  * ```
  *
  * What fills each one is somebody else's issue, and the ones still waiting say so rather than
- * showing a number nobody computed — the design system's honesty rule (§ 3.5). The counts are
- * [#78](https://github.com/NobuData/ouroboros/issues/78); the palette behind the search pill
- * is [#79](https://github.com/NobuData/ouroboros/issues/79); the settings screen is
- * [#491](https://github.com/NobuData/ouroboros/issues/491).
+ * showing a number nobody computed — the design system's honesty rule (§ 3.5). The palette
+ * behind the search pill is [#79](https://github.com/NobuData/ouroboros/issues/79); the
+ * settings screen is [#491](https://github.com/NobuData/ouroboros/issues/491).
+ *
+ * The two pills are no longer among them either. H.2
+ * ([#78](https://github.com/NobuData/ouroboros/issues/78)) replaced the em dashes CP.1 drew
+ * with the counts the #87 store polls for — and kept the honesty rule by *hiding* a pill
+ * rather than drawing a zero, so the sketch above is the slot's shape rather than its
+ * contents: `app/shell/loop-pills.tsx`.
  *
  * The chip is no longer one of them: H.1
  * ([#77](https://github.com/NobuData/ouroboros/issues/77)) gave it the switch menu § 1.1
@@ -77,24 +83,12 @@ export function ShellHeader() {
         <SearchPill />
 
         {/*
-          The live-loops pill. The dot is the treatment docs/DESIGN_TOKENS.md reserves for a
-          live thing, and the count is an em dash because the design system forbids inventing
-          one (§ 3.5): a hard-coded "3" is a number a reader would believe.
+          The live-loops and needs-you pills, from the #87 store's real counts — both of
+          them, and the live region they change inside, are `app/shell/loop-pills.tsx`.
+          Neither is drawn at zero, so an empty organization gets a header with nothing in
+          this slot rather than a pair of noughts.
         */}
-        <span
-          className="shell-pill"
-          title="Live loop counts arrive with #78, once the dashboard aggregate (#70) can be asked for one."
-        >
-          <span className="shell-pill__dot" aria-hidden />
-          <span className="shell-pill__count">—</span> loops live
-        </span>
-
-        <span
-          className="shell-pill"
-          title="Needs-you counts arrive with #78, once there is a count to show."
-        >
-          Needs you <span className="shell-pill__count">—</span>
-        </span>
+        <LoopPills />
 
         {/*
           The notifications affordance § 1.1 asks for. aria-disabled rather than disabled, the
