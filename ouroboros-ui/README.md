@@ -657,7 +657,8 @@ is a `POST` rather than a `GET` to avoid.
 
 ## Dashboard
 
-`/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45)) is
+`/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45); its frame and page head
+are [#80](https://github.com/NobuData/ouroboros/issues/80)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
@@ -668,8 +669,9 @@ list.
 
 ```
 MISSION CONTROL
-Acme Robotics                              [ Edit workflows ] [ ⟳ Pull next issue ]
-Ken Suenobu · owner of acme-robotics            ↑ both inert, and say why
+Good afternoon, Ken — the loop is turning.  [ Edit workflows ] [ ⟳ Pull next issue ]
+3 issues in flight, 12 queued behind them.      ↑ both inert, and say why
+Ouroboros merged 6 pull requests since midnight UTC.
 
 ┌ LOOPS LIVE ─┐┌ MEMBERS ────┐┌ ORGANISATIONS ┐┌ REPOSITORIES ┐
 │      —      ││      3      ││       1       ││      1       │
@@ -695,13 +697,52 @@ Every decision in between — what a figure is, whether it is an em dash, which 
 — is [`app/dashboard/view.ts`](app/dashboard/view.ts), which is pure, so each is a unit test
 on a function rather than a page to drive.
 
+### The page head carries two pieces of page-level truth
+
+**Who is looking**, and **what the loop is doing right now**. They come from opposite
+directions, and that is the whole design of this head.
+
+The greeting is the module's **one client component**
+([`app/dashboard/greeting.tsx`](app/dashboard/greeting.tsx)), because a daypart is a fact
+about the reader rather than about the server: "good afternoon" rendered in Denver is wrong
+for the half of a workspace that is in Berlin (decision F7). It reads the browser's clock
+through [`useClientValue`](app/shell/client-value.ts) — React's `useSyncExternalStore` with a
+server snapshot and a client snapshot — so the heading is a complete `h1` from the first paint
+(*"Hello, Ken"*) and the daypart lands in the same commit rather than in a cascading second
+render. No `new Date()` in a render body, and so no hydration mismatch to throw markup away
+over.
+
+The subline is server data: the aggregate's `activity`
+([#70](https://github.com/NobuData/ouroboros/issues/70)), composed in
+[`view.ts`](app/dashboard/view.ts) with the pluralisation written once (`countOf`). Three
+things it will not do —
+
+- **It does not say "this morning".** The figure is counted from **midnight UTC**, the same
+  boundary the day's token spend uses; thirteen hours away that is not this morning, and a
+  page whose whole argument is that its numbers are real should not round a timezone off the
+  only figure on it that has one.
+- **It does not count to zero at an empty workspace.** *0 issues in flight, 0 queued behind
+  them* is true and useless; a workspace that has not started reads *"Nothing is running yet
+  — the loop starts when an issue reaches the queue."*
+- **It does not render an unread aggregate as an idle one.** A refusal puts the service's
+  reason there in the error hue, and the heading drops its closing clause rather than claiming
+  a loop is turning that nobody could ask about.
+
 ### One failed read is one degraded card
 
-The four reads go out together and each is wrapped independently, so a members listing that
-fails leaves the enablement counts and the status pills intact. The wrapper catches an
+The five reads go out together — the aggregate, the members listing, the enablement lists, the
+readiness probe and the engine's status — and each is wrapped independently, so a members
+listing that fails leaves the enablement counts and the status pills intact. The wrapper catches an
 `ApiError` and **nothing else**: a `401` arrives here as Next.js's redirect signal rather
 than as an error, and a `catch` wide enough to hold it would swallow the navigation to the
 login screen and draw a dashboard captioned with the framework's internal message.
+
+One of the five is the aggregate, and it is **one** call by design (decision F5):
+[`app/api/dashboard.ts`](app/api/dashboard.ts) wraps `GET /api/v1/dashboard`, which answers
+every number, list and switch the mockup draws in a single payload, so the page paints in one
+round trip rather than in eight. It sends no `If-None-Match` — this is the *first* read, made
+by a Server Component so the page arrives rendered, and the `ETag` loop that keeps it fresh
+afterwards is [#87](https://github.com/NobuData/ouroboros/issues/87)'s.
 
 While the reads are in flight, [`loading.tsx`](<app/(app)/dashboard/loading.tsx>) draws the
 same eight cards at the same column spans, so nothing moves when the data arrives.
@@ -728,9 +769,11 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 - **No loop is invented.** Nothing produces one yet, so the loop count is an em dash rather
   than a zero — "zero loops are running" and "nothing can tell you how many are running" are
   different facts — and the mockup's fifteen plausible rows are not copied.
-- **Both page-head actions are inert**, and say why in a tooltip. Neither destination exists
-  ([#49](https://github.com/NobuData/ouroboros/issues/49) holds their place), and a control
-  that appeared to pull an issue would be the one dishonest thing on the screen.
+- **Both page-head actions are inert**, and say why in a tooltip. Neither destination exists —
+  [#49](https://github.com/NobuData/ouroboros/issues/49) holds their place and is post-MVP —
+  and a control that appeared to pull an issue would be the one dishonest thing on the screen.
+  It is the same treatment the sidebar gives `/issues` and `/workflows`; linking them to routes
+  nobody has written would break #49's own first criterion, *no dead nav links*.
   `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab order.
 - **A figure that could not be read is an em dash beside the reason**, never a zero.
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
@@ -742,9 +785,15 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
   distinguishable without colour vision.
 
 The real dashboard is specified card by card under
-[#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I), and
-[#80](https://github.com/NobuData/ouroboros/issues/80) replaces this page's body. The route,
-the readers, the status logic and the redirect are what it builds on.
+[#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I).
+[#80](https://github.com/NobuData/ouroboros/issues/80) has replaced the frame and the page
+head on top of #45's route, readers, status logic and redirect. Each remaining card replaces
+one tile of the grid from the aggregate this page already fetches: the stat row
+([#81](https://github.com/NobuData/ouroboros/issues/81)), active loops
+([#82](https://github.com/NobuData/ouroboros/issues/82)), the loop pulse
+([#83](https://github.com/NobuData/ouroboros/issues/83)), recently closed
+([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
+([#85](https://github.com/NobuData/ouroboros/issues/85)).
 
 ## App shell
 

@@ -40,6 +40,25 @@ describe("the grid's column spans", () => {
   });
 });
 
+describe("the page head", () => {
+  it("lets the actions drop under the headings rather than crushing them", () => {
+    // The mockup's `.page-head` at its own widths: a flex row that wraps, with the heading
+    // column holding a floor so "Good afternoon, Ken — the loop is turning." never wraps to
+    // one word a line beside two buttons.
+    const head = /\.dash__head\s*\{([^}]*)\}/.exec(CODE);
+    const headings = /\.dash__headings\s*\{([^}]*)\}/.exec(CODE);
+
+    expect(head?.[1]).toMatch(/flex-wrap:\s*wrap/);
+    expect(headings?.[1]).toMatch(/min-width:\s*[\d.]+rem/);
+  });
+
+  it("marks a subline that is a failure rather than an activity", () => {
+    // The page head's half of the honesty rule: an aggregate nobody could read must not
+    // render as a workspace with nothing in it.
+    expect(CODE).toMatch(/\.dash__sub--failed\s*\{[^}]*color:\s*var\(--err\)/);
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is

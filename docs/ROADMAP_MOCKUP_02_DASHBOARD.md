@@ -1342,7 +1342,7 @@ themes hold.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| I.1 | #80 | 🟡 Open | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
+| I.1 | #80 | 🟢 Done | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
 | I.2 | #81 | 🟡 Open | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.3 | #82 | 🟡 Open | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
 | I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
@@ -1354,7 +1354,80 @@ themes hold.
 
 ### Issue I.1 — ouroboros-ui: [I.1] Dashboard route, grid & page head
 
-> **GitHub issue:** #80 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #80 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The frame was already standing, so this issue is almost entirely
+> its page head. #45 shipped the route, the twelve-column grid, the column classes, both
+> breakpoints and the loading skeleton on 2026-08-11 — the AC anticipated that — and a
+> re-reading of `dashboard.css` against the mockup found the grid already at the mockup's own
+> widths (`1100px` and `640px`, as `68.75rem` and `40rem`), the stat tiles halving one step
+> before the wide pairs stack. Nothing there needed changing, and changing it to look busy
+> would have been the wrong kind of work. What #80 adds is the two pieces of page-level truth
+> the head carries.
+>
+> **The greeting is the module's first client component, and decision F7 is the whole reason.**
+> A daypart is a fact about the *reader*: "good afternoon" rendered by the server is rendered
+> in the server's timezone, which is wrong for half of a workspace spread over two
+> hemispheres. [`app/dashboard/greeting.tsx`](../ouroboros-ui/app/dashboard/greeting.tsx)
+> reads the browser's clock through the shell's own `useClientValue` (CP.1, #643) rather than
+> calling `new Date()` in a render body — React's `useSyncExternalStore` with a server
+> snapshot and a client snapshot, so the hydration pass matches by construction and the
+> correction lands in the same commit instead of a cascading second render. The server
+> snapshot is a *complete* heading (*"Hello, Ken"*) rather than a blank or a skeleton: this is
+> the page's `h1`, and a title that appears only after hydration is a page with no outline
+> until then.
+>
+> **The mockup's closing clause is a claim, so it is read from the data.** *"— the loop is
+> turning"* is true of a workspace with three runs in flight and false of one with none, so it
+> comes from `activity.inFlight`; a workspace with nothing running reads *"the loop is idle"*,
+> and an aggregate that could not be read gets **no clause at all** rather than an optimistic
+> one. That is the honesty rule (§ 3.5) applied to a sentence rather than to a card.
+>
+> **Two deviations from the issue body, both deliberate.**
+>
+> 1. **The subline says "since midnight UTC", not "since this morning".** `mergedSinceMorning`
+>    is counted from midnight UTC — the same boundary `stats.tokensToday` uses, so the sentence
+>    and the card cannot mean different mornings (#70's own contract note). Thirteen hours away
+>    that is not this morning, and the one figure on this page that needs a timezone to be well
+>    defined is the last one to round it off. The AC's quoted half — *"3 issues in flight, 12
+>    queued behind them"* — is exact against the F.5 seeds.
+> 2. **The two actions stay inert rather than linking to #49's placeholders.** #49 has not
+>    landed: it is post-MVP and it is nineteen routes rather than these two, and `/issues` and
+>    `/workflows` do not exist — `app/shell/nav-modules.ts` marks both `soon` for exactly that
+>    reason. Linking them would satisfy this issue's fourth criterion by breaking #49's first
+>    one (*no dead nav links*) and by putting a `404` where the design system asks for a label.
+>    So both keep #45's treatment — `aria-disabled` with the reason as the tooltip, so the
+>    explanation stays in the tab order — and **neither fakes an outcome**, which is the half of
+>    the criterion that is about honesty rather than routing. Each `why` becomes an `href` the
+>    day #49 lands.
+>
+> **The aggregate is fetched here, once.**
+> [`app/api/dashboard.ts`](../ouroboros-ui/app/api/dashboard.ts) wraps `GET /api/v1/dashboard`
+> and joins the four reads #45 already made, so `readDashboard` now issues five in parallel and
+> one failed read is still one degraded card — a refused aggregate degrades the page head and
+> leaves the stat row and the system card reading. It sends no `If-None-Match`: this is the
+> *first* read, made by a Server Component so the page arrives rendered, and the `ETag` loop is
+> I.8 (#87)'s. I.2–I.6 each replace one card of the grid from the payload this already holds.
+>
+> The proving tests are
+> [`__tests__/dashboard/view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts) (the
+> sentence, every pluralisation, the three dayparts at their boundaries, the quiet variant and
+> the failure),
+> [`greeting.test.tsx`](../ouroboros-ui/__tests__/dashboard/greeting.test.tsx) (the browser
+> clock, and the server snapshot through React's own server renderer) and
+> [`__tests__/api/dashboard.test.ts`](../ouroboros-ui/__tests__/api/dashboard.test.ts) (one
+> round trip, no tenant header, no conditional header, `organization_required`).
+>
+> **Checked against the running stack**, seeds applied: both themes at a wide viewport, the
+> page head with the seeded sentence wrapping at its 64ch measure with the two actions holding
+> the baseline beside it, and — on the personal workspace, which the F.5 seeds deliberately
+> leave empty — the *quiet* subline and *"the loop is idle"* rendering from real zeros rather
+> than from a fixture. The failed subline resolves to `--err` in both palettes. **The one
+> thing not verified in a browser is the 900px step:** the window would not leave its maximised
+> size, so the stacking rests on
+> [`dashboard-styles.test.ts`](../ouroboros-ui/__tests__/dashboard/dashboard-styles.test.ts)
+> and on the rules being unchanged from the frame #45 shipped and verified. I.9 (#88) is where
+> the rendered page is asserted end to end.
 
 - **Problem Statement:** The dashboard needs its frame before cards exist: the
   12-column grid and the page head (eyebrow, greeting, activity subline, two
@@ -1886,4 +1959,15 @@ only thing genuinely missing was the both-flags rule over the first, which H.1 w
 The remaining unfiled BetterAuth entries are BA-C.3 and BA-D.5, and Epic G shipped without
 either. **H.2 (#78) and H.3 (#79) are unblocked and parallel**; the shell keyboard and the
 one-write-one-message rules they will meet are now `app/shell/menu.ts`'s and
-`app/shell/switch-workspace.ts`'s rather than the account menu's private business.
+`app/shell/switch-workspace.ts`'s rather than the account menu's private business. **H.3 (#79)
+has since shipped**, so H.2 (#78) is what is left of the shell chrome.
+
+**Epic I opened 2026-08-14 with I.1 (#80).** The third of this roadmap's standing
+prerequisites can be struck with it: **BA-D.5 (the auth guard) was never blocking either** —
+`requireWorkspace()` has gated every screen in `app/(app)` since #45, called by the page
+rather than by the group's layout, which is the framework's own guidance and is why the page
+that skipped the check is the page with nothing to draw. Nothing was waiting on a ticket
+nobody filed. The frame is now standing with #70's payload behind it, so **I.2–I.6 (#81–#85)
+are unblocked and parallel** — each replaces one card of the grid from the aggregate the page
+already fetches — and **I.8 (#87)** can wire its `ETag` loop to the read `app/api/dashboard.ts`
+already makes. I.7 (#86) follows the cards, and I.9 (#88) remains the epic's gate.

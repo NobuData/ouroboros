@@ -4,14 +4,25 @@ import "server-only";
  * Everything the dashboard reads, in one pass.
  *
  * The composition lives here rather than in the route for the reason `app/api/enablement.ts`
- * gives: the contract has no operation that answers "the dashboard", so somebody has to
- * issue four calls and hand back one object, and a screen is not the place to do it. What
- * this adds beyond issuing them is the property the screen is built on — **one failed read
- * is one degraded card, never a blank page**.
+ * gives: no single operation answers "the dashboard", so somebody has to issue five calls
+ * and hand back one object, and a screen is not the place to do it. What this adds beyond
+ * issuing them is the property the screen is built on — **one failed read is one degraded
+ * card, never a blank page**.
+ *
+ * ### One of the five is the aggregate, and it is one call by design
+ *
+ * `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) answers
+ * every number, list and switch mockup 02 draws in a single payload — decision F5, so the
+ * page paints in one round trip rather than in eight. This is its **first** read, made here
+ * so the page arrives rendered; [#87](https://github.com/NobuData/ouroboros/issues/87)'s
+ * polling hook is what keeps it fresh afterwards, with the `ETag` this call ignores.
+ *
+ * The other four are #45's, and they stay: the health probe, the engine's build, the
+ * members listing and the enablement lists answer questions the aggregate does not ask.
  *
  * ### The reads are independent, and so are their failures
  *
- * All four go out together and each is wrapped by {@link attempt}, so a members listing
+ * All five go out together and each is wrapped by {@link attempt}, so a members listing
  * that fails leaves the enablement counts, the status pills and the page head intact. The
  * alternative — one `await` chain, or a bare `Promise.all` — makes every card depend on the
  * unluckiest of them, which on a screen whose whole job is reporting the system's health is
@@ -27,6 +38,7 @@ import "server-only";
  */
 
 import type { Workspace } from "@/app/api/access";
+import { dashboard } from "@/app/api/dashboard";
 import { readEnablement } from "@/app/api/enablement";
 import { engine } from "@/app/api/engine";
 import { isApiError } from "@/app/api/errors";
@@ -60,7 +72,8 @@ export const MEMBER_LIMIT = 100;
 export async function readDashboard(access: Workspace): Promise<DashboardReadings> {
   const tenantId = access.membership.id;
 
-  const [memberPage, enablement, readiness, engineStatus] = await Promise.all([
+  const [aggregate, memberPage, enablement, readiness, engineStatus] = await Promise.all([
+    attempt(() => dashboard.read()),
     attempt(() => members.list(tenantId, { limit: MEMBER_LIMIT })),
     attempt(() => readEnablement(tenantId)),
     readReadiness(),
@@ -70,6 +83,7 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
   return {
     workspace: access.membership,
     user: access.session.user,
+    aggregate,
     members: memberPage,
     enablement,
     readiness,
