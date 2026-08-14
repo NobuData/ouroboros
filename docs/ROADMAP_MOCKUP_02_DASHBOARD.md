@@ -638,7 +638,12 @@ ci/db: migrate ─▶ validate ─▶ constraints.sql (+F probes) ─▶ ✓/✗
 | G.4 | #73 | 🟢 Done | ouroboros-rest: [G.4] Queue endpoint | Ordered queue with efforts, tags, Σ estimate | mvp, dashboard, rest | N (after F.2, BA-C.3) | Y | S | ouroboros-rest |
 | G.5 | #74 | 🟢 Done | ouroboros-rest: [G.5] Auto-merge setting endpoint | `GET/PATCH /settings/auto-merge`, owner/admin-gated | mvp, dashboard, rest | N (after F.4, BA-C.3) | Y | S | ouroboros-rest |
 | G.6 | #75 | 🟢 Done | ouroboros-rest: [G.6] Polling contract & cache headers | ETag/304 discipline, poll interval guidance, shared summary for pills | mvp, dashboard, rest | N (after G.1) | Y | S | ouroboros-rest |
-| G.7 | #76 | 🟡 Open | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
+| G.7 | #76 | 🟢 Done | ouroboros-rest: [G.7] Dashboard integration tests | Aggregate math, empty-org, role gates, ETag behavior | mvp, dashboard, rest, ci | N (after G.1–G.6) | Y | M | ouroboros-rest |
+
+> **Epic G is complete.** All seven issues have landed: the aggregate and its tag (G.1),
+> the three drill-in surfaces (G.2, G.4, G.5), the pulse arithmetic (G.3), the polling
+> contract (G.6), and the integration coverage that holds them to each other (G.7). The
+> dashboard's REST surface is what Epic I now paints against.
 
 ### Issue G.1 — ouroboros-rest: [G.1] Dashboard aggregate endpoint with ETag
 
@@ -1043,7 +1048,51 @@ client ── poll every 15s (visible) ──▶ /dashboard  ── 304 (cheap) 
 
 ### Issue G.7 — ouroboros-rest: [G.7] Dashboard integration tests
 
-> **GitHub issue:** #76 · **Status:** 🟡 Open · **Parent epic:** #60
+> **GitHub issue:** #76 · **Status:** 🟢 Done · **Parent epic:** #60
+
+> **Shipped.** The harness gained a third piece — `src/testing/dashboard.fixture.ts`,
+> beside #37's `postgres.fixture.ts` and `harness.fixture.ts`. It builds the F.5 population
+> (fifty-three runs, twelve queue items, twelve usage events, one settings row) and the
+> workspace-with-repository arrangement every one of these suites needs, which four spec
+> files had each been writing out for themselves. `mission-control.integration-spec.ts` is
+> the new suite on top of it: thirty-seven cases over Epic G's five surfaces at once.
+>
+> **The suite deliberately asserts nothing a single-endpoint suite already asserts alone.**
+> #70, #71, #73 and #74 each ship a suite that holds *it* to *its* ticket; this one holds
+> them to **each other**, and every case in it is one no per-endpoint fixture can reach:
+> four endpoints agreeing about one population in one breath, two identical organizations,
+> a boundary with a row an hour either side of it, the tag moved by each of the four tables
+> it fingerprints. Where a figure appears twice it is because two endpoints have to agree
+> about it.
+>
+> **Isolation is seeded symmetrically, and that is the substantive change from the existing
+> tests.** Every isolation case before this one was asymmetric — one workspace holds rows,
+> the other holds few or none — which catches a query that *lost* its scope and returns
+> visibly too much. Two identical populations also catch the scope that was **swapped**,
+> where every count is plausible and every row belongs to somebody else; the row-ownership
+> assertion compares returned ids against the workspace's own set, read through the suite's
+> connection rather than through the API under test.
+>
+> **The spot-check the criterion asks for, with a correction to how it is worded.** Deleting
+> an org-scope predicate outright does not reach the tests: `organizationId` becomes an
+> unread parameter and `tsc` refuses the file first (TS6133) — a better failure than the one
+> the ticket imagined, and worth recording. The predicate was therefore neutered instead,
+> to a well-typed tautology that still names the parameter, which is the silent form the
+> criterion is really about. Two mutations, both confirmed red and both reverted:
+> `runStatistics` doubled every windowed count (`loopsLive` 3 → 6, `merged7d` 27 → 54), and
+> `activeRuns` returned six rows of which three belonged to the neighbour — caught by the
+> count assertion and by the id-ownership assertion respectively.
+>
+> **Runtime is inside the budget by the whole of it.** The integration job goes from 353
+> tests to 390; the baseline measured 33.1s and the two runs after the change measured 32.5s
+> and 30.5s, so the added cost is smaller than the run-to-run variance. The new suite in
+> isolation is 4.0s, against a job whose cost is dominated by the container start and the
+> Flyway migration. The criterion allowed sixty seconds.
+>
+> **Not in this ticket:** no new production code — `dashboard.repository.ts` is byte-for-byte
+> what G.1 landed, and the only non-test files touched are this roadmap and the version. The
+> role matrix covers `viewer` as well as the three the ticket names, because the table is
+> typed `OrganizationRole` and a fifth role should be a compile error rather than a gap.
 
 - **Problem Statement:** Window math, org scoping, role gates, and cache behavior
   are exactly the bugs that reach production silently; the #37 harness must cover
@@ -1694,3 +1743,11 @@ to render, and H.2 (#78) has the counts its pills need.
 > intervention count keep the seven-day window the card's chip names. The definitions are
 > published in the OpenAPI description of each field, so **I.4 (#83) labels the meter for
 > the window it is actually measured over** rather than inheriting the chip.
+
+**Epic G is complete as of 2026-08-14.** G.2–G.6 landed behind #70 in order — the runs and
+queue listings (#71, #73), the pulse arithmetic (#72), the auto-merge switch (#74) and the
+polling contract (#75) — and **G.7 (#76) closed the epic** with the integration coverage
+that holds the five surfaces to each other, on a shared F.5 fixture now living in the #37
+harness. So **every REST dependency Epic I and Epic H name is landed**: the remaining work
+on this roadmap is the shell chrome (H.1–H.3) and the page itself (I.1–I.9), whose gate is
+I.9. Nothing in Epic J is MVP.

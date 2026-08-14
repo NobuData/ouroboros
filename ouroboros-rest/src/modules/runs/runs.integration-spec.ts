@@ -1,3 +1,8 @@
+import {
+  addRepo,
+  workspaceWithRepo,
+  type SeededWorkspace as Workspace,
+} from "../../testing/dashboard.fixture";
 import { ApiHarness } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
 import type { RunSummary } from "../dashboard/resources";
@@ -27,13 +32,6 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 const RUNS = "/api/v1/runs";
 const DASHBOARD = "/api/v1/dashboard";
 
-/** A workspace with somewhere for its runs to have happened. */
-interface Workspace {
-  readonly id: string;
-  readonly slug: string;
-  readonly repoId: string;
-}
-
 describe("the runs endpoints", () => {
   let api: ApiHarness;
 
@@ -43,48 +41,6 @@ describe("the runs endpoints", () => {
 
   afterAll(() => api.close());
   afterEach(() => api.truncate());
-
-  /**
-   * A workspace, a GitHub organisation inside it, and a repository inside that — all three,
-   * because `runs.github_repo_id` is held to the workspace by a trigger, and a fixture that
-   * skipped the middle row would be refused by the database rather than by this suite.
-   *
-   * @param owner - Who owns it.
-   * @returns The workspace, and the repository its runs hang off.
-   */
-  async function workspaceWithRepo(
-    owner: Awaited<ReturnType<typeof api.signIn>>,
-  ): Promise<Workspace> {
-    const workspace = await api.workspace(owner);
-
-    const { rows: orgs } = await api.sql.query<{ id: string }>(
-      `insert into ouroboros.github_orgs (organization_id, login, enabled)
-       values ($1, $2, true) returning id`,
-      [workspace.id, workspace.slug],
-    );
-    const { rows: repos } = await api.sql.query<{ id: string }>(
-      `insert into ouroboros.github_repos (org_id, name, enabled)
-       values ($1, 'helios-firmware', true) returning id`,
-      [orgs[0].id],
-    );
-
-    return { id: workspace.id, slug: workspace.slug, repoId: repos[0].id };
-  }
-
-  /** A second repository in the same workspace, for the filter cases. */
-  async function secondRepo(workspace: Workspace): Promise<string> {
-    const { rows: orgs } = await api.sql.query<{ id: string }>(
-      `select id from ouroboros.github_orgs where organization_id = $1`,
-      [workspace.id],
-    );
-    const { rows } = await api.sql.query<{ id: string }>(
-      `insert into ouroboros.github_repos (org_id, name, enabled)
-       values ($1, 'atlas-control', true) returning id`,
-      [orgs[0].id],
-    );
-
-    return rows[0].id;
-  }
 
   /** What an inserted run may vary in — everything else is a stable filler. */
   interface RunSeed {
@@ -154,7 +110,7 @@ describe("the runs endpoints", () => {
   describe("the listing", () => {
     it("orders the active family down the pipeline, oldest first within a stage", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
       // Written out of order on purpose: the ordering under test is the query's, not the
       // insertion's.
       await insertRun(workspace, { issue: 3, status: "review", startedAgo: 500 });
@@ -171,7 +127,7 @@ describe("the runs endpoints", () => {
 
     it("orders the terminal family newest-stopped first", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
       await insertRun(workspace, { issue: 1, status: "merged", startedAgo: 900, finishedAgo: 600 });
       await insertRun(workspace, { issue: 2, status: "failed", startedAgo: 900, finishedAgo: 60 });
       await insertRun(workspace, {
@@ -189,7 +145,7 @@ describe("the runs endpoints", () => {
 
     it("pages per the #31 convention, echoing the window it applied", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
       for (let issue = 1; issue <= 7; issue += 1) {
         await insertRun(workspace, {
           issue,
@@ -216,8 +172,8 @@ describe("the runs endpoints", () => {
 
     it("narrows the page and the total to the repository the filter names", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
-      const atlas = await secondRepo(workspace);
+      const workspace = await workspaceWithRepo(api, owner);
+      const atlas = await addRepo(api, workspace);
       await insertRun(workspace, { issue: 1, status: "coding", startedAgo: 300 });
       await insertRun(workspace, { issue: 2, status: "coding", startedAgo: 200, repoId: atlas });
       await insertRun(workspace, { issue: 3, status: "coding", startedAgo: 100, repoId: atlas });
@@ -235,11 +191,11 @@ describe("the runs endpoints", () => {
       // The filter is a predicate under the org scope, not a resource lookup: somebody
       // else's repo id narrows to nothing rather than confirming it exists.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
       await insertRun(workspace, { issue: 1, status: "coding", startedAgo: 300 });
 
       const other = await api.signIn();
-      const elsewhere = await workspaceWithRepo(other);
+      const elsewhere = await workspaceWithRepo(api, other);
 
       const response = await read(
         owner,
@@ -254,7 +210,7 @@ describe("the runs endpoints", () => {
 
     it("refuses a request that names no family, naming the field", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
 
       const response = await read(owner, workspace, RUNS).expect(422);
       const envelope = bodyOf<ErrorEnvelope>(response);
@@ -272,7 +228,7 @@ describe("the runs endpoints", () => {
       // more than each slice carries — so the comparison also proves the slices are *heads*
       // of these listings rather than merely subsets.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
       const statuses = ["coding", "building", "review"];
       for (let issue = 1; issue <= 11; issue += 1) {
         await insertRun(workspace, {
@@ -313,7 +269,7 @@ describe("the runs endpoints", () => {
   describe("the detail", () => {
     it("answers a run of this workspace's, in the listing's own shape", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
       const id = await insertRun(workspace, {
         issue: 482,
         status: "merged",
@@ -337,10 +293,10 @@ describe("the runs endpoints", () => {
       // The criterion the ticket states outright: 404, not 403 — no existence leak. Both
       // absences are asserted to the same envelope, so nothing distinguishes them.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
 
       const other = await api.signIn();
-      const elsewhere = await workspaceWithRepo(other);
+      const elsewhere = await workspaceWithRepo(api, other);
       const foreign = await insertRun(elsewhere, { issue: 9, status: "coding", startedAgo: 60 });
 
       const cross = await read(owner, workspace, `${RUNS}/${foreign}`).expect(404);
@@ -359,7 +315,7 @@ describe("the runs endpoints", () => {
 
     it("refuses a malformed id before reading anything", async () => {
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
+      const workspace = await workspaceWithRepo(api, owner);
 
       const response = await read(owner, workspace, `${RUNS}/not-a-uuid`).expect(422);
 

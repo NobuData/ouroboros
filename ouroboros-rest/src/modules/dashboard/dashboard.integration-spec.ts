@@ -1,3 +1,8 @@
+import {
+  seedMockup,
+  workspaceWithRepo,
+  type SeededWorkspace as Workspace,
+} from "../../testing/dashboard.fixture";
 import { ApiHarness } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
@@ -10,16 +15,22 @@ import type { DashboardResource } from "./resources";
  * The unit suites hold each layer to its own rules; what only this one can certify is the
  * claim the ticket is actually about — **that mockup 02's numbers come out of rows**. The
  * seed (#68) is deliberately not applied to this database (`flyway.toml` leaves the dev-seed
- * placeholder false, and the harness truncates between tests anyway), so the fixture below
- * builds the same population the seed does: fifty-three runs where the cards draw seven,
- * twelve queue items summing to 580 minutes, twelve usage events summing to 4.2M tokens and
- * $18.60, and one settings row.
+ * placeholder false, and the harness truncates between tests anyway), so
+ * `testing/dashboard.fixture.ts` builds the same population the seed does: fifty-three runs
+ * where the cards draw seven, twelve queue items summing to 580 minutes, twelve usage events
+ * summing to 4.2M tokens and $18.60, and one settings row.
  *
  * It is built rather than copied. What matters about the seed is its *arithmetic* — the
  * cycle-time spread that makes the mean exactly 14m 20s, the counts either side of the
- * seven-day boundary, the one queue item nobody sized — and this reproduces that arithmetic
- * with the same construction and filler titles. Where a number here disagrees with the
- * mockup, one of the two is wrong, and that is the point.
+ * seven-day boundary, the one queue item nobody sized — and the fixture reproduces that
+ * arithmetic with the same construction and filler titles. Where a number here disagrees with
+ * the mockup, one of the two is wrong, and that is the point.
+ *
+ * **Every figure below is a literal, and stays one.** The fixture publishes the same numbers
+ * as `MOCKUP_02` for the suites whose subject is somewhere else
+ * ([#76](https://github.com/NobuData/ouroboros/issues/76)); this suite is the one whose
+ * subject *is* the arithmetic, so it restates them independently and is the oracle that keeps
+ * that constant honest.
  *
  * ```bash
  * yarn test:integration
@@ -32,13 +43,6 @@ const DASHBOARD = "/api/v1/dashboard";
 /** What the mockup's *Avg. cycle time* reads, in seconds — `14m 20s`. */
 const MOCKUP_AVG_CYCLE_SECONDS = 860;
 
-/** A workspace with somewhere for its runs to have happened. */
-interface Workspace {
-  readonly id: string;
-  readonly slug: string;
-  readonly repoId: string;
-}
-
 describe("the dashboard endpoint", () => {
   let api: ApiHarness;
 
@@ -48,212 +52,6 @@ describe("the dashboard endpoint", () => {
 
   afterAll(() => api.close());
   afterEach(() => api.truncate());
-
-  /**
-   * A workspace, a GitHub organisation inside it, and a repository inside that.
-   *
-   * All three, because `runs` and `queue_items` both carry a `github_repo_id` held to the
-   * workspace by a trigger — a fixture that skipped the middle row would be refused by the
-   * database rather than by this suite.
-   *
-   * @param owner - Who owns it.
-   * @returns The workspace, and the repository its rows hang off.
-   */
-  async function workspaceWithRepo(
-    owner: Awaited<ReturnType<typeof api.signIn>>,
-  ): Promise<Workspace> {
-    const workspace = await api.workspace(owner);
-
-    const { rows: orgs } = await api.sql.query<{ id: string }>(
-      `insert into ouroboros.github_orgs (organization_id, login, enabled)
-       values ($1, $2, true) returning id`,
-      [workspace.id, workspace.slug],
-    );
-    const { rows: repos } = await api.sql.query<{ id: string }>(
-      `insert into ouroboros.github_repos (org_id, name, enabled)
-       values ($1, 'helios-firmware', true) returning id`,
-      [orgs[0].id],
-    );
-
-    return { id: workspace.id, slug: workspace.slug, repoId: repos[0].id };
-  }
-
-  /**
-   * Mockup 02, as rows.
-   *
-   * Five statements, in the order the seed's own file writes them, and each one is a
-   * population rather than a list: the cards draw seven runs and the *stat row* counts
-   * fifty-three, so the fifty-three have to exist.
-   *
-   * @param workspace - Where to put them.
-   * @param ownerId - Who turned the auto-merge switch on.
-   */
-  async function seedMockup(workspace: Workspace, ownerId: string): Promise<void> {
-    const where = [workspace.id, workspace.repoId];
-
-    // The three live loops — one `coding`, one `building`, one `review`, with the elapsed
-    // times the mockup prints. No `finished_at`, which is what puts them on the active card.
-    await api.sql.query(
-      `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
-                                   workflow_tag, model, status, stage_label, stage_index,
-                                   stage_total, started_at)
-       select $1, $2, seed.issue_number, seed.issue_title, seed.workflow_tag, seed.model,
-              seed.status, seed.stage_label, seed.stage_index, seed.stage_total,
-              now() - make_interval(secs => seed.elapsed)
-         from (values
-                (482, 'Fix flaky CAN-bus telemetry test',        'standard-fix',
-                 'claude-fable-5',     'coding',   'Implementing', 4, 6,  760),
-                (479, 'Add OTA rollback on failed checksum',     'feature-loop',
-                 'claude-sonnet-5',    'building', 'Build farm',   5, 7, 2285),
-                (476, 'Bump MQTT client, migrate deprecated API', 'deps-refresh',
-                 'ollama/qwen3-coder', 'review',   'Self-review',  6, 6,  432)
-              ) as seed (issue_number, issue_title, workflow_tag, model, status,
-                         stage_label, stage_index, stage_total, elapsed)`,
-      where,
-    );
-
-    // The four the completions card draws, newest last. `started_at` is `finished_at` less
-    // the cycle, so the card's *Cycle* column is the arithmetic of the row's own timestamps.
-    await api.sql.query(
-      `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
-                                   workflow_tag, model, status, stage_label, stage_index,
-                                   stage_total, started_at, finished_at, pr_number,
-                                   checks_passed, checks_total)
-       select $1, $2, seed.issue_number, seed.issue_title, seed.workflow_tag, seed.model,
-              seed.status, seed.stage_label, seed.stage_index, seed.stage_total,
-              now() - make_interval(secs => seed.closed_ago + seed.cycle),
-              now() - make_interval(secs => seed.closed_ago),
-              seed.pr_number, seed.checks_passed, seed.checks_total
-         from (values
-                (474, 'Debounce e-stop interrupt handler',    'standard-fix',
-                 'claude-fable-5',      'merged',      'Merged',         6, 6, 512, 14, 14,  660,  2520),
-                (471, 'Unit tests for motor PID edge cases',  'standard-fix',
-                 'copilot/gpt-5-codex', 'merged',      'Merged',         6, 6, 509, 14, 14, 1140,  8100),
-                (468, 'i18n strings for pairing screen',      'docs-loop',
-                 'ollama/qwen3-coder',  'merged',      'Merged',         5, 5, 507, 12, 12,  360, 13800),
-                (465, 'Refactor telemetry buffer allocation', 'feature-loop',
-                 'claude-sonnet-5',     'needs_human', 'Awaiting human', 5, 6, 504, 13, 14, 2520, 19800)
-              ) as seed (issue_number, issue_title, workflow_tag, model, status, stage_label,
-                         stage_index, stage_total, pr_number, checks_passed, checks_total,
-                         cycle, closed_ago)`,
-      where,
-    );
-
-    // The rest of the trailing seven days: twenty-four more merged and one more that stopped
-    // for a human, so *PRs merged · 7d* counts 27 and *Human interventions* counts 2.
-    //
-    // The cycle spread is the seed's own construction and it is what makes the mean exact:
-    // twelve pairs straddling 810s cancel to 24 × 810 = 19 440s, and one row of 820s carries
-    // the remainder, so these twenty-five contribute 20 260s. With the 4 680s above, twenty-
-    // nine runs closed this week total 24 940s — 860s each, which is 14m 20s.
-    await api.sql.query(
-      `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
-                                   workflow_tag, model, status, stage_label, stage_index,
-                                   stage_total, started_at, finished_at, pr_number,
-                                   checks_passed, checks_total)
-       select $1, $2, 300 + n, 'This week ' || n, 'standard-fix', 'claude-fable-5',
-              case when n = 13 then 'needs_human' else 'merged' end,
-              case when n = 13 then 'Awaiting human' else 'Merged' end,
-              case when n = 13 then 5 else 6 end, 6,
-              now() - make_interval(secs => 21600 + n * 23040
-                                            + case when n <= 12 then 810 - 30 * n
-                                                   when n <= 24 then 810 + 30 * (n - 12)
-                                                   else 820 end),
-              now() - make_interval(secs => 21600 + n * 23040),
-              400 + n,
-              case when n = 13 then 13 else 14 end,
-              14
-         from generate_series(1, 25) as n`,
-      where,
-    );
-
-    // The week before that: nineteen merged, so the delta is `▲ 8`, plus one that stopped for
-    // a human and one that **failed** before it opened a pull request — which is the row that
-    // makes the merge rate's denominator every terminal status rather than only the tidy ones.
-    await api.sql.query(
-      `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
-                                   workflow_tag, model, status, stage_label, stage_index,
-                                   stage_total, started_at, finished_at, pr_number,
-                                   checks_passed, checks_total)
-       select $1, $2, 200 + m, 'Last week ' || m, 'standard-fix', 'claude-fable-5',
-              case when m = 7 then 'failed' when m = 12 then 'needs_human' else 'merged' end,
-              case when m = 7 then 'Build farm'
-                   when m = 12 then 'Awaiting human' else 'Merged' end,
-              case when m = 7 then 4 when m = 12 then 5 else 6 end,
-              case when m = 7 then 7 else 6 end,
-              now() - make_interval(secs => 604800 + m * 27000 + 600 + 30 * m),
-              now() - make_interval(secs => 604800 + m * 27000),
-              case when m = 7 then null else 500 + m end,
-              case when m = 7 then null when m = 12 then 13 else 14 end,
-              case when m = 7 then null else 14 end
-         from generate_series(1, 21) as m`,
-      where,
-    );
-
-    // Twelve queued issues of which the card draws five, and eleven estimates summing to 580
-    // minutes — `est. 9h 40m`. The twelfth carries none, which is not zero.
-    await api.sql.query(
-      `insert into ouroboros.queue_items (organization_id, github_repo_id, issue_number,
-                                          issue_title, effort, workflow_tag, position,
-                                          est_minutes, enqueued_at)
-       select $1, $2, seed.issue_number, seed.issue_title, seed.effort, seed.workflow_tag,
-              seed.position, seed.est_minutes,
-              now() - make_interval(hours => 13 - seed.position)
-         from (values
-                ( 1, 485, 'Watchdog reset on I²C bus lockup',         'm',  'standard-fix',   45),
-                ( 2, 486, 'Expose battery health over BLE GATT',      'l',  'feature-loop',   90),
-                ( 3, 488, 'Typo sweep in operator manual',            'xs', 'docs-loop',      15),
-                ( 4, 490, 'Migrate build to Zephyr 4.2',              'xl', 'deps-refresh',  180),
-                ( 5, 491, 'Add CRC to config persistence layer',      's',  'standard-fix',   30),
-                ( 6, 487, 'Rate-limit telemetry uploads on cellular', 's',  'standard-fix',   30),
-                ( 7, 489, 'Console: surface OTA rollback history',    'm',  'feature-loop',   45),
-                ( 8, 492, 'Document build-farm cache invalidation',   'xs', 'docs-loop',      15),
-                ( 9, 493, 'Scheduler: retry backoff for stuck jobs',  'l',  'feature-loop',   90),
-                (10, 494, 'Bump libsodium and re-run the FIPS checks', 's', 'deps-refresh',   25),
-                (11, 495, 'Fix the off-by-one in ring buffer wrap',   'xs', 'standard-fix',   15),
-                (12, 496, 'Telemetry: split ingest into a worker pool', 'm', 'feature-loop', null)
-              ) as seed (position, issue_number, issue_title, effort, workflow_tag, est_minutes)`,
-      where,
-    );
-
-    // Today's ledger: twelve events, four providers, 4.2M tokens, $18.60 priced and three
-    // events unpriced — local inference, which is what the card's `≈` is about.
-    //
-    // `occurred_at` is spread across the part of today that has already happened, so every
-    // event is inside the current UTC day whatever hour this suite runs at — including 00:05,
-    // where all twelve land within the first five minutes rather than in tomorrow.
-    await api.sql.query(
-      `insert into ouroboros.token_usage (organization_id, provider, model, tokens_in,
-                                          tokens_out, cost_cents, occurred_at)
-       select $1, seed.provider, seed.model,
-              seed.tokens / 5 * 4, seed.tokens / 5, seed.cost_cents,
-              utc_day.day_start + (now() - utc_day.day_start) * (seed.n::double precision / 13)
-         from (values
-                ( 1, 'anthropic', 'claude-fable-5',      900000, 540.0000),
-                ( 2, 'anthropic', 'claude-sonnet-5',     620000, 372.0000),
-                ( 3, 'anthropic', 'claude-haiku-4-5',    380000, 228.0000),
-                ( 4, 'copilot',   'copilot/gpt-5-codex', 500000, 250.0000),
-                ( 5, 'copilot',   'copilot/gpt-5-codex', 340000, 170.0000),
-                ( 6, 'copilot',   'copilot/gpt-5-codex', 240000, 120.0000),
-                ( 7, 'cursor',    'cursor/composer-2',   360000,  90.0000),
-                ( 8, 'cursor',    'cursor/composer-2',   220000,  55.0000),
-                ( 9, 'cursor',    'cursor/composer-2',   140000,  35.0000),
-                (10, 'ollama',    'ollama/qwen3-coder',  240000,     null),
-                (11, 'ollama',    'ollama/qwen3-coder',  160000,     null),
-                (12, 'ollama',    'ollama/qwen3-coder',  100000,     null)
-              ) as seed (n, provider, model, tokens, cost_cents)
-        cross join (select date_trunc('day', now() at time zone 'utc') at time zone 'utc')
-                as utc_day (day_start)`,
-      [workspace.id],
-    );
-
-    // The one switch, and the page's only write — which this endpoint reads and #74 changes.
-    await api.sql.query(
-      `insert into ouroboros.workspace_settings (organization_id, auto_merge_on_checks, updated_by)
-       values ($1, true, $2)`,
-      [workspace.id, ownerId],
-    );
-  }
 
   /** Read the dashboard as somebody, in a named workspace. */
   function read(person: Parameters<typeof api.as>[0], workspace: Workspace) {
@@ -283,11 +81,11 @@ describe("the dashboard endpoint", () => {
       // The *no existence leaks* rule: a `403` would confirm that an identifier names
       // something real, which is what somebody enumerating identifiers wants to know.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
-      await seedMockup(workspace, owner.id);
+      const workspace = await workspaceWithRepo(api, owner);
+      await seedMockup(api, workspace, owner.id);
 
       const stranger = await api.signIn();
-      const theirs = await workspaceWithRepo(stranger);
+      const theirs = await workspaceWithRepo(api, stranger);
 
       const response = await api
         .as(stranger)("get", DASHBOARD)
@@ -304,8 +102,8 @@ describe("the dashboard endpoint", () => {
       // Reading the numbers is not an administrative act. The one write on this page is the
       // auto-merge switch, and that is #74's endpoint and #74's role gate.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
-      await seedMockup(workspace, owner.id);
+      const workspace = await workspaceWithRepo(api, owner);
+      await seedMockup(api, workspace, owner.id);
 
       const viewer = await api.signIn();
       await api.join(workspace.id, viewer, "viewer");
@@ -321,8 +119,8 @@ describe("the dashboard endpoint", () => {
 
     beforeEach(async () => {
       owner = await api.signIn();
-      workspace = await workspaceWithRepo(owner);
-      await seedMockup(workspace, owner.id);
+      workspace = await workspaceWithRepo(api, owner);
+      await seedMockup(api, workspace, owner.id);
 
       dashboard = bodyOf<DashboardResource>(await read(owner, workspace).expect(200));
     });
@@ -462,7 +260,7 @@ describe("the dashboard endpoint", () => {
       // The zero-state fixture #86 renders against, and the acceptance criterion in full: a
       // fresh workspace has no runs, no queue, no spend and no settings row.
       const founder = await api.signIn();
-      const workspace = await workspaceWithRepo(founder);
+      const workspace = await workspaceWithRepo(api, founder);
 
       const response = await read(founder, workspace).expect(200);
 
@@ -486,7 +284,7 @@ describe("the dashboard endpoint", () => {
       // effective view is what resolves that. A workspace that has *answered* no must read
       // the same, and the difference is what #74 and #86 need to be able to tell.
       const founder = await api.signIn();
-      const workspace = await workspaceWithRepo(founder);
+      const workspace = await workspaceWithRepo(api, founder);
 
       const before = bodyOf<DashboardResource>(await read(founder, workspace).expect(200));
       expect(before.pulse.autoMerge).toBe(false);
@@ -505,7 +303,7 @@ describe("the dashboard endpoint", () => {
       // The single-run window: a rate of 1, a mean equal to that run's own cycle, and no
       // division by a count of zero anywhere.
       const founder = await api.signIn();
-      const workspace = await workspaceWithRepo(founder);
+      const workspace = await workspaceWithRepo(api, founder);
 
       await api.sql.query(
         `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
@@ -529,7 +327,7 @@ describe("the dashboard endpoint", () => {
       // both windows, so it is in no count at all — and the merge rate does not quietly
       // stretch to reach it.
       const founder = await api.signIn();
-      const workspace = await workspaceWithRepo(founder);
+      const workspace = await workspaceWithRepo(api, founder);
 
       await api.sql.query(
         `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
@@ -558,8 +356,8 @@ describe("the dashboard endpoint", () => {
 
     beforeEach(async () => {
       owner = await api.signIn();
-      workspace = await workspaceWithRepo(owner);
-      await seedMockup(workspace, owner.id);
+      workspace = await workspaceWithRepo(api, owner);
+      await seedMockup(api, workspace, owner.id);
     });
 
     it("answers with a strong tag and tells a browser to revalidate", async () => {
@@ -641,8 +439,8 @@ describe("the dashboard endpoint", () => {
       // A stored payload for one workspace can never be revalidated into an answer for
       // another — which is what makes `Cache-Control: private, no-cache` safe without a
       // `Vary` on the tenant header.
-      const second = await workspaceWithRepo(owner);
-      await seedMockup(second, owner.id);
+      const second = await workspaceWithRepo(api, owner);
+      await seedMockup(api, second, owner.id);
 
       const one = await read(owner, workspace).expect(200);
       const two = await read(owner, second).expect(200);
@@ -658,11 +456,11 @@ describe("the dashboard endpoint", () => {
       // Every predicate in the repository is scoped by parameter; this is that property from
       // the outside, with two full fixtures in one database.
       const owner = await api.signIn();
-      const mine = await workspaceWithRepo(owner);
-      await seedMockup(mine, owner.id);
+      const mine = await workspaceWithRepo(api, owner);
+      await seedMockup(api, mine, owner.id);
 
-      const neighbour = await workspaceWithRepo(owner);
-      await seedMockup(neighbour, owner.id);
+      const neighbour = await workspaceWithRepo(api, owner);
+      await seedMockup(api, neighbour, owner.id);
 
       const dashboard = bodyOf<DashboardResource>(await read(owner, mine).expect(200));
 
@@ -685,8 +483,8 @@ describe("the dashboard endpoint", () => {
       // being scoped, an accidental read per row, an index that stopped being used. The
       // measured figure is in the pull request.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
-      await seedMockup(workspace, owner.id);
+      const workspace = await workspaceWithRepo(api, owner);
+      await seedMockup(api, workspace, owner.id);
 
       const samples: number[] = [];
       for (let poll = 0; poll < 20; poll += 1) {
@@ -703,8 +501,8 @@ describe("the dashboard endpoint", () => {
       // The whole argument for a version source, observed end to end rather than counted in a
       // unit test: a `304` reads four aggregate subqueries and returns no rows.
       const owner = await api.signIn();
-      const workspace = await workspaceWithRepo(owner);
-      await seedMockup(workspace, owner.id);
+      const workspace = await workspaceWithRepo(api, owner);
+      await seedMockup(api, workspace, owner.id);
 
       const first = await read(owner, workspace).expect(200);
       const tag = first.headers.etag;
