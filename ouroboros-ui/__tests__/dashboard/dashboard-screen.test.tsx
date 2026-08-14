@@ -412,10 +412,10 @@ describe("the active loops card, on the page", () => {
     expect(within(card).getByText("Fix flaky CAN-bus telemetry test")).toBeInTheDocument();
   });
 
-  it("is the page's one table, since the other two cards still have no rows", () => {
+  it("is one of the page's two tables, the queue card still having no rows", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    expect(container.querySelectorAll("table")).toHaveLength(1);
+    expect(container.querySelectorAll("table")).toHaveLength(2);
   });
 
   it("degrades with the rest of the page when the aggregate could not be read", () => {
@@ -473,40 +473,62 @@ describe("the loop pulse card, on the page", () => {
   });
 });
 
-describe("the panels with no card drawing them yet", () => {
-  it("draws the two the mockup still has ahead of it as designed empty states", () => {
-    // *Active loops* left this list with #82. The completions table (#84) and the queue
-    // (#85) are what is left, and the aggregate already carries the rows for both.
+describe("the completions card, on the page", () => {
+  it("draws the aggregate's closed runs as the mockup's `c-7` table", () => {
+    // The card's own columns, treatments and states are
+    // `__tests__/dashboard/recently-closed-card.test.tsx`'s. What is here is that the page
+    // hands it the aggregate it already fetched, in the place the grid keeps for it.
     render(<DashboardScreen readings={readings()} />);
 
-    for (const title of ["Recently closed by the loop", "Up next in queue"]) {
-      expect(screen.getByRole("region", { name: title })).toBeInTheDocument();
-    }
+    const card = screen.getByRole("region", { name: "Recently closed by the loop" });
+
+    expect(within(card).getAllByRole("row").slice(1)).toHaveLength(4);
+    expect(within(card).getByText("Debounce e-stop interrupt handler")).toBeInTheDocument();
   });
 
-  it("names what will fill each one and what has to land first", () => {
+  it("degrades with the rest of the page when the aggregate could not be read", () => {
+    // The same read as the stat row's and the loops table's, so all three report the same
+    // reason rather than one of them reporting a workspace that has closed nothing.
+    render(<DashboardScreen readings={readings({ aggregate: failed("Nope.") })} />);
+
+    const card = screen.getByRole("region", { name: "Recently closed by the loop" });
+
+    expect(within(card).getByText("The completions could not be read")).toBeInTheDocument();
+    expect(within(card).queryByRole("table")).not.toBeInTheDocument();
+  });
+});
+
+describe("the panel with no card drawing it yet", () => {
+  it("draws the one the mockup still has ahead of it as a designed empty state", () => {
+    // *Active loops* left this list with #82 and the completions table with #84. The queue
+    // (#85) is what is left, and the aggregate already carries its rows.
+    render(<DashboardScreen readings={readings()} />);
+
+    expect(
+      screen.getByRole("region", { name: "Up next in queue" }),
+    ).toBeInTheDocument();
+  });
+
+  it("names what will fill it and what has to land first", () => {
     // The honesty rule applied to a whole card: a surface that is not ready is labelled,
     // never dead, and never a blank region.
     render(<DashboardScreen readings={readings()} />);
 
-    for (const title of ["Recently closed by the loop", "Up next in queue"]) {
-      const card = screen.getByRole("region", { name: title });
-      expect(within(card).getByText(/mockup|once the loop has run/)).toBeInTheDocument();
-    }
+    const card = screen.getByRole("region", { name: "Up next in queue" });
+
+    expect(within(card).getByText(/mockup/)).toBeInTheDocument();
   });
 
-  it("invents no pull request and no queued issue", () => {
-    // The mockup fills these two cards with eleven plausible rows. Copying them would make
-    // this screen a picture of a product rather than a view of one — which is exactly why
-    // the third card *does* draw rows now: it has a source, and these two do not.
+  it("invents no queued issue", () => {
+    // The mockup fills this card with five plausible rows. Copying them would make the screen
+    // a picture of a product rather than a view of one — which is exactly why the cards around
+    // it *do* draw rows now: they have a source, and this one does not.
     render(<DashboardScreen readings={readings()} />);
 
-    for (const title of ["Recently closed by the loop", "Up next in queue"]) {
-      const card = screen.getByRole("region", { name: title });
+    const card = screen.getByRole("region", { name: "Up next in queue" });
 
-      expect(card.querySelectorAll("table")).toHaveLength(0);
-      expect(card.textContent).not.toMatch(/PR\s*#|#\d{3}/);
-    }
+    expect(card.querySelectorAll("table")).toHaveLength(0);
+    expect(card.textContent).not.toMatch(/#\d{3}/);
   });
 });
 

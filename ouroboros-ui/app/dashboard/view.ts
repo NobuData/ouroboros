@@ -68,8 +68,12 @@ export interface DashboardReadings {
    * One reading for the whole render, taken beside the reads themselves
    * (`app/dashboard/data.ts`), because two cards measuring *now* separately are two cards
    * that can disagree about it — and because a clock read inside a component is a clock no
-   * test can pin. Today the active-loops table is its only reader; the completions card's
-   * cycle times ([#84](https://github.com/NobuData/ouroboros/issues/84)) are the next.
+   * test can pin.
+   *
+   * The active-loops table is its only reader, and the completions card
+   * ([#84](https://github.com/NobuData/ouroboros/issues/84)) is the card that shows why: its
+   * *Cycle* column is `finishedAt − startedAt`, two instants the payload already carries, so
+   * it needs no clock at all. Only a duration that is still running needs a *now*.
    */
   readonly readAt: number;
   /**
@@ -593,6 +597,9 @@ export interface ActiveLoop {
 /** Milliseconds in a second, for the two conversions below. */
 const MS_PER_SECOND = 1000;
 
+/** Milliseconds in a minute, which is the unit a finished run's cycle is drawn in. */
+const MS_PER_MINUTE = MS_PER_SECOND * 60;
+
 /**
  * The caption over a stage meter — `Implementing · 4/6`.
  *
@@ -931,6 +938,190 @@ export type AutoMergeResult =
   | { readonly ok: true; readonly enabled: boolean }
   /** It did not, with the sentence to show for it. */
   | { readonly ok: false; readonly reason: string };
+
+/* --------------------------------------------------------------- recently closed */
+
+/**
+ * One run that has stopped, as the *Recently closed* table draws it.
+ *
+ * Every field is already the thing the cell renders — a pair rather than two numbers, a
+ * duration rather than two timestamps, a fraction rather than two counts — so the card holds
+ * no arithmetic. `status` is the one exception, for {@link ActiveLoop}'s reason: it decides a
+ * hue and a word, and both live where the hues do
+ * (`app/dashboard/recently-closed-card.tsx`).
+ */
+export interface Completion {
+  /** The run — the React key, and what the run console will be addressed by. */
+  readonly id: string;
+  /**
+   * The mockup's `#474 → PR #512`, drawn in mono. See {@link issuePair} for the run that
+   * stopped before there was a pull request to name.
+   */
+  readonly pair: string;
+  /** The issue's title, as it was when the run started. */
+  readonly issueTitle: string;
+  /**
+   * The model identifier as recorded. **Opaque** (decision F8), exactly as it is in the
+   * active table: rendered, never parsed.
+   */
+  readonly model: string;
+  /** How the run ended, which decides its outcome pill. */
+  readonly status: RunStatus;
+  /** How long the run took, start to finish — {@link NO_VALUE} when it cannot be measured. */
+  readonly cycle: string;
+  /** The checks that passed over the checks there were — `14/14`, or {@link NO_VALUE}. */
+  readonly checks: string;
+  /**
+   * Whether fewer checks passed than ran, which is what the warn tint on the fraction
+   * reports. See {@link checksShortfall}.
+   */
+  readonly checksShort: boolean;
+  /**
+   * How many checks did not pass, in words — the tooltip on a short fraction, and `null`
+   * when there is nothing short to explain. It is here rather than in the card because it
+   * counts, and counting in words is a rule this module owns ({@link countOf}).
+   */
+  readonly checksNote: string | null;
+}
+
+/**
+ * How many of the aggregate's `recentRuns` the card draws.
+ *
+ * **Four of the eight that arrive**, which is the contract's own division of labour: the
+ * endpoint answers eight so that a client expanding the card already holds them
+ * (`Dashboard.recentRuns`), and the mockup draws four. The active-loops table renders
+ * everything it is given because its slice *is* its card; this one is given twice what it
+ * shows, so the number it shows is written down here rather than implied by a payload.
+ */
+export const COMPLETIONS_SHOWN = 4;
+
+/** What separates an issue from its pull request in the mockup's pair. */
+const PAIR_ARROW = "→";
+
+/**
+ * The no-break space the mockup puts inside `PR&nbsp;#512`.
+ *
+ * The pair is one value read as one thing, and a column narrow enough to break it would put
+ * `PR` at the end of a line and `#512` at the start of the next. The space between the issue
+ * and the arrow is an ordinary one, because that break is the honest place for one.
+ *
+ * Written as an escape rather than as the character itself: a no-break space is invisible
+ * in a diff, which is the one property a character carrying a layout rule must not have.
+ */
+const NBSP = "\u00a0";
+
+/**
+ * The mockup's `#474 → PR #512`.
+ *
+ * **A run with no pull request is drawn as its issue alone.** The contract allows one
+ * (`RunSummary.prNumber`) — a run may fail, or stop for a person, before there is anything to
+ * open a pull request for — and an arrow pointing at nothing would be the row claiming half a
+ * fact. The issue number is the part that is always true, so it is the part that is drawn.
+ *
+ * @param issueNumber The issue the loop ran against.
+ * @param prNumber The pull request it opened, or `null` when it never got that far.
+ * @returns The pair, or the issue on its own.
+ */
+export function issuePair(issueNumber: number, prNumber: number | null): string {
+  return prNumber === null
+    ? `#${issueNumber}`
+    : `#${issueNumber} ${PAIR_ARROW} PR${NBSP}#${prNumber}`;
+}
+
+/**
+ * How long a run took, start to finish — the mockup's `11m`.
+ *
+ * **The compact formatter, not the ticking one.** A cycle is over, so it drops its zero parts
+ * the way an estimate does (`app/format.ts`): eleven minutes is `11m` rather than `11m 00s`,
+ * and the padding that keeps a moving clock from twitching has nothing to keep still here.
+ * It is [#81](https://github.com/NobuData/ouroboros/issues/81)'s `durationOfMinutes`, which is
+ * also what the stat row's *Queued issues* estimate is drawn with, so two durations on one page
+ * cannot be written two ways.
+ *
+ * @param startedAt When the loop started on the issue.
+ * @param finishedAt When it reached a terminal status, or `null` while it has not.
+ * @returns The span, rounded to the nearest minute — or {@link NO_VALUE} when there is no
+ *   pair of instants to measure between. A run in this table always has both, so that is the
+ *   guard rather than the expected case: a row carrying a broken stamp loses its cycle cell
+ *   and keeps its other four, which beats `NaNm` and beats a card that throws.
+ */
+export function cycleTime(startedAt: string, finishedAt: string | null): string {
+  if (finishedAt === null) return NO_VALUE;
+
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+
+  if (Number.isNaN(started) || Number.isNaN(finished)) return NO_VALUE;
+
+  // A run that finished before it started is two clocks disagreeing rather than a negative
+  // span, and `durationOfMinutes` already draws that as `0m`.
+  return durationOfMinutes((finished - started) / MS_PER_MINUTE);
+}
+
+/**
+ * The checks a run's pull request finished with — the mockup's `14/14`.
+ *
+ * The two counts are both present or both `null` in the contract, so one missing means the
+ * fraction cannot be drawn at all. **`0/0` is not missing**: it is a repository with no
+ * checks configured, which is a fact, and drawing it as an em dash would report a known thing
+ * as an unknown one.
+ *
+ * @param passed Checks that passed, or `null` when nothing is known yet.
+ * @param total Checks there were, or `null`.
+ * @returns The fraction, or {@link NO_VALUE}.
+ */
+export function checksLabel(passed: number | null, total: number | null): string {
+  return passed === null || total === null ? NO_VALUE : `${passed}/${total}`;
+}
+
+/**
+ * How many checks did not pass.
+ *
+ * This is the warn tint on the fraction, and it is deliberately a comparison rather than a
+ * reading of the status: `13/14` is short whatever the run went on to be called, and a row
+ * that merged with a check outstanding should be as visible as one that stopped for it.
+ *
+ * @param passed Checks that passed, or `null`.
+ * @param total Checks there were, or `null`.
+ * @returns The shortfall, or `null` when there is not one — which is also the answer when
+ *   either count is missing, so a fraction nobody could read is never tinted, and so is the
+ *   answer for `0/0`, a repository with no checks rather than a run that failed them.
+ */
+export function checksShortfall(passed: number | null, total: number | null): number | null {
+  if (passed === null || total === null || passed >= total) return null;
+
+  return total - passed;
+}
+
+/**
+ * The runs that have stopped, as the table's rows.
+ *
+ * The order is the payload's — newest first by `finishedAt` — and it is deliberately not
+ * re-sorted here, for the reason {@link activeLoops} is not: the endpoint orders the whole
+ * table, and a client that re-sorted its four rows would produce a different order from the
+ * listing that shows all of them.
+ *
+ * @param runs The aggregate's `recentRuns`.
+ * @returns The first {@link COMPLETIONS_SHOWN} of them, in the order they are drawn.
+ */
+export function recentCompletions(runs: readonly RunSummary[]): readonly Completion[] {
+  return runs.slice(0, COMPLETIONS_SHOWN).map((run) => {
+    const shortfall = checksShortfall(run.checksPassed, run.checksTotal);
+
+    return {
+      id: run.id,
+      pair: issuePair(run.issueNumber, run.prNumber),
+      issueTitle: run.issueTitle,
+      model: run.model,
+      status: run.status,
+      cycle: cycleTime(run.startedAt, run.finishedAt),
+      checks: checksLabel(run.checksPassed, run.checksTotal),
+      checksShort: shortfall !== null,
+      checksNote:
+        shortfall === null ? null : `${countOf(shortfall, "check")} did not pass.`,
+    };
+  });
+}
 
 /* ------------------------------------------------------------------ the page head */
 

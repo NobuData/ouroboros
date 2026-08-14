@@ -4,6 +4,7 @@ import { ActiveLoopsCard } from "./active-loops-card";
 import { type EmptyPanel, EmptyCard } from "./empty-card";
 import { Greeting } from "./greeting";
 import { PulseCard } from "./pulse-card";
+import { RecentlyClosedCard } from "./recently-closed-card";
 import { StatCard } from "./stat-card";
 import { SystemCard } from "./system-card";
 import { type DashboardReadings, pageSubline, statRow, systemRows } from "./view";
@@ -39,21 +40,20 @@ import "./dashboard.css";
  * - **Read.** The stat row is drawn from the aggregate's `stats`
  *   ([#81](https://github.com/NobuData/ouroboros/issues/81)), the active-loops table from its
  *   `activeRuns` ([#82](https://github.com/NobuData/ouroboros/issues/82)), the loop pulse from
- *   its `pulse` ([#83](https://github.com/NobuData/ouroboros/issues/83)), and the system card
- *   from `/health/ready` and `/api/v1/engine/status`. Every figure on them came from the
- *   service, and a figure that could not be read is an em dash beside the reason rather
- *   than a zero.
+ *   its `pulse` ([#83](https://github.com/NobuData/ouroboros/issues/83)), the completions
+ *   table from its `recentRuns` ([#84](https://github.com/NobuData/ouroboros/issues/84)), and
+ *   the system card from `/health/ready` and `/api/v1/engine/status`. Every figure on them
+ *   came from the service, and a figure that could not be read is an em dash beside the
+ *   reason rather than a zero.
  * - **Written.** One control on the whole page changes anything: the pulse card's auto-merge
  *   switch, which is [#74](https://github.com/NobuData/ouroboros/issues/74)'s operation and
  *   the workspace's own setting rather than a preference of this browser's. It is the only
  *   reason this screen's card list includes a Client Component that writes.
- * - **Waiting.** Two of the mockup's panels still have no card drawing them — the
- *   completions table ([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
- *   ([#85](https://github.com/NobuData/ouroboros/issues/85)) — so they keep their place in
- *   the grid as designed empty states naming what will fill them. Copying the mockup's rows
- *   into them would make this screen a picture of a product rather than a view of one; the
- *   aggregate already carries `recentRuns` and `queueHead`, and each card draws them when its
- *   issue lands.
+ * - **Waiting.** One of the mockup's panels still has no card drawing it — the queue
+ *   ([#85](https://github.com/NobuData/ouroboros/issues/85)) — so it keeps its place in the
+ *   grid as a designed empty state naming what will fill it. Copying the mockup's rows into
+ *   it would make this screen a picture of a product rather than a view of one; the aggregate
+ *   already carries `queueHead`, and the card draws it when its issue lands.
  *
  * @param props.readings Everything the reader was able to read, and why not for the rest.
  * @returns The screen.
@@ -94,7 +94,7 @@ export function DashboardScreen({
         <ActiveLoopsCard aggregate={aggregate} readAt={readings.readAt} />
         <PulseCard aggregate={aggregate} workspace={readings.workspace} />
         <SystemCard rows={systemRows(readings.readiness, readings.engine)} />
-        <EmptyCard panel={RECENTLY_CLOSED} />
+        <RecentlyClosedCard aggregate={aggregate} />
         <EmptyCard panel={UP_NEXT} />
       </div>
     </main>
@@ -157,17 +157,6 @@ const ACTIONS: readonly Action[] = [
       "#49 holds its placeholder route.",
   },
 ];
-
-/** The mockup's `RECENTLY CLOSED BY THE LOOP` table. */
-const RECENTLY_CLOSED: EmptyPanel = {
-  id: "recently-closed",
-  title: "Recently closed by the loop",
-  headline: "Nothing closed yet",
-  note:
-    "Issues Ouroboros finished, and the pull requests it opened for them, will appear " +
-    "here once the loop has run.",
-  span: 7,
-};
 
 /** The mockup's `UP NEXT IN QUEUE` list. */
 const UP_NEXT: EmptyPanel = {
