@@ -87,6 +87,8 @@
   border: 1px solid var(--border); border-radius: 4px; white-space: nowrap;
 }
 .nchip .dot { width: 6px; height: 6px; }
+/* stage that came from a marketplace snippet keeps its provenance */
+.nchip.mkt { color: var(--accent); border-color: rgba(61, 214, 245, 0.35); background: var(--glow-soft); }
 
 .node.trigger { border-left-color: var(--accent); border-top: 2px solid var(--accent); }
 .node.trigger .ntype { color: var(--accent); }
@@ -211,6 +213,7 @@
     <a href="02-dashboard.html"><span class="glyph">◫</span><span class="lbl">Dashboard</span></a>
     <a href="03-issues.html"><span class="glyph">◉</span><span class="lbl">Issues</span></a>
     <a href="04-workflow-builder.html" class="active" aria-current="page"><span class="glyph">⑂</span><span class="lbl">Workflows</span></a>
+    <a href="23-marketplace.html"><span class="glyph">⊞</span><span class="lbl">Marketplace</span></a>
     <a href="06-model-routing.html"><span class="glyph">⬡</span><span class="lbl">Models</span></a>
     <a href="08-build-farm.html"><span class="glyph">⛭</span><span class="lbl">Build Farm</span></a>
     <a href="14-knowledge.html"><span class="glyph">▤</span><span class="lbl">Knowledge</span></a>
@@ -240,6 +243,7 @@
       <a href="20-workflow-copilot.html">Copilot</a>
     </span>
     <a class="btn ghost" href="13-onboarding.html">Browse templates</a>
+    <a class="btn ghost" href="23-marketplace.html">⊞ Marketplace</a>
     <a class="btn ghost" href="20-workflow-copilot.html">Dry run with issue #485</a>
     <button class="btn primary">Publish v15</button>
   </div>
@@ -363,7 +367,7 @@
           <div class="node infra" style="left:24px;top:420px">
             <div class="ntype"><span class="glyph">▣</span>Test</div>
             <div class="ntitle">Run test suite</div>
-            <div class="nchips"><span class="nchip">twister –p native_sim</span></div>
+            <div class="nchips"><span class="nchip">twister –p native_sim</span><span class="nchip mkt">⊞ flaky-test-quarantine v1.8</span></div>
           </div>
 
           <div class="node llm" style="left:24px;top:630px">
@@ -402,6 +406,7 @@
         </span>
         <button class="btn ghost sm">Auto-layout</button>
         <button class="btn sm">Add stage ▾</button>
+        <a class="btn ghost sm" href="23-marketplace.html">Insert snippet from marketplace ▾</a>
         <span class="hint">⌥ drag to pan · double-click edge to add stage</span>
       </div>
     </section>

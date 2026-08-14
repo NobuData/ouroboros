@@ -4,6 +4,9 @@ Static HTML mockups for the Ouroboros application: an AI system that picks up Gi
 issues, performs the work through user-designed workflows, routes each kind of task to a
 configured LLM, builds on a remote build farm, and checks the result in automatically.
 
+Every screen with the app shell carries a **Marketplace** entry in the left sidebar (screen 23) —
+the catalogue of user-contributed workflow snippets that can be dropped into a workflow.
+
 Screens 13–17 and the expanded navigation (Knowledge, Insights, the Needs-you pill,
 settings gear) come from a competitive gap analysis — see `MARKET-ANALYSIS.md` for the
 research and the gap → screen mapping.
@@ -40,6 +43,7 @@ Google Fonts when online and fall back to system faces offline.
 | 20 | `20-workflow-copilot.html` | Workflow Copilot & dry run | Create/manage workflows through conversation; dry-run any workflow against a real issue with zero side effects; AI suggests improvements from the run |
 | 21 | `21-model-registry.html` | Model registry | Allowed models as uniquely named aliases (provider + model + params); routing references aliases only — swap keys/providers behind an alias with zero downstream edits (BYOK) |
 | 22 | `22-research.html` | Research | Investigations with full research tools (web search, competitor tracker, codebase/git mining, issue history, telemetry): bug root-cause briefs, regression forensics with auto-bisect, roadmap & improvement proposals, project + competitive gap analysis with capability matrix and cited sources — each ending in drafted tickets. Roadmaps run through a skill pipeline: `create-roadmap` emits a browser-rendered ROADMAP.md open to suggested changes; `create-issues` files the items as issues on milestones with dates, estimates, effort, and complexity, writing issue numbers and MVP flags back into the file |
+| 23 | `23-marketplace.html` | Snippet marketplace | Community-contributed workflow snippets (one or more stages) droppable into any workflow: name, description, contributor, thumbs-up/down ranking with vote counts, installs, categories, declared requirements (runner tags, skills, model routes, grants), stage-chain preview, reviews, version history, contributor leaderboard, and a publish-from-canvas-selection path |
 
 ## Design system
 
@@ -84,6 +88,10 @@ screens read as a working system.
   fix regressions, create product roadmaps and improvements, perform project and
   competitive gap analysis with full research tools, in addition to handling your
   build" — realized as cited investigations that end in drafted tickets.
+- Workflows as something you assemble, not only author: the marketplace (screen 23) supplies
+  ranked snippets from other users, the workflow builder can insert one mid-canvas and keeps
+  the snippet's name and version as provenance on the stage, and the Copilot proposes a
+  snippet when a dry run exposes a gap.
 - Guardrails on autonomous runs (path confinement, secrets scan, merge policy).
 - Tenancy: domain-based enterprise sign-in, per-tenant key vault, org/repo scoping.
 
