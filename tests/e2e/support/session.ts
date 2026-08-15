@@ -24,12 +24,11 @@
  *
  * ## Why the legs are still parked
  *
- * Two things, and both are outside #705:
+ * One thing, now that [#709](https://github.com/NobuData/ouroboros/issues/709) has landed —
+ * the development seed writes the `"user"` rows and the `credential` `account` rows whose
+ * scrypt hashes are of {@link SEED_PASSWORD}, so there *is* a seeded credential for
+ * {@link signIn} to present, and the second bullet is what is left:
  *
- *   * **[#709](https://github.com/NobuData/ouroboros/issues/709)** — the development seed
- *     does not yet write BetterAuth's `"user"` and `account` rows, so there is no seeded
- *     credential for {@link signIn} to present. {@link SEED_PASSWORD} is the value that
- *     issue has to seed.
  *   * **The stack runs the production image.** `docker compose` starts `ouroboros-rest`
  *     from a Dockerfile that pins `NODE_ENV=production`, and that is the single flag #705
  *     gates the password routes on — so against this stack, the route below answers 400
@@ -43,9 +42,11 @@
  * So the signed-in legs keep `test.fixme` and {@link SESSION_PARKED} as the reason, and say
  * so in the run's report rather than failing every night at three. **Every leg that does not
  * need a session still runs**, which is most of the health, shell and negative-path
- * coverage — including, importantly, the assertions that a stranger is refused.
+ * coverage — including, importantly, the assertions that a stranger is refused. The whole of
+ * the dashboard leg ([#88](https://github.com/NobuData/ouroboros/issues/88)) is on the other
+ * side of that line, which is the largest thing this parking now costs.
  *
- * When both are resolved, the change here is deleting {@link SESSION_PARKED} and the
+ * When it is resolved, the change here is deleting {@link SESSION_PARKED} and the
  * `test.fixme` lines that name it. {@link signIn} itself is finished: no spec knows how the
  * cookie got there.
  */
@@ -62,10 +63,11 @@ import { REST_URL, UI_URL } from "./stack";
  * is one place to delete and `grep` finds every leg that was waiting on it.
  */
 export const SESSION_PARKED =
-  "Signing in needs #709 (the seed writes BetterAuth's user and account rows, with the " +
-  "passwords support/seed.ts names) and a stack whose ouroboros-rest is not NODE_ENV=" +
-  "production — the image pins it, and #705 gates the development password routes on " +
-  "exactly that flag. signIn() below is the real call and is ready for both.";
+  "Signing in needs a stack whose ouroboros-rest is not NODE_ENV=production — the image " +
+  "pins it, #705 gates the development password routes on exactly that flag, and the same " +
+  "flag moves the listen address back to loopback, so overriding it in compose publishes " +
+  "nothing. #709 has landed, so the credential exists; signIn() is the real call and is " +
+  "ready. The stack change is #56's or #715's to make.";
 
 /**
  * The cookie a signed-in browser carries.
@@ -118,6 +120,38 @@ export async function signIn(context: BrowserContext, userId: string): Promise<v
       sameSite: "Lax",
     },
   ]);
+}
+
+/**
+ * The session a context is carrying, for a scripted call made on its behalf.
+ *
+ * Three modules need this and none of them needs it differently: `support/workspace.ts`
+ * moves the session's active organization, and `support/settings.ts` writes the person's
+ * font scale and the workspace's auto-merge position. Each is a `fetch` to
+ * `ouroboros-rest` that has to carry the *browser's* session, and each was reading the
+ * cookie jar with the same four lines — including the same failure message, which is the
+ * part worth having once: a caller that forgot to sign in should be told so here, by name,
+ * rather than three assertions later as a heading that is not on the page.
+ *
+ * It stays in this module because the cookie's name is this module's fact.
+ *
+ * @param context - The context to read.
+ * @param what - What the caller is about to do, for the failure message — a phrase that
+ *   completes *"… needs a signed-in context"*, e.g. `selectWorkspace(acme-robotics)`.
+ * @returns The session token, ready to send as a `cookie` header.
+ * @throws {Error} If the context carries no session.
+ */
+export async function sessionTokenOf(context: BrowserContext, what: string): Promise<string> {
+  const session = (await context.cookies()).find((cookie) => cookie.name === SESSION_COOKIE);
+
+  if (session === undefined) {
+    throw new Error(
+      `${what} needs a signed-in context: no ${SESSION_COOKIE} cookie is set. ` +
+        "Call signIn() from support/session.ts first.",
+    );
+  }
+
+  return session.value;
 }
 
 /** What {@link mintSession} hands back. */

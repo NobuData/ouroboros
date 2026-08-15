@@ -43,6 +43,19 @@ import { EXPECT_TIMEOUT_MS, SUITE_BUDGET_MS, TEST_TIMEOUT_MS, UI_URL } from "./s
  * cross-browser and both-theme screenshot work belongs to the per-page legs the mockup
  * roadmaps amend in, and paying for it here would spend the ten-minute budget three times
  * over for one bit of information.
+ *
+ * ### Where screenshot baselines live
+ *
+ * Beside the spec that records them, under `specs/__screenshots__/`, rather than in
+ * Playwright's default `<spec>-snapshots/` directory next to each file. One directory keeps
+ * the specs listing readable as *one file per leg* — which is what `specs/` is for — as the
+ * dashboard leg ([#88](https://github.com/NobuData/ouroboros/issues/88)) is joined by the
+ * issues screen's, the studio's and a dozen more.
+ *
+ * The platform is in the name because a rendered page is a platform artefact: the same
+ * checkout produces different pixels on Linux and macOS, and a baseline that did not say
+ * which it came from would make every developer's first run red for a reason that is not a
+ * regression. CI is Linux and the baselines committed here are Linux's.
  */
 export default defineConfig({
   testDir: "./specs",
@@ -50,7 +63,22 @@ export default defineConfig({
   // The issue's third acceptance criterion, enforced.
   globalTimeout: SUITE_BUDGET_MS,
   timeout: TEST_TIMEOUT_MS,
-  expect: { timeout: EXPECT_TIMEOUT_MS },
+  expect: {
+    timeout: EXPECT_TIMEOUT_MS,
+    toHaveScreenshot: {
+      // Anti-aliasing on type and on the pulse card's glyph differs by a pixel or two between
+      // runs of the same build on the same machine, and by more between a laptop and a
+      // runner. A zero tolerance would make every baseline a nuisance somebody re-records
+      // rather than reads; a generous one would let a card go missing. Two per mille of the
+      // viewport is roughly a line of text — enough to survive rasterisation, far too little
+      // to hide a layout that moved.
+      maxDiffPixelRatio: 0.002,
+    },
+  },
+
+  // See the header. One directory per suite rather than one per spec, and the platform in
+  // the name because pixels are a platform artefact.
+  snapshotPathTemplate: "{testDir}/__screenshots__/{arg}-{projectName}-{platform}{ext}",
 
   // Files run side by side; tests within a file run in order. The tenant leg writes rows
   // the same file then reads back, and a shared stack is not a place to discover that a

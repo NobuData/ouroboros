@@ -57,7 +57,7 @@ truthful zero/empty states in a fresh workspace. No fabricated numbers outside s
 |---|---|
 | #45 `ouroboros-ui: [5.7] Dashboard placeholder` (mockup 02 grid + health data + empty states, single M issue) | **Superseded in scope, but 🟢 built as written** — Epic I / #62 (I.1–I.8) is where the real dashboard is specified card by card, and the health-status card idea survives inside I.2 (#81) / I.7 (#86). #45 shipped first because P1 reached it while Epic I's own blockers (#46 primitives, #70 aggregate endpoint) were still open, and a signed-in session had nowhere to land: it is the route at `(app)/dashboard`, the readers behind it (`app/dashboard/data.ts`, `app/api/health.ts`, `app/api/engine.ts`, `app/api/members.ts`), the status logic, and designed empty states where Epic I's cards go. **#80 replaces the page body and inherits all of that.** *Amendment comment posted 2026-08-09; #45 delivered 2026-08-11.* |
 | #41 `ouroboros-ui: [5.3] App shell` (top bar with nav, needs-you *placeholder*, gear, avatar) | **Amended/extended** by Epic H / #61 — tenant chip (#77), live & needs-you pills (#78), ⌘K palette (#79) are mockup-02 chrome beyond #41's placeholder scope. *Amendment comment posted 2026-08-09.* |
-| #56 `ouroboros: [7.2] End-to-end smoke test` | **Amended** — the dashboard leg upgrades from "shows seeded tenant" to the I.9 (#88) assertions (stats, tables, pulse from seeded read-model). *Amendment comment posted 2026-08-09.* |
+| #56 `ouroboros: [7.2] End-to-end smoke test` | **Amended, and 🟢 landed** — the dashboard leg upgrades from "shows seeded tenant" to the I.9 (#88) assertions (stats, tables, pulse from seeded read-model). It is `tests/e2e/specs/dashboard.spec.ts`, the suite's sixth leg; #56's own leg 2 now reads the shell's tenant chip, because the dashboard's `<h1>` is the greeting. *Amendment comment posted 2026-08-09; I.9 delivered 2026-08-14.* |
 | #49 `ouroboros-ui: [5.11] Placeholder routes` (v2) | **Unchanged, load-bearing** — mockup-02 links (`run console →`, `All issues →`, `Manage queue →`, Edit workflows, inbox) land on #49 placeholders until those screens get their own roadmaps. *Note comment posted 2026-08-09.* |
 | #54 `ouroboros-engine: [6.5] Task execution skeleton` (v2) | **Unchanged** — J.3 (#91) defines the engine→read-model write path that #54's runs will use. |
 | #23 `ouroboros-db: [3.5] Dev seed data` | **Extended** by F.5 (#68) — dashboard read-model seeds join the tenancy/auth seeds. |
@@ -1388,14 +1388,15 @@ themes hold.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| I.1 | #80 | 🟡 Open | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
-| I.2 | #81 | 🟡 Open | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.3 | #82 | 🟡 Open | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
-| I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
-| I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
-| I.8 | #87 | 🟢 Done | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui || I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
+| I.1 | #80 | 🟢 Done | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
+| I.2 | #81 | 🟢 Done | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.3 | #82 | 🟢 Done | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
+| I.4 | #83 | 🟢 Done | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
+| I.5 | #84 | 🟢 Done | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.6 | #85 | 🟢 Done | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.7 | #86 | 🟢 Done | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
+| I.8 | #87 | 🟢 Done | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
+| I.9 | #88 | 🟢 Done | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
 
 ### Issue I.1 — ouroboros-ui: [I.1] Dashboard route, grid & page head
 
@@ -2093,7 +2094,61 @@ poll ✗  ─▶ [stale since 14:02 · retry] + last good data stays
 
 ### Issue I.9 — ouroboros-ui: [I.9] Dashboard e2e leg
 
-> **GitHub issue:** #88 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #88 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The sixth leg of [`tests/e2e`](../tests/e2e), and the first one a
+> mockup roadmap has amended into [#56](https://github.com/NobuData/ouroboros/issues/56).
+>
+> **The leg's subject is the distance between a row and a figure.** Every card on this page
+> has thorough unit coverage in `ouroboros-ui`, and every one of those tests hands the card a
+> payload; none of them can ask whether the payload is the database. Between the two sit
+> Flyway's seed, the aggregate's arithmetic (#70), an `ETag`, a Server Component render and a
+> stylesheet that has to have shipped — so `27 PRs merged · 7d` is a `count` over `runs`,
+> `est. 9h 40m` is a `sum` over `queue_items` that skips the one item nobody has estimated,
+> and `92%` is 46 merged of 50 closed over fourteen days. Those figures are written down in
+> [`support/dashboard.ts`](../tests/e2e/support/dashboard.ts) rather than derived, for the
+> reason `support/seed.ts` already argues: a suite that computed them from the seed would
+> agree with a broken aggregate as happily as with a working one.
+>
+> **Both halves of the MVP claim, as two workspaces rather than two fixtures.**
+> `acme-robotics` carries the seeded parity — greeting and subline, four stat tiles, three
+> active rows in the endpoint's own lifecycle order with their pills and their meter widths,
+> three pulse meters, the queue's five rows and every one of the five effort chips — and
+> `kensuenobu`, which F.5 deliberately left with no row in any read-model table, carries I.7's
+> zero states. The assertion that keeps the two apart end to end is the **em dash**: `—` is
+> what a card draws when a figure could not be read, and the empty workspace must not contain
+> one anywhere in the card grid.
+>
+> **The auto-merge switch is asserted as a round trip through a reload**, not as a click that
+> moves a control. An optimistic switch that never persisted looks identical to a working one
+> until the page is loaded again, so the leg presses it, re-reads it, reloads, presses it
+> back, and puts the seed's position back in teardown — the setting is a row keyed on the
+> workspace and outlives the browser that changed it.
+>
+> **The shell assertions are the ones only a laid-out page has.** The header and the sidebar
+> are cells of a grid the viewport's height, not `position: fixed`, so the leg scrolls the
+> pane to the bottom and requires both bounding boxes to be unchanged and `window.scrollY` to
+> be zero; the sidebar's `Dashboard` entry must be the one and only `aria-current="page"`; and
+> at the 125% font scale — set through `PATCH /api/v1/me/preferences`, because the server is
+> where that preference lives and a `localStorage` seed would be overwritten by the reconcile
+> — the root font size must move to 20px and the pane must still not scroll sideways.
+>
+> **It does not run yet, and that is a stack fact rather than a leg one.** Everything here
+> needs a session, and `docker compose` starts `ouroboros-rest` from an image pinning
+> `NODE_ENV=production` — the flag [#705](https://github.com/NobuData/ouroboros/issues/705)
+> gates the development password routes on, and the same flag that moves the listen address
+> back to loopback, so overriding it publishes nothing. [#709](https://github.com/NobuData/ouroboros/issues/709)
+> has landed, so the credential exists; what is missing is a non-production `rest` that still
+> binds every interface, which `support/session.ts` and `docker-compose.yml` both name as
+> #56's or [#715](https://github.com/NobuData/ouroboros/issues/715)'s decision. So the leg
+> carries `test.fixme` exactly as leg 2's signed-in half and leg 1's theme group already do,
+> its failure-mode pair is **registered and reports itself as parked** rather than as a pass,
+> and its screenshot baselines are recorded by whoever unparks it. Deleting four `test.fixme`
+> lines is the whole of what runs it.
+>
+> #56's own dashboard assertion was amended in the same change: the `<h1>` it read is the
+> greeting now, so leg 2 reads the shell's tenant chip instead — the journey's own subject —
+> and everything the dashboard draws belongs to leg 6.
 
 - **Problem Statement:** #56's dashboard assertion ("shows seeded tenant") predates
   the real dashboard; the MVP gate must prove mockup parity and truthful emptiness.
@@ -2429,3 +2484,18 @@ card's `interventions7d` and the pill states its window — and the pill does no
 inbox, because #49 has not landed and `/inbox` is a 404. **Epic H has one issue left, H.3
 (#79)**, and the next thing on this roadmap is I.1 (#80), which replaces the #45 page body
 and hands its cards to the store the pills are already reading.
+
+**Epic I closed on 2026-08-14 with I.9 (#88)** — I.1–I.8 shipped over the preceding days, in
+the order the store made possible rather than the order they are numbered, and the leg is
+what this roadmap's MVP gate always was: mockup 02 against the seeded read-model, the same
+page telling the truth in a workspace with no rows, the shell holding at 125%, and both
+palettes diffed. **It is written and it does not run**, because nothing in `tests/e2e` can
+sign in against a compose stack whose `rest` is the production image — the leg's own section
+above sets out why that is #56's or #715's decision to make, and what deleting four
+`test.fixme` lines would then be enough to run. Nothing else on this roadmap is MVP: what is
+left is H.3 (#79) and the whole of Epic J.
+
+*A note for whoever reads the Epic I table above against `git log`:* the merge that landed
+I.8 resolved a conflict by reverting I.1–I.7 to 🟡 Open and joining the I.8 and I.9 rows onto
+one line, while every per-issue section below kept its 🟢 Done. #88 repaired the table rather
+than adding a ninth row to a broken one.
