@@ -129,7 +129,7 @@ Complexity chips: **XS · S · M · L**.
 | CP.1 | #643 | 🟢 Done | ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment | Fixed header + shell grid; content pane as sole scroll container | mvp, shell, ui, design | N (after #39, #40, #16) | Y | L | ouroboros-ui |
 | CP.2 | #644 | 🟢 Done | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
 | CP.3 | #645 | 🟢 Done | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
-| CP.4 | #646 | 🟡 Open | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
+| CP.4 | #646 | 🟢 Done | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
 | CP.5 | #647 | 🟡 Open | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CP.1 — ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment
@@ -443,7 +443,28 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 
 ### Issue CP.4 — ouroboros-ui: [CP.4] In-pane chrome standards & primitives
 
-> **GitHub issue:** #646 · **Status:** 🟡 Open · **Parent epic:** #640
+> **GitHub issue:** #646 · **Status:** 🟢 Done · **Parent epic:** #640
+
+> **Shipped.** `StickyBar` and `PageSubnav` joined the #46 set
+> ([`app/ui/sticky-bar.tsx`](../ouroboros-ui/app/ui/sticky-bar.tsx),
+> [`app/ui/page-subnav.tsx`](../ouroboros-ui/app/ui/page-subnav.tsx)) over one stacking
+> contract, [`app/ui/chrome.ts`](../ouroboros-ui/app/ui/chrome.ts): subnav above
+> dirty-state bar above table header, each layer publishing its measured height as a
+> custom property on the scroll container and the next offsetting by it, so the order
+> holds at every font scale. The #46 Table grew the sticky-header recipe as a prop
+> (`stickyHeader` — the wrapper opens up because sticky pins to the nearest scrollport,
+> and the trade is documented once in `table.tsx`). The subnav preserves the mockups'
+> underline gesture with the hue as a tone — 06's model purple included. **Scroll
+> restoration** is the shell's ([`app/shell/pane-restoration.tsx`](../ouroboros-ui/app/shell/pane-restoration.tsx)):
+> back/forward restores the pane per `pathname?search`, a push starts at the top, and a
+> fragment push is left to the router — whose `scrollIntoView` the pane's
+> `scroll-padding-top` offsets by the same published heights, which is the whole of the
+> **anchor behaviour**. The demonstration is the workshop's first page,
+> [`/workshop/chrome`](../ouroboros-ui/app/workshop/chrome-story.tsx) (seeding #48, whose
+> tooling is v2): subnav + dirty bar + sticky table header over 48 rows, both themes, and
+> — as the product's second in-shell route — the fixture the new pane-memory e2e group in
+> `tests/e2e/specs/shell.spec.ts` drives, parked with every session-gated leg until
+> sign-in is unparked.
 
 - **Problem Statement:** With one scroll container, every sticky behavior
   the mockup roadmaps assume (subnav tabs, dirty-state bars, table

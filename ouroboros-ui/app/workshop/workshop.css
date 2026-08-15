@@ -1,0 +1,103 @@
+/*
+ * The component workshop's own sheet (#646, seeding #48).
+ *
+ * Page composition only: what belongs to the primitives is in app/ui/ui.css, and this file
+ * places them over the long fixture — the § 2 page anatomy (head, subnav, sections) plus
+ * the one box the story needs that no primitive provides, the sample scrollport.
+ *
+ * Held to the same rules as every sheet under app/ (__tests__/styles.test.ts): colours are
+ * tokens, sizes are tokens or rem, and the wk- prefix keeps it out of everything else's
+ * namespace.
+ */
+
+.wk-page {
+  padding: var(--sp-9) var(--sp-10) var(--sp-12);
+}
+
+.wk-head {
+  margin-bottom: var(--sp-8);
+}
+
+.wk-title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-2xl);
+  font-weight: 700;
+  letter-spacing: var(--tr-tight);
+  line-height: var(--lh-snug);
+}
+
+.wk-sub {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * Deliberately generous: the sections must outrun the viewport at every font scale, or
+ * nothing in the story would ever stick. Space, not filler prose — an empty scroll is
+ * still a scroll, and rows are what the fixture table is for.
+ */
+.wk-section {
+  padding: var(--sp-10) 0;
+}
+
+.wk-heading {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink);
+  font-family: var(--f-disp);
+  font-size: var(--t-xl);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+}
+
+.wk-prose {
+  margin: 0 0 var(--sp-6);
+  max-width: 72ch;
+  color: var(--ink-dim);
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+}
+
+.wk-link {
+  color: var(--accent);
+}
+
+/* The bar's sentence takes the room; the actions keep their shape at its end. */
+.wk-bar-note {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.wk-bar-actions {
+  display: flex;
+  gap: var(--sp-4);
+  flex: none;
+}
+
+/*
+ * The sample scrollport: a well with its own vertical scroll, so the model-hue subnav
+ * inside binds — and publishes its height — to this box rather than to the pane. Not a
+ * breach of the one-scroll-container rule for the reason the palette's result list gives
+ * (app/shell/shell.css): § 1.3 is about the page, and this is a demonstration case inside
+ * it. The height is what forces the well to actually scroll.
+ */
+.wk-sample {
+  height: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+
+/* Tall enough that the well scrolls at every font scale, so the sample subnav sticks. */
+.wk-sample__filler {
+  min-height: 24rem;
+  padding: var(--sp-8);
+}

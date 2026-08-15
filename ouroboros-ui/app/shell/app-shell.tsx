@@ -1,4 +1,7 @@
+import { Suspense } from "react";
+
 import { FontScaleSync } from "./font-scale-sync";
+import { PaneRestoration } from "./pane-restoration";
 import { CONTENT_ID, OVERLAY_LAYER_ID, PANE_ATTRIBUTE } from "./regions";
 import { ShellHeader } from "./shell-header";
 import { SidebarNav } from "./sidebar-nav";
@@ -58,6 +61,15 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
         honouring the bare localStorage mirror, which is § 4's rule for anonymous pages.
       */}
       <FontScaleSync />
+      {/*
+        Also draws nothing: remembers where each route was scrolled to and puts it back on
+        back/forward, resets a push to the top (#646). In Suspense because it reads the
+        URL through useSearchParams, which asks that of any client component a prerender
+        can reach; a fallback of nothing is exact, since nothing is what it renders.
+      */}
+      <Suspense fallback={null}>
+        <PaneRestoration />
+      </Suspense>
       <a className="shell-skip" href={`#${CONTENT_ID}`}>
         Skip to content
       </a>

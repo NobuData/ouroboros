@@ -218,6 +218,99 @@ describe("the table", () => {
     // start the whole pane scrolling sideways.
     expect(CODE).toMatch(/\.ou-table-scroll\s*\{[^}]*overflow-x:\s*auto/);
   });
+
+  it("hands a sticky head to the pane by opening its wrapper", () => {
+    // `position: sticky` pins within the nearest scrollport, and an `overflow-x: auto`
+    // wrapper is one in both axes — a head inside it would stick to a box that never
+    // scrolls vertically. Opening the wrapper is the recipe's first half (#646).
+    expect(CODE).toMatch(/\.ou-table-scroll--open\s*\{[^}]*overflow-x:\s*visible/);
+    expect(CODE).toMatch(/\.ou-table--sticky th\s*\{[^}]*position:\s*sticky/);
+  });
+
+  it("separates the sticky table's borders, so the hairline travels with the head", () => {
+    // Collapsed borders belong to the grid rather than the cell and stay behind when a
+    // row sticks; the replacement hairline is an inset shadow on the cell itself.
+    expect(CODE).toMatch(/\.ou-table--sticky\s*\{[^}]*border-collapse:\s*separate/);
+    expect(CODE).toMatch(/\.ou-table--sticky th\s*\{[^}]*box-shadow:\s*inset 0 -1px 0 var\(--line\)/);
+  });
+});
+
+describe("the in-pane chrome", () => {
+  /**
+   * One rule's declarations — the frame suite's anchored helper, copied for the same
+   * reason: a class must be found where it is the selector, not the tail of a longer one.
+   *
+   * @param selector The selector, with any regex characters already escaped.
+   * @returns What is between its braces, or `""` when the sheet has no such rule.
+   */
+  function rule(selector: string): string {
+    return CODE.match(new RegExp(`(?:^|\\})\\s*${selector}\\s*\\{([^}]*)\\}`))?.[1] ?? "";
+  }
+
+  it("sticks every layer, and sticks it with an offset the chrome above published", () => {
+    // The stacking contract (#646, `app/ui/chrome.ts`): the subnav owns the top edge, the
+    // bar starts where the subnav ends, the table head clears both. Each `top` reads the
+    // published measurement rather than restating a height, which is what holds the stack
+    // together at every font scale.
+    expect(rule("\\.ou-subnav")).toMatch(/position:\s*sticky/);
+    expect(rule("\\.ou-subnav")).toMatch(/top:\s*0/);
+    expect(rule("\\.ou-sticky-bar")).toMatch(/position:\s*sticky/);
+    expect(rule("\\.ou-sticky-bar")).toMatch(/top:\s*var\(--ou-chrome-subnav,\s*0rem\)/);
+    expect(rule("\\.ou-table--sticky th")).toMatch(
+      /top:\s*calc\(var\(--ou-chrome-subnav,\s*0rem\) \+ var\(--ou-chrome-bar,\s*0rem\)\)/,
+    );
+  });
+
+  it("stacks front-to-back in the same order as top-to-bottom", () => {
+    // The documented order: subnav above bar above table head. If the z steps ever
+    // inverted, the second team's sticky element would cover the first team's — the race
+    // the contract exists to end.
+    const layer = (selector: string) => Number(rule(selector).match(/z-index:\s*(\d+)/)?.[1]);
+
+    expect(layer("\\.ou-subnav")).toBeGreaterThan(layer("\\.ou-sticky-bar"));
+    expect(layer("\\.ou-sticky-bar")).toBeGreaterThan(layer("\\.ou-table--sticky th"));
+    // And all of it under the shell's own ladder, whose lowest rung is the menu at 60.
+    expect(layer("\\.ou-subnav")).toBeLessThan(60);
+  });
+
+  it("grounds every stuck layer on the scrim, over a blur", () => {
+    // The token the sheet reserves for sticky chrome over scrolled content, and the
+    // mockups' own topbar treatment: rows fade under the chrome rather than showing
+    // through it, in either palette.
+    for (const selector of ["\\.ou-subnav", "\\.ou-sticky-bar", "\\.ou-table--sticky th"]) {
+      expect(rule(selector)).toMatch(/background:\s*var\(--scrim\)/);
+      expect(rule(selector)).toMatch(/backdrop-filter:\s*blur\(/);
+    }
+  });
+
+  it("keeps the underline the design system's gesture, and the hue a tone", () => {
+    // The invariant the mockups share at every level: a 2px bar under the active tab,
+    // inset from its edges, overlapping the row's hairline, glowing. What varies — 06's
+    // model purple against 07/21's accent — is a pair of custom properties the modifier
+    // redefines, so preserving a mockup's hue never means redrawing the gesture.
+    const underline = CODE.match(
+      /\.ou-subnav a\[aria-current\]::after\s*\{([^}]*)\}/,
+    )?.[1] ?? "";
+
+    expect(underline).toMatch(/height:\s*var\(--sp-1\)/);
+    expect(underline).toMatch(/background:\s*var\(--ou-subnav-hue\)/);
+    expect(underline).toMatch(/box-shadow:[^;]*var\(--ou-subnav-halo\)/);
+
+    expect(rule("\\.ou-subnav")).toMatch(/--ou-subnav-hue:\s*var\(--accent\)/);
+    expect(rule("\\.ou-subnav--model")).toMatch(/--ou-subnav-hue:\s*var\(--model\)/);
+  });
+
+  it("marks the active tab off aria-current, which is what a screen reader hears", () => {
+    // The same fact the sidebar states the same way: the treatment cannot come apart from
+    // what is announced, and a class-only active tab would lie to one kind of reader.
+    expect(CODE).toContain(".ou-subnav a[aria-current]");
+    expect(CODE).not.toMatch(/\.ou-subnav a\.(?:active|on)\b/);
+  });
+
+  it("reserves the asking rim for the bar that wants a decision", () => {
+    expect(rule("\\.ou-sticky-bar--asking")).toMatch(/border-color:\s*var\(--accent-line\)/);
+    expect(rule("\\.ou-sticky-bar--asking")).toMatch(/box-shadow:[^;]*var\(--accent-glow\)/);
+  });
 });
 
 describe("the meter", () => {

@@ -298,6 +298,18 @@ describe("the shell frame", () => {
     expect(measure).toMatch(/margin:\s*0 auto/);
   });
 
+  it("offsets anchor landings by whatever chrome is stuck (#646)", () => {
+    // Every in-pane scroll-into-view — the router's fragment handling, native anchor
+    // navigation, the skip link — honours `scroll-padding-top` on the scroll container.
+    // Reading the published chrome heights here is what makes "anchors land below the
+    // subnav and the dirty-state bar" one declaration instead of a per-page offset.
+    const pane = rule(".app-shell__pane");
+
+    expect(pane).toMatch(/scroll-padding-top:\s*calc\(/);
+    expect(pane).toMatch(/var\(--ou-chrome-subnav,\s*0px\)/);
+    expect(pane).toMatch(/var\(--ou-chrome-bar,\s*0px\)/);
+  });
+
   it("pays back the gutter the lock takes away", () => {
     // The whole subtlety of `app/shell/pane-scroll.ts`, as a rule: `scrollbar-gutter: stable`
     // reserves a gutter only for an overflow of scroll or auto, so locking with `hidden`
