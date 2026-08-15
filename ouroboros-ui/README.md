@@ -661,8 +661,9 @@ is a `POST` rather than a `GET` to avoid.
 are [#80](https://github.com/NobuData/ouroboros/issues/80), its stat row
 [#81](https://github.com/NobuData/ouroboros/issues/81), its active-loops table
 [#82](https://github.com/NobuData/ouroboros/issues/82), its loop pulse
-[#83](https://github.com/NobuData/ouroboros/issues/83) and its completions table
-[#84](https://github.com/NobuData/ouroboros/issues/84)) is
+[#83](https://github.com/NobuData/ouroboros/issues/83), its completions table
+[#84](https://github.com/NobuData/ouroboros/issues/84) and its queue card
+[#85](https://github.com/NobuData/ouroboros/issues/85)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
@@ -689,19 +690,19 @@ Ouroboros merged 6 pull requests since midnight UTC.
 ┌ SYSTEM      ◐ operational ┐         │ Auto-merge …      [ on ]  │
 │ REST API            [ up ]│         └──────────────────────────┘
 └───────────────────────────┘
-┌ RECENTLY CLOSED BY THE LOOP ────── All issues → ┐┌ UP NEXT ─┐
-│ #474 → PR #512 Debounce…  11m  14/14 (merged)   ││          │
-│ #465 → PR #504 Refactor…  42m  13/14 (needs human) [Review →]
-└─────────────────────────────────────────────────┘└──────────┘
+┌ RECENTLY CLOSED BY THE LOOP ────── All issues → ┐┌ UP NEXT ── Manage queue → ┐
+│ #474 → PR #512 Debounce…  11m  14/14 (merged)   ││ #485 Watchdog… [M ][std] │
+│ #465 → PR #504 Refactor…  42m  13/14 (needs human) [Review →]  … [XS][docs]  │
+└─────────────────────────────────────────────────┘│           + 7 queued →   │
+                                                    └──────────────────────────┘
 ```
 
 **Two kinds of card sit on the same grid, and the difference is the point.** The stat row is
 drawn from the aggregate's `stats`, the active-loops table from its `activeRuns`, the loop
-pulse from its `pulse`, the completions table from its `recentRuns`, and the system card from
-`/health/ready` and `/api/v1/engine/status` — every figure on them came from the service. The
-one panel that has no card drawing it yet — the queue
-([#85](https://github.com/NobuData/ouroboros/issues/85)) — keeps its place as a designed empty
-state naming what will fill it, rather than borrowing the mockup's rows.
+pulse from its `pulse`, the completions table from its `recentRuns`, the queue card from its
+`queueHead`, and the system card from `/health/ready` and `/api/v1/engine/status` — every
+figure on them came from the service. **Every panel of the mockup now has a card drawing it
+from data**, so nothing on this screen is a copy of the mockup's own rows.
 
 **One control on the whole page changes anything**, and it is the pulse card's auto-merge
 switch ([#74](https://github.com/NobuData/ouroboros/issues/74)'s operation). Everything else
@@ -940,6 +941,49 @@ listing that shows all of them.
 inert button carrying what is missing, which is the treatment the sidebar already gives both
 destinations — and #49's own first criterion, *no dead nav links*.
 
+### The queue card: what the loop will do next
+
+The `c-5` card ([#85](https://github.com/NobuData/ouroboros/issues/85)) is the forward-looking
+half of the page: the aggregate's `queueHead` in queue order, one row per issue, decided in
+[`view.ts`](app/dashboard/view.ts) (`queueRows`, `moreQueued`) and drawn by
+[`queue-card.tsx`](app/dashboard/queue-card.tsx).
+
+```
+#485  Watchdog reset on I²C bus lockup       [ M  ]  [standard-fix]
+#488  Typo sweep in operator manual          [ XS ]  [docs-loop]
+#490  Migrate build to Zephyr 4.2            [ XL ]  [deps-refresh]
+                                                        + 7 queued →
+```
+
+**A list, not a table.** The two cards beside it have columns — a heading over each cell saying
+what the figure in it means. A queue row has none: it is one issue, and the effort chip and the
+workflow tag are properties *of* it rather than a second and third measurement. So it is a
+`ul`, which is also what a screen reader is best served by — *list of five items*, then five
+issues, rather than a grid whose column headers would have to be invented to justify the markup.
+
+**This is the one surface in the product that draws all five effort chips at once**, which is
+what makes it the place the scale is proved. The hue is derived from the size by the #46
+[chip](app/ui/chip.tsx) — `XS`/`S` are cheap, `M` is the ordinary case, `L`/`XL` are the ones
+worth a second look — never passed by a call site, because an `L` that was green somewhere
+would make the scale mean nothing. The size is a **judgement** and is deliberately not a
+function of the estimate beside it (contract `QueueEffort`): if one were derived from the other,
+the stat row's `est. 9h 40m` would be a restatement of the chips rather than a second fact.
+
+**`+7 queued` is a subtraction over two separately true figures**, not a flag: `queueHead` is
+capped at five by the service and `stats.queued.count` speaks for the whole queue, so the
+footer appears only when the count exceeds the rows and says exactly the remainder. It shares
+its arithmetic with the loops table's `+N more`, so two footers on one page cannot disagree.
+
+**Neither `Manage queue →` nor the footer navigates yet.** The queue screen is mockup 03 and
+#49 holds its route, which is post-MVP; both are inert buttons carrying the one reason, which
+keeps the explanation in the tab order, and both become an `href` the day #49 lands. Two
+controls pointing at one missing screen carry one sentence rather than two, because two would
+read as two missing screens.
+
+The empty state is the card's own until [#86](https://github.com/NobuData/ouroboros/issues/86)
+designs every card's together: a workspace that has caught up with its own queue reads
+*Nothing is queued*, and an aggregate nobody could read reads the service's reason.
+
 ### One failed read is one degraded card
 
 The three reads go out together — the aggregate, the readiness probe and the engine's status
@@ -984,9 +1028,9 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 
 ### What it does not pretend
 
-- **No run is invented.** Every row in the two tables came from `activeRuns` and
-  `recentRuns`; the mockup's five plausible rows in the panel that still has no card are not
-  copied, because nothing answers that question yet.
+- **No run and no queued issue is invented.** Every row on this page came from `activeRuns`,
+  `recentRuns` or `queueHead`. None of the mockup's own rows is copied anywhere: a workspace
+  with an empty queue draws a designed empty state, not five plausible issues.
 - **No model, workflow or stage name is interpreted.** They are opaque strings (decision F8),
   so `ollama/qwen3-coder` is rendered rather than split into a vendor and a version, and a run
   whose workflow has since been renamed still reads under the word it recorded.
@@ -1016,10 +1060,14 @@ The real dashboard is specified card by card under
 head on top of #45's route, readers, status logic and redirect,
 [#81](https://github.com/NobuData/ouroboros/issues/81) the stat row,
 [#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table,
-[#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse and
-[#84](https://github.com/NobuData/ouroboros/issues/84) the completions table. The remaining
-card replaces the last tile of the grid from the aggregate this page already fetches: the
-queue ([#85](https://github.com/NobuData/ouroboros/issues/85)).
+[#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse,
+[#84](https://github.com/NobuData/ouroboros/issues/84) the completions table and
+[#85](https://github.com/NobuData/ouroboros/issues/85) the queue card. **Every card of the grid
+is now drawn from the aggregate this page already fetches.** What is left of Epic I is the work
+that spans all of them rather than one more tile:
+[#86](https://github.com/NobuData/ouroboros/issues/86) designs every card's empty, loading and
+failed states together, and [#87](https://github.com/NobuData/ouroboros/issues/87) keeps them
+fresh with the `ETag` poll.
 
 ## App shell
 

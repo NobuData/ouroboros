@@ -1,4 +1,9 @@
-import type { Dashboard, DashboardActivity, RunSummary } from "@/app/api/dashboard";
+import type {
+  Dashboard,
+  DashboardActivity,
+  QueueItemSummary,
+  RunSummary,
+} from "@/app/api/dashboard";
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { DashboardReadings, Reading } from "@/app/dashboard/view";
@@ -278,13 +283,105 @@ export const SEEDED_COMPLETIONS: readonly RunSummary[] = [
 ];
 
 /**
+ * One issue waiting for a loop.
+ *
+ * Everything is the first seeded row — position 1, `#485` — so a case that is about one field
+ * says so by passing that field alone.
+ *
+ * @param over The fields this case is about.
+ * @returns A complete queue item.
+ */
+export function queueItem(over: Partial<QueueItemSummary> = {}): QueueItemSummary {
+  return {
+    id: "5eed000a-0000-4000-8000-000000000485",
+    issueNumber: 485,
+    issueTitle: "Watchdog reset on I²C bus lockup",
+    effort: "m",
+    workflowTag: "standard-fix",
+    position: 1,
+    estMinutes: 45,
+    enqueuedAt: enqueuedHoursAgo(12),
+    ...over,
+  };
+}
+
+/**
+ * A timestamp that many hours before {@link READ_AT}.
+ *
+ * The seed's own rhythm (`R__dev_seed_dashboard.sql`): position 1 joined twelve hours ago and
+ * position 12 an hour ago, so the queue reads as a queue rather than as a list that happens to
+ * be ordered.
+ *
+ * @param hours How long ago the issue joined the queue.
+ * @returns The `date-time` the contract carries.
+ */
+export function enqueuedHoursAgo(hours: number): string {
+  return new Date(READ_AT - hours * 3_600_000).toISOString();
+}
+
+/**
+ * The five rows the mockup's `c-5` card draws, as `R__dev_seed_dashboard.sql` seeds them.
+ *
+ * Row for row the same fiction, in the same order — `position` 1 first — with the mockup's own
+ * effort chips and workflow tags: `#485` M, `#486` L, `#488` XS, `#490` XL, `#491` S. **All
+ * five sizes across the five rows**, which is the acceptance criterion this fixture exists for.
+ *
+ * **Five, where twelve are queued.** The aggregate caps `queueHead` at five
+ * (`QUEUE_HEAD_LIMIT`) and `stats.queued.count` speaks for the whole queue, which is what makes
+ * the card's footer read *+7 queued*. The seven below the fold are the seed's; nothing here
+ * needs them, because the count is what the footer subtracts from.
+ */
+export const SEEDED_QUEUE: readonly QueueItemSummary[] = [
+  queueItem(),
+  queueItem({
+    id: "5eed000a-0000-4000-8000-000000000486",
+    issueNumber: 486,
+    issueTitle: "Expose battery health over BLE GATT",
+    effort: "l",
+    workflowTag: "feature-loop",
+    position: 2,
+    estMinutes: 90,
+    enqueuedAt: enqueuedHoursAgo(11),
+  }),
+  queueItem({
+    id: "5eed000a-0000-4000-8000-000000000488",
+    issueNumber: 488,
+    issueTitle: "Typo sweep in operator manual",
+    effort: "xs",
+    workflowTag: "docs-loop",
+    position: 3,
+    estMinutes: 15,
+    enqueuedAt: enqueuedHoursAgo(10),
+  }),
+  queueItem({
+    id: "5eed000a-0000-4000-8000-000000000490",
+    issueNumber: 490,
+    issueTitle: "Migrate build to Zephyr 4.2",
+    effort: "xl",
+    workflowTag: "deps-refresh",
+    position: 4,
+    estMinutes: 180,
+    enqueuedAt: enqueuedHoursAgo(9),
+  }),
+  queueItem({
+    id: "5eed000a-0000-4000-8000-000000000491",
+    issueNumber: 491,
+    issueTitle: "Add CRC to config persistence layer",
+    effort: "s",
+    workflowTag: "standard-fix",
+    position: 5,
+    estMinutes: 30,
+    enqueuedAt: enqueuedHoursAgo(8),
+  }),
+];
+
+/**
  * The whole dashboard aggregate, at the mockup's own figures.
  *
  * The numbers are the mockup's, and so are the runs in `activeRuns` and `recentRuns`: I.1
  * (#80) draws the frame and the page head, I.2 (#81) the stat row, I.3 (#82) the active-loops
- * table and I.5 (#84) the completions table, so `activity`, `stats`, `activeRuns` and
- * `recentRuns` are the parts of this payload they read. I.6 fills in `queueHead` when it
- * lands, which is why the factory takes an override rather than being written per suite.
+ * table, I.5 (#84) the completions table and I.6 (#85) the queue card, so `activity`, `stats`,
+ * `activeRuns`, `recentRuns` and `queueHead` are the parts of this payload they read.
  *
  * The two window lengths are the contract's: the merge rate is measured over fourteen days
  * (46 merged of 50 closed — `0.92` exactly) while the cycle time and the intervention count
@@ -308,7 +405,7 @@ export function dashboardPayload(over: Partial<Dashboard> = {}): Dashboard {
     pulse: { mergeRate: 0.92, avgCycleSeconds: 860, interventions7d: 2, autoMerge: true },
     activeRuns: [...SEEDED_RUNS],
     recentRuns: [...SEEDED_COMPLETIONS],
-    queueHead: [],
+    queueHead: [...SEEDED_QUEUE],
     activity: activity(),
     ...over,
   };
@@ -334,6 +431,7 @@ export function emptyDashboard(): Dashboard {
     pulse: { mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0, autoMerge: false },
     activeRuns: [],
     recentRuns: [],
+    queueHead: [],
     activity: { inFlight: 0, queued: 0, mergedSinceMorning: 0 },
   });
 }

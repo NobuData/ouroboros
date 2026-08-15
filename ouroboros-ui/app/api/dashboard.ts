@@ -103,6 +103,34 @@ export type RunSummary = components["schemas"]["RunSummary"];
 export type RunStatus = components["schemas"]["RunStatus"];
 
 /**
+ * One issue waiting for a loop, as the *Up next in queue* card draws it.
+ *
+ * Named here for {@link RunSummary}'s reason: it is one shape used in two places. The
+ * aggregate's `queueHead` is the top of the queue and
+ * [#73](https://github.com/NobuData/ouroboros/issues/73)'s paged listing is the whole of it,
+ * and the contract says the rows are byte-identical — so the card and its drill-in cannot
+ * drift into two ideas of what a queued issue is.
+ *
+ * **`estMinutes` is nullable, and a null is not a zero.** It means nobody has sized the
+ * issue yet, which is why `stats.queued.estMinutes` sums the estimates rather than counting
+ * the rows.
+ */
+export type QueueItemSummary = components["schemas"]["QueueItemSummary"];
+
+/**
+ * The size somebody put on a queued issue — the contract's five, lower-cased.
+ *
+ * Named here because the card maps every one of them to a chip
+ * (`app/dashboard/view.ts`), so a sixth size added to the service is a build error in the
+ * screen rather than a row that silently draws no chip at all.
+ *
+ * It is a **judgement**, deliberately not a function of `estMinutes`: the chip is a size a
+ * person chose and the estimate is minutes something measured, and deriving one from the
+ * other would make the queue's total a restatement of the chips rather than a second fact.
+ */
+export type QueueEffort = components["schemas"]["QueueEffort"];
+
+/**
  * The three figures the page head's subline is made of.
  *
  * The greeting beside it is the client's — it needs the reader's own clock (decision F7) —

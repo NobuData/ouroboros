@@ -125,6 +125,31 @@ describe("the recently closed table", () => {
   });
 });
 
+describe("the up-next queue", () => {
+  it("rules every row off but the last, as the mockup draws it", () => {
+    // A rule under the final row would read as the start of something that is not there. The
+    // `:last-child` rule is what makes the fifth row borderless without the card counting.
+    expect(CODE).toMatch(/\.dash-queue__row\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/);
+    expect(CODE).toMatch(/\.dash-queue__row:last-child\s*\{[^}]*border-bottom:\s*0/);
+  });
+
+  it("puts the issue on one edge and its markers on the other", () => {
+    expect(CODE).toMatch(/\.dash-queue__row\s*\{[^}]*justify-content:\s*space-between/);
+  });
+
+  it("keeps the effort chip and the workflow tag together on one line", () => {
+    // The two markers are the row's answer to *how big* and *run by what*. A tag broken over
+    // two lines reads as two tags, so the pair never shrinks and the title wraps instead.
+    expect(CODE).toMatch(/\.dash-queue__marks\s*\{[^}]*flex:\s*none/);
+    expect(CODE).toMatch(/\.dash-queue__title\s*\{[^}]*min-width:\s*0/);
+  });
+
+  it("draws the issue number in mono, on the baseline of its title", () => {
+    expect(CODE).toMatch(/\.dash-queue__number\s*\{[^}]*font-family:\s*var\(--f-mono\)/);
+    expect(CODE).toMatch(/\.dash-queue__issue\s*\{[^}]*align-items:\s*baseline/);
+  });
+});
+
 describe("the loop pulse card", () => {
   it("reserves the glyph's box at the asset's own ratio, so nothing moves when it loads", () => {
     // 512×296 is the #14 file's size, and the pair is pixel-identical — which is what makes
@@ -196,10 +221,22 @@ describe("the user-agent defaults this sheet has to undo", () => {
     }
   });
 
+  it("zeroes the padding, margin and marker a browser gives the queue's list", () => {
+    // A `ul` carries a 40px inline start padding, a block margin and a bullet from the UA
+    // sheet. The padding is also the one length on that card that would not follow the
+    // reader's font-size preference, so it is undone rather than overridden with another px.
+    const rule = /\.dash-queue\s*\{([^}]*)\}/.exec(CODE);
+
+    expect(rule, ".dash-queue has no rule").not.toBeNull();
+    expect(rule?.[1]).toMatch(/margin:\s*0/);
+    expect(rule?.[1]).toMatch(/padding:\s*0/);
+    expect(rule?.[1]).toMatch(/list-style:\s*none/);
+  });
+
   it("zeroes the block margin a browser gives the paragraphs inside a flex column", () => {
     // Added to the container's `gap` rather than replaced by it, so an unzeroed `p` reads
     // as an uneven gap rather than as a missing rule.
-    for (const rule of ["\\.dash__sub", "\\.dash-system__note"]) {
+    for (const rule of ["\\.dash__sub", "\\.dash-system__note", "\\.dash-queue__more"]) {
       expect(CODE).toMatch(new RegExp(`${rule}\\s*\\{[^}]*margin:`));
     }
   });

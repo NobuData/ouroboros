@@ -1,9 +1,9 @@
 import { Button, type ButtonTone, Eyebrow, cx } from "@/app/ui";
 
 import { ActiveLoopsCard } from "./active-loops-card";
-import { type EmptyPanel, EmptyCard } from "./empty-card";
 import { Greeting } from "./greeting";
 import { PulseCard } from "./pulse-card";
+import { QueueCard } from "./queue-card";
 import { RecentlyClosedCard } from "./recently-closed-card";
 import { StatCard } from "./stat-card";
 import { SystemCard } from "./system-card";
@@ -41,19 +41,17 @@ import "./dashboard.css";
  *   ([#81](https://github.com/NobuData/ouroboros/issues/81)), the active-loops table from its
  *   `activeRuns` ([#82](https://github.com/NobuData/ouroboros/issues/82)), the loop pulse from
  *   its `pulse` ([#83](https://github.com/NobuData/ouroboros/issues/83)), the completions
- *   table from its `recentRuns` ([#84](https://github.com/NobuData/ouroboros/issues/84)), and
- *   the system card from `/health/ready` and `/api/v1/engine/status`. Every figure on them
- *   came from the service, and a figure that could not be read is an em dash beside the
- *   reason rather than a zero.
+ *   table from its `recentRuns` ([#84](https://github.com/NobuData/ouroboros/issues/84)), the
+ *   queue card from its `queueHead`
+ *   ([#85](https://github.com/NobuData/ouroboros/issues/85)), and the system card from
+ *   `/health/ready` and `/api/v1/engine/status`. Every figure on them came from the service,
+ *   and a figure that could not be read is an em dash beside the reason rather than a zero.
+ *   **Every panel of the mockup now has a card drawing it from data** — nothing on this screen
+ *   is a copy of the mockup's own rows.
  * - **Written.** One control on the whole page changes anything: the pulse card's auto-merge
  *   switch, which is [#74](https://github.com/NobuData/ouroboros/issues/74)'s operation and
  *   the workspace's own setting rather than a preference of this browser's. It is the only
  *   reason this screen's card list includes a Client Component that writes.
- * - **Waiting.** One of the mockup's panels still has no card drawing it — the queue
- *   ([#85](https://github.com/NobuData/ouroboros/issues/85)) — so it keeps its place in the
- *   grid as a designed empty state naming what will fill it. Copying the mockup's rows into
- *   it would make this screen a picture of a product rather than a view of one; the aggregate
- *   already carries `queueHead`, and the card draws it when its issue lands.
  *
  * @param props.readings Everything the reader was able to read, and why not for the rest.
  * @returns The screen.
@@ -95,7 +93,7 @@ export function DashboardScreen({
         <PulseCard aggregate={aggregate} workspace={readings.workspace} />
         <SystemCard rows={systemRows(readings.readiness, readings.engine)} />
         <RecentlyClosedCard aggregate={aggregate} />
-        <EmptyCard panel={UP_NEXT} />
+        <QueueCard aggregate={aggregate} />
       </div>
     </main>
   );
@@ -158,13 +156,3 @@ const ACTIONS: readonly Action[] = [
   },
 ];
 
-/** The mockup's `UP NEXT IN QUEUE` list. */
-const UP_NEXT: EmptyPanel = {
-  id: "up-next",
-  title: "Up next in queue",
-  headline: "The queue is not open yet",
-  note:
-    "Issues waiting for a loop will be listed here. Issue intake arrives with mockup 03's " +
-    "roadmap.",
-  span: 5,
-};

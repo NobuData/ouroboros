@@ -19,6 +19,8 @@ import type {
   DashboardActivity,
   DashboardStats,
   LoopPulse,
+  QueueEffort,
+  QueueItemSummary,
   RunStatus,
   RunSummary,
 } from "@/app/api/dashboard";
@@ -700,19 +702,35 @@ export function activeLoops(
 }
 
 /**
+ * What a card's *+N* footer says: how many of a thing there are that it is not showing.
+ *
+ * Two cards on this page draw a slice of something the aggregate also counts in full — the
+ * loops table over `activeRuns`, the queue card over `queueHead` — so both need the same
+ * subtraction, and one of them getting it wrong is exactly the kind of drift that would not
+ * show up in a screenshot. It is a subtraction rather than a flag because the two figures are
+ * separately true: a workspace running twelve loops shows ten and says *2 more*.
+ *
+ * @param total How many there are, uncapped.
+ * @param shown How many the card drew.
+ * @returns The remainder, or `0` — which is also what a count that somehow ran behind its own
+ *   slice produces, because *−1 more* is not a thing either card will ever say.
+ */
+function beyondTheSlice(total: number, shown: number): number {
+  return Math.max(0, total - shown);
+}
+
+/**
  * How many runs are in flight that the table is not showing.
  *
  * The aggregate answers at most ten rows and a count that is not capped, so the two together
- * are what the *+N more* footer says. It is a subtraction rather than a flag because the two
- * figures are separately true: a workspace running twelve loops shows ten and says *2 more*.
+ * are what the *+N more* footer says.
  *
  * @param total The workspace's live count — `stats.loopsLive.total`.
  * @param shown How many rows the table drew.
- * @returns The remainder, or `0` — which is also what a count that somehow ran behind its own
- *   slice produces, because *−1 more* is not a thing this card will ever say.
+ * @returns The remainder — see {@link beyondTheSlice}.
  */
 export function moreActiveLoops(total: number, shown: number): number {
-  return Math.max(0, total - shown);
+  return beyondTheSlice(total, shown);
 }
 
 /* -------------------------------------------------------------------- the loop pulse */
@@ -1121,6 +1139,99 @@ export function recentCompletions(runs: readonly RunSummary[]): readonly Complet
         shortfall === null ? null : `${countOf(shortfall, "check")} did not pass.`,
     };
   });
+}
+
+/* ------------------------------------------------------------------------- the queue */
+
+/**
+ * The five sizes an effort chip comes in, as the chip prints them.
+ *
+ * Written as its own union rather than imported from the design system, for the reason
+ * {@link PulseTone} is: this module is pure and depends on nothing that draws. It is
+ * structurally the primitive's own `Effort` (`app/ui/chip.tsx`), so the card assigning one of
+ * these to a chip is checked at the boundary — a scale that gained a size on one side and not
+ * the other is a build error rather than a chip that quietly renders nothing.
+ */
+export type EffortSize = "XS" | "S" | "M" | "L" | "XL";
+
+/**
+ * What each of the contract's sizes is called on the chip.
+ *
+ * The contract carries the scale lower-cased and the mockup prints it upper-cased, so this is
+ * the whole of the difference — no other transformation, and nothing derived from the
+ * estimate beside it. A `Record` over the contract's union rather than a `toUpperCase()`,
+ * because a sixth size added to the service should stop the build here rather than reach the
+ * card as a letter no chip has a hue for.
+ */
+const EFFORT_LABEL: Record<QueueEffort, EffortSize> = {
+  xs: "XS",
+  s: "S",
+  m: "M",
+  l: "L",
+  xl: "XL",
+};
+
+/**
+ * One issue waiting for a loop, as the *Up next in queue* card draws it.
+ *
+ * Every field is already the thing the row renders. The queue item carries two more —
+ * `position` and `enqueuedAt` — and neither is drawn: the rows are *in* queue order, so a
+ * printed position would say twice what the order already says, and *when it joined* is the
+ * listing's column ([#73](https://github.com/NobuData/ouroboros/issues/73)) rather than this
+ * card's. `estMinutes` is not drawn either; the stat row above already reports the queue's
+ * summed estimate, and a per-row minute figure is not in the mockup.
+ */
+export interface QueuedIssue {
+  /** The queue item — the React key, and what a reorder will address. */
+  readonly id: string;
+  /** The issue's number, drawn in mono. */
+  readonly issueNumber: number;
+  /** Its title, as the queue recorded it. */
+  readonly issueTitle: string;
+  /** The size somebody put on it, as the chip prints it. */
+  readonly effort: EffortSize;
+  /** The workflow's label, as free text — opaque, so it is rendered rather than parsed. */
+  readonly workflowTag: string;
+}
+
+/**
+ * The head of the queue, as the card's rows.
+ *
+ * The order is the payload's — `position`, `1` first — and it is deliberately not re-sorted
+ * here, for the reason {@link activeLoops} and {@link recentCompletions} are not: the endpoint
+ * orders the whole queue, and a client that re-sorted its five rows would produce a different
+ * order from the listing that shows all of them.
+ *
+ * **At most five arrive**, because the aggregate caps `queueHead` there
+ * (`ouroboros-rest`'s `QUEUE_HEAD_LIMIT`); this renders what it was given rather than capping
+ * again, so a cap that changes in one place does not have to be changed in two. What is *not*
+ * in the slice is reported by {@link moreQueued}.
+ *
+ * @param items The aggregate's `queueHead`.
+ * @returns The rows, in the order they are drawn.
+ */
+export function queueRows(items: readonly QueueItemSummary[]): readonly QueuedIssue[] {
+  return items.map((item) => ({
+    id: item.id,
+    issueNumber: item.issueNumber,
+    issueTitle: item.issueTitle,
+    effort: EFFORT_LABEL[item.effort],
+    workflowTag: item.workflowTag,
+  }));
+}
+
+/**
+ * How many issues are queued that the card is not showing.
+ *
+ * The aggregate answers at most five rows and a count that is not capped, so the two together
+ * are what the *+N queued* footer says — the seeded workspace draws five and says *+7 queued*.
+ *
+ * @param total How many are waiting — `stats.queued.count`.
+ * @param shown How many rows the card drew.
+ * @returns The remainder — see {@link beyondTheSlice}.
+ */
+export function moreQueued(total: number, shown: number): number {
+  return beyondTheSlice(total, shown);
 }
 
 /* ------------------------------------------------------------------ the page head */

@@ -166,14 +166,22 @@ describe("the dashboard", () => {
   it("draws its cards, actions, chips and empty states out of the primitives", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    // The page head's two actions, the active-loops card's *Open run console* (#82), and the
-    // completions card's *All issues* plus the one *Review* on its needs-human row (#84).
-    // One empty panel is left: the queue (#85).
+    // The page head's two actions, the active-loops card's *Open run console* (#82), the
+    // completions card's *All issues* plus the one *Review* on its needs-human row (#84), and
+    // the queue card's *Manage queue* and *+7 queued* (#85).
+    //
+    // No empty state is left on the seeded page: #85 was the last panel with no card drawing
+    // it, so every card on this grid now renders from the aggregate. The empty states are
+    // still there — they are what a workspace with nothing in it draws, which is
+    // `dashboard-screen.test.tsx`'s.
     expect(container.querySelectorAll(".ou-card")).toHaveLength(9);
-    expect(container.querySelectorAll(".ou-btn")).toHaveLength(5);
-    expect(container.querySelectorAll(".ou-empty")).toHaveLength(1);
+    expect(container.querySelectorAll(".ou-btn")).toHaveLength(7);
+    expect(container.querySelectorAll(".ou-empty")).toHaveLength(0);
     expect(container.querySelectorAll(".ou-eyebrow")).toHaveLength(1);
     expect(container.querySelectorAll(".ou-chip").length).toBeGreaterThan(0);
+    // The queue card (#85) is the one surface in the product that draws all five sizes of the
+    // effort chip at once, which is what makes it the place the scale is proved.
+    expect(container.querySelectorAll(".ou-chip--effort")).toHaveLength(5);
     // The page's one control that changes something (#83) is the primitives' switch, the
     // same one the login screen's workspace rows are turned on with.
     expect(container.querySelectorAll(".ou-switch")).toHaveLength(1);
@@ -188,9 +196,10 @@ describe("the dashboard", () => {
 
     expect(container.querySelectorAll(".ou-table")).toHaveLength(2);
     expect(container.querySelectorAll(".ou-table-scroll")).toHaveLength(2);
-    // Three workflow tags, one per running run, and the pulse card's `7 days` (#83). The
-    // completions table has no workflow column, which is why this figure did not move.
-    expect(container.querySelectorAll(".ou-tag")).toHaveLength(4);
+    // Three workflow tags, one per running run; the pulse card's `7 days` (#83); and one per
+    // queued issue (#85). The completions table has no workflow column, which is why it
+    // contributes none.
+    expect(container.querySelectorAll(".ou-tag")).toHaveLength(9);
     // One stage meter per running run, and the pulse card's three (#83) — which is the reason
     // the meter is a primitive at all rather than a shape one table drew for itself.
     expect(container.querySelectorAll(".ou-meter")).toHaveLength(6);
