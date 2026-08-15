@@ -218,6 +218,7 @@ service never starts half-configured.
 | `BETTER_AUTH_URL`           | The origin BetterAuth builds its own URLs from           |        yes         | an origin, as above — BetterAuth appends its own `/api/auth`                |
 | `OURO_GITHUB_CLIENT_ID`     | GitHub OAuth application, client id                      |        yes         | non-empty                                                                   |
 | `OURO_GITHUB_CLIENT_SECRET` | GitHub OAuth application, client secret                  |        yes         | non-empty                                                                   |
+| `OURO_VAULT_MASTER_KEY`     | The credential vault's key-encryption key — see [The vault](#the-vault) |        yes         | **exactly** 32 bytes, base64 (`openssl rand -base64 32`)                    |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 
@@ -242,7 +243,15 @@ two vocabularies for one address. Nothing derives either from the other, deliber
 keep them in step; the boot log below prints both, side by side, which is where a
 disagreement is visible before an OAuth callback goes to the wrong place.
 
-**This service does not start on defaults alone.** Eleven variables have no default,
+`OURO_VAULT_MASTER_KEY` is the one variable here whose rule is an *exact* length rather
+than a floor, and the difference is what being wrong costs. A signing key that is not what
+the operator meant produces sessions nobody can use, and correcting it fixes them. A
+key-encryption key that is not what the operator meant produces credential ciphertext
+nobody can ever open, and correcting it afterwards does not help — so a 31-byte value, or a
+passphrase somebody typed, is refused at boot rather than stretched to fit. See
+[The vault](#the-vault).
+
+**This service does not start on defaults alone.** Twelve variables have no default,
 because a communications layer without a database, an engine, a signing key or a GitHub
 application could serve nothing — so it names what is missing and exits rather than
 starting into a wall of 500s. Configuration comes from the process environment layered
@@ -255,7 +264,7 @@ Copy the template and it runs with nothing exported:
 ```console
 $ cp .env.example .env && yarn dev             # or ../.env.example to configure the stack
 $ node dist/main.js                            # with no .env and nothing exported
-ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (11 problems)
+ERROR [ouroboros-rest] ouroboros-rest: invalid configuration (12 problems)
   OURO_DATABASE_URL: is required
   OURO_ENGINE_URL: is required
   BETTER_AUTH_SECRET: is required
@@ -296,6 +305,7 @@ LOG [ouroboros-rest] ouroboros-rest: configuration
   BETTER_AUTH_URL=http://localhost:4000
   OURO_GITHUB_CLIENT_ID=dev-github-client-id
   OURO_GITHUB_CLIENT_SECRET=[redacted]
+  OURO_VAULT_MASTER_KEY=[redacted]
   OURO_CORS_ORIGINS=http://localhost:3000
 LOG [ouroboros-rest] ouroboros-rest 0.14.0 listening on http://127.0.0.1:4000/api/v1
 ```
@@ -512,6 +522,74 @@ and every unit spec still passes, because none of them go through the router tha
 `organizations.integration-spec.ts` does the same for the routes the organization plugin
 serves. Both were checked by doing it — one deleted `@Roles(...ADMINISTRATORS)` turns four
 tests red, and a global auth guard that stops guarding turns 141 red.
+
+## The vault
+
+**The one place in Ouroboros that encrypts a secret**
+([#222](https://github.com/NobuData/ouroboros/issues/222), roadmap decision **P2**).
+Mockup 07's security strip promises that credentials are *sealed per-tenant with envelope
+encryption*; [`src/modules/vault/`](src/modules/vault) is what makes that sentence true.
+
+```
+secret ──encrypt(workspace, record)──▶ envelope string, stored in the consumer's column
+  ▲                                          │   AES-256-GCM · 96-bit nonce
+  │                                          │   AAD = workspace id + record id
+  └──────────── per-workspace DEK ───────────┘
+                       │ wrap / unwrap
+                       ▼
+                  KeyWrapper ──▶ OURO_VAULT_MASTER_KEY          (today)
+                             ─ ▶ AWS/GCP KMS · Vault/OpenBao    (#236)
+                       │
+                       ▼
+             ouroboros.tenant_keys (sealed DEK · version · rotated_at)
+```
+
+The shape buys three things, and each is a property something checks rather than a claim:
+
+- **A ciphertext cannot be moved.** The workspace id and the record id are bound into the
+  additional authenticated data, so a value lifted from one workspace's row and pasted into
+  another's fails authentication instead of decrypting. The encoding is length-prefixed, so
+  no pair of identifiers can forge another pair's binding.
+- **Deleting a workspace destroys its secrets.** `tenant_keys` cascades from `organization`,
+  so the key goes with the workspace and every ciphertext it sealed becomes unopenable —
+  including the copies in backups, which hold the rows and not the key. The service keeps
+  **no key cache**, which is the condition that guarantee depends on.
+- **Custody can be upgraded without a data migration.** A `KeyWrapper` seals data-encryption
+  keys and nothing else, so moving to KMS or Vault (AF.3,
+  [#236](https://github.com/NobuData/ouroboros/issues/236)) re-wraps `tenant_keys` and leaves
+  **every credential ciphertext byte-identical**. `VaultService.rewrap` is the whole of it,
+  and its test asserts that byte-for-byte rather than by a round trip.
+
+Rotation is additive: a new key version becomes active and the old one stays readable, so a
+value sealed under version 3 still opens after version 4 arrives. What finishes the job is
+`VaultRotation` — lazy re-encryption when a consumer writes a record anyway, and a sweep for
+everything nobody touched, started detached by `rotate` and awaitable on its own.
+
+**Nothing is registered with the sweep yet, and the module says so.** The three roadmaps
+that will hold encrypted credentials — Q.1
+([#138](https://github.com/NobuData/ouroboros/issues/138)), K.3
+([#101](https://github.com/NobuData/ouroboros/issues/101)) and Y.1
+([#189](https://github.com/NobuData/ouroboros/issues/189)) — are open, and no migration
+declares an encrypted column, so `VAULT_SECRET_STORES` is an empty array and a sweep run
+today honestly reports zeros. Each of those tickets registers a `VaultSecretStore`, and the
+same pass both re-seals what this service already sealed and adopts what it never did — the
+one-time migration and the sweep are one code path.
+
+**There is no route.** `VaultModule` declares no controller: a route that decrypted a
+credential would be a route that returned one, and which of those exist is AD.2's
+([#223](https://github.com/NobuData/ouroboros/issues/223)) decision behind a
+re-authentication step.
+
+Decrypted material lives only in request scope and is zeroized best-effort in a `finally`.
+That it never reaches a log is held by two things rather than by review:
+`src/modules/vault/no-secret-logging.mjs` is a lint rule that fails the build on an
+identifier naming secret material inside a log call, and `redaction.spec.ts` captures every
+sink while driving the vault through every operation and every failure path.
+
+`OURO_VAULT_MASTER_KEY`'s honest cost — key custody is the operator's problem in the default
+deployment — is documented in `docs/SECURITY_MODEL.md` (AD.5,
+[#226](https://github.com/NobuData/ouroboros/issues/226)) rather than glossed as
+"KMS-backed". Rotating it is a re-wrap and rewrites no credential.
 
 ## The tenancy API
 
@@ -1407,7 +1485,9 @@ ouroboros-rest/
 │       ├── auth/           # sign-out, the legacy cookie · #33 #703 · discovery #712
 │       ├── engine/         # typed internal client + /engine/status       · #35
 │       ├── preferences/    # the caller's own font scale                  · #649
-│       └── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
+│       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
+│       └── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
+│                           #   no controller — nothing here is a route
 ├── Dockerfile              # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore # …and the context that image is built from
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML

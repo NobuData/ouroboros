@@ -43,6 +43,12 @@ export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   // valuable string this service holds after the database password.
   VARIABLES.betterAuthSecret,
   VARIABLES.githubClientSecret,
+  // The vault's key-encryption key ([#222](https://github.com/NobuData/ouroboros/issues/222)),
+  // and the one value here whose exposure is not recoverable by rotating it: it seals every
+  // workspace's data-encryption key, so a copy of this line beside a copy of `tenant_keys`
+  // is every credential the product holds. Rotating it afterwards re-wraps the DEKs but does
+  // not un-print the line.
+  VARIABLES.vaultMasterKey,
 ]);
 
 /**

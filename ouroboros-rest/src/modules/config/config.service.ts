@@ -83,6 +83,17 @@ export class AppConfigService {
     return this.config.getOrThrow<string>("githubClientSecret");
   }
 
+  /**
+   * The vault's key-encryption key, base64 — `OURO_VAULT_MASTER_KEY`.
+   *
+   * Read by exactly one thing: `MasterKeyWrapper` in `src/modules/vault/`, which decodes it
+   * once at construction and holds the bytes. Nothing else should read it, and nothing at
+   * all should log it — it is in `SECRET_VARIABLES`, so `describe()` cannot.
+   */
+  get vaultMasterKey(): string {
+    return this.config.getOrThrow<string>("vaultMasterKey");
+  }
+
   /** Browser origins allowed to call this API with credentials — `OURO_CORS_ORIGINS`. */
   get corsOrigins(): readonly string[] {
     return this.config.getOrThrow<readonly string[]>("corsOrigins");
@@ -134,6 +145,7 @@ export class AppConfigService {
       betterAuthUrl: this.betterAuthUrl,
       githubClientId: this.githubClientId,
       githubClientSecret: this.githubClientSecret,
+      vaultMasterKey: this.vaultMasterKey,
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,
     };

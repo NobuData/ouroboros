@@ -14,6 +14,10 @@ const PLANTED = {
   OURO_ENGINE_SHARED_SECRET: "engine-secret-that-must-not-leak",
   BETTER_AUTH_SECRET: "better-auth-secret-that-must-not-leak",
   OURO_GITHUB_CLIENT_SECRET: "github-secret-that-must-not-leak",
+  // 32 bytes, so it validates, and recognisable once it is base64 — the value below decodes
+  // to `vault-master-key-that-must-not!!`. It is the *encoded* form that must not appear,
+  // because that is the form anything printing configuration would print.
+  OURO_VAULT_MASTER_KEY: Buffer.from("vault-master-key-that-must-not!!", "utf8").toString("base64"),
   OURO_DATABASE_URL:
     "postgresql://ouroboros:database-password-that-must-not-leak@db:5432/ouroboros",
 };
@@ -29,6 +33,7 @@ const MUST_NOT_LEAK = [
   "better-auth-secret-that-must-not-leak",
   "github-secret-that-must-not-leak",
   "database-password-that-must-not-leak",
+  PLANTED.OURO_VAULT_MASTER_KEY,
 ];
 
 describe("redactedEnvironment", () => {
@@ -75,11 +80,12 @@ describe("redactedEnvironment", () => {
   // *leaving* it — one fewer case is still a green run. This names the set instead, which
   // is what makes dropping `BETTER_AUTH_SECRET` from it a failing test rather than a
   // quieter suite. Written against `VARIABLES` so a rename moves both at once.
-  it("classifies exactly the three values that must never be printed", () => {
+  it("classifies exactly the four values that must never be printed", () => {
     expect([...SECRET_VARIABLES]).toEqual([
       VARIABLES.engineSharedSecret,
       VARIABLES.betterAuthSecret,
       VARIABLES.githubClientSecret,
+      VARIABLES.vaultMasterKey,
     ]);
   });
 

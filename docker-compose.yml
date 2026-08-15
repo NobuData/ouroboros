@@ -243,6 +243,12 @@ services:
       BETTER_AUTH_URL: http://localhost:4000
       OURO_GITHUB_CLIENT_ID: ${OURO_GITHUB_CLIENT_ID:-dev-github-client-id}
       OURO_GITHUB_CLIENT_SECRET: ${OURO_GITHUB_CLIENT_SECRET:-dev-github-client-secret}
+      # The credential vault's key-encryption key (issue #222). A credential, so it is
+      # interpolated with the rest of them and the fallback is the template's placeholder —
+      # a stack started without a .env still boots, and a developer who generated a real key
+      # is the one who decides what this container gets. It is the one value in this block
+      # whose loss is not recoverable by rotating it: it seals every workspace's data key.
+      OURO_VAULT_MASTER_KEY: ${OURO_VAULT_MASTER_KEY:-b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=}
       # The browser origins allowed to call this API with credentials — one, the UI's.
       OURO_CORS_ORIGINS: http://localhost:3000
     ports:

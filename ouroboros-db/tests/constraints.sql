@@ -2979,6 +2979,137 @@ select pg_temp.must_hold(
   (select count(*) > 0 from ouroboros.model_prices where source = 'bundled'),
   'and leaves the bundled catalog alone, which belongs to no workspace');
 
+-- ===========================================================================
+-- V013 — tenant_keys, the sealed per-workspace data-encryption keys (#222)
+-- ===========================================================================
+--
+-- The database half of the envelope-encryption service (decision P2). Everything the
+-- vault relies on this table for is a rule here rather than an application invariant,
+-- because the failures are all silent ones: a second active version does not raise
+-- anything, it splits a workspace's ciphertext across two keys; a key that survived its
+-- workspace does not raise anything either, it just means the deletion did not shred
+-- what it claimed to.
+--
+-- What the *service* guarantees — that a ciphertext is bound to its tenant and record by
+-- AAD, that a bit flip fails authentication, that a re-wrap leaves data ciphertext
+-- byte-identical — cannot be asserted here: the key material is never in this database in
+-- a form SQL can use, which is the point of the table. Those live in ouroboros-rest's
+-- vault suites.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata") values
+  ('org-vault',  'Vault Co',  'vault-co',  now(), null),
+  ('org-vault2', 'Vault Two', 'vault-two', now(), null);
+
+-- --- one active version per workspace ---------------------------------------------------
+--
+-- The rule the whole rotation design rests on, and the one place two concurrent rotations
+-- meet. A retired row beside the active one is the normal state during a sweep, so the
+-- assertion has to distinguish "a second row" from "a second *active* row".
+insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper)
+values ('org-vault', 1, '\x00'::bytea, 'env-master');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper)
+    values ('org-vault', 2, '\x00'::bytea, 'env-master')$$,
+  'a second active key version for one workspace is refused',
+  'tenant_keys_one_active_idx');
+
+update ouroboros.tenant_keys
+   set status = 'retired', rotated_at = now()
+ where organization_id = 'org-vault' and version = 1;
+
+insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper)
+values ('org-vault', 2, '\x00'::bytea, 'env-master');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tenant_keys where organization_id = 'org-vault'),
+  'but a retired version coexists with the active one — rotation is additive, so ciphertext sealed under the old key stays readable');
+
+-- Two workspaces may each have an active version: the index is partial *and* per
+-- organization, and an index that had accidentally been global would fail here rather
+-- than in production on the second workspace ever to store a secret.
+insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper)
+values ('org-vault2', 1, '\x00'::bytea, 'env-master');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.tenant_keys where status = 'active'),
+  'and two workspaces each hold an active version of their own');
+
+-- The encrypt path's lookup: this workspace's active version. A sequential scan here is a
+-- table scan on every secret written, so the index is asserted rather than assumed.
+select pg_temp.must_use_index(
+  $$select version from ouroboros.tenant_keys
+     where organization_id = 'org-vault' and status = 'active'$$,
+  'tenant_keys_one_active_idx');
+
+-- --- a version is identified by the pair, and starts at one -----------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper, status, rotated_at)
+    values ('org-vault', 1, '\x01'::bytea, 'env-master', 'retired', now())$$,
+  'a version number cannot be reused within a workspace',
+  'tenant_keys_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper)
+    values ('org-vault2', 0, '\x00'::bytea, 'env-master')$$,
+  'version zero is refused — zero is what a caller supplies when it meant to supply nothing',
+  'tenant_keys_version_check');
+
+-- --- status and rotated_at are one fact -------------------------------------------------
+--
+-- Both directions, because either one alone would leave "is this key still in use" with
+-- two answers that can disagree.
+select pg_temp.must_reject(
+  $$update ouroboros.tenant_keys set status = 'retired'
+     where organization_id = 'org-vault2' and version = 1$$,
+  'a version cannot be retired without recording when',
+  'tenant_keys_retired_is_stamped');
+
+select pg_temp.must_reject(
+  $$update ouroboros.tenant_keys set rotated_at = now()
+     where organization_id = 'org-vault2' and version = 1$$,
+  'and an active version cannot claim to have been rotated away from',
+  'tenant_keys_retired_is_stamped');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.tenant_keys (organization_id, version, sealed_dek, wrapper, status)
+    values ('org-vault2', 2, '\x00'::bytea, 'env-master', 'destroyed')$$,
+  'and the only two states are active and retired',
+  'tenant_keys_status_check');
+
+-- --- updated_at is the server's account, not the writer's --------------------------------
+--
+-- A re-wrap updates sealed_dek and wrapper, and the time it did so is what an operator
+-- reads when asking whether a custody migration finished. A writer that could set it could
+-- report a re-wrap as older than it is.
+-- A CTE rather than a sub-select: PostgreSQL admits a data-modifying statement only at the
+-- top level of a `with`, so `update … returning` cannot be read from a `from (…)`.
+with rewrapped as (
+  update ouroboros.tenant_keys
+     set wrapper = 'aws-kms', updated_at = '1999-01-01'::timestamptz
+   where organization_id = 'org-vault2' and version = 1
+  returning updated_at
+)
+select pg_temp.must_hold(
+  (select updated_at > '2000-01-01'::timestamptz from rewrapped),
+  'the touch trigger overwrites an updated_at a re-wrap tried to supply');
+
+-- --- crypto-shredding -------------------------------------------------------------------
+--
+-- The strongest claim this schema makes, and the cheapest one to break by writing
+-- `on delete set null` out of habit. Deleting the workspace destroys the key, and
+-- destroying the key is what makes that workspace's credential ciphertext unrecoverable
+-- from backups that still hold it.
+delete from ouroboros.organization where "id" = 'org-vault';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.tenant_keys where organization_id = 'org-vault'),
+  'deleting a workspace destroys every version of its data-encryption key — every version, not just the active one');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.tenant_keys where organization_id = 'org-vault2'),
+  'and leaves every other workspace''s keys alone');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

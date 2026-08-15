@@ -4,6 +4,8 @@ import prettierRecommended from "eslint-plugin-prettier/recommended";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+import { ouroborosPlugin } from "./src/modules/vault/no-secret-logging.mjs";
+
 /**
  * ESLint flat config for ouroboros-rest (docs/CONVENTIONS.md § 6).
  *
@@ -120,6 +122,30 @@ export default tseslint.config(
         },
       ],
     },
+  },
+
+  {
+    // Issue #222's last acceptance criterion, as a rule rather than as reviewer vigilance:
+    // decrypted material lives only in request scope and never reaches a log. The rule
+    // reports any identifier naming secret material — `secret`, `plaintext`, `dek`, `kek`,
+    // `credential`, `password`, `master`, `material` — inside a call to a log sink. It is
+    // deliberately loud rather than clever; `src/modules/vault/no-secret-logging.mjs` argues
+    // why a name-based rule is the honest shape and why there is no allow-list.
+    //
+    // Applied to the whole service rather than to `src/modules/vault/` alone, because the
+    // vault is where plaintext is *produced* and the modules that will consume it — AD.2's
+    // credential lifecycle (#223), the provider adapters (#217/#218/#220) — are where it
+    // would actually be logged. A rule scoped to the producer would be a rule that never
+    // fired on the mistake it exists to catch.
+    //
+    // `src/modules/config/` is the one exemption, and it is the same shape as the
+    // `process.env` exemption above: that directory names secrets *because* it is what
+    // redacts them, so `SECRET_VARIABLES` and `redactDatabaseUrl` are the rule working
+    // correctly and reporting the file that implements it.
+    files: ["src/**/*.ts"],
+    ignores: ["src/modules/config/**/*.ts"],
+    plugins: { ouroboros: ouroborosPlugin },
+    rules: { "ouroboros/no-secret-logging": "error" },
   },
 
   {

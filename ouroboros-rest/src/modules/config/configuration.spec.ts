@@ -9,6 +9,8 @@ import {
   MINIMUM_SECRET_LENGTH,
   NODE_ENVIRONMENTS,
   VARIABLES,
+  VAULT_MASTER_KEY_BYTES,
+  isBase64Key,
   listenHost,
   loadConfiguration,
   type Configuration,
@@ -67,6 +69,7 @@ describe("the development defaults", () => {
       betterAuthUrl: "http://localhost:4000",
       githubClientId: "dev-github-client-id",
       githubClientSecret: "dev-github-client-secret",
+      vaultMasterKey: "b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=",
       corsOrigins: ["http://localhost:3000"],
       dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
     });
@@ -138,6 +141,7 @@ describe("a missing variable", () => {
     VARIABLES.betterAuthUrl,
     VARIABLES.githubClientId,
     VARIABLES.githubClientSecret,
+    VARIABLES.vaultMasterKey,
     VARIABLES.corsOrigins,
   ])("is named when %s is unset", (variable) => {
     expect(failureFor(without(variable))).toContain(`${variable}: is required`);
@@ -155,7 +159,7 @@ describe("a missing variable", () => {
   it("is reported alongside every other problem, not one boot at a time", () => {
     const message = failureFor({ OURO_DATABASE_URL: "postgresql://user@host:5432/db" });
 
-    expect(message).toContain("invalid configuration (9 problems)");
+    expect(message).toContain("invalid configuration (10 problems)");
     for (const variable of [
       VARIABLES.restUrl,
       VARIABLES.uiUrl,
@@ -165,6 +169,7 @@ describe("a missing variable", () => {
       VARIABLES.betterAuthUrl,
       VARIABLES.githubClientId,
       VARIABLES.githubClientSecret,
+      VARIABLES.vaultMasterKey,
       VARIABLES.corsOrigins,
     ]) {
       expect(message).toContain(`${variable}: `);
@@ -393,6 +398,71 @@ describe("the secrets", () => {
     );
 
     expect(message).not.toContain("s3cr3t");
+  });
+});
+
+// #222's "boot fails cleanly and legibly on a missing or malformed master key". The
+// variable is validated by a rule the other secrets do not get, and the reason is the
+// consequence of being wrong: a signing key that is not what the operator meant produces
+// sessions nobody can use, and is fixed by correcting it. A KEK that is not what the
+// operator meant produces credential ciphertext nobody can *ever* open, and correcting it
+// afterwards does not help.
+describe("OURO_VAULT_MASTER_KEY", () => {
+  /** 32 bytes, standard alphabet — what `openssl rand -base64 32` produces. */
+  const key = Buffer.alloc(VAULT_MASTER_KEY_BYTES, 7).toString("base64");
+
+  it("reads a 32-byte key in the standard alphabet", () => {
+    expect(loadConfiguration(testEnvironment({ OURO_VAULT_MASTER_KEY: key })).vaultMasterKey).toBe(
+      key,
+    );
+  });
+
+  // A value that has been through a URL, a JWT or a Kubernetes secret may arrive in the
+  // URL-safe alphabet. The two differ in two characters and never in what they decode to,
+  // so rejecting one would be a rule about transport rather than about key material.
+  it("reads the same key in the URL-safe alphabet", () => {
+    const urlSafe = Buffer.from([251, 255, 0, ...Array<number>(29).fill(1)]).toString("base64url");
+
+    expect(urlSafe).toMatch(/[_-]/);
+    expect(
+      loadConfiguration(testEnvironment({ OURO_VAULT_MASTER_KEY: urlSafe })).vaultMasterKey,
+    ).toBe(urlSafe);
+  });
+
+  // Every one of these is accepted by `Buffer.from(value, "base64")`, which skips whatever
+  // it does not recognise — so each decodes to *some* buffer rather than failing, and a
+  // service that trusted the decoder would seal credentials with bytes derived from a typo.
+  it.each([
+    ["a passphrase somebody typed", "correct-horse-battery-staple!!!!"],
+    ["31 bytes, one short", Buffer.alloc(VAULT_MASTER_KEY_BYTES - 1, 7).toString("base64")],
+    ["33 bytes, one long", Buffer.alloc(VAULT_MASTER_KEY_BYTES + 1, 7).toString("base64")],
+    ["an empty-ish value that survived the blank filter", "-"],
+    ["base64 with a character that is in neither alphabet", `${key.slice(0, -2)}*=`],
+    ["both alphabets at once, so something edited it", `${"-".repeat(21)}${"+".repeat(22)}`],
+    ["hexadecimal, which is the other thing an operator might paste", "aa".repeat(32)],
+  ])("rejects %s, naming the variable and the fix", (_description, value) => {
+    const message = failureFor(testEnvironment({ OURO_VAULT_MASTER_KEY: value }));
+
+    expect(message).toContain(
+      `${VARIABLES.vaultMasterKey}: expected exactly ${VAULT_MASTER_KEY_BYTES} bytes of base64`,
+    );
+    expect(message).toContain(`openssl rand -base64 ${VAULT_MASTER_KEY_BYTES}`);
+  });
+
+  it("never echoes the key it rejected", () => {
+    const message = failureFor(
+      testEnvironment({ OURO_VAULT_MASTER_KEY: "s3cr3t-master-key-that-is-not-base64" }),
+    );
+
+    expect(message).not.toContain("s3cr3t");
+  });
+
+  // The rule is a length, not a floor. Stated as its own assertion because "at least 32
+  // bytes" is the shape every other secret here has, and is the plausible wrong edit.
+  it("is exactly 32 bytes, because that is what AES-256 means", () => {
+    expect(VAULT_MASTER_KEY_BYTES).toBe(32);
+    expect(isBase64Key(key, VAULT_MASTER_KEY_BYTES)).toBe(true);
+    expect(isBase64Key(Buffer.alloc(64, 7).toString("base64"), VAULT_MASTER_KEY_BYTES)).toBe(false);
   });
 });
 

@@ -75,6 +75,16 @@ export const ALL_INTERFACES_HOST = "0.0.0.0";
 export const MINIMUM_SECRET_LENGTH = 16;
 
 /**
+ * Bytes the vault's key-encryption key must be — 32, which is what AES-256 means.
+ *
+ * Not a minimum. A KEK is generated rather than typed, and a value that is nearly the
+ * right length is a value somebody edited by hand or truncated in transit; accepting it
+ * and stretching it would turn a mistake an operator can fix at boot into ciphertext
+ * nobody can open afterwards.
+ */
+export const VAULT_MASTER_KEY_BYTES = 32;
+
+/**
  * Seconds between dashboard polls when `OURO_DASHBOARD_POLL_SECONDS` is not set.
  *
  * Fifteen: the interval the polling contract documents for a visible tab
@@ -168,6 +178,28 @@ export interface Configuration {
   /** GitHub OAuth application, client secret. From `OURO_GITHUB_CLIENT_SECRET`. */
   readonly githubClientSecret: string;
   /**
+   * The vault's key-encryption key, base64. From `OURO_VAULT_MASTER_KEY`.
+   *
+   * The KEK of the envelope-encryption service — roadmap decision **P2**,
+   * [#222](https://github.com/NobuData/ouroboros/issues/222). It seals every workspace's
+   * data-encryption key in `ouroboros.tenant_keys` and encrypts nothing else, which is what
+   * makes moving custody to KMS or Vault (AF.3,
+   * [#236](https://github.com/NobuData/ouroboros/issues/236)) a re-wrap of that table rather
+   * than a re-encryption of every credential in the system.
+   *
+   * Validated at boot to decode to exactly {@link VAULT_MASTER_KEY_BYTES} bytes, so a
+   * missing or malformed key stops the process while it is starting rather than at the first
+   * request that needed a secret — by which time the failure is a 500 on a credential page
+   * and not a line an operator can act on.
+   *
+   * **Losing this value loses every stored credential**, and the honest cost of the default
+   * deployment is that its custody is the operator's problem. `docs/SECURITY_MODEL.md`
+   * (AD.5, [#226](https://github.com/NobuData/ouroboros/issues/226)) is where that is
+   * written down rather than glossed as "KMS-backed"; rotating it is a re-wrap, which
+   * `VaultService.rewrap` performs without touching a single data ciphertext.
+   */
+  readonly vaultMasterKey: string;
+  /**
    * Browser origins allowed to call this API with credentials — the origins the session
    * cookie is permitted to travel to. From `OURO_CORS_ORIGINS`, which is a comma-separated
    * list; never empty, and never a wildcard, because a credentialed request cannot use one.
@@ -206,6 +238,7 @@ export const VARIABLES = {
   betterAuthUrl: "BETTER_AUTH_URL",
   githubClientId: "OURO_GITHUB_CLIENT_ID",
   githubClientSecret: "OURO_GITHUB_CLIENT_SECRET",
+  vaultMasterKey: "OURO_VAULT_MASTER_KEY",
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
 } as const satisfies Record<keyof Configuration, string>;
@@ -248,6 +281,36 @@ function isOrigin(value: string): boolean {
   }
 
   return new URL(value).origin === value;
+}
+
+/**
+ * Decode a base64 key, in either alphabet, refusing anything that is not exactly base64.
+ *
+ * `Buffer.from(value, "base64")` cannot be used as the test on its own: it is deliberately
+ * lenient, and skips over any character it does not recognise — so `"not a key at all!"`
+ * decodes happily to a short buffer rather than failing, and a value with a typo in the
+ * middle decodes to *different bytes* rather than to an error. That is the one failure mode
+ * this validation exists to prevent, because the resulting key is wrong and nothing says so
+ * until the ciphertext it sealed will not open.
+ *
+ * So the alphabet is checked first and the length after. Both alphabets are accepted —
+ * `openssl rand -base64 32` produces the standard one, and a value that has been through a
+ * URL or a Kubernetes secret may arrive in the URL-safe one; the two differ in two
+ * characters and never in what they decode to.
+ *
+ * @param value - The raw string from the environment, already known to be non-blank.
+ * @param bytes - How many bytes the decoded key must be, exactly.
+ * @returns `true` when the value is well-formed base64 of exactly that length. Never throws,
+ *   and never reports what it saw — see this file's header on echoing values.
+ */
+export function isBase64Key(value: string, bytes: number): boolean {
+  // One alphabet or the other, never a mixture: a value carrying both `+` and `-` did not
+  // come out of an encoder, it came out of something that edited one.
+  if (!/^(?:[A-Za-z0-9+/]+|[A-Za-z0-9_-]+)={0,2}$/.test(value)) {
+    return false;
+  }
+
+  return Buffer.from(value, "base64").byteLength === bytes;
 }
 
 /**
@@ -321,6 +384,19 @@ const environmentSchema = z.object({
 
   OURO_GITHUB_CLIENT_ID: z.string({ error: "is required" }),
   OURO_GITHUB_CLIENT_SECRET: z.string({ error: "is required" }),
+
+  // The vault's KEK (#222). Not validated by `secret` above, and the difference is the
+  // whole of this ticket's "boot fails cleanly on a bad master key" criterion: the others
+  // are shared strings whose only requirement is that both sides carry the same one, while
+  // this is key material of a fixed size. A 31-byte value is not a weak key, it is not a
+  // key — and accepting it would produce a service that starts, seals credentials with
+  // something derived from a mistake, and cannot open them once the mistake is fixed.
+  OURO_VAULT_MASTER_KEY: z
+    .string({ error: "is required" })
+    .refine(
+      (value) => isBase64Key(value, VAULT_MASTER_KEY_BYTES),
+      `expected exactly ${VAULT_MASTER_KEY_BYTES} bytes of base64, as produced by: openssl rand -base64 ${VAULT_MASTER_KEY_BYTES}`,
+    ),
 
   OURO_CORS_ORIGINS: z
     .string({ error: "is required" })
@@ -434,6 +510,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     betterAuthUrl: values.BETTER_AUTH_URL,
     githubClientId: values.OURO_GITHUB_CLIENT_ID,
     githubClientSecret: values.OURO_GITHUB_CLIENT_SECRET,
+    vaultMasterKey: values.OURO_VAULT_MASTER_KEY,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
   });

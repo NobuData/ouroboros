@@ -229,7 +229,18 @@ describe("TABLE_COLUMNS", () => {
     // Six more arrived with the dashboard read-model (#70): V008–V011's `runs`,
     // `queue_items`, `token_usage` and `workspace_settings`, and the two views V010 and V011
     // publish over the last two of them.
-    expect(TABLE_NAMES).toHaveLength(12);
+    //
+    // The thirteenth is V013's `tenant_keys` (#222) — the credential vault's sealed
+    // per-workspace keys, and the first table here this service is the *only* writer of.
+    expect(TABLE_NAMES).toHaveLength(13);
+  });
+
+  it("mirrors the vault's key table V013 created", () => {
+    // Named as well as counted, for the same reason the read-model is: a mirror missing this
+    // one is a service that cannot seal a credential at all, and the failure would otherwise
+    // read as an off-by-one in a total.
+    expect(TABLE_NAMES).toContain("tenant_keys");
+    expect(READ_ONLY_VIEWS).not.toContain("tenant_keys");
   });
 
   it("mirrors the dashboard read-model V008–V011 created", () => {

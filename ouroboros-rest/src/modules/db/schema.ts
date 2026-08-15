@@ -484,6 +484,50 @@ export interface WorkspaceSettingsTable {
 }
 
 /**
+ * `ouroboros.tenant_keys.status` — whether new writes are sealed with this key version
+ * (V013).
+ *
+ * `retired` is not *revoked*: a retired version is still read, because the ciphertext it
+ * sealed stays readable until the re-encrypt sweep has worked through it. What retirement
+ * means is only that nothing new will be sealed with it.
+ */
+export type TenantKeyStatus = "active" | "retired";
+
+/**
+ * `ouroboros.tenant_keys` — the sealed per-workspace data-encryption keys (V013,
+ * [#222](https://github.com/NobuData/ouroboros/issues/222)).
+ *
+ * One row per workspace per key version. Rotation is additive, so an old version coexists
+ * with the active one and keeps its ciphertext readable; at most one row per workspace is
+ * `active`, enforced by `tenant_keys_one_active_idx` rather than by the service.
+ *
+ * **Nothing in this interface is key material.** `sealed_dek` is ciphertext under the KEK,
+ * which never enters the database — see `src/modules/vault/`.
+ *
+ * `created_at` is a plain {@link Stamped}, but note that `version` is **not** `Generated`:
+ * the service computes it as the previous active version plus one inside the rotation
+ * transaction, because "the next version" is a question about the rows and not a sequence
+ * — a sequence would leave gaps on a rotation that lost a race, and the numbers are stored
+ * inside every ciphertext this schema's data columns hold.
+ */
+export interface TenantKeysTable {
+  /** The workspace — `organization."id"`, as text. `on delete cascade`, which is the shred. */
+  organization_id: string;
+  /** Which generation of this workspace's key, from 1. The second half of the primary key. */
+  version: number;
+  /** The DEK after AES-256-GCM under the KEK. Never the key itself. */
+  sealed_dek: Buffer;
+  /** Which `KeyWrapper` sealed it — `env-master` today, a KMS or Vault id after AF.3. */
+  wrapper: string;
+  /** Whether new writes use this version. At most one `active` row per workspace. */
+  status: Generated<TenantKeyStatus>;
+  /** When this version stopped being the active one; null exactly while it is active. */
+  rotated_at: Date | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -563,7 +607,7 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * This is the type parameter the whole module is built around: `Kysely<Database>` is what
  * makes `selectFrom("organization").select("slug")` compile and `select("slugg")` not.
  *
- * **Two of the twelve entries are views** rather than tables — see {@link READ_ONLY_VIEWS},
+ * **Two of the thirteen entries are views** rather than tables — see {@link READ_ONLY_VIEWS},
  * which is the rule that keeps a write off them. `Database` has no vocabulary for the
  * difference, so the list beside it is the vocabulary.
  *
@@ -573,6 +617,11 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * service writes any of them today — the loop engine is v2 (#54), so the rows come from the
  * development seed — and the mirror declares them anyway, because a read is a query and a
  * query is what these types exist to check.
+ *
+ * **`tenant_keys` (V013, [#222](https://github.com/NobuData/ouroboros/issues/222)) is the
+ * thirteenth**, and the first table here that this service both writes and is the *only*
+ * writer of: `src/modules/vault/` owns every statement against it, and there is no seed row,
+ * because a workspace's key is created the first time it stores a secret.
  *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
@@ -592,6 +641,7 @@ export interface Database {
   queue_items: QueueItemsTable;
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
+  tenant_keys: TenantKeysTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -675,6 +725,16 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  tenant_keys: [
+    "organization_id",
+    "version",
+    "sealed_dek",
+    "wrapper",
+    "status",
+    "rotated_at",
+    "created_at",
+    "updated_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -755,6 +815,11 @@ export type NewTokenUsage = Insertable<TokenUsageTable>;
 export type WorkspaceSettings = Selectable<WorkspaceSettingsTable>;
 /** The columns an `insert` into `ouroboros.workspace_settings` may carry. */
 export type NewWorkspaceSettings = Insertable<WorkspaceSettingsTable>;
+
+/** A row of `ouroboros.tenant_keys`, as a `select` returns it — sealed, never key material. */
+export type TenantKey = Selectable<TenantKeysTable>;
+/** The columns an `insert` into `ouroboros.tenant_keys` may carry. */
+export type NewTenantKey = Insertable<TenantKeysTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

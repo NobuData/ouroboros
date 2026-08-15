@@ -45,6 +45,7 @@ describe("AppConfigService", () => {
     expect(config.betterAuthUrl).toBe("http://localhost:4000");
     expect(config.githubClientId).toBe("dev-github-client-id");
     expect(config.githubClientSecret).toBe("dev-github-client-secret");
+    expect(config.vaultMasterKey).toBe("b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=");
     expect(config.corsOrigins).toEqual(["http://localhost:3000"]);
     expect(config.dashboardPollSeconds).toBe(15);
   });
@@ -58,6 +59,13 @@ describe("AppConfigService", () => {
 
     expect(described).toContain(`BETTER_AUTH_SECRET=${REDACTED}`);
     expect(described).not.toContain("dev-better-auth-secret-change-me");
+
+    // #222's redaction criterion at the boot log, which is the one log sink that prints
+    // configuration by design. The KEK is the value here whose exposure is not undone by
+    // rotating it: a copy of this line beside a copy of `tenant_keys` is every credential
+    // the product holds.
+    expect(described).toContain(`OURO_VAULT_MASTER_KEY=${REDACTED}`);
+    expect(described).not.toContain("b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=");
   });
 
   describe("the derived answers", () => {
