@@ -58,7 +58,7 @@ Surveyed 2026-08-08.
 | Routing roadmap AB.1 (invocation-gateway requirements handoff, "the 07 roadmap's ADR") | **Landed here** — AF.1 is that ADR (LiteLLM-under-custom vs pure custom adapters); AF.2 implements the chain executor against it. |
 | Routing roadmap Z.5 (spend aggregation), DASH-F.3 `token_usage`, DASH-J.4 pricing | **Consumed** — the cards' monthly meters aggregate calendar-month spend per provider from the same truth; caps stored here feed enforcement (AF.4). |
 | WF Epic Q ticket-source SPI (pluggability precedent) | **Pattern reused** — the `ModelProviderAdapter` SPI (AC.1) mirrors Q.2's discipline: core code depends on the interface only, conformance kit gates new adapters. The description's pluggable-ticket-sources requirement itself remains satisfied by WF-Q (Jira/Linear/GitLab as WF-T.2–T.4); nothing source-related is duplicated here. |
-| Scaffolding #26 audit log (v2), BA roadmap encryption helper (AES-GCM), #22/BA-B.3 GitHub org data | **Coordinated** — credential operations require an audit trail from day one (AD.4): it early-adopts #26's `audit_events` shape (filing-time coordination). BA's helper is superseded by the AD.1 envelope-encryption service (one migration path for Q.1/K.3 credentials too). |
+| Scaffolding #26 audit log (v2), BA roadmap encryption helper (AES-GCM), #22/BA-B.3 GitHub org data | **Coordinated** — credential operations require an audit trail from day one (AD.4): it early-adopts #26's `audit_events` shape (filing-time coordination). BA's helper is superseded by the AD.1 envelope-encryption service (one migration path for Q.1/K.3 credentials too) — **AD.1 (#222) is 🟢 delivered**, and it ships the migration as a registration seam with **no stores registered**: Q.1 (#138), K.3 (#101) and Y.1 (#189) are all still open, so there is no encrypted column in the schema for a job to convert yet. Each of them registers a `VaultSecretStore` when it lands. |
 | Mockup 21 (model registry UI), Spend tab | **Out of scope** — discovery *feeds* the registry data (aliases resolve against discovered models), but the registry management UI stays with mockup 21's roadmap; Spend stays with AB.4. |
 | Scaffolding #49 placeholder, #56 e2e, AA.1 subnav ("Providers & keys · soon") | **Superseded/amended** — the Providers tab goes live (AA.1 amendment); #56 gains a providers leg. |
 
@@ -425,7 +425,7 @@ erDiagram
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AD.1 | #222 | 🟡 Open | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
+| AD.1 | #222 | 🟢 Done | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
 | AD.2 | #223 | 🟡 Open | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
 | AD.3 | #224 | 🟡 Open | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
 | AD.4 | #225 | 🟡 Open | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
@@ -433,8 +433,49 @@ erDiagram
 
 ### Issue AD.1 — ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper)
 
-> **GitHub issue:** #222 · **Status:** 🟡 Open · **Parent epic:** #213
+> **GitHub issue:** #222 · **Status:** 🟢 Done · **Parent epic:** #213
 
+> **Shipped 2026-08-14.** `V013__tenant_keys.sql` and
+> [`ouroboros-rest/src/modules/vault/`](../ouroboros-rest/src/modules/vault) — the cipher, the
+> `KeyWrapper` seam, the env-master implementation, the statements against `tenant_keys`, and
+> the rotation job. See [The vault](../ouroboros-rest/README.md#the-vault).
+>
+> **The three properties, and where each one actually comes from.** *A ciphertext cannot be
+> moved*: the AAD binds the workspace id and the record id, **length-prefixed**, so no pair of
+> identifiers can forge another pair's binding — the obvious `a:b` join makes `("acme:1","2")`
+> and `("acme","1:2")` identical bytes, which would satisfy the swap-prevention criterion on
+> paper and not in fact. *Deleting a workspace destroys its secrets*: `tenant_keys` cascades
+> from `organization`, and the service holds **no key cache**, which is the condition that
+> guarantee depends on rather than an omission. *Custody upgrades without a data migration*:
+> `VaultService.rewrap` rewrites `sealed_dek` and `wrapper` and nothing else, asserted
+> **byte-for-byte** against ciphertext that went through PostgreSQL — a round-trip assertion
+> would also pass if everything had quietly been re-encrypted.
+>
+> **Rotation is additive.** A new version becomes active, the old one stays readable, and every
+> envelope names the version that sealed it — so re-encryption can take as long as it takes.
+> One active version per workspace is a **partial unique index**, not a service check: two
+> active rows would split a workspace's ciphertext across two keys with nothing recording
+> which, and two concurrent rotations meet at that index instead. The loser is told it lost.
+>
+> **The migration job ships as a seam with no stores registered, and that is the honest
+> statement.** Q.1 (#138), K.3 (#101) and Y.1 (#189) are all still open and no migration
+> declares an encrypted column, so there is nothing in any database to convert. A
+> `VaultSecretStore` registration is what each of them adds, and one code path serves both
+> jobs: a record already sealed on an older version is re-sealed, and a record this service
+> has never sealed is **adopted**. `vault.module.spec.ts` asserts the registry is empty, so the
+> claim fails the day it stops being true rather than going stale quietly.
+>
+> **There is no scheduler**, and none was added: `rotate` returns as soon as the new version is
+> active and starts the sweep detached; `sweep` is public and awaitable for a caller that wants
+> to know when it finished. AD.2 (#223) is the endpoint over it.
+>
+> **No route.** `VaultModule` declares no controller — a route that decrypted a credential
+> would be a route that returned one, and that is AD.2's decision behind a re-authentication
+> step. `OURO_VAULT_MASTER_KEY` is validated at boot to **exactly** 32 bytes rather than a
+> minimum, because a signing key that is wrong is fixed by correcting it and a KEK that is
+> wrong produces ciphertext nobody can ever open. "Never logged" is held by a lint rule
+> (`no-secret-logging.mjs`, tested through ESLint's `RuleTester`) plus a redaction suite that
+> captures every sink across every failure path — not by reviewer vigilance.
 
 - **Problem Statement:** Three roadmaps now store encrypted credentials
   (BA helper, Q.1 sources, Y.1 providers) with a shared ad-hoc AES-GCM helper;

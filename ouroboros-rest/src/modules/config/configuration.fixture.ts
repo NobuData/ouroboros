@@ -39,6 +39,9 @@ export const DEVELOPMENT_ENVIRONMENT: Readonly<Record<string, string>> = Object.
   BETTER_AUTH_URL: "http://localhost:4000",
   OURO_GITHUB_CLIENT_ID: "dev-github-client-id",
   OURO_GITHUB_CLIENT_SECRET: "dev-github-client-secret",
+  // 32 bytes of ASCII, base64 — the template's placeholder, and a value chosen to be
+  // unmistakably a placeholder when it is decoded rather than to look like key material.
+  OURO_VAULT_MASTER_KEY: "b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=",
   OURO_CORS_ORIGINS: "http://localhost:3000",
 });
 
