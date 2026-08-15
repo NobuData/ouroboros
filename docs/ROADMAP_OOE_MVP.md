@@ -495,8 +495,8 @@ that roadmap's "Existing issues affected" section.
 | 60 | **CP.1** | ✅ [#643](https://github.com/NobuData/ouroboros/issues/643) | Shell layout — header, grid & scroll containment | ouroboros-ui | L | 2.3, 5.1, 5.2 |
 | 61 | **CQ.1** | ✅ [#648](https://github.com/NobuData/ouroboros/issues/648) | rem-based token scale & px lint | ouroboros-ui, docs | M | 2.3, 5.2 |
 | 62 | **CP.2** | ✅ [#644](https://github.com/NobuData/ouroboros/issues/644) | Sidebar navigation & module registry | ouroboros-ui | L | CP.1 |
-| 63 | **CP.4** | [#646](https://github.com/NobuData/ouroboros/issues/646) | In-pane chrome standards & primitives | ouroboros-ui | M | CP.1 |
-| 64 | **CP.5** | [#647](https://github.com/NobuData/ouroboros/issues/647) | Route migration & shell e2e leg | ouroboros-ui, .github | M | CP.2, CP.4 |
+| 63 | **CP.4** | ✅ [#646](https://github.com/NobuData/ouroboros/issues/646) | In-pane chrome standards & primitives | ouroboros-ui | M | CP.1 |
+| 64 | **CP.5** | ✅ [#647](https://github.com/NobuData/ouroboros/issues/647) | Route migration & shell e2e leg | ouroboros-ui, .github | M | CP.2, CP.4 |
 | 65 | **CQ.2** | ✅ [#649](https://github.com/NobuData/ouroboros/issues/649) | Font-size preference & no-flash boot | ouroboros-rest, ouroboros-ui | M | 4.5, CQ.1 |
 | 66 | **CP.3** | ✅ [#645](https://github.com/NobuData/ouroboros/issues/645) | Profile & session menu | ouroboros-ui | M | A.4, CP.1, CQ.2 |
 | 67 | **CQ.3** | [#650](https://github.com/NobuData/ouroboros/issues/650) | Readability QA & visual-regression matrix | ouroboros-ui, .github | M | CP.5, CQ.2 |
