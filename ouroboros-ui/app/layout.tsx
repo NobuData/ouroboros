@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Chakra_Petch, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 
 import { FONT_SCALE_BOOTSTRAP } from "./font-scale";
+import { InlineScript } from "./inline-script";
 import { SIDEBAR_BOOTSTRAP } from "./shell/sidebar-state";
 import { ThemeProvider } from "./theme-provider";
 import { THEME_BOOTSTRAP } from "./theme";
@@ -80,10 +81,11 @@ export default function RootLayout({
 
           Not next/script: `beforeInteractive` is preloaded rather than parser-blocking
           and its own documentation says it does not block hydration, which is a weaker
-          guarantee than this needs. The bundled guide for this version of Next
-          (02-guides/preventing-flash-before-hydration.md) uses exactly the form below.
+          guarantee than this needs. The wrapper is the bundled guide's
+          (02-guides/preventing-flash-before-hydration.md) answer to React's dev-mode
+          warning about client-rendered script tags — see app/inline-script.tsx.
         */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+        <InlineScript html={THEME_BOOTSTRAP} />
 
         {/*
           The sidebar bootstrap (CP.2, #644), here for exactly the reason above it is: the
@@ -93,7 +95,7 @@ export default function RootLayout({
           and each is generated from its own constants so neither can drift from the code that
           reads it back.
         */}
-        <script dangerouslySetInnerHTML={{ __html: SIDEBAR_BOOTSTRAP }} />
+        <InlineScript html={SIDEBAR_BOOTSTRAP} />
 
         {/*
           The font-scale bootstrap (CQ.2, #649), third of the family and here for the
@@ -103,7 +105,7 @@ export default function RootLayout({
           honor the local mirror" implemented by placement. The server truth reconciles
           later, from the shell (app/shell/font-scale-sync.tsx).
         */}
-        <script dangerouslySetInnerHTML={{ __html: FONT_SCALE_BOOTSTRAP }} />
+        <InlineScript html={FONT_SCALE_BOOTSTRAP} />
       </head>
       <body>
         <ThemeProvider>{children}</ThemeProvider>
