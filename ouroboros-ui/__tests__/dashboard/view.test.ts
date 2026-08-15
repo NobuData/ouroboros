@@ -29,10 +29,12 @@ import {
   loopsLiveStat,
   mergedStat,
   moreActiveLoops,
+  moreQueued,
   overallState,
   pageSubline,
   pulseIsUnmeasured,
   pulseMeters,
+  queueRows,
   queuedStat,
   recentCompletions,
   stageCaption,
@@ -45,6 +47,7 @@ import {
 import {
   READ_AT,
   SEEDED_COMPLETIONS,
+  SEEDED_QUEUE,
   SEEDED_RUNS,
   activeRun,
   closedRun,
@@ -54,6 +57,7 @@ import {
   engineStatus,
   failed,
   healthReport,
+  queueItem,
   read,
   startedSecondsAgo,
 } from "../helpers/dashboard";
@@ -741,6 +745,107 @@ describe("recentCompletions", () => {
 
   it("has nothing to draw for a workspace that has closed nothing", () => {
     expect(recentCompletions([])).toEqual([]);
+  });
+});
+
+describe("queueRows", () => {
+  it("draws the seeded five exactly as the mockup prints them", () => {
+    const rows = queueRows(SEEDED_QUEUE);
+
+    expect(rows.map((row) => row.issueNumber)).toEqual([485, 486, 488, 490, 491]);
+    expect(rows.map((row) => row.issueTitle)).toEqual([
+      "Watchdog reset on I²C bus lockup",
+      "Expose battery health over BLE GATT",
+      "Typo sweep in operator manual",
+      "Migrate build to Zephyr 4.2",
+      "Add CRC to config persistence layer",
+    ]);
+    expect(rows.map((row) => row.workflowTag)).toEqual([
+      "standard-fix",
+      "feature-loop",
+      "docs-loop",
+      "deps-refresh",
+      "standard-fix",
+    ]);
+  });
+
+  it("exercises all five sizes across those five rows", () => {
+    // The acceptance criterion this fixture exists for: every arm of the scale is drawn by
+    // the seeded workspace, so none of the five is a branch nobody has ever rendered.
+    const efforts = queueRows(SEEDED_QUEUE).map((row) => row.effort);
+
+    expect(efforts).toEqual(["M", "L", "XS", "XL", "S"]);
+    expect(new Set(efforts).size).toBe(5);
+  });
+
+  it("upper-cases the contract's scale and changes nothing else about it", () => {
+    // The contract carries the sizes lower-cased and the chip prints them upper-cased. That
+    // is the whole of the transformation — nothing here is derived from the estimate beside
+    // it, because the chip is a judgement and the estimate is a measurement.
+    const rows = queueRows(
+      (["xs", "s", "m", "l", "xl"] as const).map((effort, index) =>
+        queueItem({ id: `queued-${effort}`, issueNumber: 500 + index, effort }),
+      ),
+    );
+
+    expect(rows.map((row) => row.effort)).toEqual(["XS", "S", "M", "L", "XL"]);
+  });
+
+  it("keeps the payload's order, so the card and its drill-in cannot disagree", () => {
+    const items = [
+      queueItem({ id: "b", issueNumber: 2, position: 1 }),
+      queueItem({ id: "a", issueNumber: 1, position: 2 }),
+    ];
+
+    expect(queueRows(items).map((row) => row.issueNumber)).toEqual([2, 1]);
+  });
+
+  it("carries the queue item's own id, so a row is addressable", () => {
+    expect(queueRows(SEEDED_QUEUE).map((row) => row.id)).toEqual(
+      SEEDED_QUEUE.map((item) => item.id),
+    );
+  });
+
+  it("interprets no workflow tag, exactly as the loops table does not", () => {
+    // Free text in the contract, so it is rendered rather than looked up — a queue item whose
+    // workflow has since been renamed still reads under the word it recorded.
+    const [row] = queueRows([queueItem({ workflowTag: "a-workflow-nobody-defined" })]);
+
+    expect(row?.workflowTag).toBe("a-workflow-nobody-defined");
+  });
+
+  it("draws whatever the aggregate gave it rather than capping again", () => {
+    // The cap is `QUEUE_HEAD_LIMIT`, in the service. A second cap here would be a number to
+    // change in two places the day the card grows a sixth row.
+    const items = Array.from({ length: 7 }, (_, index) =>
+      queueItem({ id: `queued-${index}`, issueNumber: 500 + index, position: index + 1 }),
+    );
+
+    expect(queueRows(items)).toHaveLength(7);
+  });
+
+  it("has nothing to draw for a workspace with an empty queue", () => {
+    expect(queueRows([])).toEqual([]);
+  });
+});
+
+describe("moreQueued", () => {
+  it("reports the queue the card is not showing", () => {
+    // Twelve queued, five drawn — the seeded workspace's `+7 queued`.
+    expect(moreQueued(12, 5)).toBe(7);
+  });
+
+  it("says nothing when the card is showing the whole queue", () => {
+    expect(moreQueued(5, 5)).toBe(0);
+  });
+
+  it("never reports a negative remainder", () => {
+    // A count that ran behind its own slice is two figures disagreeing, not `−2 queued`.
+    expect(moreQueued(3, 5)).toBe(0);
+  });
+
+  it("agrees with the loops table's own footer, since both are one subtraction", () => {
+    expect(moreQueued(12, 5)).toBe(moreActiveLoops(12, 5));
   });
 });
 

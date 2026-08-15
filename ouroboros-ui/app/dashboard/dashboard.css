@@ -348,6 +348,97 @@
   gap: var(--sp-4);
 }
 
+/* ---------- the up-next queue ---------- */
+
+/*
+ * The mockup's `c-5` card (#85). The chips and the tag in a row are the primitives
+ * (app/ui/); what is here is the list they stand in — the mockup's `.col` of `.row.between`
+ * rows, which is a `ul` because a queue row has no columns to head.
+ *
+ * The UA sheet gives a `ul` a block margin, a 40px inline start padding and a marker. All
+ * three are undone here: the padding is also the one length on this card that would not
+ * follow the reader's font-size preference.
+ */
+.dash-queue {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * One row: the issue on the leading edge, its two markers on the trailing one. The mockup's
+ * `border-bottom` on every row and its `padding:9px 0` — in rem, so the rhythm follows the
+ * type rather than staying put while it grows.
+ */
+.dash-queue__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/*
+ * The mockup's last row is borderless — a rule under the final row would read as the start of
+ * something that is not there, and the card's own padding is the end of the list.
+ */
+.dash-queue__row:last-child {
+  border-bottom: 0;
+}
+
+/*
+ * The issue cell: a mono number, then the title in the row's own type. `baseline` rather than
+ * `center`, so the two sit on one line the way the mockup draws them even though they are
+ * different sizes — the two tables' issue cells, for the same reason.
+ */
+.dash-queue__issue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.dash-queue__number {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  /* The number is one value read as one thing; the title after it is where a row may wrap. */
+  white-space: nowrap;
+}
+
+/*
+ * The title takes what is left and wraps rather than pushing the markers off the card. This
+ * card is five columns wide and has no scroll box of its own — unlike the two tables, which
+ * scroll sideways inside theirs — so an unbounded title here would widen the whole grid.
+ */
+.dash-queue__title {
+  min-width: 0;
+  color: var(--ink);
+}
+
+/* The effort chip and the workflow tag, at the mockup's own gap. They never wrap or shrink:
+ * the two markers are the row's answer to *how big* and *run by what*, and a tag broken over
+ * two lines reads as two tags. */
+.dash-queue__marks {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+/*
+ * The *+N queued* footer. It sits under the list rather than in the card head because it is a
+ * fact about the rows — what the five on screen leave out — and it is a paragraph so that the
+ * margin a browser gives one does not have to be undone twice. The loops table's own footer is
+ * the same shape for the same reason.
+ */
+.dash-queue__more {
+  margin: var(--sp-6) 0 0;
+}
+
 /* ---------- the loop pulse card ---------- */
 
 /*

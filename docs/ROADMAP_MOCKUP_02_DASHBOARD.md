@@ -1347,7 +1347,7 @@ themes hold.
 | I.3 | #82 | 🟢 Done | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
 | I.4 | #83 | 🟢 Done | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
 | I.5 | #84 | 🟢 Done | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.6 | #85 | 🟢 Done | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
 | I.8 | #87 | 🟡 Open | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
 | I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
@@ -1838,7 +1838,50 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.6 — ouroboros-ui: [I.6] Up-next queue card
 
-> **GitHub issue:** #85 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #85 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The `c-5` card draws the aggregate's `queueHead`:
+> [`queue-card.tsx`](../ouroboros-ui/app/dashboard/queue-card.tsx), with the rows and the
+> footer decided in [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) (`queueRows`,
+> `moreQueued`) so the AC's five seeded rows — `#485` M, `#486` L, `#488` XS, `#490` XL, `#491`
+> S — are unit tests on functions rather than assertions about rendered text. **With it, every
+> panel of mockup 02 has a card drawing it from data**; the placeholder that stood in this
+> tile is gone, and `app/dashboard/empty-card.tsx` with it, since no panel is waiting on a
+> source any more.
+>
+> **All five effort chips were already in #46's primitive**, which this issue allowed for but
+> did not need: `EffortChip` carries XS–XL and derives the hue from the size rather than taking
+> one, so an `L` cannot be green on one screen and amber on another. What this card adds is the
+> only surface in the product that draws all five at once — which is what makes it the place
+> the scale is proved, in both palettes, from the token sheet's own published triples.
+>
+> **The chip stays a judgement.** The contract's `QueueEffort` is lower-cased and the mockup
+> prints it upper-cased, and that is the whole of the transformation: nothing here derives a
+> size from `estMinutes`, because deriving one from the other would make the stat row's
+> `est. 9h 40m` a restatement of the chips rather than the second fact V009 wrote it as. The
+> mapping is a `Record` over the contract's union, so a sixth size added to the service is a
+> build error in the screen rather than a row that silently draws no chip.
+>
+> **A list, not a table.** The cards either side of it have columns; a queue row has none — it
+> is one issue, and the chip and the tag are properties *of* it. So the card is a `ul`, which
+> is also what a screen reader is best served by: *list of five items*, rather than a grid whose
+> column headers would have to be invented to justify the markup.
+>
+> **`+7 queued` is a subtraction over two separately true figures.** `queueHead` is capped at
+> five by the service (`QUEUE_HEAD_LIMIT`) and `stats.queued.count` speaks for the whole queue,
+> so the footer appears only when the count exceeds the rows and says exactly the remainder —
+> and never a negative one. It shares its arithmetic with the loops table's `+N more`, so two
+> footers on one page cannot disagree about what a remainder is.
+>
+> **Neither `Manage queue →` nor the footer navigates yet.** The queue screen is mockup 03 and
+> [#49](https://github.com/NobuData/ouroboros/issues/49) holds its route, which is post-MVP.
+> Both are inert buttons carrying the one reason — one sentence for one missing screen, since
+> two would read as two — and both become an `href` the day #49 lands.
+>
+> The empty state is the card's own until
+> [#86](https://github.com/NobuData/ouroboros/issues/86) designs every card's together: a
+> workspace that has caught up with its own queue reads *"Nothing is queued"*, and an aggregate
+> nobody could read reads the service's reason — never the same thing twice.
 
 - **Problem Statement:** The `c-5` queue card shows what the loop will do next —
   bordered rows of mono number + title with effort chip and workflow tag.
@@ -2237,4 +2280,6 @@ that skipped the check is the page with nothing to draw. Nothing was waiting on 
 nobody filed. The frame is now standing with #70's payload behind it, so **I.2–I.6 (#81–#85)
 are unblocked and parallel** — each replaces one card of the grid from the aggregate the page
 already fetches — and **I.8 (#87)** can wire its `ETag` loop to the read `app/api/dashboard.ts`
-already makes. I.7 (#86) follows the cards, and I.9 (#88) remains the epic's gate.
+already makes. **I.2–I.6 (#81–#85) have all since shipped**, so every card of the grid is now
+drawn from that one payload and the page has no placeholder panel left. I.7 (#86) follows the
+cards and is unblocked, and I.9 (#88) remains the epic's gate.

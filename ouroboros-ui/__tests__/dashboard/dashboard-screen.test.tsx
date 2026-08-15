@@ -412,7 +412,8 @@ describe("the active loops card, on the page", () => {
     expect(within(card).getByText("Fix flaky CAN-bus telemetry test")).toBeInTheDocument();
   });
 
-  it("is one of the page's two tables, the queue card still having no rows", () => {
+  it("is one of the page's two tables, the queue card being a list", () => {
+    // A queue row has no columns to head, so #85 draws a `ul` rather than a third table.
     const { container } = render(<DashboardScreen readings={readings()} />);
 
     expect(container.querySelectorAll("table")).toHaveLength(2);
@@ -498,37 +499,47 @@ describe("the completions card, on the page", () => {
   });
 });
 
-describe("the panel with no card drawing it yet", () => {
-  it("draws the one the mockup still has ahead of it as a designed empty state", () => {
-    // *Active loops* left this list with #82 and the completions table with #84. The queue
-    // (#85) is what is left, and the aggregate already carries its rows.
-    render(<DashboardScreen readings={readings()} />);
-
-    expect(
-      screen.getByRole("region", { name: "Up next in queue" }),
-    ).toBeInTheDocument();
-  });
-
-  it("names what will fill it and what has to land first", () => {
-    // The honesty rule applied to a whole card: a surface that is not ready is labelled,
-    // never dead, and never a blank region.
+describe("the queue card, on the page", () => {
+  it("draws the aggregate's queue head as the mockup's `c-5` card", () => {
+    // The card's own rows, chips and footer are `__tests__/dashboard/queue-card.test.tsx`'s.
+    // What is here is that the page hands it the aggregate it already fetched, in the place
+    // the grid keeps for it.
     render(<DashboardScreen readings={readings()} />);
 
     const card = screen.getByRole("region", { name: "Up next in queue" });
 
-    expect(within(card).getByText(/mockup/)).toBeInTheDocument();
+    expect(within(card).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(card).getByText("Watchdog reset on I²C bus lockup")).toBeInTheDocument();
   });
 
-  it("invents no queued issue", () => {
+  it("reports the rest of the queue from the count the stat row is drawn from", () => {
+    // Two figures of one payload, so the card cannot say `+7 queued` under a stat row that
+    // says anything but `12`.
+    render(<DashboardScreen readings={readings()} />);
+
+    const card = screen.getByRole("region", { name: "Up next in queue" });
+
+    expect(within(card).getByRole("button", { name: "+7 queued →" })).toBeInTheDocument();
+  });
+
+  it("invents no queued issue for a workspace whose queue is empty", () => {
     // The mockup fills this card with five plausible rows. Copying them would make the screen
-    // a picture of a product rather than a view of one — which is exactly why the cards around
-    // it *do* draw rows now: they have a source, and this one does not.
-    render(<DashboardScreen readings={readings()} />);
+    // a picture of a product rather than a view of one.
+    render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
 
     const card = screen.getByRole("region", { name: "Up next in queue" });
 
-    expect(card.querySelectorAll("table")).toHaveLength(0);
+    expect(within(card).getByText("Nothing is queued")).toBeInTheDocument();
     expect(card.textContent).not.toMatch(/#\d{3}/);
+  });
+
+  it("degrades with the rest of the page when the aggregate could not be read", () => {
+    render(<DashboardScreen readings={readings({ aggregate: failed("Nope.") })} />);
+
+    const card = screen.getByRole("region", { name: "Up next in queue" });
+
+    expect(within(card).getByText("The queue could not be read")).toBeInTheDocument();
+    expect(within(card).queryAllByRole("listitem")).toHaveLength(0);
   });
 });
 
