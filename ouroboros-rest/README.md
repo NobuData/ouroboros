@@ -221,6 +221,7 @@ service never starts half-configured.
 | `OURO_VAULT_MASTER_KEY`     | The credential vault's key-encryption key — see [The vault](#the-vault) |        yes         | **exactly** 32 bytes, base64 (`openssl rand -base64 32`)                    |
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
+| `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this

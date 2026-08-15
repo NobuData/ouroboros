@@ -1278,6 +1278,19 @@ a.shell-nav__item--active:hover {
       transform var(--shell-drawer-slide) ease,
       visibility var(--shell-drawer-slide);
   }
+
+  /*
+   * Opening transitions the transform alone. The list above belongs to the *closed*
+   * state, which is the destination of the slide out — that is where holding `visibility`
+   * for the length of the slide matters. Applied while opening too, it holds the drawer
+   * *hidden* for the same length instead, and a hidden element cannot take focus — so the
+   * focus the sidebar moves into itself on open (`sidebar-nav.tsx`) silently went
+   * nowhere, which is how #647's drawer keyboard leg first found this. Visibility flips
+   * at once on the way in; the slide still animates.
+   */
+  .shell-nav--open {
+    transition: transform var(--shell-drawer-slide) ease;
+  }
 }
 
 /* ---------- the overlay layer ---------- */

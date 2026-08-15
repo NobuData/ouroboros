@@ -41,18 +41,9 @@
  *     gives every reader;
  *   * **both palettes**, screenshot-diffed.
  *
- * ## Why nothing in this file runs yet
- *
- * Every assertion here needs a session, and this suite cannot sign in against the compose
- * stack: `ouroboros-rest`'s image pins `NODE_ENV=production`, which is exactly the flag
- * [#705](https://github.com/NobuData/ouroboros/issues/705) gates the development
- * email/password routes on — and overriding it moves the service's listen address back to
- * loopback, where the container publishes nothing. `support/session.ts` carries the long
- * version and `docker-compose.yml` says the same thing at the `rest` service. So every group
- * below carries `test.fixme` with {@link SESSION_PARKED} and says so in the run's report,
- * exactly as `specs/sign-in.spec.ts`'s signed-in half and `specs/shell.spec.ts`'s theme group
- * already do. **The legs themselves are finished**: the day a stack serves the development
- * sign-in, deleting those lines is the whole of what runs them.
+ * Signing in was parked until [#647](https://github.com/NobuData/ouroboros/issues/647)
+ * composed the e2e override over the stack — `support/session.ts` carries that history —
+ * so this file, written finished under `test.fixme`, now simply runs.
  *
  * ## The classes this file names, and why it names them
  *
@@ -79,7 +70,7 @@ import {
   SEEDED_STATS,
 } from "../support/dashboard";
 import { SEED_OWNER, SEED_PERSONAL_TENANT, SEED_TENANT } from "../support/seed";
-import { SESSION_PARKED, signIn } from "../support/session";
+import { signIn } from "../support/session";
 import {
   FONT_SCALE_ATTRIBUTE,
   restoreAutoMerge,
@@ -178,8 +169,6 @@ async function widthOf(element: Locator, what: string): Promise<number> {
 }
 
 test.describe("the dashboard renders the seeded workspace", () => {
-  test.fixme(true, SESSION_PARKED);
-
   test.beforeEach(async ({ context, page }) => {
     await enterDashboard(context, page, SEED_TENANT.slug);
   });
@@ -345,8 +334,6 @@ test.describe("the dashboard renders the seeded workspace", () => {
  * one, where it runs for the only test that writes.
  */
 test.describe("the dashboard's one control writes", () => {
-  test.fixme(true, SESSION_PARKED);
-
   test.beforeEach(async ({ context, page }) => {
     await enterDashboard(context, page, SEED_TENANT.slug);
   });
@@ -388,8 +375,6 @@ test.describe("the dashboard's one control writes", () => {
 });
 
 test.describe("the dashboard tells the truth about an empty workspace", () => {
-  test.fixme(true, SESSION_PARKED);
-
   test.beforeEach(async ({ context, page }) => {
     await enterDashboard(context, page, SEED_PERSONAL_TENANT.slug);
   });
@@ -457,8 +442,6 @@ test.describe("the dashboard tells the truth about an empty workspace", () => {
 });
 
 test.describe("the shell holds the dashboard", () => {
-  test.fixme(true, SESSION_PARKED);
-
   test.beforeEach(async ({ context, page }) => {
     await enterDashboard(context, page, SEED_TENANT.slug);
   });
@@ -549,8 +532,6 @@ test.describe("the shell holds the dashboard", () => {
 });
 
 test.describe("the dashboard is drawn in both palettes", () => {
-  test.fixme(true, SESSION_PARKED);
-
   /**
    * What a screenshot must not be taken of.
    *
@@ -577,20 +558,30 @@ test.describe("the dashboard is drawn in both palettes", () => {
     await enterDashboard(context, page, SEED_TENANT.slug);
   });
 
-  test("light and dark are both the dashboard", async ({ page }) => {
-    const toggle = page.getByRole("button", { name: /^Theme:/ });
-    const html = page.locator("html");
+  /**
+   * Pin a palette through the account menu's theme radios (`app/shell/user-menu.tsx` —
+   * CP.3's control), and close the menu so the shutter sees the page rather than the
+   * panel. A fresh context has stored no choice and starts at *system*; pinning is what
+   * makes the two baselines a comparison of palettes rather than of whatever the
+   * runner's OS happened to prefer.
+   */
+  async function pinTheme(page: Page, choice: "Light" | "Dark"): Promise<void> {
+    await page.getByRole("button", { name: /^Account menu/ }).click();
 
-    // The cycle is light → dark → system and a fresh context has stored no choice, so it
-    // starts at *system* — where the attribute is absent and CSS alone decides. Pressing
-    // once pins light, which is what makes the two baselines below a comparison of palettes
-    // rather than of whatever the runner's OS happened to prefer.
-    await toggle.click();
-    await expect(html).toHaveAttribute("data-theme", "light");
+    const menu = page.getByRole("menu", { name: "Account" });
+
+    await menu.getByRole("menuitemradio", { name: choice }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", choice.toLowerCase());
+
+    await page.keyboard.press("Escape");
+    await expect(menu).not.toBeVisible();
+  }
+
+  test("light and dark are both the dashboard", async ({ page }) => {
+    await pinTheme(page, "Light");
     await expect(page).toHaveScreenshot("dashboard-light.png", { mask: volatile(page) });
 
-    await toggle.click();
-    await expect(html).toHaveAttribute("data-theme", "dark");
+    await pinTheme(page, "Dark");
     await expect(page).toHaveScreenshot("dashboard-dark.png", { mask: volatile(page) });
   });
 });

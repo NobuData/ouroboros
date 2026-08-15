@@ -522,15 +522,53 @@ describe("OURO_CORS_ORIGINS", () => {
 
 describe("listenHost", () => {
   it("binds every interface in production, where the platform does the routing", () => {
-    expect(listenHost("production")).toBe(ALL_INTERFACES_HOST);
+    expect(listenHost({ nodeEnv: "production" })).toBe(ALL_INTERFACES_HOST);
     expect(ALL_INTERFACES_HOST).toBe("0.0.0.0");
   });
 
   // A development machine that answered on every interface would be reachable from
   // whatever network it is on, holding a session key and a database connection.
   it.each([["development"], ["test"]] as const)("binds loopback only in %s", (nodeEnv) => {
-    expect(listenHost(nodeEnv)).toBe(LOOPBACK_HOST);
+    expect(listenHost({ nodeEnv })).toBe(LOOPBACK_HOST);
     expect(LOOPBACK_HOST).toBe("127.0.0.1");
+  });
+
+  // The e2e compose override's whole reason to exist (#647): a non-production stack whose
+  // password sign-in answers, reachable through Docker's port publishing.
+  it("prefers the override in either direction, whatever the environment says", () => {
+    expect(listenHost({ nodeEnv: "test", listenHostOverride: ALL_INTERFACES_HOST })).toBe(
+      ALL_INTERFACES_HOST,
+    );
+    expect(listenHost({ nodeEnv: "production", listenHostOverride: LOOPBACK_HOST })).toBe(
+      LOOPBACK_HOST,
+    );
+  });
+});
+
+describe("OURO_LISTEN_HOST", () => {
+  it("is unset by default, leaving the environment to decide", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.listenHostOverride).toBeUndefined();
+  });
+
+  it.each([[LOOPBACK_HOST], [ALL_INTERFACES_HOST]])("accepts %s", (host) => {
+    const configuration = loadConfiguration(testEnvironment({ OURO_LISTEN_HOST: host }));
+
+    expect(configuration.listenHostOverride).toBe(host);
+    expect(listenHost(configuration)).toBe(host);
+  });
+
+  // Anything else would be an interface nobody has reasoned about: the override chooses
+  // between the two postures the service understands, it is not a bind-address knob.
+  it.each([
+    ["a hostname", "localhost"],
+    ["an arbitrary address", "10.0.0.7"],
+    ["a port beside the address", `${ALL_INTERFACES_HOST}:4000`],
+  ])("rejects %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_LISTEN_HOST: value }))).toContain(
+      `${VARIABLES.listenHostOverride}: expected ${LOOPBACK_HOST} or ${ALL_INTERFACES_HOST}`,
+    );
   });
 });
 

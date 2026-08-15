@@ -22,52 +22,34 @@
  * nothing imports from a service; `eslint.config.mjs` enforces the second half of that, and
  * the exception it used to permit is gone for good.
  *
- * ## Why the legs are still parked
+ * ## The parking, and what ended it
  *
- * One thing, now that [#709](https://github.com/NobuData/ouroboros/issues/709) has landed —
+ * Between [#703](https://github.com/NobuData/ouroboros/issues/703) and
+ * [#647](https://github.com/NobuData/ouroboros/issues/647) every signed-in leg carried
+ * `test.fixme` naming a `SESSION_PARKED` constant that lived here: the stack ran the
+ * production image, whose pinned `NODE_ENV` is the single flag #705 gates the password
+ * routes on — and overriding it in compose would only have moved the service onto a
+ * loopback interface Docker's port publishing cannot reach.
+ *
+ * #647 made the stack change the parking was waiting for. `scripts/run.sh` now composes
+ * the repo-root `docker-compose.e2e.yml` over the base file, which runs `rest` under
+ * `NODE_ENV=test` — so the seeded password sign-in answers — and sets
+ * `OURO_LISTEN_HOST=0.0.0.0`, the validated override `ouroboros-rest` grew for exactly
+ * this stack, so the interface is one the published ports can route to. The seeded
+ * credential itself has existed since [#709](https://github.com/NobuData/ouroboros/issues/709):
  * the development seed writes the `"user"` rows and the `credential` `account` rows whose
- * scrypt hashes are of {@link SEED_PASSWORD}, so there *is* a seeded credential for
- * {@link signIn} to present, and the second bullet is what is left:
+ * scrypt hashes are of {@link SEED_PASSWORD}.
  *
- *   * **The stack runs the production image.** `docker compose` starts `ouroboros-rest`
- *     from a Dockerfile that pins `NODE_ENV=production`, and that is the single flag #705
- *     gates the password routes on — so against this stack, the route below answers 400
- *     `EMAIL_PASSWORD_DISABLED` by design. Overriding the variable in compose does not fix
- *     it: the same value moves the service's listen address back to loopback, and a
- *     container bound to loopback publishes nothing. Serving the development sign-in to
- *     this suite therefore needs a stack change — a non-production `rest` that still binds
- *     every interface — which is a decision for #56 or #715 rather than something #705 can
- *     make on their behalf.
- *
- * So the signed-in legs keep `test.fixme` and {@link SESSION_PARKED} as the reason, and say
- * so in the run's report rather than failing every night at three. **Every leg that does not
- * need a session still runs**, which is most of the health, shell and negative-path
- * coverage — including, importantly, the assertions that a stranger is refused. The whole of
- * the dashboard leg ([#88](https://github.com/NobuData/ouroboros/issues/88)) is on the other
- * side of that line, which is the largest thing this parking now costs.
- *
- * When it is resolved, the change here is deleting {@link SESSION_PARKED} and the
- * `test.fixme` lines that name it. {@link signIn} itself is finished: no spec knows how the
- * cookie got there.
+ * A leg that signs in therefore proves the real chain — route, hash comparison, session
+ * row — against the composed stack, cold. If sign-in stops answering, every one of those
+ * legs goes red naming this module, which is the failure mode the parking existed to
+ * avoid reporting dishonestly.
  */
 
 import type { BrowserContext } from "@playwright/test";
 
 import { SEED_PASSWORD, seededUser } from "./seed";
 import { REST_URL, UI_URL } from "./stack";
-
-/**
- * Why the signed-in legs do not run, in the words a report should carry.
- *
- * A constant rather than a string per call site, so that the day it stops being true there
- * is one place to delete and `grep` finds every leg that was waiting on it.
- */
-export const SESSION_PARKED =
-  "Signing in needs a stack whose ouroboros-rest is not NODE_ENV=production — the image " +
-  "pins it, #705 gates the development password routes on exactly that flag, and the same " +
-  "flag moves the listen address back to loopback, so overriding it in compose publishes " +
-  "nothing. #709 has landed, so the credential exists; signIn() is the real call and is " +
-  "ready. The stack change is #56's or #715's to make.";
 
 /**
  * The cookie a signed-in browser carries.

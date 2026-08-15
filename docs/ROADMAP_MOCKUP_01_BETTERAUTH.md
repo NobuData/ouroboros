@@ -2109,6 +2109,10 @@ roadmap: [`ROADMAP_UIUX_APP_SHELL.md`](ROADMAP_UIUX_APP_SHELL.md)) governs
 every UI issue in this roadmap as follows — with the login/auth screens
 themselves rendering **outside** the shell (rule 2):
 
+> **Audited under CP.5 (#647), 2026-08-15** — `/login` renders standalone as
+> rule 2 asks (no shell, no sidebar, no topbar markup), and the post-login
+> landing is in-shell; the pre-shell declaration is recorded in the CP.5 audit.
+
 1. **Header** — application name/brand upper-left, profile & session
    controls upper-right; no navigation links in the header. (This applies
    once the shell mounts, post-login.)

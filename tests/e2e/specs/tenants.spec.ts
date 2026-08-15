@@ -1,188 +1,132 @@
 /**
- * Leg 3 — *the API leg: tenant CRUD roundtrip*.
+ * Leg 3 — *the API leg: a workspace roundtrip against a migrated database*.
  *
  * Scripted rather than driven through a browser, because it is a contract test against the
- * running container: the UI has no screen for creating a workspace, and the point of this
- * leg is that the API a client is given actually works against a migrated database rather
- * than against a mocked repository.
+ * running container: the point of this leg is that the API a client is given actually works
+ * against a migrated database rather than against a mocked repository.
  *
- * It is a *roundtrip* rather than a lifecycle: `ouroboros-rest` publishes no tenant delete
- * route (`ouroboros-rest/openapi.json` — `POST`, `GET`, `PATCH` and nothing else), because
- * a workspace is retired by moving its `status` rather than by being removed. So the leg
- * creates, reads it back, updates it, reads the update, finds it in the caller's listing,
- * and finally suspends it — which is as close to a teardown as the contract offers. The
- * rows it leaves behind are prefixed `e2e-` and are reclaimed by `docker compose down -v`;
- * `support/seed.ts` says why they are not reused between runs.
+ * ## The contract moved, and this leg moved with it
  *
- * Every request carries the same session the browser legs carry, and that matters twice:
- * the creator is made `owner` in the same transaction, so the `PATCH` — which requires an
- * administrator — proves the membership was written as well as the tenant.
+ * This file asserted a `/api/v1/tenants` CRUD surface until #647 first ran it against the
+ * stack — where every request answered 404, because that surface no longer exists.
+ * [#704](https://github.com/NobuData/ouroboros/issues/704) made BetterAuth's organization
+ * plugin the one write path (`POST /api/auth/organization/create`, `set-active`, the
+ * plugin's own update), and [#714](https://github.com/NobuData/ouroboros/issues/714) left
+ * this service exactly one read: `GET /api/v1/orgs`, the caller's workspaces with the
+ * enablement counts and roles the plugin cannot answer. The deep matrix lives in
+ * `ouroboros-rest`'s own integration suite (`organizations.integration-spec.ts`); what only
+ * this leg can see is the same roundtrip through the *composed images*: plugin write, then
+ * service read, one database underneath.
+ *
+ * The rows it leaves behind are prefixed `e2e-` and are reclaimed by `docker compose
+ * down -v`; `support/seed.ts` says why they are not reused between runs.
  */
 
 import { expect, test } from "@playwright/test";
 
 import { asUser, expectError, expectJson, getAnonymously, restUrl } from "../support/api";
 import { SEED_OWNER, SEED_TENANT, ephemeralSlug } from "../support/seed";
-import { mintSession, SESSION_PARKED } from "../support/session";
+import { AUTH_BASE_PATH, mintSession } from "../support/session";
+import { REST_URL } from "../support/stack";
 
-/** The `Tenant` resource, as `openapi.json` defines it. */
-interface Tenant {
+/** One row of `GET /api/v1/orgs` — `OrgRowResource`, as `openapi.json` defines it. */
+interface OrgRow {
   id: string;
   slug: string;
-  displayName: string;
-  status: "active" | "suspended" | "deleted";
+  name: string;
+  monogram: string;
+  personal: boolean;
+  roles: string[];
+  enabled: boolean;
+  repoCounts: { enabled: number; total: number };
+  featuredRepo: string | null;
+  githubOrgs: unknown[];
   createdAt: string;
-  updatedAt: string;
 }
 
 /** One page of them. */
-interface TenantPage {
-  items: Tenant[];
+interface OrgPage {
+  items: OrgRow[];
   total: number;
   limit: number;
   offset: number;
 }
 
-test.describe("tenant CRUD roundtrip", () => {
-  // Every leg below but the last carries a session, and those are parked — see
-  // `support/session.ts`. "The collection is closed to strangers" needs none and still
-  // runs, which is the half of this group that guards the boundary.
-  test("create → read → update → list → suspend", async ({ request }) => {
-    test.fixme(true, SESSION_PARKED);
+/** What the plugin answers a create with — the fields this leg reads back. */
+interface CreatedOrganization {
+  id: string;
+  slug: string;
+  name: string;
+  members: { userId: string; role: string }[];
+}
 
+test.describe("workspace roundtrip: plugin write, service read", () => {
+  test("create → the creator is its owner → the listing carries it", async ({ request }) => {
     const { token } = await mintSession(SEED_OWNER.id);
     const headers = asUser(token);
-    const slug = ephemeralSlug("crud");
+    const slug = ephemeralSlug("roundtrip");
 
-    // ---- Create ----------------------------------------------------------------------
-    const created = await expectJson<Tenant>(
-      await request.post(restUrl("/api/v1/tenants"), {
+    // ---- Create, through the one write path there is (#704) --------------------------
+    const created = await expectJson<CreatedOrganization>(
+      await request.post(`${REST_URL}${AUTH_BASE_PATH}/organization/create`, {
         headers,
-        data: { slug, displayName: "E2E Roundtrip" },
+        data: { name: "E2E Roundtrip", slug },
       }),
-      201,
+      200,
     );
 
     expect(created.slug).toBe(slug);
-    expect(created.displayName).toBe("E2E Roundtrip");
-    expect(created.status, "a new workspace starts active").toBe("active");
-    // A uuid the *database* generated, not one this suite sent — the contract has no
-    // field for a caller-chosen id, and a service that accepted one would be letting a
-    // client pick primary keys.
-    expect(created.id).toMatch(/^[0-9a-f-]{36}$/);
+    // The membership is written in the same transaction as the workspace — the fact the
+    // old CRUD leg proved through an admin-gated PATCH, read here directly.
+    expect(created.members).toEqual([
+      expect.objectContaining({ userId: SEED_OWNER.id, role: "owner" }),
+    ]);
 
-    // ---- Read ------------------------------------------------------------------------
-    //
-    // Read back rather than trusting the create response. They are two code paths — one
-    // returns what it wrote, the other selects what is stored — and a transaction that
-    // rolled back after answering would only be visible here.
-    const read = await expectJson<Tenant>(
-      await request.get(restUrl(`/api/v1/tenants/${created.id}`), { headers }),
+    // ---- Read it back through this service's one read (#714) -------------------------
+    const page = await expectJson<OrgPage>(
+      await request.get(restUrl("/api/v1/orgs?limit=100"), { headers }),
       200,
     );
 
-    expect(read).toEqual(created);
+    const row = page.items.find((item) => item.slug === slug);
 
-    // ---- Update ----------------------------------------------------------------------
-    //
-    // `PATCH` is `@Roles(...ADMINISTRATORS)`. It succeeding is the assertion that the
-    // creator's `owner` membership was written in the same transaction as the tenant —
-    // if it had not been, the `404` rule would have put this workspace out of reach of
-    // the person who had just made it.
-    const renamed = await expectJson<Tenant>(
-      await request.patch(restUrl(`/api/v1/tenants/${created.id}`), {
-        headers,
-        data: { displayName: "E2E Roundtrip, renamed" },
-      }),
-      200,
-    );
+    expect(row, `the listing should carry ${slug}`).toBeDefined();
+    // The service's own derivations over the plugin's rows: the role read from `member`,
+    // the monogram from the name, and the enablement shape a fresh workspace starts with.
+    expect(row).toMatchObject({
+      name: "E2E Roundtrip",
+      monogram: "ER",
+      personal: false,
+      roles: ["owner"],
+      enabled: false,
+      repoCounts: { enabled: 0, total: 0 },
+      featuredRepo: null,
+    });
 
-    expect(renamed.displayName).toBe("E2E Roundtrip, renamed");
-    expect(renamed.slug, "a rename must not move the handle").toBe(slug);
-    expect(Date.parse(renamed.updatedAt), "an update must move updatedAt").toBeGreaterThanOrEqual(
-      Date.parse(created.updatedAt),
-    );
-
-    // ---- List ------------------------------------------------------------------------
-    //
-    // Scoped to the caller (#32), so this is also the assertion that the listing is not
-    // enumerating the installation: the seeded workspace and the new one are both here
-    // because this person belongs to both.
-    const page = await expectJson<TenantPage>(
-      await request.get(restUrl("/api/v1/tenants?limit=100"), { headers }),
-      200,
-    );
-
-    const slugs = page.items.map((tenant) => tenant.slug);
-
-    expect(slugs).toContain(slug);
-    expect(slugs, "the seed's workspace is one of the caller's").toContain(SEED_TENANT.slug);
-    expect(page.total).toBeGreaterThanOrEqual(2);
-
-    // ---- Suspend ---------------------------------------------------------------------
-    //
-    // The contract's retirement, and the nearest thing to a teardown it offers.
-    const suspended = await expectJson<Tenant>(
-      await request.patch(restUrl(`/api/v1/tenants/${created.id}`), {
-        headers,
-        data: { status: "suspended" },
-      }),
-      200,
-    );
-
-    expect(suspended.status).toBe("suspended");
+    // And the seeded workspace is beside it — one database under both routes.
+    expect(page.items.map((item) => item.slug)).toContain(SEED_TENANT.slug);
   });
 
   test("a duplicate slug is refused", async ({ request }) => {
-    test.fixme(true, SESSION_PARKED);
-
-    const { token } = await mintSession(SEED_OWNER.id);
-    const headers = asUser(token);
-
-    // The seed's own slug: the uniqueness constraint is enforced across the installation,
-    // and asserting it against a row this suite did not create is what proves the check is
-    // the database's rather than a cache of what this run has written.
-    const response = await request.post(restUrl("/api/v1/tenants"), {
-      headers,
-      data: { slug: SEED_TENANT.slug, displayName: "Not Acme" },
-    });
-
-    await expectError(response, 409, "slug_taken");
-  });
-
-  test("a malformed slug is refused before anything is written", async ({ request }) => {
-    test.fixme(true, SESSION_PARKED);
-
     const { token } = await mintSession(SEED_OWNER.id);
 
-    const response = await request.post(restUrl("/api/v1/tenants"), {
+    const response = await request.post(`${REST_URL}${AUTH_BASE_PATH}/organization/create`, {
       headers: asUser(token),
-      data: { slug: "Not A Slug", displayName: "Rejected" },
+      // The seed's own workspace: guaranteed to exist without this test creating anything.
+      data: { name: "Not Acme", slug: SEED_TENANT.slug },
     });
 
-    await expectError(response, 422, "validation_failed");
+    expect(response.status(), await response.text()).toBe(400);
+
+    const body = (await response.json()) as { code?: string };
+
+    // The plugin's own vocabulary, not this service's envelope — the route is BetterAuth's.
+    expect(body.code).toBe("ORGANIZATION_ALREADY_EXISTS");
   });
 
-  test("an unknown property is refused rather than ignored", async ({ request }) => {
-    test.fixme(true, SESSION_PARKED);
-
-    const { token } = await mintSession(SEED_OWNER.id);
-
-    // Request schemas are closed (`CreateTenantRequest.additionalProperties: false`),
-    // which is what shuts mass assignment for every route at once. It is asserted here
-    // because it is a property of the *running validation pipe*, and a pipe configured
-    // without `forbidNonWhitelisted` would drop this field silently.
-    const response = await request.post(restUrl("/api/v1/tenants"), {
-      headers: asUser(token),
-      data: { slug: ephemeralSlug("closed"), displayName: "Closed", status: "active" },
-    });
-
-    await expectError(response, 422, "validation_failed");
-  });
-
-  test("the collection is closed to strangers", async ({ request }) => {
-    const response = await getAnonymously(request, "/api/v1/tenants");
-
-    await expectError(response, 401, "unauthenticated");
+  test("the listing is closed to strangers", async ({ request }) => {
+    // The service's error envelope this time: `/api/v1/*` is behind the global guard
+    // (#703), and an unauthenticated read of *anything* under it is refused by name.
+    await expectError(await getAnonymously(request, "/api/v1/orgs"), 401, "unauthenticated");
   });
 });

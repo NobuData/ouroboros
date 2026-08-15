@@ -14,16 +14,24 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and one amended in since:
+deployment. Five legs from the issue, and two amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
 | 1 | [`specs/shell.spec.ts`](specs/shell.spec.ts) | The title, the favicon actually copied into the image, and a palette that flips because the stylesheet shipped |
-| 2 | [`specs/sign-in.spec.ts`](specs/sign-in.spec.ts) | A session authenticated by `ouroboros-rest` against rows Flyway seeded, rendered as a workspace. **The signed-in half is parked** — see below |
-| 3 | [`specs/tenants.spec.ts`](specs/tenants.spec.ts) | The API contract against a real migrated database, including the constraints |
+| 2 | [`specs/sign-in.spec.ts`](specs/sign-in.spec.ts) | A session authenticated by `ouroboros-rest` against rows Flyway seeded, rendered as a workspace |
+| 3 | [`specs/tenants.spec.ts`](specs/tenants.spec.ts) | The workspace roundtrip against a real migrated database: the plugin's write (#704) read back through this service's listing (#714) |
 | 4 | [`specs/engine.spec.ts`](specs/engine.spec.ts) | The gateway calling the engine over the compose network — and the boundary still being closed |
 | 5 | [`specs/health.spec.ts`](specs/health.spec.ts) | Both probes, and the two dependencies readiness names |
-| 6 | [`specs/dashboard.spec.ts`](specs/dashboard.spec.ts) | Mockup 02 drawn from the rows Flyway seeded — and the same page telling the truth in a workspace that has none. **Parked** with leg 2, and for the same reason |
+| 6 | [`specs/dashboard.spec.ts`](specs/dashboard.spec.ts) | Mockup 02 drawn from the rows Flyway seeded — and the same page telling the truth in a workspace that has none |
+| 7 | [`specs/shell-nav.spec.ts`](specs/shell-nav.spec.ts) | The shell's promises on a laid-out page: chrome that holds still under a deep pane scroll, containment nothing escapes, the sidebar's eleven honest entries, the rail and the drawer — in both themes |
+
+Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
+route-migration gate. Its containment assertions come with their own falsifier:
+[`scripts/verify-containment.sh`](scripts/verify-containment.sh) plants a viewport-fixed
+element and a pane-level horizontal overflow (`support/shell.ts` grows both) and requires
+the leg to go red naming each — the same philosophy as the failure-modes script, applied
+to CSS instead of services.
 
 Leg 6 is [#88](https://github.com/NobuData/ouroboros/issues/88), the dashboard roadmap's MVP
 gate, and it is the first leg amended in by a mockup roadmap. Its subject is the distance
@@ -106,54 +114,35 @@ There is no address for `ouroboros-engine`, and there cannot be: it publishes no
 (`docs/ARCHITECTURE.md` § 10). Leg 4 reaches it the only way anything outside the compose
 network can, and leg 5 asserts that is still the only way.
 
-### Signing in is parked, and which legs that stops
+### Signing in
 
-**The suite cannot sign in at the moment**, and the legs that need a session carry
-`test.fixme` with the reason in the report.
-[`support/session.ts`](support/session.ts) carries the long version; the short one is that
-[#703](https://github.com/NobuData/ouroboros/issues/703) replaced the stateless signed
-cookie this suite used to mint — with `ouroboros-rest`'s own `issueSession`, under the same
-`OURO_SESSION_SECRET` the container held — with a **database-backed session row**, which
-cannot be produced from outside the stack.
+The suite signs in the way the login form does: `signIn()` in
+[`support/session.ts`](support/session.ts) is one HTTP call to the development
+email/password route ([#705](https://github.com/NobuData/ouroboros/issues/705)),
+presenting the seeded credential
+([#709](https://github.com/NobuData/ouroboros/issues/709)) and putting the session cookie
+the service issued into the browser's jar. What a signed-in leg proves is therefore the
+real chain — route, hash comparison, session **row**
+([#703](https://github.com/NobuData/ouroboros/issues/703)) — and no spec knows how the
+cookie got there.
 
-Two issues were named as the way back, and one of them has landed:
-
-- **[#705](https://github.com/NobuData/ouroboros/issues/705)** added the development
-  email/password sign-in, so `signIn()` is now an ordinary HTTP call to a real route,
-  exchanging a real credential for a real session row.
-- **[#709](https://github.com/NobuData/ouroboros/issues/709)** taught the development seed
-  to write BetterAuth's `"user"` rows *and* the `credential` `account` rows behind them, so
-  the seeded owner has a password to present — the one
-  [`support/seed.ts`](support/seed.ts) documents.
-
-**What is left is not an issue but the stack.** `docker compose` starts `ouroboros-rest`
-from an image that pins `NODE_ENV=production`, which is exactly the flag #705 gates the
-password routes on, so the route answers `400 EMAIL_PASSWORD_DISABLED` by design.
-Overriding the variable does not help: the same value moves the service's listen address
-back to loopback, and a container bound to loopback publishes nothing. Serving the
-development sign-in to this suite therefore needs a **non-production `rest` that still binds
-every interface**, which is a decision for [#56](https://github.com/NobuData/ouroboros/issues/56)
-or [#715](https://github.com/NobuData/ouroboros/issues/715) rather than something a leg can
-make on their behalf. `docker-compose.yml` argues the same point at the `rest` service.
+That route only answers because of the one override this suite composes over the stack
+(**[#647](https://github.com/NobuData/ouroboros/issues/647)**): the repo-root
+`docker-compose.e2e.yml`, which `scripts/run.sh` adds with a second `-f`, runs `rest`
+under `NODE_ENV=test` — the single flag the password routes turn on — and sets
+`OURO_LISTEN_HOST=0.0.0.0`, the validated override `ouroboros-rest` grew for exactly this
+stack, because non-production otherwise binds a loopback interface Docker's port
+publishing cannot reach. The override file's header says why that is safe there and
+nowhere else; the host ports stay published on `127.0.0.1`. Between #703 and #647 the
+signed-in legs were **parked** under `test.fixme` — `support/session.ts` § *The parking,
+and what ended it* is that history.
 
 The alternatives were weighed and rejected: reaching into PostgreSQL from here would break
 the rule this directory is built on — everything reaches a service over HTTP, enforced by
 [`eslint.config.mjs`](eslint.config.mjs) — and the real GitHub handshake needs a human at a
-consent screen.
-
-**Everything that does not need a session still runs**, which is most of the suite:
-liveness, readiness, the UI shell, the negative paths, and — importantly — the assertions
-that a stranger is refused. `specs/sign-in.spec.ts` still proves that a visitor with no
-session is sent to the login screen, that a cookie naming no session is worth nothing, and
-that #33's `ouro_session` is neither honoured nor crashed into.
-
-**Leg 6 is wholly on the other side of that line**, and it is what the parking now costs:
-there is no half of the dashboard a stranger can reach, so every test in
-`specs/dashboard.spec.ts` is parked and the leg has never been observed either passing or
-failing. Its pair in `scripts/verify-failure-modes.sh` is registered all the same and
-reports itself as parked rather than as a pass — see § *Adding a leg*.
-
-**When it comes back it is one function.** No spec knows how the cookie got there.
+consent screen. `specs/sign-in.spec.ts` still proves the boundary from the outside: a
+visitor with no session is sent to the login screen, a cookie naming no session is worth
+nothing, and #33's `ouro_session` is neither honoured nor crashed into.
 
 ## Layout
 
@@ -166,13 +155,15 @@ tests/e2e/
 │   ├── stack.ts                # addresses and timeouts
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
 │   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
-│   ├── session.ts              # signing in — parked; read the header
+│   ├── shell.ts                # the containment contract as assertions, and its plants (leg 7)
+│   ├── session.ts              # signing in — one HTTP call; read the header
 │   ├── workspace.ts            # putting a context into a workspace without re-clicking
 │   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
 │   └── api.ts                  # scripted requests and their failure messages
 └── scripts/
-    ├── run.sh                  # stack up → suite → down
-    └── verify-failure-modes.sh # acceptance criterion 2
+    ├── run.sh                  # stack up (with the e2e compose override) → suite → down
+    ├── verify-failure-modes.sh # #56 acceptance criterion 2
+    └── verify-containment.sh   # #647's spot-verify: planted offences must go red
 ```
 
 Four things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
@@ -194,9 +185,10 @@ which is what makes the first run on a new page red instead of green:
 yarn e2e specs/dashboard.spec.ts --update-snapshots   # record, then read the diff before committing
 ```
 
-**There are no baselines committed yet**, and there cannot be until the leg runs: recording
-one needs a signed-in dashboard, which is what § *Signing in is parked* is about. Whoever
-unparks the leg records them in the same change.
+The first baselines were recorded by #647, in the change that unparked the leg — a
+signed-in dashboard is what recording one needs, and § *Signing in* is how the suite got
+one. Both palettes live in `specs/__screenshots__/`, masked where the seeded group's prose
+explains.
 
 ### Adding a leg
 

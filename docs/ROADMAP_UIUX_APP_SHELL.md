@@ -130,7 +130,7 @@ Complexity chips: **XS · S · M · L**.
 | CP.2 | #644 | 🟢 Done | ouroboros-ui: [CP.2] Sidebar navigation & module registry | Registry-driven icon+name nav, active states, badges, rail/drawer | mvp, shell, ui, design | N (after CP.1) | Y | L | ouroboros-ui |
 | CP.3 | #645 | 🟢 Done | ouroboros-ui: [CP.3] Profile & session menu | Avatar menu: identity, font-size control, theme, settings, sign out | mvp, shell, ui | N (after CP.1, #33, CQ.2) | Y | M | ouroboros-ui |
 | CP.4 | #646 | 🟢 Done | ouroboros-ui: [CP.4] In-pane chrome standards & primitives | StickyBar/subnav primitives, scroll restoration, anchor behavior | mvp, shell, ui, design | N (after CP.1) | Y | M | ouroboros-ui |
-| CP.5 | #647 | 🟡 Open | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
+| CP.5 | #647 | 🟢 Done | ouroboros-ui: [CP.5] Route migration & shell e2e leg | All routes mounted in the pane; #41/#49 amendments; #56 shell leg | mvp, shell, ui, ci | N (after CP.2–CP.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue CP.1 — ouroboros-ui: [CP.1] Shell layout — header, grid & scroll containment
 
@@ -462,9 +462,9 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 > **anchor behaviour**. The demonstration is the workshop's first page,
 > [`/workshop/chrome`](../ouroboros-ui/app/workshop/chrome-story.tsx) (seeding #48, whose
 > tooling is v2): subnav + dirty bar + sticky table header over 48 rows, both themes, and
-> — as the product's second in-shell route — the fixture the new pane-memory e2e group in
-> `tests/e2e/specs/shell.spec.ts` drives, parked with every session-gated leg until
-> sign-in is unparked.
+> — as the product's second in-shell route — the fixture the pane-memory e2e group in
+> `tests/e2e/specs/shell.spec.ts` drives, running since CP.5 (#647) unparked the
+> session-gated legs.
 
 - **Problem Statement:** With one scroll container, every sticky behavior
   the mockup roadmaps assume (subnav tabs, dirty-state bars, table
@@ -489,7 +489,27 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 
 ### Issue CP.5 — ouroboros-ui: [CP.5] Route migration & shell e2e leg
 
-> **GitHub issue:** #647 · **Status:** 🟡 Open · **Parent epic:** #640
+> **GitHub issue:** #647 · **Status:** 🟢 Done · **Parent epic:** #640
+
+> **Shipped.** The migration itself had already happened route by route — every route the
+> product serves mounts in the pane through `app/(app)/layout.tsx`, login renders
+> standalone per spec § 5, and no topbar markup survives (grep finds prose mentions only)
+> — so what this issue landed is the **proof and the audit trail**. The audit ran per
+> route against the four questions (sidebar entry / PageSubnav / viewport-sticky /
+> pane-level scroll): `/dashboard` passes all four with its entry lit; `/workshop/chrome`
+> is declared **contextual** (a fixture, deliberately unregistered) and passes the rest;
+> `/` is a redirect and `/login` is pre-shell by § 5. The **#56 shell leg** is
+> `tests/e2e/specs/shell-nav.spec.ts` over `tests/e2e/support/shell.ts`: chrome
+> bounding-boxes held still under a deep pane scroll on every in-shell route in both
+> themes, the eleven-entry sidebar walk (one live link today, nine honest *soon* rows, a
+> contextual route lighting nothing), rail persistence across reload, the drawer's
+> keyboard path, and containment — no pane-level horizontal scroll, no viewport-fixed
+> element, no topbar remnant. `scripts/verify-containment.sh` is the spot-verify: it
+> plants each offence and requires the leg to go red naming it. **Unparking the sessions
+> the leg needed** is this issue's one cross-service change: `docker-compose.e2e.yml`
+> runs `rest` under `NODE_ENV=test` with `OURO_LISTEN_HOST=0.0.0.0` — a new validated
+> override that moves the bind interface and nothing else — so `signIn()` answers from a
+> cold compose and every session-gated leg (the dashboard's included) now runs.
 
 - **Problem Statement:** Every existing route (#49 placeholders and the
   built pages) must mount inside the pane, the old topbar retired, and
@@ -777,7 +797,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 1. **Phase 0:** #16, #39/#40, #31, #33, #46/#48.
 2. **Phase 1:** { CP.1 (#643) ⊕ CQ.1 (#648) }
 3. **Phase 2:** { CP.2 (#644) ⊕ CP.4 (#646) ⊕ CQ.2 (#649) } → CP.3 (#645)
-4. **Phase 3:** CP.5 (#647) → **CQ.3 (#650) ✅** *(MVP gate with CP.5;
+4. **Phase 3:** CP.5 (#647) ✅ → **CQ.3 (#650)** *(MVP gate with CP.5;
    amends #41, #49, #56, the mockup-17 Settings surface, and every roadmap's
    compliance table)*
 5. **v2:** CR.1 (#651) ⊕ CR.2 (#652) ⊕ CR.3 (#653).
@@ -814,7 +834,9 @@ Amendments posted at filing:
 Per-route amendments on each mockup roadmap's frame issue are **posted during
 migration** (CP.5's scope), against that roadmap's UI/UX Shell Compliance
 section — the sections themselves are already present in every roadmap under
-`docs/`.
+`docs/`. The first was posted with CP.5 itself: mockup 02's I.1 (#80), whose
+dashboard was the one migrated module surface, with #41, #49 and #56 amended
+in the same pass. The rest follow as their screens land.
 
 ## References
 

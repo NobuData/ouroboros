@@ -89,6 +89,44 @@ export function takePaneTraversal(): boolean {
   return was;
 }
 
+/** The position at the reader's last interaction — see {@link snapshotPanePosition}. */
+let snapshot: { readonly key: string; readonly top: number } | null = null;
+
+/**
+ * Snapshot where the reader is, at the moment they act.
+ *
+ * Taken on every capture-phase click and keydown, because one of those presses is the one
+ * that starts a navigation — and between that press and the navigation's own effects, the
+ * *router* scrolls the pane (its walk-into-view runs off the commit, before the URL has
+ * even moved), which the scroll listener then records over the departed route's memory.
+ * The snapshot is what the departure is reconciled from; a press that starts no
+ * navigation is simply replaced by the next one.
+ *
+ * @param key The route being viewed, as `pathname?search`.
+ * @param top The pane's `scrollTop` at the press.
+ */
+export function snapshotPanePosition(key: string, top: number): void {
+  snapshot = { key, top };
+}
+
+/**
+ * Put a departed route's memory back to where the reader actually left it.
+ *
+ * Called by the navigation effect on arriving at a new route, with the route it came
+ * from: if the last interaction was pressed on that departed route, its snapshot is the
+ * honest reading position — later scrolls under its key were the router's transition
+ * mechanics, not the reader. Consumed either way, so a stale press cannot rewrite a
+ * departure it did not cause.
+ *
+ * @param departedKey The route navigated away from.
+ */
+export function reconcileDeparture(departedKey: string): void {
+  if (snapshot !== null && snapshot.key === departedKey) {
+    POSITIONS.set(departedKey, snapshot.top);
+  }
+  snapshot = null;
+}
+
 /**
  * Forget everything. For tests, which share module state the way two routes in one
  * session do — deliberately in the app, not deliberately in a test file.
@@ -96,4 +134,5 @@ export function takePaneTraversal(): boolean {
 export function resetPanePositions(): void {
   POSITIONS.clear();
   traversing = false;
+  snapshot = null;
 }

@@ -2406,6 +2406,14 @@ Issue-level impact:
 | I.2–I.8 (#81–#87) | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | I.9 (#88) | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
+**Audited under CP.5 (#647), 2026-08-15** — the four questions, answered for
+`/dashboard`: sidebar entry registered and lighting under its URL ✓; no subnav
+on this page, nothing to convert to PageSubnav ✓; no viewport-sticky offenders
+✓; no pane-level horizontal scroll (wide regions carry their own wrappers) ✓.
+Standing proof: `tests/e2e/specs/shell-nav.spec.ts` asserts all four per route,
+and `tests/e2e/scripts/verify-containment.sh` proves the containment pair can
+go red. The amendment comment on I.1 (#80) was posted with that change.
+
 ## Next Step
 
 **Issues filed 2026-08-09.** The validation gate is closed: the `dashboard` label was

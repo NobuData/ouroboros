@@ -21,21 +21,21 @@
 #   db        tenants.spec.ts     the API leg is reading a database rather than a fixture
 #   ui        shell.spec.ts       the browser legs are served by the UI container
 #   db        dashboard.spec.ts   the dashboard's figures come out of the read model rather
-#                                 than out of the mockup (#88) — registered, not yet observed
+#                                 than out of the mockup (#88)
 #
 # ## A pair whose leg is parked
 #
-# The dashboard leg needs a session and this suite cannot sign in against the compose stack
-# (tests/e2e/README.md § "Signing in is parked"), so every test in it carries `test.fixme`
-# and the run below exits zero having executed nothing. That is neither a pass nor a
-# failure and this script says so rather than scoring it: a parked pair is reported with
-# `--` and left out of the tally, because counting it either way would be a lie in one
-# direction or the other.
+# A spec every one of whose tests carries `test.fixme` exits zero having executed nothing,
+# which is neither a pass nor a failure, and this script says so rather than scoring it: a
+# parked pair is reported with `--` and left out of the tally, because counting it either
+# way would be a lie in one direction or the other.
 #
-# It is registered anyway, and deliberately. The alternative — leaving the pair out until
-# the leg runs — is how a leg ships with no failure mode at all: the day somebody deletes
-# the `test.fixme` lines, this script starts checking it without anybody having to remember
-# that it should.
+# No pair is parked today. The dashboard pair spent its first months that way — the suite
+# could not sign in until #647 composed the e2e override over the stack (support/session.ts
+# carries that history) — and it was registered anyway, deliberately: the alternative,
+# leaving a pair out until its leg runs, is how a leg ships with no failure mode at all.
+# The day the `test.fixme` lines went, this script started checking it with nobody having
+# to remember that it should. The mechanism stays for the next parked leg.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
@@ -82,8 +82,11 @@ cd "$ROOT"
 # at. Removed on the way out unless something failed.
 LOG_DIR=$(mktemp -d)
 
+# The same pair of files scripts/run.sh composes, for the same reason: recreating `rest`
+# from the base file alone would put the production posture back and re-park sign-in in
+# the middle of a run (#647).
 compose() {
-  docker compose --profile full "$@"
+  docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full "$@"
 }
 
 # wait_healthy — block until every service reports healthy again, or give up.
@@ -115,7 +118,7 @@ fi
 # wrote down. So it is reported and not counted, in the words a reader of the log needs.
 parked() {
   printf '  --    %s ran nothing with %s stopped: every test in it is parked, so this\n' "$1" "$2"
-  printf '        pair asserts nothing yet. See tests/e2e/README.md § Signing in is parked.\n'
+  printf '        pair asserts nothing yet. See tests/e2e/support/session.ts on parking.\n'
 }
 
 # expect_red SERVICE SPEC MARKER — stop SERVICE, run SPEC, require it to fail, require the
@@ -176,10 +179,11 @@ expect_red engine engine.spec.ts "engine_unavailable"
 # 503 is readiness refusing while the container stays alive.
 expect_red engine health.spec.ts "503"
 
-# The API leg, against the layer underneath it. A tenant route with no database is the
-# service itself failing, and its message is a constant by design — `internal_error` is
-# the whole of what a caller is told, so it is what this looks for.
-expect_red db tenants.spec.ts "internal_error"
+# The API leg, against the layer underneath it. The leg's first touch of the database is
+# now the sign-in itself (#647 rewrote it onto the #704 organization surface, and every
+# request in it carries a session), so with `db` stopped it is the credential exchange
+# that fails — and `support/session.ts` names it, which is the message this looks for.
+expect_red db tenants.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 
 # The browser legs — and the one case with more than one honest answer.
 #
@@ -192,6 +196,13 @@ expect_red db tenants.spec.ts "internal_error"
 # stopped container.
 expect_red ui shell.spec.ts "ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ECONNREFUSED|socket hang up"
 
+# The shell leg (#647), against the same stopped container and the same two honest
+# presentations — it is served by the same UI and signed in through the same rest, so the
+# first thing it touches with `ui` stopped is the thing that is not answering. Its second
+# failure mode — containment broken with everything healthy — has a script of its own:
+# verify-containment.sh, which plants each offence and requires the catch by name.
+expect_red ui shell-nav.spec.ts "ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ECONNREFUSED|socket hang up"
+
 # The dashboard leg (#88), against the layer its every figure comes out of. `27 PRs merged`
 # and `9h 40m of queued work` are aggregations over rows, so a dashboard that still drew them
 # with the database stopped would be a page drawing the mockup — which is exactly the failure
@@ -202,13 +213,13 @@ expect_red ui shell.spec.ts "ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ECONNREFU
 # its first step, which is honest — a session is a row, so with no database there is nobody
 # to sign in as, and `support/session.ts` says so by name in its failure.
 #
-# **The marker is an alternation because this pair has never been observed**, and it cannot
-# be until the leg runs: the sign-in refusal, an aggregate that answers `500`, and a guard
-# that sends an unauthenticated request to `/login` are three honest ways for the same
-# stopped container to present, and naming one of them would be a guess dressed up as a
-# measurement. Whoever unparks the leg should watch this pair once and cut it down to what
-# actually happened.
-expect_red db dashboard.spec.ts "sign-in for .* answered|internal_error|answered 5[0-9][0-9]|/login"
+# The marker was an alternation until #647 unparked the leg and this pair was finally
+# observed: with `db` stopped, every test in the leg fails at its first step — the
+# sign-in, whose database-backed session row cannot be written — and
+# `support/session.ts` names it. The other presentations the alternation guessed at
+# (an aggregate's `internal_error`, a guard redirect to `/login`) never got a chance
+# to happen, because nothing gets past the credential exchange.
+expect_red db dashboard.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 
 printf '\n'
 if check_summary; then

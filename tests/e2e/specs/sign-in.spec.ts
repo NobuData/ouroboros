@@ -27,8 +27,8 @@
 
 import { type Page, expect, test } from "@playwright/test";
 
-import { SEED_OWNER, SEED_TENANT } from "../support/seed";
-import { SESSION_COOKIE, SESSION_PARKED, signIn } from "../support/session";
+import { SEED_OWNER, SEED_PERSONAL_TENANT, SEED_TENANT } from "../support/seed";
+import { SESSION_COOKIE, signIn } from "../support/session";
 import { UI_URL } from "../support/stack";
 
 test.describe("the session is really checked", () => {
@@ -88,8 +88,6 @@ test.describe("the session is really checked", () => {
 });
 
 test.describe("login → tenant select → dashboard", () => {
-  test.fixme(true, SESSION_PARKED);
-
   /**
    * Sign in and walk step 2 the way a person does.
    *
@@ -157,11 +155,16 @@ test.describe("login → tenant select → dashboard", () => {
 
     await page.goto("/login");
 
-    // Step 2's first acceptance criterion, against the running stack: three rows, the
-    // counts the seed's enablement rows produce, and the `personal` pill on the one
-    // workspace #704 creates at first sign-in.
-    await expect(page.getByRole("radio")).toHaveCount(3);
-    await expect(page.getByRole("switch")).toHaveCount(3);
+    // Step 2's first acceptance criterion, against the running stack: the seed's rows by
+    // name, the counts its enablement rows produce, and the `personal` pill on the one
+    // workspace #704 creates at first sign-in. The rows are asserted by name rather than
+    // counted, deliberately: leg 3's roundtrip (`specs/tenants.spec.ts`) files `e2e-`
+    // workspaces for the same owner within the same run, so a total here would depend on
+    // which leg the runner happened to finish first.
+    await expect(page.getByRole("radio", { name: new RegExp(SEED_TENANT.slug) })).toBeVisible();
+    await expect(
+      page.getByRole("radio", { name: new RegExp(SEED_PERSONAL_TENANT.slug) }),
+    ).toBeVisible();
     await expect(page.getByText("personal")).toBeVisible();
     await expect(page.getByText(/4 repos enabled · incl\. helios-firmware/)).toBeVisible();
   });
@@ -171,9 +174,15 @@ test.describe("login → tenant select → dashboard", () => {
 
     await enterWorkspace(page, SEED_TENANT.slug);
 
-    // The subline is built from the user the *service* reported, not from anything this
-    // suite sent — so a session that authenticated the wrong person would show here and
-    // nowhere else in the run.
-    await expect(page.locator("body")).toContainText(SEED_OWNER.displayName);
+    // The account button's name is built from the user the *service* reported, not from
+    // anything this suite sent — so a session that authenticated the wrong person would
+    // show here and nowhere else in the run. The full name lives in the accessible name
+    // (`app/shell/account.ts`, accountMenuLabel) rather than in page text: the page
+    // renders the given name in the greeting and initials in the avatar.
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(`^Account menu — ${SEED_OWNER.displayName}`),
+      }),
+    ).toBeVisible();
   });
 });

@@ -31,7 +31,9 @@ name: ouroboros · e2e
 # when its service is stopped. It runs after, on its own stack, because a green suite
 # cannot distinguish a working system from a suite that asserts nothing, and only breaking
 # the system on purpose can. It is separate so its runtime is not charged against the
-# ten-minute budget the suite enforces on itself.
+# ten-minute budget the suite enforces on itself. Since #647 it also carries the shell
+# leg's containment spot-verify: the same question — can this green go red? — asked of
+# the CSS containment assertions by planting each offence.
 
 on:
   schedule:
@@ -152,6 +154,14 @@ jobs:
       - name: Verify each leg fails when its service is stopped
         working-directory: tests/e2e
         run: scripts/verify-failure-modes.sh --up
+
+      # #647's spot-verify, on the stack the step above restored: plant a viewport-fixed
+      # element and a pane-level horizontal overflow, and require the shell leg to go red
+      # naming each. Same philosophy as the step above, applied to CSS instead of
+      # services.
+      - name: Verify a broken containment turns the shell leg red
+        working-directory: tests/e2e
+        run: scripts/verify-containment.sh
 
       - name: Tear the stack down
         if: always()
