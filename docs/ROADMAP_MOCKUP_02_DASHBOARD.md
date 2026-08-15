@@ -1122,9 +1122,8 @@ all three issues: the `.topbar` of
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | H.1 | #77 | 🟢 Done | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
-| H.2 | #78 | 🟡 Open | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
-| H.3 | #79 | 🟢 Done | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
-
+| H.2 | #78 | 🟢 Done | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
+| H.3 | #79 | 🟡 Open | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
 ### Issue H.1 — ouroboros-ui: [H.1] Tenant chip — org/repo context switcher
 
 > **GitHub issue:** #77 · **Status:** 🟢 Done · **Parent epic:** #61
@@ -1220,7 +1219,54 @@ all three issues: the `.topbar` of
 
 ### Issue H.2 — ouroboros-ui: [H.2] Live & needs-you pills with real counts
 
-> **GitHub issue:** #78 · **Status:** 🟡 Open · **Parent epic:** #61
+> **GitHub issue:** #78 · **Status:** 🟢 Done · **Parent epic:** #61
+
+> **Shipped.** CP.1's two em dashes are counts —
+> [`app/shell/loop-pills.tsx`](../ouroboros-ui/app/shell/loop-pills.tsx), reading the I.8
+> store and issuing **no request of its own**, which is decision F4 and the reason #87 is
+> provided at the `(app)` layout rather than inside the dashboard route. The seeded
+> organization shows `3 loops live` and `Needs you · 2`, both asserted against the same
+> figures `ouroboros-rest`'s `MOCKUP_02` fixture holds the seed to; the empty organization
+> shows **neither pill, not a zero**, which is the honesty rule (§ 3.5) the em dashes were
+> keeping in the first place. `__tests__/shell/loop-pills.test.tsx` is where each of those is.
+>
+> **The needs-you count is `pulse.interventions7d`, and the pill says so.** The issue and this
+> roadmap both call it the "`needs_human` active count", and there is no such number: in the
+> read-model `needs_human` is a **terminal** status — `V008__dashboard_runs.sql` makes
+> `finished_at` not-null for it — so nothing is ever *actively* needs-human. What the aggregate
+> carries is the pulse card's own figure, runs that reached `needs_human` in the trailing seven
+> days, which is 2 for the seed and the `2 interventions` the mockup draws. It is the right
+> number and it is not a live queue, so the pill's tooltip states the window rather than
+> letting `Needs you · 2` read as two things waiting at this moment. **J.2 (#90) is what
+> replaces the source** with a real inbox feed, exactly as the issue's own *upgraded by #90*
+> says.
+>
+> **It does not link, and that is the same rule again.** The issue asks for a link to the #49
+> inbox placeholder; #49 has not landed, so `/inbox` is a `404` — and the sidebar's own *Needs
+> You* entry already declines to link there for precisely that reason (`nav-modules.ts`, a
+> `soon` row with a note). A pill linking to a 404 would be the one dishonest thing in the
+> chrome, so the tooltip names both mockup 16 and #49 and the link arrives when the route
+> does.
+>
+> **Both dot treatments are #16 tokens, and only one of them moves.** The live dot takes
+> `--accent` with `--accent-glow` — "the glow reserved for live things" — and pulses under a
+> `prefers-reduced-motion: no-preference` guard, the same shape `dashboard.css`'s skeleton
+> uses. The needs-you pill takes the warn trio (`--warn`, `--warn-line`, `--warn-tint`) that
+> mockup 02's `.needs-pill` draws, and its dot deliberately does **not** pulse: the pulse is
+> what separates *running right now* from *waiting for you*, and two throbbing pills would say
+> one thing twice.
+>
+> **The live region is the wrapper, not the pills.** `aria-live="polite"` sits on a container
+> that is always rendered and is `:empty` when both counts are zero, because a live region has
+> to be in the accessibility tree *before* the content that changes inside it — one inserted
+> along with its own first announcement is one a screen reader may never read. So a count
+> moving from 3 to 4 is an update to an existing region rather than an insertion, which is the
+> criterion.
+>
+> **Not in this ticket:** the sidebar's *Needs You* badge, whose source (`INBOX_BADGE_SOURCE`)
+> is still unpublished and belongs to #464's counts endpoint rather than to a seven-day
+> intervention count; and the notifications bell, which stays `aria-disabled` until there is an
+> inbox to notify about.
 
 - **Problem Statement:** The mockup's `● 3 loops live` (pulsing accent dot) and
   `● Needs you · 3` (warn dot, links to inbox) are ambient truth about the loop —
@@ -1342,15 +1388,14 @@ themes hold.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-------|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| I.1 | #80 | 🟢 Done | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
-| I.2 | #81 | 🟢 Done | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.3 | #82 | 🟢 Done | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
-| I.4 | #83 | 🟢 Done | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
-| I.5 | #84 | 🟢 Done | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.6 | #85 | 🟢 Done | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.7 | #86 | 🟢 Done | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
-| I.8 | #87 | 🟡 Open | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
-| I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
+| I.1 | #80 | 🟡 Open | ouroboros-ui: [I.1] Dashboard route, grid & page head | `(app)/dashboard`: 12-col grid, greeting, subline, action buttons | mvp, dashboard, ui, design | N (after #41, G.1, BA-D.5) | Y | M | ouroboros-ui |
+| I.2 | #81 | 🟡 Open | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.3 | #82 | 🟡 Open | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
+| I.4 | #83 | 🟡 Open | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
+| I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
+| I.8 | #87 | 🟢 Done | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui || I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
 
 ### Issue I.1 — ouroboros-ui: [I.1] Dashboard route, grid & page head
 
@@ -1968,7 +2013,62 @@ poll ✗  ─▶ [stale since 14:02 · retry] + last good data stays
 
 ### Issue I.8 — ouroboros-ui: [I.8] Polling hook & freshness wiring
 
-> **GitHub issue:** #87 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #87 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped.** `useDashboardSummary()` is provided at the `(app)` layout and every consumer
+> reads the one store beneath it — [`app/dashboard/summary-store.tsx`](../ouroboros-ui/app/dashboard/summary-store.tsx)
+> over the framework-free loop in
+> [`summary-poll.ts`](../ouroboros-ui/app/dashboard/summary-poll.ts), with the contract's
+> vocabulary written once in [`summary.ts`](../ouroboros-ui/app/dashboard/summary.ts) so the
+> two sides cannot spell a header differently. Every clause of § 5.4 is a case in
+> `__tests__/dashboard/summary-poll.test.ts` against mocked timers — the fifteen-second
+> cadence, the tag echoed and replaced, the hidden tab that issues nothing and refreshes on
+> return, the `X-Ouro-Poll-After` that overrides the default and survives an answer that lost
+> the header, and the *one request per interval* criterion in
+> `summary-store.test.tsx`, where three consumers render at once and one request goes out.
+>
+> **The poll needed a route handler, and it is this module's first.** Everything else the UI
+> reads, it reads while rendering; a Server Action would have had to carry the tag as an
+> argument and mime the `304` as a return value — the same exchange with the status line
+> rewritten as data, and a second contract to keep in step with the first. So
+> [`app/api/dashboard/route.ts`](../ouroboros-ui/app/api/dashboard/route.ts) answers
+> `GET /api/dashboard` on this origin and forwards the conditional exchange unchanged, and
+> [`app/api/dashboard-summary.ts`](../ouroboros-ui/app/api/dashboard-summary.ts) is the
+> server-side read behind it. That read deliberately does **not** go through the typed
+> client, for the reason `app/api/health.ts` does not either: the middleware turns every
+> non-`ok` response into a throw, and a `304` is not `ok` — the cheapest answer in the whole
+> contract would have arrived as a rejection about an empty body. Nothing is lost by it;
+> the path is still typed as one the contract publishes and the payload as the generated
+> schema type, so `yarn api:sync` breaks the file rather than a browser.
+>
+> **A `401` is an answer here, never a redirect.** A poll is not a render: throwing Next.js's
+> redirect signal out of a route handler would answer the poll with a login page, which it
+> would then try to read as a dashboard. So the session ending is `{state: "gone"}`, the loop
+> stops asking on the interval — a dead session does not mend itself, and asking anyway is one
+> request per interval that cannot succeed — and coming back to the tab tries once more, which
+> is what makes signing in again in another tab enough to bring this one back. The screen is
+> still the reader's to be on; the next render of any `(app)` screen goes through
+> `requireWorkspace()`, which is the thing that actually sends them to the login page.
+>
+> **The workspace switch says so rather than being asked.**
+> [`summary-refresh.ts`](../ouroboros-ui/app/dashboard/summary-refresh.ts) is a signal, not
+> data, published by `switchWorkspace()` — the one write both menus make — because the
+> publishers are in the shell and the store is at the layout, and threading a poll through two
+> menus and a chip that have no other interest in it would be worse than either. I.4 (#83)
+> publishes the same signal after the auto-merge `PATCH`. Subscribing to BetterAuth's session
+> instead would have caught the switch and *not* the write, so the signal would still be
+> needed and the surface would have grown two ways to say one thing.
+>
+> **One correction to H.1's shipped note.** It says the focus-repo preference is what "#87
+> spends". It is not, and cannot be: `GET /api/v1/dashboard` declares `query?: never` — the
+> aggregate takes no parameters at all, because it is the *whole* workspace in one payload.
+> The `?repo=` filter is G.2's and G.4's, so the preference is spent by the drill-in screens
+> behind *Open run console →* and *Manage queue →*, not by this poll.
+>
+> **Not in this ticket:** no server-rendered first payload — the store's first answer is its
+> own immediate request, and I.1 (#80) is where a page hands one down if it wants the first
+> paint to carry numbers; no stale banner (I.7, #86), which is what `updatedAt` and `error`
+> exist for; and no EventSource (J.1, #89), which this loop is the fallback underneath.
 
 - **Problem Statement:** One polling loop must feed the page and the topbar pills
   (H.2) per the G.6 contract — multiple independent pollers would multiply load and
@@ -2306,20 +2406,26 @@ since they landed. Two of this roadmap's standing prerequisites can be struck wi
 capabilities the product already had (`readEnablement()`, `organization.setActive`), and the
 only thing genuinely missing was the both-flags rule over the first, which H.1 wrote down.
 The remaining unfiled BetterAuth entries are BA-C.3 and BA-D.5, and Epic G shipped without
-either. **H.2 (#78) and H.3 (#79) are unblocked and parallel**; the shell keyboard and the
-one-write-one-message rules they will meet are now `app/shell/menu.ts`'s and
-`app/shell/switch-workspace.ts`'s rather than the account menu's private business. **H.3 (#79)
-has since shipped**, so H.2 (#78) is what is left of the shell chrome.
+either. **H.3 (#79) is unblocked**; the shell keyboard and the one-write-one-message rules
+it will meet are now `app/shell/menu.ts`'s and `app/shell/switch-workspace.ts`'s rather than
+the account menu's private business.
 
-**Epic I opened 2026-08-14 with I.1 (#80).** The third of this roadmap's standing
-prerequisites can be struck with it: **BA-D.5 (the auth guard) was never blocking either** —
-`requireWorkspace()` has gated every screen in `app/(app)` since #45, called by the page
-rather than by the group's layout, which is the framework's own guidance and is why the page
-that skipped the check is the page with nothing to draw. Nothing was waiting on a ticket
-nobody filed. The frame is now standing with #70's payload behind it, so **I.2–I.6 (#81–#85)
-are unblocked and parallel** — each replaces one card of the grid from the aggregate the page
-already fetches — and **I.8 (#87)** can wire its `ETag` loop to the read `app/api/dashboard.ts`
-already makes. **I.2–I.6 (#81–#85) have all since shipped**, so every card of the grid is now
-drawn from that one payload and the page has no placeholder panel left. I.7 (#86) follows the
-cards, and **has since shipped as well** — so what is left of Epic I is I.8 (#87), whose poll
-drives #86's freshness boundary, and I.9 (#88), the epic's gate.
+**Epic I opened at its root on 2026-08-14, out of order.** **I.8 (#87) shipped** ahead of
+I.1, because H.2 (#78) was the ticket in hand and the hook is what it reads — the polling
+store is provided at the `(app)` layout, so it feeds the topbar pills on every signed-in
+screen whether or not the dashboard page has been rebuilt yet. Three things arrived with it
+that the rest of Epic I inherits: `GET /api/dashboard` on this origin (the module's first
+route handler, and the reason a poll can carry `If-None-Match` and hear `X-Ouro-Poll-After`
+at all), `useDashboardSummary()` exposing `{data, updatedAt, error}` — which is what I.7
+(#86) draws its stale banner from — and the refresh signal I.4 (#83) publishes after the
+auto-merge write. I.1–I.7 now have a store to render from rather than a fetch each.
+
+**H.2 (#78) shipped on top of it the same day**, which is what the hook was pulled forward
+for: the topbar's two pills carry the seed's `3 loops live` and `Needs you · 2` on every
+signed-in screen, drawn from that one poll and hidden entirely rather than zeroed for a
+workspace with nothing in it. Two corrections came out of it, both recorded above: there is
+no "`needs_human` active count" to read — the status is terminal, so the number is the pulse
+card's `interventions7d` and the pill states its window — and the pill does not link to the
+inbox, because #49 has not landed and `/inbox` is a 404. **Epic H has one issue left, H.3
+(#79)**, and the next thing on this roadmap is I.1 (#80), which replaces the #45 page body
+and hands its cards to the store the pills are already reading.

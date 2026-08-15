@@ -366,6 +366,28 @@
   white-space: nowrap;
 }
 
+/*
+ * The pills' live region (H.2, issue 78). It holds whichever of the two pills has a count
+ * above zero, at the cluster's own gap so that grouping them changes nothing about the row.
+ *
+ * It is **always rendered**, because a live region has to be in the accessibility tree
+ * before the content that changes inside it — one inserted along with its own first
+ * announcement is one a screen reader may never read. `:empty` is what keeps that from
+ * costing an organization with nothing in it a gap in the header for a region carrying no
+ * pills. `display: contents` would have done the same with no rule at all, and is not used
+ * here for one reason: an element with it was for years dropped from the accessibility tree
+ * altogether, which for a live region is a silent failure rather than a visible one.
+ */
+.shell-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.shell-pills:empty {
+  display: none;
+}
+
 .shell-pill {
   display: inline-flex;
   align-items: center;
@@ -379,22 +401,70 @@
   white-space: nowrap;
 }
 
+/*
+ * The needs-you pill, in the warn treatment mockup 02's `.needs-pill` draws: the hue carries
+ * the whole surface rather than only the dot, because this is the pill that is asking for
+ * something. Every value is a #16 token, so it holds in both palettes without a second rule.
+ */
+.shell-pill--warn {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
 .shell-pill__count {
   color: var(--ink-faint);
   font-family: var(--f-mono);
 }
 
-/*
- * The live-loops dot — the accent-and-glow treatment docs/DESIGN_TOKENS.md reserves for a
- * thing that is running, which is the same one the sidebar's active entry wears.
- */
+/* Inside the warn pill the count is the point, so it takes the pill's own hue. */
+.shell-pill--warn .shell-pill__count {
+  color: inherit;
+}
+
+/* The shape both dots share. What each *means* is the modifier below it. */
 .shell-pill__dot {
   width: var(--sp-3);
   height: var(--sp-3);
   flex: none;
   border-radius: var(--r-round);
+}
+
+/*
+ * The live-loops dot — the accent-and-glow treatment docs/design/tokens.css reserves for a
+ * thing that is running (`--accent-glow`, "the glow reserved for live things"), which is the
+ * same one the sidebar's active entry wears.
+ */
+.shell-pill__dot--live {
   background: var(--accent);
   box-shadow: 0 0 0.375rem 0 var(--accent-glow);
+}
+
+/*
+ * The needs-you dot. Warn, and deliberately **not** pulsing: the pulse is what distinguishes
+ * *running right now* from *waiting for you*, and two pills throbbing side by side would say
+ * the same thing twice in the one place a reader glances at without deciding to.
+ */
+.shell-pill__dot--warn {
+  background: var(--warn);
+}
+
+/*
+ * The pulse, for a reader who has not asked for less motion — the same shape and the same
+ * guard as `app/dashboard/dashboard.css`'s skeleton, and the mockup's `.dot.pulse`: a ring
+ * of the live glow expanding out of the dot and fading, rather than anything that moves the
+ * dot itself, so nothing in the header shifts on the beat.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .shell-pill__dot--live {
+    animation: shell-pill-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes shell-pill-pulse {
+  50% {
+    box-shadow: 0 0 0.375rem 0.3125rem transparent;
+  }
 }
 
 .shell-icon-button,
@@ -1113,7 +1183,13 @@ a.shell-nav__item--active:hover {
     display: grid;
   }
 
-  .shell-pill {
+  /*
+   * The whole region rather than each pill (H.2, issue 78): hiding the pills alone would
+   * leave their wrapper in the cluster's flex row, paying a gap for two things nobody can
+   * see. Nothing is lost to a screen reader, which does not read `display: none` either
+   * way — at this width the counts are on the dashboard, which is one press away.
+   */
+  .shell-pills {
     display: none;
   }
 

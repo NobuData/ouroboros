@@ -170,6 +170,15 @@ Complexity chips: **XS · S · M · L**.
 > > keyboard into `app/shell/menu.ts` and its workspace write into
 > > `app/shell/switch-workspace.ts`, both now shared with CP.3's account menu.
 >
+> > **Amended 2026-08-14 by [#78](https://github.com/NobuData/ouroboros/issues/78) (H.2).**
+> > The two em dashes are counts, from the shared poll
+> > ([#87](https://github.com/NobuData/ouroboros/issues/87)) rather than from a request of
+> > their own: `3 loops live` and `Needs you · 2` in the seeded workspace. The honesty rule
+> > this issue kept by drawing a dash is kept the other way round now — a pill with nothing
+> > to report is **not drawn at all**, so an empty workspace gets a header with an empty slot
+> > rather than a pair of noughts. `app/shell/loop-pills.tsx`, and the em dash survives
+> > nowhere in this row except the chip's one state.
+>
 > Third, and the part with no precedent in the module: **the overlay layer**. § 1.3's last
 > clause asks that dialogs, sheets and the palette render outside the pane and lock its
 > scroll, and the subtlety is the lock.

@@ -219,7 +219,9 @@ ouroboros-ui/
 │   │   ├── repos.ts         #   repos.list() / repos.setEnabled()
 │   │   ├── enablement.ts    #   the two composed into what one screen reads
 │   │   ├── engine.ts        #   engine.status() — GET /engine/status
-│   │   └── health.ts        #   readReadiness() — the one read not via the client
+│   │   ├── health.ts        #   readReadiness() — one of two reads not via the client
+│   │   ├── dashboard-summary.ts # …and the other: the aggregate, read conditionally
+│   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
 │   │   ├── button.tsx       #   Button — default · primary · ghost · danger
@@ -241,6 +243,10 @@ ouroboros-ui/
 │   │   └── …                #   the components over them
 │   ├── login/               # the sign-in & tenancy screen's components
 │   ├── dashboard/           # the dashboard's reader, decisions, components, sheet
+│   │   ├── summary.ts       #   the polling contract's vocabulary — both sides read it
+│   │   ├── summary-poll.ts  #   the loop: 15s · 304-aware · tab-aware · backoff-aware
+│   │   ├── summary-store.tsx #  the provider at (app), and useDashboardSummary()
+│   │   └── summary-refresh.ts # "ask again now", published by the workspace switch
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
@@ -433,6 +439,20 @@ authenticate to it; [`app/api/server.ts`](app/api/server.ts) imports `server-onl
 turns a Client Component that reaches for it into a build error rather than a runtime one.
 Screens therefore fetch in Server Components and pass data down, and a Client Component
 that needs to *write* calls a Server Action.
+
+**There is one exception, and it is a route handler**
+([#87](https://github.com/NobuData/ouroboros/issues/87)). The dashboard poll is neither a
+render nor a write: it is the browser asking for the same payload every fifteen seconds, and
+what makes that cheap is HTTP's — `If-None-Match` echoed back, a `304` with no body, and the
+`X-Ouro-Poll-After` header that lets the server slow every open dashboard by changing one
+variable. A Server Action would have had to carry the tag as an argument and mime the answer
+as a return value, which is that exchange with the status line rewritten as data. So
+[`app/api/dashboard/route.ts`](app/api/dashboard/route.ts) answers `GET /api/dashboard` on
+this origin and forwards the exchange unchanged over
+[`app/api/dashboard-summary.ts`](app/api/dashboard-summary.ts), which is still server-side
+and still forwards the same two cookies. It gates nothing itself: a visitor with no session
+gets the service's `401`, which is the same authority every rendered screen is checked
+against. See [the polling store](#the-polling-store).
 
 **Neither client sends `X-Ouro-Tenant` any more.** Both did, from the `ouro_tenant` cookie,
 until [#719](https://github.com/NobuData/ouroboros/issues/719). The header is an *override* of
@@ -1101,6 +1121,53 @@ does not draw — empty, loading and failed — across all of them at once. What
 is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page fresh with the
 `ETag` poll and drives #86's freshness boundary instead of its manual retry.
 
+## The polling store
+
+The page's cards and the header's two pills all want the same freshness, and
+[`../docs/ARCHITECTURE.md` § 5.4](../docs/ARCHITECTURE.md#54-the-polling-contract) is the
+contract that gives it to them from **one loop**
+([#87](https://github.com/NobuData/ouroboros/issues/87)). Independent pollers would multiply
+the server's cost and — worse — let a pill and a card disagree, on one screen at one moment,
+about how many loops are live.
+
+```
+(app)/layout.tsx
+  └─ <DashboardSummaryProvider>          one poll, built here and nowhere lower
+       ├─ header · live pill · needs-you pill      ┐
+       └─ page  · stat cards · tables · banner     ┘ all read useDashboardSummary()
+```
+
+```ts
+const { data, updatedAt, error } = useDashboardSummary();
+```
+
+| Field | What it means |
+|---|---|
+| `data` | the last payload read, or `null` before the first answer. **Survives a failure** — the numbers on screen were true a moment ago, and blanking them replaces a slightly old truth with none |
+| `updatedAt` | when `data` was last *confirmed current*, epoch ms. A `304` moves it as surely as a `200` does: *nothing has changed* is a fresh statement about the payload already held |
+| `error` | why the last attempt failed, as a sentence for a person, or `null`. Cleared by the next success, so it describes the current state rather than the worst thing that ever happened to the page |
+
+The loop itself is [`app/dashboard/summary-poll.ts`](app/dashboard/summary-poll.ts) and is
+framework-free, so every clause of the contract is a unit test against mocked timers rather
+than a rendered page: fifteen seconds while visible, **nothing at all** while hidden and an
+immediate ask on return, the `ETag` echoed as `If-None-Match` and replaced by each answer,
+and `X-Ouro-Poll-After` as the effective interval — which is how an operator raising
+`OURO_DASHBOARD_POLL_SECONDS` slows every open dashboard within one poll cycle, with nothing
+shipped to a browser. Requests never overlap: an ask that overtakes another wins, and the
+overtaken answer is dropped on arrival rather than raced into the store.
+
+**Two moments do not wait out the interval**, and both say so through
+[`summary-refresh.ts`](app/dashboard/summary-refresh.ts) rather than by holding the poll: a
+workspace switch (`switchWorkspace()` publishes it — `router.refresh()` moves the server's
+half and knows nothing about client state) and, with
+[#83](https://github.com/NobuData/ouroboros/issues/83), the auto-merge write.
+
+**A `401` stops the loop rather than navigating.** A poll is not a render, so the session
+ending is an answer — `error` says so, the interval stops, and coming back to the tab tries
+once more, which is what makes signing in again in another tab enough to revive this one. The
+thing that actually sends somebody to `/login` is the next render of any `(app)` screen,
+through `requireWorkspace()`.
+
 ## App shell
 
 Every signed-in screen renders inside the shell
@@ -1113,7 +1180,7 @@ supersedes the top-bar navigation the mockups were drawn with.
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ ◎ OUROBOROS [acme-robotics]                                      │  header —
-│           [Search ⌘K] [● — loops live] [Needs you —] [🔔][◐][⚙][KS ▾] │  no nav links
+│        [Search ⌘K] [● 3 loops live] [● Needs you · 2] [🔔] [KS ▾] │  no nav links
 ├───────────────┬──────────────────────────────────────────────────┤
 │ ▦ Dashboard   │                                                  │
 │ ◉ Issues soon │   {page}                                       ░ │  ← the only
@@ -1172,12 +1239,15 @@ Five things are worth knowing before adding a screen to it.
    request as the route.
 4. **What is a slot, not an omission.** The bar carries every slot § 1.1 names, in its
    order: the tenant chip beside the brand, then search · live-loops · needs-you ·
-   notifications · [account menu](#the-account-menu). The menu, the chip and
-   [the search pill's palette](#the-k-palette-and-its-action-registry) are finished; what
-   fills the rest has an issue each — real counts in both pills
-   (#78). Nothing shows a number nobody computed: an unfilled count is an em dash, which
-   is the design system's honesty rule (§ 3.5). The theme control and the settings entry
-   live *inside* the profile menu since CP.3
+   notifications · [account menu](#the-account-menu). The menu, the chip and both pills are
+   finished; the ⌘K palette behind the search pill is #79. Nothing shows a number nobody
+   computed, which is the design system's honesty rule (§ 3.5) — and since H.2
+   ([#78](https://github.com/NobuData/ouroboros/issues/78)) that cuts both ways: the pills
+   carry the [store](#the-polling-store)'s real counts, and a pill with nothing to report is
+   **not drawn at all** rather than drawn as a zero, so an empty workspace gets an empty slot
+   instead of a pair of noughts. The count that moves does so inside an `aria-live="polite"`
+   region that was already on the page, so a change is announced as an update rather than
+   missed as an insertion. The theme control and the settings entry   live *inside* the profile menu since CP.3
    ([#645](https://github.com/NobuData/ouroboros/issues/645)) — § 1.1 puts them there,
    and a control drawn twice is a state that can be read twice differently.
 5. **Overlays render beside the pane, not inside it.**

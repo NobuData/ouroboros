@@ -109,23 +109,16 @@ describe("the shell header", () => {
     expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  it("shows an em dash for the needs-you count rather than inventing one", () => {
-    renderThemed(<ShellHeader />);
+  it("offers the pills' live region, and no count until one has been read", () => {
+    // H.2 (#78) replaced CP.1's em dashes with the #87 store's counts. Rendered here without
+    // a provider above it, the store has nothing to report — which is the state every screen
+    // is in for one round trip after it loads — so the region is present and empty. What the
+    // pills do with a payload is `__tests__/shell/loop-pills.test.tsx`.
+    const { container } = renderThemed(<ShellHeader />);
 
-    const pill = screen.getByTitle(/Needs-you counts arrive/);
-    expect(pill).toHaveTextContent("—");
-    expect(pill.textContent).not.toMatch(/\d/);
-  });
-
-  it("shows an em dash for the live-loops count too", () => {
-    renderThemed(<ShellHeader />);
-
-    const pill = screen.getByTitle(/Live loop counts arrive/);
-    expect(pill).toHaveTextContent("—");
-    expect(pill).toHaveTextContent("loops live");
-    // The count is #78's to fill. A hard-coded "3" — the number the specification's own
-    // sketch draws — is a number a reader would believe.
-    expect(pill.textContent).not.toMatch(/\d/);
+    const region = container.querySelector(".shell-pills");
+    expect(region).toHaveAttribute("aria-live", "polite");
+    expect(region?.textContent).toBe("");
   });
 
   it("keeps the notifications affordance reachable and explains itself", () => {
@@ -162,15 +155,17 @@ describe("the shell header", () => {
   });
 
   it("puts the cluster in the order the specification lists it", () => {
-    // § 1.1: search pill, live-loops pill, notifications, then the profile menu. The two
-    // controls between them — the theme toggle and the settings gear — are items CP.3 (#645)
-    // moves *into* the profile menu; until it does they stay in the row.
-    renderThemed(<ShellHeader />);
+    // § 1.1: search pill, the loop pills, notifications, then the profile menu. The two
+    // controls that used to sit between them — the theme toggle and the settings gear — were
+    // folded into the profile menu by CP.3 (#645).
+    const { container } = renderThemed(<ShellHeader />);
+
+    const pills = container.querySelector(".shell-pills");
+    expect(pills).not.toBeNull();
 
     const order = [
       screen.getByRole("button", { name: /Search/ }),
-      screen.getByTitle(/Live loop counts arrive/),
-      screen.getByTitle(/Needs-you counts arrive/),
+      pills as Element,
       screen.getByRole("button", { name: /^Notifications/ }),
       screen.getByRole("button", { name: /^Account menu/ }),
     ];

@@ -73,6 +73,7 @@ describe("the shell's components and its stylesheet", () => {
     "shell/search-pill.tsx",
     "shell/command-palette.tsx",
     "shell/tenant-chip.tsx",
+    "shell/loop-pills.tsx",
   ])("%s asks for no class the sheet does not define", (file) => {
     expect(classesOf(file).filter((name) => !DEFINED.has(name))).toEqual([]);
   });

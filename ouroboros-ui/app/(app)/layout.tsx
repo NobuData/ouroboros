@@ -1,3 +1,4 @@
+import { DashboardSummaryProvider } from "@/app/dashboard/summary-store";
 import { AppShell } from "@/app/shell/app-shell";
 
 /**
@@ -7,9 +8,21 @@ import { AppShell } from "@/app/shell/app-shell";
  * nothing to the URL, so this layout wraps `/` and every screen added beside it without
  * pushing them under an `/app` prefix.
  *
- * Everything it renders is the app shell (#41), which is why this file is one line: the
- * shell is a component (`app/shell/app-shell.tsx`) rather than markup written here, so it
- * can be rendered and asserted on without Next.js's routing around it.
+ * Everything it renders is the app shell (#41) and the store that keeps it fresh, which is
+ * why this file is still short: the shell is a component (`app/shell/app-shell.tsx`) rather
+ * than markup written here, so it can be rendered and asserted on without Next.js's routing
+ * around it.
+ *
+ * **The summary store is provided here and nowhere lower**
+ * ([#87](https://github.com/NobuData/ouroboros/issues/87)). This is the one node above both
+ * of the things that read the dashboard aggregate — the topbar's live and needs-you pills,
+ * which are chrome on *every* signed-in screen, and the dashboard's own cards. Provided
+ * inside the dashboard route instead, the pills would need a poll of their own, and the
+ * contract's *one request per interval* would become two loops that disagree on one screen
+ * about how many loops are live (`docs/ARCHITECTURE.md` § 5.4).
+ *
+ * It wraps the shell rather than being wrapped by it because the header is part of what
+ * reads it, and a provider inside the shell would have to be inside the header too.
  *
  * **There is no session check here, deliberately.** A layout does not re-render on a
  * client-side navigation between sibling routes and does not control whether the rest of the
@@ -26,5 +39,9 @@ import { AppShell } from "@/app/shell/app-shell";
 export default function AppLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return <AppShell>{children}</AppShell>;
+  return (
+    <DashboardSummaryProvider>
+      <AppShell>{children}</AppShell>
+    </DashboardSummaryProvider>
+  );
 }
