@@ -269,7 +269,7 @@ describe("a workspace with nothing running", () => {
 });
 
 describe("an aggregate that could not be read", () => {
-  it("reports the reason rather than an empty workspace", () => {
+  it("says what it could not read rather than reporting an empty workspace", () => {
     // *Nothing is running* and *nobody could ask what is running* are different facts, which
     // is the rule the stat row's em dash is written under.
     render(
@@ -277,8 +277,18 @@ describe("an aggregate that could not be read", () => {
     );
 
     expect(screen.getByText("The loops could not be read")).toBeInTheDocument();
-    expect(screen.getByText("Choose a workspace first.")).toBeInTheDocument();
     expect(screen.queryByText("Nothing is running right now")).not.toBeInTheDocument();
+  });
+
+  it("leaves the reason to the page's banner, and repeats none of it (#86)", () => {
+    // The service's sentence appeared here and in eight other places on one page, which reads
+    // as nine problems rather than one. It is `app/dashboard/stale-banner.tsx`'s now, beside
+    // the only retry there is.
+    render(
+      <ActiveLoopsCard aggregate={failed("Choose a workspace first.")} readAt={READ_AT} />,
+    );
+
+    expect(screen.queryByText("Choose a workspace first.")).not.toBeInTheDocument();
   });
 
   it("keeps the card, its heading and its place in the grid", () => {

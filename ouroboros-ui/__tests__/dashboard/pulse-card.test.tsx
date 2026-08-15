@@ -272,11 +272,19 @@ describe("a workspace with nothing to measure", () => {
 });
 
 describe("a pulse that could not be read", () => {
-  it("carries the service's reason instead of a figure", () => {
+  it("says what it could not read instead of drawing a figure", () => {
     render(<PulseCard aggregate={failed("Choose a workspace first.")} workspace={membership()} />);
 
-    expect(within(card()).getByText("Choose a workspace first.")).toBeInTheDocument();
+    expect(within(card()).getByText("The pulse could not be read.")).toBeInTheDocument();
     expect(within(card()).queryAllByRole("progressbar")).toHaveLength(0);
+  });
+
+  it("leaves the reason to the page's banner, and repeats none of it (#86)", () => {
+    // The service's sentence appeared here and in eight other places on one page. It is
+    // `app/dashboard/stale-banner.tsx`'s now, beside the only retry there is.
+    render(<PulseCard aggregate={failed("Choose a workspace first.")} workspace={membership()} />);
+
+    expect(within(card()).queryByText("Choose a workspace first.")).toBeNull();
   });
 
   it("offers no switch to press, because there is no position to draw", () => {

@@ -50,11 +50,9 @@ export function PulseCard({
   aggregate,
   workspace,
 }: Readonly<{ aggregate: Reading<Dashboard>; workspace: Membership }>) {
-  // Read once, as two values: the figures, and why there are none. Keeping the reason beside
-  // the pulse rather than re-narrowing the reading at each branch is what lets every part of
-  // this card answer the same question — *was it read* — the same way.
+  // Narrowed once rather than at each branch, which is what lets every part of this card
+  // answer the same question — *was it read* — the same way.
   const pulse = aggregate.ok ? aggregate.value.pulse : null;
-  const reason = aggregate.ok ? null : aggregate.reason;
 
   return (
     <Card as="section" fill className="dash-col--4" aria-labelledby={TITLE_ID}>
@@ -85,7 +83,7 @@ export function PulseCard({
         </span>
 
         {pulse === null ? (
-          <p className="dash-pulse__note dash-pulse__note--err">{reason}</p>
+          <p className="dash-pulse__note dash-pulse__note--err">{PULSE_NOT_READ}</p>
         ) : (
           <>
             <div className="dash-pulse__meters">
@@ -155,6 +153,17 @@ export function PulseCard({
 
 /** What the card is called, as the mockup titles it. */
 const TITLE = "Loop pulse";
+
+/**
+ * What the card says when the aggregate was refused.
+ *
+ * It names *what* could not be read and stops there. **Why** is the page banner's, once
+ * (`app/dashboard/stale-banner.tsx`) — before
+ * [#86](https://github.com/NobuData/ouroboros/issues/86) the service's sentence was repeated
+ * here and in eight other places on one page, which reads as nine problems rather than one
+ * and buries the single retry that would fix them.
+ */
+const PULSE_NOT_READ = "The pulse could not be read.";
 
 /** The id the card's `aria-labelledby` points at. */
 const TITLE_ID = "dash-pulse-title";

@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readings } from "../helpers/dashboard";
+import { failed, readings } from "../helpers/dashboard";
 import { membership, sessionUser } from "../helpers/login";
 
 /**
@@ -74,6 +74,39 @@ describe("the dashboard route", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/, Ken —/);
     expect(screen.getByText(/^3 issues in flight, 12 queued behind them\./)).toBeInTheDocument();
     expect(screen.getByText("Mission Control")).toBeInTheDocument();
+  });
+
+  it("wraps the screen in the freshness boundary, so a read that starts failing degrades", async () => {
+    // #86's boundary is the route's, not the screen's: it holds the last render that worked,
+    // which is only meaningful for renders the *route* produces. A page that rendered the
+    // screen directly would lose the reader's data the first time a refresh failed.
+    readDashboard.mockResolvedValue(readings({ aggregate: failed("Choose a workspace first.") }));
+
+    render(await Page());
+
+    const banner = screen.getByRole("status");
+
+    expect(banner).toHaveTextContent("The dashboard could not be read.");
+    expect(banner).toHaveTextContent("Choose a workspace first.");
+    expect(within(banner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("draws no banner over a read that worked", async () => {
+    render(await Page());
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("says why once on the whole page, banner included (#86)", async () => {
+    // The end-to-end form of this ticket's rule, at the one place the banner and the cards
+    // are rendered together: the service's sentence appears in the banner and nowhere else.
+    readDashboard.mockResolvedValue(readings({ aggregate: failed("Choose a workspace first.") }));
+
+    const { container } = render(await Page());
+
+    const said = (container.textContent?.split("Choose a workspace first.").length ?? 1) - 1;
+
+    expect(said).toBe(1);
   });
 
   it("reads nothing at all when the gate redirects instead of returning", async () => {

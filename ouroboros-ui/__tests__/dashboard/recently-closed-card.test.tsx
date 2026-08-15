@@ -311,14 +311,19 @@ describe("a workspace that has closed nothing", () => {
 });
 
 describe("an aggregate that could not be read", () => {
-  it("reports the reason rather than an empty workspace", () => {
+  it("says what it could not read rather than reporting an empty workspace", () => {
     // *Nothing has closed* and *nobody could ask what has closed* are different facts, which
     // is the rule the stat row's em dash is written under.
     render(<RecentlyClosedCard aggregate={failed("Choose a workspace first.")} />);
 
     expect(screen.getByText("The completions could not be read")).toBeInTheDocument();
-    expect(screen.getByText("Choose a workspace first.")).toBeInTheDocument();
     expect(screen.queryByText("Nothing closed yet")).not.toBeInTheDocument();
+  });
+
+  it("leaves the reason to the page's banner, and repeats none of it (#86)", () => {
+    render(<RecentlyClosedCard aggregate={failed("Choose a workspace first.")} />);
+
+    expect(screen.queryByText("Choose a workspace first.")).not.toBeInTheDocument();
   });
 
   it("keeps the card, its heading and its place in the grid", () => {

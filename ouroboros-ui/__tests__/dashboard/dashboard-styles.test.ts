@@ -125,6 +125,32 @@ describe("the recently closed table", () => {
   });
 });
 
+describe("the stale-data banner", () => {
+  it("lines up with the page head it sits above, at both of the grid's widths", () => {
+    // It is a fact about the whole page rather than about a card, so it sits outside the
+    // grid — which means its inline margin has to be `.dash`'s padding, or it floats in the
+    // pane's gutter while everything under it is indented.
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*margin:\s*var\(--sp-8\) var\(--sp-10\) 0/);
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*margin-inline:\s*var\(--sp-6\)|@media[\s\S]*\.dash-stale\s*\{[^}]*margin-inline/);
+  });
+
+  it("takes its hue from the palette's own warn tokens", () => {
+    // Both palettes publish this token's contrast against `--surface`; a hand-picked amber
+    // would be legible in one theme and not the other.
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*border:\s*1px solid var\(--warn-line\)/);
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*background:\s*var\(--warn-tint\)/);
+    expect(CODE).toMatch(/\.dash-stale__headline\s*\{[^}]*color:\s*var\(--warn\)/);
+  });
+
+  it("lets the sentence wrap above the retry rather than crushing it", () => {
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
+  it("zeroes the block margin a browser gives its paragraph", () => {
+    expect(CODE).toMatch(/\.dash-stale__text\s*\{[^}]*margin:\s*0/);
+  });
+});
+
 describe("the up-next queue", () => {
   it("rules every row off but the last, as the mockup draws it", () => {
     // A rule under the final row would read as the start of something that is not there. The
@@ -262,6 +288,40 @@ describe("what this sheet no longer owns", () => {
   });
 });
 
+describe("the skeleton's geometry", () => {
+  it("mirrors the pulse card's glyph box, so the tallest card reserves its picture", () => {
+    // The same ratio and the same width the card itself holds (#86). A skeleton that guessed
+    // would move the page by the difference the moment the file arrived.
+    expect(CODE).toMatch(/\.dash-skeleton__glyph\s*\{[^}]*aspect-ratio:\s*512\s*\/\s*296/);
+    expect(CODE).toMatch(/\.dash-skeleton__glyph\s*\{[^}]*width:\s*9\.375rem/);
+  });
+
+  it("mirrors the card head's height and its bottom margin", () => {
+    // `.ou-card__head` has `margin-bottom: var(--sp-7)`, so a card's body starts in the same
+    // place whether it is drawn as a skeleton or as itself.
+    expect(CODE).toMatch(/\.dash-skeleton__head\s*\{[^}]*margin-bottom:\s*var\(--sp-7\)/);
+  });
+
+  it("rules its rows off the way the cards it stands in for do", () => {
+    expect(CODE).toMatch(/\.dash-skeleton__row\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/);
+    expect(CODE).toMatch(/\.dash-skeleton__row:last-child\s*\{[^}]*border-bottom:\s*0/);
+  });
+
+  it("pushes the pulse card's rule to the foot, as the card does", () => {
+    expect(CODE).toMatch(/\.dash-skeleton__divider\s*\{[^}]*margin:\s*auto 0/);
+  });
+
+  it("names every length in rem or a spacing token, so it scales with the type", () => {
+    // A skeleton pinned in px would reserve the right height at one font size and the wrong
+    // one at every other — which is the whole failure it exists to prevent.
+    const block = CODE.slice(CODE.indexOf(".dash-skeleton"));
+
+    for (const [, value] of block.matchAll(/(?:height|width):\s*([^;]+);/g)) {
+      expect(value.trim()).toMatch(/^(var\(--|[\d.]+rem|100%|\d+%|auto|1px)/);
+    }
+  });
+});
+
 describe("the skeleton's animation", () => {
   it("moves only for a reader who has not asked for less motion", () => {
     const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)");
@@ -269,6 +329,18 @@ describe("the skeleton's animation", () => {
 
     expect(guard).toBeGreaterThanOrEqual(0);
     expect(animated).toBeGreaterThan(guard);
+  });
+
+  it("animates every shape the skeleton draws, not only the plain bar", () => {
+    // Four shapes carry the `--raised` fill since #86; one of them left out of the guard
+    // would be a box sitting still beside three that pulse.
+    const guarded = /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?)\n\}/.exec(
+      CODE,
+    );
+
+    for (const shape of ["__bar", "__head", "__cell", "__glyph"]) {
+      expect(guarded?.[1], `${shape} does not pulse`).toContain(`.dash-skeleton${shape}`);
+    }
   });
 
   it("pulses opacity only, so nothing on the page moves or resizes", () => {

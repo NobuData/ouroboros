@@ -152,6 +152,17 @@ const NOTHING_QUEUED_NOTE =
   "size somebody put on each and the workflow that will run it.";
 
 /**
+ * What the card says when the aggregate was refused.
+ *
+ * It names *what* could not be read and stops there. **Why** is the page banner's, once
+ * (`app/dashboard/stale-banner.tsx`) — before
+ * [#86](https://github.com/NobuData/ouroboros/issues/86) the service's sentence was repeated
+ * here and in eight other places on one page, which reads as nine problems rather than one
+ * and buries the single retry that would fix them.
+ */
+const QUEUE_NOT_READ = "The queue could not be read";
+
+/**
  * What to draw in place of the list.
  *
  * An empty queue and an aggregate that was refused are not the same fact and must not read
@@ -162,8 +173,8 @@ const NOTHING_QUEUED_NOTE =
  */
 function emptyPanel(
   aggregate: Reading<Dashboard>,
-): Readonly<{ title: string; note: string }> {
+): Readonly<{ title: string; note?: string }> {
   return aggregate.ok
     ? { title: NOTHING_QUEUED, note: NOTHING_QUEUED_NOTE }
-    : { title: "The queue could not be read", note: aggregate.reason };
+    : { title: QUEUE_NOT_READ };
 }

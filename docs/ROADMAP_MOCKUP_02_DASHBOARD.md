@@ -1348,7 +1348,7 @@ themes hold.
 | I.4 | #83 | 🟢 Done | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
 | I.5 | #84 | 🟢 Done | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.6 | #85 | 🟢 Done | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
-| I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
+| I.7 | #86 | 🟢 Done | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
 | I.8 | #87 | 🟡 Open | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
 | I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
 
@@ -1903,7 +1903,46 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.7 — ouroboros-ui: [I.7] Empty, loading & error states
 
-> **GitHub issue:** #86 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #86 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The three states the mockup does not draw, designed across all nine
+> cards at once rather than card by card.
+>
+> **The reason is said once.** This is the change the rest of the ticket hangs off, and
+> `view.ts` had already named it: one refused aggregate printed the service's sentence **nine
+> times** — on four stat tiles, in four cards and in the page head's subline — which reads as
+> nine problems rather than one and buries the single retry that would fix them. The rule now
+> is **a card says what could not be read, and the banner says why**: tiles carry `NOT_READ`
+> under the em dash, each card names its own unanswered question, the subline says the
+> activity could not be read, and [`stale-banner.tsx`](../ouroboros-ui/app/dashboard/stale-banner.tsx)
+> carries the service's words beside the page's only retry. `page.test.tsx` counts the
+> occurrences end to end, so a tenth cannot come back unnoticed.
+>
+> **A failed read degrades to the last good render, not to a blank page.**
+> [`freshness.tsx`](../ouroboros-ui/app/dashboard/freshness.tsx) holds the last render that
+> worked and puts it back under the banner — *"Showing data from 14:02 — the latest refresh
+> failed"* — so killing REST mid-session leaves the reader's figures on screen with a working
+> retry, which is this issue's third acceptance criterion. **It holds the rendered tree rather
+> than the payload**, which is what keeps every card a Server Component: the alternative would
+> have moved the whole grid into the browser bundle for no visible difference. `router.refresh()`
+> merges a new server render without discarding client state, so a retry that fails again still
+> shows the data from before the failures started, and a hard reload while the service is down
+> honestly shows the unread state rather than resurrecting something from storage.
+> **I.8 (#87) drives this same boundary** — its `ETag` poll replaces the manual retry, and the
+> freshness rule stays written down in one place.
+>
+> **The skeleton is each card's own geometry.** Nine copies of one generic block reserved the
+> wrong height for eight of them, which is a skeleton that passes its own test and still lets
+> the page jump. [`loading.tsx`](<../ouroboros-ui/app/(app)/dashboard/loading.tsx>) now draws
+> the stat tile's tall figure, the tables' ruled rows, the system list, the queue's five rows
+> and the pulse card's mark at the asset's own `512×296` over three meters with a switch under
+> a rule — from classes that mirror the cards' own, asserted shape by shape.
+>
+> **Nothing is fabricated at zero.** The `kensuenobu` criterion is a test rather than a
+> screenshot: the whole screen over the empty aggregate, all nine cards designed, no em dash,
+> no `#4xx` from the mockup, no table row. The empty sentences the cards shipped with in
+> I.3–I.6 stayed — they were already one voice, and the issue's *"pull the next issue to start
+> one"* would have pointed the reader at a control that cannot act.
 
 - **Problem Statement:** A fresh workspace has no runs, no queue, no usage — the
   dashboard must be truthful and designed at zero (the mockup shows only the busy
@@ -2282,4 +2321,5 @@ are unblocked and parallel** — each replaces one card of the grid from the agg
 already fetches — and **I.8 (#87)** can wire its `ETag` loop to the read `app/api/dashboard.ts`
 already makes. **I.2–I.6 (#81–#85) have all since shipped**, so every card of the grid is now
 drawn from that one payload and the page has no placeholder panel left. I.7 (#86) follows the
-cards and is unblocked, and I.9 (#88) remains the epic's gate.
+cards, and **has since shipped as well** — so what is left of Epic I is I.8 (#87), whose poll
+drives #86's freshness boundary, and I.9 (#88), the epic's gate.

@@ -288,14 +288,22 @@ describe("a queue with nothing in it, and one nobody could read", () => {
     expect(within(card()).getByRole("button", { name: "Manage queue →" })).toBeInTheDocument();
   });
 
-  it("reports the service's reason when the aggregate could not be read", () => {
+  it("says what it could not read when the aggregate was refused", () => {
     // An empty queue and an unread aggregate are different facts and must not read alike —
     // the same rule the stat row's em dash is written under.
     render(<QueueCard aggregate={failed("Choose a workspace first.")} />);
 
     expect(within(card()).getByText("The queue could not be read")).toBeInTheDocument();
-    expect(within(card()).getByText("Choose a workspace first.")).toBeInTheDocument();
     expect(card().textContent).not.toContain("Nothing is queued");
+  });
+
+  it("leaves the reason to the page's banner, and repeats none of it (#86)", () => {
+    // The service's sentence appeared here and in eight other places on one page, which reads
+    // as nine problems rather than one. It is `app/dashboard/stale-banner.tsx`'s now, beside
+    // the only retry there is.
+    render(<QueueCard aggregate={failed("Choose a workspace first.")} />);
+
+    expect(within(card()).queryByText("Choose a workspace first.")).toBeNull();
   });
 
   it("draws no footer on a card that could not be read", () => {
