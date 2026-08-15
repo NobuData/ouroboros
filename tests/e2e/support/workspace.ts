@@ -32,7 +32,7 @@
 
 import type { BrowserContext } from "@playwright/test";
 
-import { AUTH_BASE_PATH, SESSION_COOKIE } from "./session";
+import { AUTH_BASE_PATH, SESSION_COOKIE, sessionTokenOf } from "./session";
 import { REST_URL, UI_URL } from "./stack";
 
 /**
@@ -61,20 +61,13 @@ export const ACTIVE_TENANT_COOKIE = "ouro_tenant";
  *   dashboard heading that is not there, in another file.
  */
 export async function selectWorkspace(context: BrowserContext, slug: string): Promise<void> {
-  const session = (await context.cookies()).find((cookie) => cookie.name === SESSION_COOKIE);
-
-  if (session === undefined) {
-    throw new Error(
-      `selectWorkspace(${slug}) needs a signed-in context: no ${SESSION_COOKIE} cookie is set. ` +
-        "Call signIn() from support/session.ts first.",
-    );
-  }
+  const token = await sessionTokenOf(context, `selectWorkspace(${slug})`);
 
   const response = await fetch(`${REST_URL}${AUTH_BASE_PATH}/organization/set-active`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      cookie: `${SESSION_COOKIE}=${session.value}`,
+      cookie: `${SESSION_COOKIE}=${token}`,
     },
     body: JSON.stringify({ organizationSlug: slug }),
   });

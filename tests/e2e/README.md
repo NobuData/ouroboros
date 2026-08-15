@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs, from the issue:
+deployment. Five legs from the issue, and one amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -23,6 +23,17 @@ deployment. Five legs, from the issue:
 | 3 | [`specs/tenants.spec.ts`](specs/tenants.spec.ts) | The API contract against a real migrated database, including the constraints |
 | 4 | [`specs/engine.spec.ts`](specs/engine.spec.ts) | The gateway calling the engine over the compose network — and the boundary still being closed |
 | 5 | [`specs/health.spec.ts`](specs/health.spec.ts) | Both probes, and the two dependencies readiness names |
+| 6 | [`specs/dashboard.spec.ts`](specs/dashboard.spec.ts) | Mockup 02 drawn from the rows Flyway seeded — and the same page telling the truth in a workspace that has none. **Parked** with leg 2, and for the same reason |
+
+Leg 6 is [#88](https://github.com/NobuData/ouroboros/issues/88), the dashboard roadmap's MVP
+gate, and it is the first leg amended in by a mockup roadmap. Its subject is the distance
+between a row and a figure: `27 PRs merged · 7d` is a `count` over `runs`, `9h 40m` is a
+`sum` over `queue_items` that skips the one item nobody has estimated, and `92%` is 46 merged
+of 50 closed over fourteen days. Every card is thoroughly unit-tested in `ouroboros-ui`
+against a payload; nothing but this leg asks whether the payload is the database. It also
+carries the shell assertions that are only true of a laid-out page — four regions of which
+exactly one scrolls, the sidebar entry that knows where the reader is, and the whole page at
+the 125% font scale — and screenshot-diffs both palettes.
 
 ## Stack
 
@@ -105,15 +116,25 @@ cookie this suite used to mint — with `ouroboros-rest`'s own `issueSession`, u
 `OURO_SESSION_SECRET` the container held — with a **database-backed session row**, which
 cannot be produced from outside the stack.
 
-Two issues unblock it:
+Two issues were named as the way back, and one of them has landed:
 
-- **[#709](https://github.com/NobuData/ouroboros/issues/709)** teaches the development seed
-  to write BetterAuth's `"user"` rows. Until then the seeded owner has no identity for a
-  session to reference at all.
-- **[#705](https://github.com/NobuData/ouroboros/issues/705)** adds the development
-  email/password sign-in, which gives a scripted caller an honest way to obtain a session
-  over HTTP — and [#715](https://github.com/NobuData/ouroboros/issues/715) then builds the
-  automated auth suite on it.
+- **[#705](https://github.com/NobuData/ouroboros/issues/705)** added the development
+  email/password sign-in, so `signIn()` is now an ordinary HTTP call to a real route,
+  exchanging a real credential for a real session row.
+- **[#709](https://github.com/NobuData/ouroboros/issues/709)** taught the development seed
+  to write BetterAuth's `"user"` rows *and* the `credential` `account` rows behind them, so
+  the seeded owner has a password to present — the one
+  [`support/seed.ts`](support/seed.ts) documents.
+
+**What is left is not an issue but the stack.** `docker compose` starts `ouroboros-rest`
+from an image that pins `NODE_ENV=production`, which is exactly the flag #705 gates the
+password routes on, so the route answers `400 EMAIL_PASSWORD_DISABLED` by design.
+Overriding the variable does not help: the same value moves the service's listen address
+back to loopback, and a container bound to loopback publishes nothing. Serving the
+development sign-in to this suite therefore needs a **non-production `rest` that still binds
+every interface**, which is a decision for [#56](https://github.com/NobuData/ouroboros/issues/56)
+or [#715](https://github.com/NobuData/ouroboros/issues/715) rather than something a leg can
+make on their behalf. `docker-compose.yml` argues the same point at the `rest` service.
 
 The alternatives were weighed and rejected: reaching into PostgreSQL from here would break
 the rule this directory is built on — everything reaches a service over HTTP, enforced by
@@ -126,6 +147,12 @@ that a stranger is refused. `specs/sign-in.spec.ts` still proves that a visitor 
 session is sent to the login screen, that a cookie naming no session is worth nothing, and
 that #33's `ouro_session` is neither honoured nor crashed into.
 
+**Leg 6 is wholly on the other side of that line**, and it is what the parking now costs:
+there is no half of the dashboard a stranger can reach, so every test in
+`specs/dashboard.spec.ts` is parked and the leg has never been observed either passing or
+failing. Its pair in `scripts/verify-failure-modes.sh` is registered all the same and
+reports itself as parked rather than as a pass — see § *Adding a leg*.
+
 **When it comes back it is one function.** No spec knows how the cookie got there.
 
 ## Layout
@@ -134,40 +161,64 @@ that #33's `ouro_session` is neither honoured nor crashed into.
 tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer
 ├── specs/                      # one file per leg
+│   └── __screenshots__/        # leg 6's baselines, one per theme — recorded when it runs
 ├── support/
 │   ├── stack.ts                # addresses and timeouts
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
+│   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
 │   ├── session.ts              # signing in — parked; read the header
 │   ├── workspace.ts            # putting a context into a workspace without re-clicking
+│   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
 │   └── api.ts                  # scripted requests and their failure messages
 └── scripts/
     ├── run.sh                  # stack up → suite → down
     └── verify-failure-modes.sh # acceptance criterion 2
 ```
 
-Three things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
+Four things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
 defaults, and each is argued in that file: there is **no `webServer`** (what is under test
 is the compose stack, and `docker compose up --wait` is a stronger definition of ready than
 a port opening), the ten-minute budget is **enforced** by `globalTimeout` rather than
-measured by hand, and there are **no retries** (a gate that needs a second attempt is not
+measured by hand, there are **no retries** (a gate that needs a second attempt is not
 reporting on the system, and it is precisely the mechanism by which "each leg fails
-meaningfully" quietly stops being true).
+meaningfully" quietly stops being true), and screenshot baselines live in **one directory
+for the suite** with the platform in each name, because pixels are a platform artefact.
+
+### Screenshot baselines
+
+Leg 6 diffs the dashboard in both palettes. Baselines are Linux's — what CI renders — and
+Playwright refuses a comparison it has no baseline for rather than silently recording one,
+which is what makes the first run on a new page red instead of green:
+
+```bash
+yarn e2e specs/dashboard.spec.ts --update-snapshots   # record, then read the diff before committing
+```
+
+**There are no baselines committed yet**, and there cannot be until the leg runs: recording
+one needs a signed-in dashboard, which is what § *Signing in is parked* is about. Whoever
+unparks the leg records them in the same change.
 
 ### Adding a leg
 
 This suite is scheduled to grow. Every mockup roadmap amends a leg into
 [#56](https://github.com/NobuData/ouroboros/issues/56) — the dashboard leg in
-[#88](https://github.com/NobuData/ouroboros/issues/88), issues in
-[#121](https://github.com/NobuData/ouroboros/issues/121), the studio in
+[#88](https://github.com/NobuData/ouroboros/issues/88) is the first and has landed, issues
+follow in [#121](https://github.com/NobuData/ouroboros/issues/121), the studio in
 [#154](https://github.com/NobuData/ouroboros/issues/154), and a dozen more — each with a
 stated runtime budget of its own. Two rules keep that from becoming a suite nobody can run:
 
 1. **The budget is one number.** `SUITE_BUDGET_MS` in `support/stack.ts` is the total, and
    the runner enforces it. A leg that does not fit is a leg that has to be made cheaper, not
-   a number to raise quietly.
+   a number to raise quietly. Leg 6's own stated allowance is **two minutes**, which fits
+   inside the ten with room to spare, so the total did not move.
 2. **A new leg brings its failure mode.** Add the pair to
    `scripts/verify-failure-modes.sh`. A leg that has never been seen to fail is a leg that
    has never been shown to assert anything.
+
+   A pair whose leg is **parked** is registered anyway and reports itself as parked — not as
+   a pass, which would claim it had been shown to fail, and not as a failure, which would
+   turn the nightly job red for a decision somebody made on purpose. Leaving it out until
+   the leg runs is how a leg ships with no failure mode at all.
 
 ## Related issues
 
@@ -177,3 +228,5 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#29](https://github.com/NobuData/ouroboros/issues/29) — the two probes leg 5 tells apart
 - [#703](https://github.com/NobuData/ouroboros/issues/703) — database-backed sessions, which parked this suite's sign-in
 - [#15](https://github.com/NobuData/ouroboros/issues/15) — the icon `<link>` tags leg 1 cannot assert yet
+- [#88](https://github.com/NobuData/ouroboros/issues/88) — leg 6, the dashboard, and the mockup 02 roadmap's MVP gate
+- [#68](https://github.com/NobuData/ouroboros/issues/68) — the dashboard seed leg 6 asserts against

@@ -132,15 +132,24 @@ test.describe("login → tenant select → dashboard", () => {
 
     await enterWorkspace(page, SEED_TENANT.slug);
 
-    // The dashboard's `<h1>` is the workspace's name
-    // (`app/dashboard/dashboard-screen.tsx`), so this is the seeded tenant arriving
-    // through five services and being rendered — which is what "shows the seeded tenant"
-    // means. It is also the acceptance criterion #719 names: the CTA lands on the `(app)`
-    // dashboard **with the tenant context resolved**, and the context it resolves from is
-    // the session pointer the press just wrote
+    // The workspace the session ended up in, as the shell reports it. This assertion used to
+    // read the dashboard's `<h1>`, which was the workspace's name when #45 shipped a route
+    // with a placeholder grid under it; the `<h1>` is the *greeting* now
+    // (`app/dashboard/dashboard-screen.tsx`), and the shell's tenant chip is where the active
+    // workspace is drawn — by its slug, which is what tells two similarly named workspaces
+    // apart. Amending this line is [#88](https://github.com/NobuData/ouroboros/issues/88)'s
+    // first job; everything the dashboard *itself* now draws is `specs/dashboard.spec.ts`.
+    //
+    // It is still the acceptance criterion #719 names: the CTA lands on the `(app)` dashboard
+    // **with the tenant context resolved**, and the context it resolves from is the session
+    // pointer the press just wrote
     // ([#713](https://github.com/NobuData/ouroboros/issues/713)) rather than a cookie this
     // browser was carrying.
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(SEED_TENANT.displayName);
+    await expect(
+      page.getByRole("button", {
+        name: new RegExp(`^Workspace and focus repository: ${SEED_TENANT.slug} /`),
+      }),
+    ).toBeVisible();
   });
 
   test("the mockup's rows are what the seed put there", async ({ context, page }) => {

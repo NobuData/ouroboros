@@ -12,14 +12,30 @@
 # requires that leg to **fail**, requires the output to name the failure rather than merely
 # carry a non-zero status, and puts the service back.
 #
-#   service   leg                what it proves
-#   -------   ----------------   -----------------------------------------------------
-#   engine    engine.spec.ts     the gateway is really calling the engine, not answering
-#                                from a cache or a constant
-#   engine    health.spec.ts     readiness names its dependencies and liveness does not —
-#                                the whole of #29, invisible while everything is healthy
-#   db        tenants.spec.ts    the API leg is reading a database rather than a fixture
-#   ui        shell.spec.ts      the browser legs are served by the UI container
+#   service   leg                 what it proves
+#   -------   -----------------   ----------------------------------------------------
+#   engine    engine.spec.ts      the gateway is really calling the engine, not answering
+#                                 from a cache or a constant
+#   engine    health.spec.ts      readiness names its dependencies and liveness does not —
+#                                 the whole of #29, invisible while everything is healthy
+#   db        tenants.spec.ts     the API leg is reading a database rather than a fixture
+#   ui        shell.spec.ts       the browser legs are served by the UI container
+#   db        dashboard.spec.ts   the dashboard's figures come out of the read model rather
+#                                 than out of the mockup (#88) — registered, not yet observed
+#
+# ## A pair whose leg is parked
+#
+# The dashboard leg needs a session and this suite cannot sign in against the compose stack
+# (tests/e2e/README.md § "Signing in is parked"), so every test in it carries `test.fixme`
+# and the run below exits zero having executed nothing. That is neither a pass nor a
+# failure and this script says so rather than scoring it: a parked pair is reported with
+# `--` and left out of the tally, because counting it either way would be a lie in one
+# direction or the other.
+#
+# It is registered anyway, and deliberately. The alternative — leaving the pair out until
+# the leg runs — is how a leg ships with no failure mode at all: the day somebody deletes
+# the `test.fixme` lines, this script starts checking it without anybody having to remember
+# that it should.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
@@ -90,14 +106,26 @@ if [ "$BRING_UP" -eq 1 ]; then
   wait_healthy
 fi
 
+# parked SPEC SERVICE — report a pair whose leg did not run, and score it as neither.
+#
+# A spec every one of whose tests carries `test.fixme` exits zero having executed nothing,
+# which is indistinguishable from a green run by exit status alone and is the opposite of
+# one in meaning. Reporting it as a pass would claim the leg was shown to fail; reporting it
+# as a failure would turn the nightly job red for a decision somebody made on purpose and
+# wrote down. So it is reported and not counted, in the words a reader of the log needs.
+parked() {
+  printf '  --    %s ran nothing with %s stopped: every test in it is parked, so this\n' "$1" "$2"
+  printf '        pair asserts nothing yet. See tests/e2e/README.md § Signing in is parked.\n'
+}
+
 # expect_red SERVICE SPEC MARKER — stop SERVICE, run SPEC, require it to fail, require the
 # output to match MARKER, then bring SERVICE back.
 #
 # MARKER is what makes this "meaningfully": a leg that fails with a timeout and no
 # explanation is a leg somebody will mark flaky and retry. It is the text a person reading
 # the CI log needs in order to know which layer broke, and it is an extended regular
-# expression rather than a fixed string because one of the four cases below can honestly
-# present in more than one way.
+# expression rather than a fixed string because two of the cases below can honestly present
+# in more than one way.
 expect_red() {
   service=$1
   spec=$2
@@ -109,6 +137,16 @@ expect_red() {
 
   status=0
   (cd "$E2E_DIR" && yarn playwright test "specs/$spec" --reporter=list) >"$log" 2>&1 || status=$?
+
+  # A run that executed at least one test says so; a wholly parked spec never prints it.
+  # Checked before the exit status is judged, because both cases exit zero and only this
+  # tells them apart.
+  if [ "$status" -eq 0 ] && ! grep -Eq '[0-9]+ passed' "$log"; then
+    parked "specs/$spec" "$service"
+    compose start "$service" >/dev/null 2>&1
+    wait_healthy
+    return 0
+  fi
 
   if [ "$status" -eq 0 ]; then
     fail "specs/$spec fails with $service stopped (it passed — the leg asserts nothing)"
@@ -153,6 +191,24 @@ expect_red db tenants.spec.ts "internal_error"
 # after all — so the alternation is not hedging, it is two real behaviours of the same
 # stopped container.
 expect_red ui shell.spec.ts "ERR_EMPTY_RESPONSE|ERR_CONNECTION_REFUSED|ECONNREFUSED|socket hang up"
+
+# The dashboard leg (#88), against the layer its every figure comes out of. `27 PRs merged`
+# and `9h 40m of queued work` are aggregations over rows, so a dashboard that still drew them
+# with the database stopped would be a page drawing the mockup — which is exactly the failure
+# this leg was added to make impossible.
+#
+# `db` rather than `rest`, for the reason the tenants pair uses it: stopping `rest` strands
+# the UI container in a network namespace that no longer exists. It also breaks the leg at
+# its first step, which is honest — a session is a row, so with no database there is nobody
+# to sign in as, and `support/session.ts` says so by name in its failure.
+#
+# **The marker is an alternation because this pair has never been observed**, and it cannot
+# be until the leg runs: the sign-in refusal, an aggregate that answers `500`, and a guard
+# that sends an unauthenticated request to `/login` are three honest ways for the same
+# stopped container to present, and naming one of them would be a guess dressed up as a
+# measurement. Whoever unparks the leg should watch this pair once and cut it down to what
+# actually happened.
+expect_red db dashboard.spec.ts "sign-in for .* answered|internal_error|answered 5[0-9][0-9]|/login"
 
 printf '\n'
 if check_summary; then

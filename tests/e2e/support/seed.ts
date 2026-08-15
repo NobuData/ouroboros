@@ -25,10 +25,36 @@
 export const SEED_TENANT = {
   /** `ouroboros.tenants.id` — literal in the migration. */
   id: "5eed0001-0000-4000-8000-000000000001",
-  /** The URL- and CLI-safe handle. What the workspace row shows as its detail line. */
+  /**
+   * The URL- and CLI-safe handle. What the workspace row shows as its detail line — and
+   * what the shell's tenant chip draws once a session is acting in it, which is where the
+   * signed-in legs read the active workspace from (`app/shell/tenant-chip.tsx` draws the
+   * *slug*, not the name below).
+   */
   slug: "acme-robotics",
-  /** What the dashboard renders as its `<h1>`. */
+  /** The workspace's name, as the login screen's row prints it. */
   displayName: "Acme Robotics",
+} as const;
+
+/**
+ * The personal workspace — the same person's, and empty on purpose.
+ *
+ * `R__dev_seed.sql` creates it with `metadata` `{"personal": true}` as the shape
+ * [#704](https://github.com/NobuData/ouroboros/issues/704) gives everybody at first sign-in,
+ * and `R__dev_seed_dashboard.sql` deliberately writes **no** row of any kind against it: not
+ * a run, not a queue item, not a usage event, and no settings row. That absence is a
+ * fixture rather than an oversight — it is what lets `specs/dashboard.spec.ts` assert
+ * [#86](https://github.com/NobuData/ouroboros/issues/86)'s zero states against a *workspace*
+ * instead of against a mocked payload, and it is why the dashboard leg switches workspaces
+ * rather than switching users.
+ */
+export const SEED_PERSONAL_TENANT = {
+  /** `ouroboros.organization.id` — literal in the migration. */
+  id: "5eed0001-0000-4000-8000-000000000003",
+  /** The handle, which is the person's own — what the tenant chip draws. */
+  slug: "kensuenobu",
+  /** The workspace's name, which for a personal workspace is the person's. */
+  displayName: "Ken Suenobu",
 } as const;
 
 /**
