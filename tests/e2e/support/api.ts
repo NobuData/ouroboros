@@ -17,6 +17,7 @@
 
 import { type APIRequestContext, type APIResponse, expect } from "@playwright/test";
 
+import { SESSION_COOKIE } from "./session";
 import { REST_URL } from "./stack";
 
 /**
@@ -126,7 +127,11 @@ export async function expectError(
 
 /** Headers that carry a session on a scripted request. */
 export function asUser(token: string): Record<string, string> {
-  return { cookie: `ouro_session=${token}` };
+  // The BetterAuth cookie (#703), by the name `support/session.ts` owns. This carried the
+  // legacy `ouro_session` name until #647 first ran the signed-in API legs against the
+  // stack — where every request wearing it answered 401, which is exactly what a forged
+  // or stale credential should get and exactly why the parked legs needed to run.
+  return { cookie: `${SESSION_COOKIE}=${token}` };
 }
 
 /**

@@ -19,11 +19,12 @@
  * parked with it.
  */
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { describe } from "../support/api";
 import { SEED_OWNER, SEED_TENANT } from "../support/seed";
-import { SESSION_PARKED, signIn } from "../support/session";
+import { signIn } from "../support/session";
+import { PANE_SELECTOR } from "../support/shell";
 import { UI_URL } from "../support/stack";
 import { selectWorkspace } from "../support/workspace";
 
@@ -76,52 +77,61 @@ test.describe("the UI is the product", () => {
   });
 });
 
-test.describe("the theme toggle flips palettes", () => {
-  // The toggle lives in the app shell's header (`app/shell/shell-header.tsx`), so this
-  // needs a signed-in request in a workspace. The login screen has no toggle — mockup 01
-  // does not draw one. Which is why the whole group is parked: see `support/session.ts`.
-  test.fixme(true, SESSION_PARKED);
-
+test.describe("the theme control flips palettes", () => {
+  // The control lives in the account menu (`app/shell/user-menu.tsx` — CP.3 moved it in
+  // from the header row as three radios), so this needs a signed-in request in a
+  // workspace. The login screen draws no theme control — mockup 01 does not have one.
   test.beforeEach(async ({ context, page }) => {
     await signIn(context, SEED_OWNER.id);
     await selectWorkspace(context, SEED_TENANT.slug);
     await page.goto("/dashboard");
   });
 
-  test("pressing it moves light → dark and repaints the page", async ({ page }) => {
-    const toggle = page.getByRole("button", { name: /^Theme:/ });
+  /** Open the account menu and press one of the three theme radios. */
+  async function pickTheme(page: Page, choice: "Light" | "Dark" | "System"): Promise<void> {
+    const account = page.getByRole("button", { name: /^Account menu/ });
+
+    // The menu closes on selection-adjacent interactions elsewhere; opening per pick
+    // keeps each press independent of whether the previous one left it up.
+    if (!(await page.getByRole("menu", { name: "Account" }).isVisible())) {
+      await account.click();
+    }
+
+    await page
+      .getByRole("menu", { name: "Account" })
+      .getByRole("menuitemradio", { name: choice })
+      .click();
+  }
+
+  test("each radio stamps its palette, and System hands the page back to the OS", async ({
+    page,
+  }) => {
     const html = page.locator("html");
     const body = page.locator("body");
 
-    await expect(toggle).toBeVisible();
-
-    // The cycle is light → dark → system (`app/shell/theme-toggle.tsx`), and a fresh
-    // context has stored no choice, so it starts at *system* — where the attribute is
-    // deliberately absent and CSS alone decides. The first press stamps `light`.
+    // A fresh context has stored no choice, so it starts at *system* — where the
+    // attribute is deliberately absent and CSS alone decides (`app/theme.ts`).
     await expect(html).not.toHaveAttribute("data-theme");
 
-    await toggle.click();
+    await pickTheme(page, "Light");
     await expect(html).toHaveAttribute("data-theme", "light");
     // The palette, not just the attribute. An attribute that flips while the page keeps
     // its colours is a stylesheet that did not ship — which is exactly the failure a unit
     // test cannot see, and the reason this leg is in the smoke suite at all.
     await expect(body).toHaveCSS("background-color", LIGHT_GROUND);
 
-    await toggle.click();
+    await pickTheme(page, "Dark");
     await expect(html).toHaveAttribute("data-theme", "dark");
     await expect(body).toHaveCSS("background-color", DARK_GROUND);
 
-    // Third press returns to *system*: the absence of the attribute, which is how the OS
-    // preference is tracked with no JavaScript involved (`app/theme.ts`).
-    await toggle.click();
+    // System is the absence of the attribute, which is how the OS preference is tracked
+    // with no JavaScript involved (`app/theme.ts`).
+    await pickTheme(page, "System");
     await expect(html).not.toHaveAttribute("data-theme");
   });
 
   test("the choice survives a reload without a flash of the wrong palette", async ({ page }) => {
-    const toggle = page.getByRole("button", { name: /^Theme:/ });
-
-    await toggle.click();
-    await toggle.click();
+    await pickTheme(page, "Dark");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
     await page.reload();
@@ -141,12 +151,10 @@ test.describe("the pane remembers where the reader was", () => {
   // (`app/shell/pane-restoration.tsx`). The workshop's chrome story is the fixture — the
   // one route with every layer of sticky chrome over enough rows to scroll, and, with the
   // dashboard, the pair a push and a traversal can walk between. Signed in like
-  // everything in-shell, so parked with the rest: see `support/session.ts`.
-  test.fixme(true, SESSION_PARKED);
-
-  // The pane's own marker (`ouroboros-ui/app/shell/regions.ts`), restated rather than
-  // imported — the ESLint fence around service source says why.
-  const PANE = "[data-shell-pane]";
+  // everything in-shell.
+  // The pane's marker, as `support/shell.ts` restates it — the ESLint fence around
+  // service source is why nobody imports the attribute's own constant.
+  const PANE = PANE_SELECTOR;
 
   test.beforeEach(async ({ context, page }) => {
     await signIn(context, SEED_OWNER.id);
@@ -171,17 +179,31 @@ test.describe("the pane remembers where the reader was", () => {
     await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(800);
 
     // The story's one live control — a client-side push, which is the case the browser
-    // handles for a scrolling body and nobody handles for a pane.
-    await page.getByRole("link", { name: "push to the dashboard" }).click();
+    // handles for a scrolling body and nobody handles for a pane. Reaching it scrolls
+    // the pane further, exactly as a reader would to press it — so the position "the
+    // reader left" is wherever the pane sits when the press lands, and that is measured
+    // rather than assumed. (The first run of this leg assumed 800, and what it actually
+    // proved was that Playwright walks a link into view before clicking it.)
+    const push = page.getByRole("link", { name: "push to the dashboard" });
+
+    await push.scrollIntoViewIfNeeded();
+
+    const departedAt = await pane.evaluate((el) => el.scrollTop);
+
+    expect(departedAt, "reaching the link must leave the pane deep in the fixture").toBeGreaterThan(
+      800,
+    );
+
+    await push.click();
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(0);
 
     await page.goBack();
     await expect(page).toHaveURL(/\/workshop\/chrome$/);
-    await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(800);
+    await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(departedAt);
 
     // Forward returns to the top the push left — the dashboard was never scrolled, and a
-    // memory that answered 800 here would be the wrong route's.
+    // memory that answered the fixture's offset here would be the wrong route's.
     await page.goForward();
     await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(0);
   });

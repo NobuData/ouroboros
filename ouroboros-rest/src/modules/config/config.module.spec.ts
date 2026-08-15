@@ -83,6 +83,21 @@ describe("AppConfigService", () => {
 
       await production.close();
     });
+
+    // The e2e compose override's posture (#647): non-production so the password sign-in
+    // answers, every interface so Docker's port publishing can route to it.
+    it("lets OURO_LISTEN_HOST move the interface without moving the environment", async () => {
+      const overridden = await moduleWith(
+        testConfiguration({ NODE_ENV: "test", OURO_LISTEN_HOST: ALL_INTERFACES_HOST }),
+      );
+      const overriddenConfig = overridden.get(AppConfigService);
+
+      expect(overriddenConfig.nodeEnv).toBe("test");
+      expect(overriddenConfig.listenHostOverride).toBe(ALL_INTERFACES_HOST);
+      expect(overriddenConfig.listenHost).toBe(ALL_INTERFACES_HOST);
+
+      await overridden.close();
+    });
   });
 });
 

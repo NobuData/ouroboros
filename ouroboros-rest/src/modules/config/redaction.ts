@@ -108,11 +108,9 @@ export function redactedEnvironment(configuration: Configuration): Record<string
       // Checked before the secret rule, because a secret that is absent should say so
       // rather than claim to be redacted.
       //
-      // No field is nullable today — the last one went with #705's removal of the
-      // development bypass — so this branch is unreachable from `loadConfiguration`'s
-      // output. It is kept because {@link redactedEnvironment} takes a `Configuration` from
-      // any caller, and the day an optional variable comes back the safe rendering should
-      // already be here rather than be remembered.
+      // One field reaches this from `loadConfiguration`'s output: `OURO_LISTEN_HOST`
+      // (#647), whose unset state is the posture every deployment should be in — so the
+      // empty line is itself the reassuring one.
       redacted[variable] = "";
     } else if (SECRET_VARIABLES.has(variable)) {
       redacted[variable] = REDACTED;

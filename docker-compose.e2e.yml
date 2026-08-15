@@ -1,0 +1,33 @@
+# docker-compose.e2e.yml — the e2e suite's override, and nothing else's.
+#
+# Composed *on top of* docker-compose.yml by tests/e2e/scripts/run.sh:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full up
+#
+# It changes one service, and the two lines it sets are one decision
+# (issue #647, which unparked the suite's signed-in legs):
+#
+#   * `NODE_ENV: test` — the image pins `production`, and production is the posture in
+#     which #705's development email/password sign-in does not exist. The suite signs in
+#     with the #709 seeded credentials over the same route the login form calls
+#     (tests/e2e/support/session.ts), so the stack it runs against must answer on it.
+#     `test` rather than `development` because that is what this stack is.
+#
+#   * `OURO_LISTEN_HOST: "0.0.0.0"` — outside production the service binds loopback,
+#     which on a laptop is the right paranoia and inside a container is an interface
+#     Docker's port publishing cannot route to. The override moves the *interface only*:
+#     the sign-in gate stays NODE_ENV's and deliberately has no switch of its own
+#     (ouroboros-rest/src/auth/password.provider.ts § "Where the line is drawn").
+#
+# Why this is not the security hole it resembles: the base file still publishes both host
+# ports on 127.0.0.1 only, so the password routes this file turns on are reachable from
+# the machine running the suite and from nowhere else. A deployment inherits neither line
+# — this file is composed by the e2e runner and must never be handed to one.
+#
+# Everything else — images, healthchecks, the shared ui/rest network namespace, the
+# loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
+services:
+  rest:
+    environment:
+      NODE_ENV: test
+      OURO_LISTEN_HOST: "0.0.0.0"

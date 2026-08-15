@@ -162,6 +162,77 @@ describe("a traversal", () => {
   });
 });
 
+describe("a departure the router scrolled through", () => {
+  it("remembers where the reader pressed, not where the transition landed", () => {
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(800);
+
+    // The reader presses a link: the capture-phase snapshot hears the pointer go down
+    // before anything else…
+    fireEvent.pointerDown(document.body);
+    // …then the router commits the destination and walks it into view — a pane scroll
+    // under the departed route's key, because the URL only moves later still…
+    readerScrollsTo(2449);
+    // …and finally the URL moves and the component re-renders, which is where the
+    // departed route's memory is reconciled back to the press.
+    pushed(rerender, "/dashboard");
+    traversed(rerender, "/workshop/chrome");
+
+    expect(pane.scrollTop).toBe(800);
+  });
+
+  it("lets a press that started no navigation expire with the next one", () => {
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(200);
+
+    // A press that navigates nowhere, then honest scrolling: the stale snapshot must
+    // not drag the memory back to 200 when a later navigation really departs.
+    fireEvent.pointerDown(document.body);
+    readerScrollsTo(800);
+    fireEvent.pointerDown(document.body);
+
+    pushed(rerender, "/dashboard");
+    traversed(rerender, "/workshop/chrome");
+
+    expect(pane.scrollTop).toBe(800);
+  });
+});
+
+describe("a traversal the router rendered first", () => {
+  it("restores anyway, from the popstate listener", () => {
+    // This Next flushes a traversal's render inside its own popstate handler, which was
+    // bound at hydration — before the component's listener — so the component re-renders
+    // (and its push-reset runs) before `popstate` ever reaches it. The listener finds the
+    // destination already current and restores on the spot.
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(800);
+    pushed(rerender, "/dashboard");
+
+    route.pathname = "/workshop/chrome";
+    window.history.replaceState(null, "", "/workshop/chrome");
+    rerender(<PaneRestoration />);
+    expect(pane.scrollTop).toBe(0);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    expect(pane.scrollTop).toBe(800);
+  });
+
+  it("leaves a hash-only traversal to the browser's own fragment walk", () => {
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(800);
+    readerScrollsTo(300);
+
+    // Back across #a → #b: the key never changes, the destination is already current,
+    // and the pane's offset belongs to the fragment being walked to — not to the memory.
+    window.history.replaceState(null, "", "/workshop/chrome#stacking");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    rerender(<PaneRestoration />);
+
+    expect(pane.scrollTop).toBe(300);
+  });
+});
+
 describe("a hash-only traversal", () => {
   it("does not arm restoration against the push that follows", () => {
     // Back across #a → #b keeps the route, so the route effect never runs to consume a
@@ -175,6 +246,83 @@ describe("a hash-only traversal", () => {
     window.dispatchEvent(new PopStateEvent("popstate"));
 
     pushed(rerender, "/dashboard");
+
+    expect(pane.scrollTop).toBe(0);
+  });
+});
+
+describe("a traversal into a destination still streaming", () => {
+  /** The queued animation frames, run by hand — jsdom schedules but never paints. */
+  let frames: FrameRequestCallback[];
+
+  /** What the pane can currently scroll to — the stand-in for how much has arrived. */
+  let maxScroll: number;
+
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback): number => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (handle: number): void => {
+      frames[handle - 1] = () => undefined;
+    });
+
+    // A pane that clamps like a real one: jsdom's own scrollTop accepts any value, which
+    // is exactly the browser behaviour difference that let the clamp bug pass every unit
+    // test and fail the e2e leg (#647). The setter clamps to what has "arrived".
+    maxScroll = 10_000;
+    let top = 0;
+    Object.defineProperty(pane, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, maxScroll));
+      },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Run one queued frame, the way a paint would. */
+  function nextFrame(): void {
+    const queued = frames.splice(0);
+    for (const frame of queued) frame(performance.now());
+  }
+
+  it("keeps re-applying the offset until the pane is tall enough to take it", () => {
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(800);
+    pushed(rerender, "/dashboard");
+
+    // The router refetched the destination: at effect time only a short fallback is on
+    // the page, and the first write clamps to it.
+    maxScroll = 0;
+    traversed(rerender, "/workshop/chrome");
+    expect(pane.scrollTop).toBe(0);
+
+    // The content arrives; the next frame's write lands the remembered offset.
+    maxScroll = 10_000;
+    nextFrame();
+
+    expect(pane.scrollTop).toBe(800);
+  });
+
+  it("stops deciding the moment the reader scrolls on their own", () => {
+    const { rerender } = render(<PaneRestoration />);
+    readerScrollsTo(800);
+    pushed(rerender, "/dashboard");
+
+    maxScroll = 0;
+    traversed(rerender, "/workshop/chrome");
+
+    // The reader reaches for the wheel while the destination is still streaming — the
+    // loop must let go rather than yank them to a position they have abandoned.
+    fireEvent.wheel(window);
+    maxScroll = 10_000;
+    nextFrame();
 
     expect(pane.scrollTop).toBe(0);
   });

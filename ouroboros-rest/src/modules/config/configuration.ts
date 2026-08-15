@@ -66,6 +66,19 @@ export const LOOPBACK_HOST = "127.0.0.1";
 export const ALL_INTERFACES_HOST = "0.0.0.0";
 
 /**
+ * The only interfaces `OURO_LISTEN_HOST` may name — the two this module already binds.
+ *
+ * An enum rather than a free-form address, so the override can choose between the
+ * postures this service understands but cannot become a general-purpose bind knob: an
+ * arbitrary address here would be a way to point the service at an interface nobody has
+ * reasoned about, validated by nothing.
+ */
+export const LISTEN_HOSTS = [LOOPBACK_HOST, ALL_INTERFACES_HOST] as const;
+
+/** One of {@link LISTEN_HOSTS}. */
+export type ListenHost = (typeof LISTEN_HOSTS)[number];
+
+/**
  * Shortest signing key or shared secret this service will start with.
  *
  * Sixteen characters is not a strength guarantee — it is a floor low enough that every
@@ -217,6 +230,21 @@ export interface Configuration {
    * with no client change and no deploy on the client's side.
    */
   readonly dashboardPollSeconds: number;
+  /**
+   * The interface to bind, when explicitly chosen. From `OURO_LISTEN_HOST`; `undefined`
+   * when unset, which is the normal case — {@link listenHost} then derives the interface
+   * from {@link nodeEnv} exactly as it did before this variable existed.
+   *
+   * It exists for one caller: the e2e compose override (repo-root
+   * `docker-compose.e2e.yml`, [#647](https://github.com/NobuData/ouroboros/issues/647)),
+   * where the stack runs non-production so #705's password sign-in answers, and the
+   * loopback interface that non-production otherwise binds is one Docker's port
+   * publishing cannot route to. The override moves the *interface only* — the sign-in
+   * gate stays `NODE_ENV`'s and gains no second switch (`src/auth/password.provider.ts`
+   * § "Where the line is drawn") — and that stack still publishes its host ports on
+   * `127.0.0.1`, so nothing leaves the machine running the suite.
+   */
+  readonly listenHostOverride?: ListenHost;
 }
 
 /**
@@ -241,6 +269,7 @@ export const VARIABLES = {
   vaultMasterKey: "OURO_VAULT_MASTER_KEY",
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
+  listenHostOverride: "OURO_LISTEN_HOST",
 } as const satisfies Record<keyof Configuration, string>;
 
 /**
@@ -427,6 +456,14 @@ const environmentSchema = z.object({
       `expected between 1 and ${MAX_DASHBOARD_POLL_SECONDS} seconds`,
     )
     .default(DEFAULT_DASHBOARD_POLL_SECONDS),
+
+  // The bind-interface override (#647) — optional, no default, and an enum of the two
+  // interfaces this module already names rather than a free-form address. Unset is the
+  // only posture a deployment should ever be in; see the field's documentation on
+  // `Configuration` for the one stack that sets it.
+  OURO_LISTEN_HOST: z
+    .enum(LISTEN_HOSTS, { error: `expected ${LOOPBACK_HOST} or ${ALL_INTERFACES_HOST}` })
+    .optional(),
 });
 
 /**
@@ -513,6 +550,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     vaultMasterKey: values.OURO_VAULT_MASTER_KEY,
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
+    listenHostOverride: values.OURO_LISTEN_HOST,
   });
 }
 
@@ -526,9 +564,20 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
  * container, and a process bound to loopback inside one is a process nothing can route
  * to — so there, every interface is the only workable answer.
  *
- * @param nodeEnv - The validated environment name.
- * @returns {@link ALL_INTERFACES_HOST} in production, {@link LOOPBACK_HOST} otherwise.
+ * `OURO_LISTEN_HOST` overrides the derivation when set — see
+ * {@link Configuration.listenHostOverride} for the one stack that sets it and why. It
+ * moves the interface and nothing else: the development sign-in still turns on `NODE_ENV`
+ * alone (`src/auth/password.provider.ts`).
+ *
+ * @param configuration - The validated environment name and, when set, the override.
+ * @returns The override when present; otherwise {@link ALL_INTERFACES_HOST} in
+ *   production and {@link LOOPBACK_HOST} anywhere else.
  */
-export function listenHost(nodeEnv: NodeEnvironment): string {
-  return nodeEnv === "production" ? ALL_INTERFACES_HOST : LOOPBACK_HOST;
+export function listenHost(
+  configuration: Pick<Configuration, "nodeEnv" | "listenHostOverride">,
+): string {
+  return (
+    configuration.listenHostOverride ??
+    (configuration.nodeEnv === "production" ? ALL_INTERFACES_HOST : LOOPBACK_HOST)
+  );
 }

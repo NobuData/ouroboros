@@ -1,7 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
-import { listenHost, type Configuration, type NodeEnvironment } from "./configuration";
+import {
+  listenHost,
+  type Configuration,
+  type ListenHost,
+  type NodeEnvironment,
+} from "./configuration";
 import { describeConfiguration } from "./redaction";
 
 /**
@@ -105,6 +110,16 @@ export class AppConfigService {
   }
 
   /**
+   * The bind-interface override, when set — `OURO_LISTEN_HOST`.
+   *
+   * `get` rather than `getOrThrow`: unset is the normal posture, and the only stack that
+   * sets it is the e2e compose override (see `configuration.ts`).
+   */
+  get listenHostOverride(): ListenHost | undefined {
+    return this.config.get<ListenHost | undefined>("listenHostOverride");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -123,7 +138,7 @@ export class AppConfigService {
 
   /** Which interface to bind — see `listenHost` in `configuration.ts`. */
   get listenHost(): string {
-    return listenHost(this.nodeEnv);
+    return listenHost(this.all);
   }
 
   /**
@@ -148,6 +163,7 @@ export class AppConfigService {
       vaultMasterKey: this.vaultMasterKey,
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,
+      listenHostOverride: this.listenHostOverride,
     };
   }
 

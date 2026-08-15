@@ -79,7 +79,7 @@ export async function bootstrap(
   options?: NestApplicationOptions,
 ): Promise<INestApplication> {
   const app = await createApplication(configuration, options);
-  await app.listen(configuration.port, listenHost(configuration.nodeEnv));
+  await app.listen(configuration.port, listenHost(configuration));
 
   return app;
 }

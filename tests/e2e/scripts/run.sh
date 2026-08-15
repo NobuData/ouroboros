@@ -8,11 +8,15 @@
 #
 # What it does, in order:
 #
-#   1. `docker compose --profile full up --build --wait` — builds the three images from
-#      this checkout and blocks until every service reports *healthy*. `--wait` is the
-#      load-bearing flag: it waits on the services' own healthchecks, which is a stronger
-#      definition of ready than a port being open and an incomparably better one than a
-#      sleep. Nothing in the suite retries, so this is where the waiting belongs.
+#   1. `docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full up
+#      --build --wait` — builds the three images from this checkout and blocks until every
+#      service reports *healthy*. The second file is the e2e override (#647): it runs
+#      `rest` non-production so the seeded password sign-in answers, and moves its bind
+#      interface so the suite can reach it — its header says why that is safe here and
+#      nowhere else. `--wait` is the load-bearing flag: it waits on the services' own
+#      healthchecks, which is a stronger definition of ready than a port being open and an
+#      incomparably better one than a sleep. Nothing in the suite retries, so this is
+#      where the waiting belongs.
 #   2. `playwright test` — the suite, under its own ten-minute budget.
 #   3. `docker compose down` — unless --keep was passed.
 #
@@ -53,10 +57,18 @@ done
 
 cd "$ROOT"
 
+# The stack this suite runs against is the developer's, plus one override: the e2e file
+# turns on the seeded password sign-in and moves rest's bind interface so the suite can
+# reach it (#647 — the file's own header says why that is safe). Spelled as a function so
+# every invocation below composes the same pair of files and none can quietly drop one.
+compose() {
+  docker compose -f docker-compose.yml -f docker-compose.e2e.yml "$@"
+}
+
 teardown() {
   if [ "$KEEP" -eq 0 ]; then
     printf '\n--- tearing the stack down (the volume is kept; use `docker compose down -v` to drop it)\n'
-    docker compose --profile full down --remove-orphans >/dev/null 2>&1 || true
+    compose --profile full down --remove-orphans >/dev/null 2>&1 || true
   else
     printf '\n--- leaving the stack up (--keep)\n'
   fi
@@ -65,9 +77,9 @@ trap teardown EXIT INT TERM
 
 printf -- '--- bringing the stack up\n'
 # shellcheck disable=SC2086 # BUILD is deliberately unquoted: it is a flag or nothing.
-if ! docker compose --profile full up $BUILD --wait --wait-timeout 300 -d; then
+if ! compose --profile full up $BUILD --wait --wait-timeout 300 -d; then
   printf '\nrun.sh: the stack did not become healthy. What each service reported:\n\n' >&2
-  docker compose --profile full ps >&2
+  compose --profile full ps >&2
   exit 2
 fi
 

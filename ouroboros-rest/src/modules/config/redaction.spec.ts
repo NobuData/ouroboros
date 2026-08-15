@@ -98,15 +98,23 @@ describe("redactedEnvironment", () => {
 
   it("prints an unset variable with nothing after the equals sign", () => {
     // Which is how an env file spells "not set". `undefined` or `null` printed literally
-    // would read as a value somebody had configured.
-    //
-    // No variable is optional since #705 removed the development bypass, so this exercises
-    // the branch through a hand-built configuration rather than through one the schema can
-    // produce. The rendering is what is under test; that nothing reaches it today is the
-    // reason the object is written out here instead of coming from `testConfiguration`.
+    // would read as a value somebody had configured. `OURO_LISTEN_HOST` is the one
+    // optional variable (#647), so the schema itself produces the case; the hand-built
+    // `null` beside it keeps the other spelling of "nothing" covered for callers that do
+    // not go through the schema.
+    expect(redactedEnvironment(testConfiguration())[VARIABLES.listenHostOverride]).toBe("");
+
     const withNothingSet = { ...testConfiguration(), engineUrl: null } as unknown as Configuration;
 
     expect(redactedEnvironment(withNothingSet)[VARIABLES.engineUrl]).toBe("");
+  });
+
+  it("prints OURO_LISTEN_HOST when it is set, because a moved interface should be legible", () => {
+    expect(
+      redactedEnvironment(testConfiguration({ OURO_LISTEN_HOST: "0.0.0.0" }))[
+        VARIABLES.listenHostOverride
+      ],
+    ).toBe("0.0.0.0");
   });
 
   it("prints NODE_ENV, which is what says whether the development sign-in is on", () => {
