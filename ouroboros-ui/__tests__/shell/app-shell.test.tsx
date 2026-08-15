@@ -23,8 +23,11 @@ vi.mock("@/app/api/auth-client", async () =>
   (await import("../helpers/account")).authClientModule(),
 );
 
+// useSearchParams joined the list with the pane's scroll restoration (#646), which the
+// shell now mounts; what restoration does is `pane-restoration.test.tsx`'s to assert.
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 

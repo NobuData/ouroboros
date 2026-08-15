@@ -159,6 +159,48 @@ describe("the columns", () => {
   });
 });
 
+describe("the sticky head", () => {
+  it("leaves the wrapper scrolling and the head in flow by default", () => {
+    const { container } = table();
+
+    expect(container.firstElementChild).not.toHaveClass("ou-table-scroll--open");
+    expect(screen.getByRole("table")).not.toHaveClass("ou-table--sticky");
+  });
+
+  it("opens the wrapper when the head is to stick, because sticky needs the pane", () => {
+    // The two behaviours are exclusive: `overflow-x: auto` makes the wrapper the head's
+    // scrollport in both axes, and the wrapper never scrolls vertically — so the head
+    // would stick to a box that never moves. The recipe in `table.tsx` says it once.
+    const { container } = render(
+      <Table
+        caption="Recent runs"
+        columns={COLUMNS}
+        rows={RUNS}
+        rowKey={(run) => run.id}
+        stickyHeader
+      />,
+    );
+
+    expect(container.firstElementChild).toHaveClass("ou-table-scroll", "ou-table-scroll--open");
+    expect(screen.getByRole("table")).toHaveClass("ou-table", "ou-table--sticky");
+  });
+
+  it("keeps the page's own class beside the opened wrapper's", () => {
+    const { container } = render(
+      <Table
+        caption="Recent runs"
+        className="dash-runs"
+        columns={COLUMNS}
+        rows={RUNS}
+        rowKey={(run) => run.id}
+        stickyHeader
+      />,
+    );
+
+    expect(container.firstElementChild).toHaveClass("ou-table-scroll--open", "dash-runs");
+  });
+});
+
 describe("both palettes", () => {
   it.each(PALETTES)("renders in the %s palette", (palette) => {
     renderInPalette(

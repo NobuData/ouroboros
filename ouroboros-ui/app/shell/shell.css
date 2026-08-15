@@ -100,6 +100,19 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
+  /*
+   * The anchor offset (issue 646, written without its hash for the reason the rail rule
+   * gives). Every in-pane scroll-into-view — the router's own fragment handling, native
+   * anchor navigation on a full load, the skip link — lands its target this far below the
+   * pane's top edge: the measured heights of whatever chrome is stuck there (published as
+   * the two --ou-chrome-* properties by app/ui/chrome.ts; unset, they are zero) plus one
+   * spacing step of daylight, so a heading arrives *below* the subnav and the dirty-state
+   * bar rather than under them. On the container rather than per target, because the
+   * offset is a fact about this box's chrome, not about any heading's own layout.
+   */
+  scroll-padding-top: calc(
+    var(--ou-chrome-subnav, 0px) + var(--ou-chrome-bar, 0px) + var(--sp-6)
+  );
   background: var(--ground);
 }
 

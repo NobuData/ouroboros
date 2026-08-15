@@ -24,6 +24,26 @@ import "./ui.css";
  *
  * A table that genuinely needs a composed body — a grouped one, a row that expands — is a
  * different primitive, and is not this one. Nothing in the product needs it yet.
+ *
+ * ### The sticky-header recipe ([#646](https://github.com/NobuData/ouroboros/issues/646))
+ *
+ * `stickyHeader` keeps the head row visible while a long table scrolls under it — against
+ * the **pane**, which is the detail worth writing down once. `position: sticky` pins an
+ * element within its nearest scrollport, and the wrapper this primitive insists on is one:
+ * `overflow-x: auto` makes it the header's scrollport in *both* axes, and since the wrapper
+ * never scrolls vertically, a sticky header inside it would simply never stick. CSS offers
+ * no way to split the axes, so the two behaviours are genuinely exclusive, and the prop
+ * chooses: a sticky header opens the wrapper up (`overflow-x: visible`), letting the header
+ * stick against the pane — layer 3 of the stacking contract in `app/ui/chrome.ts`, under
+ * the page's subnav and sticky bar.
+ *
+ * The price is stated rather than hidden: a `stickyHeader` table must fit the § 2 measure,
+ * because the pane refuses horizontal scroll (§ 1.3) and the opened wrapper no longer
+ * offers it. Long tables of figures — the ones that want sticky headers — fit by design;
+ * a genuinely wide table (a diff, a gantt) keeps the scrolling wrapper and forgoes the
+ * sticky header. The other half of the recipe — separate borders so the hairline travels
+ * with the stuck row, the scrim ground so rows fade under it rather than showing through —
+ * is in `ui.css`, on the modifier.
  */
 
 /** How a column's cells are aligned, which is a property of what is in them. */
@@ -77,6 +97,14 @@ export interface TableProps<Row> {
   readonly rows: readonly Row[];
   /** The React key for a row — stable, and never the index. */
   readonly rowKey: (row: Row) => string;
+  /**
+   * Whether the head row sticks against the pane while the table scrolls under it.
+   *
+   * Defaults to `false`. Setting it trades away the wrapper's horizontal scroll — the
+   * module note's recipe section says why the two cannot coexist — so it belongs on long
+   * tables that fit the measure, not wide ones.
+   */
+  readonly stickyHeader?: boolean;
   /** Classes from the page — placement only, never colour or type. */
   readonly className?: string;
 }
@@ -96,11 +124,12 @@ export function Table<Row>({
   columns,
   rows,
   rowKey,
+  stickyHeader,
   className,
 }: TableProps<Row>) {
   return (
-    <div className={cx("ou-table-scroll", className)}>
-      <table className="ou-table">
+    <div className={cx("ou-table-scroll", stickyHeader && "ou-table-scroll--open", className)}>
+      <table className={cx("ou-table", stickyHeader && "ou-table--sticky")}>
         <caption className={captionHidden ? "sr-only" : "ou-table__caption"}>
           {caption}
         </caption>

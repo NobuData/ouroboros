@@ -24,20 +24,29 @@
  * a primitive names no domain concept. There is no `<WorkspaceCard>` in this directory and
  * there should not be.
  *
- * The shell's own primitives (ShellHeader, SidebarNav, ContentPane, StickyBar, PageSubnav)
- * join this set with CP.1/CP.2/CP.4 —
- * [#646](https://github.com/NobuData/ouroboros/issues/646) — and the isolated playground
- * for all of them is the component workshop,
- * [#48](https://github.com/NobuData/ouroboros/issues/48).
+ * The shell's chrome primitives joined this set with CP.4
+ * ([#646](https://github.com/NobuData/ouroboros/issues/646)): `StickyBar` and `PageSubnav`
+ * live here, the shell's own frame (ShellHeader, SidebarNav, the pane) stays in
+ * `app/shell`, and the stacking contract between all of them is `app/ui/chrome.ts`. The
+ * isolated playground for the set is the component workshop,
+ * [#48](https://github.com/NobuData/ouroboros/issues/48) — seeded, until its tooling
+ * lands, by the in-app story at `app/workshop/`.
  */
 
 export { Badge, Tag, type BadgeTone } from "./badge";
 export { Button, type ButtonLinkProps, type ButtonProps, type ButtonSize, type ButtonTone } from "./button";
 export { Card, CardHead, type CardProps, type CardSize, type CardTone } from "./card";
 export { Chip, EffortChip, type ChipDot, type ChipProps, type ChipTone, type Effort } from "./chip";
+export {
+  CHROME_BAR_PROPERTY,
+  CHROME_SUBNAV_PROPERTY,
+  chromeScrollContainer,
+  publishChromeExtent,
+} from "./chrome";
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Eyebrow, type EyebrowTone } from "./eyebrow";
 export { Meter, type MeterProps, type MeterTone } from "./meter";
+export { PageSubnav, type PageSubnavProps, type SubnavTone } from "./page-subnav";
 export {
   SelectField,
   TextField,
@@ -46,5 +55,7 @@ export {
   type TextFieldProps,
   type ToggleProps,
 } from "./field";
+export { StickyBar, type StickyBarProps, type StickyBarTone } from "./sticky-bar";
 export { Table, type Column, type ColumnAlign, type TableProps } from "./table";
 export { cx, type ClassName } from "./class-names";
+export { useChromeExtent } from "./use-chrome-extent";

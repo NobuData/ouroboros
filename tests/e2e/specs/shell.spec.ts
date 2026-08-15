@@ -12,6 +12,11 @@
  *     leave every unit test green,
  *   * the **palette**, which is `data-theme` on `<html>` plus a stylesheet, and is the one
  *     thing in the product that is only true if the CSS actually shipped.
+ *
+ * CP.4 ([#646](https://github.com/NobuData/ouroboros/issues/646)) adds the pane-memory
+ * group at the foot of the file: scroll restoration, the anchor offset and the sticky
+ * stack, driven against the workshop's long fixture. Session-gated like the toggle, and
+ * parked with it.
  */
 
 import { expect, test } from "@playwright/test";
@@ -127,5 +132,104 @@ test.describe("the theme toggle flips palettes", () => {
     // "corrected after hydration", which is the whole point of that script.
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(page.locator("body")).toHaveCSS("background-color", DARK_GROUND);
+  });
+});
+
+test.describe("the pane remembers where the reader was", () => {
+  // The scroll rule moved with the scrollbar (#646): the browser restores the *document*
+  // on back/forward and the document no longer scrolls, so the pane keeps its own memory
+  // (`app/shell/pane-restoration.tsx`). The workshop's chrome story is the fixture — the
+  // one route with every layer of sticky chrome over enough rows to scroll, and, with the
+  // dashboard, the pair a push and a traversal can walk between. Signed in like
+  // everything in-shell, so parked with the rest: see `support/session.ts`.
+  test.fixme(true, SESSION_PARKED);
+
+  // The pane's own marker (`ouroboros-ui/app/shell/regions.ts`), restated rather than
+  // imported — the ESLint fence around service source says why.
+  const PANE = "[data-shell-pane]";
+
+  test.beforeEach(async ({ context, page }) => {
+    await signIn(context, SEED_OWNER.id);
+    await selectWorkspace(context, SEED_TENANT.slug);
+    await page.goto("/workshop/chrome");
+    // Doubles as the hydration wait: restoration is an effect, and driving the pane
+    // before React is up would race it.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("In-pane chrome");
+  });
+
+  test("a push starts at the top; back and forward restore what each side left", async ({
+    page,
+  }) => {
+    const pane = page.locator(PANE);
+
+    expect(
+      await pane.evaluate((el) => el.scrollHeight - el.clientHeight),
+      "the story must overflow its pane by more than the scroll under test",
+    ).toBeGreaterThan(800);
+
+    await pane.evaluate((el) => el.scrollTo(0, 800));
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(800);
+
+    // The story's one live control — a client-side push, which is the case the browser
+    // handles for a scrolling body and nobody handles for a pane.
+    await page.getByRole("link", { name: "push to the dashboard" }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(0);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/workshop\/chrome$/);
+    await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(800);
+
+    // Forward returns to the top the push left — the dashboard was never scrolled, and a
+    // memory that answered 800 here would be the wrong route's.
+    await page.goForward();
+    await expect.poll(() => page.locator(PANE).evaluate((el) => el.scrollTop)).toBe(0);
+  });
+
+  test("an anchor tab scrolls the pane, and lands its target clear of the chrome", async ({
+    page,
+  }) => {
+    const pane = page.locator(PANE);
+
+    await page
+      .getByRole("navigation", { name: "In-pane chrome story" })
+      .getByRole("link", { name: "Restoration" })
+      .click();
+
+    await expect(page).toHaveURL(/#restoration$/);
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+
+    // The pane, not the body: § 1.3's sentence, literally.
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    // And the target arrives *below* the stuck chrome — the scroll-padding offset — not
+    // underneath it, which is what an unoffset scrollIntoView would do.
+    const heading = await page.locator("#restoration").boundingBox();
+    const bar = await page.locator(".ou-sticky-bar").boundingBox();
+
+    expect(heading!.y).toBeGreaterThanOrEqual(bar!.y + bar!.height);
+  });
+
+  test("the chrome stacks in the documented order while the fixture scrolls", async ({ page }) => {
+    const pane = page.locator(PANE);
+
+    // Deep enough that rows are passing under the chrome, shallow enough that the sticky
+    // head has not run out of table to stick within.
+    await pane.evaluate((el) => el.scrollTo(0, 600));
+    await expect.poll(() => pane.evaluate((el) => el.scrollTop)).toBe(600);
+
+    const paneBox = await pane.boundingBox();
+    const subnav = await page
+      .getByRole("navigation", { name: "In-pane chrome story" })
+      .boundingBox();
+    const bar = await page.locator(".ou-sticky-bar").boundingBox();
+    const head = (await page.getByRole("columnheader").first().boundingBox())!;
+
+    // Layer 1 owns the pane's top edge; layer 2 starts where layer 1 ends; layer 3 clears
+    // both. Rounded because the three are measured across subpixel layout, and the
+    // contract is about coverage, not about a half-pixel.
+    expect(Math.round(subnav!.y)).toBe(Math.round(paneBox!.y));
+    expect(Math.round(bar!.y)).toBe(Math.round(subnav!.y + subnav!.height));
+    expect(head.y).toBeGreaterThanOrEqual(Math.floor(bar!.y + bar!.height));
   });
 });
