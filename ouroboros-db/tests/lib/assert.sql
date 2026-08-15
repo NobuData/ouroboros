@@ -65,6 +65,37 @@ begin
 end;
 $$;
 
+-- Asserts a statement is refused by a named SQLSTATE.
+--
+-- The sibling of must_reject, for the rules a *function* enforces on its arguments rather
+-- than a constraint on a row: a catalog import told to apply an unversioned snapshot, or a
+-- payload that is not an array, raises class 22 (data exception), which must_reject
+-- deliberately does not accept. This is not a relaxation of that rule — the expected state
+-- is required rather than optional, so a statement that failed some other way still fails
+-- the assertion, and the reason must_reject exists is preserved.
+--
+--   stmt     — SQL to execute, expected to raise
+--   state    — the SQLSTATE that must be the one raised
+--   what     — description used in the failure message
+create function pg_temp.must_raise(stmt text, state text, what text)
+returns void language plpgsql as $$
+declare
+  raised text;
+begin
+  begin
+    execute stmt;
+  exception
+    when others then
+      get stacked diagnostics raised = returned_sqlstate;
+      if raised is distinct from state then
+        raise exception 'FAILED: % (raised % rather than %)', what, raised, state;
+      end if;
+      return;
+  end;
+  raise exception 'FAILED: % (statement was accepted)', what;
+end;
+$$;
+
 -- Asserts a query's plan uses a named index.
 --
 -- Sequential scans are turned off by the caller for these checks: the fixture tables

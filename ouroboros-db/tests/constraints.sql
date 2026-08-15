@@ -2544,6 +2544,441 @@ select pg_temp.must_hold(
     where organization_id = 'org-switch'),
   'and the workspace leaves the effective view entirely, rather than reverting to defaults');
 
+-- ===========================================================================
+-- V012 — model_prices, the pricing catalog (#580)
+-- ===========================================================================
+--
+-- The first table of the model registry (mockup 21), and the only one in this schema that
+-- makes a claim about money to a user. Three things are asserted here, and they are three
+-- different kinds of claim:
+--
+--   * **What the migration put there.** Unlike every table above, this one ships with
+--     rows: R__model_price_catalog.sql applies a vendored snapshot on every migration. So
+--     the first assertions are about the applied catalog itself — that it is present, that
+--     every row of it is provenance-stamped, and that it holds exactly one snapshot rather
+--     than the union of every snapshot ever applied.
+--
+--   * **What the schema refuses.** The four billing modes are only structurally distinct
+--     if the amount CHECKs hold, and the honesty rule the whole ticket rests on — `—` is
+--     not `$0` — is only a rule if a `token` row cannot be silently free and a lookup of an
+--     uncovered model cannot return a zero.
+--
+--   * **What the import guarantees.** Idempotency and "overrides are never touched" are
+--     properties of a *statement*, not of a row, so they are asserted by running the
+--     import against synthetic catalogs and reading the counts it returns.
+--
+-- That last group deletes the real bundled catalog on its way past — a snapshot import
+-- sweeps the rows of every other snapshot, which is the point of it — so it comes last,
+-- after everything that reads the shipped rows. All of it is inside the transaction this
+-- file rolls back.
+
+-- --- the applied catalog is present, and says where it came from -----------------------
+--
+-- Nothing here asserts a row count: the catalog is 129 rows today and will be another
+-- number after the next `--vendor`, and a test that had to be edited for that would be
+-- measuring the snapshot rather than the schema. What must hold for *any* snapshot is
+-- asserted instead.
+select pg_temp.must_hold(
+  (select count(*) > 0 from ouroboros.model_prices where source = 'bundled'),
+  'the migration applies a bundled price catalog rather than an empty table');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_prices
+    where source = 'bundled'
+      and (catalog_version is null or btrim(catalog_version) = '' or organization_id is not null)),
+  'every bundled row is stamped with its snapshot and belongs to no workspace');
+
+-- The sweep's invariant, and the reason it exists: a bundled catalog is *one* snapshot. If
+-- a re-import ever stopped removing the rows of the previous one, this is where the union
+-- of the two would show up.
+select pg_temp.must_hold(
+  (select count(distinct catalog_version) = 1 from ouroboros.model_prices
+    where source = 'bundled'),
+  'and the bundled rows are all from the same snapshot, not the union of several');
+
+-- --- the anchor row, figure for figure -------------------------------------------------
+--
+-- Issue #580's acceptance criterion names `(anthropic, claude-fable-5)` and the figures
+-- `1500¢ · 7500¢`, which are mockup 21's. **The pinned snapshot says 1000¢ · 5000¢**, and
+-- the snapshot is what this table is for: the mockup is a design drawing, and a number in
+-- it is a layout, not a price. Asserting the mockup's figures here would mean either
+-- fabricating rows to match a drawing — the one thing decision R4 exists to prevent — or
+-- asserting nothing. So the criterion is asserted in the two halves that are actually
+-- load-bearing: the *shape* is `{token, both amounts, a catalog version}`, and the
+-- *figures* are whatever the pinned extract carries, named exactly so that a re-vendor has
+-- to come past this line and change it deliberately.
+select pg_temp.must_hold(
+  (select billing_mode = 'token'
+          and input_cents_per_1m  = 1000
+          and output_cents_per_1m = 5000
+          and catalog_version is not null
+          and source = 'bundled'
+     from ouroboros.model_price(null, 'anthropic', 'claude-fable-5')),
+  'lookup(anthropic, claude-fable-5) is the pinned snapshot''s token price, provenance and all');
+
+-- --- the four shapes mockup 21 renders, and the fifth that is an absence ----------------
+--
+-- Every row of that column is one of these five answers, and the read path chooses between
+-- them on `billing_mode` alone — which is only safe because the CHECKs asserted further
+-- down make the amounts follow the mode.
+select pg_temp.must_hold(
+  (select billing_mode = 'seat' and match_model = '*'
+          and input_cents_per_1m is null and output_cents_per_1m is null
+     from ouroboros.model_price(null, 'copilot', 'gpt-5-codex')),
+  'a Copilot model resolves to the seat family row — "seat-based", and no per-token amount');
+
+select pg_temp.must_hold(
+  (select billing_mode = 'usage'
+     from ouroboros.model_price(null, 'cursor', 'composer-2')),
+  'a Cursor model resolves to the usage family row — "usage-based"');
+
+select pg_temp.must_hold(
+  (select billing_mode = 'free'
+     from ouroboros.model_price(null, 'ollama', 'qwen3-coder:32b')),
+  'a locally served Ollama model resolves to free — "$0", by kind rather than by model');
+
+-- **The honesty line, asserted explicitly**, because it is the difference between "we do
+-- not know" and "it is free" and nothing else in this file would catch a lookup that
+-- learned to invent a zero. Two ways of not knowing: a model the catalog does not cover,
+-- and mockup 21's unbound alias, which names a model and no provider at all.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_price(null, 'openai_compatible', 'gpt-5.2-preview')),
+  'a model the catalog does not cover returns no row — the read path renders "—", never "$0"');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_price(null, null, 'gpt-5.2-preview')),
+  'and an unbound alias, which names no provider, resolves to nothing at all');
+
+-- Deliberately *not* free: the OpenAI-compatible kind fronts a local vLLM and
+-- api.openai.com alike, so a bundled free row for it would price every uncovered OpenAI
+-- model at zero. V012's header argues this at length; this is the assertion that would
+-- notice somebody adding that row for the mockup's sake.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_prices
+    where source = 'bundled' and match_provider_kind = 'openai_compatible'
+      and match_model = '*'),
+  'no bundled family row prices the OpenAI-compatible kind — local-ness belongs to a connection');
+
+-- --- one indexed query ----------------------------------------------------------------
+--
+-- The acceptance criterion is that the lookup resolves in one indexed query, and this is
+-- the assertion of it: `ouroboros.model_price()` is `language sql` and `stable` precisely
+-- so PostgreSQL inlines it, which means the plan a caller gets is the plan below. A
+-- plpgsql rewrite would satisfy every behavioural assertion above and fail this one,
+-- which is the point — it would turn every price lookup into an opaque function scan.
+--
+-- Sequential scans off for the reason lib/assert.sql gives: what is asserted is that a
+-- usable index exists, not that the planner prefers it over a hundred-row table.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.model_price('org-price', 'anthropic', 'claude-fable-5')$$,
+  'model_prices_lookup_idx');
+
+-- The sweep's index, which is the other read this table has: one statement per snapshot
+-- bump over the whole bundled catalog.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.model_prices
+     where source = 'bundled' and catalog_version <> '2026-08-15+litellm.70d51a1'$$,
+  'model_prices_bundled_version_idx');
+
+set local enable_seqscan = on;
+
+-- --- what the schema refuses -----------------------------------------------------------
+--
+-- The four amount rules first, which are what make the four shapes structural. Each names
+-- its own constraint, so a row rejected by some *other* rule — a not-null, the mode
+-- vocabulary — reads as the failure it is rather than as a passing assertion.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, source, catalog_version)
+    values ('anthropic', 'half-priced', 'token', 100, 'bundled', 'test')$$,
+  'a token row with only one of its two amounts is refused',
+  'model_prices_token_requires_amounts');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('anthropic', 'costs-nothing', 'token', 0, 0, 'bundled', 'test')$$,
+  'a token row that costs nothing in both directions is refused — that row is free, mislabelled',
+  'model_prices_token_amounts_meaningful');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('ollama', 'not-really-free', 'free', 50, 0, 'bundled', 'test')$$,
+  'a free row carrying a non-zero amount is refused',
+  'model_prices_free_amounts_zero');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('copilot', 'seat-with-a-rate', 'seat', 100, 500, 'bundled', 'test')$$,
+  'a seat row carrying per-token amounts is refused — there is no reading of that number',
+  'model_prices_metered_amounts_absent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('anthropic', 'refund-model', 'token', -100, 500, 'bundled', 'test')$$,
+  'a negative rate is refused — it would subtract from a total silently',
+  'model_prices_amounts_nonnegative');
+
+-- Provenance, which is the other half of the honesty posture: a row must say where it came
+-- from, and the two ways of saying it must agree. A bundled row naming a workspace would
+-- put an override inside the reach of the sweep.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (organization_id, match_provider_kind, match_model, billing_mode,
+       input_cents_per_1m, output_cents_per_1m, source, catalog_version)
+    values ('org-acme', 'anthropic', 'claimed-bundled', 'token', 1, 1, 'bundled', 'test')$$,
+  'a bundled row naming a workspace is refused',
+  'model_prices_source_matches_owner');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('anthropic', 'orphan-override', 'token', 1, 1, 'override', null)$$,
+  'and an override belonging to nobody is refused too',
+  'model_prices_source_matches_owner');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('anthropic', 'unversioned', 'token', 1, 1, 'bundled', null)$$,
+  'a bundled row with no snapshot version is refused — nothing could ever sweep it',
+  'model_prices_catalog_version_for_bundled');
+
+-- The lookup key. The `*` rules are what keep "the glob is `*` and nothing else" a rule
+-- rather than a convention, and the folding rule is what stops a capital letter rendering
+-- `—` for a model that has a price.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('anthropic', 'claude-*', 'token', 1, 1, 'bundled', 'test')$$,
+  'a prefix glob in a model identifier is refused — the only wildcard is a whole "*"',
+  'model_prices_match_model_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('Anthropic', 'claude-sonnet-5', 'token', 1, 1, 'bundled', 'test')$$,
+  'an unfolded provider kind is refused — Anthropic and anthropic are one kind',
+  'model_prices_match_provider_kind_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version, meta)
+    values ('anthropic', 'bad-meta', 'token', 1, 1, 'bundled', 'test', '"a string"'::jsonb)$$,
+  'meta that is not an object is refused — #585 reads fields off it',
+  'model_prices_meta_is_object');
+
+-- The two vocabularies this table does own, unlike the provider kind beside them.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, source, catalog_version)
+    values ('anthropic', 'invented-mode', 'subscription', 'bundled', 'test')$$,
+  'a fifth billing mode is refused — each of the four has a rule in V012',
+  'model_prices_billing_mode');
+
+-- **`nulls not distinct`, asserted.** Under PostgreSQL's default every bundled row would be
+-- unique against every other one — they all have a null `organization_id` — and a
+-- re-import would add a second `claude-fable-5` instead of updating the first. This is the
+-- assertion that the constraint carries the modifier, and it is worth more than it looks:
+-- nothing else in this file, and nothing in the import's own behaviour, would look
+-- different on the day somebody dropped it.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_prices
+      (match_provider_kind, match_model, billing_mode, input_cents_per_1m, output_cents_per_1m,
+       source, catalog_version)
+    values ('anthropic', 'claude-fable-5', 'token', 1, 1, 'bundled', 'test')$$,
+  'a second bundled row for the same model is refused, null workspace and all',
+  'model_prices_match_key');
+
+-- --- precedence: an override wins, and only for the workspace that set it ---------------
+--
+-- The fixtures are two workspaces that differ in exactly what is being tested: one has
+-- corrected a price for itself, the other has not and reads the catalog.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata") values
+  ('org-price',  'Priced Co',   'priced-co',   now(), null),
+  ('org-nprice', 'Unpriced Co', 'unpriced-co', now(), null);
+
+insert into ouroboros.model_prices
+  (organization_id, match_provider_kind, match_model, billing_mode,
+   input_cents_per_1m, output_cents_per_1m, source)
+values ('org-price', 'anthropic', 'claude-fable-5', 'token', 111, 222, 'override');
+
+select pg_temp.must_hold(
+  (select source = 'override' and input_cents_per_1m = 111 and catalog_version is null
+     from ouroboros.model_price('org-price', 'anthropic', 'claude-fable-5')),
+  'a workspace''s override wins over the bundled row, and carries no snapshot version');
+
+select pg_temp.must_hold(
+  (select source = 'bundled' and input_cents_per_1m = 1000
+     from ouroboros.model_price('org-nprice', 'anthropic', 'claude-fable-5')),
+  'and only for that workspace — everyone else still reads the catalog');
+
+-- An override *family* row beating a bundled *exact* row, which is the precedence rule that
+-- is not obvious: the workspace has seen its own invoice and the snapshot has seen a public
+-- price list. This is also how the mockup's `llama-4-maverick` renders `$0` — the local
+-- endpoint is a fact about the connection, so the workspace states it once.
+insert into ouroboros.model_prices
+  (organization_id, match_provider_kind, match_model, billing_mode, source)
+values ('org-price', 'openai_compatible', '*', 'free', 'override');
+
+select pg_temp.must_hold(
+  (select billing_mode = 'free' and source = 'override'
+     from ouroboros.model_price('org-price', 'openai_compatible', 'gpt-5-codex')),
+  'a workspace''s family override beats a bundled exact row — it has seen the invoice');
+
+select pg_temp.must_hold(
+  (select billing_mode = 'token' and source = 'bundled'
+     from ouroboros.model_price('org-nprice', 'openai_compatible', 'gpt-5-codex')),
+  'and the workspace next door, which said nothing, still pays the published rate');
+
+-- --- the import, against synthetic catalogs --------------------------------------------
+--
+-- Everything from here down runs the import for itself, which sweeps the shipped catalog —
+-- so it is last. What is being asserted is the *statement's* behaviour, and the counts it
+-- returns are how: inside one transaction `now()` is frozen, so `updated_at` cannot
+-- witness a write that did not happen, and a row count cannot tell "updated to the same
+-- values" from "left alone". The counts can, and `ctid` is the second witness — an updated
+-- row is a new heap tuple even within a transaction, so a `ctid` that has not moved is a
+-- row nothing wrote to.
+create temp table price_import_probe (label text primary key, inserted bigint, updated bigint,
+                                      unchanged bigint, deleted bigint);
+
+insert into price_import_probe
+select 'first', * from ouroboros.import_model_price_catalog(
+  'test-catalog-1', '2026-01-01T00:00:00Z'::timestamptz,
+  $probe$[
+    {"match_provider_kind": "anthropic", "match_model": "probe-one", "billing_mode": "token",
+     "input_cents_per_1m": 100, "output_cents_per_1m": 500, "meta": {"context_tokens": 1000}},
+    {"match_provider_kind": "anthropic", "match_model": "probe-two", "billing_mode": "token",
+     "input_cents_per_1m": 200, "output_cents_per_1m": 600}
+  ]$probe$::jsonb);
+
+select pg_temp.must_hold(
+  (select inserted = 2 and updated = 0 and unchanged = 0 and deleted > 0
+     from price_import_probe where label = 'first'),
+  'a new snapshot inserts its rows and sweeps every bundled row of the one before it');
+
+create temp table price_import_ctid as
+  select match_model, ctid as tuple from ouroboros.model_prices where source = 'bundled';
+
+-- The idempotency criterion, literally: the same arguments a second time.
+insert into price_import_probe
+select 'second', * from ouroboros.import_model_price_catalog(
+  'test-catalog-1', '2026-01-01T00:00:00Z'::timestamptz,
+  $probe$[
+    {"match_provider_kind": "anthropic", "match_model": "probe-one", "billing_mode": "token",
+     "input_cents_per_1m": 100, "output_cents_per_1m": 500, "meta": {"context_tokens": 1000}},
+    {"match_provider_kind": "anthropic", "match_model": "probe-two", "billing_mode": "token",
+     "input_cents_per_1m": 200, "output_cents_per_1m": 600}
+  ]$probe$::jsonb);
+
+select pg_temp.must_hold(
+  (select inserted = 0 and updated = 0 and unchanged = 2 and deleted = 0
+     from price_import_probe where label = 'second'),
+  'running the same snapshot again changes nothing — nothing inserted, updated or deleted');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.model_prices p
+     join price_import_ctid b on b.match_model = p.match_model and b.tuple = p.ctid
+    where p.source = 'bundled'),
+  'and not one bundled row was rewritten in place, which is what a frozen updated_at cannot say');
+
+-- A *newer* snapshot: one row re-priced, one row dropped upstream, and the overrides two
+-- workspaces set watching the whole thing happen.
+create temp table price_override_before as
+  select id, ctid as tuple, input_cents_per_1m, billing_mode
+    from ouroboros.model_prices where source = 'override';
+
+insert into price_import_probe
+select 'newer', * from ouroboros.import_model_price_catalog(
+  'test-catalog-2', '2026-02-01T00:00:00Z'::timestamptz,
+  $probe$[
+    {"match_provider_kind": "anthropic", "match_model": "probe-one", "billing_mode": "token",
+     "input_cents_per_1m": 150, "output_cents_per_1m": 500, "meta": {"context_tokens": 1000}}
+  ]$probe$::jsonb);
+
+select pg_temp.must_hold(
+  (select inserted = 0 and updated = 1 and unchanged = 0 and deleted = 1
+     from price_import_probe where label = 'newer'),
+  'a newer snapshot re-prices the row it still carries and sweeps the one it dropped');
+
+select pg_temp.must_hold(
+  (select input_cents_per_1m = 150 and catalog_version = 'test-catalog-2'
+          and effective_at = '2026-02-01T00:00:00Z'::timestamptz
+     from ouroboros.model_price(null, 'anthropic', 'probe-one')),
+  'and the surviving row carries the new price, the new version and the new effective date');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_price(null, 'anthropic', 'probe-two')),
+  'while the dropped model resolves to nothing rather than to last month''s price');
+
+-- The criterion the whole override design rests on: **two imports later, not one byte of a
+-- workspace's own row has moved.** `ctid` included, so "untouched" means untouched rather
+-- than rewritten with the same values.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.model_prices p
+     join price_override_before b using (id)
+    where p.ctid = b.tuple and p.input_cents_per_1m is not distinct from b.input_cents_per_1m
+      and p.billing_mode = b.billing_mode and p.source = 'override'),
+  'no import ever touches an override — not its values, and not its row');
+
+-- --- an import that cannot be trusted is refused rather than half-applied ---------------
+--
+-- Class 22 (data exception): the argument is wrong, not the row. must_raise rather than
+-- must_reject for exactly that reason — see lib/assert.sql.
+select pg_temp.must_raise(
+  $$select ouroboros.import_model_price_catalog(null, now(), '[]'::jsonb)$$,
+  '22023',
+  'a bundled catalog with no version is refused — its rows could never be swept');
+
+select pg_temp.must_raise(
+  $$select ouroboros.import_model_price_catalog('v', null, '[]'::jsonb)$$,
+  '22023',
+  'and one that does not say when it took effect');
+
+select pg_temp.must_raise(
+  $$select ouroboros.import_model_price_catalog('v', now(), '{"not": "an array"}'::jsonb)$$,
+  '22023',
+  'a catalog that is not a jsonb array is refused before anything is written');
+
+-- Two entries for one model would otherwise fail as PostgreSQL's "cannot affect row a
+-- second time", which names neither the model nor the file that produced it.
+select pg_temp.must_raise(
+  $$select ouroboros.import_model_price_catalog('v', now(),
+      '[{"match_provider_kind": "anthropic", "match_model": "twice", "billing_mode": "free"},
+        {"match_provider_kind": "anthropic", "match_model": "twice", "billing_mode": "free"}]'::jsonb)$$,
+  '22023',
+  'a catalog that prices the same model twice is refused, naming the count');
+
+-- --- the workspace cascade --------------------------------------------------------------
+--
+-- An override for a workspace that no longer exists is unreachable, and leaving it would
+-- let a later workspace that reused the id inherit somebody else's negotiated rate — a
+-- wrong number on an invoice, arrived at by a deletion nobody connected to pricing.
+delete from ouroboros.organization where "id" = 'org-price';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_prices where organization_id = 'org-price'),
+  'deleting a workspace takes its price overrides with it');
+
+select pg_temp.must_hold(
+  (select count(*) > 0 from ouroboros.model_prices where source = 'bundled'),
+  'and leaves the bundled catalog alone, which belongs to no workspace');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

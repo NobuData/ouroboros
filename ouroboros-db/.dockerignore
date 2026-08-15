@@ -10,6 +10,11 @@
 # need a database and a shell, neither of which belongs in a migration task),
 # flyway.dev.toml (the overlay that re-enables `clean` — see the Dockerfile), run.sh and
 # scripts/ (a laptop's way of reaching Flyway; the image *is* Flyway) and README.md.
+#
+# catalog/ is excluded too, and that is the point of how the price catalog is built: the
+# vendored extract is *rendered* into migrations/R__model_price_catalog.sql in the
+# repository, so the image carries the prices without carrying the transform, the JSON or
+# a reason to reach a network (#580).
 
 *
 
