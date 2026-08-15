@@ -16,11 +16,16 @@ import {
   QUIET_SUBLINE,
   STATE_LABEL,
   UNSIZED_QUEUE,
+  COMPLETIONS_SHOWN,
   activeLoops,
+  checksLabel,
+  checksShortfall,
   countOf,
+  cycleTime,
   daypartAt,
   firstName,
   greeting,
+  issuePair,
   loopsLiveStat,
   mergedStat,
   moreActiveLoops,
@@ -29,6 +34,7 @@ import {
   pulseIsUnmeasured,
   pulseMeters,
   queuedStat,
+  recentCompletions,
   stageCaption,
   stagePercent,
   statRow,
@@ -38,8 +44,10 @@ import {
 
 import {
   READ_AT,
+  SEEDED_COMPLETIONS,
   SEEDED_RUNS,
   activeRun,
+  closedRun,
   activity,
   dashboardPayload,
   emptyDashboard,
@@ -569,6 +577,170 @@ describe("moreActiveLoops", () => {
     // They are separate queries and a run can stop between them; *−1 more* is not something
     // this card will ever say.
     expect(moreActiveLoops(1, 3)).toBe(0);
+  });
+});
+
+describe("issuePair", () => {
+  it("draws the mockup's pair", () => {
+    expect(issuePair(474, 512)).toBe(`#474 \u2192 PR\u00a0#512`);
+  });
+
+  it("keeps `PR #512` together with a no-break space, and breaks nowhere else", () => {
+    // The pair is one value read as one thing; the space before the arrow is the honest place
+    // for a line to break, and the one inside the pull request is not.
+    const pair = issuePair(474, 512);
+
+    expect(pair.split("\u00a0")).toHaveLength(2);
+    expect(pair.indexOf("\u00a0")).toBeGreaterThan(pair.indexOf("\u2192"));
+  });
+
+  it("draws the issue alone when the run never opened a pull request", () => {
+    // A run may fail, or stop for a person, before there is anything to open one for. An
+    // arrow pointing at nothing would be the row claiming half a fact.
+    expect(issuePair(465, null)).toBe("#465");
+  });
+});
+
+describe("cycleTime", () => {
+  /**
+   * A cycle of a given length, measured between two instants rather than stated.
+   *
+   * @param seconds How long the run took.
+   * @returns What the column draws.
+   */
+  function cycleOf(seconds: number): string {
+    return cycleTime(startedSecondsAgo(seconds), startedSecondsAgo(0));
+  }
+
+  it("draws the mockup's four cycles", () => {
+    // 660, 1140, 360 and 2520 seconds, as `R__dev_seed_dashboard.sql` seeds them.
+    expect([660, 1140, 360, 2520].map(cycleOf)).toEqual(["11m", "19m", "6m", "42m"]);
+  });
+
+  it("drops a part that is zero, because a finished cycle is not moving", () => {
+    // The difference between this and the *Elapsed* column: a clock that hides the part that
+    // is moving looks stopped, and a duration that has stopped has no such part.
+    expect(cycleOf(2 * 60 * 60)).toBe("2h");
+    expect(cycleOf(90 * 60)).toBe("1h 30m");
+  });
+
+  it("has nothing to measure while the run has not finished", () => {
+    expect(cycleTime(startedSecondsAgo(600), null)).toBe(NO_VALUE);
+  });
+
+  it("has nothing to measure when either instant cannot be read", () => {
+    // Every timestamp in the contract is required and well formed, so this is the guard
+    // rather than the expected case — and `NaNm` on the page would be worse than an em dash.
+    expect(cycleTime("not a timestamp", startedSecondsAgo(0))).toBe(NO_VALUE);
+    expect(cycleTime(startedSecondsAgo(600), "not a timestamp")).toBe(NO_VALUE);
+  });
+
+  it("draws two clocks disagreeing as no time at all, never as a negative span", () => {
+    expect(cycleTime(startedSecondsAgo(0), startedSecondsAgo(600))).toBe("0m");
+  });
+});
+
+describe("checksLabel", () => {
+  it("draws the fraction the mockup draws", () => {
+    expect(checksLabel(14, 14)).toBe("14/14");
+    expect(checksLabel(13, 14)).toBe("13/14");
+  });
+
+  it("draws a repository with no checks as `0/0` rather than as an unknown", () => {
+    // `0` of `0` is a fact — no checks are configured — and it is **not** the same as nobody
+    // having counted yet, which is the distinction the contract carries as a null.
+    expect(checksLabel(0, 0)).toBe("0/0");
+  });
+
+  it("draws an em dash when nobody has counted", () => {
+    expect(checksLabel(null, null)).toBe(NO_VALUE);
+    expect(checksLabel(14, null)).toBe(NO_VALUE);
+    expect(checksLabel(null, 14)).toBe(NO_VALUE);
+  });
+});
+
+describe("checksShortfall", () => {
+  it("counts the checks that did not pass", () => {
+    expect(checksShortfall(13, 14)).toBe(1);
+    expect(checksShortfall(9, 14)).toBe(5);
+  });
+
+  it("counts nothing on a run whose checks all passed", () => {
+    expect(checksShortfall(14, 14)).toBeNull();
+    expect(checksShortfall(0, 0)).toBeNull();
+  });
+
+  it("counts nothing when either figure is missing, so an unknown is never tinted", () => {
+    expect(checksShortfall(null, 14)).toBeNull();
+    expect(checksShortfall(13, null)).toBeNull();
+  });
+
+  it("counts nothing when more passed than ran, however that arrived", () => {
+    expect(checksShortfall(15, 14)).toBeNull();
+  });
+});
+
+describe("recentCompletions", () => {
+  it("draws the seeded four exactly as the mockup prints them", () => {
+    const rows = recentCompletions(SEEDED_COMPLETIONS);
+
+    expect(rows.map((row) => row.pair)).toEqual([
+      `#474 \u2192 PR\u00a0#512`,
+      `#471 \u2192 PR\u00a0#509`,
+      `#468 \u2192 PR\u00a0#507`,
+      `#465 \u2192 PR\u00a0#504`,
+    ]);
+    expect(rows.map((row) => row.cycle)).toEqual(["11m", "19m", "6m", "42m"]);
+    expect(rows.map((row) => row.checks)).toEqual(["14/14", "14/14", "12/12", "13/14"]);
+  });
+
+  it("marks the one row that is short of its own total, and says how short", () => {
+    const rows = recentCompletions(SEEDED_COMPLETIONS);
+
+    expect(rows.map((row) => row.checksShort)).toEqual([false, false, false, true]);
+    expect(rows.at(-1)?.checksNote).toBe("1 check did not pass.");
+    expect(rows[0]?.checksNote).toBeNull();
+  });
+
+  it("counts a larger shortfall in words that agree with the number", () => {
+    const [row] = recentCompletions([closedRun({ checksPassed: 11 })]);
+
+    expect(row?.checksNote).toBe("3 checks did not pass.");
+  });
+
+  it("marks a run that merged with a check outstanding as short too", () => {
+    // The tint is the comparison, not the status: `13/14` is short whatever the run went on
+    // to be called, and a merge with an outstanding check should be as visible as a stop.
+    const [row] = recentCompletions([closedRun({ status: "merged", checksPassed: 13 })]);
+
+    expect(row?.checksShort).toBe(true);
+  });
+
+  it("draws four of the eight the aggregate carries", () => {
+    // The endpoint answers eight so a client that expands already holds them; the card draws
+    // four, and that is a number written down rather than one a payload happens to imply.
+    const runs = Array.from({ length: 8 }, (_, index) =>
+      closedRun({ id: `run-${index}`, issueNumber: 400 + index }),
+    );
+
+    expect(recentCompletions(runs)).toHaveLength(COMPLETIONS_SHOWN);
+    expect(COMPLETIONS_SHOWN).toBe(4);
+  });
+
+  it("keeps the payload's order, so the card and its drill-in cannot disagree", () => {
+    const runs = [closedRun({ id: "b", issueNumber: 2 }), closedRun({ id: "a", issueNumber: 1 })];
+
+    expect(recentCompletions(runs).map((row) => row.pair.slice(0, 2))).toEqual(["#2", "#1"]);
+  });
+
+  it("interprets no model identifier, exactly as the active table does not", () => {
+    const [row] = recentCompletions([closedRun({ model: "ollama/qwen3-coder" })]);
+
+    expect(row?.model).toBe("ollama/qwen3-coder");
+  });
+
+  it("has nothing to draw for a workspace that has closed nothing", () => {
+    expect(recentCompletions([])).toEqual([]);
   });
 });
 

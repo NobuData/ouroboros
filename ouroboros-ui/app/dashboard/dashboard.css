@@ -275,6 +275,79 @@
   margin: var(--sp-6) 0 0;
 }
 
+/* ---------- the recently closed table ---------- */
+
+/*
+ * The mockup's `c-7` table (#84). The table, the chips and the two controls in it are the
+ * primitives (app/ui/); what is here is the three compositions its cells are, and the one
+ * hue a figure in it takes.
+ */
+
+/*
+ * The issue cell: the mono `#474 → PR #512` pair, then the title in the row's own type.
+ * `baseline` rather than `center`, so the two sit on one line the way the mockup draws them
+ * even though they are different sizes — the active-loops table's issue cell, for the same
+ * reason.
+ */
+.dash-closed__issue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+}
+
+/*
+ * The pair is one value read as one thing, so it does not wrap: the no-break space inside
+ * `PR #512` (app/dashboard/view.ts) keeps the pull request together, and this keeps the
+ * arrow with what is on either side of it.
+ */
+.dash-closed__pair {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+/*
+ * The title takes what is left, at the measure the active-loops table holds its own to and
+ * for the same reason: the table scrolls sideways inside its own box, so a long title
+ * lengthens the row rather than the page — but an unbounded one would push the four columns
+ * after it off the card on every viewport.
+ */
+.dash-closed__title {
+  max-width: 28ch;
+  color: var(--ink);
+}
+
+/*
+ * A check count that ran clean takes the page's ordinary ink, which is what makes the tint
+ * below mean something: a column where every figure is coloured is a column with no signal
+ * in colour at all.
+ */
+.dash-closed__checks {
+  color: var(--ink);
+}
+
+/*
+ * A check count that is short of its own total. The tint is the palette's warn token, and it
+ * is a second signal rather than the only one — the fraction says `13/14` in figures, and the
+ * cell carries how many did not pass in its tooltip (design system § 3.4: meaning is never in
+ * hue alone).
+ */
+.dash-closed__checks--short {
+  color: var(--warn);
+}
+
+/*
+ * The outcome cell: the pill, and — on a row that stopped for a person — the control that
+ * will take them to the inbox. A row that merged has the pill alone, so the gap is between
+ * two things or not drawn at all.
+ */
+.dash-closed__outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
 /* ---------- the loop pulse card ---------- */
 
 /*

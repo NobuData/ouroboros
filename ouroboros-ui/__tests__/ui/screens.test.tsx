@@ -166,11 +166,12 @@ describe("the dashboard", () => {
   it("draws its cards, actions, chips and empty states out of the primitives", () => {
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    // The page head's two actions, plus the active-loops card's *Open run console* (#82).
-    // Two empty panels are left: the completions table (#84) and the queue (#85).
+    // The page head's two actions, the active-loops card's *Open run console* (#82), and the
+    // completions card's *All issues* plus the one *Review* on its needs-human row (#84).
+    // One empty panel is left: the queue (#85).
     expect(container.querySelectorAll(".ou-card")).toHaveLength(9);
-    expect(container.querySelectorAll(".ou-btn")).toHaveLength(3);
-    expect(container.querySelectorAll(".ou-empty")).toHaveLength(2);
+    expect(container.querySelectorAll(".ou-btn")).toHaveLength(5);
+    expect(container.querySelectorAll(".ou-empty")).toHaveLength(1);
     expect(container.querySelectorAll(".ou-eyebrow")).toHaveLength(1);
     expect(container.querySelectorAll(".ou-chip").length).toBeGreaterThan(0);
     // The page's one control that changes something (#83) is the primitives' switch, the
@@ -178,20 +179,23 @@ describe("the dashboard", () => {
     expect(container.querySelectorAll(".ou-switch")).toHaveLength(1);
   });
 
-  it("draws the active-loops table out of them too, rather than out of a second table", () => {
-    // The card with the most shapes on it: a table, a tag, two kinds of chip and a meter per
-    // row. Each of them is #46's, so the one table in the product that is on a dashboard
-    // cannot drift away from the one on a drill-in screen.
+  it("draws both of its tables out of them too, rather than out of two of its own", () => {
+    // The two cards with the most shapes on them: the active-loops table is a tag, two kinds
+    // of chip and a meter per row (#82), and the completions table is a chip and two figures
+    // (#84). Each shape is #46's, so the two tables on this page cannot drift apart from each
+    // other or from the one on a drill-in screen.
     const { container } = render(<DashboardScreen readings={readings()} />);
 
-    expect(container.querySelectorAll(".ou-table")).toHaveLength(1);
-    expect(container.querySelectorAll(".ou-table-scroll")).toHaveLength(1);
-    // Three workflow tags, one per run, and the pulse card's `7 days` (#83).
+    expect(container.querySelectorAll(".ou-table")).toHaveLength(2);
+    expect(container.querySelectorAll(".ou-table-scroll")).toHaveLength(2);
+    // Three workflow tags, one per running run, and the pulse card's `7 days` (#83). The
+    // completions table has no workflow column, which is why this figure did not move.
     expect(container.querySelectorAll(".ou-tag")).toHaveLength(4);
-    // One stage meter per run, and the pulse card's three (#83) — which is the reason the
-    // meter is a primitive at all rather than a shape this table drew for itself.
+    // One stage meter per running run, and the pulse card's three (#83) — which is the reason
+    // the meter is a primitive at all rather than a shape one table drew for itself.
     expect(container.querySelectorAll(".ou-meter")).toHaveLength(6);
-    expect(container.querySelectorAll(".ou-chip--model")).toHaveLength(3);
+    // One model chip per row of either table.
+    expect(container.querySelectorAll(".ou-chip--model")).toHaveLength(7);
   });
 
   it("has no shape of its own left", () => {

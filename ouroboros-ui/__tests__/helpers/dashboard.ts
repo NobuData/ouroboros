@@ -180,13 +180,111 @@ export function activeRun(over: Partial<RunSummary> = {}): RunSummary {
 }
 
 /**
+ * One run that has stopped.
+ *
+ * Everything a *closed* run has that a running one does not is filled in by default — it
+ * finished, so it has a `finishedAt`, a pull request and a pair of check counts — and
+ * everything else is the first seeded completion, so a case that is about one field says so
+ * by passing that field alone.
+ *
+ * The two instants are the pair the *Cycle* column measures between: `finishedAt` is
+ * {@link READ_AT} less `closedSecondsAgo`, and `startedAt` is that less `cycleSeconds`,
+ * exactly as `R__dev_seed_dashboard.sql` writes them. A cycle is therefore the arithmetic of
+ * a row's own timestamps here as well as in the database, and no fixture carries a duration.
+ *
+ * @param over The fields this case is about.
+ * @param spans How long the run took, and how long ago it closed. Defaults to `#474`'s.
+ * @returns A complete run summary.
+ */
+export function closedRun(
+  over: Partial<RunSummary> = {},
+  spans: Readonly<{ cycleSeconds?: number; closedSecondsAgo?: number }> = {},
+): RunSummary {
+  const { cycleSeconds = 660, closedSecondsAgo = 2520 } = spans;
+
+  return {
+    id: "5eed0009-0000-4000-8000-000000000474",
+    issueNumber: 474,
+    issueTitle: "Debounce e-stop interrupt handler",
+    workflowTag: "standard-fix",
+    model: "claude-fable-5",
+    status: "merged",
+    stageLabel: "Merged",
+    stageIndex: 6,
+    stageTotal: 6,
+    startedAt: startedSecondsAgo(closedSecondsAgo + cycleSeconds),
+    finishedAt: startedSecondsAgo(closedSecondsAgo),
+    prNumber: 512,
+    checksPassed: 14,
+    checksTotal: 14,
+    ...over,
+  };
+}
+
+/**
+ * The four runs the mockup's `c-7` table draws, as `R__dev_seed_dashboard.sql` seeds them.
+ *
+ * Row for row the same fiction, in the same order — newest first by `finishedAt` — with the
+ * cycles that make the column read `11m`, `19m`, `6m` and `42m`, and `#465`'s `13/14`, which
+ * is the reason that run is `needs_human` rather than `merged`.
+ *
+ * **Four, where the aggregate carries eight.** The endpoint answers eight so that a client
+ * expanding the card already holds them, and the card draws four (`Dashboard.recentRuns`);
+ * these are that head, which is what the acceptance criterion is written about. The case for
+ * the cap itself builds its own longer slice.
+ */
+export const SEEDED_COMPLETIONS: readonly RunSummary[] = [
+  closedRun(),
+  closedRun(
+    {
+      id: "5eed0009-0000-4000-8000-000000000471",
+      issueNumber: 471,
+      issueTitle: "Unit tests for motor PID edge cases",
+      model: "copilot/gpt-5-codex",
+      prNumber: 509,
+    },
+    { cycleSeconds: 1140, closedSecondsAgo: 8100 },
+  ),
+  closedRun(
+    {
+      id: "5eed0009-0000-4000-8000-000000000468",
+      issueNumber: 468,
+      issueTitle: "i18n strings for pairing screen",
+      workflowTag: "docs-loop",
+      model: "ollama/qwen3-coder",
+      stageIndex: 5,
+      stageTotal: 5,
+      prNumber: 507,
+      checksPassed: 12,
+      checksTotal: 12,
+    },
+    { cycleSeconds: 360, closedSecondsAgo: 13_800 },
+  ),
+  closedRun(
+    {
+      id: "5eed0009-0000-4000-8000-000000000465",
+      issueNumber: 465,
+      issueTitle: "Refactor telemetry buffer allocation",
+      workflowTag: "feature-loop",
+      model: "claude-sonnet-5",
+      status: "needs_human",
+      stageLabel: "Awaiting human",
+      stageIndex: 5,
+      prNumber: 504,
+      checksPassed: 13,
+    },
+    { cycleSeconds: 2520, closedSecondsAgo: 19_800 },
+  ),
+];
+
+/**
  * The whole dashboard aggregate, at the mockup's own figures.
  *
- * The numbers are the mockup's, and so are the three runs in `activeRuns`: I.1 (#80) draws
- * the frame and the page head, I.2 (#81) the stat row and I.3 (#82) the active-loops table,
- * so `activity`, `stats` and `activeRuns` are the parts of this payload they read. The cards
- * of I.4–I.6 fill in `recentRuns` and `queueHead` as each lands, which is why the factory
- * takes an override rather than being written per suite.
+ * The numbers are the mockup's, and so are the runs in `activeRuns` and `recentRuns`: I.1
+ * (#80) draws the frame and the page head, I.2 (#81) the stat row, I.3 (#82) the active-loops
+ * table and I.5 (#84) the completions table, so `activity`, `stats`, `activeRuns` and
+ * `recentRuns` are the parts of this payload they read. I.6 fills in `queueHead` when it
+ * lands, which is why the factory takes an override rather than being written per suite.
  *
  * The two window lengths are the contract's: the merge rate is measured over fourteen days
  * (46 merged of 50 closed — `0.92` exactly) while the cycle time and the intervention count
@@ -209,7 +307,7 @@ export function dashboardPayload(over: Partial<Dashboard> = {}): Dashboard {
     },
     pulse: { mergeRate: 0.92, avgCycleSeconds: 860, interventions7d: 2, autoMerge: true },
     activeRuns: [...SEEDED_RUNS],
-    recentRuns: [],
+    recentRuns: [...SEEDED_COMPLETIONS],
     queueHead: [],
     activity: activity(),
     ...over,
@@ -235,6 +333,7 @@ export function emptyDashboard(): Dashboard {
     },
     pulse: { mergeRate: 0, avgCycleSeconds: 0, interventions7d: 0, autoMerge: false },
     activeRuns: [],
+    recentRuns: [],
     activity: { inFlight: 0, queued: 0, mergedSinceMorning: 0 },
   });
 }

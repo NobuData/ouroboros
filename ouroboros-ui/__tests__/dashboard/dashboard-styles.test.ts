@@ -97,6 +97,34 @@ describe("the active loops table", () => {
   });
 });
 
+describe("the recently closed table", () => {
+  it("keeps the issue and its pull request on one line", () => {
+    // The pair is one value read as one thing. The no-break space inside `PR #512` holds the
+    // pull request together (`view.ts`); this holds the arrow with what is either side of it.
+    expect(CODE).toMatch(/\.dash-closed__pair\s*\{[^}]*white-space:\s*nowrap/);
+    expect(CODE).toMatch(/\.dash-closed__pair\s*\{[^}]*font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("holds a measure on the issue title rather than letting one row size the table", () => {
+    expect(CODE).toMatch(/\.dash-closed__title\s*\{[^}]*max-width:/);
+  });
+
+  it("tints a short check count from the palette's own warn token", () => {
+    // A hand-picked amber would be legible in one theme and not the other; both palettes
+    // publish this token's contrast against `--surface`.
+    expect(CODE).toMatch(/\.dash-closed__checks--short\s*\{[^}]*color:\s*var\(--warn\)/);
+  });
+
+  it("leaves a check count that ran clean the page's ordinary ink", () => {
+    // A column where every figure is coloured is a column with no signal in colour at all.
+    expect(CODE).toMatch(/\.dash-closed__checks\s*\{[^}]*color:\s*var\(--ink\)/);
+  });
+
+  it("sits the outcome pill and its control on one baseline", () => {
+    expect(CODE).toMatch(/\.dash-closed__outcome\s*\{[^}]*display:\s*inline-flex/);
+  });
+});
+
 describe("the loop pulse card", () => {
   it("reserves the glyph's box at the asset's own ratio, so nothing moves when it loads", () => {
     // 512×296 is the #14 file's size, and the pair is pixel-identical — which is what makes

@@ -1346,7 +1346,7 @@ themes hold.
 | I.2 | #81 | 🟢 Done | ouroboros-ui: [I.2] Stat row — four metric cards | Loops live, queued, merged·7d (▲ delta), token spend | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.3 | #82 | 🟢 Done | ouroboros-ui: [I.3] Active loops card | Runs table: stage meters, model pills, elapsed, status pills | mvp, dashboard, ui, design | N (after I.1) | Y | M | ouroboros-ui |
 | I.4 | #83 | 🟢 Done | ouroboros-ui: [I.4] Loop pulse card | Glyph, three metric meters, auto-merge switch (wired to G.5) | mvp, dashboard, ui, design | N (after I.1, G.5) | Y | M | ouroboros-ui |
-| I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
+| I.5 | #84 | 🟢 Done | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
 | I.8 | #87 | 🟡 Open | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
@@ -1769,7 +1769,52 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.5 — ouroboros-ui: [I.5] Recently-closed card
 
-> **GitHub issue:** #84 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #84 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The `c-7` card draws the aggregate's `recentRuns`:
+> [`recently-closed-card.tsx`](../ouroboros-ui/app/dashboard/recently-closed-card.tsx), with
+> every pair, duration and fraction decided in
+> [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) (`recentCompletions`, `issuePair`,
+> `cycleTime`, `checksLabel`, `checksShortfall`) so the AC's four seeded rows —
+> `11m / 19m / 6m / 42m` over `14/14 · 14/14 · 12/12 · 13/14` — are unit tests on functions
+> rather than assertions about rendered text.
+>
+> **The honest row is drawn exactly like the good ones.** `#465`'s `needs human` keeps the same
+> columns, the same type and the same weight as the three that merged; the outcome pill and the
+> warn tint on its short check count are the whole of the difference, which is what this
+> roadmap asked the card for. The tint is on the **comparison** rather than on the status, so a
+> run that merged with a check outstanding is as visible as one that stopped for it — and
+> because meaning is never carried in hue alone (§ 3.4), the fraction says `13/14` in figures
+> and the cell says *"1 check did not pass."* in its tooltip.
+>
+> **A cycle is the compact formatter, not the ticking one.** `finishedAt − startedAt` through
+> I.2's `durationOfMinutes`, so `11m` rather than `11m 00s`: a duration that has stopped has no
+> moving part for a padded zero to keep still. It also needs no clock — both instants are in the
+> payload — which is why this card takes no `readAt` where the loops table does.
+>
+> **`failed` renders in the danger treatment although neither the mockup nor the seed has one**,
+> which is the AC that asks for a fixture rather than a screenshot: the status is in the
+> contract, the hue is in the design system, and a run that failed is exactly the row this card
+> must not quietly drop. `0/0` is drawn as `0/0` rather than as an em dash for the same reason —
+> a repository with no checks is a fact, and only a count nobody has taken is an unknown.
+>
+> **Four rows of the eight the aggregate carries.** The endpoint answers eight so a client that
+> expands the card already holds them (`Dashboard.recentRuns`); the mockup draws four, and
+> `COMPLETIONS_SHOWN` is that number written down rather than one a payload happens to imply.
+> Nothing is re-sorted, so the card and the paged listing behind it cannot disagree about order.
+>
+> **Neither `All issues →` nor a `needs human` row navigates yet.** The issues screen is mockup
+> 03 and the needs-you inbox is mockup 16;
+> [#49](https://github.com/NobuData/ouroboros/issues/49) holds both routes and is post-MVP. Each
+> is an inert button carrying what is missing — the treatment the sidebar already gives both
+> destinations, and #49's own first criterion, *no dead nav links*. The `Review →` control on a
+> `needs human` row is that link toward the inbox, labelled rather than pointed at a `404`, and
+> it becomes an `href` the day #49 lands.
+>
+> The empty and failed states are the card's own sentences until
+> [#86](https://github.com/NobuData/ouroboros/issues/86) designs every card's together: a
+> workspace that has closed nothing reads *"Nothing closed yet"*, and an aggregate nobody could
+> read reads the service's reason — never the same thing twice.
 
 - **Problem Statement:** The `c-7` completions table proves the loop ships: Issue→PR
   mono pair, model pill, mono cycle, checks fraction, outcome pill (`merged` ok /

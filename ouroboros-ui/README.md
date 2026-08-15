@@ -660,8 +660,9 @@ is a `POST` rather than a `GET` to avoid.
 `/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45); its frame and page head
 are [#80](https://github.com/NobuData/ouroboros/issues/80), its stat row
 [#81](https://github.com/NobuData/ouroboros/issues/81), its active-loops table
-[#82](https://github.com/NobuData/ouroboros/issues/82) and its loop pulse
-[#83](https://github.com/NobuData/ouroboros/issues/83)) is
+[#82](https://github.com/NobuData/ouroboros/issues/82), its loop pulse
+[#83](https://github.com/NobuData/ouroboros/issues/83) and its completions table
+[#84](https://github.com/NobuData/ouroboros/issues/84)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
@@ -688,17 +689,19 @@ Ouroboros merged 6 pull requests since midnight UTC.
 ┌ SYSTEM      ◐ operational ┐         │ Auto-merge …      [ on ]  │
 │ REST API            [ up ]│         └──────────────────────────┘
 └───────────────────────────┘
-┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐
+┌ RECENTLY CLOSED BY THE LOOP ────── All issues → ┐┌ UP NEXT ─┐
+│ #474 → PR #512 Debounce…  11m  14/14 (merged)   ││          │
+│ #465 → PR #504 Refactor…  42m  13/14 (needs human) [Review →]
+└─────────────────────────────────────────────────┘└──────────┘
 ```
 
 **Two kinds of card sit on the same grid, and the difference is the point.** The stat row is
 drawn from the aggregate's `stats`, the active-loops table from its `activeRuns`, the loop
-pulse from its `pulse`, and the system card from `/health/ready` and
-`/api/v1/engine/status` — every figure on them came from the service. The two panels that
-have no card drawing them yet — the completions table
-([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
-([#85](https://github.com/NobuData/ouroboros/issues/85)) — keep their place as designed empty
-states naming what will fill them, rather than borrowing the mockup's rows.
+pulse from its `pulse`, the completions table from its `recentRuns`, and the system card from
+`/health/ready` and `/api/v1/engine/status` — every figure on them came from the service. The
+one panel that has no card drawing it yet — the queue
+([#85](https://github.com/NobuData/ouroboros/issues/85)) — keeps its place as a designed empty
+state naming what will fill it, rather than borrowing the mockup's rows.
 
 **One control on the whole page changes anything**, and it is the pulse card's auto-merge
 switch ([#74](https://github.com/NobuData/ouroboros/issues/74)'s operation). Everything else
@@ -890,6 +893,53 @@ place in the tab order. The gate that decides is the service's: a Server Action 
 endpoint anybody can reach, so the browser's copy of the rule is presentation, and a forged
 write is answered with the `403` in the same sentence the tooltip carries.
 
+### The completions table: what the loop actually shipped
+
+The `c-7` card ([#84](https://github.com/NobuData/ouroboros/issues/84)) is the receipt beside
+the active table's promise: the aggregate's `recentRuns` through the same #46
+[`Table`](app/ui/table.tsx), five columns, every figure decided in
+[`view.ts`](app/dashboard/view.ts) (`recentCompletions`).
+
+| Column | What it draws |
+|---|---|
+| Issue → PR | `#474 → PR #512` in mono, then the title the run recorded |
+| Model | the identifier, opaque (decision F8), in the model hue |
+| Cycle | `finishedAt − startedAt`, in #81's compact formatter — `11m` |
+| Checks | `14/14`, tinted warn when fewer passed than ran |
+| Outcome | `merged → ok` · `needs human → warn` · `failed → danger` |
+
+**The honest rows are drawn exactly like the good ones.** A `needs human` row keeps the same
+columns, the same type and the same weight; the outcome pill and the tint on its short check
+count are the whole of the difference. A card that tucked its interventions away would be
+reporting a merge rate rather than a week — and the tint is on the **comparison** rather than
+on the status, so a run that merged with a check outstanding is as visible as one that stopped
+for it. The fraction says `13/14` in figures and the cell says *1 check did not pass.* in its
+tooltip, because meaning is never carried in hue alone (design system § 3.4).
+
+**A cycle is compact where the elapsed column is padded**, and the two functions are two
+functions for one reason: a cycle has stopped. `11m` rather than `11m 00s` — there is no
+figure moving that a hidden zero part would make look stuck — and it is `durationOfMinutes`,
+the same formatter the *Queued issues* estimate is drawn with, so two durations on one page
+cannot be written two ways. It also needs no clock: both instants are in the payload, which
+is why this card takes no `readAt`.
+
+**`failed` is mapped although neither the mockup nor the seed has one.** The status is in the
+contract, the danger treatment is in the design system, and a run that failed is exactly the
+row this card must not quietly drop — so it is a fixture in
+[`recently-closed-card.test.tsx`](__tests__/dashboard/recently-closed-card.test.tsx) rather
+than a branch nobody has ever rendered.
+
+**Four rows of the eight that arrive.** The endpoint answers eight so a client that expands
+the card already holds them; the mockup draws four, and `COMPLETIONS_SHOWN` is that number
+written down. Nothing is re-sorted — the endpoint orders the whole table, newest first by
+`finishedAt`, and four rows sorted again here would come out in a different order from the
+listing that shows all of them.
+
+**Neither `All issues →` nor a `needs human` row navigates yet.** The issues screen is mockup
+03 and the needs-you inbox is mockup 16; #49 holds both routes and is post-MVP. Each is an
+inert button carrying what is missing, which is the treatment the sidebar already gives both
+destinations — and #49's own first criterion, *no dead nav links*.
+
 ### One failed read is one degraded card
 
 The three reads go out together — the aggregate, the readiness probe and the engine's status
@@ -934,9 +984,9 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 
 ### What it does not pretend
 
-- **No run is invented.** Every row in the active-loops table came from `activeRuns`; the
-  mockup's eleven plausible rows in the two panels that still have no card are not copied,
-  because nothing answers those questions yet.
+- **No run is invented.** Every row in the two tables came from `activeRuns` and
+  `recentRuns`; the mockup's five plausible rows in the panel that still has no card are not
+  copied, because nothing answers that question yet.
 - **No model, workflow or stage name is interpreted.** They are opaque strings (decision F8),
   so `ollama/qwen3-coder` is rendered rather than split into a vendor and a version, and a run
   whose workflow has since been renamed still reads under the word it recorded.
@@ -965,11 +1015,11 @@ The real dashboard is specified card by card under
 [#80](https://github.com/NobuData/ouroboros/issues/80) has replaced the frame and the page
 head on top of #45's route, readers, status logic and redirect,
 [#81](https://github.com/NobuData/ouroboros/issues/81) the stat row,
-[#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table and
-[#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse. Each remaining card
-replaces one tile of the grid from the aggregate this page already fetches: recently closed
-([#84](https://github.com/NobuData/ouroboros/issues/84)) and the queue
-([#85](https://github.com/NobuData/ouroboros/issues/85)).
+[#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table,
+[#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse and
+[#84](https://github.com/NobuData/ouroboros/issues/84) the completions table. The remaining
+card replaces the last tile of the grid from the aggregate this page already fetches: the
+queue ([#85](https://github.com/NobuData/ouroboros/issues/85)).
 
 ## App shell
 
