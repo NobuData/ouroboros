@@ -220,6 +220,51 @@ describe("the table", () => {
   });
 });
 
+describe("the meter", () => {
+  it("reads its fill from the custom property the component passes", () => {
+    // The split this primitive is built on: the sheet keeps the colour, the height and the
+    // radius, and the call site contributes one number.
+    expect(CODE).toMatch(/\.ou-meter__fill\s*\{[^}]*width:\s*var\(--ou-meter-fill/);
+  });
+
+  it("falls back to an empty bar, never to a full one", () => {
+    // A component that forgot to say how full a meter is should draw *nothing known*, which
+    // is the honest reading. `width: 100%` as the fallback would make every unmeasured bar
+    // report complete.
+    expect(CODE).toMatch(/width:\s*var\(--ou-meter-fill,\s*0%\)/);
+  });
+
+  it("clips the fill to its track, so no value can draw outside the bar", () => {
+    expect(CODE).toMatch(/\.ou-meter\s*\{[^}]*overflow:\s*hidden/);
+  });
+
+  it("gives each status tone its own rule, from the palette's own token", () => {
+    for (const tone of ["ok", "warn", "err"]) {
+      expect(CODE).toMatch(
+        new RegExp(`\\.ou-meter--${tone} \\.ou-meter__fill\\s*\\{[^}]*var\\(--${tone}\\)`),
+      );
+    }
+  });
+});
+
+describe("the live chip's halo", () => {
+  it("moves only for a reader who has not asked for less motion", () => {
+    // Everything the pulse says, the chip's own label says in words — so a reader who has
+    // asked for stillness loses nothing by getting it.
+    const guarded = /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.ou-chip__dot--pulse/;
+
+    expect(CODE).toMatch(guarded);
+  });
+
+  it("pulses a shadow only, so nothing on the page moves or resizes", () => {
+    const frames = /@keyframes ou-chip-pulse\s*\{([\s\S]*?)\n\}/.exec(CODE);
+
+    expect(frames).not.toBeNull();
+    expect(frames?.[1]).toMatch(/box-shadow/);
+    expect(frames?.[1]).not.toMatch(/transform|width|height|margin/);
+  });
+});
+
 describe("the switch", () => {
   it("moves only for a reader who has not asked for less motion", () => {
     const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)");

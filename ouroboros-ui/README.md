@@ -677,36 +677,56 @@ is a `POST` rather than a `GET` to avoid.
 
 ## Dashboard
 
-`/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45)) is
+`/dashboard` ([#45](https://github.com/NobuData/ouroboros/issues/45); its frame and page head
+are [#80](https://github.com/NobuData/ouroboros/issues/80), its stat row
+[#81](https://github.com/NobuData/ouroboros/issues/81), its active-loops table
+[#82](https://github.com/NobuData/ouroboros/issues/82), its loop pulse
+[#83](https://github.com/NobuData/ouroboros/issues/83), its completions table
+[#84](https://github.com/NobuData/ouroboros/issues/84) and its queue card
+[#85](https://github.com/NobuData/ouroboros/issues/85)) is
 [`docs/mockups/02-dashboard.html`](../docs/mockups/02-dashboard.html) as a working page, and
 where a signed-in request with a chosen workspace lands. It renders **inside** the
 [app shell](#app-shell), so it starts at its page head and contributes no chrome of its own
 (design system § 2). Its cards, actions, status chips and empty states are
 [UI primitives](#ui-primitives); [`app/dashboard/`](app/dashboard) owns the page head, the
-twelve-column grid, and the two compositions built on top — the stat tile and the system
-list.
+twelve-column grid, and the compositions built on top — the stat tile, the system list and
+the pulse card's captioned meters.
 
 ```
 MISSION CONTROL
-Acme Robotics                              [ Edit workflows ] [ ⟳ Pull next issue ]
-Ken Suenobu · owner of acme-robotics            ↑ both inert, and say why
+Good afternoon, Ken — the loop is turning.  [ Edit workflows ] [ ⟳ Pull next issue ]
+3 issues in flight, 12 queued behind them.      ↑ both inert, and say why
+Ouroboros merged 6 pull requests since midnight UTC.
 
-┌ LOOPS LIVE ─┐┌ MEMBERS ────┐┌ ORGANISATIONS ┐┌ REPOSITORIES ┐
-│      —      ││      3      ││       1       ││      1       │
-│ no run data ││ 1 owner ·  …││ of 1 recorded ││of 1 recorded │
-└─────────────┘└─────────────┘└───────────────┘└──────────────┘
-┌ ACTIVE LOOPS ──────────────────────┐┌ SYSTEM      ◐ operational ┐
-│    ┆ No loops yet                ┆ ││ REST API            [ up ]│
-│    ┆ …arrives with mockup 10     ┆ ││ Database            [ up ]│
-└────────────────────────────────────┘│ Engine              [ up ]│
-┌ RECENTLY CLOSED ───────┐┌ UP NEXT ─┐└───────────────────────────┘
+┌ LOOPS LIVE ─┐┌ QUEUED ISSUES ┐┌ PRS MERGED·7D ┐┌ TOKEN SPEND·TODAY ┐
+│      3      ││      12       ││      27       ││       4.2M        │
+│ 1 coding ·… ││ est. 9h 40m … ││ ▲ 8 vs last … ││ ≈ $18.60 across 4 │
+└─────────────┘└───────────────┘└───────────────┘└───────────────────┘
+┌ ACTIVE LOOPS  ● live ──────────────┐┌ LOOP PULSE       7 days ─┐
+│ #482 Fix flaky… [standard-fix]     ││          ( ◎ )           │
+│   Implementing · 4/6  ▓▓▓▓▓▓▓░░░   ││ merge rate 14d  92% ▓▓▓▓▓░│
+│   [claude-fable-5]  12m 40s (coding)││ cycle 7d    14m 20s ▓▓░░░│
+└────────────────────────────────────┘│ ─────────────────────────│
+┌ SYSTEM      ◐ operational ┐         │ Auto-merge …      [ on ]  │
+│ REST API            [ up ]│         └──────────────────────────┘
+└───────────────────────────┘
+┌ RECENTLY CLOSED BY THE LOOP ────── All issues → ┐┌ UP NEXT ── Manage queue → ┐
+│ #474 → PR #512 Debounce…  11m  14/14 (merged)   ││ #485 Watchdog… [M ][std] │
+│ #465 → PR #504 Refactor…  42m  13/14 (needs human) [Review →]  … [XS][docs]  │
+└─────────────────────────────────────────────────┘│           + 7 queued →   │
+                                                    └──────────────────────────┘
 ```
 
-**Two kinds of card sit on the same grid, and the difference is the point.** The stat row
-and the system card are drawn from the session, the members listing, the enablement lists,
-`/health/ready` and `/api/v1/engine/status` — every figure on them came from the service.
-The mockup's three loop panels have no source in the contract at all, so they keep their
-place as designed empty states naming what will fill them.
+**Two kinds of card sit on the same grid, and the difference is the point.** The stat row is
+drawn from the aggregate's `stats`, the active-loops table from its `activeRuns`, the loop
+pulse from its `pulse`, the completions table from its `recentRuns`, the queue card from its
+`queueHead`, and the system card from `/health/ready` and `/api/v1/engine/status` — every
+figure on them came from the service. **Every panel of the mockup now has a card drawing it
+from data**, so nothing on this screen is a copy of the mockup's own rows.
+
+**One control on the whole page changes anything**, and it is the pulse card's auto-merge
+switch ([#74](https://github.com/NobuData/ouroboros/issues/74)'s operation). Everything else
+here reads.
 
 The route is three lines: [`app/api/access.ts`](app/api/access.ts) returns the workspace,
 [`app/dashboard/data.ts`](app/dashboard/data.ts) turns it into everything the screen draws,
@@ -715,16 +735,330 @@ Every decision in between — what a figure is, whether it is an em dash, which 
 — is [`app/dashboard/view.ts`](app/dashboard/view.ts), which is pure, so each is a unit test
 on a function rather than a page to drive.
 
+### The page head carries two pieces of page-level truth
+
+**Who is looking**, and **what the loop is doing right now**. They come from opposite
+directions, and that is the whole design of this head.
+
+The greeting is the module's **one client component**
+([`app/dashboard/greeting.tsx`](app/dashboard/greeting.tsx)), because a daypart is a fact
+about the reader rather than about the server: "good afternoon" rendered in Denver is wrong
+for the half of a workspace that is in Berlin (decision F7). It reads the browser's clock
+through [`useClientValue`](app/shell/client-value.ts) — React's `useSyncExternalStore` with a
+server snapshot and a client snapshot — so the heading is a complete `h1` from the first paint
+(*"Hello, Ken"*) and the daypart lands in the same commit rather than in a cascading second
+render. No `new Date()` in a render body, and so no hydration mismatch to throw markup away
+over.
+
+The subline is server data: the aggregate's `activity`
+([#70](https://github.com/NobuData/ouroboros/issues/70)), composed in
+[`view.ts`](app/dashboard/view.ts) with the pluralisation written once (`countOf`). Three
+things it will not do —
+
+- **It does not say "this morning".** The figure is counted from **midnight UTC**, the same
+  boundary the day's token spend uses; thirteen hours away that is not this morning, and a
+  page whose whole argument is that its numbers are real should not round a timezone off the
+  only figure on it that has one.
+- **It does not count to zero at an empty workspace.** *0 issues in flight, 0 queued behind
+  them* is true and useless; a workspace that has not started reads *"Nothing is running yet
+  — the loop starts when an issue reaches the queue."*
+- **It does not render an unread aggregate as an idle one.** A refusal puts the service's
+  reason there in the error hue, and the heading drops its closing clause rather than claiming
+  a loop is turning that nobody could ask about.
+
+### The stat row: four figures, and one line that is allowed to be absent
+
+Each of the mockup's four `c-3` tiles is a caption, a figure and a line explaining the
+figure, and three of the four derive that line rather than printing one
+([`view.ts`](app/dashboard/view.ts)):
+
+| Card | Figure | Line beneath it |
+|---|---|---|
+| Loops live | the total, in the accent | `1 coding · 1 building · 1 in review`, from `byStatus` |
+| Queued issues | the count | `est. 9h 40m of autonomous work`, from `estMinutes` |
+| PRs merged · 7d | the count | `▲ 8 vs last week` — arrow, wording and hue from the sign |
+| Token spend · today | compact tokens, `4.2M` | `≈ $18.60 across 4 providers` |
+
+The formatters behind them are [`app/format.ts`](app/format.ts) — compact counts, durations
+and money — written out rather than delegated to `Intl.NumberFormat`, whose compact output
+depends on the ICU data the runtime was built with (a server render and its hydration would
+disagree about the same figure) and which cannot be asked for the `1.0M` this design draws.
+Their boundaries are the things that make a page look designed rather than generated, so
+each is a case in [`__tests__/format.test.ts`](__tests__/format.test.ts): `999,950` is
+`1.0M` and never `1000.0k`; `580` minutes is `9h 40m` and never `9.7h`; `60` is `1h` and not
+`1h 0m`.
+
+Four rules the row is written under, and the third is the one worth stating twice:
+
+- **`byStatus` is the run table's arithmetic, not the mockup's caption.** The mockup prints
+  *"2 coding · 1 in review"* over a table holding one run in each of three statuses;
+  decision F.5 settled that in favour of the table. A status holding nothing is left out
+  rather than printed as a zero.
+- **The delta's direction is in the glyph as well as the hue**, so `▲` and `▼` separate an
+  up week from a down one without colour vision — and a week that matched the one before is
+  *"Level with last week"*, neither arrow nor colour, rather than an up week with a zero
+  on it.
+- **A cost nobody has priced is not `$0`.** `costCents` sums only the events that carry a
+  price, so a day of purely unpriced usage — local inference on a workstation is the honest
+  case — sums to zero while having cost something unknown. The line is **hidden** in that
+  state. The `≈` is not decoration either: it appears exactly when `unpricedEvents` is
+  non-zero, which is what makes *"≈ $18.60"* an honest floor. Giving that state its own
+  *cost unavailable* line is [#92](https://github.com/NobuData/ouroboros/issues/92)'s.
+- **The row is one read, so it fails as one.** Every figure comes from the aggregate, so a
+  refusal leaves all four carrying an em dash and the service's reason rather than four
+  zeros — and a workspace with nothing in it reads as four zeros and four sentences, which
+  is a different thing and must not look alike.
+
+### The active loops table: six columns, two of them moving
+
+The `c-8` card ([#82](https://github.com/NobuData/ouroboros/issues/82)) is the one the page is
+named after — everything else on the grid measures the last day or the last week, and this is
+the present tense. It draws the aggregate's `activeRuns` through the #46
+[`Table`](app/ui/table.tsx), with each row's arithmetic in [`view.ts`](app/dashboard/view.ts)
+and no arithmetic at all in the card:
+
+| Column | What it draws |
+|---|---|
+| Issue | the mono number and the title the run recorded |
+| Workflow | the tag, as free text — there is no workflow catalogue to look it up in |
+| Stage | `Implementing · 4/6` over a [`Meter`](app/ui/meter.tsx) at `index/total`, ok-toned in review |
+| Model | the identifier, opaque (decision F8), in the model hue |
+| Elapsed | `now − startedAt`, counting |
+| Status | `coding → run` · `building → warn` · `review → ok` |
+
+**The meter rounds down.** Four steps into six is 66.67%, and a progress bar is a claim about
+work that has *finished* — so the only honest way to round one is towards the work that
+certainly has, which also keeps `100%` reachable only by a run that has actually reached its
+last step.
+
+**Elapsed counts from the run's start, not from the figure the server computed.** Adding a
+second per tick would drift on every throttled frame and could never be checked against
+anything; [`elapsed.tsx`](app/dashboard/elapsed.tsx) holds `startedAt` and recomputes the
+difference against a clock instead. Three properties fall out of that rather than out of a
+guard somebody has to remember: a poll cannot move the number (the same run polls back with
+the same immutable `startedAt`), a tab that was backgrounded catches up instead of falling
+behind, and the only moment the figure could go backwards — hydration, where two machines
+answer *what time is it* — is closed by treating the server's own reading as a floor. The
+clock behind it, [`app/shell/clock.ts`](app/shell/clock.ts), is one `useSyncExternalStore`
+singleton quantised to whole seconds: **one interval for the page**, so ten rows tick on one
+beat, and none at all once the last of them unmounts.
+
+*Now* is therefore an input to this render. [`data.ts`](app/dashboard/data.ts) reads it once,
+after the fetches, and puts it in `DashboardReadings.readAt` — two cards reading their own
+clocks could disagree about what time it is, and a clock read inside a component is a clock no
+test can pin.
+
+**Nothing in the card is a link yet.** The rows will open the run console, which is mockup 10;
+`Open run console →` and `+N more running →` will go to #49's placeholder routes. None of
+those exists, so all three are labelled with what is missing rather than pointed at a `404` —
+the same treatment the sidebar gives nine destinations, and the same reason: #49's own first
+criterion is *no dead nav links*.
+
+### The loop pulse: three meters, two windows, and the page's one write
+
+The `c-4` card ([#83](https://github.com/NobuData/ouroboros/issues/83)) is the qualitative
+read on the loop — how often it finishes without a person, how long a cycle takes, how often
+it stops for one — over the aggregate's `pulse`, with every figure and every width decided in
+[`view.ts`](app/dashboard/view.ts) (`pulseMeters`).
+
+| Meter | Figure | Bar | Window |
+|---|---|---|---|
+| Autonomous merge rate | `92%` | the rate itself | **14 days** |
+| Avg. cycle time | `14m 20s` | against a 30-minute target | 7 days |
+| Human interventions | `2 this week` | against a budget of 25 | 7 days |
+
+**Two of the three bars needed a denominator the payload does not carry**, and both are
+exported constants — `CYCLE_TIME_TARGET_SECONDS` and `INTERVENTION_BUDGET_7D` — that
+reproduce the mockup's widths exactly (860 ÷ 1800 rounds to 48%; 2 ÷ 25 *is* 8%). A width
+nobody can explain is a width nobody can check, so neither is a number matched to a
+screenshot. Both round to a whole percent, because a ratio against a target somebody chose is
+a gauge rather than a measurement — and because a bar drawn at 91.5% under a figure printed
+`92%` is a card disagreeing with itself.
+
+**Each row prints the window it was measured over.** The head keeps the mockup's `7 days`
+tag and the merge rate says `14 days`, which is the window the contract publishes it under:
+the mockup's own `27 merged`, `2 interventions` and `92%` cannot all be true of one
+seven-day window. The figure beside each bar is hidden from the accessibility tree and the
+bar carries it in words instead — `92% of runs merged without a person, over 14 days` — so
+the caption speaks for the eye and the bar for the reader, never both.
+
+**The glyph is the [#14](https://github.com/NobuData/ouroboros/issues/14) asset, drawn and
+not painted over.** Both treatments are stacked in one grid cell with CSS choosing between
+them, exactly as the header's mark and the login lockup are, so the right one is painted
+before any JavaScript runs and the card renders identically under both palettes. The mockup's
+`mix-blend-mode: screen` and its `drop-shadow` are gone: they are one workaround for a crop
+that still had its background attached, `docs/BRAND.md` § Rules bans both on this pair, and
+on a light card the blend would erase the mark outright.
+
+**The switch is optimistic, and its failure is loud.**
+[`auto-merge-switch.tsx`](app/dashboard/auto-merge-switch.tsx) is a Client Component over the
+Server Action in [`pulse-actions.ts`](app/dashboard/pulse-actions.ts) — the browser cannot
+reach REST, so a write goes through the same seam the font scale and the repository listing
+use. The optimistic position is `useOptimistic`'s, which means it lives exactly as long as
+the transition that set it, and three bugs stop being possible: a failed `PATCH` needs no
+rollback path to remember, a write that landed on a different value than it sent is drawn
+from the row rather than from the request, and a change nobody made in this browser arrives
+as a changed prop and is simply drawn. A landed write calls `router.refresh()` *inside* that
+transition, so the route's Server Components re-render from a fresh aggregate — which is the
+issue's *"verified by the next poll"* until [#87](https://github.com/NobuData/ouroboros/issues/87)'s
+polling hook lands.
+
+Where the login screen's switches are submit buttons in one-field forms — that screen is the
+first one, on an unknown connection, and working before hydration is worth more there than an
+animation — this one is a setting on a page nobody reaches without a session, beside a table
+already ticking a clock.
+
+**A `member` or a `viewer` sees the switch, disabled, with the reason in its tooltip and its
+description** (§ 3.3), `aria-disabled` rather than `disabled` so the explanation keeps its
+place in the tab order. The gate that decides is the service's: a Server Action is a POST
+endpoint anybody can reach, so the browser's copy of the rule is presentation, and a forged
+write is answered with the `403` in the same sentence the tooltip carries.
+
+### The completions table: what the loop actually shipped
+
+The `c-7` card ([#84](https://github.com/NobuData/ouroboros/issues/84)) is the receipt beside
+the active table's promise: the aggregate's `recentRuns` through the same #46
+[`Table`](app/ui/table.tsx), five columns, every figure decided in
+[`view.ts`](app/dashboard/view.ts) (`recentCompletions`).
+
+| Column | What it draws |
+|---|---|
+| Issue → PR | `#474 → PR #512` in mono, then the title the run recorded |
+| Model | the identifier, opaque (decision F8), in the model hue |
+| Cycle | `finishedAt − startedAt`, in #81's compact formatter — `11m` |
+| Checks | `14/14`, tinted warn when fewer passed than ran |
+| Outcome | `merged → ok` · `needs human → warn` · `failed → danger` |
+
+**The honest rows are drawn exactly like the good ones.** A `needs human` row keeps the same
+columns, the same type and the same weight; the outcome pill and the tint on its short check
+count are the whole of the difference. A card that tucked its interventions away would be
+reporting a merge rate rather than a week — and the tint is on the **comparison** rather than
+on the status, so a run that merged with a check outstanding is as visible as one that stopped
+for it. The fraction says `13/14` in figures and the cell says *1 check did not pass.* in its
+tooltip, because meaning is never carried in hue alone (design system § 3.4).
+
+**A cycle is compact where the elapsed column is padded**, and the two functions are two
+functions for one reason: a cycle has stopped. `11m` rather than `11m 00s` — there is no
+figure moving that a hidden zero part would make look stuck — and it is `durationOfMinutes`,
+the same formatter the *Queued issues* estimate is drawn with, so two durations on one page
+cannot be written two ways. It also needs no clock: both instants are in the payload, which
+is why this card takes no `readAt`.
+
+**`failed` is mapped although neither the mockup nor the seed has one.** The status is in the
+contract, the danger treatment is in the design system, and a run that failed is exactly the
+row this card must not quietly drop — so it is a fixture in
+[`recently-closed-card.test.tsx`](__tests__/dashboard/recently-closed-card.test.tsx) rather
+than a branch nobody has ever rendered.
+
+**Four rows of the eight that arrive.** The endpoint answers eight so a client that expands
+the card already holds them; the mockup draws four, and `COMPLETIONS_SHOWN` is that number
+written down. Nothing is re-sorted — the endpoint orders the whole table, newest first by
+`finishedAt`, and four rows sorted again here would come out in a different order from the
+listing that shows all of them.
+
+**Neither `All issues →` nor a `needs human` row navigates yet.** The issues screen is mockup
+03 and the needs-you inbox is mockup 16; #49 holds both routes and is post-MVP. Each is an
+inert button carrying what is missing, which is the treatment the sidebar already gives both
+destinations — and #49's own first criterion, *no dead nav links*.
+
+### The queue card: what the loop will do next
+
+The `c-5` card ([#85](https://github.com/NobuData/ouroboros/issues/85)) is the forward-looking
+half of the page: the aggregate's `queueHead` in queue order, one row per issue, decided in
+[`view.ts`](app/dashboard/view.ts) (`queueRows`, `moreQueued`) and drawn by
+[`queue-card.tsx`](app/dashboard/queue-card.tsx).
+
+```
+#485  Watchdog reset on I²C bus lockup       [ M  ]  [standard-fix]
+#488  Typo sweep in operator manual          [ XS ]  [docs-loop]
+#490  Migrate build to Zephyr 4.2            [ XL ]  [deps-refresh]
+                                                        + 7 queued →
+```
+
+**A list, not a table.** The two cards beside it have columns — a heading over each cell saying
+what the figure in it means. A queue row has none: it is one issue, and the effort chip and the
+workflow tag are properties *of* it rather than a second and third measurement. So it is a
+`ul`, which is also what a screen reader is best served by — *list of five items*, then five
+issues, rather than a grid whose column headers would have to be invented to justify the markup.
+
+**This is the one surface in the product that draws all five effort chips at once**, which is
+what makes it the place the scale is proved. The hue is derived from the size by the #46
+[chip](app/ui/chip.tsx) — `XS`/`S` are cheap, `M` is the ordinary case, `L`/`XL` are the ones
+worth a second look — never passed by a call site, because an `L` that was green somewhere
+would make the scale mean nothing. The size is a **judgement** and is deliberately not a
+function of the estimate beside it (contract `QueueEffort`): if one were derived from the other,
+the stat row's `est. 9h 40m` would be a restatement of the chips rather than a second fact.
+
+**`+7 queued` is a subtraction over two separately true figures**, not a flag: `queueHead` is
+capped at five by the service and `stats.queued.count` speaks for the whole queue, so the
+footer appears only when the count exceeds the rows and says exactly the remainder. It shares
+its arithmetic with the loops table's `+N more`, so two footers on one page cannot disagree.
+
+**Neither `Manage queue →` nor the footer navigates yet.** The queue screen is mockup 03 and
+#49 holds its route, which is post-MVP; both are inert buttons carrying the one reason, which
+keeps the explanation in the tab order, and both become an `href` the day #49 lands. Two
+controls pointing at one missing screen carry one sentence rather than two, because two would
+read as two missing screens.
+
+The empty state is the card's own until [#86](https://github.com/NobuData/ouroboros/issues/86)
+designs every card's together: a workspace that has caught up with its own queue reads
+*Nothing is queued*, and an aggregate nobody could read reads the service's reason.
+
 ### One failed read is one degraded card
 
-The four reads go out together and each is wrapped independently, so a members listing that
-fails leaves the enablement counts and the status pills intact. The wrapper catches an
-`ApiError` and **nothing else**: a `401` arrives here as Next.js's redirect signal rather
-than as an error, and a `catch` wide enough to hold it would swallow the navigation to the
-login screen and draw a dashboard captioned with the framework's internal message.
+The three reads go out together — the aggregate, the readiness probe and the engine's status
+— and each is wrapped independently, so an aggregate that fails leaves the status pills
+intact. The wrapper catches an `ApiError` and **nothing else**: a `401` arrives here as
+Next.js's redirect signal rather than as an error, and a `catch` wide enough to hold it would
+swallow the navigation to the login screen and draw a dashboard captioned with the
+framework's internal message.
 
-While the reads are in flight, [`loading.tsx`](<app/(app)/dashboard/loading.tsx>) draws the
-same eight cards at the same column spans, so nothing moves when the data arrives.
+It was five until #81. The members listing and the enablement lists fed #45's stat row, which
+counted people, organisations and repositories while nothing could report on a loop; the row
+is now the aggregate's own four figures, so both reads lost their card — and a page that
+fetched them anyway would pay for two round trips per render, and per poll, to draw nothing.
+Both operations are unchanged and still read elsewhere ([app shell](#app-shell)).
+
+One of the three is the aggregate, and it is **one** call by design (decision F5):
+[`app/api/dashboard.ts`](app/api/dashboard.ts) wraps `GET /api/v1/dashboard`, which answers
+every number, list and switch the mockup draws in a single payload, so the page paints in one
+round trip rather than in eight. It sends no `If-None-Match` — this is the *first* read, made
+by a Server Component so the page arrives rendered, and the `ETag` loop that keeps it fresh
+afterwards is [#87](https://github.com/NobuData/ouroboros/issues/87)'s.
+
+### Empty, loading and failed, designed together
+
+The mockup draws only the busy state. The other three
+([#86](https://github.com/NobuData/ouroboros/issues/86)) are the ones a real workspace spends
+most of its first week in.
+
+**Nothing is fabricated at zero.** A fresh workspace — the `kensuenobu` seed org — reads as
+zeros and sentences, never as an em dash: these zeros *were read*. Each card says what is not
+there and what would put something there — *Nothing is running right now*, *Nothing closed
+yet*, *Nothing is queued* — and the pulse card keeps its three meters at zero under a note
+saying they have nothing to measure, because three empty bars and no sentence would read as a
+merge rate of nought. None of the mockup's plausible rows appears anywhere.
+
+**The skeleton is each card's own shape.** [`loading.tsx`](<app/(app)/dashboard/loading.tsx>)
+draws the nine cards at their real geometry — the stat tile's tall figure, the tables' ruled
+rows, the pulse card's mark at `512×296` over three meters with a switch under a rule — from
+classes that mirror the cards' own. Nine copies of one generic block reserve the wrong height
+for eight of them, which is a skeleton that passes its own test and still lets the page jump.
+
+**A failed read degrades; it does not blank the page.**
+[`freshness.tsx`](app/dashboard/freshness.tsx) holds the last render that worked, so a service
+that stops answering mid-session leaves the reader's figures on screen under
+[a banner](app/dashboard/stale-banner.tsx) saying *"Showing data from 14:02 — the latest
+refresh failed"*, with the page's only retry beside it. It holds the rendered **tree**, not the
+payload, which is what keeps every card a Server Component — this and the auto-merge switch are
+the whole of the client code on this screen. `router.refresh()` re-runs the route and merges
+the result without discarding client state, so a retry that fails again still shows the data
+from before the failures started; #87's polling hook will drive the same boundary.
+
+**The reason is said once.** Before this, one refused aggregate printed the service's sentence
+**nine times** — four stat tiles, four cards and the page head's subline — which reads as nine
+problems rather than one and buries the single retry that would fix them. The rule now: **a
+card says what could not be read, and the banner says why.**
 
 ### The system card, and why one read skips the client
 
@@ -745,26 +1079,47 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
 
 ### What it does not pretend
 
-- **No loop is invented.** Nothing produces one yet, so the loop count is an em dash rather
-  than a zero — "zero loops are running" and "nothing can tell you how many are running" are
-  different facts — and the mockup's fifteen plausible rows are not copied.
-- **Both page-head actions are inert**, and say why in a tooltip. Neither destination exists
-  ([#49](https://github.com/NobuData/ouroboros/issues/49) holds their place), and a control
-  that appeared to pull an issue would be the one dishonest thing on the screen.
+- **No run and no queued issue is invented.** Every row on this page came from `activeRuns`,
+  `recentRuns` or `queueHead`. None of the mockup's own rows is copied anywhere: a workspace
+  with an empty queue draws a designed empty state, not five plausible issues.
+- **No model, workflow or stage name is interpreted.** They are opaque strings (decision F8),
+  so `ollama/qwen3-coder` is rendered rather than split into a vendor and a version, and a run
+  whose workflow has since been renamed still reads under the word it recorded.
+- **Both page-head actions are inert**, as are the active-loops card's two, and each says why
+  in a tooltip. Neither destination exists —
+  [#49](https://github.com/NobuData/ouroboros/issues/49) holds their place and is post-MVP —
+  and a control that appeared to pull an issue would be the one dishonest thing on the screen.
+  It is the same treatment the sidebar gives `/issues` and `/workflows`; linking them to routes
+  nobody has written would break #49's own first criterion, *no dead nav links*.
   `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab order.
-- **A figure that could not be read is an em dash beside the reason**, never a zero.
+- **A figure that could not be read is an em dash**, never a zero — and the reason it could
+  not be read is said once, in the banner, rather than repeated under every figure.
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
   reads *degraded* rather than *operational* when any row is.
-- **Both flags, not one**, in the repository count: a repository is in scope only when its
-  own `enabled` and its organisation's are both true, so the ones held back by a disabled
-  organisation are counted separately and said out loud.
+- **A cost nobody has priced is hidden, not drawn as `$0`.**
+- **A pulse with nothing to measure says so**, rather than reporting a 0% merge rate: all
+  three of its figures are floors when no run has closed in the window, and a workspace that
+  has never finished one has not merged nothing — it has not started.
+- **A switch is never drawn in a position the server does not hold.** An aggregate nobody
+  could read has no position, so the row says that instead of defaulting to `off`; an
+  optimistic flip that did not persist goes back and says why.
 - **The pills differ in shape as well as in hue**, so *operational* and *degraded* are
-  distinguishable without colour vision.
+  distinguishable without colour vision — as do the stat row's deltas, which carry an arrow.
 
 The real dashboard is specified card by card under
-[#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I), and
-[#80](https://github.com/NobuData/ouroboros/issues/80) replaces this page's body. The route,
-the readers, the status logic and the redirect are what it builds on.
+[#62](https://github.com/NobuData/ouroboros/issues/62) (Epic I).
+[#80](https://github.com/NobuData/ouroboros/issues/80) has replaced the frame and the page
+head on top of #45's route, readers, status logic and redirect,
+[#81](https://github.com/NobuData/ouroboros/issues/81) the stat row,
+[#82](https://github.com/NobuData/ouroboros/issues/82) the active-loops table,
+[#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse,
+[#84](https://github.com/NobuData/ouroboros/issues/84) the completions table and
+[#85](https://github.com/NobuData/ouroboros/issues/85) the queue card. **Every card of the grid
+is now drawn from the aggregate this page already fetches**, and
+[#86](https://github.com/NobuData/ouroboros/issues/86) has designed the three states the mockup
+does not draw — empty, loading and failed — across all of them at once. What is left of Epic I
+is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page fresh with the
+`ETag` poll and drives #86's freshness boundary instead of its manual retry.
 
 ## The polling store
 
@@ -892,8 +1247,7 @@ Five things are worth knowing before adding a screen to it.
    **not drawn at all** rather than drawn as a zero, so an empty workspace gets an empty slot
    instead of a pair of noughts. The count that moves does so inside an `aria-live="polite"`
    region that was already on the page, so a change is announced as an update rather than
-   missed as an insertion. The theme control and the settings entry
-   live *inside* the profile menu since CP.3
+   missed as an insertion. The theme control and the settings entry   live *inside* the profile menu since CP.3
    ([#645](https://github.com/NobuData/ouroboros/issues/645)) — § 1.1 puts them there,
    and a control drawn twice is a state that can be read twice differently.
 5. **Overlays render beside the pane, not inside it.**
@@ -940,6 +1294,75 @@ followed out of it, and on the window growing past 768px. The trap is
 The **keyboard** through all of it: one roving tab stop, arrows and Home/End between entries
 (wrapping at both ends), and Enter needing no handler because every reachable entry is a
 real `<a href>`.
+
+### The ⌘K palette, and its action registry
+
+`⌘K` / `Ctrl+K` from any screen — or the header's search pill — opens
+[`app/shell/command-palette.tsx`](app/shell/command-palette.tsx)
+([#79](https://github.com/NobuData/ouroboros/issues/79)). **MVP scope is navigation**, which
+is the issue's own decision and the reason the palette says so on its face: content search
+needs issue and run data that only partly exists, and a search shipped now would be a search
+that finds nothing.
+
+```
+⌘K ─▶ ┌ Search screens and commands…──────────────┐
+      │ NAVIGATION                                │
+      │  ▸ Go to Dashboard                        │  ← ↑↓ walk these
+      │  ▸ Go to Issues       Issue intake · #115 │  ← and skip these
+      │ ACTIONS                                   │
+      │  ▸ Toggle theme                   to dark │
+      │  ▸ Sign out                               │
+      └───────────────────────────────────────────┘
+```
+
+**It names no source.** A surface registers what it can contribute and the palette renders
+whatever is registered — the same argument the sidebar's registry makes, and the reason
+[#93](https://github.com/NobuData/ouroboros/issues/93)'s content search is a new file rather
+than an edit to this one:
+
+```ts
+import { registerCommandSource } from "@/app/shell/command-registry";
+
+registerCommandSource({
+  id: "issues",
+  sort: 30,
+  async find(query, context, signal) {          // over the wire, debounced, abortable
+    const found = await searchIssues(query, { signal });
+    return found.map((issue) => ({
+      id: `issues:${issue.number}`,             // source-prefixed, unique across the palette
+      label: `#${issue.number} ${issue.title}`,
+      group: "Issues",                          // its own heading, below Navigation
+      run: () => context.navigate(`/issues/${issue.number}`),
+    }));
+  },
+});
+```
+
+A source has **two halves and needs at least one** (the registry refuses one with neither).
+`list(context)` answers synchronously from what the shell already knows and is filtered by the
+palette's own matcher; `find(query, context, signal)` answers over the wire, is asked only for
+a non-empty query, is **debounced by the palette** and handed a signal that fires when the
+query moves on — and its results are *not* re-filtered, because a source that searched has
+already decided what matches. A rejection contributes nothing; saying so is the source's own
+business, and the shape for it is an unavailable action carrying the reason. The `context` is
+what the shell knows and a source cannot ask for itself — the permitted navigation entries,
+`navigate`, the resolved theme and `setTheme`, and `signOut` — because a source is a plain
+object registered at module scope and has no hooks.
+
+An action either **does something or says why it cannot**, enforced by the type rather than by
+an assertion: `run` and `unavailable` are the two arms of a union. That is what lets the ten
+unbuilt screens be listed, marked and skipped by the arrow ring instead of dropped — answering
+*Issues* with "no matches" would claim there is no such screen, when the truth is that it is
+not built yet (§ 3.5). Matching is a **fuzzy subsequence** ([`command.ts`](app/shell/command.ts)):
+`gtd` reaches *Go to Dashboard*, contiguous runs and word starts score, gaps cost, and a label
+match always outranks a keyword one.
+
+It is a **combobox**, not a menu: focus stays in the text box and the highlighted row is named
+by `aria-activedescendant` rather than focused, which is what leaves every other key — Home and
+End included — to the query. Everything a dialog owes the keyboard is
+[`overlay.tsx`](app/shell/overlay.tsx)'s; the one thing the palette asks it for is
+`initialFocus`, because React runs a child's effects before its parent's and a box that focused
+itself would be recorded as the element Escape has to give focus back to.
 
 ### The account menu
 
@@ -1014,6 +1437,7 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 | `Chip` / `EffortChip` | A small marker carrying a state in its hue, optionally with a dot; and the square XS–XL estimate | `.pill` / `.effort` |
 | `Tag` / `Badge` | Metadata with no state; and a count attached to something else | `.tag` / `.nav-badge` |
 | `Table` | Columns and rows, inside their own horizontal scroll container | `.tbl` |
+| `Meter` | A proportion drawn as a bar — a stage, a rate, a budget | `.meter` |
 | `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
 | `EmptyState` | A surface that is not ready, labelled rather than blank | — |
 | `Eyebrow` | The caption above a title | `.eyebrow` |
@@ -1051,6 +1475,12 @@ nobody could. Each tone is one of the token sheet's published triples (ink, a 35
 surface, and a translucent layer is not one of them — so a panel carrying sentences somebody
 is meant to read cannot be dimmed. The same rule is why the login screen's step 2 recedes
 onto the well before sign-in instead of taking the mockup's `opacity: 0.66`.
+
+**A number a component cannot know is passed as a custom property, not as a style.** `Meter`
+is the case: its height, radius, track and fill are the sheet's, and only *how full it is*
+comes from data — so that one value arrives as `--ou-meter-fill` and the sheet still owns the
+`width` declaration. It is the only inline style on the dashboard, and the screen's suite
+asserts that it is the only one there.
 
 **A primitive names no domain concept.** That is the line between this directory and a
 screen's own components: there is no `<WorkspaceCard>` here and there should not be. The
@@ -1319,6 +1749,7 @@ design tokens [#16](https://github.com/NobuData/ouroboros/issues/16) ·
 theme engine [#17](https://github.com/NobuData/ouroboros/issues/17) ·
 theme toggle [#42](https://github.com/NobuData/ouroboros/issues/42) ·
 app shell [#41](https://github.com/NobuData/ouroboros/issues/41) ·
+⌘K navigation palette [#79](https://github.com/NobuData/ouroboros/issues/79) ·
 typed API client [#43](https://github.com/NobuData/ouroboros/issues/43) ·
 BetterAuth client & session store [#716](https://github.com/NobuData/ouroboros/issues/716) ·
 route guards & session-aware redirects [#720](https://github.com/NobuData/ouroboros/issues/720) ·

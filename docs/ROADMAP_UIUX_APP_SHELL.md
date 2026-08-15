@@ -197,6 +197,15 @@ Complexity chips: **XS · S · M · L**.
 > So the mechanism is exercised by the product and cannot rot before #79 replaces what is
 > inside the frame.
 >
+> > **Amended 2026-08-14 by [#79](https://github.com/NobuData/ouroboros/issues/79) (H.3).**
+> > It has. The panel is now
+> > [`app/shell/command-palette.tsx`](../ouroboros-ui/app/shell/command-palette.tsx) — a
+> > combobox over an extensible action registry, navigation-scoped by that issue's own
+> > decision — and the pill keeps only the opening. `ShellOverlay` gained one prop for it,
+> > `initialFocus`: a palette opens to be typed into, and the box cannot take focus for
+> > itself because React runs a child's effects before its parent's, which would record the
+> > box rather than the pill as the element Escape has to give focus back to.
+>
 > **What is left to CP.5 (#647), by this roadmap's own split:** the two acceptance criteria
 > that need a browser to be true — 5,000px of fixture content moving only the pane, and no
 > pane-level horizontal scrollbar from 1280px to 3840px. Both are CSS here and asserted as

@@ -3,34 +3,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 import type { Workspace } from "@/app/api/access";
 
-import { engineStatus, healthReport, memberPage } from "../helpers/dashboard";
-import { enablement, membership, org, repo, sessionUser } from "../helpers/login";
+import { dashboardPayload, engineStatus, healthReport } from "../helpers/dashboard";
+import { membership, sessionUser } from "../helpers/login";
 
 /**
- * The dashboard's reader: four calls, one object, and a failure that stays inside its own
+ * The dashboard's reader: three calls, one object, and a failure that stays inside its own
  * card.
  *
- * The four resources are replaced rather than driven — each has a suite of its own in
+ * The three resources are replaced rather than driven — each has a suite of its own in
  * `__tests__/api/`, and repeating them here would be testing the client twice while testing
  * the composition once. What is under test is what this layer adds: that the reads go out
  * together, that one failing leaves the others alone, and — the case that matters most —
  * that a redirect is *not* caught on its way past.
+ *
+ * It was five until [#81](https://github.com/NobuData/ouroboros/issues/81). The members
+ * listing and the enablement lists fed #45's stat row, which counted people and
+ * repositories while nothing could report on a loop; the row is now the aggregate's own
+ * four figures, so both reads lost their card and this page stopped making them.
  */
 
-const list = vi.fn();
-const readEnablement = vi.fn();
+const read = vi.fn();
 const readReadiness = vi.fn();
 const status = vi.fn();
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/app/api/members", () => ({ members: { list: (...args: unknown[]) => list(...args) } }));
-vi.mock("@/app/api/enablement", () => ({
-  readEnablement: (...args: unknown[]) => readEnablement(...args),
-}));
+vi.mock("@/app/api/dashboard", () => ({ dashboard: { read: () => read() } }));
 vi.mock("@/app/api/health", () => ({ readReadiness: () => readReadiness() }));
 vi.mock("@/app/api/engine", () => ({ engine: { status: () => status() } }));
 
-const { MEMBER_LIMIT, readDashboard } = await import("@/app/dashboard/data");
+const { readDashboard } = await import("@/app/dashboard/data");
 
 /** What the gate hands the page, in the seeded world. */
 const ACCESS: Workspace = {
@@ -44,12 +45,8 @@ const ACCESS: Workspace = {
   membership: membership(),
 };
 
-/** The seeded enablement list: one organisation, one repository, both on. */
-const SEEDED = enablement([[org(), [repo()]]]);
-
 beforeEach(() => {
-  list.mockReset().mockResolvedValue(memberPage());
-  readEnablement.mockReset().mockResolvedValue(SEEDED);
+  read.mockReset().mockResolvedValue(dashboardPayload());
   readReadiness.mockReset().mockResolvedValue(healthReport());
   status.mockReset().mockResolvedValue(engineStatus());
 });
@@ -60,58 +57,75 @@ describe("readDashboard", () => {
 
     expect(readings.workspace).toEqual(membership());
     expect(readings.user).toEqual(sessionUser());
-    expect(readings.members).toEqual({ ok: true, value: memberPage() });
-    expect(readings.enablement).toEqual({ ok: true, value: SEEDED });
+    expect(readings.aggregate).toEqual({ ok: true, value: dashboardPayload() });
     expect(readings.readiness).toEqual(healthReport());
     expect(readings.engine).toEqual({ ok: true, value: engineStatus() });
   });
 
-  it("scopes every workspace-scoped read to the workspace the gate resolved", async () => {
-    // Not to a cookie, a parameter or anything else this layer could have chosen: the gate
-    // has already resolved the session's active organization against its own memberships.
-    await readDashboard(ACCESS);
+  it("stamps the page with one clock reading, taken after the reads", async () => {
+    // The active-loops table draws durations that are still running (#82), so `now` is an
+    // input to the render rather than something a component may look up — one reading for
+    // the page, so two cards cannot disagree about what time it is. Taken *after* the reads
+    // so a slow round trip is not counted as part of a run's elapsed time.
+    const before = Date.now();
+    const readings = await readDashboard(ACCESS);
 
-    expect(list).toHaveBeenCalledWith(membership().id, { limit: MEMBER_LIMIT });
-    expect(readEnablement).toHaveBeenCalledWith(membership().id);
+    expect(readings.readAt).toBeGreaterThanOrEqual(before);
+    expect(readings.readAt).toBeLessThanOrEqual(Date.now());
   });
 
-  it("asks for the contract's largest page of members, so the breakdown describes the most it can", () => {
-    // The count itself is the service's `total` and does not depend on this at all; what
-    // this bounds is how much of the role breakdown under it is real.
-    expect(MEMBER_LIMIT).toBe(100);
-  });
-
-  it("issues the four reads together rather than one after another", async () => {
-    // A screen whose job is reporting the system's health should not take four round trips
-    // to do it. Each read is held open until all four have started, which only completes if
-    // they were in flight at once.
+  it("issues the three reads together rather than one after another", async () => {
+    // A screen whose job is reporting the system's health should not take three round trips
+    // to do it. Each read is held open until all three have started, which only completes
+    // if they were in flight at once.
     const started: string[] = [];
     const gate = Promise.withResolvers<void>();
     const hold = (name: string) => () => {
       started.push(name);
-      if (started.length === 4) gate.resolve();
+      if (started.length === 3) gate.resolve();
       return gate.promise;
     };
 
-    list.mockImplementation(hold("members"));
-    readEnablement.mockImplementation(hold("enablement"));
+    read.mockImplementation(hold("aggregate"));
     readReadiness.mockImplementation(hold("readiness"));
     status.mockImplementation(hold("engine"));
 
     await readDashboard(ACCESS);
 
-    expect(started.sort()).toEqual(["enablement", "engine", "members", "readiness"]);
+    expect(started.sort()).toEqual(["aggregate", "engine", "readiness"]);
+  });
+
+  it("names no workspace on the aggregate, because the session already does", async () => {
+    // `GET /api/v1/dashboard` is scoped to the session's active organization and this
+    // client sends no `X-Ouro-Tenant` override (`app/api/server.ts`), so the call takes no
+    // argument at all. A workspace passed here would be a second opinion about tenancy.
+    await readDashboard(ACCESS);
+
+    expect(read).toHaveBeenCalledExactlyOnceWith();
   });
 });
 
 describe("a read that fails", () => {
   it("becomes a reason on its own card and leaves the rest alone", async () => {
-    list.mockRejectedValue(new ApiError(404, "tenant_not_found", "No such tenant.", {}));
+    status.mockRejectedValue(new ApiError(502, "engine_unavailable", "No engine.", {}));
 
     const readings = await readDashboard(ACCESS);
 
-    expect(readings.members).toEqual({ ok: false, reason: "No such tenant." });
-    expect(readings.enablement.ok).toBe(true);
+    expect(readings.engine).toEqual({ ok: false, reason: "No engine." });
+    expect(readings.aggregate.ok).toBe(true);
+    expect(readings.readiness).not.toBeNull();
+  });
+
+  it("keeps a failed aggregate out of the cards that do not come from it", async () => {
+    // The page head and the stat row are the aggregate's; the system card is the two #45
+    // reads'. An aggregate the service refused degrades those and leaves this one reading.
+    read.mockRejectedValue(
+      new ApiError(400, "organization_required", "Choose a workspace first.", {}),
+    );
+
+    const readings = await readDashboard(ACCESS);
+
+    expect(readings.aggregate).toEqual({ ok: false, reason: "Choose a workspace first." });
     expect(readings.engine.ok).toBe(true);
     expect(readings.readiness).not.toBeNull();
   });
@@ -131,15 +145,13 @@ describe("a read that fails", () => {
 
   it("can fail in every card at once and still return a page to draw", async () => {
     const boom = (code: string) => new ApiError(500, code, "Something went wrong.", {});
-    list.mockRejectedValue(boom("internal_error"));
-    readEnablement.mockRejectedValue(boom("internal_error"));
+    read.mockRejectedValue(boom("internal_error"));
     status.mockRejectedValue(boom("internal_error"));
     readReadiness.mockResolvedValue(null);
 
     const readings = await readDashboard(ACCESS);
 
-    expect(readings.members.ok).toBe(false);
-    expect(readings.enablement.ok).toBe(false);
+    expect(readings.aggregate.ok).toBe(false);
     expect(readings.engine.ok).toBe(false);
     expect(readings.readiness).toBeNull();
     // The workspace still came from the gate, so the page head still has something to say.
@@ -153,13 +165,13 @@ describe("what is deliberately not caught", () => {
     // (`app/api/server.ts`). A catch wide enough to hold it would swallow the navigation
     // and draw a dashboard captioned with the framework's internal message.
     const signal = new Error("NEXT_REDIRECT /login");
-    list.mockRejectedValue(signal);
+    read.mockRejectedValue(signal);
 
     await expect(readDashboard(ACCESS)).rejects.toThrow("NEXT_REDIRECT /login");
   });
 
   it("lets a bug in a resource module through rather than reporting it as an outage", async () => {
-    readEnablement.mockRejectedValue(new TypeError("under is not iterable"));
+    read.mockRejectedValue(new TypeError("under is not iterable"));
 
     await expect(readDashboard(ACCESS)).rejects.toBeInstanceOf(TypeError);
   });
@@ -167,7 +179,7 @@ describe("what is deliberately not caught", () => {
   it("still lets a redirect through when another read failed first", async () => {
     // `Promise.all` settles them together, so the one that rejects with something other
     // than an `ApiError` has to win however the others landed.
-    list.mockRejectedValue(new ApiError(500, "internal_error", "Something went wrong.", {}));
+    read.mockRejectedValue(new ApiError(500, "internal_error", "Something went wrong.", {}));
     status.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(readDashboard(ACCESS)).rejects.toThrow("NEXT_REDIRECT /login");

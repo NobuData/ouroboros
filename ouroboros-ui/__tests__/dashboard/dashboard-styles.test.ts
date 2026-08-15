@@ -40,6 +40,186 @@ describe("the grid's column spans", () => {
   });
 });
 
+describe("the page head", () => {
+  it("lets the actions drop under the headings rather than crushing them", () => {
+    // The mockup's `.page-head` at its own widths: a flex row that wraps, with the heading
+    // column holding a floor so "Good afternoon, Ken — the loop is turning." never wraps to
+    // one word a line beside two buttons.
+    const head = /\.dash__head\s*\{([^}]*)\}/.exec(CODE);
+    const headings = /\.dash__headings\s*\{([^}]*)\}/.exec(CODE);
+
+    expect(head?.[1]).toMatch(/flex-wrap:\s*wrap/);
+    expect(headings?.[1]).toMatch(/min-width:\s*[\d.]+rem/);
+  });
+
+  it("marks a subline that is a failure rather than an activity", () => {
+    // The page head's half of the honesty rule: an aggregate nobody could read must not
+    // render as a workspace with nothing in it.
+    expect(CODE).toMatch(/\.dash__sub--failed\s*\{[^}]*color:\s*var\(--err\)/);
+  });
+});
+
+describe("the stat row's tones", () => {
+  it("defines a class for every tone the tile can be given", () => {
+    // `StatCard` names these as class suffixes, so a tone with no rule behind it is a delta
+    // that silently draws muted — a down week rendering as a neutral one — rather than a
+    // build error.
+    for (const tone of ["up", "down", "failed"]) {
+      expect(CODE).toMatch(new RegExp(`\\.dash-stat__delta--${tone}\\s*\\{[^}]*color:`));
+    }
+  });
+
+  it("takes each of them from the palette's own status tokens", () => {
+    // Both palettes publish contrast for these against `--surface`; a hand-picked green
+    // would be legible in one theme and not the other.
+    expect(CODE).toMatch(/\.dash-stat__delta--up\s*\{[^}]*color:\s*var\(--ok\)/);
+    expect(CODE).toMatch(/\.dash-stat__delta--down\s*\{[^}]*color:\s*var\(--err\)/);
+    expect(CODE).toMatch(/\.dash-stat__value--accent\s*\{[^}]*color:\s*var\(--accent\)/);
+  });
+});
+
+describe("the active loops table", () => {
+  it("fixes the stage column's width in rem, so the meter keeps its length at every scale", () => {
+    // The mockup's `<th style="width:180px">`. A px width is the one length on this page
+    // that would refuse to move with the reader's font-size preference — and the cell holds
+    // a caption over a bar, both of which grow with the type.
+    expect(CODE).toMatch(/\.dash-runs__stage\s*\{[^}]*width:\s*[\d.]+rem/);
+  });
+
+  it("holds a measure on the issue title rather than letting one row size the table", () => {
+    // The table scrolls inside its own box, so a long title lengthens the row rather than
+    // the page — but an unbounded one would push the five columns after it off the card.
+    expect(CODE).toMatch(/\.dash-run__title\s*\{[^}]*max-width:/);
+  });
+
+  it("stacks the stage caption over its bar", () => {
+    expect(CODE).toMatch(/\.dash-run__stage\s*\{[^}]*flex-direction:\s*column/);
+  });
+});
+
+describe("the recently closed table", () => {
+  it("keeps the issue and its pull request on one line", () => {
+    // The pair is one value read as one thing. The no-break space inside `PR #512` holds the
+    // pull request together (`view.ts`); this holds the arrow with what is either side of it.
+    expect(CODE).toMatch(/\.dash-closed__pair\s*\{[^}]*white-space:\s*nowrap/);
+    expect(CODE).toMatch(/\.dash-closed__pair\s*\{[^}]*font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("holds a measure on the issue title rather than letting one row size the table", () => {
+    expect(CODE).toMatch(/\.dash-closed__title\s*\{[^}]*max-width:/);
+  });
+
+  it("tints a short check count from the palette's own warn token", () => {
+    // A hand-picked amber would be legible in one theme and not the other; both palettes
+    // publish this token's contrast against `--surface`.
+    expect(CODE).toMatch(/\.dash-closed__checks--short\s*\{[^}]*color:\s*var\(--warn\)/);
+  });
+
+  it("leaves a check count that ran clean the page's ordinary ink", () => {
+    // A column where every figure is coloured is a column with no signal in colour at all.
+    expect(CODE).toMatch(/\.dash-closed__checks\s*\{[^}]*color:\s*var\(--ink\)/);
+  });
+
+  it("sits the outcome pill and its control on one baseline", () => {
+    expect(CODE).toMatch(/\.dash-closed__outcome\s*\{[^}]*display:\s*inline-flex/);
+  });
+});
+
+describe("the stale-data banner", () => {
+  it("lines up with the page head it sits above, at both of the grid's widths", () => {
+    // It is a fact about the whole page rather than about a card, so it sits outside the
+    // grid — which means its inline margin has to be `.dash`'s padding, or it floats in the
+    // pane's gutter while everything under it is indented.
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*margin:\s*var\(--sp-8\) var\(--sp-10\) 0/);
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*margin-inline:\s*var\(--sp-6\)|@media[\s\S]*\.dash-stale\s*\{[^}]*margin-inline/);
+  });
+
+  it("takes its hue from the palette's own warn tokens", () => {
+    // Both palettes publish this token's contrast against `--surface`; a hand-picked amber
+    // would be legible in one theme and not the other.
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*border:\s*1px solid var\(--warn-line\)/);
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*background:\s*var\(--warn-tint\)/);
+    expect(CODE).toMatch(/\.dash-stale__headline\s*\{[^}]*color:\s*var\(--warn\)/);
+  });
+
+  it("lets the sentence wrap above the retry rather than crushing it", () => {
+    expect(CODE).toMatch(/\.dash-stale\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
+  it("zeroes the block margin a browser gives its paragraph", () => {
+    expect(CODE).toMatch(/\.dash-stale__text\s*\{[^}]*margin:\s*0/);
+  });
+});
+
+describe("the up-next queue", () => {
+  it("rules every row off but the last, as the mockup draws it", () => {
+    // A rule under the final row would read as the start of something that is not there. The
+    // `:last-child` rule is what makes the fifth row borderless without the card counting.
+    expect(CODE).toMatch(/\.dash-queue__row\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/);
+    expect(CODE).toMatch(/\.dash-queue__row:last-child\s*\{[^}]*border-bottom:\s*0/);
+  });
+
+  it("puts the issue on one edge and its markers on the other", () => {
+    expect(CODE).toMatch(/\.dash-queue__row\s*\{[^}]*justify-content:\s*space-between/);
+  });
+
+  it("keeps the effort chip and the workflow tag together on one line", () => {
+    // The two markers are the row's answer to *how big* and *run by what*. A tag broken over
+    // two lines reads as two tags, so the pair never shrinks and the title wraps instead.
+    expect(CODE).toMatch(/\.dash-queue__marks\s*\{[^}]*flex:\s*none/);
+    expect(CODE).toMatch(/\.dash-queue__title\s*\{[^}]*min-width:\s*0/);
+  });
+
+  it("draws the issue number in mono, on the baseline of its title", () => {
+    expect(CODE).toMatch(/\.dash-queue__number\s*\{[^}]*font-family:\s*var\(--f-mono\)/);
+    expect(CODE).toMatch(/\.dash-queue__issue\s*\{[^}]*align-items:\s*baseline/);
+  });
+});
+
+describe("the loop pulse card", () => {
+  it("reserves the glyph's box at the asset's own ratio, so nothing moves when it loads", () => {
+    // 512×296 is the #14 file's size, and the pair is pixel-identical — which is what makes
+    // stacking both treatments in one grid cell safe.
+    expect(CODE).toMatch(/\.dash-pulse__glyph\s*\{[^}]*aspect-ratio:\s*512\s*\/\s*296/);
+    expect(CODE).toMatch(/\.dash-pulse__glyph\s*\{[^}]*width:\s*[\d.]+rem/);
+  });
+
+  it("chooses a treatment in CSS, under the same three selectors the token sheet uses", () => {
+    // The mark has to be right before any JavaScript runs, so the palette decides it here
+    // rather than a component reading the theme — which is also what makes the card render
+    // identically on the server and in the browser.
+    expect(CODE).toMatch(/\.dash-pulse__mark--dark\s*\{[^}]*opacity:\s*0/);
+    expect(CODE).toMatch(/:root\[data-theme="dark"\]\s*\.dash-pulse__mark--light/);
+    expect(CODE).toMatch(/@media \(prefers-color-scheme: dark\)/);
+  });
+
+  it("paints neither of the mockup's two workarounds over the asset", () => {
+    // docs/BRAND.md § Rules bans both on this pair by name: the mockup's crop still had its
+    // background attached and needed blending onto the card, then a shadow to give back the
+    // glow the blend flattened. On a light card the blend would erase the mark outright.
+    expect(CODE).not.toMatch(/mix-blend-mode|drop-shadow/);
+  });
+
+  it("hues the two figures that report something, and leaves the third the page's ink", () => {
+    // The tones are `view.ts`'s union, and a tone with no rule behind it is a figure
+    // silently drawing in the default ink rather than a build error.
+    expect(CODE).toMatch(/\.dash-pulse__value--ok\s*\{[^}]*color:\s*var\(--ok\)/);
+    expect(CODE).toMatch(/\.dash-pulse__value--warn\s*\{[^}]*color:\s*var\(--warn\)/);
+    expect(CODE).toMatch(/\.dash-pulse__value--accent\s*\{[^}]*color:\s*var\(--ink\)/);
+  });
+
+  it("marks a note that is a failure rather than an explanation", () => {
+    expect(CODE).toMatch(/\.dash-pulse__note--err\s*\{[^}]*color:\s*var\(--err\)/);
+  });
+
+  it("pushes the switch to the foot of the card, whatever height the grid row gives it", () => {
+    // The mockup's own layout: the meters sit under the mark and the switch under the rule,
+    // so two cards on one row have their switches on one line.
+    expect(CODE).toMatch(/\.dash-pulse__divider\s*\{[^}]*margin:\s*auto 0 0/);
+    expect(CODE).toMatch(/\.dash-pulse\s*\{[^}]*flex:\s*1/);
+  });
+});
+
 describe("the type scale", () => {
   it("names no font size in px, so the reader's preference scales every surface", () => {
     // Design system § 3.2: all type is rem-based, from one root change. A px font size is
@@ -67,10 +247,22 @@ describe("the user-agent defaults this sheet has to undo", () => {
     }
   });
 
+  it("zeroes the padding, margin and marker a browser gives the queue's list", () => {
+    // A `ul` carries a 40px inline start padding, a block margin and a bullet from the UA
+    // sheet. The padding is also the one length on that card that would not follow the
+    // reader's font-size preference, so it is undone rather than overridden with another px.
+    const rule = /\.dash-queue\s*\{([^}]*)\}/.exec(CODE);
+
+    expect(rule, ".dash-queue has no rule").not.toBeNull();
+    expect(rule?.[1]).toMatch(/margin:\s*0/);
+    expect(rule?.[1]).toMatch(/padding:\s*0/);
+    expect(rule?.[1]).toMatch(/list-style:\s*none/);
+  });
+
   it("zeroes the block margin a browser gives the paragraphs inside a flex column", () => {
     // Added to the container's `gap` rather than replaced by it, so an unzeroed `p` reads
     // as an uneven gap rather than as a missing rule.
-    for (const rule of ["\\.dash__sub", "\\.dash-system__note"]) {
+    for (const rule of ["\\.dash__sub", "\\.dash-system__note", "\\.dash-queue__more"]) {
       expect(CODE).toMatch(new RegExp(`${rule}\\s*\\{[^}]*margin:`));
     }
   });
@@ -96,6 +288,40 @@ describe("what this sheet no longer owns", () => {
   });
 });
 
+describe("the skeleton's geometry", () => {
+  it("mirrors the pulse card's glyph box, so the tallest card reserves its picture", () => {
+    // The same ratio and the same width the card itself holds (#86). A skeleton that guessed
+    // would move the page by the difference the moment the file arrived.
+    expect(CODE).toMatch(/\.dash-skeleton__glyph\s*\{[^}]*aspect-ratio:\s*512\s*\/\s*296/);
+    expect(CODE).toMatch(/\.dash-skeleton__glyph\s*\{[^}]*width:\s*9\.375rem/);
+  });
+
+  it("mirrors the card head's height and its bottom margin", () => {
+    // `.ou-card__head` has `margin-bottom: var(--sp-7)`, so a card's body starts in the same
+    // place whether it is drawn as a skeleton or as itself.
+    expect(CODE).toMatch(/\.dash-skeleton__head\s*\{[^}]*margin-bottom:\s*var\(--sp-7\)/);
+  });
+
+  it("rules its rows off the way the cards it stands in for do", () => {
+    expect(CODE).toMatch(/\.dash-skeleton__row\s*\{[^}]*border-bottom:\s*1px solid var\(--line\)/);
+    expect(CODE).toMatch(/\.dash-skeleton__row:last-child\s*\{[^}]*border-bottom:\s*0/);
+  });
+
+  it("pushes the pulse card's rule to the foot, as the card does", () => {
+    expect(CODE).toMatch(/\.dash-skeleton__divider\s*\{[^}]*margin:\s*auto 0/);
+  });
+
+  it("names every length in rem or a spacing token, so it scales with the type", () => {
+    // A skeleton pinned in px would reserve the right height at one font size and the wrong
+    // one at every other — which is the whole failure it exists to prevent.
+    const block = CODE.slice(CODE.indexOf(".dash-skeleton"));
+
+    for (const [, value] of block.matchAll(/(?:height|width):\s*([^;]+);/g)) {
+      expect(value.trim()).toMatch(/^(var\(--|[\d.]+rem|100%|\d+%|auto|1px)/);
+    }
+  });
+});
+
 describe("the skeleton's animation", () => {
   it("moves only for a reader who has not asked for less motion", () => {
     const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)");
@@ -103,6 +329,18 @@ describe("the skeleton's animation", () => {
 
     expect(guard).toBeGreaterThanOrEqual(0);
     expect(animated).toBeGreaterThan(guard);
+  });
+
+  it("animates every shape the skeleton draws, not only the plain bar", () => {
+    // Four shapes carry the `--raised` fill since #86; one of them left out of the guard
+    // would be a box sitting still beside three that pulse.
+    const guarded = /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?)\n\}/.exec(
+      CODE,
+    );
+
+    for (const shape of ["__bar", "__head", "__cell", "__glyph"]) {
+      expect(guarded?.[1], `${shape} does not pulse`).toContain(`.dash-skeleton${shape}`);
+    }
   });
 
   it("pulses opacity only, so nothing on the page moves or resizes", () => {

@@ -39,8 +39,20 @@ const LOCKUPS = [
   ["public/brand/lockup-tagline-dark.png", "docs/brand/lockup-tagline-dark.png"],
 ] as const;
 
+/**
+ * The glyph pair the dashboard's pulse card draws (#83).
+ *
+ * `docs/BRAND.md` nominates the glyph for "anywhere the mark stands alone", which is what a
+ * card centrepiece is — the lockup would bring a wordmark and a tagline into a panel that is
+ * already titled, and the icon is the square crop cut for a favicon.
+ */
+const GLYPHS = [
+  ["public/brand/glyph-light.png", "docs/brand/glyph-light.png"],
+  ["public/brand/glyph-dark.png", "docs/brand/glyph-dark.png"],
+] as const;
+
 /** Every copy this module serves. */
-const COPIES = [...ICONS, ...LOCKUPS];
+const COPIES = [...ICONS, ...LOCKUPS, ...GLYPHS];
 
 describe("the brand marks served by the UI", () => {
   it.each(COPIES)("%s is byte-identical to %s", (copy, source) => {
@@ -57,6 +69,19 @@ describe("the brand marks served by the UI", () => {
     // Square, and big enough that the 30px mark stays sharp on a HiDPI display.
     expect(light.width).toBe(light.height);
     expect(light.width).toBeGreaterThanOrEqual(60);
+  });
+
+  it("keeps the pulse card's glyphs the same size, so the card never reflows", () => {
+    // The stacked-pair technique again (app/dashboard/dashboard.css), so the same
+    // requirement: both treatments are laid out at all times and a mismatch would size the
+    // box by the larger. `aspect-ratio` in that sheet is this ratio, written down.
+    const [light, dark] = GLYPHS.map(([copy]) => pngSize(readFileSync(join(UI, copy))));
+
+    expect(light).toEqual(dark);
+    // Wider than tall, and wide enough that the 150px mark stays sharp on a HiDPI display —
+    // docs/BRAND.md puts the glyph's floor at 96px wide, and this is drawn well above it.
+    expect(light.width).toBeGreaterThan(light.height);
+    expect(light.width).toBeGreaterThanOrEqual(512);
   });
 
   it("keeps the login lockups the same size, so the brand panel never reflows", () => {

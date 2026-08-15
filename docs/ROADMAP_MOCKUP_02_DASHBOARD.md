@@ -1124,7 +1124,6 @@ all three issues: the `.topbar` of
 | H.1 | #77 | 🟢 Done | ouroboros-ui: [H.1] Tenant chip — org/repo context switcher | `acme-robotics / helios-firmware ▾` chip with switch menu | mvp, dashboard, ui, design | N (after #41, BA-C.4, BA-D.1) | Y | M | ouroboros-ui |
 | H.2 | #78 | 🟢 Done | ouroboros-ui: [H.2] Live & needs-you pills with real counts | `● 3 loops live` and `● Needs you · 3` from the shared summary | mvp, dashboard, ui | N (after #41, G.1) | Y | S | ouroboros-ui |
 | H.3 | #79 | 🟡 Open | ouroboros-ui: [H.3] Search pill & ⌘K navigation palette | Topbar search affordance opening a basic command palette | mvp, dashboard, ui | N (after #41) | Y | M | ouroboros-ui |
-
 ### Issue H.1 — ouroboros-ui: [H.1] Tenant chip — org/repo context switcher
 
 > **GitHub issue:** #77 · **Status:** 🟢 Done · **Parent epic:** #61
@@ -1290,7 +1289,69 @@ summary.loopsLive=3 ─▶ [● 3 loops live]      summary.needsHuman=0 ─▶ (
 
 ### Issue H.3 — ouroboros-ui: [H.3] Search pill & ⌘K navigation palette
 
-> **GitHub issue:** #79 · **Status:** 🟡 Open · **Parent epic:** #61
+> **GitHub issue:** #79 · **Status:** 🟢 Done · **Parent epic:** #61
+
+> **Shipped 2026-08-14.** The pill opens the surface it has been promising.
+> [`app/shell/command-palette.tsx`](../ouroboros-ui/app/shell/command-palette.tsx) replaces
+> the panel CP.1 (#643) put behind it — the one that said *"the navigation palette arrives
+> with #79"* — and the pill itself keeps only what it was ever about: where the control sits,
+> what its key cap says, and the two modifiers that reach it from anywhere.
+>
+> **The scope is the issue's own decision, and the palette says so on its face.** Navigation
+> only, because content search needs issue and run data that only partly exists — so a line
+> under the search box reads *"Screens and commands. Searching issues, runs and the queue
+> arrives with #93."* rather than leaving a reader to interpret an empty answer to an issue
+> number. That is the honesty rule (§ 3.5) applied to a scope rather than to a control.
+>
+> **The real work was the seam, not the searching.** A source registers with
+> [`registerCommandSource`](../ouroboros-ui/app/shell/command-registry.ts) and has **two
+> halves**: `list(context)` answers synchronously from what the shell already knows and is
+> filtered by the palette's own matcher; `find(query, context, signal)` answers over the wire,
+> is asked only for a non-empty query, is **debounced by the palette** and handed a signal
+> that fires when the query moves on. Its results are deliberately *not* re-filtered — a
+> source that searched has already decided what matches, and a second opinion from a matcher
+> that never saw the data could only remove rows. J.5 (#93) therefore adds one file and edits
+> nothing: that is what *"without rework"* has to mean if it is to mean anything.
+>
+> Nothing in production has a `find` today, which is exactly why
+> [`__tests__/shell/use-command-actions.test.tsx`](../ouroboros-ui/__tests__/shell/use-command-actions.test.tsx)
+> drives one through a fixture source — the debounce, the abort, the stale answer, the failing
+> source. A seam nothing has ever been passed through is a seam that does not work yet and
+> nobody has found out.
+>
+> **An action does something or says why it cannot**, and that is a union rather than an
+> assertion, so the compiler holds the rule. It is what lets the ten unbuilt screens be
+> *listed* — marked, carrying the note that names the issue building them, and skipped by the
+> arrow ring — instead of dropped: answering *Issues* with "no matches" would be a claim that
+> there is no such screen, when the truth is that it is not built yet. The rows come from the
+> sidebar's own registry (CP.2), so **Settings is a navigation row rather than a command of
+> its own** — the scope line's "settings" is an entry in that registry, and a second copy of
+> it here would be a row that could disagree with the sidebar.
+>
+> **The theme row toggles and does not offer *system*.** A command is a thing that happens
+> when you press it; the three-way choice is a *setting*, which CP.3's account menu draws as
+> three radios because a menu row has room to show which is on. The hint says which palette
+> the press lands on, so the row is never ambiguous about what it is about to do.
+>
+> **It is a combobox, not a menu.** Focus stays in the text box and the highlighted row is
+> named by `aria-activedescendant` rather than focused, which is what leaves every other key
+> to the query — Home and End included, because in a text box they belong to the text. The
+> ring is ↑↓ and Enter, it walks only rows that can be run, and it wraps. Matching is a fuzzy
+> subsequence ([`command.ts`](../ouroboros-ui/app/shell/command.ts)): `gtd` reaches *Go to
+> Dashboard*, runs and word starts score, **gaps cost** — without that penalty `set` would
+> rank *Sign out — end the session* above *Settings*, which is the one ranking a reader would
+> call broken — and a label match always outranks a keyword one.
+>
+> **One change outside this issue's own files**, and it is required rather than incidental:
+> `ShellOverlay` gained `initialFocus`. A palette has to open with focus in its box, and the
+> box cannot take focus for itself — React runs a child's effects *before* its parent's, so a
+> child that focused itself would be recorded as the element Escape has to give focus back to,
+> and the pill would never get it. Handing the target up keeps the whole move in one place, in
+> the right order. The shortcuts sheet gained the palette's two bindings in the same change,
+> which is that sheet's own stated rule.
+>
+> **Not in this ticket:** nothing searches content, and nothing remembers a selection. Both
+> are J.5's, which is where the recent-selections memory belongs too.
 
 - **Problem Statement:** The mockup's `Search… ⌘K` pill promises a command surface;
   a dead control undermines the chrome, but full content search needs data that
@@ -1334,12 +1395,84 @@ themes hold.
 | I.5 | #84 | 🟡 Open | ouroboros-ui: [I.5] Recently-closed card | Issue→PR table with cycle, checks, outcome pills | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.6 | #85 | 🟡 Open | ouroboros-ui: [I.6] Up-next queue card | Queue rows with effort chips + workflow tags | mvp, dashboard, ui, design | N (after I.1) | Y | S | ouroboros-ui |
 | I.7 | #86 | 🟡 Open | ouroboros-ui: [I.7] Empty, loading & error states | Truthful zero-states, skeletons, poll-failure banner per card | mvp, dashboard, ui, design | N (after I.2–I.6) | Y | M | ouroboros-ui |
-| I.8 | #87 | 🟢 Done | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui |
-| I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
+| I.8 | #87 | 🟢 Done | ouroboros-ui: [I.8] Polling hook & freshness wiring | Shared ETag-aware poll hook feeding page + topbar pills | mvp, dashboard, ui | N (after G.6) | Y | S | ouroboros-ui || I.9 | #88 | 🟡 Open | ouroboros-ui: [I.9] Dashboard e2e leg | #56 amendment: seeded parity + empty-org assertions | mvp, dashboard, ui, ci | N (after I.1–I.8) | Y | S | ouroboros-ui, .github |
 
 ### Issue I.1 — ouroboros-ui: [I.1] Dashboard route, grid & page head
 
-> **GitHub issue:** #80 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #80 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The frame was already standing, so this issue is almost entirely
+> its page head. #45 shipped the route, the twelve-column grid, the column classes, both
+> breakpoints and the loading skeleton on 2026-08-11 — the AC anticipated that — and a
+> re-reading of `dashboard.css` against the mockup found the grid already at the mockup's own
+> widths (`1100px` and `640px`, as `68.75rem` and `40rem`), the stat tiles halving one step
+> before the wide pairs stack. Nothing there needed changing, and changing it to look busy
+> would have been the wrong kind of work. What #80 adds is the two pieces of page-level truth
+> the head carries.
+>
+> **The greeting is the module's first client component, and decision F7 is the whole reason.**
+> A daypart is a fact about the *reader*: "good afternoon" rendered by the server is rendered
+> in the server's timezone, which is wrong for half of a workspace spread over two
+> hemispheres. [`app/dashboard/greeting.tsx`](../ouroboros-ui/app/dashboard/greeting.tsx)
+> reads the browser's clock through the shell's own `useClientValue` (CP.1, #643) rather than
+> calling `new Date()` in a render body — React's `useSyncExternalStore` with a server
+> snapshot and a client snapshot, so the hydration pass matches by construction and the
+> correction lands in the same commit instead of a cascading second render. The server
+> snapshot is a *complete* heading (*"Hello, Ken"*) rather than a blank or a skeleton: this is
+> the page's `h1`, and a title that appears only after hydration is a page with no outline
+> until then.
+>
+> **The mockup's closing clause is a claim, so it is read from the data.** *"— the loop is
+> turning"* is true of a workspace with three runs in flight and false of one with none, so it
+> comes from `activity.inFlight`; a workspace with nothing running reads *"the loop is idle"*,
+> and an aggregate that could not be read gets **no clause at all** rather than an optimistic
+> one. That is the honesty rule (§ 3.5) applied to a sentence rather than to a card.
+>
+> **Two deviations from the issue body, both deliberate.**
+>
+> 1. **The subline says "since midnight UTC", not "since this morning".** `mergedSinceMorning`
+>    is counted from midnight UTC — the same boundary `stats.tokensToday` uses, so the sentence
+>    and the card cannot mean different mornings (#70's own contract note). Thirteen hours away
+>    that is not this morning, and the one figure on this page that needs a timezone to be well
+>    defined is the last one to round it off. The AC's quoted half — *"3 issues in flight, 12
+>    queued behind them"* — is exact against the F.5 seeds.
+> 2. **The two actions stay inert rather than linking to #49's placeholders.** #49 has not
+>    landed: it is post-MVP and it is nineteen routes rather than these two, and `/issues` and
+>    `/workflows` do not exist — `app/shell/nav-modules.ts` marks both `soon` for exactly that
+>    reason. Linking them would satisfy this issue's fourth criterion by breaking #49's first
+>    one (*no dead nav links*) and by putting a `404` where the design system asks for a label.
+>    So both keep #45's treatment — `aria-disabled` with the reason as the tooltip, so the
+>    explanation stays in the tab order — and **neither fakes an outcome**, which is the half of
+>    the criterion that is about honesty rather than routing. Each `why` becomes an `href` the
+>    day #49 lands.
+>
+> **The aggregate is fetched here, once.**
+> [`app/api/dashboard.ts`](../ouroboros-ui/app/api/dashboard.ts) wraps `GET /api/v1/dashboard`
+> and joins the four reads #45 already made, so `readDashboard` now issues five in parallel and
+> one failed read is still one degraded card — a refused aggregate degrades the page head and
+> leaves the stat row and the system card reading. It sends no `If-None-Match`: this is the
+> *first* read, made by a Server Component so the page arrives rendered, and the `ETag` loop is
+> I.8 (#87)'s. I.2–I.6 each replace one card of the grid from the payload this already holds.
+>
+> The proving tests are
+> [`__tests__/dashboard/view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts) (the
+> sentence, every pluralisation, the three dayparts at their boundaries, the quiet variant and
+> the failure),
+> [`greeting.test.tsx`](../ouroboros-ui/__tests__/dashboard/greeting.test.tsx) (the browser
+> clock, and the server snapshot through React's own server renderer) and
+> [`__tests__/api/dashboard.test.ts`](../ouroboros-ui/__tests__/api/dashboard.test.ts) (one
+> round trip, no tenant header, no conditional header, `organization_required`).
+>
+> **Checked against the running stack**, seeds applied: both themes at a wide viewport, the
+> page head with the seeded sentence wrapping at its 64ch measure with the two actions holding
+> the baseline beside it, and — on the personal workspace, which the F.5 seeds deliberately
+> leave empty — the *quiet* subline and *"the loop is idle"* rendering from real zeros rather
+> than from a fixture. The failed subline resolves to `--err` in both palettes. **The one
+> thing not verified in a browser is the 900px step:** the window would not leave its maximised
+> size, so the stacking rests on
+> [`dashboard-styles.test.ts`](../ouroboros-ui/__tests__/dashboard/dashboard-styles.test.ts)
+> and on the rules being unchanged from the frame #45 shipped and verified. I.9 (#88) is where
+> the rendered page is asserted end to end.
 
 - **Problem Statement:** The dashboard needs its frame before cards exist: the
   12-column grid and the page head (eyebrow, greeting, activity subline, two
@@ -1377,7 +1510,83 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.2 — ouroboros-ui: [I.2] Stat row — four metric cards
 
-> **GitHub issue:** #81 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #81 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The four tiles are now the aggregate's own figures, composed in
+> [`app/dashboard/view.ts`](../ouroboros-ui/app/dashboard/view.ts) and drawn by
+> [`stat-card.tsx`](../ouroboros-ui/app/dashboard/stat-card.tsx) over the #46 Card. The
+> component gained two presentational mappings only — a tone to the class that colours it,
+> and the accent on the one figure the mockup accents — and decides nothing else, so every
+> sentence on the row is a unit test on a function.
+>
+> **The formatters are written out rather than delegated to `Intl.NumberFormat`**, which the
+> ticket's own problem statement is really about.
+> [`app/format.ts`](../ouroboros-ui/app/format.ts) holds compact counts, durations and money;
+> `Intl`'s compact notation depends on the ICU data the runtime was built with — a small-icu
+> Node and a browser disagree about the same figure, which is a hydration mismatch on a
+> server-rendered card — and it cannot be asked for the `1.0M` this design draws, rounding
+> `999,950` to `1M`. The AC's two boundaries are cases in
+> [`__tests__/format.test.ts`](../ouroboros-ui/__tests__/format.test.ts) along with the rest
+> of them: rounding **promotes** a figure over its own unit (`999,950` → `1.0M`, never
+> `1000.0k`, and the same carry at `B` and `T`), and a duration drops the part that is zero
+> (`580` → `9h 40m`, `60` → `1h`, `59` → `59m`).
+>
+> **Three decisions worth carrying forward.**
+>
+> 1. **The seeded organization reads `1 coding · 1 building · 1 in review`, not the mockup's
+>    `2 coding · 1 in review`.** That is F.5's own settlement — `byStatus` is the run table's
+>    arithmetic, and the mockup's caption disagrees with the table it sits above — and the
+>    payload carries every active status as a key so the subline is composed without knowing
+>    which statuses exist. A status holding nothing is left out rather than printed as a zero.
+>    Every other figure on the row is the mockup's exactly: `12`, `27`, `4.2M`,
+>    `est. 9h 40m of autonomous work`, `▲ 8 vs last week`, `≈ $18.60 across 4 providers`.
+> 2. **`up` and `down` name goodness, not direction**, which is how the mockups' own
+>    stylesheet uses them — mockup 15 draws *"▼ 2m faster"* as `up`. The two happen to agree
+>    on this card, and the type is named `DeltaTone` so the next card to use it does not read
+>    `up` as *the number went up*. A level week is neither: no arrow, no colour, *"Level with
+>    last week"* — not an up week with a zero on it. The arrow is what carries the direction
+>    without colour vision.
+> 3. **The `≈` is `unpricedEvents`, and a cost of zero is not a cost of nothing.**
+>    `costCents` sums only the events that carry a price, so a day of purely unpriced usage
+>    sums to zero while having cost something unknown; the line is **hidden** in that state
+>    rather than drawn as `$0`, which is this ticket's own criterion and what J.4 (#92) will
+>    replace with an explicit *cost unavailable*. A day where every event is priced gets no
+>    `≈` at all, because the figure is then exact. The fixture in
+>    `__tests__/helpers/dashboard.ts` was corrected to the seed's `unpricedEvents: 3` — the
+>    seed leaves `ollama` unpriced, which is exactly what makes the mockup's `≈` honest.
+>
+> **`readDashboard` went from five reads to three.** The members listing and the enablement
+> lists fed #45's stat row, which counted people, organisations and repositories while nothing
+> could report on a loop. The row is now the aggregate's four figures, so both reads lost their
+> card — and a page that kept making them would pay two round trips per render, and per poll
+> once I.8 (#87) lands, to draw nothing. Both operations are untouched and still read by the
+> shell. The row therefore **fails as one**, since every figure on it is decision F5's single
+> round trip: a refused aggregate leaves four em dashes and the service's reason where #80 had
+> a stat row that kept reading. Replacing four repetitions of one sentence with a single
+> per-card treatment is I.7 (#86)'s, which is where the empty and error states of every card
+> are settled together.
+>
+> The proving tests are
+> [`__tests__/format.test.ts`](../ouroboros-ui/__tests__/format.test.ts) (the boundaries),
+> [`view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts) (every card's sentence,
+> the three delta states, the hidden cost line, the empty workspace and the failure) and
+> [`dashboard-screen.test.tsx`](../ouroboros-ui/__tests__/dashboard/dashboard-screen.test.tsx)
+> (what reaches the DOM, under which accessible names, and which classes carry the hues).
+>
+> **Checked against the running stack**, seeds applied and the page fetched from `next dev`
+> as `ouroboros-rest` served it. On `acme-robotics` the four tiles render `3`, `12`, `27`,
+> `4.2M` over `1 coding · 1 building · 1 in review`, `est. 9h 40m of autonomous work`,
+> `▲ 8 vs last week` and `≈ $18.60 across 4 providers` — the mockup's row, with
+> `dash-stat__value--accent` on the first tile and `dash-stat__delta--up` on the third — and
+> the live aggregate's `tokensToday` comes back `{4200000, 1860, 4, unpricedEvents: 3}`,
+> which is what the corrected fixture now mirrors. On the personal workspace, which the F.5
+> seeds deliberately leave empty, the same row renders four zeros over four sentences and no
+> em dash anywhere. **What was not checked in a browser** is the two palettes and the
+> viewport steps: every hue on this row is a token (`--accent`, `--ok`, `--err`) that both
+> palettes publish contrast for, asserted in
+> [`dashboard-styles.test.ts`](../ouroboros-ui/__tests__/dashboard/dashboard-styles.test.ts),
+> and the tiles' spans are unchanged from the frame I.1 shipped and verified. I.9 (#88) is
+> where the rendered page is asserted end to end.
 
 - **Problem Statement:** The four `c-3` stat cards are the loop's vital signs; the
   mockup gives each an exact anatomy (label / large value / delta line, accent value
@@ -1403,7 +1612,76 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.3 — ouroboros-ui: [I.3] Active loops card
 
-> **GitHub issue:** #82 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #82 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The centrepiece card draws the aggregate's `activeRuns`:
+> [`active-loops-card.tsx`](../ouroboros-ui/app/dashboard/active-loops-card.tsx) over the #46
+> Table, with every row's arithmetic in
+> [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) — `stageCaption`, `stagePercent`,
+> `activeLoops`, `moreActiveLoops` — so each of the AC's figures is a unit test on a function
+> rather than an assertion about rendered text. The card itself holds two mappings and no
+> arithmetic: a status to its pill hue (`coding → run/accent`, `building → warn`,
+> `review → ok`) and a status to its meter tone.
+>
+> **The meter is a new #46 primitive** ([`meter.tsx`](../ouroboros-ui/app/ui/meter.tsx)),
+> because the mockups draw one shape for a stage, a merge rate and an intervention budget, and
+> I.4 needs three more of them. The fill's width is the one thing on this page that arrives
+> inline, as a custom property the sheet reads (`--ou-meter-fill`) rather than as a `width`
+> declaration — so the stylesheet still owns the property and the call site contributes only
+> the datum. `dashboard-screen.test.tsx` now asserts *that and nothing else* inline, which is a
+> tighter rule than the "no `style=` at all" it replaced. Two smaller primitive additions came
+> with it: `CardHead`'s `beside` slot (the mockups' `.card-head` is *title · adornment ·
+> spacer · link*, and putting the *live* pill in the title would have made the region answer to
+> "Active loops live") and a per-`Column` class, which is how the stage column gets the
+> mockup's 180px without a page sheet reaching into `.ou-table`.
+>
+> **`stagePercent` rounds down, and that is the AC's `66% / 71% / 100%`.** Four steps into six
+> is 66.67%; a progress bar is a claim about work that has *finished*, so the only honest way
+> to round one is towards the work that certainly has — which also keeps `100%` reachable only
+> by a run that has actually reached its last step. The mockup hand-draws its third bar at 94%
+> for a run at 6/6; the issue's own criterion says 100%, and the arithmetic agrees with the
+> issue.
+>
+> **Elapsed ticks from the origin, not from the figure.** The obvious implementation — take the
+> server's `12m 40s` and add a second per tick — cannot satisfy this card's criterion, because
+> it drifts on every throttled frame and has no idea what the real elapsed time is.
+> [`elapsed.tsx`](../ouroboros-ui/app/dashboard/elapsed.tsx) holds the run's `startedAt` and
+> recomputes `now − startedAt` against a clock, so **a poll cannot move it** (the same run
+> polls back with the same immutable `startedAt`) and a backgrounded tab catches up rather than
+> falling behind. The one moment it could still go backwards is hydration, where two machines
+> answer *what time is it* — so the server's own reading is a floor. The clock behind it is
+> [`app/shell/clock.ts`](../ouroboros-ui/app/shell/clock.ts): a `useSyncExternalStore` singleton
+> quantised to whole seconds, **one interval for the page** rather than one per row, cleared
+> when the last row unmounts. `DashboardReadings` gained `readAt` for the same reason the
+> greeting reads a browser clock — *now* is an input to this render, taken once in
+> [`data.ts`](../ouroboros-ui/app/dashboard/data.ts) so no two cards can disagree about it, and
+> so a duration is something a test can pin.
+>
+> **One deviation from the issue body, and it is #80's deviation again.** The AC asks that rows
+> be keyboard navigable and *activate the run link on Enter*; there is no run-detail route to
+> activate. Mockup 10's console is not built, #49 (its placeholder) is post-MVP, and #49's own
+> first criterion is *no dead nav links* — the sidebar already answers this for nine other
+> destinations by labelling rather than linking. So the issue cell is labelled with a tooltip
+> naming what is missing, and *Open run console →* and *+N more running →* are inert buttons
+> with their reason as the tooltip, which keeps the explanation in the tab order where an
+> `href`-less link would take it out. Each becomes an `href` the day #49 lands; none of them
+> fakes an outcome meanwhile.
+>
+> The empty state is deliberately minimal — *Nothing is running right now*, distinguished from
+> *the loops could not be read*, which carries the service's reason — because designing every
+> card's empty, loading and failure states together is [#86](https://github.com/NobuData/ouroboros/issues/86)'s.
+>
+> The proving tests are
+> [`active-loops-card.test.tsx`](../ouroboros-ui/__tests__/dashboard/active-loops-card.test.tsx)
+> (the mockup row by row, the pill classes, the meter widths, the live pill's absence, the
+> *+N more* footer, and the four rows a broken payload could produce),
+> [`view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts) (the rounding, the clamps,
+> the order, the unreadable timestamp),
+> [`elapsed.test.tsx`](../ouroboros-ui/__tests__/dashboard/elapsed.test.tsx) (advances between
+> polls; does not move when a poll re-renders it; the server reading as a floor),
+> [`clock.test.tsx`](../ouroboros-ui/__tests__/shell/clock.test.tsx) (one interval for many
+> readers, cleared at the last, restartable) and
+> [`meter.test.tsx`](../ouroboros-ui/__tests__/ui/meter.test.tsx).
 
 - **Problem Statement:** The `c-8` active-loops table is the page's centerpiece —
   issue link, workflow tag, stage label + progress meter, model pill, mono elapsed,
@@ -1430,7 +1708,84 @@ Good afternoon, Ken — the loop is turning.        [Edit workflows] [⟳ Pull n
 
 ### Issue I.4 — ouroboros-ui: [I.4] Loop pulse card
 
-> **GitHub issue:** #83 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #83 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The `c-4` card draws the aggregate's `pulse`:
+> [`pulse-card.tsx`](../ouroboros-ui/app/dashboard/pulse-card.tsx), with every figure and every
+> width decided in [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) (`pulseMeters`,
+> `pulseIsUnmeasured`) so the AC's `92% / 14m 20s / 2 this week` and its `92% / 48% / 8%` are
+> unit tests on a function rather than assertions about rendered text.
+>
+> **Two of the three bars needed a denominator, and both are now written down.** The merge rate
+> is a fraction already; a cycle time and an intervention count are not, and the mockup's 48%
+> and 8% came from nowhere. `CYCLE_TIME_TARGET_SECONDS` (thirty minutes) and
+> `INTERVENTION_BUDGET_7D` (twenty-five) are exported constants that reproduce both widths
+> exactly — 860 ÷ 1800 rounds to 48%, 2 ÷ 25 *is* 8% — so a width on this card is arithmetic
+> somebody can check rather than a number matched to a screenshot. Both fills round to a whole
+> percent: a ratio against a target somebody chose is a gauge rather than a measurement, and it
+> keeps the bar and the figure beside it from ever disagreeing.
+>
+> **Each meter states its own window**, which is what this roadmap asked I.4 for by name. The
+> head keeps the mockup's `7 days` tag, and the merge-rate row prints `14 days` beside its
+> caption — the window G.1 published it under, because the mockup's own three figures cannot
+> all be true of one. The bar's `aria-valuetext` carries the window and the denominator too,
+> since the figure beside it is hidden from the accessibility tree: the caption speaks for the
+> eye and the bar speaks for the reader, never both.
+>
+> **The glyph is the #14 asset and nothing else.** `docs/brand/glyph-*.png` is copied to
+> `public/brand/` (the copy is held byte-identical by
+> [`brand-assets.test.ts`](../ouroboros-ui/__tests__/brand-assets.test.ts)) and both treatments
+> are stacked in one grid cell with CSS choosing between them — the shell header's technique and
+> the login lockup's, so the right one is painted before any JavaScript runs and the card renders
+> identically under both palettes. The mockup's `mix-blend-mode: screen` and its 24px
+> `drop-shadow` are both gone: they are one workaround for a crop that still had its background
+> attached, `docs/BRAND.md` § Rules bans each of them on this pair by name, and on a light card
+> the blend would have erased the mark outright.
+>
+> **The switch is the page's one write, and it is optimistic with a real rollback.**
+> [`auto-merge-switch.tsx`](../ouroboros-ui/app/dashboard/auto-merge-switch.tsx) is a Client
+> Component over [`pulse-actions.ts`](../ouroboros-ui/app/dashboard/pulse-actions.ts), the
+> Server Action seam every write in this module uses — the browser cannot reach REST. The
+> optimistic position is `useOptimistic`'s, so it lives exactly as long as the transition that
+> set it: a failed `PATCH` needs no rollback path to remember, because the value expires with
+> its own transition and the reason is drawn under the row as an `alert`. A landed write calls
+> `router.refresh()` *inside* that transition, which re-renders the route's Server Components
+> from a fresh aggregate — the AC's *"verified by the next poll"* until
+> [#87](https://github.com/NobuData/ouroboros/issues/87) lands, and I.8's *"refetch triggered by
+> the auto-merge PATCH"* in the framework's own words.
+>
+> **A member sees the switch, disabled, with the reason in its tooltip and its description** —
+> § 3.3's permission-limited state, `aria-disabled` rather than `disabled` so the explanation
+> keeps its place in the tab order. The gate that *decides* is G.5's: a Server Action is a POST
+> endpoint anybody can reach, so the browser's copy of the rule is presentation only, and a
+> forged write is answered with the service's `403` in the switch's own words (one sentence,
+> written once in `view.ts`, used by both).
+>
+> **Two things the card does that the issue did not ask for**, both from the honesty rule. A
+> workspace where nothing has closed in either window reads all three figures as *floors* rather
+> than measurements, so the card says so in a line instead of reporting a 0% merge rate — the
+> designed zero state is [#86](https://github.com/NobuData/ouroboros/issues/86)'s, and this is
+> the sentence that keeps the meters honest until then. And an aggregate nobody could read draws
+> the service's reason with an em dash where the switch would be, rather than a switch defaulted
+> to `off`: that would be this card inventing the one fact on the page that changes what the loop
+> does without asking a person.
+>
+> **The system card moved one place along the grid.** The mockup's first row is the loops table
+> and the pulse card — `8 + 4` — and the system card is the one card on this grid the mockup does
+> not draw (it is #45's), so it now follows the pair it shares a width with. Both `c-4` cards
+> therefore pair off at the 68.75rem breakpoint instead of each taking half a row alone.
+>
+> The proving tests are
+> [`pulse-card.test.tsx`](../ouroboros-ui/__tests__/dashboard/pulse-card.test.tsx) (the mockup's
+> figures and widths, the tones, the glyph pair under both palettes, the role matrix, the
+> unmeasured and unreadable states),
+> [`auto-merge-switch.test.tsx`](../ouroboros-ui/__tests__/dashboard/auto-merge-switch.test.tsx)
+> (the position before the answer, the refresh after it, the rollback and its alert, a second
+> press ignored mid-flight, a change nobody made in this browser),
+> [`pulse-actions.test.ts`](../ouroboros-ui/__tests__/dashboard/pulse-actions.test.ts) (the
+> refusals as values, the redirect signal travelling),
+> [`settings.test.ts`](../ouroboros-ui/__tests__/api/settings.test.ts) and the `pulseMeters`
+> cases in [`view.test.ts`](../ouroboros-ui/__tests__/dashboard/view.test.ts).
 
 - **Problem Statement:** The `c-4` pulse card is the qualitative read on the loop —
   glyph centerpiece, three labeled meters with mono values (ok/neutral/warn), and
@@ -1459,7 +1814,52 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.5 — ouroboros-ui: [I.5] Recently-closed card
 
-> **GitHub issue:** #84 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #84 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The `c-7` card draws the aggregate's `recentRuns`:
+> [`recently-closed-card.tsx`](../ouroboros-ui/app/dashboard/recently-closed-card.tsx), with
+> every pair, duration and fraction decided in
+> [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) (`recentCompletions`, `issuePair`,
+> `cycleTime`, `checksLabel`, `checksShortfall`) so the AC's four seeded rows —
+> `11m / 19m / 6m / 42m` over `14/14 · 14/14 · 12/12 · 13/14` — are unit tests on functions
+> rather than assertions about rendered text.
+>
+> **The honest row is drawn exactly like the good ones.** `#465`'s `needs human` keeps the same
+> columns, the same type and the same weight as the three that merged; the outcome pill and the
+> warn tint on its short check count are the whole of the difference, which is what this
+> roadmap asked the card for. The tint is on the **comparison** rather than on the status, so a
+> run that merged with a check outstanding is as visible as one that stopped for it — and
+> because meaning is never carried in hue alone (§ 3.4), the fraction says `13/14` in figures
+> and the cell says *"1 check did not pass."* in its tooltip.
+>
+> **A cycle is the compact formatter, not the ticking one.** `finishedAt − startedAt` through
+> I.2's `durationOfMinutes`, so `11m` rather than `11m 00s`: a duration that has stopped has no
+> moving part for a padded zero to keep still. It also needs no clock — both instants are in the
+> payload — which is why this card takes no `readAt` where the loops table does.
+>
+> **`failed` renders in the danger treatment although neither the mockup nor the seed has one**,
+> which is the AC that asks for a fixture rather than a screenshot: the status is in the
+> contract, the hue is in the design system, and a run that failed is exactly the row this card
+> must not quietly drop. `0/0` is drawn as `0/0` rather than as an em dash for the same reason —
+> a repository with no checks is a fact, and only a count nobody has taken is an unknown.
+>
+> **Four rows of the eight the aggregate carries.** The endpoint answers eight so a client that
+> expands the card already holds them (`Dashboard.recentRuns`); the mockup draws four, and
+> `COMPLETIONS_SHOWN` is that number written down rather than one a payload happens to imply.
+> Nothing is re-sorted, so the card and the paged listing behind it cannot disagree about order.
+>
+> **Neither `All issues →` nor a `needs human` row navigates yet.** The issues screen is mockup
+> 03 and the needs-you inbox is mockup 16;
+> [#49](https://github.com/NobuData/ouroboros/issues/49) holds both routes and is post-MVP. Each
+> is an inert button carrying what is missing — the treatment the sidebar already gives both
+> destinations, and #49's own first criterion, *no dead nav links*. The `Review →` control on a
+> `needs human` row is that link toward the inbox, labelled rather than pointed at a `404`, and
+> it becomes an `href` the day #49 lands.
+>
+> The empty and failed states are the card's own sentences until
+> [#86](https://github.com/NobuData/ouroboros/issues/86) designs every card's together: a
+> workspace that has closed nothing reads *"Nothing closed yet"*, and an aggregate nobody could
+> read reads the service's reason — never the same thing twice.
 
 - **Problem Statement:** The `c-7` completions table proves the loop ships: Issue→PR
   mono pair, model pill, mono cycle, checks fraction, outcome pill (`merged` ok /
@@ -1483,7 +1883,50 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.6 — ouroboros-ui: [I.6] Up-next queue card
 
-> **GitHub issue:** #85 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #85 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The `c-5` card draws the aggregate's `queueHead`:
+> [`queue-card.tsx`](../ouroboros-ui/app/dashboard/queue-card.tsx), with the rows and the
+> footer decided in [`view.ts`](../ouroboros-ui/app/dashboard/view.ts) (`queueRows`,
+> `moreQueued`) so the AC's five seeded rows — `#485` M, `#486` L, `#488` XS, `#490` XL, `#491`
+> S — are unit tests on functions rather than assertions about rendered text. **With it, every
+> panel of mockup 02 has a card drawing it from data**; the placeholder that stood in this
+> tile is gone, and `app/dashboard/empty-card.tsx` with it, since no panel is waiting on a
+> source any more.
+>
+> **All five effort chips were already in #46's primitive**, which this issue allowed for but
+> did not need: `EffortChip` carries XS–XL and derives the hue from the size rather than taking
+> one, so an `L` cannot be green on one screen and amber on another. What this card adds is the
+> only surface in the product that draws all five at once — which is what makes it the place
+> the scale is proved, in both palettes, from the token sheet's own published triples.
+>
+> **The chip stays a judgement.** The contract's `QueueEffort` is lower-cased and the mockup
+> prints it upper-cased, and that is the whole of the transformation: nothing here derives a
+> size from `estMinutes`, because deriving one from the other would make the stat row's
+> `est. 9h 40m` a restatement of the chips rather than the second fact V009 wrote it as. The
+> mapping is a `Record` over the contract's union, so a sixth size added to the service is a
+> build error in the screen rather than a row that silently draws no chip.
+>
+> **A list, not a table.** The cards either side of it have columns; a queue row has none — it
+> is one issue, and the chip and the tag are properties *of* it. So the card is a `ul`, which
+> is also what a screen reader is best served by: *list of five items*, rather than a grid whose
+> column headers would have to be invented to justify the markup.
+>
+> **`+7 queued` is a subtraction over two separately true figures.** `queueHead` is capped at
+> five by the service (`QUEUE_HEAD_LIMIT`) and `stats.queued.count` speaks for the whole queue,
+> so the footer appears only when the count exceeds the rows and says exactly the remainder —
+> and never a negative one. It shares its arithmetic with the loops table's `+N more`, so two
+> footers on one page cannot disagree about what a remainder is.
+>
+> **Neither `Manage queue →` nor the footer navigates yet.** The queue screen is mockup 03 and
+> [#49](https://github.com/NobuData/ouroboros/issues/49) holds its route, which is post-MVP.
+> Both are inert buttons carrying the one reason — one sentence for one missing screen, since
+> two would read as two — and both become an `href` the day #49 lands.
+>
+> The empty state is the card's own until
+> [#86](https://github.com/NobuData/ouroboros/issues/86) designs every card's together: a
+> workspace that has caught up with its own queue reads *"Nothing is queued"*, and an aggregate
+> nobody could read reads the service's reason — never the same thing twice.
 
 - **Problem Statement:** The `c-5` queue card shows what the loop will do next —
   bordered rows of mono number + title with effort chip and workflow tag.
@@ -1505,7 +1948,46 @@ Auto-merge when checks pass        [on]──▶ PATCH /settings/auto-merge
 
 ### Issue I.7 — ouroboros-ui: [I.7] Empty, loading & error states
 
-> **GitHub issue:** #86 · **Status:** 🟡 Open · **Parent epic:** #62
+> **GitHub issue:** #86 · **Status:** 🟢 Done · **Parent epic:** #62
+
+> **Shipped 2026-08-14.** The three states the mockup does not draw, designed across all nine
+> cards at once rather than card by card.
+>
+> **The reason is said once.** This is the change the rest of the ticket hangs off, and
+> `view.ts` had already named it: one refused aggregate printed the service's sentence **nine
+> times** — on four stat tiles, in four cards and in the page head's subline — which reads as
+> nine problems rather than one and buries the single retry that would fix them. The rule now
+> is **a card says what could not be read, and the banner says why**: tiles carry `NOT_READ`
+> under the em dash, each card names its own unanswered question, the subline says the
+> activity could not be read, and [`stale-banner.tsx`](../ouroboros-ui/app/dashboard/stale-banner.tsx)
+> carries the service's words beside the page's only retry. `page.test.tsx` counts the
+> occurrences end to end, so a tenth cannot come back unnoticed.
+>
+> **A failed read degrades to the last good render, not to a blank page.**
+> [`freshness.tsx`](../ouroboros-ui/app/dashboard/freshness.tsx) holds the last render that
+> worked and puts it back under the banner — *"Showing data from 14:02 — the latest refresh
+> failed"* — so killing REST mid-session leaves the reader's figures on screen with a working
+> retry, which is this issue's third acceptance criterion. **It holds the rendered tree rather
+> than the payload**, which is what keeps every card a Server Component: the alternative would
+> have moved the whole grid into the browser bundle for no visible difference. `router.refresh()`
+> merges a new server render without discarding client state, so a retry that fails again still
+> shows the data from before the failures started, and a hard reload while the service is down
+> honestly shows the unread state rather than resurrecting something from storage.
+> **I.8 (#87) drives this same boundary** — its `ETag` poll replaces the manual retry, and the
+> freshness rule stays written down in one place.
+>
+> **The skeleton is each card's own geometry.** Nine copies of one generic block reserved the
+> wrong height for eight of them, which is a skeleton that passes its own test and still lets
+> the page jump. [`loading.tsx`](<../ouroboros-ui/app/(app)/dashboard/loading.tsx>) now draws
+> the stat tile's tall figure, the tables' ruled rows, the system list, the queue's five rows
+> and the pulse card's mark at the asset's own `512×296` over three meters with a switch under
+> a rule — from classes that mirror the cards' own, asserted shape by shape.
+>
+> **Nothing is fabricated at zero.** The `kensuenobu` criterion is a test rather than a
+> screenshot: the whole screen over the empty aggregate, all nine cards designed, no em dash,
+> no `#4xx` from the mockup, no table row. The empty sentences the cards shipped with in
+> I.3–I.6 stayed — they were already one voice, and the issue's *"pull the next issue to start
+> one"* would have pointed the reader at a control that cannot act.
 
 - **Problem Statement:** A fresh workspace has no runs, no queue, no usage — the
   dashboard must be truthful and designed at zero (the mockup shows only the busy

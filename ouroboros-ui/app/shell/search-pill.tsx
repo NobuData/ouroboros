@@ -4,23 +4,23 @@ import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useClientValue } from "./client-value";
-import { ShellOverlay } from "./overlay";
+import { CommandPalette } from "./command-palette";
 
 /**
  * The header's search pill, and the ⌘K that opens it
- * ([#643](https://github.com/NobuData/ouroboros/issues/643)).
+ * ([#643](https://github.com/NobuData/ouroboros/issues/643), completed by
+ * [#79](https://github.com/NobuData/ouroboros/issues/79)).
  *
  * First of the right-hand cluster, where the shell specification puts it
- * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1). Two of the three parts are this issue's: the
- * pill, and the keyboard shortcut wired to it. The third — what the palette *searches* — is
- * [#79](https://github.com/NobuData/ouroboros/issues/79), and the panel says so rather than
- * miming a result list, which is the design system's honesty rule (§ 3.5): a surface that is
- * not ready is labelled, never dead.
+ * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 1.1). Two of the three parts were CP.1's — the pill,
+ * and the keyboard shortcut wired to it — over a panel that said the palette was still to
+ * come. H.3 is the third: the panel is now `app/shell/command-palette.tsx`, which is the
+ * surface the pill has been promising.
  *
- * That leaves this the shell's own demonstration that the overlay layer works, which is worth
- * more than a fixture would be. The acceptance criterion *"opening an overlay locks pane
- * scroll; closing it restores the previous position"* is exercised by the one control in the
- * product that opens one, so the mechanism cannot rot between here and #79.
+ * What stays here is the *opening*, which is all this component was ever about: where the
+ * control sits, what the key cap on it says, and the two modifiers that reach it from
+ * anywhere. The palette is mounted only while it is open, so its query and its highlighted row
+ * are reset by unmounting rather than by anything remembering to clear them.
  */
 
 /** What the shortcut is called on a Mac keyboard, which is what the specification draws. */
@@ -106,16 +106,12 @@ export function SearchPill() {
         </kbd>
       </button>
 
-      <ShellOverlay open={open} onClose={() => setOpen(false)} label="Search">
-        <h2 className="shell-overlay__title">Search</h2>
-        <p className="shell-overlay__note">
-          The navigation palette arrives with #79. Until it does, the sidebar is how the
-          product is navigated — every module it lists is one press away.
-        </p>
-        <button type="button" className="shell-overlay__close" onClick={() => setOpen(false)}>
-          Close
-        </button>
-      </ShellOverlay>
+      {/*
+        Rendered conditionally rather than handed an `open` prop, which `ShellOverlay` would
+        accept: the palette holds a query and a highlighted row, and the honest way to reset
+        both between openings is for there to be nothing to reset.
+      */}
+      {open && <CommandPalette onClose={() => setOpen(false)} />}
     </>
   );
 }

@@ -1,20 +1,68 @@
 import { describe, expect, it } from "vitest";
 
+import type { LoopPulse } from "@/app/api/dashboard";
+
 import {
+  ACTIVITY_NOT_READ,
+  CYCLE_TIME_TARGET_SECONDS,
+  EMPTY_QUEUE,
+  INTERVENTION_BUDGET_7D,
+  LEVEL_WITH_LAST_WEEK,
+  MERGE_RATE_WINDOW,
+  NEUTRAL_GREETING,
+  NO_LOOPS,
+  NOT_READ,
+  NO_USAGE_TODAY,
   NO_VALUE,
+  PULSE_WINDOW,
+  QUIET_SUBLINE,
   STATE_LABEL,
-  memberStat,
-  orgStat,
+  UNSIZED_QUEUE,
+  COMPLETIONS_SHOWN,
+  activeLoops,
+  checksLabel,
+  checksShortfall,
+  countOf,
+  cycleTime,
+  daypartAt,
+  firstName,
+  greeting,
+  issuePair,
+  loopsLiveStat,
+  mergedStat,
+  moreActiveLoops,
+  moreQueued,
   overallState,
   pageSubline,
-  repoStat,
-  roleBreakdown,
+  pulseIsUnmeasured,
+  pulseMeters,
+  queueRows,
+  queuedStat,
+  recentCompletions,
+  stageCaption,
+  stagePercent,
   statRow,
   systemRows,
+  tokensStat,
 } from "@/app/dashboard/view";
 
-import { engineStatus, failed, healthReport, memberPage, read, seededMembers } from "../helpers/dashboard";
-import { enablement, membership, org, repo } from "../helpers/login";
+import {
+  READ_AT,
+  SEEDED_COMPLETIONS,
+  SEEDED_QUEUE,
+  SEEDED_RUNS,
+  activeRun,
+  closedRun,
+  activity,
+  dashboardPayload,
+  emptyDashboard,
+  engineStatus,
+  failed,
+  healthReport,
+  queueItem,
+  read,
+  startedSecondsAgo,
+} from "../helpers/dashboard";
 
 /**
  * Every decision the dashboard makes, as functions.
@@ -168,199 +216,965 @@ describe("overallState", () => {
   });
 });
 
-describe("memberStat", () => {
-  it("counts the seeded workspace and names the roles in it", () => {
-    const stat = memberStat(read(memberPage()));
+describe("loopsLiveStat", () => {
+  it("counts the seeded workspace's runs and names what each is doing", () => {
+    // The mockup prints "2 coding · 1 in review" over a table holding one run in each of
+    // three statuses. Decision F.5 settled that disagreement in favour of the table, so the
+    // seeded workspace reads as its rows do.
+    const stat = loopsLiveStat(dashboardPayload().stats.loopsLive);
 
     expect(stat.value).toBe("3");
-    expect(stat.delta).toBe("1 owner · 1 admin · 1 member");
-    expect(stat.failed).toBe(false);
+    expect(stat.delta).toBe("1 coding · 1 building · 1 in review");
+    expect(stat.tone).toBe("muted");
   });
 
-  it("counts the service's total, not the rows that fitted in the window", () => {
-    const stat = memberStat(read(memberPage(seededMembers(), 412)));
-
-    expect(stat.value).toBe("412");
+  it("is the one figure of the four drawn in the accent", () => {
+    // It is the only card of the row that is in the present tense.
+    expect(loopsLiveStat(dashboardPayload().stats.loopsLive).accent).toBe(true);
   });
 
-  it("says so when the breakdown describes only part of the workspace", () => {
-    // Describing a hundred people as though they were all four hundred is the specific way
-    // this card could lie.
-    const stat = memberStat(read(memberPage(seededMembers(), 412)));
+  it("keeps the statuses in lifecycle order however the payload is keyed", () => {
+    const stat = loopsLiveStat({ total: 6, byStatus: { review: 1, coding: 3, building: 2 } });
 
-    expect(stat.delta).toContain("of the first 3");
+    expect(stat.delta).toBe("3 coding · 2 building · 1 in review");
   });
 
-  it("is an em dash and the reason when the listing failed, never a zero", () => {
-    const stat = memberStat(failed("No such tenant."));
+  it("leaves out a status holding nothing rather than printing its zero", () => {
+    const stat = loopsLiveStat({ total: 3, byStatus: { coding: 2, building: 0, review: 1 } });
 
-    expect(stat.value).toBe(NO_VALUE);
-    expect(stat.delta).toBe("No such tenant.");
-    expect(stat.failed).toBe(true);
+    expect(stat.delta).toBe("2 coding · 1 in review");
   });
 
-  it("reads sensibly for a workspace nobody has joined", () => {
-    const stat = memberStat(read(memberPage([])));
+  it("says nothing is running rather than drawing an empty line", () => {
+    const stat = loopsLiveStat({ total: 0, byStatus: { coding: 0, building: 0, review: 0 } });
 
     expect(stat.value).toBe("0");
-    expect(stat.delta).toBe("Nobody has joined yet.");
+    expect(stat.delta).toBe(NO_LOOPS);
   });
 });
 
-describe("roleBreakdown", () => {
-  it("orders by seniority rather than by count, so it reads the same every render", () => {
-    expect(roleBreakdown(["viewer", "owner", "member", "admin"])).toBe(
-      "1 owner · 1 admin · 1 member · 1 viewer",
+describe("queuedStat", () => {
+  it("counts the queue and estimates the work in it", () => {
+    const stat = queuedStat(dashboardPayload().stats.queued);
+
+    expect(stat.value).toBe("12");
+    expect(stat.delta).toBe("est. 9h 40m of autonomous work");
+  });
+
+  it("draws an estimate under an hour without an empty hour on it", () => {
+    expect(queuedStat({ count: 1, estMinutes: 45 }).delta).toBe(
+      "est. 45m of autonomous work",
     );
   });
 
-  it("pluralises each count", () => {
-    expect(roleBreakdown(["owner", "owner", "member"])).toBe("2 owners · 1 member");
+  it("says the queue is empty rather than estimating nothing", () => {
+    const stat = queuedStat({ count: 0, estMinutes: 0 });
+
+    expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(EMPTY_QUEUE);
   });
 
-  it("names only the roles actually held", () => {
-    expect(roleBreakdown(["viewer"])).toBe("1 viewer");
+  it("distinguishes an unsized queue from an empty one", () => {
+    // `estMinutes` skips the issues carrying no estimate rather than counting them as zero,
+    // so a queue where nothing has been sized sums to zero while holding twelve issues.
+    // `est. 0m of autonomous work` would be the card reading that as *no work*.
+    const stat = queuedStat({ count: 12, estMinutes: 0 });
+
+    expect(stat.value).toBe("12");
+    expect(stat.delta).toBe(UNSIZED_QUEUE);
   });
 
-  it("is empty for nobody, so the caller can say something else", () => {
-    expect(roleBreakdown([])).toBe("");
+  it("takes no accent, which the row gives to one card only", () => {
+    expect(queuedStat(dashboardPayload().stats.queued).accent).toBe(false);
   });
 });
 
-describe("orgStat", () => {
-  it("counts the enabled organisations against the ones recorded", () => {
-    const stat = orgStat(read(enablement([[org(), [repo()]]])));
+describe("mergedStat", () => {
+  it("counts the week and compares it with the one before", () => {
+    const stat = mergedStat(dashboardPayload().stats.merged7d);
 
-    expect(stat.value).toBe("1");
-    expect(stat.delta).toBe("of 1 recorded");
+    expect(stat.value).toBe("27");
+    expect(stat.delta).toBe("▲ 8 vs last week");
+    expect(stat.tone).toBe("up");
   });
 
-  it("separates *known* from *switched on*, which are two different numbers", () => {
-    const list = enablement([
-      [org({ login: "acme-robotics" }), []],
-      [org({ id: "b", login: "acme-labs", enabled: false }), []],
-    ]);
+  it("turns the arrow and the tone over for a week that merged less", () => {
+    const stat = mergedStat({ count: 19, deltaVsPrior: -8 });
 
-    expect(orgStat(read(list)).value).toBe("1");
-    expect(orgStat(read(list)).delta).toBe("of 2 recorded");
+    expect(stat.delta).toBe("▼ 8 vs last week");
+    expect(stat.tone).toBe("down");
   });
 
-  it("says how much of a long list it actually read", () => {
-    const list = enablement([[org(), []]], 340);
-
-    expect(orgStat(read(list)).delta).toBe("of 340 recorded, 1 read");
+  it("drops the sign from the sentence, because the arrow already carries it", () => {
+    // `▼ -8 vs last week` reads as eight fewer than eight fewer.
+    expect(mergedStat({ count: 19, deltaVsPrior: -8 }).delta).not.toContain("-");
   });
 
-  it("points somewhere when there is nothing recorded at all", () => {
-    expect(orgStat(read(enablement([]))).delta).toBe(
-      "None recorded — enable one on the sign-in screen.",
-    );
+  it("draws a level week as neither, rather than as an up week with a zero on it", () => {
+    const stat = mergedStat({ count: 27, deltaVsPrior: 0 });
+
+    expect(stat.delta).toBe(LEVEL_WITH_LAST_WEEK);
+    expect(stat.tone).toBe("muted");
   });
 
-  it("is an em dash and the reason when the read failed", () => {
-    const stat = orgStat(failed("The engine is not available right now."));
+  it("carries the direction in the glyph as well as in the hue", () => {
+    // Colour alone would leave a reader who cannot separate green from red with two
+    // identical sentences.
+    expect(mergedStat({ count: 30, deltaVsPrior: 3 }).delta).toContain("▲");
+    expect(mergedStat({ count: 24, deltaVsPrior: -3 }).delta).toContain("▼");
+  });
 
-    expect(stat.value).toBe(NO_VALUE);
-    expect(stat.failed).toBe(true);
+  it("reads sensibly for a workspace that has merged nothing either week", () => {
+    const stat = mergedStat({ count: 0, deltaVsPrior: 0 });
+
+    expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(LEVEL_WITH_LAST_WEEK);
   });
 });
 
-describe("repoStat", () => {
-  it("counts the seeded repository", () => {
-    const stat = repoStat(read(enablement([[org(), [repo()]]])));
+describe("tokensStat", () => {
+  it("draws the mockup's day: a compact count over an approximate cost", () => {
+    const stat = tokensStat(dashboardPayload().stats.tokensToday);
 
-    expect(stat.value).toBe("1");
-    expect(stat.delta).toBe("of 1 recorded");
+    expect(stat.value).toBe("4.2M");
+    expect(stat.delta).toBe("≈ $18.60 across 4 providers");
   });
 
-  it("counts a repository as live only when its organisation is on too", () => {
-    // Both flags, not one: a repository is in scope only when its own `enabled` and its
-    // organisation's are both true. Counting the repository's alone would report it as
-    // live while the switch above it is off.
-    const held = enablement([[org({ enabled: false }), [repo()]]]);
+  it("drops the ≈ on a day where every event carries a price", () => {
+    // The `≈` is `unpricedEvents`, not decoration: it is what makes the total a floor.
+    const stat = tokensStat({
+      tokens: 4_200_000,
+      costCents: 1860,
+      providers: 4,
+      unpricedEvents: 0,
+    });
 
-    expect(repoStat(read(held)).value).toBe("0");
+    expect(stat.delta).toBe("$18.60 across 4 providers");
   });
 
-  it("says out loud how many are held back by a disabled organisation", () => {
-    // The trap the two-flag rule exists to name. Silently counting them out would leave
-    // somebody looking for a repository they can see is switched on.
-    const held = enablement([
-      [org(), [repo()]],
-      [org({ id: "b", login: "acme-labs", enabled: false }), [repo({ id: "r2", name: "atlas" })]],
-    ]);
+  it("agrees with the number of providers it counted", () => {
+    const stat = tokensStat({ tokens: 12_000, costCents: 40, providers: 1, unpricedEvents: 0 });
 
-    expect(repoStat(read(held)).value).toBe("1");
-    expect(repoStat(read(held)).delta).toBe(
-      "of 2 recorded · 1 held by a disabled organisation",
-    );
+    expect(stat.delta).toBe("$0.40 across 1 provider");
   });
 
-  it("does not count a repository that is switched off itself", () => {
-    const off = enablement([[org(), [repo({ enabled: false })]]]);
+  it("hides the cost line — never $0 — when nothing recorded today has a price", () => {
+    // The ticket's own criterion. A day of purely unpriced usage (local inference on a
+    // workstation is the honest case) sums to zero while having cost *something unknown*;
+    // #92 is what will make that a `cost unavailable` line rather than a missing one.
+    const stat = tokensStat({
+      tokens: 4_200_000,
+      costCents: 0,
+      providers: 1,
+      unpricedEvents: 12,
+    });
 
-    expect(repoStat(read(off)).value).toBe("0");
-    expect(repoStat(read(off)).delta).toBe("of 1 recorded");
+    expect(stat.value).toBe("4.2M");
+    expect(stat.delta).toBeNull();
   });
 
-  it("reads sensibly for an organisation with nothing under it", () => {
-    expect(repoStat(read(enablement([[org(), []]]))).delta).toBe("None recorded yet.");
+  it("says nothing was recorded rather than pricing a day that did not happen", () => {
+    const stat = tokensStat(emptyDashboard().stats.tokensToday);
+
+    expect(stat.value).toBe("0");
+    expect(stat.delta).toBe(NO_USAGE_TODAY);
+  });
+
+  it("keeps a genuine zero cost, which is not the same as an unknown one", () => {
+    // Every event was priced, and every price was zero. That is a fact, so it is drawn.
+    const stat = tokensStat({ tokens: 900, costCents: 0, providers: 1, unpricedEvents: 0 });
+
+    expect(stat.delta).toBe("$0.00 across 1 provider");
   });
 });
 
 describe("the stat row", () => {
   it("is the mockup's four tiles, in its order", () => {
-    const row = statRow(read(memberPage()), read(enablement([[org(), [repo()]]])));
+    const row = statRow(read(dashboardPayload()));
 
-    expect(row.map((stat) => stat.id)).toEqual(["loops", "members", "orgs", "repos"]);
+    expect(row.map((stat) => stat.id)).toEqual(["loops", "queued", "merged", "tokens"]);
+    expect(row.map((stat) => stat.label)).toEqual([
+      "Loops live",
+      "Queued issues",
+      "PRs merged · 7d",
+      "Token spend · today",
+    ]);
   });
 
-  it("draws the loop count as an em dash, because nothing can answer it yet", () => {
-    // "Zero loops are running" and "nothing can tell you how many are running" are
-    // different facts, and only the second is true. A zero here would be the screen
-    // inventing a loop engine.
-    const [loops] = statRow(read(memberPage()), read(enablement([])));
+  it("reproduces the mockup on the seeded organization", () => {
+    const row = statRow(read(dashboardPayload()));
 
-    expect(loops?.value).toBe(NO_VALUE);
-    expect(loops?.delta).toContain("No run data yet");
-    expect(loops?.failed).toBe(false);
+    expect(row.map((stat) => stat.value)).toEqual(["3", "12", "27", "4.2M"]);
+    expect(row.map((stat) => stat.delta)).toEqual([
+      "1 coding · 1 building · 1 in review",
+      "est. 9h 40m of autonomous work",
+      "▲ 8 vs last week",
+      "≈ $18.60 across 4 providers",
+    ]);
   });
 
-  it("degrades one tile without touching the others", () => {
-    // The property the whole screen is built on: one failed read is one degraded card.
-    const row = statRow(failed("No such tenant."), read(enablement([[org(), [repo()]]])));
+  it("accents exactly one figure", () => {
+    expect(statRow(read(dashboardPayload())).filter((stat) => stat.accent)).toHaveLength(1);
+  });
 
-    expect(row.filter((stat) => stat.failed).map((stat) => stat.id)).toEqual(["members"]);
-    expect(row.find((stat) => stat.id === "orgs")?.value).toBe("1");
+  it("reads a workspace with nothing in it as four zeros and four sentences", () => {
+    // Not an em dash: these figures were read, and they are zero. The row a workspace
+    // could not read is the case below, and the two must not look alike.
+    const row = statRow(read(emptyDashboard()));
+
+    expect(row.map((stat) => stat.value)).toEqual(["0", "0", "0", "0"]);
+    expect(row.every((stat) => stat.tone !== "failed")).toBe(true);
+    expect(row.map((stat) => stat.delta)).toEqual([
+      NO_LOOPS,
+      EMPTY_QUEUE,
+      LEVEL_WITH_LAST_WEEK,
+      NO_USAGE_TODAY,
+    ]);
+  });
+
+  it("degrades as one, because it is one read", () => {
+    // Every figure on the row is the aggregate's — decision F5's single round trip — so a
+    // refusal takes the whole row rather than one card of it. Four em dashes, never four
+    // zeros.
+    const row = statRow(failed("Choose a workspace first."));
+
+    expect(row.map((stat) => stat.value)).toEqual([NO_VALUE, NO_VALUE, NO_VALUE, NO_VALUE]);
+    expect(row.every((stat) => stat.tone === "failed")).toBe(true);
+  });
+
+  it("says what could not be read on each tile, and why on none of them (#86)", () => {
+    // The reason is the banner's, once (`app/dashboard/stale-banner.tsx`). Four tiles each
+    // repeating the service's sentence read as four problems rather than one, and buried the
+    // single retry that would fix them.
+    const row = statRow(failed("Choose a workspace first."));
+
+    expect(row.every((stat) => stat.delta === NOT_READ)).toBe(true);
+    expect(row.some((stat) => stat.delta === "Choose a workspace first.")).toBe(false);
+  });
+
+  it("keeps its captions when it could read nothing at all", () => {
+    // A page reporting a failure, rather than a page that lost its stat row.
+    const row = statRow(failed("Choose a workspace first."));
+
+    expect(row.map((stat) => stat.label)).toEqual(
+      statRow(read(dashboardPayload())).map((stat) => stat.label),
+    );
+    expect(row.some((stat) => stat.accent)).toBe(false);
+  });
+});
+
+describe("stageCaption", () => {
+  it("draws the mockup's caption, from the run's own words and numbers", () => {
+    expect(stageCaption("Implementing", 4, 6)).toBe("Implementing · 4/6");
+    expect(stageCaption("Build farm", 5, 7)).toBe("Build farm · 5/7");
+  });
+
+  it("prints the run's label whatever it says, since nothing here has a workflow catalogue", () => {
+    // The label is free text (decision F8's sibling): a run whose workflow has since been
+    // renamed still renders under the word it recorded.
+    expect(stageCaption("Waiting on the build farm", 1, 1)).toBe(
+      "Waiting on the build farm · 1/1",
+    );
+  });
+});
+
+describe("stagePercent", () => {
+  it("fills the meter to the run's position in its workflow", () => {
+    // The acceptance criterion's own three figures, from the seeded runs' 4/6, 5/7 and 6/6.
+    expect(stagePercent(4, 6)).toBe(66);
+    expect(stagePercent(5, 7)).toBe(71);
+    expect(stagePercent(6, 6)).toBe(100);
+  });
+
+  it("rounds down, so a bar never claims work that has not finished", () => {
+    // 4/6 is 66.67%, and the honest way to round a progress bar is towards the work that
+    // certainly has happened. It is also what keeps `100%` reachable only by a run that has
+    // actually reached its last step.
+    expect(stagePercent(2, 3)).toBe(66);
+    expect(stagePercent(5, 6)).toBe(83);
+  });
+
+  it("draws a run that has not started a step as empty", () => {
+    expect(stagePercent(0, 6)).toBe(0);
+  });
+
+  it("clamps a step past the end of its own workflow rather than overflowing the track", () => {
+    expect(stagePercent(9, 6)).toBe(100);
+    expect(stagePercent(-2, 6)).toBe(0);
+  });
+
+  it("draws a workflow with no steps as empty rather than dividing by zero", () => {
+    // The contract promises at least one step so that a meter never has to; this is what
+    // happens if that promise is ever broken, and it is a bar rather than a crash.
+    expect(stagePercent(1, 0)).toBe(0);
+    expect(stagePercent(1, Number.NaN)).toBe(0);
+  });
+});
+
+describe("activeLoops", () => {
+  it("draws the mockup's three runs, in the order the payload gave them", () => {
+    // Lifecycle order — coding, building, review — is the endpoint's, over the whole table.
+    // A client that sorted its ten rows again would disagree with the drill-in that shows
+    // all of them.
+    const rows = activeLoops(SEEDED_RUNS, READ_AT);
+
+    expect(rows.map((row) => row.issueNumber)).toEqual([482, 479, 476]);
+    expect(rows.map((row) => row.status)).toEqual(["coding", "building", "review"]);
+  });
+
+  it("composes each row's stage caption and meter from the run's own figures", () => {
+    const [first] = activeLoops(SEEDED_RUNS, READ_AT);
+
+    expect(first?.stageCaption).toBe("Implementing · 4/6");
+    expect(first?.stagePercent).toBe(66);
+  });
+
+  it("measures every row against one instant, so no two of them disagree about now", () => {
+    // The reason `readAt` is read once, in `data.ts`, rather than per card or per row.
+    const rows = activeLoops(SEEDED_RUNS, READ_AT);
+
+    expect(rows.map((row) => row.elapsedSeconds)).toEqual([760, 2285, 432]);
+  });
+
+  it("carries the start as well as the duration, which is what lets the column tick", () => {
+    // The client counts from the origin rather than adding to the server's figure — see
+    // `app/dashboard/elapsed.tsx`.
+    const [first] = activeLoops([activeRun()], READ_AT);
+
+    expect(first?.startedAtSeconds).toBe(Math.floor(READ_AT / 1000) - 760);
+  });
+
+  it("passes the opaque strings through untouched", () => {
+    // Decision F8, and the workflow tag under the same rule: rendered, never parsed.
+    const [row] = activeLoops(
+      [activeRun({ model: "ollama/qwen3-coder", workflowTag: "deps-refresh" })],
+      READ_AT,
+    );
+
+    expect(row?.model).toBe("ollama/qwen3-coder");
+    expect(row?.workflowTag).toBe("deps-refresh");
+  });
+
+  it("reads a run that started in the future as zero rather than as a negative duration", () => {
+    // Two clocks disagreeing is not a fact about the run.
+    const [row] = activeLoops([activeRun({ startedAt: startedSecondsAgo(-90) })], READ_AT);
+
+    expect(row?.elapsedSeconds).toBe(0);
+  });
+
+  it("keeps a row whose start could not be read, and says so with a null", () => {
+    // Every timestamp in the contract is required and well formed, so this is the guard
+    // rather than the expected case — and a guard that dropped the row would lose a run that
+    // is really happening.
+    const [row] = activeLoops([activeRun({ startedAt: "not a timestamp" })], READ_AT);
+
+    expect(row?.startedAtSeconds).toBeNull();
+    expect(row?.elapsedSeconds).toBeNull();
+    expect(row?.issueNumber).toBe(482);
+  });
+
+  it("draws nothing at all for a workspace with nothing running", () => {
+    expect(activeLoops([], READ_AT)).toEqual([]);
+  });
+});
+
+describe("moreActiveLoops", () => {
+  it("counts what the table's rows leave out", () => {
+    // The aggregate answers at most ten rows and a count that is not capped.
+    expect(moreActiveLoops(12, 10)).toBe(2);
+  });
+
+  it("counts nothing when the table is showing all of them", () => {
+    expect(moreActiveLoops(3, 3)).toBe(0);
+  });
+
+  it("never goes below zero, whatever the two figures disagree about", () => {
+    // They are separate queries and a run can stop between them; *−1 more* is not something
+    // this card will ever say.
+    expect(moreActiveLoops(1, 3)).toBe(0);
+  });
+});
+
+describe("issuePair", () => {
+  it("draws the mockup's pair", () => {
+    expect(issuePair(474, 512)).toBe(`#474 \u2192 PR\u00a0#512`);
+  });
+
+  it("keeps `PR #512` together with a no-break space, and breaks nowhere else", () => {
+    // The pair is one value read as one thing; the space before the arrow is the honest place
+    // for a line to break, and the one inside the pull request is not.
+    const pair = issuePair(474, 512);
+
+    expect(pair.split("\u00a0")).toHaveLength(2);
+    expect(pair.indexOf("\u00a0")).toBeGreaterThan(pair.indexOf("\u2192"));
+  });
+
+  it("draws the issue alone when the run never opened a pull request", () => {
+    // A run may fail, or stop for a person, before there is anything to open one for. An
+    // arrow pointing at nothing would be the row claiming half a fact.
+    expect(issuePair(465, null)).toBe("#465");
+  });
+});
+
+describe("cycleTime", () => {
+  /**
+   * A cycle of a given length, measured between two instants rather than stated.
+   *
+   * @param seconds How long the run took.
+   * @returns What the column draws.
+   */
+  function cycleOf(seconds: number): string {
+    return cycleTime(startedSecondsAgo(seconds), startedSecondsAgo(0));
+  }
+
+  it("draws the mockup's four cycles", () => {
+    // 660, 1140, 360 and 2520 seconds, as `R__dev_seed_dashboard.sql` seeds them.
+    expect([660, 1140, 360, 2520].map(cycleOf)).toEqual(["11m", "19m", "6m", "42m"]);
+  });
+
+  it("drops a part that is zero, because a finished cycle is not moving", () => {
+    // The difference between this and the *Elapsed* column: a clock that hides the part that
+    // is moving looks stopped, and a duration that has stopped has no such part.
+    expect(cycleOf(2 * 60 * 60)).toBe("2h");
+    expect(cycleOf(90 * 60)).toBe("1h 30m");
+  });
+
+  it("has nothing to measure while the run has not finished", () => {
+    expect(cycleTime(startedSecondsAgo(600), null)).toBe(NO_VALUE);
+  });
+
+  it("has nothing to measure when either instant cannot be read", () => {
+    // Every timestamp in the contract is required and well formed, so this is the guard
+    // rather than the expected case — and `NaNm` on the page would be worse than an em dash.
+    expect(cycleTime("not a timestamp", startedSecondsAgo(0))).toBe(NO_VALUE);
+    expect(cycleTime(startedSecondsAgo(600), "not a timestamp")).toBe(NO_VALUE);
+  });
+
+  it("draws two clocks disagreeing as no time at all, never as a negative span", () => {
+    expect(cycleTime(startedSecondsAgo(0), startedSecondsAgo(600))).toBe("0m");
+  });
+});
+
+describe("checksLabel", () => {
+  it("draws the fraction the mockup draws", () => {
+    expect(checksLabel(14, 14)).toBe("14/14");
+    expect(checksLabel(13, 14)).toBe("13/14");
+  });
+
+  it("draws a repository with no checks as `0/0` rather than as an unknown", () => {
+    // `0` of `0` is a fact — no checks are configured — and it is **not** the same as nobody
+    // having counted yet, which is the distinction the contract carries as a null.
+    expect(checksLabel(0, 0)).toBe("0/0");
+  });
+
+  it("draws an em dash when nobody has counted", () => {
+    expect(checksLabel(null, null)).toBe(NO_VALUE);
+    expect(checksLabel(14, null)).toBe(NO_VALUE);
+    expect(checksLabel(null, 14)).toBe(NO_VALUE);
+  });
+});
+
+describe("checksShortfall", () => {
+  it("counts the checks that did not pass", () => {
+    expect(checksShortfall(13, 14)).toBe(1);
+    expect(checksShortfall(9, 14)).toBe(5);
+  });
+
+  it("counts nothing on a run whose checks all passed", () => {
+    expect(checksShortfall(14, 14)).toBeNull();
+    expect(checksShortfall(0, 0)).toBeNull();
+  });
+
+  it("counts nothing when either figure is missing, so an unknown is never tinted", () => {
+    expect(checksShortfall(null, 14)).toBeNull();
+    expect(checksShortfall(13, null)).toBeNull();
+  });
+
+  it("counts nothing when more passed than ran, however that arrived", () => {
+    expect(checksShortfall(15, 14)).toBeNull();
+  });
+});
+
+describe("recentCompletions", () => {
+  it("draws the seeded four exactly as the mockup prints them", () => {
+    const rows = recentCompletions(SEEDED_COMPLETIONS);
+
+    expect(rows.map((row) => row.pair)).toEqual([
+      `#474 \u2192 PR\u00a0#512`,
+      `#471 \u2192 PR\u00a0#509`,
+      `#468 \u2192 PR\u00a0#507`,
+      `#465 \u2192 PR\u00a0#504`,
+    ]);
+    expect(rows.map((row) => row.cycle)).toEqual(["11m", "19m", "6m", "42m"]);
+    expect(rows.map((row) => row.checks)).toEqual(["14/14", "14/14", "12/12", "13/14"]);
+  });
+
+  it("marks the one row that is short of its own total, and says how short", () => {
+    const rows = recentCompletions(SEEDED_COMPLETIONS);
+
+    expect(rows.map((row) => row.checksShort)).toEqual([false, false, false, true]);
+    expect(rows.at(-1)?.checksNote).toBe("1 check did not pass.");
+    expect(rows[0]?.checksNote).toBeNull();
+  });
+
+  it("counts a larger shortfall in words that agree with the number", () => {
+    const [row] = recentCompletions([closedRun({ checksPassed: 11 })]);
+
+    expect(row?.checksNote).toBe("3 checks did not pass.");
+  });
+
+  it("marks a run that merged with a check outstanding as short too", () => {
+    // The tint is the comparison, not the status: `13/14` is short whatever the run went on
+    // to be called, and a merge with an outstanding check should be as visible as a stop.
+    const [row] = recentCompletions([closedRun({ status: "merged", checksPassed: 13 })]);
+
+    expect(row?.checksShort).toBe(true);
+  });
+
+  it("draws four of the eight the aggregate carries", () => {
+    // The endpoint answers eight so a client that expands already holds them; the card draws
+    // four, and that is a number written down rather than one a payload happens to imply.
+    const runs = Array.from({ length: 8 }, (_, index) =>
+      closedRun({ id: `run-${index}`, issueNumber: 400 + index }),
+    );
+
+    expect(recentCompletions(runs)).toHaveLength(COMPLETIONS_SHOWN);
+    expect(COMPLETIONS_SHOWN).toBe(4);
+  });
+
+  it("keeps the payload's order, so the card and its drill-in cannot disagree", () => {
+    const runs = [closedRun({ id: "b", issueNumber: 2 }), closedRun({ id: "a", issueNumber: 1 })];
+
+    expect(recentCompletions(runs).map((row) => row.pair.slice(0, 2))).toEqual(["#2", "#1"]);
+  });
+
+  it("interprets no model identifier, exactly as the active table does not", () => {
+    const [row] = recentCompletions([closedRun({ model: "ollama/qwen3-coder" })]);
+
+    expect(row?.model).toBe("ollama/qwen3-coder");
+  });
+
+  it("has nothing to draw for a workspace that has closed nothing", () => {
+    expect(recentCompletions([])).toEqual([]);
+  });
+});
+
+describe("queueRows", () => {
+  it("draws the seeded five exactly as the mockup prints them", () => {
+    const rows = queueRows(SEEDED_QUEUE);
+
+    expect(rows.map((row) => row.issueNumber)).toEqual([485, 486, 488, 490, 491]);
+    expect(rows.map((row) => row.issueTitle)).toEqual([
+      "Watchdog reset on I²C bus lockup",
+      "Expose battery health over BLE GATT",
+      "Typo sweep in operator manual",
+      "Migrate build to Zephyr 4.2",
+      "Add CRC to config persistence layer",
+    ]);
+    expect(rows.map((row) => row.workflowTag)).toEqual([
+      "standard-fix",
+      "feature-loop",
+      "docs-loop",
+      "deps-refresh",
+      "standard-fix",
+    ]);
+  });
+
+  it("exercises all five sizes across those five rows", () => {
+    // The acceptance criterion this fixture exists for: every arm of the scale is drawn by
+    // the seeded workspace, so none of the five is a branch nobody has ever rendered.
+    const efforts = queueRows(SEEDED_QUEUE).map((row) => row.effort);
+
+    expect(efforts).toEqual(["M", "L", "XS", "XL", "S"]);
+    expect(new Set(efforts).size).toBe(5);
+  });
+
+  it("upper-cases the contract's scale and changes nothing else about it", () => {
+    // The contract carries the sizes lower-cased and the chip prints them upper-cased. That
+    // is the whole of the transformation — nothing here is derived from the estimate beside
+    // it, because the chip is a judgement and the estimate is a measurement.
+    const rows = queueRows(
+      (["xs", "s", "m", "l", "xl"] as const).map((effort, index) =>
+        queueItem({ id: `queued-${effort}`, issueNumber: 500 + index, effort }),
+      ),
+    );
+
+    expect(rows.map((row) => row.effort)).toEqual(["XS", "S", "M", "L", "XL"]);
+  });
+
+  it("keeps the payload's order, so the card and its drill-in cannot disagree", () => {
+    const items = [
+      queueItem({ id: "b", issueNumber: 2, position: 1 }),
+      queueItem({ id: "a", issueNumber: 1, position: 2 }),
+    ];
+
+    expect(queueRows(items).map((row) => row.issueNumber)).toEqual([2, 1]);
+  });
+
+  it("carries the queue item's own id, so a row is addressable", () => {
+    expect(queueRows(SEEDED_QUEUE).map((row) => row.id)).toEqual(
+      SEEDED_QUEUE.map((item) => item.id),
+    );
+  });
+
+  it("interprets no workflow tag, exactly as the loops table does not", () => {
+    // Free text in the contract, so it is rendered rather than looked up — a queue item whose
+    // workflow has since been renamed still reads under the word it recorded.
+    const [row] = queueRows([queueItem({ workflowTag: "a-workflow-nobody-defined" })]);
+
+    expect(row?.workflowTag).toBe("a-workflow-nobody-defined");
+  });
+
+  it("draws whatever the aggregate gave it rather than capping again", () => {
+    // The cap is `QUEUE_HEAD_LIMIT`, in the service. A second cap here would be a number to
+    // change in two places the day the card grows a sixth row.
+    const items = Array.from({ length: 7 }, (_, index) =>
+      queueItem({ id: `queued-${index}`, issueNumber: 500 + index, position: index + 1 }),
+    );
+
+    expect(queueRows(items)).toHaveLength(7);
+  });
+
+  it("has nothing to draw for a workspace with an empty queue", () => {
+    expect(queueRows([])).toEqual([]);
+  });
+});
+
+describe("moreQueued", () => {
+  it("reports the queue the card is not showing", () => {
+    // Twelve queued, five drawn — the seeded workspace's `+7 queued`.
+    expect(moreQueued(12, 5)).toBe(7);
+  });
+
+  it("says nothing when the card is showing the whole queue", () => {
+    expect(moreQueued(5, 5)).toBe(0);
+  });
+
+  it("never reports a negative remainder", () => {
+    // A count that ran behind its own slice is two figures disagreeing, not `−2 queued`.
+    expect(moreQueued(3, 5)).toBe(0);
+  });
+
+  it("agrees with the loops table's own footer, since both are one subtraction", () => {
+    expect(moreQueued(12, 5)).toBe(moreActiveLoops(12, 5));
+  });
+});
+
+describe("pulseMeters", () => {
+  /**
+   * The pulse of the seeded workspace, with whatever this case is about changed.
+   *
+   * @param over The figures this case is about.
+   * @returns A complete pulse.
+   */
+  function pulse(over: Partial<LoopPulse> = {}): LoopPulse {
+    return { ...dashboardPayload().pulse, ...over };
+  }
+
+  it("draws the mockup's three figures, in its order", () => {
+    // The card's acceptance criterion, as three strings: `92%`, `14m 20s` and `2 this week`,
+    // from the seeded `0.92`, `860` seconds and `2` runs.
+    const meters = pulseMeters(pulse());
+
+    expect(meters.map((meter) => meter.id)).toEqual([
+      "merge-rate",
+      "cycle-time",
+      "interventions",
+    ]);
+    expect(meters.map((meter) => meter.value)).toEqual(["92%", "14m 20s", "2 this week"]);
+  });
+
+  it("draws the mockup's three widths, from denominators that are written down", () => {
+    // The other half of the same criterion, and the half that could otherwise be anything:
+    // 92% is the rate itself, 48% is 860 seconds of the half-hour target, and 8% is two
+    // interventions of a week's twenty-five. Every one of the three is arithmetic over an
+    // exported constant rather than a number somebody matched to a screenshot.
+    const [rate, cycle, interventions] = pulseMeters(pulse());
+
+    expect(rate?.fill).toBe(0.92);
+    expect(cycle?.fill).toBe(Math.round((860 / CYCLE_TIME_TARGET_SECONDS) * 100) / 100);
+    expect(cycle?.fill).toBe(0.48);
+    expect(interventions?.fill).toBe(2 / INTERVENTION_BUDGET_7D);
+    expect(interventions?.fill).toBe(0.08);
+  });
+
+  it("gives each meter the hue the mockup gives it, whatever the figure says", () => {
+    // A merge rate reports an outcome, a cycle time reports progress through a budget, and
+    // an intervention is by definition something that wanted a person. None of the three
+    // changes with the number: a bar that turned red at a threshold would be this card
+    // inventing one nobody has agreed on.
+    expect(pulseMeters(pulse()).map((meter) => meter.tone)).toEqual([
+      "ok",
+      "accent",
+      "warn",
+    ]);
+    expect(
+      pulseMeters(pulse({ mergeRate: 0.1, interventions7d: 40 })).map((meter) => meter.tone),
+    ).toEqual(["ok", "accent", "warn"]);
+  });
+
+  it("labels the merge rate for the window it is actually measured over", () => {
+    // The roadmap asks this card for it by name: the head's tag says `7 days` and the merge
+    // rate is fourteen, because the mockup's own figures cannot all be true of one window.
+    const [rate, cycle, interventions] = pulseMeters(pulse());
+
+    expect(rate?.window).toBe(MERGE_RATE_WINDOW);
+    expect(MERGE_RATE_WINDOW).toBe("14 days");
+    expect(cycle?.window).toBe(PULSE_WINDOW);
+    expect(interventions?.window).toBe(PULSE_WINDOW);
+  });
+
+  it("announces each bar as its own measurement rather than as a bare percentage", () => {
+    // The figure beside a bar is hidden from the accessibility tree (`pulse-card.tsx`), so
+    // this text is the *only* statement of it a screen reader gets — which is why it carries
+    // the window and the denominator that the sighted reader infers from the caption.
+    const [rate, cycle, interventions] = pulseMeters(pulse());
+
+    expect(rate?.valueText).toBe("92% of runs merged without a person, over 14 days");
+    expect(cycle?.valueText).toBe("14m 20s of the 30m 00s target, over 7 days");
+    expect(interventions?.valueText).toBe(
+      "2 runs needed a person, of the 25 this workspace allows for in 7 days",
+    );
+  });
+
+  it("agrees with itself: the width drawn is the figure printed", () => {
+    // Both are rounded to a whole percent, so `92%` printed can never sit over a bar drawn
+    // at 91.5%. A ratio against a target somebody chose is a gauge, not a measurement.
+    const [rate] = pulseMeters(pulse({ mergeRate: 0.9249 }));
+
+    expect(rate?.value).toBe("92%");
+    expect(rate?.fill).toBe(0.92);
+  });
+
+  it("clamps a cycle longer than the target rather than drawing past the track", () => {
+    // The bar is a budget being used up, so an hour against a half-hour target is *full*,
+    // and the figure beside it is still the measurement.
+    const [, cycle] = pulseMeters(pulse({ avgCycleSeconds: 5400 }));
+
+    expect(cycle?.fill).toBe(1);
+    expect(cycle?.value).toBe("1h 30m 00s");
+  });
+
+  it("clamps a week that spent its whole intervention budget and more", () => {
+    const [, , interventions] = pulseMeters(pulse({ interventions7d: 90 }));
+
+    expect(interventions?.fill).toBe(1);
+    expect(interventions?.value).toBe("90 this week");
+  });
+
+  it("draws a workspace with nothing to measure as empty rather than as a bad week", () => {
+    // Every figure is a floor rather than a measurement when nothing has closed in the
+    // window — the contract says so of each — so the bars are empty and the card says why.
+    const meters = pulseMeters(emptyDashboard().pulse);
+
+    expect(meters.map((meter) => meter.fill)).toEqual([0, 0, 0]);
+    expect(meters.map((meter) => meter.value)).toEqual(["0%", "0m 00s", "0 this week"]);
+  });
+
+  it("draws a figure that arrived as no figure at all as zero, rather than as `NaN%`", () => {
+    // The contract promises three numbers and the service computes each from a query that
+    // cannot answer anything else. This is what a card does if that promise is ever broken,
+    // and it is a bar at rest rather than a page of `NaN`.
+    const meters = pulseMeters(
+      pulse({
+        mergeRate: Number.NaN,
+        avgCycleSeconds: Number.NaN,
+        interventions7d: Number.NaN,
+      }),
+    );
+
+    expect(meters.map((meter) => meter.fill)).toEqual([0, 0, 0]);
+    expect(meters.map((meter) => meter.value)).toEqual(["0%", "0m 00s", "0 this week"]);
+  });
+
+  it("counts one intervention in the singular", () => {
+    const [, , interventions] = pulseMeters(pulse({ interventions7d: 1 }));
+
+    expect(interventions?.value).toBe("1 this week");
+    expect(interventions?.valueText).toContain("1 run needed a person");
+  });
+});
+
+describe("pulseIsUnmeasured", () => {
+  it("is true only when all three figures are floors at once", () => {
+    // Which is the one state that means it: a workspace that has closed runs has a cycle
+    // time, and one that closed them badly has interventions.
+    expect(pulseIsUnmeasured(emptyDashboard().pulse)).toBe(true);
+    expect(pulseIsUnmeasured(dashboardPayload().pulse)).toBe(false);
+  });
+
+  it("is false for a workspace that merged nothing but did finish something", () => {
+    const pulse = { ...emptyDashboard().pulse, avgCycleSeconds: 400 };
+
+    expect(pulseIsUnmeasured(pulse)).toBe(false);
+  });
+
+  it("ignores the switch, which is a setting rather than a measurement", () => {
+    const pulse = { ...emptyDashboard().pulse, autoMerge: true };
+
+    expect(pulseIsUnmeasured(pulse)).toBe(true);
+  });
+});
+
+describe("countOf", () => {
+  it("agrees with the number it is counting", () => {
+    // The acceptance criterion says "correct pluralization", which is one rule rather than
+    // one per sentence — so it is a function, and this is it.
+    expect(countOf(1, "issue")).toBe("1 issue");
+    expect(countOf(3, "issue")).toBe("3 issues");
+    expect(countOf(0, "issue")).toBe("0 issues");
+  });
+
+  it("counts a two-word noun without splitting it", () => {
+    expect(countOf(1, "pull request")).toBe("1 pull request");
+    expect(countOf(6, "pull request")).toBe("6 pull requests");
+  });
+
+  it("takes an irregular plural rather than inventing one", () => {
+    expect(countOf(2, "person", "people")).toBe("2 people");
+  });
+});
+
+describe("daypartAt", () => {
+  it("names the three parts of the day at their boundaries", () => {
+    expect(daypartAt(5)).toBe("morning");
+    expect(daypartAt(11)).toBe("morning");
+    expect(daypartAt(12)).toBe("afternoon");
+    expect(daypartAt(17)).toBe("afternoon");
+    expect(daypartAt(18)).toBe("evening");
+    expect(daypartAt(23)).toBe("evening");
+  });
+
+  it("keeps the small hours in the evening rather than inventing a fourth part", () => {
+    // The mockup's greeting has three. Somebody working at two in the morning is at the end
+    // of a long evening rather than at the start of a night that needs its own word.
+    expect(daypartAt(0)).toBe("evening");
+    expect(daypartAt(4)).toBe("evening");
+  });
+
+  it("covers every hour a clock can report", () => {
+    for (let hour = 0; hour < 24; hour += 1) {
+      expect(["morning", "afternoon", "evening"]).toContain(daypartAt(hour));
+    }
+  });
+});
+
+describe("firstName", () => {
+  it("takes the name a person is called by", () => {
+    expect(firstName("Ken Suenobu")).toBe("Ken");
+  });
+
+  it("leaves a single-word name whole", () => {
+    expect(firstName("Ken")).toBe("Ken");
+  });
+
+  it("survives the names a session can actually carry", () => {
+    expect(firstName("  Maya   Chen ")).toBe("Maya");
+    expect(firstName("")).toBe("");
+    expect(firstName("   ")).toBe("");
+  });
+});
+
+describe("greeting", () => {
+  it("is the mockup's sentence, from the daypart, the name and the loop", () => {
+    expect(greeting("afternoon", "Ken Suenobu", activity())).toBe(
+      "Good afternoon, Ken — the loop is turning.",
+    );
+  });
+
+  it("says the loop is idle when nothing is in flight", () => {
+    // "The loop is turning" is a claim about a workspace, not a decoration on a heading.
+    expect(greeting("morning", "Ken Suenobu", activity({ inFlight: 0 }))).toBe(
+      "Good morning, Ken — the loop is idle.",
+    );
+  });
+
+  it("makes no claim at all when the aggregate could not be read", () => {
+    expect(greeting("evening", "Ken Suenobu", null)).toBe("Good evening, Ken.");
+  });
+
+  it("greets neutrally where no clock has answered yet", () => {
+    // The server render and the hydration pass that must match it. A daypart guessed on the
+    // server is a wrong word half the time; this one is never wrong.
+    expect(greeting(null, "Ken Suenobu", activity())).toBe(
+      `${NEUTRAL_GREETING}, Ken — the loop is turning.`,
+    );
+  });
+
+  it("is a whole sentence for a session carrying no name", () => {
+    // A session may. "Good afternoon, ." would be worse than no name at all.
+    expect(greeting("afternoon", "", activity())).toBe(
+      "Good afternoon — the loop is turning.",
+    );
+    expect(greeting(null, "", null)).toBe(`${NEUTRAL_GREETING}.`);
   });
 });
 
 describe("pageSubline", () => {
-  it("names who is looking and what they hold", () => {
-    expect(pageSubline(membership(), "Ken Suenobu")).toBe(
-      "Ken Suenobu · owner of acme-robotics",
+  it("is the mockup's line, on the seeded workspace", () => {
+    // The acceptance criterion, quoted: "3 issues in flight, 12 queued…".
+    expect(pageSubline(read(dashboardPayload())).text).toBe(
+      "3 issues in flight, 12 queued behind them. " +
+        "Ouroboros merged 6 pull requests since midnight UTC.",
     );
   });
 
-  it("says nothing about a lifecycle, because the contract publishes none", () => {
-    // *Names a lifecycle that is not the normal one* was here. `OrgRow` carries no `status`
-    // ([#719](https://github.com/NobuData/ouroboros/issues/719)) — the organization plugin
-    // has no lifecycle column — so every workspace a session can reach is one you can work
-    // in, and there is nothing left for this line to warn about.
-    expect(pageSubline(membership(), "Ken Suenobu")).not.toContain("workspace");
+  it("agrees with itself about one of anything", () => {
+    const one = pageSubline(
+      read(dashboardPayload({ activity: activity({ inFlight: 1, queued: 1, mergedSinceMorning: 1 }) })),
+    ).text;
+
+    expect(one).toContain("1 issue in flight, 1 queued behind it.");
+    expect(one).toContain("merged 1 pull request since");
   });
 
-  it("reports the role the gate resolved rather than assuming one", () => {
-    expect(pageSubline(membership({ roles: ["viewer"] }), "Maya Chen")).toContain(
-      "viewer of acme-robotics",
-    );
+  it("says the queue is empty rather than counting to zero", () => {
+    expect(
+      pageSubline(read(dashboardPayload({ activity: activity({ queued: 0 }) }))).text,
+    ).toContain("3 issues in flight, and nothing queued behind them.");
   });
 
-  it("names the strongest role held, where the contract carries a list", () => {
-    // There is room for a word and the truthful word is the strongest: somebody who is an
-    // owner and a member may do everything an owner may.
-    expect(pageSubline(membership({ roles: ["member", "owner"] }), "Ken Suenobu")).toContain(
-      "owner of",
-    );
+  it("says nothing is in flight without pretending the queue is too", () => {
+    expect(
+      pageSubline(read(dashboardPayload({ activity: activity({ inFlight: 0 }) }))).text,
+    ).toContain("Nothing in flight; 12 issues waiting for a loop.");
+  });
+
+  it("reports a day with no merges as a day with no merges", () => {
+    expect(
+      pageSubline(read(dashboardPayload({ activity: activity({ mergedSinceMorning: 0 }) })))
+        .text,
+    ).toContain("Nothing has merged since midnight UTC.");
+  });
+
+  it("names the boundary the figure is actually counted from", () => {
+    // The mockup says "since this morning"; the contract counts from midnight UTC, which is
+    // the same boundary the day's token spend uses. For a reader thirteen hours away those
+    // are different mornings, and this page's whole argument is that its numbers are real.
+    const line = pageSubline(read(dashboardPayload())).text;
+
+    expect(line).toContain("since midnight UTC");
+    expect(line).not.toContain("this morning");
+  });
+
+  it("reads quietly for a workspace with nothing in it", () => {
+    // Three zeros are arithmetically true and useless. A fresh workspace has not failed at
+    // anything; it has not started.
+    const empty = pageSubline(read(emptyDashboard()));
+
+    expect(empty.text).toBe(QUIET_SUBLINE);
+    expect(empty.failed).toBe(false);
+    expect(empty.text).not.toMatch(/\b0\b/);
+  });
+
+  it("reports the failure without repeating the reason (#86)", () => {
+    // Never an empty workspace: "nothing is running" and "nobody could ask what is running"
+    // are different facts, which is the rule the stat row's em dash is written under too. But
+    // *why* nobody could ask is the banner's, once — this line was the ninth place on one page
+    // carrying the same sentence.
+    const failure = pageSubline(failed("Choose a workspace first."));
+
+    expect(failure).toEqual({ text: ACTIVITY_NOT_READ, failed: true });
+    expect(failure.text).not.toContain("Choose a workspace first.");
   });
 });
