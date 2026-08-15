@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { LoopPulse } from "@/app/api/dashboard";
 
 import {
+  ACTIVITY_NOT_READ,
   CYCLE_TIME_TARGET_SECONDS,
   EMPTY_QUEUE,
   INTERVENTION_BUDGET_7D,
@@ -10,6 +11,7 @@ import {
   MERGE_RATE_WINDOW,
   NEUTRAL_GREETING,
   NO_LOOPS,
+  NOT_READ,
   NO_USAGE_TODAY,
   NO_VALUE,
   PULSE_WINDOW,
@@ -432,13 +434,22 @@ describe("the stat row", () => {
 
   it("degrades as one, because it is one read", () => {
     // Every figure on the row is the aggregate's — decision F5's single round trip — so a
-    // refusal takes the whole row rather than one card of it. Four em dashes and the
-    // service's reason, never four zeros.
+    // refusal takes the whole row rather than one card of it. Four em dashes, never four
+    // zeros.
     const row = statRow(failed("Choose a workspace first."));
 
     expect(row.map((stat) => stat.value)).toEqual([NO_VALUE, NO_VALUE, NO_VALUE, NO_VALUE]);
     expect(row.every((stat) => stat.tone === "failed")).toBe(true);
-    expect(row.every((stat) => stat.delta === "Choose a workspace first.")).toBe(true);
+  });
+
+  it("says what could not be read on each tile, and why on none of them (#86)", () => {
+    // The reason is the banner's, once (`app/dashboard/stale-banner.tsx`). Four tiles each
+    // repeating the service's sentence read as four problems rather than one, and buried the
+    // single retry that would fix them.
+    const row = statRow(failed("Choose a workspace first."));
+
+    expect(row.every((stat) => stat.delta === NOT_READ)).toBe(true);
+    expect(row.some((stat) => stat.delta === "Choose a workspace first.")).toBe(false);
   });
 
   it("keeps its captions when it could read nothing at all", () => {
@@ -1156,11 +1167,14 @@ describe("pageSubline", () => {
     expect(empty.text).not.toMatch(/\b0\b/);
   });
 
-  it("carries the service's reason when the aggregate could not be read", () => {
+  it("reports the failure without repeating the reason (#86)", () => {
     // Never an empty workspace: "nothing is running" and "nobody could ask what is running"
-    // are different facts, which is the rule the stat row's em dash is written under too.
+    // are different facts, which is the rule the stat row's em dash is written under too. But
+    // *why* nobody could ask is the banner's, once — this line was the ninth place on one page
+    // carrying the same sentence.
     const failure = pageSubline(failed("Choose a workspace first."));
 
-    expect(failure).toEqual({ text: "Choose a workspace first.", failed: true });
+    expect(failure).toEqual({ text: ACTIVITY_NOT_READ, failed: true });
+    expect(failure.text).not.toContain("Choose a workspace first.");
   });
 });

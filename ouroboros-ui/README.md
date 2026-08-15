@@ -1006,8 +1006,39 @@ round trip rather than in eight. It sends no `If-None-Match` — this is the *fi
 by a Server Component so the page arrives rendered, and the `ETag` loop that keeps it fresh
 afterwards is [#87](https://github.com/NobuData/ouroboros/issues/87)'s.
 
-While the reads are in flight, [`loading.tsx`](<app/(app)/dashboard/loading.tsx>) draws the
-same eight cards at the same column spans, so nothing moves when the data arrives.
+### Empty, loading and failed, designed together
+
+The mockup draws only the busy state. The other three
+([#86](https://github.com/NobuData/ouroboros/issues/86)) are the ones a real workspace spends
+most of its first week in.
+
+**Nothing is fabricated at zero.** A fresh workspace — the `kensuenobu` seed org — reads as
+zeros and sentences, never as an em dash: these zeros *were read*. Each card says what is not
+there and what would put something there — *Nothing is running right now*, *Nothing closed
+yet*, *Nothing is queued* — and the pulse card keeps its three meters at zero under a note
+saying they have nothing to measure, because three empty bars and no sentence would read as a
+merge rate of nought. None of the mockup's plausible rows appears anywhere.
+
+**The skeleton is each card's own shape.** [`loading.tsx`](<app/(app)/dashboard/loading.tsx>)
+draws the nine cards at their real geometry — the stat tile's tall figure, the tables' ruled
+rows, the pulse card's mark at `512×296` over three meters with a switch under a rule — from
+classes that mirror the cards' own. Nine copies of one generic block reserve the wrong height
+for eight of them, which is a skeleton that passes its own test and still lets the page jump.
+
+**A failed read degrades; it does not blank the page.**
+[`freshness.tsx`](app/dashboard/freshness.tsx) holds the last render that worked, so a service
+that stops answering mid-session leaves the reader's figures on screen under
+[a banner](app/dashboard/stale-banner.tsx) saying *"Showing data from 14:02 — the latest
+refresh failed"*, with the page's only retry beside it. It holds the rendered **tree**, not the
+payload, which is what keeps every card a Server Component — this and the auto-merge switch are
+the whole of the client code on this screen. `router.refresh()` re-runs the route and merges
+the result without discarding client state, so a retry that fails again still shows the data
+from before the failures started; #87's polling hook will drive the same boundary.
+
+**The reason is said once.** Before this, one refused aggregate printed the service's sentence
+**nine times** — four stat tiles, four cards and the page head's subline — which reads as nine
+problems rather than one and buries the single retry that would fix them. The rule now: **a
+card says what could not be read, and the banner says why.**
 
 ### The system card, and why one read skips the client
 
@@ -1041,7 +1072,8 @@ opinion. Stop the engine and the engine's pill degrades while the database's doe
   It is the same treatment the sidebar gives `/issues` and `/workflows`; linking them to routes
   nobody has written would break #49's own first criterion, *no dead nav links*.
   `aria-disabled` rather than `disabled`, so the explanation keeps its place in the tab order.
-- **A figure that could not be read is an em dash beside the reason**, never a zero.
+- **A figure that could not be read is an em dash**, never a zero — and the reason it could
+  not be read is said once, in the banner, rather than repeated under every figure.
 - **A dependency nobody could ask about is *unknown*, never green** — and the summary pill
   reads *degraded* rather than *operational* when any row is.
 - **A cost nobody has priced is hidden, not drawn as `$0`.**
@@ -1063,11 +1095,11 @@ head on top of #45's route, readers, status logic and redirect,
 [#83](https://github.com/NobuData/ouroboros/issues/83) the loop pulse,
 [#84](https://github.com/NobuData/ouroboros/issues/84) the completions table and
 [#85](https://github.com/NobuData/ouroboros/issues/85) the queue card. **Every card of the grid
-is now drawn from the aggregate this page already fetches.** What is left of Epic I is the work
-that spans all of them rather than one more tile:
-[#86](https://github.com/NobuData/ouroboros/issues/86) designs every card's empty, loading and
-failed states together, and [#87](https://github.com/NobuData/ouroboros/issues/87) keeps them
-fresh with the `ETag` poll.
+is now drawn from the aggregate this page already fetches**, and
+[#86](https://github.com/NobuData/ouroboros/issues/86) has designed the three states the mockup
+does not draw — empty, loading and failed — across all of them at once. What is left of Epic I
+is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page fresh with the
+`ETag` poll and drives #86's freshness boundary instead of its manual retry.
 
 ## App shell
 

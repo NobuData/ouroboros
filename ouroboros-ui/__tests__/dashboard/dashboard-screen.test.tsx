@@ -2,7 +2,13 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
-import { NO_VALUE, QUIET_SUBLINE } from "@/app/dashboard/view";
+import {
+  ACTIVITY_NOT_READ,
+  NOT_READ,
+  NO_VALUE,
+  PULSE_UNMEASURED,
+  QUIET_SUBLINE,
+} from "@/app/dashboard/view";
 
 import {
   dashboardPayload,
@@ -142,19 +148,17 @@ describe("the page head", () => {
     expect(screen.getByText(QUIET_SUBLINE)).toBeInTheDocument();
   });
 
-  it("puts the service's reason in the subline when the aggregate could not be read", () => {
+  it("marks the subline as a failure when the aggregate could not be read", () => {
     // Never a workspace that looks empty: an unread aggregate and an idle loop must not
     // render the same, which is the rule the stat row's em dash is written under.
     const { container } = render(
       <DashboardScreen readings={readings({ aggregate: failed("Choose a workspace first.") })} />,
     );
 
-    // The stat row carries the same reason on each of its four cards, since it is the same
-    // read (`view.ts`), so the subline is asserted by its own class rather than by text.
     const subline = container.querySelectorAll(".dash__sub--failed");
 
     expect(subline).toHaveLength(1);
-    expect(subline[0]).toHaveTextContent("Choose a workspace first.");
+    expect(subline[0]).toHaveTextContent(ACTIVITY_NOT_READ);
     expect(container.textContent).not.toContain(QUIET_SUBLINE);
   });
 
@@ -306,8 +310,8 @@ describe("the stat row, on seeded data", () => {
   });
 
   it("degrades the whole row to em dashes when the aggregate could not be read", () => {
-    // The row is one read, so it fails as one — and every card says why rather than
-    // reporting a zero.
+    // The row is one read, so it fails as one — and every card says it could not be read
+    // rather than reporting a zero.
     const { container } = render(
       <DashboardScreen readings={readings({ aggregate: failed("Choose a workspace first.") })} />,
     );
@@ -315,7 +319,7 @@ describe("the stat row, on seeded data", () => {
     for (const label of STAT_LABELS) {
       const card = screen.getByRole("region", { name: label });
       expect(within(card).getByText(NO_VALUE)).toBeInTheDocument();
-      expect(within(card).getByText("Choose a workspace first.")).toBeInTheDocument();
+      expect(within(card).getByText(NOT_READ)).toBeInTheDocument();
     }
     expect(container.querySelectorAll(".dash-stat__delta--failed")).toHaveLength(4);
     expect(container.querySelectorAll(".dash-stat__value--accent")).toHaveLength(0);
@@ -469,7 +473,7 @@ describe("the loop pulse card, on the page", () => {
 
     const card = screen.getByRole("region", { name: "Loop pulse" });
 
-    expect(within(card).getByText("Nope.")).toBeInTheDocument();
+    expect(within(card).getByText("The pulse could not be read.")).toBeInTheDocument();
     expect(within(card).queryByRole("switch")).toBeNull();
   });
 });
@@ -618,9 +622,95 @@ describe("a workspace that is not the seeded one", () => {
     }
   });
 
+  it("designs every one of the nine cards at zero (#86)", () => {
+    // The `kensuenobu` criterion, as a test rather than a screenshot: a fresh workspace has
+    // no runs, no queue and no usage, and **every** card has to be designed for that — not
+    // four of them, which is what "each card grew its own zero state as it landed" leaves
+    // behind. A card with nothing in it and nothing to say is a blank region, which the
+    // design system's § 3.5 forbids by name.
+    const { container } = render(
+      <DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />,
+    );
+
+    const cards = [...container.querySelectorAll<HTMLElement>(".dash-grid > .ou-card")];
+
+    expect(cards).toHaveLength(9);
+    for (const card of cards) {
+      // Something to read on every one of them, beyond the heading.
+      expect(card.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("fabricates nothing for a workspace with nothing in it (#86)", () => {
+    // The honesty rule at zero: no em dash (these zeros were *read*), no invented row, and no
+    // figure interpolated to make a card look busy. The mockup's own numbers are the specific
+    // thing that must not appear.
+    const { container } = render(
+      <DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />,
+    );
+
+    expect(screen.queryAllByText(NO_VALUE)).toHaveLength(0);
+    expect(container.textContent).not.toMatch(/#\d{3}/);
+    expect(container.textContent).not.toMatch(/\bundefined\b|\bNaN\b|\[object/);
+    // No table row survives an empty payload, in either table.
+    expect(container.querySelectorAll("table")).toHaveLength(0);
+  });
+
+  it("says what would fill each empty card rather than apologising for it", () => {
+    // The EmptyState language, in one voice across the four cards that have one: what is not
+    // there, and what puts something there.
+    render(<DashboardScreen readings={readings({ aggregate: read(emptyDashboard()) })} />);
+
+    for (const [card, headline] of [
+      ["Active loops", "Nothing is running right now"],
+      ["Recently closed by the loop", "Nothing closed yet"],
+      ["Up next in queue", "Nothing is queued"],
+    ] as const) {
+      const region = screen.getByRole("region", { name: card });
+      expect(within(region).getByText(headline)).toBeInTheDocument();
+    }
+
+    // The pulse card's meters stay, at zero, with the note that says why they have nothing
+    // to report — three bars at 0% and no sentence would read as a merge rate of nought.
+    const pulse = screen.getByRole("region", { name: "Loop pulse" });
+    expect(within(pulse).getAllByRole("progressbar")).toHaveLength(3);
+    expect(within(pulse).getByText(PULSE_UNMEASURED)).toBeInTheDocument();
+  });
+
   // *Says a workspace is suspended* was here. `OrgRow` publishes no lifecycle since
   // [#719](https://github.com/NobuData/ouroboros/issues/719), so the state cannot be
   // reported and the subline no longer has a branch for it — see `view.test.ts`.
+
+  it("says why once on the whole page, not once per card (#86)", () => {
+    // The failure this ticket exists for. One refused aggregate used to print the service's
+    // sentence **nine** times — on four stat tiles, in four cards and in the page head's
+    // subline — which reads as nine problems rather than one and buries the single retry.
+    // The screen now says *what* could not be read, card by card; *why* is the banner's, and
+    // the banner is `app/dashboard/freshness.tsx`'s to render.
+    const { container } = render(
+      <DashboardScreen readings={readings({ aggregate: failed("Choose a workspace first.") })} />,
+    );
+
+    const said = container.textContent?.split("Choose a workspace first.").length ?? 1;
+
+    expect(said - 1).toBe(0);
+  });
+
+  it("still names what each card could not read", () => {
+    // Dropping the repeated reason must not leave a page of blank cards: each one still says
+    // which question went unanswered, which is the half of the fact the card owns.
+    render(<DashboardScreen readings={readings({ aggregate: failed("Nope.") })} />);
+
+    for (const [card, headline] of [
+      ["Active loops", "The loops could not be read"],
+      ["Recently closed by the loop", "The completions could not be read"],
+      ["Up next in queue", "The queue could not be read"],
+      ["Loop pulse", "The pulse could not be read."],
+    ] as const) {
+      const region = screen.getByRole("region", { name: card });
+      expect(within(region).getByText(headline)).toBeInTheDocument();
+    }
+  });
 
   it("renders every card even when every read failed", () => {
     // One failed read is one degraded card, and three are the whole page — never a blank one.

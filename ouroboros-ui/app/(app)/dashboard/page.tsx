@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/app/api/access";
 import { readDashboard } from "@/app/dashboard/data";
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
+import { Freshness } from "@/app/dashboard/freshness";
 
 /**
  * The dashboard (#45) — where a signed-in request with a chosen workspace lands.
@@ -23,10 +24,26 @@ import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
  * also what makes the page arrive rendered rather than as a shell that then loads —
  * `loading.tsx` beside this file is what the reader sees while it does.
  *
+ * The one wrapper is [#86](https://github.com/NobuData/ouroboros/issues/86)'s
+ * [`Freshness`](../../dashboard/freshness.tsx), and it is the only client code between the
+ * route and the screen: it holds the last render that worked, so a read that starts failing
+ * mid-session degrades to a banner over real data rather than blanking a page somebody is
+ * reading. The screen and every card below it stay Server Components — the boundary keeps
+ * the rendered *tree*, not the payload, which is what makes that true.
+ *
  * @returns The dashboard, for the workspace this request is operating in.
  */
 export default async function Page() {
   const access = await requireWorkspace();
+  const readings = await readDashboard(access);
 
-  return <DashboardScreen readings={await readDashboard(access)} />;
+  return (
+    <Freshness
+      ok={readings.aggregate.ok}
+      reason={readings.aggregate.ok ? null : readings.aggregate.reason}
+      readAt={readings.readAt}
+    >
+      <DashboardScreen readings={readings} />
+    </Freshness>
+  );
 }

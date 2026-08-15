@@ -86,6 +86,55 @@
   gap: var(--sp-6);
 }
 
+/* ---------- the stale-data banner ---------- */
+
+/*
+ * What a failed read degrades to (#86): one line saying how old the page is and why, and the
+ * page's only retry. It sits above the page head rather than inside the grid because it is a
+ * fact about the whole page rather than about any card on it — and above rather than below,
+ * because a reader who has been handed old data should be told before they read it.
+ *
+ * The inline padding is `.dash`'s, at both of its widths, so the banner lines up with the
+ * page head under it rather than floating in the pane's own gutter.
+ */
+.dash-stale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  margin: var(--sp-8) var(--sp-10) 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+/*
+ * The sentence and the reason share a paragraph, so they wrap as one block beside the
+ * control rather than as two lines that can separate.
+ */
+.dash-stale__text {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The headline carries the state — the warn hue, and the weight that makes it the first
+ * thing read. It is never the only signal: the sentence says *the latest refresh failed* in
+ * words, which is what a reader who cannot separate two hues has (design system § 3.4).
+ */
+.dash-stale__headline {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* The service's own sentence, quieter than the headline it follows. */
+.dash-stale__reason {
+  color: var(--ink-mut);
+}
+
 /* ---------- the grid ---------- */
 
 .dash-grid {
@@ -139,6 +188,11 @@
 
   .dash {
     padding-inline: var(--sp-6);
+  }
+
+  /* The banner keeps its alignment with the page head at the narrow width too. */
+  .dash-stale {
+    margin-inline: var(--sp-6);
   }
 }
 
@@ -677,9 +731,14 @@
 /* ---------- loading skeleton ---------- */
 
 /*
- * What `app/(app)/dashboard/loading.tsx` draws while the reads are in flight. Bars at the
- * heights of the things they stand in for, so the page does not jump when the data
- * arrives.
+ * What `app/(app)/dashboard/loading.tsx` draws while the reads are in flight.
+ *
+ * **Every shape below is a card's own geometry, not a generic bar** (#86). A skeleton whose
+ * job is to stop the page jumping has to stand in for the card that is coming — the stat
+ * tile's tall figure, the tables' rows, the pulse card's mark and meters — because a column
+ * of identical boxes reserves the wrong height for eight of the nine cards and the page
+ * moves anyway when the data lands. So each rule here mirrors the rule it stands in for, and
+ * the two are meant to be read side by side.
  *
  * It pulses only for a reader who has not asked for less motion, and it is hidden from the
  * accessibility tree by the `aria-hidden` on its container — a screen reader is told the
@@ -687,6 +746,7 @@
  */
 .dash-skeleton {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: var(--sp-5);
 }
@@ -705,13 +765,121 @@
   width: 55%;
 }
 
+/* The stat tile's figure — `.dash-stat__value`'s `--t-3xl` line, in a bar. */
 .dash-skeleton__bar--tall {
   height: var(--sp-11);
   width: 40%;
 }
 
+/* Its caption — `.dash-stat__label`'s `--t-2xs`. */
+.dash-skeleton__bar--caption {
+  height: var(--sp-6);
+  width: 45%;
+}
+
+/* Its delta line — `.dash-stat__delta`'s `--t-xs`. */
+.dash-skeleton__bar--line {
+  height: var(--sp-6);
+  width: 70%;
+}
+
+/*
+ * A card head, at `.ou-card__head`'s own height and bottom margin, so every card that has
+ * one starts its body on the same line the real card will.
+ */
+.dash-skeleton__head {
+  height: var(--sp-7);
+  width: 40%;
+  margin-bottom: var(--sp-7);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/*
+ * A list of rows that carry their own rhythm — the two tables and the queue card, all of
+ * which rule their rows off rather than spacing them with a gap.
+ */
+.dash-skeleton__rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+}
+
+/*
+ * One row. The padding is the queue card's `.dash-queue__row`, which is also close to the
+ * table's cell padding, and the rule under it is the same `--line` both of them draw.
+ */
+.dash-skeleton__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.dash-skeleton__row:last-child {
+  border-bottom: 0;
+}
+
+/* What sits in a row: a wide bar for the issue, a short one for the marks beside it. */
+.dash-skeleton__cell {
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.dash-skeleton__cell--grow {
+  flex: 1;
+  max-width: 60%;
+}
+
+.dash-skeleton__cell--mark {
+  width: var(--sp-11);
+}
+
+/*
+ * The pulse card's mark, reserved at the asset's own ratio and the sheet's own width — the
+ * same box `.dash-pulse__glyph` holds, so the tallest card on the grid does not resize when
+ * its picture arrives.
+ */
+.dash-skeleton__glyph {
+  align-self: center;
+  width: 9.375rem;
+  max-width: 100%;
+  margin: var(--sp-2) 0 var(--sp-4);
+  aspect-ratio: 512 / 296;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* One captioned meter: the caption row, then the bar under it — `.dash-pulse__meter`. */
+.dash-skeleton__meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.dash-skeleton__meter > .dash-skeleton__bar {
+  height: var(--sp-5);
+}
+
+/*
+ * The pulse card's `<hr class="divider">`, pushed to the foot of the card the same way, so
+ * the skeleton's switch row sits where the real one will.
+ */
+.dash-skeleton__divider {
+  height: 1px;
+  margin: auto 0 var(--sp-6);
+  background: var(--line);
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .dash-skeleton__bar {
+  .dash-skeleton__bar,
+  .dash-skeleton__head,
+  .dash-skeleton__cell,
+  .dash-skeleton__glyph {
     animation: dash-skeleton-pulse 1.6s ease-in-out infinite;
   }
 }

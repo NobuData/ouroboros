@@ -146,6 +146,17 @@ const NOTHING_RUNNING_NOTE =
   "stop for a person.";
 
 /**
+ * What the card says when the aggregate was refused.
+ *
+ * It names *what* could not be read and stops there. **Why** is the page banner's, once
+ * (`app/dashboard/stale-banner.tsx`) — before
+ * [#86](https://github.com/NobuData/ouroboros/issues/86) the service's sentence was repeated
+ * here and in eight other places on one page, which reads as nine problems rather than one
+ * and buries the single retry that would fix them.
+ */
+const LOOPS_NOT_READ = "The loops could not be read";
+
+/**
  * What to draw in place of the table.
  *
  * The two reasons a table has no rows are not the same fact and must not read alike: a
@@ -158,10 +169,10 @@ const NOTHING_RUNNING_NOTE =
  */
 function emptyPanel(
   aggregate: Reading<Dashboard>,
-): Readonly<{ title: string; note: string }> {
+): Readonly<{ title: string; note?: string }> {
   return aggregate.ok
     ? { title: NOTHING_RUNNING, note: NOTHING_RUNNING_NOTE }
-    : { title: "The loops could not be read", note: aggregate.reason };
+    : { title: LOOPS_NOT_READ };
 }
 
 /**

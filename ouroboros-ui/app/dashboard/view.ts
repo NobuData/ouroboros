@@ -100,6 +100,45 @@ export interface DashboardReadings {
 /** What is drawn in place of a number that could not be read. */
 export const NO_VALUE = "—";
 
+/**
+ * What stands under a figure that could not be read, in place of the service's sentence.
+ *
+ * **The reason is the banner's, and the banner is the only place it appears**
+ * (`app/dashboard/stale-banner.tsx`). Before
+ * [#86](https://github.com/NobuData/ouroboros/issues/86) one refused aggregate printed the
+ * service's message nine times — on four stat tiles, in four cards and in the page head's
+ * subline — which reads as nine problems rather than one, and buries the single retry that
+ * would fix it. A tile says *what* could not be read; the banner says *why*, once, and offers
+ * the way out.
+ *
+ * It is a sentence rather than a second em dash because the figure above it is already the
+ * em dash: repeating the glyph would say nothing, and a blank line under it would leave the
+ * tile looking like a figure nobody had captioned.
+ */
+export const NOT_READ = "Could not be read.";
+
+/**
+ * How the reader is told when a page was last read, for the stale banner's sentence.
+ *
+ * Hours and minutes in the reader's own locale and zone, because that is the only clock a
+ * *"showing data from 14:02"* is useful against — seconds would imply a precision nobody
+ * needs from a banner that appears when a refresh has already failed.
+ *
+ * It reads the browser's locale by passing `undefined`, which is also what makes it a
+ * function of its input alone from a test's point of view: the same instant renders as the
+ * same string wherever the suite runs, and the case asserts against this rather than against
+ * a time zone it would have to pin.
+ *
+ * @param atMs The instant, in milliseconds since the epoch — a reading's `readAt`.
+ * @returns The time of day, `14:02`.
+ */
+export function clockTime(atMs: number): string {
+  return new Date(atMs).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /* ------------------------------------------------------------------ system status */
 
 /** What a dependency is reporting: answering, not answering, or not known. */
@@ -494,18 +533,23 @@ function costLine(today: DashboardStats["tokensToday"]): string | null {
  *
  * **The stat row is one read, so it fails as one.** Every figure on it comes from the
  * aggregate — decision F5's single round trip — and a refused aggregate leaves all four
- * carrying an em dash and the service's reason rather than four zeros. That is the same
- * rule the page head's subline is written under: *nothing is running* and *nobody could ask
- * what is running* must not render alike. The per-card treatment of that state — a banner
- * rather than four repetitions of one sentence — is
- * [#86](https://github.com/NobuData/ouroboros/issues/86)'s.
+ * carrying an em dash rather than four zeros. That is the same rule the page head's subline
+ * is written under: *nothing is running* and *nobody could ask what is running* must not
+ * render alike.
+ *
+ * **What each tile does not carry is the reason**, which is
+ * [#86](https://github.com/NobuData/ouroboros/issues/86)'s whole point: the service's
+ * sentence appeared on all four tiles and on four cards besides, so a page reporting one
+ * failure said it eight times. It is the banner's now
+ * (`app/dashboard/stale-banner.tsx`) — **a tile says what could not be read, and the banner
+ * says why, once** — and {@link NOT_READ} is what stands under the em dash instead.
  *
  * @param aggregate The dashboard aggregate, or why it could not be read.
  * @returns The four cards.
  */
 export function statRow(aggregate: Reading<Dashboard>): readonly Stat[] {
   if (!aggregate.ok) {
-    return FAILED_ROW.map(([id, label]) => failedStat(id, label, aggregate.reason));
+    return FAILED_ROW.map(([id, label]) => failedStat(id, label));
   }
 
   const { stats } = aggregate.value;
@@ -537,14 +581,11 @@ const FAILED_ROW: readonly (readonly [id: string, label: string])[] = [
  *
  * @param id The card's identifier.
  * @param label Its caption.
- * @param reason What the service said. Shown as-is: every message in the contract's
- *   envelope is written for a person and names nothing about the service's internals
- *   (`app/api/errors.ts`).
  * @returns The card, carrying an em dash rather than a zero — and never the accent, which
  *   is reserved for a figure that is actually reporting something.
  */
-function failedStat(id: string, label: string, reason: string): Stat {
-  return { id, label, value: NO_VALUE, accent: false, delta: reason, tone: "failed" };
+function failedStat(id: string, label: string): Stat {
+  return { id, label, value: NO_VALUE, accent: false, delta: NOT_READ, tone: "failed" };
 }
 
 /* ------------------------------------------------------------------ active loops */
@@ -1375,6 +1416,16 @@ export const QUIET_SUBLINE =
   "Nothing is running yet — the loop starts when an issue reaches the queue.";
 
 /**
+ * What the subline says when nobody could ask what the loop is doing.
+ *
+ * The head keeps its shape and its failed tint rather than losing a line, and it states the
+ * one thing it knows: the question was not answered. Why it was not is the banner's, for
+ * {@link NOT_READ}'s reason — this line used to be the ninth place on the page carrying the
+ * same sentence.
+ */
+export const ACTIVITY_NOT_READ = "The loop's activity could not be read.";
+
+/**
  * What is in flight and what is behind it — the subline's first sentence.
  *
  * @param inFlight Runs in flight.
@@ -1426,13 +1477,14 @@ export interface Subline {
  * The line under the greeting: what the loop is doing right now.
  *
  * @param aggregate The dashboard aggregate, or why it could not be read.
- * @returns The line, marked as a failure when it is the service's reason rather than a
- *   description of the workspace. A failed read is *never* rendered as an empty workspace:
- *   "nothing is running" and "nobody could ask what is running" are different facts, which
- *   is the same rule the stat row's em dash is written under.
+ * @returns The line, marked as a failure when it is reporting one rather than describing the
+ *   workspace. A failed read is *never* rendered as an empty workspace: "nothing is running"
+ *   and "nobody could ask what is running" are different facts, which is the same rule the
+ *   stat row's em dash is written under — but *why* nobody could ask is
+ *   {@link NOT_READ}'s note: the reason belongs to the banner, once.
  */
 export function pageSubline(aggregate: Reading<Dashboard>): Subline {
-  if (!aggregate.ok) return { text: aggregate.reason, failed: true };
+  if (!aggregate.ok) return { text: ACTIVITY_NOT_READ, failed: true };
 
   const { inFlight, queued, mergedSinceMorning } = aggregate.value.activity;
 
