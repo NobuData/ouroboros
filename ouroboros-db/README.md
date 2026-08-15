@@ -53,6 +53,13 @@
 > **mockup 02 as rows** — every figure that screen renders, reproduced from data rather
 > than asserted by a mock — and the personal workspace deliberately left empty as the
 > zero-state fixture. See [The development seed](#the-development-seed).
+> `V012` ([#580](https://github.com/NobuData/ouroboros/issues/580)) opens the **model
+> registry** with `model_prices`, the pricing catalog mockup 21's `$ per 1M in·out`
+> column is rendered from — and the first migration that ships *product* rows rather than
+> dev-only ones:
+> [`migrations/R__model_price_catalog.sql`](migrations/R__model_price_catalog.sql) applies
+> a vendored, pinned snapshot of upstream prices in every environment, development and
+> production alike. See [The bundled price catalog](#the-bundled-price-catalog).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -298,6 +305,69 @@ seed that re-creates what it can instead of failing.
 > by being migrated again with the overlay — reachable only by pointing both
 > configurations at the same database. `scripts/clean-dev` then a seeded `migrate` fixes
 > it, or `docker compose down -v && docker compose up` for the stack's own database.
+
+### The bundled price catalog
+
+The other repeatable migration is not a seed, and it is the one piece of data this module
+ships to **every** environment:
+[`migrations/R__model_price_catalog.sql`](migrations/R__model_price_catalog.sql) fills
+`model_prices` ([#580](https://github.com/NobuData/ouroboros/issues/580)) with what a
+model costs, which is what mockup 21's `$ per 1M in·out` column renders and what
+[#92](https://github.com/NobuData/ouroboros/issues/92)'s priced accounting will value
+`token_usage` with.
+
+It carries no `${ouro_dev_seed}` guard because it is not development data. A price is a
+fact about the world, an air-gapped deployment needs it as much as a laptop does, and the
+alternative — an empty column until somebody types a hundred models in — is the failure
+mode [decision R4](migrations/V012__model_prices.sql) exists to avoid.
+
+**Nothing reaches a network, at migration time or ever.** The catalog is data in the
+repository, in three files with one direction of flow:
+
+```
+catalog/litellm-model-prices.json     a pruned extract of upstream, at a pinned commit
+  └── scripts/price-catalog.mjs       the transform: per-token costs → cents per 1M
+        └── migrations/R__model_price_catalog.sql   generated; one import call, rows as jsonb
+```
+
+```bash
+ouroboros-db/scripts/price-catalog.mjs --check   # the migration is what the extract renders (ci/db)
+ouroboros-db/scripts/price-catalog.mjs --write   # re-render it after the extract moves
+ouroboros-db/scripts/price-catalog.mjs --vendor --commit <sha>   # refresh the pin — the only mode that downloads
+```
+
+The extract is a subset of
+[LiteLLM's `model_prices_and_context_window.json`](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
+(MIT — the licence is committed as `catalog/LICENSE.litellm`), pruned to the providers
+this product can reach and the fields it keeps, so it can be diffed against upstream
+directly. Every row it renders is stamped with a `catalog_version` naming that commit and
+its date. Three rows are *not* upstream's — Copilot's `seat`, Cursor's `usage` and
+Ollama's `free` — because upstream publishes no rate for a provider that has none; they
+are stamped `meta.catalog_source = 'ouroboros'`.
+
+Re-running it is safe by construction. `ouroboros.import_model_price_catalog()`, which is
+all the generated file calls, returns `(inserted, updated, unchanged, deleted)`: the same
+snapshot twice is `(0, 0, n, 0)` and writes nothing at all, a newer snapshot updates the
+bundled rows and sweeps the ones it dropped, and **no organization's override is reachable
+from it** — every row it writes is `organization_id null`, so there is no key it can
+produce that collides with one. A workspace that corrects a price for itself does so in a
+row of its own, and it survives every re-import:
+
+```sql
+insert into ouroboros.model_prices
+  (organization_id, match_provider_kind, match_model, billing_mode,
+   input_cents_per_1m, output_cents_per_1m, source)
+values ('org-acme', 'anthropic', 'claude-fable-5', 'token', 1200, 6000, 'override');
+
+select * from ouroboros.model_price('org-acme', 'anthropic', 'claude-fable-5');
+```
+
+`ouroboros.model_price(organization, provider kind, model)` is how everything reads this
+table: it returns the one row that prices that pair — override over bundled, exact model
+over family row — or **no row at all** when the catalog does not cover the model, which is
+what the registry renders as `—`. It never returns a zero for a model whose price is
+unknown, and that distinction is the point of the table: `—` says *we do not know*, `$0`
+says *this is free*, and only one of them is safe to be wrong about.
 
 ### The runner underneath
 
@@ -672,12 +742,17 @@ ouroboros-db/
 ├── .dockerignore                     # the allow-list that governs that image's build context
 ├── .env.example                      # which database the commands migrate
 ├── package.json                      # workspace adapter — `yarn dev` reaches scripts/dev
+├── catalog/
+│   ├── litellm-model-prices.json     # the vendored price extract, at a pinned commit — #580
+│   └── LICENSE.litellm               # the MIT licence it came under
 ├── scripts/
 │   ├── dev                           # up, healthy, migrated — the `dev` verb
 │   ├── migrate                       # apply what is pending
 │   ├── info                          # applied and pending versions
 │   ├── validate                      # checksums and naming rules
-│   └── clean-dev                     # drop everything — gated three ways
+│   ├── clean-dev                     # drop everything — gated three ways
+│   ├── betterauth-schema.mjs         # what BetterAuth expects, rendered and checked — #710
+│   └── price-catalog.mjs             # the extract → R__model_price_catalog.sql transform — #580
 ├── migrations/
 │   ├── V000__bootstrap.sql           # the schema itself
 │   ├── V001__tenants.sql             # tenants, tenant_domains — #20
@@ -691,8 +766,10 @@ ouroboros-db/
 │   ├── V009__dashboard_queue.sql     # queue_items — the ordered issue queue — #65
 │   ├── V010__dashboard_usage.sql     # token_usage + token_usage_daily — the spend ledger — #66
 │   ├── V011__workspace_settings.sql  # workspace_settings + …_effective — the auto-merge switch — #67
+│   ├── V012__model_prices.sql        # model_prices + the lookup and import functions — #580
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
-│   └── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
+│   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
+│   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
     │   ├── fixture.sh                # the synthetic module and stub runners the shell suites share
@@ -703,6 +780,8 @@ ouroboros-db/
     ├── run.test.sh                   # the runner
     ├── scripts.test.sh               # the four commands and the project configuration
     ├── seed.test.sh                  # both seeds' guard, order, idempotency and determinism — #23, #68
+    ├── betterauth-schema.test.sh     # the drift check's contract, without a database — #710
+    ├── price-catalog.test.sh         # the price transform, its provenance and --check — #580
     ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
     ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69
     ├── constraints.sql               # what the schema enforces, asserted against a live database
@@ -735,6 +814,18 @@ outside this module alters it.
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010` | What the loop has spent — one append-only event per provider call, not one total per organization | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization |
 | `workspace_settings` | `V011` | Org-scoped typed product settings — today the auto-merge switch, the dashboard's only write | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
+| `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
+
+Two **functions**, both `V012`'s and both documented in
+[The bundled price catalog](#the-bundled-price-catalog).
+**`ouroboros.model_price(organization, provider kind, model)`** is the read: the one row
+that prices that pair — override over bundled, exact model over family row — or no row at
+all, which is what the registry renders as `—` rather than as `$0`. It is `language sql`
+and `stable` so PostgreSQL inlines it, which is what keeps a price lookup a single indexed
+query instead of an opaque function scan.
+**`ouroboros.import_model_price_catalog(version, effective_at, rows)`** is the write, and
+the whole of what `R__model_price_catalog.sql` does: idempotent, sweeping the previous
+snapshot, and structurally unable to touch a workspace's override.
 
 Two **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
 UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
@@ -873,7 +964,9 @@ migration CI [#24](https://github.com/NobuData/ouroboros/issues/24) *(done)* ·
 BetterAuth core schema [#706](https://github.com/NobuData/ouroboros/issues/706) *(done)* ·
 organization schema [#707](https://github.com/NobuData/ouroboros/issues/707) *(done)* ·
 tenancy cut-over [#708](https://github.com/NobuData/ouroboros/issues/708) *(done)* ·
+model pricing catalog [#580](https://github.com/NobuData/ouroboros/issues/580) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
+model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

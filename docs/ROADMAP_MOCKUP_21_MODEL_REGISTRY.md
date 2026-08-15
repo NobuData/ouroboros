@@ -88,7 +88,7 @@ the Spend tab.
 | Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended** — alias health derives from provider health + binding state (CH.5, no alias-level probes); the Registry tab goes live (CI.1 amendment, mirroring AE.1's). |
 | Providers AC.1 adapter SPI, AC.6 `provider_models` discovered catalog + P6 ("discovery feeds the registry") + soft alias-validation hook | **Consumed + extended** — the inspector's live model list and the import wizard read `provider_models`; CH.2 extends the SPI with per-model param/capability schemas; the AC.6 unknown-model warning gets its UI surface (CI.2/CI.3). |
 | Providers AD.2 (provider delete blocked while aliases depend, 409 naming aliases) | **Mirrored** — the registry enforces the same discipline in the other direction (alias delete blocked while routes/workflows/rules/commands reference it). |
-| Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here** — the `$ per 1M in·out` column needs a pricing catalog *now*; CG.2/CH.3 build it as the shared price-table layer J.4 and Z.5/AB.4 consume (filing-time coordination so J.4 doesn't re-invent it). |
+| Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here, and CG.2 (#580) is 🟢 delivered** — the `$ per 1M in·out` column needs a pricing catalog *now*, so `model_prices` is the shared price-table layer J.4 and Z.5/AB.4 consume rather than re-invent: bundled snapshot plus org overrides, four billing modes, provenance on every row. CH.3 (#586) is the service over it. |
 | Workflow-builder P.2 (DSL JSON Schema, zod+pydantic parity, publish validation) | **Amended** — the governance card's "raw model strings are rejected at publish time" lands as a P.2 schema amendment: `llm` nodes reference registry aliases structurally (CH.6), which also makes workflow references queryable for CG.3. |
 | ChatOps BZ.3 (`/ouro route <task> <alias>` binding, alias completions) | **Consumed** — the inspector hint "referenced by … /ouro commands"; chat route pins are the fourth reference kind (CG.3, soft until BZ.3 exists). |
 | Run console roadmap (stage model pill "from the active stage's resolution") | **Coordinated** — CH.6's persisted resolution snapshot is the shared truth the chain card renders and the run console transcript inspects. |
@@ -254,7 +254,7 @@ chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CG.1 | #579 | 🟡 Open | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
-| CG.2 | #580 | 🟡 Open | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
+| CG.2 | #580 | 🟢 Done | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
 | CG.3 | #581 | 🟡 Open | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
 | CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds second-opinion + unbound gpt5-experiments), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
 | CG.5 | #583 | 🟡 Open | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
@@ -306,7 +306,50 @@ erDiagram
 
 ### Issue CG.2 — ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot
 
-> **GitHub issue:** #580 · **Status:** 🟡 Open · **Parent epic:** #575
+> **GitHub issue:** #580 · **Status:** 🟢 Done · **Parent epic:** #575
+
+> **Shipped 2026-08-14.** `V012__model_prices.sql`, the vendored catalog under
+> [`ouroboros-db/catalog/`](../ouroboros-db/catalog), the transform
+> [`scripts/price-catalog.mjs`](../ouroboros-db/scripts/price-catalog.mjs) and the generated
+> `R__model_price_catalog.sql` it renders. See
+> [The bundled price catalog](../ouroboros-db/README.md#the-bundled-price-catalog).
+>
+> **Four shapes, made structural rather than conventional.** `billing_mode` is a column, and
+> four CHECKs make the mockup's cells impossible to store wrongly: `token` requires both
+> amounts, `free` requires zero or none, `seat` and `usage` may carry none — and a `token`
+> row that costs nothing in both directions is refused, because that row is a `free` row
+> wearing the wrong mode and it would render `$0` for a model somebody is invoiced for. The
+> fifth shape is an absence: an uncovered model has **no row**, `ouroboros.model_price()`
+> returns nothing for it, and the read path renders `—`. Nothing defaults an amount to zero.
+>
+> **The snapshot is data in the repository.** A pruned extract of LiteLLM's
+> `model_prices_and_context_window.json` (MIT), pinned at commit `70d51a19` of 2026-08-15,
+> committed with its licence, and rendered by a Node transform into a repeatable migration
+> that is one call to `ouroboros.import_model_price_catalog()`. Nothing reaches a network at
+> migration time; `--vendor` is a developer moving the pin, and `ci/db` runs `--check`, so a
+> hand-edited price fails the pull request. Every row carries
+> `catalog_version = '2026-08-15+litellm.70d51a1'`, and the three rows upstream has no rate
+> for — Copilot `seat`, Cursor `usage`, Ollama `free` — are stamped
+> `meta.catalog_source = 'ouroboros'` instead.
+>
+> **The import cannot touch an override.** Every row it writes is `organization_id null`, so
+> there is no key it can produce that collides with a workspace's own. It returns
+> `(inserted, updated, unchanged, deleted)`: the same snapshot twice is `(0, 0, n, 0)` and
+> writes nothing at all, and a newer one updates the bundled rows and sweeps the ones it
+> dropped, so the catalog is always exactly one snapshot rather than the union of every
+> snapshot ever applied. `tests/constraints.sql` asserts all of that against synthetic
+> catalogs, and asserts the lookup resolves through `model_prices_lookup_idx` — the function
+> is `language sql` and `stable` precisely so PostgreSQL inlines it.
+>
+> **Two deliberate narrowings, both argued in the migration header.** The glob is `'*'` and
+> nothing else — a prefix glob cannot use an index and would need a specificity rule no
+> reader could predict — and there is **no bundled `free` row for `openai_compatible`**: that
+> adapter fronts a local vLLM *and* `api.openai.com`, so the row would price every uncovered
+> OpenAI model at `$0`. Local-ness is a property of a connection, so the mockup's
+> `llama-4-maverick` renders `$0` from a one-row org override, which **CG.4 (#582) seeds**.
+> Also worth carrying forward: the pinned snapshot prices `claude-fable-5` at
+> **$10 · $50**, not the `$15 · $75` this issue's criterion quoted from the mockup — the
+> catalog is the truth source, and a figure in a design drawing is a layout.
 
 - **Problem Statement:** The `$ per 1M in·out` column needs a truth source
   that is self-hostable, provenance-honest, and covers non-token billing
