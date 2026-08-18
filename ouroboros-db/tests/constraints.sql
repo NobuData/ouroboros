@@ -23,8 +23,11 @@
 -- and V001's `tenants`, no longer exist, and the last section asserts they stay gone.
 -- What V006 *did to the rows it found* is asserted where it can be observed:
 -- tests/rehearsal/, which applies it to a database seeded with the pre-migration seed.
--- The three product tables added since stand on that base and have a section each:
--- `user_preferences` (V007, #649), `runs` (V008, #64) and `queue_items` (V009, #65).
+-- The product tables added since stand on that base and have a section each:
+-- `user_preferences` (V007, #649), the dashboard read-model — `runs` (V008, #64),
+-- `queue_items` (V009, #65), `token_usage` (V010, #66) and `workspace_settings` (V011,
+-- #67) — `model_prices` (V012, #580), `tenant_keys` (V013, #222), and the intake mirror
+-- `github_issues` with its sync cursor on `github_repos` (V014, #99).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -3109,6 +3112,397 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.tenant_keys where organization_id = 'org-vault2'),
   'and leaves every other workspace''s keys alone');
+
+-- ===========================================================================
+-- V014 — github_issues, the intake mirror and its sync cursor (#99)
+-- ===========================================================================
+--
+-- The first table of the intake read-model, and the one mockup 03's backlog table and
+-- detail panel are both views over. Nothing writes it yet — the sync service is K.4
+-- (#102) and the estimator that moves `sizing_status` is K.2/L.3 — so, as with the
+-- dashboard tables above, every rule a reader depends on is a constraint here rather than
+-- an application invariant.
+--
+-- Decision **K3** is what most of this section is really about: the table is a *cache*,
+-- and GitHub is the source of truth. The assertions therefore fall in two groups — the
+-- mirrored columns, which must refuse anything GitHub could not have produced, and the
+-- one column this product owns (`sizing_status`), which must refuse anything the sizing
+-- pipeline does not name.
+--
+-- Its own fixtures again: the V013 section deleted `org-vault`, and every
+-- organization-with-a-repository pair from the sections above went with the workspaces
+-- they hung off. Two fresh workspaces, for the reason V008 and V009 needed two — one to
+-- own the issues, one to own a repository they must not be allowed to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-intake', 'Intake Works', 'intake-works', now()),
+  ('org-astray', 'Astray Works', 'astray-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('d0000000-0000-0000-0000-00000000000a', 'org-intake', 'intake-works', true),
+  ('d0000000-0000-0000-0000-00000000000b', 'org-astray', 'astray-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('dfff0000-0000-0000-0000-00000000000a', 'd0000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('dfff0000-0000-0000-0000-00000000000b', 'd0000000-0000-0000-0000-00000000000b',
+   'astray-firmware', true, 'main');
+
+-- --- one issue, exactly as the panel renders one -----------------------------
+-- Mockup 03's `#485`: `Watchdog reset on I²C bus lockup`, the four labels of the detail
+-- panel's tag row, `opened 2d ago by field-support`, and a body for the excerpt.
+insert into ouroboros.github_issues
+    (id, organization_id, github_repo_id, number, title, body, state, labels,
+     author_login, gh_created_at, gh_updated_at, gh_url)
+  values ('d1000000-0000-0000-0000-000000000485', 'org-intake',
+          'dfff0000-0000-0000-0000-00000000000a', 485,
+          'Watchdog reset on I²C bus lockup',
+          'Unit 07 in the Fremont pilot rebooted 14 times overnight.',
+          'open', '["bug", "i2c", "watchdog", "priority-high"]'::jsonb,
+          'field-support', now() - interval '2 days', now() - interval '3 hours',
+          'https://github.com/nobudata/helios-firmware/issues/485');
+
+-- Acceptance criterion: the default is `unsized`. A freshly mirrored issue has no
+-- estimate, and the sync writes issues rather than estimates — a row arriving as anything
+-- else would claim one that does not exist. The empty label array is the same argument:
+-- "no labels" is the common case and is what renders as no tags.
+select pg_temp.must_hold(
+  (select sizing_status = 'unsized'
+     from ouroboros.github_issues where id = 'd1000000-0000-0000-0000-000000000485'),
+  'a mirrored issue arrives unsized');
+
+insert into ouroboros.github_issues
+    (id, organization_id, github_repo_id, number, title, state,
+     gh_created_at, gh_updated_at, gh_url)
+  values ('d1000000-0000-0000-0000-000000000491', 'org-intake',
+          'dfff0000-0000-0000-0000-00000000000a', 491,
+          'Add CRC32 to config persistence layer', 'open',
+          now() - interval '5 days', now() - interval '5 days',
+          'https://github.com/nobudata/helios-firmware/issues/491');
+
+select pg_temp.must_hold(
+  (select labels = '[]'::jsonb and body is null and author_login is null
+     from ouroboros.github_issues where id = 'd1000000-0000-0000-0000-000000000491'),
+  'an issue with no labels, no description and a deleted author is representable');
+
+-- --- one row per issue, and the number is the repository's ---------------------
+--
+-- Acceptance criterion: unique `(github_repo_id, number)` holds. This is also the key
+-- K.4's upsert conflicts on, so a missing one would not be a duplicate-row bug — it would
+-- be a sync that inserted the whole backlog again on every poll.
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_issues
+      (organization_id, github_repo_id, number, title, state,
+       gh_created_at, gh_updated_at, gh_url)
+    values ('org-intake', 'dfff0000-0000-0000-0000-00000000000a', 485, 'Mirrored twice',
+            'open', now(), now(), 'https://github.com/nobudata/helios-firmware/issues/485')$$,
+  'the same issue number cannot be mirrored twice for one repository',
+  'github_issues_repo_number_key');
+
+-- And the other half of *within the repository*: the same number under a different
+-- repository is a different issue, which is why the key is not `(organization_id,
+-- number)`. Both repositories are this workspace's for the length of this assertion — the
+-- one owned by `org-astray` is needed intact for the tenancy assertion below, so the
+-- second `#485` is written against a repository of `org-intake`'s own.
+insert into ouroboros.github_repos (id, org_id, name, enabled) values
+  ('dfff0000-0000-0000-0000-00000000000c', 'd0000000-0000-0000-0000-00000000000a',
+   'helios-tooling', true);
+
+insert into ouroboros.github_issues
+    (organization_id, github_repo_id, number, title, state,
+     gh_created_at, gh_updated_at, gh_url)
+  values ('org-intake', 'dfff0000-0000-0000-0000-00000000000c', 485, 'A different #485',
+          'open', now(), now(), 'https://github.com/nobudata/helios-tooling/issues/485');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.github_issues
+    where organization_id = 'org-intake' and number = 485),
+  'two repositories in one workspace may each have a #485');
+
+-- --- the two vocabularies are closed ------------------------------------------
+--
+-- Acceptance criterion: `sizing_status` rejects an unknown value. Both columns partition
+-- something the screen renders — the *State* select over one, the status pill and the
+-- page head's sized count over the other — so a value outside either set is a row that
+-- appears under no filter and in no count.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set sizing_status = 'guessing'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'github_issues.sizing_status rejects a value outside the four K4 names',
+  'github_issues_sizing_status');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set state = 'draft'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'github_issues.state rejects anything but GitHub''s own two',
+  'github_issues_state');
+
+-- And every named value is storable — each CHECK is a vocabulary, not a subset of one.
+update ouroboros.github_issues set sizing_status = 'estimating'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+update ouroboros.github_issues set sizing_status = 'needs_human'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+update ouroboros.github_issues set sizing_status = 'sized', state = 'closed'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select sizing_status = 'sized' and state = 'closed'
+     from ouroboros.github_issues where id = 'd1000000-0000-0000-0000-000000000485'),
+  'every sizing status K4 names, and both states GitHub has, are storable');
+
+update ouroboros.github_issues set sizing_status = 'unsized', state = 'open'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+-- --- the labels are a list of names -------------------------------------------
+--
+-- `jsonb` on its own accepts an object, a number and a bare string, and the GIN index
+-- would store all three quite happily. What the tags renderer and the chip-set filter
+-- depend on is narrower, and each of these is a shape a plausible mapping bug produces:
+-- GitHub's own payload is a list of label *objects*, so `["bug", …]` versus
+-- `[{"name": "bug"}, …]` is one `.map()` apart.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set labels = '[{"name": "bug"}]'::jsonb
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'labels rejects GitHub''s label objects — the column holds names',
+  'github_issues_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set labels = '["bug", 3]'::jsonb
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'labels rejects an element that is not a string', 'github_issues_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set labels = '"bug"'::jsonb
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'labels rejects a bare string where an array belongs', 'github_issues_labels_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set labels = '["bug", ""]'::jsonb
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'labels rejects the empty name — a chip with nothing on it',
+  'github_issues_labels_shape');
+
+-- GitHub's own cap, so the GIN index cannot be handed an unbounded array by one row.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues
+       set labels = (select jsonb_agg('label-' || g) from generate_series(1, 101) g)
+     where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'labels rejects more names than GitHub permits on one issue',
+  'github_issues_labels_shape');
+
+-- --- the URL is a link, not a scheme ------------------------------------------
+--
+-- The one constraint here that is a safety rule rather than a shape rule: `gh_url` is the
+-- `href` of *"Open on GitHub ↗"*, and an href is a place `javascript:` executes rather
+-- than navigates. Refused in the column, so no renderer has to remember to check — and
+-- the writer is an HTTP client parsing somebody else's JSON.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set gh_url = 'javascript:alert(1)'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'gh_url refuses a scheme that executes rather than navigates',
+  'github_issues_url_https');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set gh_url = 'http://github.com/a/b/issues/1'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'gh_url refuses plain http', 'github_issues_url_https');
+
+-- And a GitHub Enterprise Server URL is accepted, which is why the constraint checks the
+-- scheme and a host rather than the github.com path shape.
+update ouroboros.github_issues set gh_url = 'https://git.internal.example:8443/eng/helios/issues/485'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select gh_url like 'https://git.internal.example:8443/%'
+     from ouroboros.github_issues where id = 'd1000000-0000-0000-0000-000000000485'),
+  'gh_url accepts a GitHub Enterprise Server host');
+
+update ouroboros.github_issues set gh_url = 'https://github.com/nobudata/helios-firmware/issues/485'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+-- --- the mirrored strings are ones GitHub could have issued --------------------
+--
+-- `author_login` keeps its case, unlike V003's org login: folding a mirrored value would
+-- be an edit, and K3 forbids edits. The format is still GitHub's, so a value that could
+-- not be a login cannot be stored as one.
+update ouroboros.github_issues set author_login = 'Field-Support'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select author_login = 'Field-Support'
+     from ouroboros.github_issues where id = 'd1000000-0000-0000-0000-000000000485'),
+  'author_login keeps the case GitHub returned — a mirror does not fold');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set author_login = '-field-support-'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'author_login refuses a value GitHub could not have issued',
+  'github_issues_author_login_format');
+
+update ouroboros.github_issues set author_login = 'field-support'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set title = '   '
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'a mirrored issue has a title that says something',
+  'github_issues_title_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set number = 0
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'there is no issue #0', 'github_issues_number_positive');
+
+-- --- GitHub's two timestamps agree with each other -----------------------------
+--
+-- Not a rule about GitHub, which never produces this pair — a rule about the mapping. The
+-- two fields are adjacent in the payload and swapping them would render an issue opened
+-- after it was last touched, and would poison the `since` watermark drawn from the column.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set gh_updated_at = gh_created_at - interval '1 day'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'an issue cannot have been updated before it was opened',
+  'github_issues_updated_after_created');
+
+-- --- one workspace's issues do not appear on another's backlog ------------------
+--
+-- V009's shared trigger, third table. The failure it prevents is not a broken join: it is
+-- Astray's issue titles rendering on Intake's backlog, which is a tenancy leak.
+select pg_temp.must_reject(
+  $$insert into ouroboros.github_issues
+      (organization_id, github_repo_id, number, title, state,
+       gh_created_at, gh_updated_at, gh_url)
+    values ('org-intake', 'dfff0000-0000-0000-0000-00000000000b', 700, 'Not ours',
+            'open', now(), now(), 'https://github.com/astray/astray-firmware/issues/700')$$,
+  'an issue cannot name a repository belonging to another organization',
+  'github_issues_repo_in_organization');
+
+-- And on the way through, which is why the trigger fires on UPDATE as well.
+select pg_temp.must_reject(
+  $$update ouroboros.github_issues set github_repo_id = 'dfff0000-0000-0000-0000-00000000000b'
+    where id = 'd1000000-0000-0000-0000-000000000485'$$,
+  'an issue cannot be moved onto another organization''s repository',
+  'github_issues_repo_in_organization');
+
+-- --- synced_at and updated_at are different clocks ------------------------------
+--
+-- The freshness distinction K2 asks for: `synced_at` says when GitHub was last asked,
+-- `updated_at` says when this row last changed. A poll that re-read an unchanged issue
+-- moves the first and not the second — and `updated_at` is the server's to set, so a
+-- writer cannot backdate what it did.
+update ouroboros.github_issues set updated_at = '2000-01-01T00:00:00Z'
+  where id = 'd1000000-0000-0000-0000-000000000485';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.github_issues
+    where id = 'd1000000-0000-0000-0000-000000000485'),
+  'github_issues.updated_at is stamped from the server clock by its touch trigger');
+
+-- --- the sync cursor on github_repos (decision K2) ------------------------------
+--
+-- Acceptance criterion: both columns exist and are nullable before the first sync — every
+-- repository in this database is in exactly that state, because nothing syncs yet.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_repos
+    where issues_synced_at is not null or issues_sync_cursor is not null),
+  'no repository carries a sync cursor before anything has synced');
+
+-- A cursor is something a sync produced, so it cannot precede one.
+select pg_temp.must_reject(
+  $$update ouroboros.github_repos set issues_sync_cursor = '2026-08-18T00:00:00Z'
+    where id = 'dfff0000-0000-0000-0000-00000000000a'$$,
+  'a since watermark cannot exist before the sync that produced it',
+  'github_repos_issues_cursor_after_sync');
+
+-- The other direction is legitimate, and is what a first poll of a repository with no
+-- issues leaves behind: it looked, and there was nothing to draw a watermark from.
+update ouroboros.github_repos set issues_synced_at = now()
+  where id = 'dfff0000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select issues_sync_cursor is null from ouroboros.github_repos
+    where id = 'dfff0000-0000-0000-0000-00000000000a'),
+  'a repository may have been synced and have no watermark yet');
+
+select pg_temp.must_reject(
+  $$update ouroboros.github_repos set issues_sync_cursor = '   '
+    where id = 'dfff0000-0000-0000-0000-00000000000a'$$,
+  'a blank watermark is refused — it would silently re-import the whole backlog',
+  'github_repos_issues_sync_cursor_present');
+
+update ouroboros.github_repos set issues_sync_cursor = '2026-08-18T00:00:00Z'
+  where id = 'dfff0000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select issues_sync_cursor = '2026-08-18T00:00:00Z' from ouroboros.github_repos
+    where id = 'dfff0000-0000-0000-0000-00000000000a'),
+  'a repository that has synced carries the watermark its next poll sends');
+
+-- --- the indexes the filter bar needs --------------------------------------------
+--
+-- Acceptance criterion: label containment and title search are index scans under
+-- `EXPLAIN`. Sequential scans are off for the reason every other plan assertion in this
+-- file gives — a handful of fixture rows is genuinely cheaper to scan, and what is
+-- asserted is that a usable index exists at production size.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select number, title from ouroboros.github_issues
+     where organization_id = 'org-intake'
+       and github_repo_id = 'dfff0000-0000-0000-0000-00000000000a'
+       and state = 'open'$$,
+  'github_issues_organization_repo_state_idx');
+
+-- The chip-set, both ways it can be read: all-of (containment, which M.1 documents) and
+-- any-of (`?|`), which is the operator `jsonb_path_ops` would have silently dropped.
+select pg_temp.must_use_index(
+  $$select number from ouroboros.github_issues where labels @> '["bug"]'::jsonb$$,
+  'github_issues_labels_idx');
+
+select pg_temp.must_use_index(
+  $$select number from ouroboros.github_issues where labels ?| array['bug', 'i2c']$$,
+  'github_issues_labels_idx');
+
+-- The search box. A substring rather than a prefix, which is the whole reason this index
+-- is trigrams and this migration takes an extension.
+select pg_temp.must_use_index(
+  $$select number from ouroboros.github_issues where title ilike '%watchdog%'$$,
+  'github_issues_title_trgm_idx');
+
+-- Not a read path: the cascade's. `github_repos` cascades into this table, and the unique
+-- key's leading column is what keeps a repository deletion from scanning every mirrored
+-- issue — which is why no separate index on `github_repo_id` was created.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.github_issues
+     where github_repo_id = 'dfff0000-0000-0000-0000-00000000000a'$$,
+  'github_issues_repo_number_key');
+
+set local enable_seqscan = on;
+
+-- --- the cascades, in both directions --------------------------------------------
+--
+-- Deleting a repository takes its mirror with it: a cached copy of a place Ouroboros may
+-- no longer look is not history, it is a stale boundary.
+delete from ouroboros.github_repos where id = 'dfff0000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_issues
+    where github_repo_id = 'dfff0000-0000-0000-0000-00000000000a'),
+  'deleting a github_repo cascades to the issues mirrored from it');
+
+-- And the workspace cascade, end to end — organization → github_orgs → github_repos →
+-- github_issues, one statement and every hop.
+insert into ouroboros.github_issues
+    (organization_id, github_repo_id, number, title, state,
+     gh_created_at, gh_updated_at, gh_url)
+  values ('org-astray', 'dfff0000-0000-0000-0000-00000000000b', 930, 'Doomed with its org',
+          'open', now(), now(), 'https://github.com/astray/astray-firmware/issues/930');
+
+delete from ouroboros.organization where "id" = 'org-astray';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.github_issues where organization_id = 'org-astray'),
+  'deleting an organization cascades through its orgs and repos to its mirrored issues');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

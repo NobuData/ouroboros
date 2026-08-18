@@ -39,6 +39,10 @@ const REPO: GithubRepo = {
   default_branch: "main",
   created_at: new Date("2026-08-11T10:20:23.114Z"),
   updated_at: new Date("2026-08-11T10:20:23.114Z"),
+  // V014's sync cursor (#99), null as it is on every repository — nothing polls GitHub
+  // yet, and enablement is not what will.
+  issues_synced_at: null,
+  issues_sync_cursor: null,
 };
 
 describe("the GitHub organisations service", () => {

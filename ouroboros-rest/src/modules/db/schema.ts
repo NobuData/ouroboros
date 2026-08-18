@@ -285,6 +285,21 @@ export interface GithubReposTable {
   default_branch: string | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * When this repository's issues were last polled (V014,
+   * [#99](https://github.com/NobuData/ouroboros/issues/99)) — what the backlog card's
+   * *"synced 40s ago"* tag is rendered from. Null until the first sync, and moved by a poll
+   * that found nothing changed, because that is exactly what the tag claims.
+   */
+  issues_synced_at: Date | null;
+  /**
+   * The `since` watermark the next incremental poll sends to GitHub — decision **K2**, and
+   * the reason it lives here rather than on an issue: it is one value per repository per
+   * poll. `string`, and opaque: the sync service owns the format, and a second parser here
+   * would be a second opinion about time zones. Null until a poll has produced one, which
+   * `github_repos_issues_cursor_after_sync` holds to *after* a sync rather than before.
+   */
+  issues_sync_cursor: string | null;
 }
 
 /**
@@ -670,7 +685,17 @@ export const TABLE_COLUMNS = {
     "updated_at",
     "organization_id",
   ],
-  github_repos: ["id", "org_id", "name", "enabled", "default_branch", "created_at", "updated_at"],
+  github_repos: [
+    "id",
+    "org_id",
+    "name",
+    "enabled",
+    "default_branch",
+    "created_at",
+    "updated_at",
+    "issues_synced_at",
+    "issues_sync_cursor",
+  ],
   user_preferences: ["user_id", "font_scale", "created_at", "updated_at"],
   runs: [
     "id",
