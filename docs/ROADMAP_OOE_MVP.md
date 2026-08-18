@@ -31,8 +31,8 @@ authority on *when* they are built.
 
 ## Progress
 
-**91 of 454 ordered issues are closed** — P0, P1, P2 and P4 are complete; P3 and P5 are
-in flight. Every issue number in this document links to its GitHub issue, and a **✅**
+**92 of 454 ordered issues are closed** — P0, P1, P2 and P4 are complete; P3, P5 and P6
+are in flight. Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
 and are accounted for in the counts below, not in the tables.
@@ -40,8 +40,8 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P4 | **84** |
-| 🟡 **In progress** | P3 (5/8), P5 (2/50) | **7** of 58 |
-| — **Not started** | P6–P17 | 0 of 312 |
+| 🟡 **In progress** | P3 (5/8), P5 (2/50), P6 (1/23) | **8** of 81 |
+| — **Not started** | P7–P17 | 0 of 289 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --state closed --limit 1000 --json number` whenever the plan
@@ -702,9 +702,9 @@ that roadmap's "Existing issues affected" section.
 
 ## P6 — Issue Intake — Work Enters the System
 
-> **23 issues** · 68 complexity points · order **#143–#165** · 12 dependency waves
+> **22 issues** · 65 complexity points · order **#143–#165**, less `145` · 12 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_03_ISSUE_INTAKE.md` (Epics K–N)
-> **Status:** ⬜ **Not started** — 0 of 23 issues closed
+> **Status:** 🟡 **In progress** — 1 of 23 issues closed
 
 **Goal.** Sync enabled repos' open issues from GitHub (initial import plus incremental polling), run every issue through the engine's labelled heuristic-v0 estimation pipeline via the real REST↔engine contract, and build mockup 03 as the backlog screen with filters, selection, effort/confidence and the detail panel.
 
@@ -712,13 +712,36 @@ that roadmap's "Existing issues affected" section.
 
 **Done when.** Synced issues show truthful freshness with a manual re-sync; every issue reaches `sized` or `needs human` through the real pipeline; `/issues` reproduces mockup 03 in both themes with URL-reflected filters and all four status states; the detail panel shows honest `heuristic-v0` provenance.
 
-
+> **`K.1` · [`#99`](https://github.com/NobuData/ouroboros/issues/99) has shipped, and row
+> `145` has left the table below** — which is why its order numbers step from `144`
+> straight to `146`.
+>
+> [`#99`](https://github.com/NobuData/ouroboros/issues/99)'s blockers were both already met, and one of them under another roadmap's name:
+> `3.1` is the Flyway scaffold ([`#19`](https://github.com/NobuData/ouroboros/issues/19)), and `B.3` — the organization and repo tables — is
+> `organization` (`V005`, [`#707`](https://github.com/NobuData/ouroboros/issues/707)) plus `github_repos`, which has been there since `V003`
+> ([`#22`](https://github.com/NobuData/ouroboros/issues/22)) and was re-parented by `V006` ([`#708`](https://github.com/NobuData/ouroboros/issues/708)). The same finding `F.1` made in P4.
+>
+> [`V014__github_issue_cache.sql`](../ouroboros-db/migrations/V014__github_issue_cache.sql)
+> is `github_issues`, the backlog as rows — number, title, body, state, GitHub's labels,
+> author and dates, the `https`-checked issue URL, and `sizing_status`, the one column this
+> product owns (decision `K4`) — plus `issues_synced_at` and `issues_sync_cursor` on
+> `github_repos`, which is where the `since` watermark lives (decision `K2`). Decision `K3`
+> is written above the DDL rather than beside a column: this is a **cache**, GitHub is the
+> source of truth, and nothing here ever edits issue content. It is also the schema's first
+> extension — `pg_trgm`, so the backlog's search box is an index scan rather than a scan of
+> every title; `pg_trgm` is *trusted* on PostgreSQL 13+, which is why `V001`'s
+> no-extensions posture does not reach it. Same assertion story as the read-model tables: a
+> section in `tests/constraints.sql`, run by `ci/db` against a database migrated from
+> empty.
+>
+> **`K.2` (`#100`) is the next row of this phase that can move** — it needs only `K.1` —
+> and `K.3` (`#101`) is unblocked independently, which is the pair Phase 1 of the intake
+> roadmap starts from.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 143 | **L.1** | [#105](https://github.com/NobuData/ouroboros/issues/105) | Estimation contract (`/v0/estimate`) | ouroboros-engine, ouroboros-rest | M | 6.3 |
 | 144 | **L.2** | [#106](https://github.com/NobuData/ouroboros/issues/106) | Heuristic estimator v0 | ouroboros-engine | M | L.1 |
-| 145 | **K.1** | [#99](https://github.com/NobuData/ouroboros/issues/99) | GitHub issue cache schema | ouroboros-db | M | 3.1, B.3 |
 | 146 | **K.2** | [#100](https://github.com/NobuData/ouroboros/issues/100) | Issue estimates schema | ouroboros-db | M | K.1 |
 | 147 | **K.3** | [#101](https://github.com/NobuData/ouroboros/issues/101) | GitHub credentials & API client | ouroboros-rest | M | 4.2, C.3 |
 | 148 | **K.4** | [#102](https://github.com/NobuData/ouroboros/issues/102) | Backlog sync service | ouroboros-rest | L | K.1, K.3 |

@@ -60,6 +60,15 @@
 > [`migrations/R__model_price_catalog.sql`](migrations/R__model_price_catalog.sql) applies
 > a vendored, pinned snapshot of upstream prices in every environment, development and
 > production alike. See [The bundled price catalog](#the-bundled-price-catalog).
+> `V014` ([#99](https://github.com/NobuData/ouroboros/issues/99)) opens the **intake**
+> read-model with `github_issues`, the mirror mockup 03's backlog table and detail panel
+> are rendered from, and the per-repo sync cursor the incremental poller writes onto
+> `github_repos`. It is the one migration that reads as a table you could let somebody
+> edit and is not: decision **K3** makes it a *cache* whose source of truth is GitHub, and
+> its header says so at the top for the reader who arrives with an `update` in mind. It is
+> also the one migration that takes an extension — `pg_trgm`, so the backlog's search box
+> is an index scan rather than a scan of every title; the header argues why `V001`'s
+> no-extensions posture does not reach it.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -87,7 +96,9 @@ org/repo enablement live here — and, since `V008`, the **read-model** the prod
 over that boundary: what the loop has been doing, one row per run, since `V009` what
 it will do next, one row per queued issue, since `V010` what it has spent doing so,
 one row per call, and since `V011` what each workspace has told the loop it may do
-unattended, one row per organization.
+unattended, one row per organization. Since `V014` it also holds the **backlog those runs
+are drawn from** — one row per mirrored GitHub issue, which is a cache and not a fork
+(decision **K3**).
 
 Flyway is the **sole owner of DDL**. No application module creates or alters tables;
 `ouroboros-rest` reads and writes through Kysely against a schema this module defines.
@@ -767,6 +778,8 @@ ouroboros-db/
 │   ├── V010__dashboard_usage.sql     # token_usage + token_usage_daily — the spend ledger — #66
 │   ├── V011__workspace_settings.sql  # workspace_settings + …_effective — the auto-merge switch — #67
 │   ├── V012__model_prices.sql        # model_prices + the lookup and import functions — #580
+│   ├── V013__tenant_keys.sql         # tenant_keys — the sealed per-workspace DEKs — #222
+│   ├── V014__github_issue_cache.sql  # github_issues + the per-repo sync cursor — #99
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
@@ -808,12 +821,13 @@ outside this module alters it.
 | `invitation` | `V005` | Somebody asked to join who has not joined yet | `expiresAt` required — expiry is a timestamp, not a status. Written at the API level in MVP; [#724](https://github.com/NobuData/ouroboros/issues/724) delivers the email |
 | `tenant_domains` | `V001`, re-parented `V006` | Email domains that resolve an organization at sign-in | Domain unique across *all* organizations and stored lower-cased; at most one `is_primary` per organization |
 | `github_orgs` | `V003`, re-parented `V006` | GitHub orgs an organization has enabled | `login` unique *per organization*, stored lower-cased; `enabled` defaults false |
-| `github_repos` | `V003` | Repos within an org | `name` unique per org, stored lower-cased; `enabled` defaults false |
+| `github_repos` | `V003`, cursor added `V014` | Repos within an org, and — since `V014` — when their issues were last polled | `name` unique per org, stored lower-cased; `enabled` defaults false; `issues_sync_cursor` is non-blank and cannot precede the `issues_synced_at` of the sync that produced it |
 | `user_preferences` | `V007` | Per-person product preferences — today the font scale | One row per person, absent while every setting is at its default; `font_scale` is one of § 4's five steps; cascades from `"user"` |
 | `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010` | What the loop has spent — one append-only event per provider call, not one total per organization | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization |
 | `workspace_settings` | `V011` | Org-scoped typed product settings — today the auto-merge switch, the dashboard's only write | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
+| `github_issues` | `V014` | The backlog as Ouroboros sees it — one row per mirrored GitHub issue, behind mockup 03's table and detail panel. **A cache, not a fork** (decision **K3**): GitHub owns every column but `sizing_status` | `(github_repo_id, number)` unique, which is also the sync's upsert key; `state` is `open\|closed` and `sizing_status` one of `unsized\|estimating\|sized\|needs_human`, defaulting to `unsized`; `labels` must be a JSON array of at most 100 non-empty **names** — GitHub's, not ours; `gh_url` must be `https` with a host, because it becomes an `href`; `gh_updated_at` cannot precede `gh_created_at`; the issue's repository must belong to the issue's organization |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in

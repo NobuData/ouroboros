@@ -173,7 +173,7 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| K.1 | #99 | 🟡 Open | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| K.1 | #99 | 🟢 Done | ouroboros-db: [K.1] GitHub issue cache schema | `github_issues` mirror table + labels + sync cursors | mvp, intake, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | K.2 | #100 | 🟡 Open | ouroboros-db: [K.2] Issue estimates schema | Versioned `issue_estimates` + sizing status + breakdown/trace jsonb | mvp, intake, db | N (after K.1) | Y | M | ouroboros-db |
 | K.3 | #101 | 🟡 Open | ouroboros-rest: [K.3] GitHub credentials & API client | Per-org token (encrypted), Octokit client, rate-limit discipline | mvp, intake, rest | N (after #28, BA-C.3) | Y | M | ouroboros-rest |
 | K.4 | #102 | 🟡 Open | ouroboros-rest: [K.4] Backlog sync service | Initial import + incremental `since` polling, upsert, freshness | mvp, intake, rest | N (after K.1, K.3) | Y | L | ouroboros-rest |
@@ -182,7 +182,84 @@ existing set (`mvp`, `v2`, `rest`, `db`, `engine`, `ui`, `ci`, `design`) plus ne
 
 ### Issue K.1 — ouroboros-db: [K.1] GitHub issue cache schema
 
-> **GitHub issue:** #99 · **Status:** 🟡 Open · **Parent epic:** #94
+> **GitHub issue:** #99 · **Status:** 🟢 Done · **Parent epic:** #94
+
+> **Shipped.** [`V014__github_issue_cache.sql`](../ouroboros-db/migrations/V014__github_issue_cache.sql)
+> creates `ouroboros.github_issues` with the column set below, the three filter indexes and
+> its rules as named CHECK constraints, and adds `issues_synced_at` / `issues_sync_cursor`
+> to `github_repos`; the assertions are a new section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql), so `ci/db` runs them
+> against a database migrated from empty on every pull request. The version is `V014` —
+> `V013` is #222's `tenant_keys`.
+>
+> **Both blockers were already met.** `#19` is the Flyway scaffold, and **BA-B.3** — the
+> organization and repo tables — is `organization` (`V005`, #707) plus `github_repos`,
+> which has been there since `V003` (#22) and was re-parented by `V006` (#708). This is the
+> same finding DASH-F.1 (#64) made under the dashboard roadmap, and it means Epic K did not
+> have to wait on the unfiled BetterAuth tail.
+>
+> **The cache-not-fork posture is the migration's first section** (decision **K3**), above
+> the DDL rather than beside a column, because it is the thing a later reader is most
+> likely to get wrong: a local table of titles, bodies and labels looks exactly like one a
+> user could edit, and the first `update` that sets a title from a form turns the mirror
+> into a fork. The shape is deliberately unhelpful to that — no `edited_by`, no
+> `local_title`, no dirty flag — and `synced_at` records that a row is a copy taken at a
+> moment rather than a document with a history. The rule is about *authorship*, not
+> mutability: K.4's sync overwrites GitHub's columns on every poll, and `sizing_status` is
+> the one column this product owns.
+>
+> **`labels` is a checked array of names, not free jsonb.** `jsonb` alone accepts `3`,
+> `"bug"` and `[{"name": "bug"}]` — and GitHub's own payload *is* a list of label objects,
+> so the wrong one is a single `.map()` away and the GIN index would store it happily.
+> `github_issues_labels_shape` requires an array of non-empty strings, at most GitHub's own
+> cap of 100, using `jsonb_path_exists` because a CHECK may not contain the subquery
+> `jsonb_array_elements` would need. The index is `jsonb_ops` rather than the smaller
+> `jsonb_path_ops`: both serve `@>`, only the default serves `?|` and `?&`, and an
+> any-of-these-labels chip-set is the read that has not been written yet.
+>
+> **This migration takes an extension, which is the schema's first** — `pg_trgm`, so the
+> filter bar's search box is an index scan. `V001` declined `citext` because
+> `create extension` needs rights a managed PostgreSQL may withhold; that argument does not
+> reach here on either half, and the header says so. There is no stored form of a title
+> that makes `ilike '%watchdog%'` an index scan — a b-tree on `lower(title)` serves a
+> prefix and nothing else — and `pg_trgm` has been a **trusted** extension since PostgreSQL
+> 13, so any role holding `create` on the database installs it. That was verified rather
+> than assumed, with a plain `login` role on the pinned `postgres:17-alpine`. It is created
+> through a catalogue guard rather than `if not exists`, which is `V000`'s idiom and for
+> `V000`'s reason: `if not exists` raises a NOTICE, and Flyway reports every NOTICE as a
+> WARNING.
+>
+> **`gh_url` is constrained to `https` and a host**, which is a safety rule rather than a
+> tidiness rule: the column becomes the `href` of *"Open on GitHub ↗"*, and an `href` is a
+> place `javascript:` executes rather than navigates. Refusing it in the column means no
+> renderer has to remember to check — and the writer is an HTTP client parsing somebody
+> else's JSON. It deliberately does not check that the URL names *this* repository and
+> *this* number: GitHub Enterprise Server serves the same issue from another host, and a
+> mirror that refused a URL GitHub itself returned would be broken by a rename it has no
+> say in.
+>
+> **The sync cursor lives on `github_repos`** (decision **K2**) — one value per repository
+> per poll, not a property of any issue — and both columns are nullable, because nothing
+> has synced yet. `github_repos_issues_cursor_after_sync` holds the watermark to *after*
+> the sync that produced it, as an implication rather than a biconditional: the other
+> direction is legitimate, and is what a first poll of a repository with no issues leaves
+> behind. The alternative that was not taken is deriving the watermark as
+> `max(gh_updated_at)`, which reads as free and is wrong exactly where it matters — a
+> deleted or transferred issue leaves the maximum where it was, and a repository whose poll
+> found nothing has no maximum at all.
+>
+> **One change outside `ouroboros-db`.** `ouroboros-rest`'s `schema.ts` mirrors the
+> migrations and `db.integration-spec.ts` fails when it drifts, so the two new
+> `github_repos` columns are declared there too (and in the four fixtures that build a
+> `GithubRepo`). `github_issues` itself is deliberately *not* mirrored yet — nothing reads
+> it until K.4, and `model_prices` set that precedent.
+>
+> **Not in this ticket, by the roadmap's own split:** no estimates table or `issue_estimates`
+> FK (K.2, #100), no sync service and no writer of any kind (K.4, #102), no seed rows (K.5,
+> #103), and no probes in `verify-constraint-probes.sh` (K.6, #104, which owns the intake
+> half of `ci/db`). There is also no index on `sizing_status` — the reads that filter by it
+> are workspace-scoped first, so they enter through the filter index, and the ticket that
+> writes that read is the ticket that gives it one.
 
 - **Problem Statement:** The backlog table renders GitHub issues with labels, author,
   and open-date ([`docs/mockups/03-issues.html`](mockups/03-issues.html), issue cell +
@@ -1142,14 +1219,33 @@ Execution follows the work order above, with two standing prerequisites that are
 unfiled:
 
 - **BetterAuth roadmap** ([`ROADMAP_LOGIN_PAGE_BETTERAUTH.md`](ROADMAP_LOGIN_PAGE_BETTERAUTH.md)) —
-  BA-B.3 (organization + repo tables), BA-C.3 (tenant context), BA-C.4 (enabled repos)
-  and BA-D.5 (auth guard) are referenced by name in the filed issues and must land
-  before Epic K can start in earnest.
+  BA-C.3 (tenant context) and BA-D.5 (auth guard) are referenced by name in the filed
+  issues and must land before Epic M can be finished. **BA-B.3 and BA-C.4 are struck**:
+  BA-B.3 (organization + repo tables) has landed under the mockup-01 roadmap — `V005`
+  (#707), `V006` (#708) and `V003` (#22) between them are all of it — and BA-C.4 (enabled
+  repos) named a capability the product already had, which the dashboard roadmap's H.1
+  (#77) wrote down.
 - **Dashboard roadmap** ([`ROADMAP_MOCKUP_02_DASHBOARD.md`](ROADMAP_MOCKUP_02_DASHBOARD.md),
   filed as #59–#93) — DASH-F.2 (#65 `queue_items`) is what M.3 writes into, DASH-F.5
   (#68) shares its queue seeds with K.5, and DASH-I.8 (#87) provides the polling hook
-  family N.3 reuses.
+  family N.3 reuses. All three have shipped.
 
-Once those are in place, begin with #99 ([K.1] GitHub issue cache schema) and #101
-([K.3] GitHub credentials & API client) — the two parallelizable entry points of
-Phase 1.
+**Epic K opened on 2026-08-18.** **K.1 (#99) shipped**
+([`V014__github_issue_cache.sql`](../ouroboros-db/migrations/V014__github_issue_cache.sql)):
+`github_issues` is the backlog as rows, and `github_repos` carries the `since` watermark
+the poller will write. Nothing writes either yet, which is why every rule a reader depends
+on is a database constraint — the vocabularies, the label shape, the `https` URL, the
+cursor-after-sync implication — each with a section in `tests/constraints.sql` that `ci/db`
+runs against a database migrated from empty.
+
+> The question K.1 leaves for **K.6 (#104)**: `verify-constraint-probes.sh` proves the
+> dashboard read-model's assertions are load-bearing by dropping each rule in turn and
+> requiring the suite to go red naming it. The intake assertions have no such proof yet —
+> that is K.6's *"status vocabularies, cursor invariants"* bullet, and it now has concrete
+> constraint names to aim at: `github_issues_sizing_status`, `github_issues_state`,
+> `github_issues_labels_shape`, `github_issues_url_https` and
+> `github_repos_issues_cursor_after_sync`.
+
+**#100 ([K.2] Issue estimates schema) is unblocked**, and #101 ([K.3] GitHub credentials &
+API client) remains the other parallelizable entry point of Phase 1 — #102's sync service
+needs both.

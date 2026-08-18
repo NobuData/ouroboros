@@ -310,6 +310,11 @@ describe("a repository", () => {
     default_branch: "main",
     created_at: new Date("2026-08-11T10:20:23.114Z"),
     updated_at: new Date("2026-08-11T10:20:23.114Z"),
+    // V014's sync cursor (#99). Present on the row and deliberately absent from the
+    // resource below — the enablement contract describes where Ouroboros may operate, and
+    // when its issues were last polled is the backlog's business.
+    issues_synced_at: null,
+    issues_sync_cursor: null,
   };
 
   it("is rendered under the API's names", () => {
