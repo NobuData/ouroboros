@@ -8,6 +8,7 @@ import {
   NotImplementedError,
   NotFoundError,
   SERVER_ERROR_FLOOR,
+  TooManyRequestsError,
   codeForStatus,
 } from "./error.envelope";
 
@@ -52,6 +53,7 @@ describe("a domain error", () => {
     [ConflictError, HttpStatus.CONFLICT],
     [InvalidRequestError, HttpStatus.UNPROCESSABLE_ENTITY],
     [NotImplementedError, HttpStatus.NOT_IMPLEMENTED],
+    [TooManyRequestsError, HttpStatus.TOO_MANY_REQUESTS],
   ])("gives %p its own status", (Subclass, status) => {
     expect(new Subclass("code", "message").getStatus()).toBe(status);
   });

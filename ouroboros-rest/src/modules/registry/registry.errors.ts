@@ -29,11 +29,12 @@
  * cannot close: an alias created between the check and the delete makes the server refuse
  * anyway, and a caller that could not recognise that error would report it as a `500`.
  *
- * Neither is thrown from inside this module today, and that is decision **M2** rather than
- * dead code: *deleting a provider connection* is mockup 07's surface, and this module
- * deliberately has no CRUD. What lands here is the refusal that surface will need, tested
- * against a real foreign-key violation in `registry.integration-spec.ts` rather than against
- * a hand-written error object.
+ * Neither is thrown from inside this module, and that is decision **M2** rather than dead
+ * code: *deleting a provider connection* is mockup 07's surface, and this module deliberately
+ * has no CRUD. Both are thrown by `provider-connections/provider-connections.service.ts`
+ * (AD.2, [#223](https://github.com/NobuData/ouroboros/issues/223)) — the pre-flight and the
+ * race — and both are tested against a real foreign-key violation in
+ * `registry.integration-spec.ts` rather than against a hand-written error object.
  */
 
 import { ConflictError, NotFoundError } from "../errors/error.envelope";

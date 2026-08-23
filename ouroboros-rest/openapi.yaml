@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.30.0"
+  version: "0.30.1"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -366,6 +366,43 @@ tags:
       **A latency appears only where a check measured one.** There is no default and no zero:
       on a strip a person reads reliability from, `0ms` is not *we do not know*, it is an
       excellent latency for a provider nothing has ever called.
+
+  - name: providers
+    description: |-
+      **Provider connections and their credentials — the lifecycle behind mockup 07**
+      ([#223](https://github.com/NobuData/ouroboros/issues/223), roadmap decision **P4**).
+
+      Six operations over `/api/v1/providers`: connect, list, read, reveal, rotate, edit and
+      disconnect. Every one of them is designed around the same premise — *every affordance on
+      a key row is a potential exfiltration path* — and the four decisions that follow from it
+      are worth reading once rather than rediscovering per endpoint.
+
+      **Masking is server-side.** List and read answer a computed `••••Xq4A` — four bullets and
+      the credential's last four characters — and the full value is simply not in the payload.
+      Returning the key and letting a page draw the bullets would put it in the browser's
+      memory, in the network tab and in every error report that page sends.
+
+      **Reveal costs something.** It is the one endpoint that answers with a live credential,
+      so it needs a *recent* re-authentication (a session created within the window, or a
+      password confirmed in it), it is rate-limited per user and per connection, its answer
+      carries `Cache-Control: no-store`, and it is always audited.
+
+      **Rotation verifies before it destroys.** The new credential is checked against the live
+      provider first, and only then swapped in one conditional statement — so a failed check
+      leaves the old key working, and there is no window in which neither does.
+
+      **Deletion respects dependents.** A connection that model aliases resolve on answers
+      `409` naming them, rather than a foreign-key violation nobody can act on.
+
+      **Members read; `owner` and `admin` write** — and reveal counts as a write, because it
+      is the operation that hands back a key.
+
+      Two neighbouring surfaces are deliberately not here. The provider **health strip** is
+      `GET /api/v1/routing/providers` under the `routing` tag, which is why that route is named
+      for its page rather than squatting on this collection. Model **discovery** and the
+      add-form catalog are their own tickets
+      ([#230](https://github.com/NobuData/ouroboros/issues/230),
+      [#231](https://github.com/NobuData/ouroboros/issues/231)).
 
   - name: tenancy
     description: |-
@@ -2361,6 +2398,807 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/providers:
+    get:
+      tags: [providers]
+      summary: This workspace's provider connections
+      description: |-
+        One page of the providers this workspace has connected
+        ([#223](https://github.com/NobuData/ouroboros/issues/223)), ordered by display name —
+        the cards mockup 07 draws.
+
+        **The credential is not in this payload and cannot be.** Each entry carries `mask`,
+        a server-computed `••••Xq4A`: four bullets and the last four characters of the key,
+        made from the plaintext inside this service and unable to be turned back into it.
+        Returning the value and letting a browser draw the bullets would put the credential
+        in the page's memory, in the network tab and in every error report that page ever
+        sends, which is exactly what decision **P4** exists to prevent. The one endpoint that
+        answers with a live credential is `POST /api/v1/providers/{id}/reveal`, and it is
+        priced accordingly.
+
+        **Any member may read it**, viewers included — every field here is masked, and *which
+        providers does this workspace have* is the kind of question a role that exists to look
+        should be able to ask. Every write below is `owner` or `admin`.
+
+        **What is deliberately not here.** The card foot's health detail is
+        `GET /api/v1/routing/providers` ([#196](https://github.com/NobuData/ouroboros/issues/196)),
+        and the model chips are AE.4's
+        ([#230](https://github.com/NobuData/ouroboros/issues/230)) discovery. This surface is
+        the *lifecycle* — exactly the set of things the five writes below can change.
+
+        **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before the operation runs.
+      operationId: listProviderConnections
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The page. Empty for a workspace that has connected nothing — mockup 07's
+            dashed-card empty state, not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnectionPage"
+              example:
+                items:
+                  - id: 5eed000c-0000-4000-8000-000000000001
+                    kind: anthropic
+                    displayName: Anthropic Claude
+                    baseUrl: null
+                    capabilityNote: api.anthropic.com · primary coding lane
+                    status: active
+                    enabled: true
+                    monthlyCapCents: 60000
+                    mask: ••••Xq4A
+                    addedBy: 5eed0003-0000-4000-8000-000000000001
+                    lastCheckedAt: "2026-08-23T09:59:41.882Z"
+                    lastUsedAt: "2026-08-23T09:57:12.004Z"
+                    createdAt: "2026-06-12T16:20:00.000Z"
+                    updatedAt: "2026-08-23T09:59:41.882Z"
+                  - id: 5eed000c-0000-4000-8000-000000000005
+                    kind: ollama
+                    displayName: Ollama · workstation
+                    baseUrl: http://ken-station.local:11434
+                    capabilityNote: zero-cost lane — used for docs & commit messages
+                    status: active
+                    enabled: true
+                    monthlyCapCents: null
+                    mask: null
+                    addedBy: 5eed0003-0000-4000-8000-000000000001
+                    lastCheckedAt: "2026-08-23T09:59:40.101Z"
+                    lastUsedAt: null
+                    createdAt: "2026-05-14T08:55:00.000Z"
+                    updatedAt: "2026-08-23T09:59:40.101Z"
+                total: 2
+                limit: 25
+                offset: 0
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `limit` or `offset` was out of range or not an integer.
+            `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [providers]
+      summary: Connect a provider
+      description: |-
+        Add a provider connection — schema-checked, **validated against the live provider**,
+        sealed, and only then stored.
+
+        **A bad key is never stored silently, and nothing is written on failure.** The order
+        is the operation: the submitted `config` is checked against the adapter's own
+        `configSchema()`, then the adapter asks the provider whether the configuration and
+        credential work, and only a success reaches the database. There is no row to clean up
+        when a key is refused, because there was never a row — which is what makes *adding a
+        provider with an invalid key fails without persisting anything* a property of the
+        control flow rather than a promise.
+
+        **`config` is the adapter's own vocabulary.** Which fields it takes is
+        `configSchema()`'s answer for the `kind` — a base URL for a vLLM endpoint, a host for
+        Ollama, a key for Anthropic — and the credential is whichever field the schema marks
+        `x-ouroboros-secret`. It goes to the vault
+        ([#222](https://github.com/NobuData/ouroboros/issues/222)) and never to a column a
+        response can read. Two field names are reserved and land in columns of their own:
+        `baseUrl` and `capabilityNote`.
+
+        **A setting this build cannot store is a `501` naming it**, never a value silently
+        dropped. `provider_connections` keeps a connection's settings in columns, and one
+        adapter declares an optional field that has none — Copilot's billing `organization`.
+        Connecting Copilot without it works; sending it is refused with
+        `provider_config_not_storable` and the field named, so nobody is left believing they
+        configured something they did not.
+
+        **`owner` or `admin`, and nobody else.** A connection is what a workspace's routing
+        spends money through; a `member` or a `viewer` gets the API's one `403`.
+
+        The connection is created `enabled`, with the status and latency the live check just
+        measured, and `addedBy` set from the session — never from the body.
+      operationId: addProviderConnection
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderConnectionCreate"
+            example:
+              kind: anthropic
+              displayName: Anthropic Claude
+              monthlyCapCents: 60000
+              config:
+                apiKey: sk-ant-api03-not-a-real-key-Xq4A
+      responses:
+        "201":
+          description: The connection, as it was stored, with its credential masked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+              example:
+                id: 5eed000c-0000-4000-8000-000000000001
+                kind: anthropic
+                displayName: Anthropic Claude
+                baseUrl: null
+                capabilityNote: null
+                status: active
+                enabled: true
+                monthlyCapCents: 60000
+                mask: ••••Xq4A
+                addedBy: 5eed0003-0000-4000-8000-000000000001
+                lastCheckedAt: "2026-08-23T09:59:41.882Z"
+                lastUsedAt: null
+                createdAt: "2026-08-23T09:59:41.882Z"
+                updatedAt: "2026-08-23T09:59:41.882Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Connecting a provider is `owner` or `admin`; `member` and `viewer` may read
+            the list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            One of three, and they are worth telling apart:
+
+            * `validation_failed` — the body's own shape is wrong. `details` is keyed by field.
+            * `provider_config_invalid` — the body is well-formed and does not satisfy the
+              adapter's `configSchema()`. `details.fields` is keyed by config field name, in
+              the same shape, so one renderer serves both.
+            * `provider_validation_failed` — the **provider** refused the configuration or the
+              credential. `details.errorClass` is one of `auth`, `network`, `rate_limit`,
+              `server`, `config`, and `details.detail` is the note mockup 07's card foot would
+              draw — `key rejected (401)`. Nothing was stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          description: |-
+            Either `provider_kind_unsupported` — this build has no adapter for that kind, and
+            `details.registered` lists the ones it has — or `provider_config_not_storable`,
+            which names the submitted settings this build has no column for. Both are a
+            capability this deployment lacks rather than a mistake the caller made, which is
+            why neither is a `4xx`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/providers/{id}:
+    get:
+      tags: [providers]
+      summary: One provider connection
+      description: |-
+        One connection, with its credential masked exactly as the listing masks it. Readable
+        by every member.
+
+        A connection of another workspace answers `404`, not `403` — the same rule the rest of
+        this API follows, and sharper here: a `403` would confirm that an identifier names a
+        real provider connection, which is the whole of what somebody enumerating identifiers
+        is trying to learn.
+      operationId: readProviderConnection
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The connection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+              example:
+                id: 5eed000c-0000-4000-8000-000000000004
+                kind: openai_compatible
+                displayName: OpenAI-compatible · local vLLM
+                baseUrl: http://10.0.4.20:8000/v1
+                capabilityNote: self-hosted · A100 ×2
+                status: active
+                enabled: true
+                monthlyCapCents: null
+                mask: null
+                addedBy: 5eed0003-0000-4000-8000-000000000001
+                lastCheckedAt: "2026-08-23T09:59:38.221Z"
+                lastUsedAt: "2026-08-23T09:50:12.000Z"
+                createdAt: "2026-05-30T14:12:00.000Z"
+                updatedAt: "2026-08-23T09:59:38.221Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `provider_connection_not_found` — this workspace has no connection with that id,
+            including when another workspace does. Or `tenant_not_found`, when the
+            `X-Ouro-Tenant` header names no workspace you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [providers]
+      summary: Change a connection's settings
+      description: |-
+        The card's switch, its monthly cap, its capability note and its address — each
+        independently, and each optional.
+
+        **A `PATCH` rather than a `PUT`**, which is the opposite of the choice
+        `PUT /api/v1/registry/prices` makes and for a reason about the resource rather than
+        about taste: a price is one statement replaced outright, while a connection is a row
+        of independent settings where *turn this off* should not require resending an address
+        the client may not have.
+
+        **An absent field is left alone; an explicit `null` clears one.** Only
+        `monthlyCapCents` and `capabilityNote` accept `null`, because those are the two
+        settings whose absence is itself a value — *no cap*, *no second line*. A body that
+        changes nothing is answered with the connection unchanged and writes no audit event.
+
+        **`config` is validated exactly as an add is, live provider included.** It is merged
+        over what is stored — a schema's rules can span fields, and half a request cannot be
+        judged against them — then checked against the adapter's schema and then against the
+        provider itself, with the stored credential opened for the length of that one call. A
+        refusal changes nothing. This is what makes editing a base URL safe: an address that
+        does not work is refused here rather than discovered by the next run.
+
+        **`capabilityNote` is not a `config` field on this body**, and sending it inside
+        `config` is a `422` saying so. The note has a column beside the cap and the switch and
+        only three of the five adapters declare it in their form schema — routing it through
+        `config` would make it editable for some providers and not others for a reason that is
+        about a form rather than about the connection.
+
+        **The credential is not here.** Replacing one is `POST {id}/rotate`, which validates
+        the new value against the live provider before it destroys anything; an edit that
+        could carry a key would be that operation without the check.
+
+        `owner` or `admin`.
+      operationId: updateProviderConnection
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderConnectionPatch"
+            example:
+              enabled: false
+              monthlyCapCents: 75000
+      responses:
+        "200":
+          description: The connection after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+              example:
+                id: 5eed000c-0000-4000-8000-000000000001
+                kind: anthropic
+                displayName: Anthropic Claude
+                baseUrl: null
+                capabilityNote: api.anthropic.com · primary coding lane
+                status: active
+                enabled: false
+                monthlyCapCents: 75000
+                mask: ••••Xq4A
+                addedBy: 5eed0003-0000-4000-8000-000000000001
+                lastCheckedAt: "2026-08-23T09:59:41.882Z"
+                lastUsedAt: "2026-08-23T09:57:12.004Z"
+                createdAt: "2026-06-12T16:20:00.000Z"
+                updatedAt: "2026-08-23T10:02:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Editing a connection is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `provider_connection_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed`, `provider_config_invalid` or `provider_validation_failed` —
+            on exactly the terms `POST /api/v1/providers` describes. A refused edit changes
+            nothing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          description: |-
+            `provider_kind_unsupported` or `provider_config_not_storable`, as
+            `POST /api/v1/providers` describes. Reachable only from a body carrying `config`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [providers]
+      summary: Disconnect a provider
+      description: |-
+        Remove a connection, unless the workspace's routing still points at it.
+
+        **A connection with model aliases resolving on it cannot be removed, and the refusal
+        names them.** V015's `model_aliases_provider_fk` is what makes the delete impossible;
+        `provider_connection_in_use` is what turns *violates foreign key constraint* into an
+        instruction — `details.aliases` lists the names to repoint or remove first. The check
+        runs before the delete so the message is a good one, and the delete is still guarded,
+        because an alias created in between makes the server refuse anyway.
+
+        `204` and no body: there is nothing to say about a row that no longer exists, and a
+        `200` carrying the deleted resource invites a client to keep using it.
+
+        **The sealed credential goes with the row.** There is no soft delete and no archive:
+        a credential nothing can reach is a credential every backup still carries.
+
+        `owner` or `admin`.
+      operationId: removeProviderConnection
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "204":
+          description: The connection is gone.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Disconnecting a provider is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `provider_connection_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `provider_connection_in_use` — model aliases still resolve on this connection.
+            `details.aliases` names them, sorted, and `details.connectionId` echoes the
+            connection. Repoint or remove the aliases first; nothing about the request is
+            wrong, so retrying it unchanged gets the same answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/providers/{id}/reveal:
+    post:
+      tags: [providers]
+      summary: Reveal a stored credential
+      description: |-
+        The one operation in this API that answers with a live credential, and the only one
+        with four gates in front of it.
+
+        **It costs a step-up re-authentication.** A session cookie is not a strong enough
+        claim to open a key: a borrowed laptop, a copied cookie inside the session cache's
+        five-minute window and an XSS on any page of this product are all "a valid session".
+        So a reveal needs a *recent* proof that the browser is still the person, and without
+        one the answer is `401 step_up_required` carrying `details.methods` and
+        `details.maxAgeSeconds` — a challenge a client can act on rather than a wall.
+
+        Two methods, which are the two BetterAuth gives this build:
+
+        | Method | What satisfies it |
+        |---|---|
+        | `session` | the session was **created** within `maxAgeSeconds` — somebody who has just signed in, by any means their account uses, GitHub included |
+        | `password` | `password` in this body, compared against the caller's own credential account |
+
+        A confirmed password counts for `maxAgeSeconds`, so confirming once and revealing two
+        keys is one prompt rather than two. A **wrong** password answers exactly as an absent
+        one does: telling them apart would make this endpoint a password oracle for anybody
+        holding a stolen session, which is precisely the person a step-up exists to stop.
+
+        **It is rate-limited per user and per connection**, and every attempt counts —
+        including one that failed the step-up, because a limiter behind the step-up would
+        leave the password comparison unlimited. `details.scope` says which limit was reached
+        and `details.retryAfterSeconds` how long until it has room.
+
+        **It is always audited.** One `provider.revealed` event, recording the workspace, the
+        connection, the person and *how the step-up was satisfied* — which is the difference
+        between somebody with this session and somebody who proved they are this person.
+
+        **The answer carries `Cache-Control: no-store`** and an `expiresAt` a client should
+        stop displaying the value at. The second is an instruction rather than an enforcement,
+        and it is published because the alternative is every client inventing its own timeout
+        and most of them choosing *never*.
+
+        `owner` or `admin` — reveal is grouped with the writes despite changing nothing,
+        because it is the operation that hands back a key.
+      operationId: revealProviderCredential
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderRevealRequest"
+            example:
+              password: correct-horse-battery
+      responses:
+        "200":
+          description: |-
+            The credential, and when to stop showing it. Sent with `Cache-Control: no-store`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderRevealed"
+              example:
+                connectionId: 5eed000c-0000-4000-8000-000000000001
+                value: sk-ant-api03-not-a-real-key-Xq4A
+                expiresAt: "2026-08-23T10:00:41.882Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `step_up_required` — there is no recent re-authentication on this session, or the
+            password offered was not accepted. `details.methods` names what would satisfy it
+            and `details.maxAgeSeconds` how long a proof counts for.
+
+            Or `unauthenticated`, when the request carries no session at all.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Revealing a credential is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `provider_connection_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `provider_credential_absent` — this connection stores no credential. A local
+            provider is reached without one, which V015 makes an ordinary state rather than an
+            unfinished row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid, or `password` is not a string of 1–128
+            characters.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: |-
+            `provider_reveal_rate_limited` — too many attempts. `details.scope` is `user` or
+            `connection`, and `details.retryAfterSeconds` is how long until that limit has
+            room. Waiting works; retrying immediately does not.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/providers/{id}/rotate:
+    post:
+      tags: [providers]
+      summary: Replace a credential, verify-then-retire
+      description: |-
+        Rotate a provider credential: accept the new one, **validate it against the live
+        provider**, and only then swap.
+
+        **A failed validation leaves the old credential live and working.** The naive
+        implementation writes the new key and drops the old one, so a typo leaves the
+        workspace's routing broken *and* the working credential gone. Here the check happens
+        before any statement is issued, and a refusal is `422 provider_validation_failed`
+        carrying the taxonomy's class and the adapter's own note — a designed error, not a
+        stack trace.
+
+        **The swap is atomic.** It is a single conditional `UPDATE`, so the old credential is
+        live until the instant the new one is: there is no window in which neither works. The
+        condition is that the row still holds the credential the validation ran against — two
+        administrators rotating at once, or the vault's re-encryption sweep landing in
+        between, answers `409 provider_connection_changed` rather than overwriting a value it
+        never checked.
+
+        **A provider that takes no credential cannot be rotated** — an Ollama host is
+        `409 provider_credential_absent`. A provider whose credential is *optional* and
+        currently absent **can** be: an OpenAI-compatible endpoint that has just been put
+        behind auth is a real thing to rotate onto, and the new key is live-validated exactly
+        as any other.
+
+        `owner` or `admin`. Audited as `provider.rotated`.
+      operationId: rotateProviderCredential
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderRotateRequest"
+            example:
+              secret: sk-ant-api03-the-new-key-7Kd2
+      responses:
+        "200":
+          description: The connection after the swap, masked with the new credential's suffix.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderConnection"
+              example:
+                id: 5eed000c-0000-4000-8000-000000000001
+                kind: anthropic
+                displayName: Anthropic Claude
+                baseUrl: null
+                capabilityNote: api.anthropic.com · primary coding lane
+                status: active
+                enabled: true
+                monthlyCapCents: 60000
+                mask: ••••7Kd2
+                addedBy: 5eed0003-0000-4000-8000-000000000001
+                lastCheckedAt: "2026-08-23T10:04:02.510Z"
+                lastUsedAt: "2026-08-23T09:57:12.004Z"
+                createdAt: "2026-06-12T16:20:00.000Z"
+                updatedAt: "2026-08-23T10:04:02.510Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Rotating a credential is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `provider_connection_not_found`, or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `provider_credential_absent` — this provider takes no credential, so there is
+            nothing to rotate. Or `provider_connection_changed` — the row was rewritten while
+            the new credential was being checked; read it again and retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid, or `secret` is not a string of 1–4096
+            characters. Or `provider_validation_failed` — the provider refused the new
+            credential, and **the old one is still live**. `details.errorClass` and
+            `details.detail` say what the provider said.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/me/preferences:
     get:
       tags: [preferences]
@@ -3898,6 +4736,19 @@ components:
         type: string
         format: uuid
       example: 5eed0009-0000-4000-8000-000000000482
+
+    ConnectionId:
+      name: id
+      in: path
+      required: true
+      description: |-
+        A provider connection's id. A connection of another workspace answers `404`, never
+        `403`: confirming that an identifier names something real is the whole of what
+        enumerating identifiers is for.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed000c-0000-4000-8000-000000000001
 
   schemas:
     Error:
@@ -5880,6 +6731,331 @@ components:
           description: Every connection in the workspace, ordered by display name.
           items:
             $ref: "#/components/schemas/ProviderHealth"
+
+    ProviderConnectionKind:
+      type: string
+      title: ProviderConnectionKind
+      enum: [anthropic, openai_compatible, ollama, copilot, cursor, custom]
+      description: |-
+        Which adapter reaches a provider (V015). The same six spellings a price's
+        `connectionKind` carries, so a connection and a price agree about what kind of thing
+        they describe without either translating.
+
+        Not every one of them is connectable in every build: a kind with no adapter compiled
+        in answers `501 provider_kind_unsupported`, whose `details.registered` lists the ones
+        that are.
+      examples: [anthropic]
+
+    ProviderConnectionStatus:
+      type: string
+      title: ProviderConnectionStatus
+      enum: [active, paused, error, unknown]
+      description: |-
+        What the last health check concluded — read-only on this surface, and written by the
+        provider-health sweep ([#196](https://github.com/NobuData/ouroboros/issues/196)).
+
+        **Not the same thing as `enabled`.** The status is what a check measured; `enabled` is
+        what a person decided, and *connected* beside a switch that is off is a real state.
+        `unknown` is a state and must never be rendered as healthy.
+      examples: [active]
+
+    ProviderConnection:
+      type: object
+      title: ProviderConnection
+      description: |-
+        One provider connection — the card mockup 07 draws, minus the two things another
+        surface owns: the health detail is `GET /api/v1/routing/providers` and the model chips
+        are the discovery surface.
+
+        **There is nowhere in this shape for a credential.** `mask` is a server-computed
+        `••••Xq4A` and cannot be turned back into the key; the one endpoint that answers with
+        a live value is `POST /api/v1/providers/{id}/reveal`.
+      additionalProperties: false
+      required:
+        [
+          id,
+          kind,
+          displayName,
+          baseUrl,
+          capabilityNote,
+          status,
+          enabled,
+          monthlyCapCents,
+          mask,
+          addedBy,
+          lastCheckedAt,
+          lastUsedAt,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The connection, as every operation below the collection addresses it.
+          examples: [5eed000c-0000-4000-8000-000000000001]
+        kind:
+          $ref: "#/components/schemas/ProviderConnectionKind"
+        displayName:
+          type: string
+          maxLength: 120
+          description: |-
+            The card's heading. Free text a workspace chose, and deliberately not unique — two
+            Ollama daemons on two machines are two legitimate connections.
+          examples: [Anthropic Claude]
+        baseUrl:
+          type: [string, "null"]
+          maxLength: 2048
+          description: |-
+            Where the provider is, or `null` for one reached at a fixed public endpoint.
+            Required for `ollama` and `openai_compatible`, which have none to fall back on.
+          examples: [http://ken-station.local:11434]
+        capabilityNote:
+          type: [string, "null"]
+          maxLength: 160
+          description: |-
+            The card's second line, verbatim — *api.anthropic.com · primary coding lane*. Null
+            when there is nothing to say, and the card then draws one line instead of two.
+          examples: [self-hosted · A100 ×2]
+        status:
+          $ref: "#/components/schemas/ProviderConnectionStatus"
+        enabled:
+          type: boolean
+          description: |-
+            The card's switch — may this connection be used at all. A disabled connection
+            drops out of routing while its aliases and routes survive, which is the difference
+            between switched off and deleted.
+          examples: [true]
+        monthlyCapCents:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            The monthly cap in whole cents — `$600` is `60000` — or **`null` for no cap**,
+            which mockup 07 renders as an em-dash. Null is not the same as `0`, which is a
+            real instruction meaning *spend nothing*. Warning-only until the spend gate lands
+            ([#237](https://github.com/NobuData/ouroboros/issues/237)).
+          examples: [60000]
+        mask:
+          type: [string, "null"]
+          description: |-
+            The stored credential, masked: four bullets and its last four characters. `null`
+            when this provider needs no credential — a local daemon, an unauthenticated
+            endpoint — which is an ordinary state rather than an unfinished row.
+
+            Computed inside this service from the plaintext and unable to be reversed. It is
+            the **only** thing this API says about a stored credential outside `reveal`.
+          examples: [••••Xq4A]
+        addedBy:
+          type: [string, "null"]
+          description: |-
+            The person who connected this provider — the card's *Added by Ken* — or `null`.
+            Null is both *nobody in this table added it* and *the person who did has since
+            gone*: deleting a person must not delete their workspace's provider.
+          examples: [5eed0003-0000-4000-8000-000000000001]
+        lastCheckedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the last health check finished, or `null` until one has.
+          examples: ["2026-08-23T09:59:41.882Z"]
+        lastUsedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When something last invoked through this connection — the card's *last used 3m
+            ago* — or `null` for *never used*. Written by the invocation gateway
+            ([#235](https://github.com/NobuData/ouroboros/issues/235)); `null` is therefore
+            the ordinary state today rather than a defect.
+          examples: ["2026-08-23T09:57:12.004Z"]
+        createdAt:
+          type: string
+          format: date-time
+          examples: ["2026-06-12T16:20:00.000Z"]
+        updatedAt:
+          type: string
+          format: date-time
+          examples: ["2026-08-23T09:59:41.882Z"]
+
+    ProviderConnectionPage:
+      type: object
+      title: ProviderConnectionPage
+      description: One page of a workspace's provider connections, ordered by display name.
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderConnection"
+        total:
+          type: integer
+          minimum: 0
+          examples: [2]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          examples: [25]
+        offset:
+          type: integer
+          minimum: 0
+          examples: [0]
+
+    ProviderConnectionConfig:
+      type: object
+      title: ProviderConnectionConfig
+      description: |-
+        A provider's own settings, keyed by the field names its `configSchema()` declares — a
+        flat object of strings and nothing else.
+
+        The keys are **the adapter's**, which is why this schema cannot name them: a vLLM
+        endpoint takes `baseUrl` and an optional key, Ollama takes a host, Anthropic takes a
+        key. Two names are reserved across every adapter and land in columns of their own:
+        `baseUrl` is the connection's address and `capabilityNote` is the card's second line.
+        Whichever field the schema marks `x-ouroboros-secret` is the credential; it is sealed
+        and is never readable again except through `reveal`.
+
+        At most 20 settings, each at most 2048 characters. A setting the adapter does not
+        declare is a `422`; one it declares and this build has no column for is a `501` naming
+        it, never a value silently dropped.
+      additionalProperties:
+        type: string
+        maxLength: 2048
+      examples:
+        - baseUrl: http://10.0.4.20:8000/v1
+          capabilityNote: self-hosted · A100 ×2
+
+    ProviderConnectionCreate:
+      type: object
+      title: ProviderConnectionCreate
+      description: |-
+        A provider to connect. Live-validated before anything is written; see
+        `POST /api/v1/providers`.
+      additionalProperties: false
+      required: [kind, displayName, config]
+      properties:
+        kind:
+          $ref: "#/components/schemas/ProviderConnectionKind"
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: |-
+            The card's heading. Trimmed and non-blank — a value carrying surrounding
+            whitespace is refused rather than quietly trimmed, because storing something other
+            than what was sent is the failure this surface refuses everywhere else.
+          examples: [Anthropic Claude]
+        config:
+          $ref: "#/components/schemas/ProviderConnectionConfig"
+        monthlyCapCents:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 2147483647
+          description: |-
+            The monthly cap in whole cents. Absent or `null` is *no cap*, which is not the
+            same as `0`.
+          examples: [60000]
+
+    ProviderConnectionPatch:
+      type: object
+      title: ProviderConnectionPatch
+      description: |-
+        What to change about a connection. Every field is optional, an absent field is left
+        alone, and an explicit `null` clears the two settings whose absence is a value. A body
+        that changes nothing is answered with the connection unchanged.
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 120
+          examples: [Anthropic Claude]
+        enabled:
+          type: boolean
+          description: |-
+            The card's switch. No `null` — a switch has two positions.
+          examples: [false]
+        monthlyCapCents:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 2147483647
+          description: The monthly cap in whole cents. `null` clears it, which is *no cap*.
+          examples: [75000]
+        capabilityNote:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 160
+          description: |-
+            The card's second line. `null` clears it. A connection field rather than a
+            `config` one — sending it inside `config` is refused; see the operation.
+          examples: [api.anthropic.com · primary coding lane]
+        config:
+          $ref: "#/components/schemas/ProviderConnectionConfig"
+
+    ProviderRevealRequest:
+      type: object
+      title: ProviderRevealRequest
+      description: |-
+        How this reveal is stepping up, if it is. An empty object is a legitimate body: a
+        session created within the step-up window is itself a re-authentication, and so is a
+        password confirmed within it.
+      additionalProperties: false
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: |-
+            The caller's own password, compared against their credential account by
+            BetterAuth. Never stored and never logged. A wrong one answers exactly as an
+            absent one does — see the operation.
+          examples: [correct-horse-battery]
+
+    ProviderRevealed:
+      type: object
+      title: ProviderRevealed
+      description: |-
+        A credential, in the clear — the one payload in this API that carries one. Sent with
+        `Cache-Control: no-store`.
+      additionalProperties: false
+      required: [connectionId, value, expiresAt]
+      properties:
+        connectionId:
+          type: string
+          format: uuid
+          description: |-
+            Which connection this belongs to, echoed so a page with two reveals in flight
+            cannot paint one provider's key onto another's row.
+          examples: [5eed000c-0000-4000-8000-000000000001]
+        value:
+          type: string
+          description: The credential.
+          examples: [sk-ant-api03-not-a-real-key-Xq4A]
+        expiresAt:
+          type: string
+          format: date-time
+          description: |-
+            When a client should stop displaying the value and forget it. An **instruction**
+            rather than an enforcement — a value handed to a browser is in the browser, and no
+            header takes it back — published so that clients do not each invent a timeout, most
+            of them *never*.
+          examples: ["2026-08-23T10:00:41.882Z"]
+
+    ProviderRotateRequest:
+      type: object
+      title: ProviderRotateRequest
+      description: The replacement credential. Live-validated before the old one is retired.
+      additionalProperties: false
+      required: [secret]
+      properties:
+        secret:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          description: |-
+            The new credential. Not trimmed and not normalised: a credential is an opaque
+            string, and a service that stripped a character would break a key that
+            legitimately carried it.
+          examples: [sk-ant-api03-the-new-key-7Kd2]
 
     EngineStatus:
       type: object

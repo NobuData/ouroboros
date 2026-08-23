@@ -86,6 +86,25 @@ export interface SessionRecord {
   /** When this session stops being honoured, whether or not anybody signs out. */
   readonly expiresAt: Date;
   /**
+   * `session."createdAt"` — when the sign-in that produced this session happened (V004).
+   *
+   * Read by exactly one thing, and it is worth naming which: AD.2's step-up
+   * ([#223](https://github.com/NobuData/ouroboros/issues/223)) treats a session created
+   * moments ago as a re-authentication, because somebody who has just proved who they are
+   * should not be asked to prove it twice to reveal a key.
+   *
+   * **Not `updatedAt`**, and the difference is the whole of why this field is the one that
+   * was added. BetterAuth slides the expiry — `SESSION_UPDATE_AGE_SECONDS` — so `updatedAt`
+   * moves whenever a week-old session is used, and a freshness check written against it
+   * would call every active session fresh. `createdAt` moves only when somebody signs in,
+   * which is exactly the event a step-up is asking about.
+   *
+   * Optional for {@link activeOrganizationId}'s reason: a session assembled by something
+   * that does not carry the column would otherwise be a type error rather than a session
+   * that simply cannot prove freshness. An absent value is read as *not fresh*.
+   */
+  readonly createdAt?: Date;
+  /**
    * `session."activeOrganizationId"` — the workspace this session is acting in (V005).
    *
    * The organization plugin adds the column to the session model and returns it with the

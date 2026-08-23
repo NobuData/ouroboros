@@ -1215,6 +1215,96 @@ HTTP Basic with an empty password, which is what Cursor's Admin API documents (`
 and `capabilities().entitlements` is `false` because `/v0/me` says nothing about a seat or an
 allowance — which is what keeps the Copilot card's `· 4 seats` worth reading.
 
+## The credential lifecycle
+
+**Add, reveal, rotate, enable, delete — the key row's affordances, made safe by
+construction** ([#223](https://github.com/NobuData/ouroboros/issues/223), roadmap decision
+**P4**). `src/modules/provider-connections/` is `/api/v1/providers`: the surface mockup 07's
+cards are drawn from, over V015's `provider_connections`, and the surface `provider-health/`
+deliberately left free by naming its own route `routing/providers`.
+
+```
+POST   /api/v1/providers            schema ─▶ live validate ─▶ seal ─▶ store   ✗ = nothing stored
+GET    /api/v1/providers            ••••Xq4A, computed server-side · every member
+GET    /api/v1/providers/{id}       the same, for one
+POST   /api/v1/providers/{id}/reveal   rate limit ─▶ step-up ─▶ open ─▶ audit · no-store
+POST   /api/v1/providers/{id}/rotate   validate NEW ─▶ one conditional UPDATE ─▶ old retired
+PATCH  /api/v1/providers/{id}       switch · cap · note · address (validated like an add)
+DELETE /api/v1/providers/{id}       409 while aliases resolve on it, naming them
+```
+
+**Every acceptance criterion is a claim about *order*, so the order is the design.** `add`
+asks the adapter before it seals and before it inserts — so *a bad key is never stored
+silently* is a property of the control flow rather than of a rollback, and there is no row to
+clean up on failure because there was never a row. `rotate` validates the new credential and
+only then issues **one conditional `UPDATE`**: a refusal leaves the old key live and working,
+and a success has no window in which neither does. `reveal` counts the attempt **before** it
+checks the step-up, which is the one ordering here that is a security property rather than a
+preference — a limiter behind the step-up would leave the password comparison unlimited.
+
+**Masking is server-side, and computed from bytes.** A list returns `••••Xq4A` — four bullets
+and the credential's last four characters — and the full value is simply not in the payload.
+Returning the key and letting a page draw bullets would put it in the browser's memory, in the
+network tab and in every error report that page ever sends. `masking.ts` decodes only the last
+sixteen bytes of the buffer the vault hands over, so the plaintext never becomes an immutable
+string on the read path, and the visible half is what every vendor console already shows. The
+contract test lives twice — over the built payloads and over the bytes that crossed a socket —
+and it is demonstrated to be *capable* of failing by being pointed at the one payload that does
+carry a credential.
+
+**Reveal costs a step-up, and there are two methods because BetterAuth gives this build two.**
+A session **created** inside a five-minute window is a re-authentication in itself — the only
+method a GitHub-only account has, and the reason `SessionRecord` reads `createdAt` and never
+`updatedAt`, which slides on every renewal. Otherwise a **password** confirmed through
+`auth.api.verifyPassword`, which works in production too: `emailAndPassword.enabled` gates the
+sign-in *routes*, and verification reads the credential account directly. A confirmation is
+remembered for the window, so confirming once and revealing two keys is one prompt. **A wrong
+password answers exactly as an absent one does** — anything else would make this a password
+oracle for whoever holds a stolen session. Without either, the answer is `401 step_up_required`
+carrying the methods and the window, which is a challenge a client can act on rather than a
+wall.
+
+**Rate-limited per user *and* per connection**, because the two catch different things: one
+account walking the whole list, and several accounts converging on one credential. Every
+attempt counts, the ones that failed the step-up included. Both the limiter and the step-up
+registry are **in-memory singletons**, and what that costs is stated rather than discovered — a
+second replica has its own counters, so ten becomes twenty across two processes, and a person
+behind a round-robin balancer may be asked to confirm again. The second is a re-prompt, which
+is the safe direction to fail in.
+
+**Members read; `owner` and `admin` write — and reveal counts as a write.** It changes nothing
+and it is the one operation that hands back a live credential, so filing it with the reads
+because of its side effects would be filing it by the wrong property. The workspace is the
+session's throughout: there is no `{orgId}` in any of these paths, and another workspace's
+connection is a `404` rather than a `403`, because a `403` confirms that an identifier names
+something real.
+
+**The delete guard is Y.1's foreign key, thrown at last.** `model_aliases_provider_fk` is what
+makes the delete impossible; `registry.errors.ts`'s `providerConnectionInUse` — written under
+[#189](https://github.com/NobuData/ouroboros/issues/189) *for* this ticket and left with no
+caller — is what turns *violates foreign key constraint* into a sentence naming the aliases to
+repoint first. Both of its directions are used: the pre-flight that can name them, and the
+recogniser for the race a pre-flight cannot close.
+
+**One gap is refused rather than papered over.** `provider_connections` keeps a connection's
+settings in *columns* — `base_url` and `capability_note`, which is why `provider.config.ts`
+reserves those two field names — and has no general column for anything else. Copilot's schema
+declares one field that is neither: an optional billing `organization`. Dropping it would store
+a connection that quietly disagrees with what somebody typed; adding a column is a migration,
+and this ticket's scope is `ouroboros-rest`. So a submitted setting with nowhere to go is a
+designed **`501 provider_config_not_storable`** naming the field — the same shape
+`provider_kind_unsupported` has, and for the same reason: *this build cannot* is a different
+fact from *you asked wrongly*. Copilot connects without one, which its own schema calls the
+ordinary case.
+
+**Every operation is audited on AD.3's interim seam.** `connection.audit.ts` emits
+`provider.added|revealed|rotated|updated|deleted` — AD.4's
+([#225](https://github.com/NobuData/ouroboros/issues/225)) own vocabulary, agreed before the
+trail exists — to the service log with every field that issue's row will carry. A reveal
+records *how* the step-up was satisfied, which is the difference between somebody with this
+session and somebody who proved they are this person. When #225 lands, five method bodies
+become an insert and no caller, field or event name changes.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -2104,6 +2194,8 @@ ouroboros-rest/
 │       │                   #   adapters/ollama.adapter.ts + provider.pulls.ts · #219
 │       │                   #   adapters/{copilot,cursor}.adapter.ts + entitlements · #220
 │       │                   #   adapters/ is the only place a provider SDK may be imported
+│       ├── provider-connections/ # /api/v1/providers — the credential lifecycle · #223
+│       │                   #   masking.ts · step-up.ts · reveal.limiter.ts · connection.audit.ts
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
@@ -2221,6 +2313,7 @@ the Anthropic adapter [#217](https://github.com/NobuData/ouroboros/issues/217) �
 the OpenAI-compatible adapter [#218](https://github.com/NobuData/ouroboros/issues/218) ·
 the Ollama adapter and server-side pulls [#219](https://github.com/NobuData/ouroboros/issues/219) ·
 the Copilot & Cursor adapters [#220](https://github.com/NobuData/ouroboros/issues/220) ·
+the credential lifecycle [#223](https://github.com/NobuData/ouroboros/issues/223) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

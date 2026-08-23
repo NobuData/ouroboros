@@ -521,7 +521,9 @@ this service and upgraded with it.
 > **Status: Specified** — AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225)),
 > roadmap decision **P5**, coordinating with
 > [#26](https://github.com/NobuData/ouroboros/issues/26)'s `audit_events` shape.
-> One event, `credential.lease_granted`, is **Shipped** with an interim sink — see
+> **Six of the events are already emitted**, on an interim sink — `credential.lease_granted`
+> from AD.3 and the five `provider.*` from AD.2
+> ([#223](https://github.com/NobuData/ouroboros/issues/223)) — see
 > [§5.4](#54-where-the-events-go-today).
 
 ### 5.1 What is recorded
@@ -531,9 +533,19 @@ the source IP and a detail object:
 
 ```
 provider.added        provider.revealed     provider.rotated
-provider.enabled      provider.disabled     provider.cap_changed
-provider.deleted      provider.tested       credential.lease_granted
+provider.updated      provider.deleted      provider.tested
+credential.lease_granted
 ```
+
+**`provider.updated` is one event where this section once named three.** The specification
+listed `provider.enabled`, `provider.disabled` and `provider.cap_changed` separately, and
+AD.2's `PATCH` can change the switch, the cap, the note and the address in a single request
+— so three names would have meant either several events for one operation, contradicting the
+sentence above it, or an arbitrary rule about which one wins. The distinction is not lost: an
+edit's detail carries **which settings were written**, which is what a reader filtering for
+*who turned this connection off* actually needs, and it stays correct for a request that also
+did something else. `provider.tested` is AE.4's
+([#230](https://github.com/NobuData/ouroboros/issues/230)) and is not emitted yet.
 
 Key custody without a trail would fail the page's own security posture, which is why this
 is day-one scope rather than a later hardening ticket.
@@ -564,12 +576,13 @@ and may not update or delete. An audit trail the audited party can edit is not o
 
 ### 5.4 Where the events go today
 
-**`credential.lease_granted` is real and its sink is interim.** The record is assembled at
-the one point a grant is known to have happened and emitted to the service log — a
-durable, timestamped, in-cluster record carrying every field the eventual row will carry.
-AD.4 has not landed, so there is no `audit_events` table to insert into. When #225 lands,
-one method body becomes an insert and every caller, every field and the event's name stay
-as they are.
+**The events are real and their sink is interim.** Each record is assembled at the one point
+the operation is known to have happened and emitted to the service log — a durable,
+timestamped, in-cluster record carrying every field the eventual row will carry. AD.4 has not
+landed, so there is no `audit_events` table to insert into. When #225 lands, six method
+bodies become an insert — one in `internal/lease.audit.ts`, five in
+`provider-connections/connection.audit.ts` — and every caller, every field and every event
+name stay as they are.
 
 That is said here rather than glossed because "every operation is audited" and "every
 operation is audited into a queryable table" are different claims, and only the first is
@@ -650,26 +663,44 @@ kind to base URL, validated at boot, refusing any kind that is not leasable
 
 ### 6.2 Reveal is privileged, audited and rate-limited
 
-> **Status: Specified** — AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)),
-> roadmap decision **P4**.
+> **Status: Shipped** (server side) — AD.2
+> ([#223](https://github.com/NobuData/ouroboros/issues/223)), roadmap decision **P4**.
+> `ouroboros-rest/src/modules/provider-connections/`. The UI half is AE.3
+> ([#229](https://github.com/NobuData/ouroboros/issues/229)).
 
 The key row on the Providers page shows a masked suffix — `••••Xq4A` — and offers a
 **Reveal** button. The masking is server-computed: **no list payload ever contains secret
 material**, so "masked" is a property of the response rather than of the input element
-rendering it, and a contract test greps for it.
+rendering it, and a contract test greps for it — over the built payloads and over the bytes
+that crossed a socket.
 
 Reveal itself is deliberately expensive:
 
 - **Step-up re-authentication.** A live session is not sufficient; the actor
   re-authenticates immediately before the value is returned. Without it the request is a
-  `401` challenge, not a refusal.
+  `401 step_up_required` challenge naming the methods, not a refusal. Two methods are
+  accepted, because they are the two BetterAuth gives this build: a session **created**
+  inside a five-minute window (the only one a GitHub-only account has), or a password
+  confirmed through `auth.api.verifyPassword` inside the same window. A wrong password
+  answers exactly as an absent one does, or the endpoint would be a password oracle for
+  whoever holds a stolen session.
 - **Owner/admin only.** A member session sees none of these affordances, and the API
-  agrees with the UI rather than relying on it.
-- **Audited.** `provider.revealed` records who, which connection, from where, and when.
-- **Rate-limited.** Repeated reveal attempts are throttled, because the affordance's
-  failure mode is not one dramatic breach but a slow enumeration.
-- **Time-boxed in the UI.** The revealed value auto-masks on a timer and on navigation,
-  and the interface makes no claim about the clipboard, because it cannot keep one.
+  agrees with the UI rather than relying on it — the roles guard refuses a member
+  server-side, which the integration suite asserts rather than assumes.
+- **Audited.** `provider.revealed` records who, which connection, when, and **how the
+  step-up was satisfied** — the difference between somebody with this session and somebody
+  who proved they are this person.
+- **Rate-limited.** Per user *and* per connection, because the two catch different
+  things: one account walking the whole list, and several accounts converging on one
+  credential. **Every attempt counts, the ones that failed the step-up included** — a
+  limiter behind the step-up would leave the password comparison unlimited. The counters
+  are per process today, which means a multi-replica deployment enforces the limit per
+  replica; that is a bounded weakening, stated rather than papered over.
+- **Time-boxed in the UI.** The answer carries `Cache-Control: no-store` and an
+  `expiresAt` the client should stop displaying at — an instruction rather than an
+  enforcement, because a value handed to a browser is in the browser. AE.3 auto-masks on
+  that timer and on navigation, and the interface makes no claim about the clipboard,
+  because it cannot keep one.
 
 **There is no route that decrypts a credential anywhere else.** The vault module declares
 no controller at all: a route that decrypted a credential would be a route that returned
@@ -677,26 +708,30 @@ one, and which of those exist is AD.2's decision, behind exactly this step-up.
 
 ### 6.3 Rotation: verify before retire
 
-> **Status: Specified** — AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)).
+> **Status: Shipped** — AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)).
 
 Two different things in this document are called rotation, and conflating them is the
 easiest mistake to make here:
 
 | | What rotates | Status |
 |---|---|---|
-| **Credential rotation** | the provider's API key, replaced by the customer | Specified — AD.2 |
+| **Credential rotation** | the provider's API key, replaced by the customer | Shipped — AD.2 |
 | **DEK rotation** | the workspace's data-encryption key ([§2.5](#25-rotating-a-key-is-additive)) | Shipped — AD.1 |
 | **KEK re-wrap** | where the key-encryption key lives ([§3.5](#35-upgrading-custody-is-a-re-wrap)) | Shipped — AD.1 |
 
 Credential rotation is **verify-then-retire**, and the ordering is the whole of it: the
 new secret is validated against the provider with a live call, and only then does it
-replace the old one atomically. **A failed validation leaves the old key active** — the
-error explains what happened and the connection keeps working. The opposite ordering would
-make a typo an outage, and a rotation flow that can cause an outage is a rotation flow
-nobody runs.
+replace the old one — in a single conditional `UPDATE`, so there is no window in which
+neither key is active, and a row rewritten underneath the validation answers `409` rather
+than being overwritten by a value nobody checked. **A failed validation leaves the old key
+active** — the error explains what happened and the connection keeps working, because the
+refusal happens before any statement is issued rather than being undone afterwards. The
+opposite ordering would make a typo an outage, and a rotation flow that can cause an outage
+is a rotation flow nobody runs.
 
 The same ordering governs adding a connection: a secret is **validated before it is
-persisted**, so a bad key is never stored silently.
+persisted**, so a bad key is never stored silently. There is no row to clean up on failure,
+because there was never a row.
 
 Deleting a connection is blocked while routing aliases depend on it — a `409` naming them
 rather than a cascade that silently breaks a routing chain.

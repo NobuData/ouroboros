@@ -39,12 +39,14 @@
  * The absent imports are what keep that true as adapters land — the day one needs a database,
  * adding the import is a visible change with a reviewer attached to it.
  *
- * It declares **no controller**. Every surface that would sit on top of this is somebody
- * else's ticket: AD.2 owns add/reveal/rotate, AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230))
- * owns test and discovery, AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)) owns
- * the add-form. `registry/` made the same choice under decision **M2** and for the same reason:
- * a CRUD surface written here first is one those tickets would have to negotiate with rather
- * than write.
+ * It declares **no controller**. Every surface that sits on top of this is somebody else's
+ * ticket: AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) owns
+ * add/reveal/rotate and has shipped it in `src/modules/provider-connections/`, which imports
+ * this module for `ModelProviderRegistry` and nothing else; AE.4
+ * ([#230](https://github.com/NobuData/ouroboros/issues/230)) owns test and discovery, AE.5
+ * ([#231](https://github.com/NobuData/ouroboros/issues/231)) owns the add-form. `registry/`
+ * made the same choice under decision **M2** and for the same reason: a CRUD surface written
+ * here first is one those tickets would have to negotiate with rather than write.
  */
 
 import { Module } from "@nestjs/common";
