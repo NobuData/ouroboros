@@ -15,7 +15,7 @@
 # minutes; every later one reuses the layer cache. `--build` is what picks up a source
 # change, because compose builds a missing image but never rebuilds a stale one.
 #
-# Two profiles, and one of them is the absence of a profile:
+# Three profiles, and one of them is the absence of a profile:
 #
 #   (none) / --profile db   the data tier — `db` and `flyway`, the subset issue #10
 #                           established. They carry no `profiles:` key, so they are in
@@ -25,6 +25,12 @@
 #                           meant. `--profile db` is accepted and selects exactly this
 #                           set, since a profile nothing declares adds nothing to it.
 #   --profile full          the three application services on top.
+#   --profile ollama        a local model host to point an Ollama provider connection at
+#                           (issue #219). Deliberately *not* in `full`: the image is over
+#                           a gigabyte and a model is several more, which is a cost only
+#                           somebody actually working on that card should pay.
+#
+#   docker compose --profile ollama up -d ollama   # http://localhost:11434
 #
 # Every credential is interpolated from the environment with a development default, so a
 # clean checkout with no .env file works as-is. Copy .env.example to .env to override any
@@ -325,6 +331,55 @@ services:
     profiles:
       - full
 
+  # ---------------------------------------------------------------------------
+  # ollama — a local model host, for the provider card that pulls (issue #219).
+  #
+  # Mockup 07's `OL` card is the only one whose **Pull latest** button changes what models
+  # exist, and AC.4's acceptance criteria are written against a real daemon: *a pull of a
+  # small model completes with real progress states from start to done*. This is that
+  # daemon, so the criterion can be met with `docker compose` rather than with a laptop
+  # somebody happens to have Ollama installed on.
+  #
+  # **It is behind its own profile and not in `full`.** The image is over a gigabyte
+  # before it holds a single model, and `--profile full` is what a person runs to look at
+  # the product — paying that on every cold start for a card most sessions never touch is
+  # the wrong trade. Nothing else in the stack depends on it; a connection is configured
+  # by pointing the Ollama card's **Host** field at it.
+  #
+  # **The port is published, and that is deliberate.** `rest` reaches it at
+  # `http://ollama:11434` over the network below, but the address a person types into the
+  # Host field is one *they* have to be able to check with `curl` — and the same address
+  # has to work whether `rest` is this stack's container or a `yarn dev` on the host.
+  # Loopback-bound for the reason `db`'s port is: this daemon authenticates nobody, and
+  # publishing it on 0.0.0.0 would offer a machine's GPU to every device on whatever
+  # network the laptop has joined.
+  #
+  # Models live in a named volume, so `down` keeps a 9 GB pull and `down -v` reclaims it.
+  # There is no GPU reservation here: compose cannot express one portably, and a daemon
+  # on the CPU is slow at answering rather than unable to — which is fine for a card whose
+  # job is to list models and pull them.
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:0.12.3
+    ports:
+      - "${OURO_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ouroboros-ollama-models:/root/.ollama
+    healthcheck:
+      # The same route the adapter's **Test connection** asks, so a healthy container and
+      # a connected card mean the same thing. `ollama --version` would pass against a
+      # daemon whose HTTP listener had not come up.
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - ollama
+
 networks:
   # One network, named rather than left to compose's `default`, so what is on it is a
   # decision this file makes. It is an ordinary bridge: the services must still reach the
@@ -336,3 +391,6 @@ networks:
 volumes:
   # Named rather than anonymous so `down -v` reclaims it and a plain `down` does not.
   ouroboros-db-data:
+  # The Ollama daemon's model store. Named for the same reason and with more at stake: a
+  # `llama4:scout` is 63 GB, and an anonymous volume would make `down` throw it away.
+  ouroboros-ollama-models:

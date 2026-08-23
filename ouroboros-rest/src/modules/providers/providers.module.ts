@@ -8,18 +8,26 @@
  * provider.config.ts     the JSON Schema dialect              → configSchema()'s contract
  * provider.forms.ts      schema → form fields, no kind in it  → AE.5's renderer input
  * provider.registry.ts   lookup by kind, and its two refusals → MODEL_PROVIDER_ADAPTERS
+ * provider.pulls.ts      server-side pull tracking (AC.4)     → ModelPullTracker
  * adapters/              the implementations                  → nothing else may import these
  * conformance.fixture.ts the kit every adapter must pass
  * ```
  *
- * **It exports one thing.** {@link ModelProviderRegistry} is what AD.2's credential lifecycle
+ * **It exports two things.** {@link ModelProviderRegistry} is what AD.2's credential lifecycle
  * ([#223](https://github.com/NobuData/ouroboros/issues/223)), Z.3's health service and the
  * discovery scheduler import; {@link REGISTERED_ADAPTERS} is the list AC.2–AC.5 each add one
  * line to. `anthropic` is registered as of AC.2
- * ([#217](https://github.com/NobuData/ouroboros/issues/217)) and `openai_compatible` as of AC.3
- * ([#218](https://github.com/NobuData/ouroboros/issues/218)); the other three kinds are still a
+ * ([#217](https://github.com/NobuData/ouroboros/issues/217)), `openai_compatible` as of AC.3
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)) and `ollama` as of AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)); the other two kinds are still a
  * `501`, which is the accurate answer rather than a stub — see `provider.registry.ts` on why an
  * unregistered kind is a `501` and not a `404`.
+ *
+ * {@link ModelPullTracker} is the second export and it arrived with the first pulling adapter.
+ * It is a *singleton with state*, which nothing else in this module is: a pull outlives the
+ * request that started it, so what remembers one has to outlive that request too. It holds no
+ * adapter and no credential — `provider.pulls.ts` explains why it takes a thunk — so registering
+ * it here changes nothing about the absent imports below.
  *
  * `VaultModule` is deliberately **not** imported, and neither is `DbModule`. Nothing here reads
  * a row or opens a credential: an adapter is handed an already-opened
@@ -39,8 +47,10 @@
 import { Module } from "@nestjs/common";
 
 import { AnthropicAdapter } from "./adapters/anthropic.adapter";
+import { OllamaAdapter } from "./adapters/ollama.adapter";
 import { OpenAiCompatibleAdapter } from "./adapters/openai-compatible.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
+import { ModelPullTracker } from "./provider.pulls";
 import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.registry";
 
 /**
@@ -51,13 +61,18 @@ import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.regis
  * an adapter being written, tested, and then never reachable because nobody added the line.
  * `vault.module.ts`'s `REGISTERED_SECRET_STORES` is the same shape for the same reason.
  *
- * **AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) is the first entry and AC.3
- * ([#218](https://github.com/NobuData/ouroboros/issues/218)) the second** — one line each, and
- * nothing else in the service learned either provider's name. AC.4 and AC.5 append theirs the
+ * **AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) is the first entry, AC.3
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)) the second and AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)) the third** — one line each, and
+ * nothing else in the service learned any of those providers' names. AC.5 appends its two the
  * same way. The list is spread into `providers` as well as into `inject`, because a class Nest
  * is asked to inject is a class Nest also has to have been told to construct.
  */
-export const REGISTERED_ADAPTERS = [AnthropicAdapter, OpenAiCompatibleAdapter] as const;
+export const REGISTERED_ADAPTERS = [
+  AnthropicAdapter,
+  OpenAiCompatibleAdapter,
+  OllamaAdapter,
+] as const;
 
 @Module({
   providers: [
@@ -72,7 +87,8 @@ export const REGISTERED_ADAPTERS = [AnthropicAdapter, OpenAiCompatibleAdapter] a
       inject: [...REGISTERED_ADAPTERS],
     },
     ModelProviderRegistry,
+    ModelPullTracker,
   ],
-  exports: [ModelProviderRegistry],
+  exports: [ModelProviderRegistry, ModelPullTracker],
 })
 export class ProvidersModule {}

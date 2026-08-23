@@ -60,6 +60,15 @@
  *    the supported way to supply a key. Refusing it here is what stops a person who pasted the
  *    URL their vendor printed from storing a key in the clear.
  *
+ * ---------------------------------------------------------------------------
+ * **It also owns the two sentences an address-taking adapter renders**, {@link describeRefusal}
+ * and {@link describeUnreachable} — added by AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)), which is the point at which they
+ * would otherwise have existed in two copies. Both are *consequences of this policy* rather than
+ * of a provider: a `3xx` reaching a caller at all is rule 2, and a host echoed *without* the
+ * runtime's own message is the last of the adapter rules below. A phrase in two copies drifts,
+ * and these two are read off a card.
+ *
  * Two more rules are the *adapter's*, not this file's, and are named here so the policy reads
  * as one list: **kind scoping** — only these two adapter kinds take an address at all, cloud
  * adapters have fixed hosts — and **response bodies are never echoed**: a test connection
@@ -67,6 +76,8 @@
  * returns what the endpoint said, which is what keeps a reachability probe from being a
  * data-exfiltration primitive.
  */
+
+import { describeHttpRefusal, describeTransportFailure } from "./provider.errors";
 
 /**
  * The schemes an operator-supplied address may use.
@@ -235,6 +246,49 @@ export function isRedirect(status: number): boolean {
  */
 export function describeRedirectRefused(status: number): string {
   return `redirect not followed (${status.toString()})`;
+}
+
+/**
+ * How a refusal reads on the card foot, redirects included.
+ *
+ * The taxonomy is `provider.errors.ts`'s and this does not fork it — a `3xx` is `config` there
+ * and stays `config` here. What differs is only the *sentence*, and only for the one status
+ * whose outcome this service caused: `responded 302` is true and sends a reader looking for a
+ * server that answered oddly, when what happened is that the address points somewhere that
+ * redirects and {@link PROVIDER_REDIRECT} declined to go on.
+ *
+ * Here rather than in each adapter because a redirect only ever *reaches* one because of rule 2,
+ * which is this file's. An adapter talking to a fixed host — Anthropic's — calls
+ * {@link describeHttpRefusal} directly and has no redirect branch to write.
+ *
+ * @param status - The status the endpoint answered with. Must be a refusal.
+ * @returns The phrase for the card foot.
+ * @throws {RangeError} For anything below `300`, through `classifyHttpStatus`.
+ */
+export function describeRefusal(status: number): string {
+  return isRedirect(status) ? describeRedirectRefused(status) : describeHttpRefusal(status);
+}
+
+/**
+ * How an endpoint that never answered reads on the card foot.
+ *
+ * **The host is echoed and the runtime's own message is not.** That combination is the whole
+ * function: an operator running several self-hosted endpoints cannot act on *unreachable* with
+ * nothing else on it, and the runtime's message carries a resolved address, a port and sometimes
+ * the request headers. {@link describeTransportFailure} answers a symbolic code or nothing.
+ *
+ * Safe to print the host: it is the operator's own address, already visible in the field it came
+ * from, and it carries no credential because {@link resolveProviderAddress} refuses userinfo.
+ *
+ * @param host - The address's `host:port`, from `ProviderAddress.url.host`.
+ * @param error - Whatever was caught.
+ * @param timeoutMs - The deadline the call was given, so the timeout phrase can name it. Each
+ *   adapter sets its own.
+ * @returns The phrase — `10.0.4.20:8000 unreachable (ECONNREFUSED)`,
+ *   `ken-station.local:11434 timed out after 10000 ms`.
+ */
+export function describeUnreachable(host: string, error: unknown, timeoutMs: number): string {
+  return `${host} ${describeTransportFailure(error, timeoutMs)}`;
 }
 
 /**

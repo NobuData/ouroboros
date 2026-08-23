@@ -233,6 +233,23 @@ still there for anything they do not cover. All of them read one configuration �
 [`ouroboros-db/flyway.toml`](ouroboros-db/flyway.toml), the same file the compose stack
 above applies its migrations with.
 
+### A local model host
+
+The Providers & keys page has an Ollama card, and its **Pull latest** button needs a real
+daemon to pull from. There is one in the stack, behind a profile of its own:
+
+```bash
+docker compose --profile ollama up -d ollama          # http://localhost:11434
+docker compose --profile ollama exec ollama ollama pull qwen3:0.6b   # ~500 MB, for a first pull
+```
+
+It is **not** part of `--profile full`: the image is over a gigabyte before it holds a
+single model, which is a cost only somebody working on that card should pay. Nothing else
+in the stack depends on it — point an Ollama connection's **Host** field at
+`http://localhost:11434` (or `http://ollama:11434` from inside the network) and the card
+does the rest. Models live in a named volume, so `down` keeps them and `down -v` reclaims
+them.
+
 Where there is no checkout to run those from — a deployment, a pipeline elsewhere —
 there is the published migration image, which carries the same migrations and the same
 configuration and takes the same `OURO_*` variables:

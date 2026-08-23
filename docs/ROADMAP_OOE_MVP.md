@@ -662,7 +662,7 @@ that roadmap's "Existing issues affected" section.
 | 103 | **Y.3** | ✅ [#191](https://github.com/NobuData/ouroboros/issues/191) | Escalation rules schema | ouroboros-db | S | Y.2 |
 | 104 | **AC.2** | ✅ [#217](https://github.com/NobuData/ouroboros/issues/217) | Anthropic adapter | ouroboros-rest | S | AC.1, AD.1 |
 | 105 | **AC.3** | ✅ [#218](https://github.com/NobuData/ouroboros/issues/218) | OpenAI-compatible adapter (vLLM et al.) | ouroboros-rest | S | AC.1, AD.1 |
-| 106 | **AC.4** | [#219](https://github.com/NobuData/ouroboros/issues/219) | Ollama adapter with model pulls | ouroboros-rest | M | AC.1 |
+| 106 | **AC.4** | ✅ [#219](https://github.com/NobuData/ouroboros/issues/219) | Ollama adapter with model pulls | ouroboros-rest | M | AC.1 |
 | 107 | **AC.5** | [#220](https://github.com/NobuData/ouroboros/issues/220) | Copilot & Cursor adapters | ouroboros-rest | M | AC.1, AD.1 |
 | 108 | **AD.2** | [#223](https://github.com/NobuData/ouroboros/issues/223) | Credential lifecycle API | ouroboros-rest | M | AC.1, AD.1 |
 | 109 | **CG.1** | [#579](https://github.com/NobuData/ouroboros/issues/579) | Alias lifecycle, binding & params extensions | ouroboros-db | M | Y.1, AC.6 |
