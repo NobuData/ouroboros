@@ -96,6 +96,27 @@ describe("redactedEnvironment", () => {
     expect(redacted[VARIABLES.corsOrigins]).toBe(origins);
   });
 
+  it("writes the local providers back as the pairs they were set as", () => {
+    // The map-valued variable ([#224](https://github.com/NobuData/ouroboros/issues/224)).
+    // The rule is that a boot log is copy-pasteable back into an env file, so a value that
+    // was parsed out of a string is rendered back into that string — without this it would
+    // print as `[object Object]`, which is the log quietly ceasing to describe the
+    // deployment.
+    const providers = "ollama=http://localhost:11434,openai_compatible=http://localhost:8001/v1";
+    const redacted = redactedEnvironment(
+      testConfiguration({ OURO_LOCAL_PROVIDER_URLS: providers }),
+    );
+
+    expect(redacted[VARIABLES.localProviderUrls]).toBe(providers);
+  });
+
+  it("prints nothing for a deployment that declares no local providers", () => {
+    // The normal posture, and it has to read as *unset* rather than as `{}` or `[object
+    // Object]` — an operator scanning the block should see an empty line and know why a
+    // lease answers `404`.
+    expect(redactedEnvironment(testConfiguration())[VARIABLES.localProviderUrls]).toBe("");
+  });
+
   it("prints an unset variable with nothing after the equals sign", () => {
     // Which is how an env file spells "not set". `undefined` or `null` printed literally
     // would read as a value somebody had configured. `OURO_LISTEN_HOST` is the one

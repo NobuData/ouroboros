@@ -1,0 +1,758 @@
+# ouroboros-rest — the *internal* API specification: what `ouroboros-engine` may call.
+#
+# A second document rather than a second section of openapi.yaml, and the separation is the
+# point. That one describes the browser's boundary: every path under `/api`, session-
+# authenticated, CORS-configured, and the file `ouroboros-ui` generates its client from. This
+# one describes the two paths a worker inside the network calls, authenticated by the #51
+# shared secret and reachable from no browser at all. Merging them would put engine-facing
+# operations into the UI's generated client — `docs/ARCHITECTURE.md` § 8's first invariant
+# written as a hole rather than as a boundary.
+#
+# Edit this file, then run `yarn openapi` to re-render openapi.internal.json beside it.
+# `yarn test` refuses a pair that has drifted apart, a version that disagrees with
+# package.json, an internal route the application serves that this document does not
+# describe, and one this document promises that the application does not serve
+# (src/openapi/openapi.spec.ts).
+#
+# **It is not served.** openapi.yaml is published at /api/openapi.{json,yaml} because its
+# reader is a client generator on somebody's laptop; this document's reader is AF.1 (#234),
+# AF.2 (#235) and `ouroboros-engine`'s client stub, all of which read it out of the
+# repository. A route publishing it would be one more path on a surface whose whole argument
+# is that it has two.
+
+openapi: 3.1.0
+
+info:
+  title: ouroboros-rest (internal)
+  version: "0.24.3"
+  summary: What ouroboros-engine may ask the control plane for — and what it is never given.
+  description: |-
+    The **engine-facing** surface of
+    [Ouroboros](https://github.com/NobuData/ouroboros)' communications layer. Two
+    operations, one caller, and one idea holding both of them together — roadmap decision
+    **P3**, [#224](https://github.com/NobuData/ouroboros/issues/224):
+
+    > **A worker never holds a provider credential.**
+
+    Mockup 07's page subline promises something weaker — *"keys never leave the control
+    plane — workers only ever see short-lived tokens"* — and this document is where the
+    first clause is made literal and the second is **improved on**. There is no token. A
+    fifteen-minute credential is still a credential: it genuinely reaches the worker,
+    revocation is bounded only by its TTL, and the audit surface widens to every process
+    that ever held one. It is also, for most LLM providers, fiction — almost none support
+    deriving short-lived scoped keys, so such a token would in practice be a full API key
+    with a timer bolted on by us.
+
+    So the two operations divide the world:
+
+    | Operation | For | Hands over |
+    |---|---|---|
+    | `POST /internal/llm/invoke` | every **cloud** provider | nothing — the control plane makes the call and streams back the answer |
+    | `POST /internal/credentials/lease` | **local** providers only | an address, TTL-bounded and audited |
+
+    The exception is narrow and is not a compromise. An engine worker calling an Ollama
+    daemon on the same box gains nothing from proxying its traffic through this service,
+    because there is no key on that path to protect — so it is told the address and nothing
+    else, and a lease naming a cloud provider is a `403` by policy, enforced here rather
+    than trusted to the caller.
+
+    **What is built and what is specified.** The lease is implemented. The proxy is
+    *specified* by this document and implemented by AF.2
+    ([#235](https://github.com/NobuData/ouroboros/issues/235)); calling it today answers
+    `501` with `code: "invocation_not_implemented"`, deliberately rather than `404`, so an
+    executor being written against this contract can tell *the path is right and the other
+    half is not built yet* from *I have the URL wrong*. The contract exists first because
+    AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose an
+    executor **against** it — a decision recorded afterwards is a description of whatever
+    got built.
+
+    **Authentication is the #51 pattern, in the other direction.** Every operation requires
+    `X-Ouro-Internal-Key`, carrying `OURO_ENGINE_SHARED_SECRET` — the same header and the
+    same variable `ouroboros-rest` sends when *it* calls the engine
+    ([#51](https://github.com/NobuData/ouroboros/issues/51)). The comparison is constant
+    time, a missing header takes the same path as a wrong one, and the rejection is one
+    constant body: `401` with `code: "unauthenticated"` and nothing else. A session cookie
+    is not accepted here, whoever it belongs to.
+
+    **These paths are outside `/api`, and unversioned.** `/api` is the browser's boundary;
+    the only caller of these two is deployed alongside this service and upgraded with it, so
+    a version in the path would be one nobody could ever be on a different side of. That is
+    the same argument `/health/live` and `ouroboros-engine`'s `/healthz` are written under.
+
+    **Every error has the shape every other error in this system has** — `{code, message,
+    details}`, `docs/ARCHITECTURE.md` § 5.3 — so a worker parses one envelope whether it
+    was refused at the boundary or inside a handler.
+
+    **The naming convention changes at this boundary, once.** This service writes
+    `camelCase` in its contracts and `ouroboros-engine` writes `snake_case` in its own; each
+    side translates in exactly one file — `src/modules/engine/engine.contract.ts` here,
+    `ouroboros_engine/control_plane/contract.py` there — so no code on either side carries
+    the other's spelling.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  contact:
+    name: Ouroboros
+    url: https://github.com/NobuData/ouroboros
+
+servers:
+  - url: http://localhost:4000
+    description: |-
+      `yarn dev`. In a deployment this is the address the engine resolves the control plane
+      at — `http://rest:4000` inside the compose network — which is never the address a
+      browser uses.
+
+# Applied to every operation, and there is no `security: []` anywhere in this document.
+# That is the difference between this surface and the public one: there, a handful of routes
+# are deliberately open; here, an open route would be a worker endpoint reachable by anything
+# that can route a packet to the port.
+security:
+  - ouroInternalKey: []
+
+tags:
+  - name: credentials
+    description: |-
+      **What a worker is given, and what it is not.**
+
+      One operation, and its shape is the argument. A lease carries an address, a run, a
+      workspace and two timestamps — there is no field for a secret, which is how *no secret
+      is ever returned* is enforced by the type rather than by a test that inspects a payload
+      and hopes it looked everywhere. A lint rule
+      (`src/modules/internal/no-secret-responses.mjs`) refuses one added later.
+
+      A lease is **not a bearer token.** Possessing one grants nothing that knowing the
+      address would not, which is why nothing stores it and there is no way to revoke one.
+      What the TTL bounds is how long a worker should keep believing the answer before asking
+      again — real staleness, not theatrical security. Calling a fifteen-minute expiry on a
+      hostname a security control is the kind of claim `docs/SECURITY_MODEL.md`
+      ([#226](https://github.com/NobuData/ouroboros/issues/226)) exists to keep out of the
+      product.
+
+  - name: invocation
+    description: |-
+      **The proxy — specified here, implemented by AF.2
+      ([#235](https://github.com/NobuData/ouroboros/issues/235)).**
+
+      The worker sends the call it wants made and the run it is making it for; the control
+      plane resolves the target, unwraps the credential inside one request scope, walks the
+      resolved chain and streams back what the provider said. The key never crosses back.
+
+      One choke point rather than a policy in every worker is what makes AB.1's
+      ([#207](https://github.com/NobuData/ouroboros/issues/207)) semantics implementable at
+      all: the per-hop error taxonomy, the floor that a chain may not degrade past, the
+      per-run cost cap, and usage capture attributed to the hop that actually served the
+      request. Each of those is a field or an event kind below, named here so that an
+      executor which ignored one can be found to have ignored it.
+
+paths:
+  /internal/credentials/lease:
+    post:
+      tags: [credentials]
+      summary: Lease a local provider's address for one run
+      description: |-
+        Tell a worker where a **local** provider is, for the duration of one run.
+
+        Three refusals, in this order, and the order is part of the contract:
+
+        1. **`403 provider_not_leasable`** — the provider is one whose credentials never
+           leave the control plane. Applied before anything is looked up, so no
+           configuration and no state can produce a grant. `anthropic`, `copilot` and
+           `cursor` are refused here; use `POST /internal/llm/invoke` instead.
+        2. **`404 local_provider_not_configured`** — a leasable kind this deployment has not
+           been told the address of. An absence, not a decision: an operator fixes it by
+           setting `OURO_LOCAL_PROVIDER_URLS`. A worker should not retry.
+        3. **`404 run_not_found`** — no such run, so there is nothing to scope the lease to.
+
+        The workspace a grant is audited against is **resolved from the run**, never taken
+        from the request: a worker naming its own workspace would be a worker choosing which
+        one to be audited against. Every grant writes a `credential.lease_granted` event
+        carrying the lease, the run, the workspace, the provider and the address — never
+        secret material, because on this path there is none.
+
+        `200` rather than `201`: nothing is created, nothing is stored, and there is no URL
+        to `GET` afterwards.
+      operationId: leaseLocalProvider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeaseRequest"
+            example:
+              provider: ollama
+              run: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+      responses:
+        "200":
+          description: |-
+            The lease. An address and nothing else — inspect the payload: there is no field
+            in which a credential could arrive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lease"
+              example:
+                id: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+                provider: ollama
+                run: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                organizationId: aBcD1234eFgH5678iJkL9012mNoP3456
+                baseUrl: http://localhost:11434
+                grantedAt: 2026-08-22T18:04:11.000Z
+                expiresAt: 2026-08-22T18:19:11.000Z
+                ttlSeconds: 900
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. One constant body: `code:
+            "unauthenticated"`, a bare message and empty `details`, whichever it was.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "403":
+          description: |-
+            `provider_not_leasable` — a cloud provider's credentials never leave the control
+            plane. This is policy, not state: no configuration makes it a `200`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: provider_not_leasable
+                message: This provider is reached through the invocation proxy; its credentials never leave the control plane. Call POST /internal/llm/invoke instead.
+                details:
+                  provider: anthropic
+        "404":
+          description: |-
+            `local_provider_not_configured` — this deployment declares no provider of that
+            kind — or `run_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: local_provider_not_configured
+                message: This deployment has no local provider of that kind. Set OURO_LOCAL_PROVIDER_URLS to declare one.
+                details:
+                  provider: openai_compatible
+        "422":
+          description: |-
+            `validation_failed` — `provider` is not one of the five kinds, `run` is not a
+            uuid, or the body carries a field this operation does not define. `details` has
+            one entry per field refused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: validation_failed
+                message: The request body is not valid.
+                details:
+                  provider:
+                    [
+                      "provider must be one of the following values: ollama, openai_compatible, anthropic, copilot, cursor",
+                    ]
+
+  /internal/llm/invoke:
+    post:
+      tags: [invocation]
+      summary: Ask the control plane to make a model call (specified — AF.2 implements it)
+      description: |-
+        Make a model call on the worker's behalf and stream the answer back.
+
+        **Not implemented.** This operation is specified by AD.3
+        ([#224](https://github.com/NobuData/ouroboros/issues/224)) and implemented by AF.2
+        ([#235](https://github.com/NobuData/ouroboros/issues/235)); it answers `501
+        invocation_not_implemented` today. The `200` below is the contract AF.2 is being
+        built against, and it is described here rather than after the fact because AF.1
+        ([#234](https://github.com/NobuData/ouroboros/issues/234)) has to choose between a
+        custom executor and LiteLLM-as-executor *against a written contract*.
+
+        **The target is `connection` or `alias`, exactly one.** A connection is a concrete
+        provider connection and means *this provider and no other*. An alias means *whatever
+        routing resolves it to*, which is an ordered chain with a floor and a cap — resolved
+        by Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194)) **on this side** of
+        the boundary, so that a worker cannot send a chain other than the one routing chose.
+
+        **`payload` is opaque and passes through.** The adapters own the per-provider shape;
+        this service brokers the call and does not read the prompt.
+
+        **The answer is always a stream** — `application/x-ndjson`, one event per line — even
+        when the provider did not stream. Two response shapes would be two code paths, and
+        the non-streaming one would be the one that quietly stopped emitting usage. NDJSON
+        rather than SSE because the reader is a worker process, not a browser: reconnection
+        and event ids buy nothing here and cost a framing layer on both sides.
+
+        **Every AB.1 ([#207](https://github.com/NobuData/ouroboros/issues/207)) semantic has
+        a name in this contract** — `floorHopIndex`, `costCapCents`, the `usage` event, the
+        `hop` event and the error codes with their per-hop rules. They are hooks: this
+        document says what they mean, AF.1 decides how they are implemented, AF.2 implements
+        them.
+      operationId: invokeModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvokeRequest"
+            example:
+              alias: reasoning-primary
+              payload:
+                messages:
+                  - role: user
+                    content: Summarise the failing test output.
+                maxTokens: 1024
+              runCtx:
+                run: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+                stage: analyse
+                floorHopIndex: 2
+                costCapCents: 500
+                resolutionVersion: r1
+      responses:
+        "200":
+          description: |-
+            The stream. One JSON object per line, terminated by a `done` or an `error` event.
+
+            **Specified, not yet answered** — see the operation description and the `501`
+            below.
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: "#/components/schemas/InvokeEvent"
+        "401":
+          description: |-
+            No `X-Ouro-Internal-Key`, or the wrong one. Checked before anything else, so an
+            unauthenticated caller learns nothing about what this path will one day do.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: unauthenticated
+                message: Unauthorized.
+                details: {}
+        "501":
+          description: |-
+            `invocation_not_implemented` — the contract is published and AF.2
+            ([#235](https://github.com/NobuData/ouroboros/issues/235)) is what makes it
+            answer. Deliberately not a `404`, which is what a caller with the wrong path
+            gets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: invocation_not_implemented
+                message: "The invocation proxy is specified and not yet implemented. It lands with AF.2 (issue #235); this route exists so the contract can be built against."
+                details: {}
+
+components:
+  securitySchemes:
+    ouroInternalKey:
+      type: apiKey
+      in: header
+      name: X-Ouro-Internal-Key
+      description: |-
+        The shared secret both sides read from `OURO_ENGINE_SHARED_SECRET`
+        ([#51](https://github.com/NobuData/ouroboros/issues/51)). It is a **deployment**
+        credential, not a caller's: it says *this request came from inside*, and says nothing
+        about who or what sent it. Compared in constant time; a missing header and a wrong
+        one are the same answer.
+
+        The same header `ouroboros-rest` sends when it calls `ouroboros-engine`, so a stack
+        where the two values disagree fails in both directions at once — which is the failure
+        an operator can actually find.
+
+  schemas:
+    Error:
+      type: object
+      title: Error
+      description: |-
+        The body of **every** error on this surface — the same shape the public API and
+        `ouroboros-engine` answer with (`docs/ARCHITECTURE.md` § 5.3), so a worker parses one
+        envelope whether it was refused at the boundary or inside a handler.
+      additionalProperties: false
+      required: [code, message, details]
+      properties:
+        code:
+          type: string
+          description: Stable, machine-readable, and the thing to branch on.
+          examples:
+            [
+              unauthenticated,
+              provider_not_leasable,
+              local_provider_not_configured,
+              run_not_found,
+              invocation_not_implemented,
+              validation_failed,
+            ]
+        message:
+          type: string
+          description: |-
+            Written for a person. It never names anything about the service's own internals,
+            and a rejection at the boundary is one constant sentence whatever earned it.
+          examples: [Unauthorized.]
+        details:
+          type: object
+          description: |-
+            Whatever is specific to this failure — the provider that was refused, the run that
+            was not found, the field messages of a `422`. Always present, empty rather than
+            absent, so a client reading `details.provider` never has to check `details` first.
+          additionalProperties: true
+          examples:
+            - provider: anthropic
+            - {}
+
+    ProviderKind:
+      type: string
+      title: ProviderKind
+      description: |-
+        A provider kind — AC.1's ([#216](https://github.com/NobuData/ouroboros/issues/216))
+        registry keys, spelled as `ouroboros-db` writes them in
+        `model_prices.match_provider_kind`.
+
+        `ollama` and `openai_compatible` are **leasable**: both are reached without a
+        credential, which is what makes an address worth handing over. The other three are
+        **proxied**: there is nothing useful to lease, because the part that matters is the
+        key.
+
+        `openai_compatible` is leasable with a caveat worth reading, because the same adapter
+        fronts a vLLM on somebody's own GPU **and** `api.openai.com`. Nothing at the level of
+        a kind can tell those apart — local-ness is a property of the *connection* — so a
+        lease for it still fails unless the deployment has declared where that provider is.
+        The operator's declaration is the connection-level statement, made once at deployment
+        level until Y.1 ([#189](https://github.com/NobuData/ouroboros/issues/189)) makes it a
+        row.
+      enum: [ollama, openai_compatible, anthropic, copilot, cursor]
+
+    LeaseRequest:
+      type: object
+      title: LeaseRequest
+      description: |-
+        What a worker asks for: a provider kind, and the run it is working on.
+
+        A *kind* rather than a connection id, because there are no connections yet — Y.1
+        ([#189](https://github.com/NobuData/ouroboros/issues/189)) brings them. Cloud kinds
+        are accepted **by the validator** and refused by the policy with `403`, deliberately:
+        a `422` would say *there is no such provider* about a provider the product supports.
+      additionalProperties: false
+      required: [provider, run]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ProviderKind"
+        run:
+          type: string
+          format: uuid
+          description: |-
+            The run this work belongs to — `runs.id`. What *scoped* means: the workspace the
+            grant is audited against is resolved from it.
+          example: 4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94
+
+    Lease:
+      type: object
+      title: Lease
+      description: |-
+        A granted lease. **Every field is an identifier, an address or a timestamp** — there
+        is nowhere for a secret to be, which is the acceptance criterion *no secret, verified
+        by payload inspection* expressed as a shape rather than as a test.
+
+        `baseUrl` and no `host`: publishing both would be publishing one fact twice, in two
+        spellings that can disagree, where the lossier one is the one a client would have to
+        reassemble a URL from.
+      additionalProperties: false
+      required: [id, provider, run, organizationId, baseUrl, grantedAt, expiresAt, ttlSeconds]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: This grant's id — the same value the `credential.lease_granted` event carries.
+        provider:
+          $ref: "#/components/schemas/ProviderKind"
+        run:
+          type: string
+          format: uuid
+          description: The run it is scoped to, echoed so an answer can be matched to its request.
+        organizationId:
+          type: string
+          description: |-
+            The workspace that run belongs to, resolved rather than supplied. Published
+            because the worker has to attribute what it does next — usage, telemetry — to the
+            same workspace this grant was audited against.
+        baseUrl:
+          type: string
+          format: uri
+          description: Where the provider is. The whole of what is handed over.
+          example: http://localhost:11434
+        grantedAt:
+          type: string
+          format: date-time
+          description: When the grant happened.
+        expiresAt:
+          type: string
+          format: date-time
+          description: When the worker should ask again.
+        ttlSeconds:
+          type: integer
+          description: |-
+            How long that is — 900. It bounds **staleness**, not exposure: a lease carries no
+            secret, so there is nothing an expiry could revoke.
+          example: 900
+
+    RunContext:
+      type: object
+      title: RunContext
+      description: |-
+        The run a call is made for — *per-run scoping*, as a shape. Everything about a call
+        that is not the call: whose work it is, where it sits in a chain, and the two limits
+        that may stop it.
+
+        The worker supplies what it knows; the control plane is the authority on the rest. A
+        cap a worker sent that is looser than the workspace's is not the cap that applies.
+      additionalProperties: false
+      required: [run]
+      properties:
+        run:
+          type: string
+          format: uuid
+          description: |-
+            The run — `runs.id`. Required: a call that belongs to no run cannot be
+            attributed.
+        hop:
+          type: integer
+          minimum: 0
+          description: |-
+            Which hop of the resolved chain this is, zero-based. Normally absent: walking the
+            chain is the control plane's job, not the worker's.
+        stage:
+          type: string
+          description: |-
+            The workflow stage — `runs.stage_label`. Telemetry rather than policy: AB.2
+            ([#208](https://github.com/NobuData/ouroboros/issues/208)) is what makes *which
+            stage was running* the thing that renders a spike legible.
+        floorHopIndex:
+          type: integer
+          minimum: 0
+          description: |-
+            The hop index below which the chain may not degrade — AB.1's floor, and mockup
+            06's *"never silently below the floor you set"*. Exhausting the chain down to it
+            fails the run with `floor_exhausted` rather than using a hop beneath it.
+        costCapCents:
+          type: integer
+          minimum: 0
+          description: |-
+            The per-run spend ceiling, in cents. Checked pre-flight **and** while running: a
+            single streamed response can cross a cap it was under when it started.
+        resolutionVersion:
+          type: string
+          description: |-
+            Which resolution this call was planned against — Z.1's `resolution_version`. It
+            crosses the boundary so that a call planned under one resolution and executed
+            after a rebind is recognisable as such.
+        vote:
+          type: boolean
+          description: |-
+            Is this a vote rather than the primary call? `add_vote` escalation is a real
+            invocation with its own usage, and marking it is what keeps a vote's tokens from
+            inflating what the primary call cost.
+
+    InvokeRequest:
+      type: object
+      title: InvokeRequest
+      description: |-
+        What the worker is asking the control plane to do. Exactly one of `connection` or
+        `alias`; the credential is not among the fields, because the worker does not have one.
+      additionalProperties: false
+      required: [payload, runCtx]
+      properties:
+        connection:
+          type: string
+          format: uuid
+          description: |-
+            A concrete provider connection — `provider_connections.id` (Y.1). *This provider*:
+            no chain, no fallback, no floor.
+        alias:
+          type: string
+          description: |-
+            A routing alias — `model_aliases.alias` (Y.1). *Whatever routing resolves this
+            to*, which is an ordered chain with a floor and a cap.
+        payload:
+          type: object
+          description: |-
+            The model call itself, in the adapter's own vocabulary. Opaque: nothing in this
+            service reads it, which is also why nothing in this service can log it.
+          additionalProperties: true
+        runCtx:
+          $ref: "#/components/schemas/RunContext"
+      oneOf:
+        - required: [connection]
+        - required: [alias]
+
+    InvokeEvent:
+      title: InvokeEvent
+      description: |-
+        One line of the streamed answer. Five kinds, and between them they carry everything
+        AB.1 requires an executor to report: what the model said, what it cost, what each hop
+        did, and how it ended.
+
+        A stream ends with exactly one terminal event — `done` or `error`.
+      oneOf:
+        - $ref: "#/components/schemas/InvokeDeltaEvent"
+        - $ref: "#/components/schemas/InvokeUsageEvent"
+        - $ref: "#/components/schemas/InvokeHopEvent"
+        - $ref: "#/components/schemas/InvokeErrorEvent"
+        - $ref: "#/components/schemas/InvokeDoneEvent"
+      discriminator:
+        propertyName: kind
+
+    InvokeErrorCode:
+      type: string
+      title: InvokeErrorCode
+      description: |-
+        The per-hop error taxonomy — AB.1's rules, named, with the behaviour each one implies.
+        #235's first acceptance criterion is that an executor's failover matches *what
+        routing's explanation promised the user*, so the mapping lives in the contract both
+        sides read rather than inside whichever module walks the chain.
+
+        | Code | What it is | What the executor does |
+        |---|---|---|
+        | `provider_unavailable` | 5xx or a timeout | advances to the next hop |
+        | `provider_rate_limited` | 429 or a provider throttle | backs off, then advances |
+        | `provider_auth_failed` | the credential was refused | does **not** retry; marks the provider in error |
+        | `request_invalid` | a 4xx that is not auth | aborts — the next hop would refuse it too |
+        | `floor_exhausted` | the chain reached its floor | aborts with the floor reason |
+        | `cost_cap_exceeded` | the run's cap is spent | aborts, naming the cap |
+        | `chain_exhausted` | every hop failed, no floor to stop at | aborts |
+      enum:
+        - provider_unavailable
+        - provider_rate_limited
+        - provider_auth_failed
+        - request_invalid
+        - floor_exhausted
+        - cost_cap_exceeded
+        - chain_exhausted
+
+    InvokeDeltaEvent:
+      type: object
+      title: InvokeDeltaEvent
+      description: A streamed fragment of the model's answer.
+      additionalProperties: false
+      required: [kind, hop, text]
+      properties:
+        kind:
+          const: delta
+        hop:
+          type: integer
+          minimum: 0
+          description: Which hop produced it — a chain that failed over says so in the stream.
+        text:
+          type: string
+          description: The fragment, exactly as the provider sent it.
+
+    InvokeUsageEvent:
+      type: object
+      title: InvokeUsageEvent
+      description: |-
+        What one hop cost — the row `token_usage`
+        ([#66](https://github.com/NobuData/ouroboros/issues/66)) gets. Emitted **per hop**,
+        including a hop that failed partway, attributed to the model and provider that
+        actually served it: a fallback hop's tokens attributed to the primary is every spend
+        number in the product subtly wrong in a way nobody notices for months.
+      additionalProperties: false
+      required: [kind, hop, connection, model, inputTokens, outputTokens, costCents]
+      properties:
+        kind:
+          const: usage
+        hop:
+          type: integer
+          minimum: 0
+        connection:
+          type: string
+          format: uuid
+          description: The provider connection that served it.
+        model:
+          type: string
+          description: The model as the provider names it.
+        inputTokens:
+          type: integer
+          minimum: 0
+        outputTokens:
+          type: integer
+          minimum: 0
+        costCents:
+          type: [number, "null"]
+          description: |-
+            What it cost, or `null` when nothing prices it. `null` rather than `0` — the
+            honesty rule CH.3 ([#586](https://github.com/NobuData/ouroboros/issues/586))
+            already enforces: a local model's tokens are *unpriced*, which is a different
+            statement from *free*, and a zero here is spend nobody incurred appearing in an
+            aggregate.
+
+    InvokeHopEvent:
+      type: object
+      title: InvokeHopEvent
+      description: |-
+        A hop finished, one way or another — the telemetry AB.2
+        ([#208](https://github.com/NobuData/ouroboros/issues/208)) aggregates. Emitted for
+        every hop *attempted*, so a chain that failed over twice produces three of them and a
+        reader can see the failover the routing explanation promised.
+      additionalProperties: false
+      required: [kind, hop, connection, outcome, latencyMs]
+      properties:
+        kind:
+          const: hop
+        hop:
+          type: integer
+          minimum: 0
+        connection:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+          enum: [ok, failed_over, aborted]
+        code:
+          $ref: "#/components/schemas/InvokeErrorCode"
+        latencyMs:
+          type: integer
+          minimum: 0
+          description: How long the attempt took — AB.2's latency input.
+
+    InvokeErrorEvent:
+      type: object
+      title: InvokeErrorEvent
+      description: The invocation failed. Terminal — no further events follow.
+      additionalProperties: false
+      required: [kind, code, message]
+      properties:
+        kind:
+          const: error
+        hop:
+          type: integer
+          minimum: 0
+          description: Which hop was in flight, when one was.
+        code:
+          $ref: "#/components/schemas/InvokeErrorCode"
+        message:
+          type: string
+          description: |-
+            A sentence for a person. Never a provider's own error text: those are not this
+            API's contract and have carried tokens before now.
+
+    InvokeDoneEvent:
+      type: object
+      title: InvokeDoneEvent
+      description: The invocation completed. Terminal — no further events follow.
+      additionalProperties: false
+      required: [kind, hop, finishReason]
+      properties:
+        kind:
+          const: done
+        hop:
+          type: integer
+          minimum: 0
+          description: Which hop served the answer — the one the run should be attributed to.
+        finishReason:
+          type: string
+          description: Why generation stopped, in the provider's own vocabulary.
+          examples: [stop, length, tool_use]

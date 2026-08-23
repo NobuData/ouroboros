@@ -13,6 +13,7 @@ import type { Configuration } from "./modules/config/configuration";
 import { ErrorEnvelopeFilter } from "./modules/errors/error.filter";
 import { validationPipe } from "./modules/errors/validation";
 import { PROBE_PATHS } from "./modules/health/health.paths";
+import { INTERNAL_PATHS } from "./modules/internal/internal.paths";
 import { document, specificationYaml } from "./openapi/specification";
 import { SERVICE_NAME } from "./version";
 
@@ -81,7 +82,12 @@ interface RawResponse {
  *     root; see `src/modules/health/health.paths.ts`, which is where those paths are
  *     written down. BetterAuth's are excluded because the library serves them itself, one
  *     level up at `/api/auth`, where its own versions live rather than this service's; see
- *     `src/auth/auth.routes.ts`.
+ *     `src/auth/auth.routes.ts`. The engine-facing surface
+ *     ([#224](https://github.com/NobuData/ouroboros/issues/224)) is excluded for a third
+ *     reason: `/api` is the *browser's* boundary — CORS-configured, session-authenticated,
+ *     and published in the document `ouroboros-ui` generates a client from — and two routes
+ *     that answer only to a worker inside the network belong outside it; see
+ *     `src/modules/internal/internal.paths.ts`.
  *   * **URI versioning, defaulting to v1.** The version is in the path because that is
  *     what a generated client, a browser address bar and a log line can all carry
  *     without negotiation. Defaulting it means a controller opts *out* of v1 rather than
@@ -242,8 +248,9 @@ export function permitBrowserOrigins(app: INestApplication, origins: readonly st
  */
 export function configureApplication(app: INestApplication): void {
   // The exclusion list is spread into a mutable array because Nest's option type asks for
-  // one; `PROBE_PATHS` and `AUTH_PREFIX_EXCLUSIONS` stay readonly, so nothing can add a
-  // route to the set that escapes the prefix by mutating it from somewhere else.
+  // one; `PROBE_PATHS`, `INTERNAL_PATHS` and `AUTH_PREFIX_EXCLUSIONS` stay readonly, so
+  // nothing can add a route to the set that escapes the prefix by mutating it from
+  // somewhere else.
   //
   // BetterAuth's paths are in it because this call *replaces* the exclusions rather than
   // adding to them, and `@thallesp/nestjs-better-auth` has already added its own from a
@@ -251,7 +258,9 @@ export function configureApplication(app: INestApplication): void {
   // Restating them here is what survives; leaving it to the library would put the
   // difference between an excluded path and a swallowed one in the order two lines happen
   // to execute.
-  app.setGlobalPrefix(API_PREFIX, { exclude: [...PROBE_PATHS, ...AUTH_PREFIX_EXCLUSIONS] });
+  app.setGlobalPrefix(API_PREFIX, {
+    exclude: [...PROBE_PATHS, ...INTERNAL_PATHS, ...AUTH_PREFIX_EXCLUSIONS],
+  });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: API_VERSION });
   app.enableShutdownHooks();
 

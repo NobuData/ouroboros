@@ -652,7 +652,7 @@ that roadmap's "Existing issues affected" section.
 | 93 | **CG.2** | ✅ [#580](https://github.com/NobuData/ouroboros/issues/580) | Model pricing catalog — schema & bundled snapshot | ouroboros-db | M | 3.1 |
 | 94 | **AD.1** | ✅ [#222](https://github.com/NobuData/ouroboros/issues/222) | Envelope-encryption service (tenant DEKs + KeyWrapper) | ouroboros-rest, ouroboros-db | L | 4.2 |
 | 95 | **CH.3** | ✅ [#586](https://github.com/NobuData/ouroboros/issues/586) | Pricing service | ouroboros-rest | M | CG.2 |
-| 96 | **AD.3** | [#224](https://github.com/NobuData/ouroboros/issues/224) | Worker credential delivery (proxied + scoped lease spec) | ouroboros-rest, ouroboros-engine | M | AD.1 |
+| 96 | **AD.3** | ✅ [#224](https://github.com/NobuData/ouroboros/issues/224) | Worker credential delivery (proxied + scoped lease spec) | ouroboros-rest, ouroboros-engine | M | AD.1 |
 | 97 | **AD.5** | [#226](https://github.com/NobuData/ouroboros/issues/226) | Security model documentation | docs | S | AD.1, AD.3 |
 | 98 | **Y.1** | [#189](https://github.com/NobuData/ouroboros/issues/189) | Provider connections & model alias foundations | ouroboros-db | M | 3.1, B.3 |
 | 99 | **Y.2** | [#190](https://github.com/NobuData/ouroboros/issues/190) | Task kinds, routes & fallback chains | ouroboros-db | M | Y.1 |

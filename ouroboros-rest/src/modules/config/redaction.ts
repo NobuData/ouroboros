@@ -114,14 +114,53 @@ export function redactedEnvironment(configuration: Configuration): Record<string
       redacted[variable] = "";
     } else if (SECRET_VARIABLES.has(variable)) {
       redacted[variable] = REDACTED;
-    } else if (variable === VARIABLES.databaseUrl) {
-      redacted[variable] = redactDatabaseUrl(String(value));
+    } else if (variable === VARIABLES.databaseUrl && typeof value === "string") {
+      redacted[variable] = redactDatabaseUrl(value);
     } else {
-      redacted[variable] = Array.isArray(value) ? value.join(",") : String(value);
+      redacted[variable] = renderValue(value);
     }
   }
 
   return redacted;
+}
+
+/**
+ * One configuration value, written the way the variable it came from is written.
+ *
+ * The rule is that a boot log should be **copy-pasteable back into an env file**: what an
+ * operator reads is what they would set, so a value that was parsed out of a string is
+ * rendered back into that string rather than into whatever `String()` makes of it. Three
+ * shapes, because the schema produces three:
+ *
+ *   * a **list** — `OURO_CORS_ORIGINS` — rejoined on its comma;
+ *   * a **map** — `OURO_LOCAL_PROVIDER_URLS` ([#224](https://github.com/NobuData/ouroboros/issues/224))
+ *     — rejoined as the `kind=url` pairs it was written as. Without this branch it would
+ *     print as `[object Object]`, which is the boot log quietly ceasing to describe the
+ *     deployment;
+ *   * everything else — a string, a number, an enum member — as itself.
+ *
+ * @param value - A validated configuration value, already known not to be nullish and not
+ *   to be a secret. Typed as the union {@link Configuration} actually holds rather than as
+ *   `unknown`, so the last line below is reached with a `string` or a `number` and a field
+ *   of some new shape would fail to compile here instead of printing `[object Object]`.
+ * @returns Its printable form.
+ */
+function renderValue(value: NonNullable<Configuration[keyof Configuration]>): string {
+  if (Array.isArray(value)) {
+    return value.join(",");
+  }
+
+  if (typeof value === "object") {
+    // Every map this schema produces has string values — `OURO_LOCAL_PROVIDER_URLS` is
+    // `kind=url` pairs — so the cast is the shape rather than an assumption about it, and a
+    // future map of something else would fail to compile here rather than print `[object
+    // Object]` into a boot log.
+    return Object.entries(value as Record<string, string>)
+      .map(([key, entry]) => `${key}=${entry}`)
+      .join(",");
+  }
+
+  return String(value);
 }
 
 /**

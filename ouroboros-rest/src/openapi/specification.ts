@@ -17,6 +17,15 @@
  *     what this module loads at runtime and what a JSON-only tool wants, and it is
  *     committed rather than built on demand so a container ships the document it serves.
  *
+ * **And a second pair beside it** since AD.3
+ * ([#224](https://github.com/NobuData/ouroboros/issues/224)): `openapi.internal.yaml` and
+ * its rendering describe the two paths `ouroboros-engine` calls. They are a separate
+ * document rather than a separate section because they describe a separate boundary — no
+ * browser reaches them, no session authenticates them, and folding them into the file above
+ * would put engine-facing operations into the client `ouroboros-ui` generates. Neither
+ * internal file is served; `internalDocument()` is read by the suite that holds it to the
+ * router, and by nothing at runtime.
+ *
  * Reading JSON rather than YAML at runtime is why nothing here imports a YAML parser:
  * the served application needs what Node already has and no more, and `yaml` stays a
  * devDependency used only by the renderer.
@@ -35,6 +44,19 @@ import type { OpenAPIObject } from "@nestjs/swagger";
 /** The authoritative document, and the rendering of it that is read at runtime. */
 export const YAML_FILENAME = "openapi.yaml";
 export const JSON_FILENAME = "openapi.json";
+
+/**
+ * The engine-facing contract, and its rendering
+ * ([#224](https://github.com/NobuData/ouroboros/issues/224)).
+ *
+ * A second pair rather than a second section of the first, because the two describe
+ * different boundaries with different callers, different authentication and different
+ * readers — see `openapi.internal.yaml`'s own header. **Neither file is served**: the
+ * application publishes the public document at `/api/openapi.{json,yaml}` and publishes this
+ * one nowhere, so it is read here only by the suite that holds it to the routes.
+ */
+export const INTERNAL_YAML_FILENAME = "openapi.internal.yaml";
+export const INTERNAL_JSON_FILENAME = "openapi.internal.json";
 
 /**
  * Where the rendered document is, resolved from this file rather than from the working
@@ -63,9 +85,10 @@ export class SpecificationError extends Error {
   }
 }
 
-/** Memoised reads of the two committed files — neither changes under a running process. */
+/** Memoised reads of the committed files — none changes under a running process. */
 let cachedDocument: OpenAPIObject | undefined;
 let cachedYaml: string | undefined;
+let cachedInternalDocument: OpenAPIObject | undefined;
 
 /**
  * Read and parse the rendered specification.
@@ -118,6 +141,27 @@ export function readSpecification(path: string = join(MODULE_ROOT, JSON_FILENAME
 export function document(): OpenAPIObject {
   cachedDocument ??= readSpecification();
   return structuredClone(cachedDocument);
+}
+
+/**
+ * The engine-facing contract — `openapi.internal.yaml`, as rendered.
+ *
+ * Read through the same loader as the public document so that a packaging mistake produces
+ * the same named failure, and cloned for the same reason: a suite that reaches into one
+ * cannot change what the next caller gets.
+ *
+ * Nothing in the running application calls this. The document is a contract AF.1
+ * ([#234](https://github.com/NobuData/ouroboros/issues/234)) reads, AF.2
+ * ([#235](https://github.com/NobuData/ouroboros/issues/235)) implements and
+ * `ouroboros-engine`'s client stub mirrors; what calls it here is `openapi.spec.ts`, which
+ * holds it to the two routes the service actually serves.
+ *
+ * @returns A fresh deep copy of the parsed internal document.
+ * @throws {SpecificationError} If it is missing or malformed. See {@link readSpecification}.
+ */
+export function internalDocument(): OpenAPIObject {
+  cachedInternalDocument ??= readSpecification(join(MODULE_ROOT, INTERNAL_JSON_FILENAME));
+  return structuredClone(cachedInternalDocument);
 }
 
 /**

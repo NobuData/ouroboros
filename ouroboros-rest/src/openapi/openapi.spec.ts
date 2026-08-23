@@ -23,9 +23,30 @@ import { AUTH_BASE_PATH } from "../auth/auth.options";
 import { authOperationKeys } from "../auth/auth.routes";
 import { DEFAULT_PORT } from "../modules/config/configuration";
 import { testConfiguration } from "../modules/config/configuration.fixture";
+import { INTERNAL_KEY_HEADER } from "../modules/engine/engine.contract";
 import { PROBE_PATHS } from "../modules/health/health.paths";
+import {
+  INTERNAL_ERRORS,
+  invocationNotImplemented,
+  localProviderNotConfigured,
+  providerNotLeasable,
+  runNotFound,
+} from "../modules/internal/internal.errors";
+import {
+  INTERNAL_INVOKE_PATH,
+  INTERNAL_LEASE_PATH,
+  isInternalPath,
+} from "../modules/internal/internal.paths";
 import { SERVICE_NAME, serviceVersion } from "../version";
-import { JSON_FILENAME, YAML_FILENAME, document, specificationYaml } from "./specification";
+import {
+  INTERNAL_JSON_FILENAME,
+  INTERNAL_YAML_FILENAME,
+  JSON_FILENAME,
+  YAML_FILENAME,
+  document,
+  internalDocument,
+  specificationYaml,
+} from "./specification";
 
 /**
  * The committed specification, and the code's agreement with it.
@@ -292,7 +313,12 @@ describe("the document and the running application", () => {
   const server = (): Server => app.getHttpServer() as Server;
 
   it("describes every route the application serves", () => {
-    const code = [...served(app).keys()];
+    // The engine-facing routes are set aside here and nowhere silently: they are described
+    // by `openapi.internal.yaml`, which *the internal specification* below holds to the
+    // router in both directions exactly as this pair of tests does
+    // ([#224](https://github.com/NobuData/ouroboros/issues/224)). Publishing them in this
+    // document would put them into the client `ouroboros-ui` generates from it.
+    const code = [...served(app).keys()].filter((key) => !isInternalPath(key));
 
     expect(code).not.toHaveLength(0);
     for (const operation of code) {
@@ -314,6 +340,12 @@ describe("the document and the running application", () => {
     )) {
       expect(code).toContain(operation);
     }
+  });
+
+  it("describes none of the engine-facing routes it must not publish", () => {
+    // The other half of the exemption above, and the one that matters: `/internal` in this
+    // document is `/internal` in the UI's generated client.
+    expect(Object.keys(document().paths).filter(isInternalPath)).toEqual([]);
   });
 
   it.each([...operations(document()).keys()].filter((key) => !isAuthFamily(key)))(
@@ -558,4 +590,216 @@ describe("publishing the specification", () => {
       expect(path.startsWith(API_BASE_PATH)).toBe(false);
     }
   });
+});
+
+/**
+ * **The engine-facing contract, held to the same standard as the public one**
+ * ([#224](https://github.com/NobuData/ouroboros/issues/224)).
+ *
+ * `openapi.internal.yaml` describes two paths no browser reaches, and the temptation with a
+ * second document is to check less of it: it has one caller, that caller is in this
+ * repository, and nobody generates a client from it. That is exactly backwards. It is the
+ * document AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)) makes a decision
+ * against and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) implements
+ * from, so a promise in it that the service does not keep is a promise somebody builds an
+ * executor on.
+ *
+ * So this block asks the same questions the public suite asks — valid, one document in two
+ * files, versioned with the manifest, and equal to the router in both directions — plus the
+ * two only this surface has: **every operation is authenticated** (there is no `security: []`
+ * anywhere in it, deliberately), and **every error code and message it publishes is the one
+ * `internal.errors.ts` constructs**, so the document cannot describe a refusal in words the
+ * service does not use.
+ */
+describe("the internal specification", () => {
+  /** The authoritative internal file, parsed. */
+  function internalYamlDocument(): OpenAPIObject {
+    return parse(readFileSync(join(MODULE_ROOT, INTERNAL_YAML_FILENAME), "utf8")) as OpenAPIObject;
+  }
+
+  it("is valid OpenAPI 3.1", async () => {
+    const result = await validateSpecification(internalYamlDocument() as never);
+
+    expect(result.valid ? true : JSON.stringify(result.errors)).toBe(true);
+  });
+
+  it("is one document in two files", () => {
+    expect(JSON.parse(readFileSync(join(MODULE_ROOT, INTERNAL_JSON_FILENAME), "utf8"))).toEqual(
+      internalYamlDocument(),
+    );
+  });
+
+  it("declares the version the manifest declares", () => {
+    // One service, one version. A second versioning scheme for the internal contract would
+    // be a second thing to bump and the one that gets forgotten.
+    expect(internalDocument().info.version).toBe(serviceVersion());
+  });
+
+  it("describes only the engine-facing paths", () => {
+    const paths = Object.keys(internalDocument().paths);
+
+    expect(paths.toSorted()).toEqual([INTERNAL_LEASE_PATH, INTERNAL_INVOKE_PATH].toSorted());
+  });
+
+  it("authenticates every operation, with no exceptions at all", () => {
+    // The public document has `security: []` on the handful of routes a signed-out browser
+    // must reach. This one has none, and must have none: an open route here is a worker
+    // endpoint reachable by anything that can route a packet to the port.
+    expect(internalDocument().security).toEqual([{ ouroInternalKey: [] }]);
+
+    for (const [, operation] of operations(internalDocument())) {
+      expect(operation.security).toBeUndefined();
+    }
+  });
+
+  it("names the header the code actually reads", () => {
+    const scheme = internalDocument().components?.securitySchemes?.ouroInternalKey as {
+      name: string;
+      in: string;
+    };
+
+    expect(scheme.name).toBe(INTERNAL_KEY_HEADER);
+    expect(scheme.in).toBe("header");
+  });
+
+  it("publishes the codes `internal.errors.ts` constructs, and their messages", () => {
+    // A document is a contract only where its strings are the service's strings. These four
+    // are the whole of what this surface can refuse with, and each example below is the
+    // envelope a caller really receives — copied from the constructor rather than typed
+    // again beside it.
+    const examples = new Map<string, { code: string; message: string }>();
+
+    for (const [key, operation] of operations(internalDocument())) {
+      for (const [status, body] of jsonBodies(operation)) {
+        if (body.example !== undefined) {
+          examples.set(`${key} ${status}`, body.example as { code: string; message: string });
+        }
+      }
+    }
+
+    const forbidden = examples.get(`POST ${INTERNAL_LEASE_PATH} 403`);
+    expect(forbidden?.code).toBe(INTERNAL_ERRORS.providerNotLeasable);
+    expect(forbidden?.message).toBe(providerNotLeasable("anthropic").envelope().message);
+
+    const missing = examples.get(`POST ${INTERNAL_LEASE_PATH} 404`);
+    expect(missing?.code).toBe(INTERNAL_ERRORS.localProviderNotConfigured);
+    expect(missing?.message).toBe(localProviderNotConfigured("ollama").envelope().message);
+
+    const unimplemented = examples.get(`POST ${INTERNAL_INVOKE_PATH} 501`);
+    expect(unimplemented?.code).toBe(INTERNAL_ERRORS.invocationNotImplemented);
+    expect(unimplemented?.message).toBe(invocationNotImplemented().envelope().message);
+  });
+
+  it("documents the second `404` the lease can answer", () => {
+    // `run_not_found` shares its status with `local_provider_not_configured`, so only one of
+    // them can be the example. The description is where the other one has to be named, and
+    // this is what stops it from being dropped when somebody rewrites the prose.
+    const operation = operations(internalDocument()).get(`POST ${INTERNAL_LEASE_PATH}`)!;
+    const responses = operation.responses as Record<string, { description: string }>;
+
+    expect(responses["404"].description).toContain(INTERNAL_ERRORS.runNotFound);
+    expect(runNotFound("4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94").envelope().code).toBe(
+      INTERNAL_ERRORS.runNotFound,
+    );
+  });
+
+  it("documents every example with something the service could actually send", () => {
+    for (const [key, operation] of operations(internalDocument())) {
+      for (const [status, body] of jsonBodies(operation)) {
+        if (body.example === undefined) continue;
+
+        const mismatch = validatorFor(internalDocument(), body.schema.$ref);
+        expect(`${key} ${status}: ${mismatch(body.example) ?? "ok"}`).toBe(`${key} ${status}: ok`);
+      }
+    }
+  });
+});
+
+describe("the internal document and the running application", () => {
+  let app: INestApplication;
+
+  beforeEach(async () => {
+    app = await createApplication(testConfiguration(), { logger: false });
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  const server = (): Server => app.getHttpServer() as Server;
+
+  /** The internal routes Nest actually registered. */
+  const servedInternally = (): OperationKey[] =>
+    [...served(app).keys()].filter((key) => isInternalPath(key));
+
+  it("describes every internal route the application serves", () => {
+    const code = servedInternally();
+
+    expect(code).not.toHaveLength(0);
+    for (const operation of code) {
+      expect([...operations(internalDocument()).keys()]).toContain(operation);
+    }
+  });
+
+  it("promises no internal route the application does not serve", () => {
+    // The half that matters most for a contract written before its implementation: the
+    // proxy is *specified* here and implemented by AF.2, and this is what keeps "specified"
+    // from quietly meaning "described but unreachable". It answers `501` today, which is a
+    // route, so it is in the router — and when AF.2 replaces that body nothing here moves.
+    const code = servedInternally();
+
+    for (const operation of operations(internalDocument()).keys()) {
+      expect(code).toContain(operation);
+    }
+  });
+
+  it.each([...operations(internalDocument()).keys()])(
+    "answers %s with a status it documents, to a caller with no key",
+    async (key) => {
+      const [method, path] = key.split(" ");
+      const documented = documentedStatuses(operations(internalDocument()).get(key)!);
+
+      const response = await request(server())[method.toLowerCase() as "post"](path);
+
+      expect(response.status).toBe(401);
+      expect(documented).toContain(String(response.status));
+    },
+  );
+
+  it.each([...operations(internalDocument()).keys()])(
+    "answers %s with a status it documents, to a caller holding the key",
+    async (key) => {
+      // Past the guard, and the two answers differ for the right reasons: the lease is a
+      // `422` on the empty body this sends, because the validation pipe runs after the
+      // guard, and the proxy is the `501` it publishes. Both are documented, which is the
+      // assertion — a route that answered something the document does not describe would be
+      // one whose contract had drifted from it.
+      const [method, path] = key.split(" ");
+      const documented = documentedStatuses(operations(internalDocument()).get(key)!);
+
+      const response = await request(server())
+        [method.toLowerCase() as "post"](path)
+        .set(INTERNAL_KEY_HEADER, testConfiguration().engineSharedSecret)
+        .send({});
+
+      expect(response.status).not.toBe(401);
+      expect(documented).toContain(String(response.status));
+    },
+  );
+
+  it.each([...operations(internalDocument()).keys()])(
+    "sends %s a body the schema documented for its answer accepts",
+    async (key) => {
+      const [method, path] = key.split(" ");
+      const operation = operations(internalDocument()).get(key)!;
+
+      const response = await request(server())[method.toLowerCase() as "post"](path);
+
+      const documented = jsonBodies(operation).get(String(response.status))!;
+      const mismatch = validatorFor(internalDocument(), documented.schema.$ref);
+
+      expect(mismatch(response.body)).toBeUndefined();
+    },
+  );
 });

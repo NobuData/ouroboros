@@ -5,6 +5,7 @@ import {
   DomainError,
   INTERNAL_ERROR_MESSAGE,
   InvalidRequestError,
+  NotImplementedError,
   NotFoundError,
   SERVER_ERROR_FLOOR,
   codeForStatus,
@@ -50,8 +51,41 @@ describe("a domain error", () => {
     [NotFoundError, HttpStatus.NOT_FOUND],
     [ConflictError, HttpStatus.CONFLICT],
     [InvalidRequestError, HttpStatus.UNPROCESSABLE_ENTITY],
+    [NotImplementedError, HttpStatus.NOT_IMPLEMENTED],
   ])("gives %p its own status", (Subclass, status) => {
     expect(new Subclass("code", "message").getStatus()).toBe(status);
+  });
+});
+
+describe("the one 5xx a caller is allowed to read", () => {
+  /**
+   * `NotImplementedError` ([#224](https://github.com/NobuData/ouroboros/issues/224)) — the
+   * shape a surface takes when it is specified in one ticket and implemented in another.
+   *
+   * Everything else above the server-error floor has its message replaced by
+   * {@link INTERNAL_ERROR_MESSAGE}, because a status somebody chose and a message somebody
+   * wrote for a client are different things. This one is a `DomainError`, so `answerFor`
+   * returns it untouched — and that is the whole reason it is a subclass rather than a
+   * `throw new HttpException(…, 501)`.
+   */
+  it("is above the floor, and keeps what it was constructed with", () => {
+    const error = new NotImplementedError(
+      "invocation_not_implemented",
+      "It lands with AF.2 (issue #235).",
+    );
+
+    expect(error.getStatus()).toBeGreaterThanOrEqual(SERVER_ERROR_FLOOR);
+    expect(error.envelope().message).toContain("#235");
+    expect(error.envelope().message).not.toBe(INTERNAL_ERROR_MESSAGE);
+  });
+
+  it("carries a code of its own rather than internal_error", () => {
+    // A `501` derived through `codeForStatus` would be `not_implemented`, which is honest
+    // but says nothing about which surface. The constructor's code is what a caller
+    // branches on.
+    expect(new NotImplementedError("invocation_not_implemented", "…").envelope().code).toBe(
+      "invocation_not_implemented",
+    );
   });
 });
 
@@ -63,6 +97,7 @@ describe("the code for a status", () => {
     [HttpStatus.METHOD_NOT_ALLOWED, "method_not_allowed"],
     [HttpStatus.UNSUPPORTED_MEDIA_TYPE, "unsupported_media_type"],
     [HttpStatus.INTERNAL_SERVER_ERROR, "internal_error"],
+    [HttpStatus.NOT_IMPLEMENTED, "not_implemented"],
     [HttpStatus.SERVICE_UNAVAILABLE, "unavailable"],
   ])("names %s", (status, code) => {
     expect(codeForStatus(status)).toBe(code);

@@ -32,6 +32,12 @@
 
 import { z } from "zod";
 
+import {
+  LOCAL_PROVIDER_KINDS,
+  isCloudProvider,
+  type LocalProviderKind,
+} from "../internal/providers";
+
 /**
  * A required environment variable is missing or malformed.
  *
@@ -245,6 +251,29 @@ export interface Configuration {
    * `127.0.0.1`, so nothing leaves the machine running the suite.
    */
   readonly listenHostOverride?: ListenHost;
+  /**
+   * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
+   *
+   * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
+   * empty when the variable is unset — which is the normal case, because most installations
+   * run no local model server at all.
+   *
+   * It is the deployment's answer to a question no table can answer yet. Decision **P3**
+   * ([#224](https://github.com/NobuData/ouroboros/issues/224)) makes local providers the one
+   * exception to *workers never hold credentials*: an engine worker calling an Ollama daemon
+   * on the same box gains nothing from proxying through this service, because there is no key
+   * on that path to protect. Something still has to say where that daemon is, and until Y.1
+   * ([#189](https://github.com/NobuData/ouroboros/issues/189)) brings `provider_connections`
+   * the only thing that can say it is the operator.
+   *
+   * **Only leasable kinds may appear.** A value naming `anthropic`, `copilot` or `cursor`
+   * stops the process at boot rather than being ignored — see `src/modules/internal/` for
+   * why the policy lives in two places, and why neither one is enough on its own.
+   *
+   * It holds no secret. Every value is an address, and the whole point of the lease surface
+   * is that an address is all a worker is ever given.
+   */
+  readonly localProviderUrls: Readonly<Partial<Record<LocalProviderKind, string>>>;
 }
 
 /**
@@ -270,6 +299,7 @@ export const VARIABLES = {
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
   listenHostOverride: "OURO_LISTEN_HOST",
+  localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
 } as const satisfies Record<keyof Configuration, string>;
 
 /**
@@ -340,6 +370,95 @@ export function isBase64Key(value: string, bytes: number): boolean {
   }
 
   return Buffer.from(value, "base64").byteLength === bytes;
+}
+
+/**
+ * What separates one `kind=url` pair from the next in `OURO_LOCAL_PROVIDER_URLS`.
+ *
+ * A comma, matching `OURO_CORS_ORIGINS`, because a variable that already has a list in this
+ * file should not introduce a second way of writing one. A URL cannot contain an unescaped
+ * comma, so nothing here has to be quoted.
+ */
+const PROVIDER_SEPARATOR = ",";
+
+/** What separates a provider kind from its address. */
+const PROVIDER_ASSIGNMENT = "=";
+
+/** One entry of `OURO_LOCAL_PROVIDER_URLS`, before it is known to be valid. */
+interface ProviderEntry {
+  /** Everything before the first `=`, trimmed. */
+  readonly kind: string;
+  /** Everything after it, trimmed — a URL cannot be split on `=` again, so `split` is not it. */
+  readonly url: string;
+}
+
+/**
+ * Split `OURO_LOCAL_PROVIDER_URLS` into entries, without judging any of them.
+ *
+ * Blank entries are dropped, so a trailing comma is a formatting habit rather than a boot
+ * failure — the same tolerance `OURO_CORS_ORIGINS` extends. Everything else is left exactly
+ * as written for the refinements below to complain about by name.
+ *
+ * @param value - The raw variable.
+ * @returns One entry per pair. An entry with no `=` keeps its whole text as the kind, which
+ *   is what makes the error message name what the operator actually typed.
+ */
+function providerEntries(value: string): ProviderEntry[] {
+  return value
+    .split(PROVIDER_SEPARATOR)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "")
+    .map((entry) => {
+      const at = entry.indexOf(PROVIDER_ASSIGNMENT);
+      return at === -1
+        ? { kind: entry, url: "" }
+        : { kind: entry.slice(0, at).trim(), url: entry.slice(at + 1).trim() };
+    });
+}
+
+/**
+ * Why this list of providers cannot be accepted, or `undefined` when it can.
+ *
+ * One function returning one message rather than a chain of `refine`s, because the messages
+ * have to *name the entry* — `expected kind=url` is useless advice about a variable holding
+ * four pairs, and zod reports the key it was parsing, which is the variable rather than the
+ * pair.
+ *
+ * @param entries - The parsed entries.
+ * @returns The complaint, or `undefined`.
+ */
+function providerProblem(entries: readonly ProviderEntry[]): string | undefined {
+  const seen = new Set<string>();
+
+  for (const { kind, url } of entries) {
+    if (isCloudProvider(kind)) {
+      // The boot-time half of decision P3, and the reason this is a configuration error
+      // rather than an entry that is quietly dropped: an operator who wrote it believes
+      // their workers can reach that provider directly, and a service that started anyway
+      // would leave them believing it until something failed at three in the morning.
+      return `${kind} is a cloud provider and is never leased to a worker — its credentials stay in the control plane (issue #224). Remove it`;
+    }
+
+    if (!(LOCAL_PROVIDER_KINDS as readonly string[]).includes(kind)) {
+      // The one branch that does **not** name what it was given, and the reason is this
+      // file's own rule: every other message here names a *constant* — one of the three
+      // cloud kinds, or a leasable kind already matched — while this one would echo whatever
+      // an operator typed into the boot log. What they need is the list of what is accepted.
+      return `an entry names something that is not a provider kind — expected one of ${LOCAL_PROVIDER_KINDS.join(", ")}`;
+    }
+
+    if (seen.has(kind)) {
+      return `${kind} is listed twice, and nothing here decides which address wins`;
+    }
+
+    seen.add(kind);
+
+    if (!isAbsoluteUrl(url, ["http:", "https:"])) {
+      return `${kind} needs an absolute http:// or https:// URL, such as ${kind}=http://localhost:11434`;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -464,6 +583,29 @@ const environmentSchema = z.object({
   OURO_LISTEN_HOST: z
     .enum(LISTEN_HOSTS, { error: `expected ${LOOPBACK_HOST} or ${ALL_INTERFACES_HOST}` })
     .optional(),
+
+  // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
+  // pairs, comma-separated. Optional, and its default is *no local providers*: an
+  // installation that runs none is the normal one, and a default address would be this
+  // service guessing that something is listening on a port nobody mentioned.
+  //
+  // Validated into the map the application consumes rather than into a string, so the
+  // parsing happens once at boot and a malformed pair is a named variable in the boot
+  // failure rather than a `404` on a lease six hours later.
+  OURO_LOCAL_PROVIDER_URLS: z
+    .string()
+    .default("")
+    .refine((value) => providerProblem(providerEntries(value)) === undefined, {
+      // A function rather than a sentence, because the useful message names the pair that
+      // is wrong — and which pair that is cannot be known when the schema is built.
+      error: (issue) => providerProblem(providerEntries(String(issue.input))),
+    })
+    .transform(
+      (value) =>
+        Object.fromEntries(providerEntries(value).map(({ kind, url }) => [kind, url])) as Partial<
+          Record<LocalProviderKind, string>
+        >,
+    ),
 });
 
 /**
@@ -551,6 +693,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
     listenHostOverride: values.OURO_LISTEN_HOST,
+    localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
   });
 }
 

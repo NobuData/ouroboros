@@ -94,7 +94,7 @@ $ curl -s localhost:8000/v0/status && echo
 {"code":"unauthenticated","message":"Unauthorized.","details":{}}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" localhost:8000/v0/status && echo
-{"service":"ouroboros-engine","version":"0.4.0","uptime_seconds":42.5}
+{"service":"ouroboros-engine","version":"0.5.0","uptime_seconds":42.5}
 
 $ curl -s -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
     -H 'content-type: application/json' \
@@ -368,6 +368,9 @@ ouroboros-engine/
 │   │   ├── logging.py  #   JSON records at OURO_LOG_LEVEL
 │   │   ├── security.py #   the internal-key guard
 │   │   └── uptime.py   #   the stopwatch /v0/status reports from
+│   ├── control_plane/  # what this service may ask ouroboros-rest for        · #224
+│   │   ├── contract.py #   ouroboros-rest's internal OpenAPI document, mirrored
+│   │   └── client.py   #   builds the requests, reads the answers — no transport yet
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -395,6 +398,43 @@ before any router, so a new path requires the key without anything being remembe
 Exempting one is an edit to `_PUBLIC_PATHS` in `main.py`, which is deliberately the only
 place a public path can be declared — and a test asserts liveness is still the only
 entry in it.
+`control_plane/` is the direction the internal boundary now also runs in
+([#224](https://github.com/NobuData/ouroboros/issues/224), roadmap decision **P3**). Until
+now `X-Ouro-Internal-Key` has meant *`ouroboros-rest` calling this service*; this package is
+this service calling back, over the same header and the same
+`OURO_ENGINE_SHARED_SECRET`. Two surfaces, and the asymmetry between them is the whole of
+the design:
+
+```
+POST /internal/llm/invoke          the control plane makes the model call — keys never cross
+POST /internal/credentials/lease   local providers only — an address, TTL'd and audited
+```
+
+**A worker never holds a provider credential.** For every cloud provider the control plane
+holds the key for the duration of one request and streams the answer back; a **local**
+provider — an Ollama daemon on the same box — is reached directly, so a lease returns a base
+URL and there is no field in it a credential could arrive in. A lease naming a cloud provider
+is a `403` by policy, enforced on the control plane's side rather than trusted to this one.
+
+**It opens no socket, and that is a decision rather than an omission.** There is no executor
+yet — AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) is what walks a resolved
+chain, and the workers that would take a lease are
+[#123](https://github.com/NobuData/ouroboros/issues/123) and
+[#160](https://github.com/NobuData/ouroboros/issues/160). Adding an HTTP library to this
+service's runtime dependencies for a caller that does not exist would be shipping a
+dependency on speculation, and choosing sync or async on its behalf would be making that
+executor's first architectural decision from outside it. So `ControlPlaneClient` builds a
+complete request — absolute URL, the key, the body in the control plane's `camelCase` — and
+reads what comes back, and whoever writes the executor brings the transport.
+
+`contract.py` mirrors
+[`ouroboros-rest/openapi.internal.yaml`](../ouroboros-rest/openapi.internal.yaml), and
+`tests/test_control_plane_contract.py` reads that committed document and compares the paths,
+the header, the provider kinds and AB.1's error taxonomy against this module's copy — so the
+mirror is checked rather than asserted. The naming convention changes in that one file: the
+control plane writes `camelCase` and this service writes `snake_case`, so nothing beneath it
+carries `runCtx` or `ttlSeconds`.
+
 `Dockerfile` and `.dockerignore` are the production image — see [Container](#container)
 above. They are read by `docker build` and by
 [`tests/test_container.py`](tests/test_container.py), and by nothing else in this module.

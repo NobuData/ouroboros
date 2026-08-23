@@ -1,9 +1,15 @@
-// `yarn openapi` — re-render openapi.json from the authoritative openapi.yaml.
+// `yarn openapi` — re-render each openapi.json from the authoritative openapi.yaml beside it.
 //
 // The specification is spec-first (see openapi.yaml, and src/openapi/specification.ts
 // for the loader): the YAML is what a human edits and the JSON is what the process reads
 // and what a JSON-only tool wants. This is the one thing that turns the first into the
 // second.
+//
+// Two documents since #224, rendered by one verb. openapi.yaml is the browser's boundary
+// and is served at /api/openapi.{json,yaml}; openapi.internal.yaml is the engine-facing
+// surface and is served nowhere — its readers are AF.1 (#234), AF.2 (#235) and
+// ouroboros-engine's client stub, all of which read it out of the repository. Rendering
+// them together is what stops the second one from being the one somebody forgets.
 //
 // It is plain ESM JavaScript rather than TypeScript for one reason: it is a development
 // verb, and `yarn openapi` has to run from a checkout without a build step or a
@@ -20,9 +26,16 @@ import { fileURLToPath } from "node:url";
 
 import { parse } from "yaml";
 
-/** The authoritative document, and the rendering of it that is read at runtime. */
-const YAML_FILENAME = "openapi.yaml";
-const JSON_FILENAME = "openapi.json";
+/**
+ * The pairs this verb renders — authoritative YAML, and the JSON rendered from it.
+ *
+ * Exported so `src/openapi/specification.ts` and the suites read the same list rather than
+ * three copies of two filenames.
+ */
+export const DOCUMENTS = [
+  { yaml: "openapi.yaml", json: "openapi.json" },
+  { yaml: "openapi.internal.yaml", json: "openapi.internal.json" },
+];
 
 /**
  * The module root, resolved from this file rather than from the working directory — so
@@ -51,11 +64,11 @@ export function render(yamlText) {
 }
 
 /**
- * Re-render `openapi.json`, or report that it has drifted.
+ * Re-render every `openapi*.json`, or report that one has drifted.
  *
  * @param {string[]} argv - Command-line arguments. `--check` writes nothing.
- * @returns {number} The process exit code: `0` when the JSON was written or already
- *   current, `1` under `--check` when it had drifted from the YAML, `2` when the
+ * @returns {number} The process exit code: `0` when every JSON was written or already
+ *   current, `1` under `--check` when one had drifted from its YAML, `2` when a
  *   specification could not be read.
  */
 export function main(argv) {
@@ -66,14 +79,34 @@ export function main(argv) {
     return 2;
   }
 
-  const source = join(MODULE_ROOT, YAML_FILENAME);
-  const target = join(MODULE_ROOT, JSON_FILENAME);
+  // Every document, always, and the worst outcome wins: a run that rendered the public
+  // document and failed on the internal one has to exit non-zero, or a drifted pair ships
+  // behind a green line of output.
+  let status = 0;
+
+  for (const document of DOCUMENTS) {
+    status = Math.max(status, renderDocument(document, check));
+  }
+
+  return status;
+}
+
+/**
+ * Render one pair, or report that it has drifted.
+ *
+ * @param {{yaml: string, json: string}} document - The pair to render.
+ * @param {boolean} check - Write nothing; report drift instead.
+ * @returns {number} The exit code for this pair — see {@link main}.
+ */
+function renderDocument(document, check) {
+  const source = join(MODULE_ROOT, document.yaml);
+  const target = join(MODULE_ROOT, document.json);
 
   let rendered;
   try {
     rendered = render(readFileSync(source, "utf8"));
   } catch (error) {
-    // A missing or malformed openapi.yaml is not a rendering failure to recover from:
+    // A missing or malformed YAML document is not a rendering failure to recover from:
     // it is the specification, and there is nothing to write without it.
     console.error(`openapi: ${source} could not be read as YAML — ${String(error)}`);
     return 2;
@@ -92,7 +125,7 @@ export function main(argv) {
       console.log(`${target} is current`);
       return 0;
     }
-    console.error(`${target} has drifted from ${YAML_FILENAME} — run \`yarn openapi\``);
+    console.error(`${target} has drifted from ${document.yaml} — run \`yarn openapi\``);
     return 1;
   }
 

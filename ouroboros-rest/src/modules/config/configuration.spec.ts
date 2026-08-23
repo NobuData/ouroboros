@@ -15,6 +15,7 @@ import {
   loadConfiguration,
   type Configuration,
 } from "./configuration";
+import { CLOUD_PROVIDER_KINDS } from "../internal/providers";
 import { DEVELOPMENT_ENVIRONMENT, testEnvironment } from "./configuration.fixture";
 
 /**
@@ -72,6 +73,9 @@ describe("the development defaults", () => {
       vaultMasterKey: "b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=",
       corsOrigins: ["http://localhost:3000"],
       dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
+      // Unset in the template, which is the posture every deployment that runs no local
+      // model server is in — see `OURO_LOCAL_PROVIDER_URLS` below.
+      localProviderUrls: {},
     });
   });
 });
@@ -517,6 +521,141 @@ describe("OURO_CORS_ORIGINS", () => {
     expect(
       failureFor(testEnvironment({ OURO_CORS_ORIGINS: "http://localhost:3000,not-an-origin" })),
     ).toContain(VARIABLES.corsOrigins);
+  });
+});
+
+describe("OURO_LOCAL_PROVIDER_URLS", () => {
+  /**
+   * Where this deployment's local model providers are
+   * ([#224](https://github.com/NobuData/ouroboros/issues/224), decision **P3**).
+   *
+   * It is the only variable in this file whose validation is a **policy** rather than a
+   * shape. A cloud provider named here does not produce a map with a useless entry in it —
+   * it stops the process, because an operator who wrote it believes their workers can reach
+   * that provider directly, and a service that started anyway would leave them believing it.
+   * `lease.spec.ts` asserts the other half: the same kinds are refused at the route, so
+   * neither check alone is what stands between a worker and a credential.
+   */
+  it("is unset in the template, which is the posture of an installation with no local models", () => {
+    expect(loadConfiguration(testEnvironment()).localProviderUrls).toEqual({});
+  });
+
+  it("reads one pair", () => {
+    expect(
+      loadConfiguration(
+        testEnvironment({ OURO_LOCAL_PROVIDER_URLS: "ollama=http://localhost:11434" }),
+      ).localProviderUrls,
+    ).toEqual({ ollama: "http://localhost:11434" });
+  });
+
+  it("reads both leasable kinds, keeping each address with its own", () => {
+    expect(
+      loadConfiguration(
+        testEnvironment({
+          OURO_LOCAL_PROVIDER_URLS:
+            "ollama=http://localhost:11434, openai_compatible=http://localhost:8001/v1",
+        }),
+      ).localProviderUrls,
+    ).toEqual({
+      ollama: "http://localhost:11434",
+      openai_compatible: "http://localhost:8001/v1",
+    });
+  });
+
+  it("keeps a path on the address, because vLLM is served at /v1", () => {
+    // An address truncated to its origin would send every request to a 404 that reads like
+    // the model server being down.
+    expect(
+      loadConfiguration(
+        testEnvironment({ OURO_LOCAL_PROVIDER_URLS: "openai_compatible=http://gpu.internal/v1" }),
+      ).localProviderUrls.openai_compatible,
+    ).toBe("http://gpu.internal/v1");
+  });
+
+  it("ignores a trailing separator, which is how a list gets edited", () => {
+    expect(
+      loadConfiguration(
+        testEnvironment({ OURO_LOCAL_PROVIDER_URLS: "ollama=http://localhost:11434," }),
+      ).localProviderUrls,
+    ).toEqual({ ollama: "http://localhost:11434" });
+  });
+
+  it("reads a blank value as no local providers rather than as a mistake", () => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_LOCAL_PROVIDER_URLS: "" })).localProviderUrls,
+    ).toEqual({});
+  });
+
+  it.each([...CLOUD_PROVIDER_KINDS])(
+    "refuses to start when it names the cloud provider %s",
+    (kind) => {
+      // The boot-time half of decision P3, per cloud adapter kind. Not an entry that is
+      // quietly dropped: the process exits naming the variable, because the operator's
+      // belief about how their workers reach that provider is the thing that is wrong.
+      const failure = failureFor(
+        testEnvironment({ OURO_LOCAL_PROVIDER_URLS: `${kind}=https://api.example.invalid` }),
+      );
+
+      expect(failure).toContain(VARIABLES.localProviderUrls);
+      expect(failure).toContain("cloud provider");
+      expect(failure).toContain("#224");
+    },
+  );
+
+  it("refuses a cloud provider even beside a legitimate local one", () => {
+    expect(
+      failureFor(
+        testEnvironment({
+          OURO_LOCAL_PROVIDER_URLS:
+            "ollama=http://localhost:11434,anthropic=https://api.anthropic.com",
+        }),
+      ),
+    ).toContain(VARIABLES.localProviderUrls);
+  });
+
+  it("refuses a kind that is not a provider kind, naming the ones that are", () => {
+    const failure = failureFor(
+      testEnvironment({ OURO_LOCAL_PROVIDER_URLS: "openai-compatible=http://localhost:8001" }),
+    );
+
+    expect(failure).toContain("not a provider kind");
+    expect(failure).toContain("openai_compatible");
+    // …and does not repeat what was typed. Every other message in this file names a
+    // constant; this is the one that would otherwise echo an operator's input.
+    expect(failure).not.toContain("openai-compatible");
+  });
+
+  it("refuses a kind listed twice, rather than picking one of the addresses", () => {
+    // Nothing here decides which wins, and a service that silently chose would be one whose
+    // behaviour depends on the order somebody typed two lines in.
+    expect(
+      failureFor(
+        testEnvironment({
+          OURO_LOCAL_PROVIDER_URLS: "ollama=http://localhost:11434,ollama=http://other:11434",
+        }),
+      ),
+    ).toContain("listed twice");
+  });
+
+  it.each([
+    ["a pair with no address", "ollama="],
+    ["an entry with no separator at all", "ollama"],
+    ["a bare host", "ollama=localhost:11434"],
+    ["a scheme nothing speaks HTTP over", "ollama=postgresql://localhost:5432"],
+    ["a path with no host", "ollama=/var/run/ollama.sock"],
+  ])("refuses %s", (_description, value) => {
+    expect(failureFor(testEnvironment({ OURO_LOCAL_PROVIDER_URLS: value }))).toContain(
+      "absolute http:// or https:// URL",
+    );
+  });
+
+  it("names no value in the failure, like every other variable here", () => {
+    // The file's own rule: a message that echoes what it was given is one classification
+    // mistake away from printing a secret. This variable holds addresses rather than
+    // credentials, and the rule is kept anyway rather than argued about per variable.
+    expect(
+      failureFor(testEnvironment({ OURO_LOCAL_PROVIDER_URLS: "ollama=very-specific-host:11434" })),
+    ).not.toContain("very-specific-host");
   });
 });
 

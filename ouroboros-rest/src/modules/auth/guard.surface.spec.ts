@@ -8,8 +8,15 @@ import { grantSession, revokeGrantedSessions } from "../../auth/better-auth.fixt
 import { testConfiguration } from "../config/configuration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { HEALTH_PATH, LIVE_ROUTE } from "../health/health.paths";
+import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
+import { INTERNAL_LEASE_PATH } from "../internal/internal.paths";
 import { AUTH_ERRORS } from "./auth.errors";
-import { routeTable, SHIPPED_PUBLIC_SURFACE, type Route } from "./route.table.fixture";
+import {
+  INTERNAL_SURFACE,
+  routeTable,
+  SHIPPED_PUBLIC_SURFACE,
+  type Route,
+} from "./route.table.fixture";
 
 /**
  * **The public surface, enumerated — as metadata.**
@@ -72,12 +79,19 @@ describe("the guard's decision for every route in the table", () => {
   it("exempts exactly the surface #33 shipped, and nothing else", () => {
     // The acceptance criterion, in one assertion and in both directions: a route that lost
     // its exemption is a missing entry, and a route that gained one is an extra.
-    const anonymous = routes.filter((route) => route.anonymous).map((route) => route.signature);
+    //
+    // The internal surface is subtracted rather than listed, and the subtraction is #224's
+    // whole point: those routes carry `@AllowAnonymous()` because their caller holds no
+    // session, and they are the *least* reachable routes this service has. Counting them as
+    // public here would put them in the list the suites below assert a stranger can reach.
+    const anonymous = routes
+      .filter((route) => route.anonymous && !route.internal)
+      .map((route) => route.signature);
 
     expect(anonymous).toEqual(SHIPPED_PUBLIC_SURFACE);
   });
 
-  it("requires a session on every other route", () => {
+  it("requires a session on every route that is neither public nor internal", () => {
     const protectedRoutes = routes
       .filter((route) => !route.anonymous)
       .map((route) => route.signature);
@@ -85,7 +99,29 @@ describe("the guard's decision for every route in the table", () => {
     expect(protectedRoutes).not.toHaveLength(0);
     for (const signature of protectedRoutes) {
       expect(SHIPPED_PUBLIC_SURFACE).not.toContain(signature);
+      expect(INTERNAL_SURFACE).not.toContain(signature);
     }
+  });
+
+  it("marks exactly the engine-facing routes internal, and nothing else", () => {
+    // #224's own enumeration, in both directions like the one above. An internal route that
+    // lost its `@InternalOnly()` is a missing entry — and, because the guard is driven by
+    // that metadata, an *unauthenticated* internal endpoint. An extra is a browser route
+    // that just became unreachable from a browser.
+    const internal = routes.filter((route) => route.internal).map((route) => route.signature);
+
+    expect(internal).toEqual(INTERNAL_SURFACE);
+  });
+
+  it("leaves no route under /internal outside that list", () => {
+    // The complement, and the reason the global guard is safe to key on metadata: a
+    // controller added under `/internal` without the decorator would be a path that looks
+    // internal, is documented as internal, and is guarded by nothing at all.
+    const byPath = routes
+      .filter((route) => route.path.startsWith("/internal"))
+      .map((route) => route.signature);
+
+    expect(byPath.toSorted()).toEqual([...INTERNAL_SURFACE]);
   });
 });
 
@@ -149,6 +185,36 @@ describe("the decisions, as answers rather than as metadata", () => {
       .send(JSON.stringify({ nonsense: true }));
 
     expect(response.status).toBe(401);
+  });
+
+  it("refuses the internal surface to a browser, session or not", async () => {
+    // The third category, as an answer rather than as metadata. A signed-in person is not a
+    // worker: the lease route reads `X-Ouro-Internal-Key` and nothing else, so the most
+    // privileged browser in the installation gets exactly what a stranger gets.
+    const stranger = await request(server()).post(INTERNAL_LEASE_PATH).send({});
+
+    expect(stranger.status).toBe(401);
+    expect((stranger.body as ErrorEnvelope).details).toEqual({});
+
+    const signedIn = await request(server())
+      .post(INTERNAL_LEASE_PATH)
+      .set("Cookie", grantSession())
+      .send({});
+
+    expect(signedIn.status).toBe(401);
+  });
+
+  it("lets the internal surface past for a caller holding the key", async () => {
+    // The other direction, and the one a guard that refused everything would pass. `not 401`
+    // rather than a `200`: this suite starts no database, so a request that got past the
+    // guard fails in the pool or in the validation pipe — both of which run *after* it, which
+    // is the assertion.
+    const response = await request(server())
+      .post(INTERNAL_LEASE_PATH)
+      .set(INTERNAL_KEY_HEADER, testConfiguration().engineSharedSecret)
+      .send({});
+
+    expect(response.status).not.toBe(401);
   });
 
   it("lets the same route past for somebody who is signed in", async () => {
