@@ -762,6 +762,60 @@ export interface ProviderConnectionsTable {
    * {@link ModelPricesTable.meta} it *is* written from this service, by Z.3 (#196).
    */
   health: Generated<Record<string, unknown>>;
+  /**
+   * The card's monthly cap in whole cents — `$600` is `60000` (V017,
+   * [#221](https://github.com/NobuData/ouroboros/issues/221)).
+   *
+   * **Null is a value**: it is *no cap*, which mockup 07 renders as an em-dash for both
+   * local providers, and it is not the same as a cap of zero — which is a real instruction
+   * meaning *spend nothing*. Cents rather than a decimal for the reason V016's
+   * `routes.max_cost_cents_per_run` is: money in a float is a rounding error waiting to be
+   * argued about.
+   *
+   * Warning-only until AF.4 ([#237](https://github.com/NobuData/ouroboros/issues/237)) —
+   * decision **P7**. Nothing in this service enforces it today; the meter beside it is
+   * calendar-month spend summed out of {@link TokenUsageTable} per connection kind.
+   */
+  monthly_cap_cents: number | null;
+  /**
+   * Who connected this provider — the card's *"Added by Ken"* (V017).
+   *
+   * `"user"."id"`, and **`on delete set null`** rather than a cascade: deleting the person
+   * who added a provider must not delete the workspace's provider. Null is therefore both
+   * *nobody in this table added it* — an import, a service account — and *the person who
+   * did has since gone*, and the card renders the connection without a name in front of it
+   * rather than not at all.
+   */
+  added_by: string | null;
+  /**
+   * When something last invoked through this connection — the card's *last used 3m ago*.
+   *
+   * Maintained by AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)), the
+   * invocation gateway, which is the only thing that knows a call happened. Null until
+   * then, and rendered as *never used* rather than as an unfilled column.
+   */
+  last_used_at: Date | null;
+  /**
+   * The card's capability line, verbatim — *api.anthropic.com · primary coding lane*.
+   *
+   * Stored rather than composed, and V017's header argues why: the mockup's five lines are
+   * not derivable from any other column, so a derived line would be a rule with five
+   * exceptions. Nullable, and a card with no note simply draws one line instead of two.
+   */
+  capability_note: string | null;
+  /**
+   * The card's switch — may this connection be used at all (V017).
+   *
+   * **Not {@link ProviderConnectionsTable.status}.** The status is what the last health
+   * check measured (Z.3, decision **M8**); this is what a person decided, and a card draws
+   * both — *connected* beside a switch that is off is a real state. A disabled connection
+   * drops out of routing and out of the health strip while its aliases and routes survive,
+   * which is the difference between switched off and deleted.
+   *
+   * `Generated` because V017 defaults it to `true`: a provider somebody has just added is
+   * one they intend to use.
+   */
+  enabled: Generated<boolean>;
   created_at: Stamped;
   updated_at: Stamped;
 }
@@ -1079,6 +1133,11 @@ export const TABLE_COLUMNS = {
     "status",
     "last_checked_at",
     "health",
+    "monthly_cap_cents",
+    "added_by",
+    "last_used_at",
+    "capability_note",
+    "enabled",
     "created_at",
     "updated_at",
   ],

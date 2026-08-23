@@ -1,6 +1,7 @@
 #!/usr/bin/env sh
 #
-# verify-constraint-probes.sh — issue #69's second acceptance criterion, as a script.
+# verify-constraint-probes.sh — issue #69's second acceptance criterion, as a script,
+# and issue #221's *"CI probes verified red when a constraint is dropped"* beside it.
 #
 # tests/constraints.sql asserts what the schema refuses. A green run of it does not prove
 # those assertions are load-bearing: a file that asserted nothing at all would be exactly
@@ -9,8 +10,9 @@
 # them apart is to drop a rule on purpose and check that the right probe goes red for the
 # right reason.
 #
-# So for each row of the table below this drops one rule of the dashboard read-model, runs
-# the whole of constraints.sql against the mutated schema, requires it to **fail**, and
+# So for each row of the tables below this drops one rule — of the dashboard read-model, or
+# of the provider tables mockup 07's cards are drawn from — runs the whole of
+# constraints.sql against the mutated schema, requires it to **fail**, and
 # requires the failure to name the assertion that was supposed to catch it — not merely to
 # carry a non-zero status. A probe that goes red for the wrong reason is a probe that is
 # not watching what its comment says it is, and a bare exit code cannot tell the
@@ -34,6 +36,23 @@
 # falsify it. They take the view's *current* definition from the catalogue and swap one
 # expression inside it, so they cannot rot into testing a view this schema no longer has —
 # if the expression they aim at is gone, they raise rather than silently mutating nothing.
+#
+# #221 (AC.6) adds the provider half, one mutation per rule its scope names:
+#
+#   AC.6 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   a monthly cap cannot be negative             drop provider_connections_monthly_cap_nonnegative
+#   (connection, model_id) is unique, so         drop provider_models_connection_model_key
+#     re-running discovery upserts
+#   the enable switch and the health status      alter enabled drop not null
+#     are two closed vocabularies                drop provider_connections_status
+#   added_by names somebody who exists           drop provider_connections_added_by_fk
+#
+# `enabled` is a boolean, so its "vocabulary" is the pair a `not null` leaves it with: the
+# mutation that widens it is dropping that, and the probe is the assertion that a third
+# state is refused. `provider_connections_status` is V015's constraint rather than V017's,
+# probed here because AC.6 is where the two columns became a pair a card has to tell apart —
+# and the assertion that catches it is the one V015's section already carried.
 #
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
@@ -191,7 +210,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — issue #69, acceptance criterion 2\n'
+printf '\nConstraint probes — issue #69 acceptance criterion 2, and #221 provider rules\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -366,6 +385,42 @@ expect_red 'the day is the session zone, not UTC' \
 expect_red 'a workspace may hold two settings rows' \
   'a second settings row for the same workspace is refused' \
   'alter table ouroboros.workspace_settings drop constraint workspace_settings_pkey;'
+
+# ---------------------------------------------------------------------------
+# The provider cards' rules (#221: "cap non-negative, unique models, enabled/status
+# vocabularies, added_by FK integrity").
+#
+# Each of the four is something a card reads directly, and each fails quietly rather than
+# loudly if its rule goes: a negative cap draws a meter already past its limit, a duplicated
+# discovery doubles every chip, a switch with a third state is a switch the card cannot
+# draw, and an attribution to nobody prints a meta row with a blank in it.
+# ---------------------------------------------------------------------------
+expect_red 'a monthly cap may be negative' \
+  'a negative monthly cap is refused' \
+  'alter table ouroboros.provider_connections
+     drop constraint provider_connections_monthly_cap_nonnegative;'
+
+# Dropping the unique key also drops the index the upsert conflicts on, so the suite may
+# report either the accepted duplicate or the `on conflict` that can no longer name a
+# constraint. Both are this probe noticing, which is why the marker matches either — the
+# same alternation, for the same reason, as the queue's deferred position key above.
+expect_red 'a connection may list one model twice' \
+  'one connection cannot list the same model twice|no unique or exclusion constraint matching the ON CONFLICT specification' \
+  'alter table ouroboros.provider_models
+     drop constraint provider_models_connection_model_key;'
+
+expect_red 'the enable switch has a third state' \
+  'the enable switch has no third state' \
+  'alter table ouroboros.provider_connections alter column enabled drop not null;'
+
+expect_red 'provider_connections.status accepts anything' \
+  'a status outside the four is refused' \
+  'alter table ouroboros.provider_connections drop constraint provider_connections_status;'
+
+expect_red 'a provider may be added by nobody' \
+  'a connection cannot be attributed to a person who does not exist' \
+  'alter table ouroboros.provider_connections
+     drop constraint provider_connections_added_by_fk;'
 
 printf '\n'
 if check_summary; then

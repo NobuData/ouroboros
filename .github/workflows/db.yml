@@ -198,6 +198,15 @@ jobs:
       # it untouched; tests/constraints.sql creates fixtures, tries the things the
       # schema is supposed to refuse, and raises on the first rule that does not hold.
       # It runs in a transaction it rolls back, so it leaves the database as it found it.
+      #
+      # The transcript is kept, because one of the rules is not a refusal. V017's alias
+      # validation (#221, decision P6) is deliberately a **warning** — discovery is not yet
+      # universal, so an alias naming an undiscovered model is written rather than refused —
+      # and nothing in SQL can catch a warning: a suite that had lost the trigger would be
+      # exactly as green. The suite asserts the half it can see (the row is written); the
+      # message is asserted here, in both of its branches, because *nothing has been
+      # discovered yet* and *the catalog lists other models* are different states and one
+      # message for both would make the first read like the second.
       - name: Assert what the schema enforces
         run: |
           docker run --rm --network=host \
@@ -205,16 +214,26 @@ jobs:
             --volume "$PWD/ouroboros-db/tests:/tests:ro" \
             "$POSTGRES_IMAGE" \
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$OURO_DB_NAME" \
-              -v ON_ERROR_STOP=1 -f /tests/constraints.sql
+              -v ON_ERROR_STOP=1 -f /tests/constraints.sql \
+              > "$RUNNER_TEMP/constraints.log" 2>&1 || { cat "$RUNNER_TEMP/constraints.log"; exit 1; }
+          cat "$RUNNER_TEMP/constraints.log"
+          for branch in 'nothing has been discovered on it yet' 'its catalog lists other models'; do
+            grep -q "$branch" "$RUNNER_TEMP/constraints.log" && continue
+            echo "the alias-to-unknown-model warning never fired: nothing matching \"$branch\"" >&2
+            exit 1
+          done
 
-      # And the half that step cannot answer about itself (#69). A green constraints.sql
-      # proves the schema satisfies its assertions; it does not prove the assertions are
-      # load-bearing, because a file asserting nothing would be exactly as green. This
-      # drops one rule of the dashboard read-model at a time — the status and effort
-      # vocabularies, the terminal-run rule, the queue's two keys, the settings key — and
-      # rewrites the two expressions `token_usage_daily` computes its sums from, then
-      # requires the suite to go red *naming the assertion that caught it*. A probe that
-      # went red for some other reason would otherwise read as a probe doing its job.
+      # And the half that step cannot answer about itself (#69, and #221's own probe
+      # criterion). A green constraints.sql proves the schema satisfies its assertions; it
+      # does not prove the assertions are load-bearing, because a file asserting nothing
+      # would be exactly as green. This drops one rule at a time — of the dashboard
+      # read-model, the status and effort vocabularies, the terminal-run rule, the queue's
+      # two keys and the settings key; and of the provider cards, the monthly cap's floor,
+      # the discovered catalog's uniqueness, the enable switch's two states, the health
+      # vocabulary and the added-by reference — and rewrites the two expressions
+      # `token_usage_daily` computes its sums from, then requires the suite to go red
+      # *naming the assertion that caught it*. A probe that went red for some other reason
+      # would otherwise read as a probe doing its job.
       #
       # Each mutation runs against a throwaway copy of a database this step migrates for
       # itself, and is made inside a transaction that is never committed — so it touches

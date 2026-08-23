@@ -7,9 +7,13 @@
 -- every e2e test written against it, expects to find — mockup 01 Step 2's three
 -- organizations and mockup 02's dashboard, number for number.
 --
--- Two migrations, one suite, because they describe one database: R__dev_seed.sql (#23) is
--- *who exists* and R__dev_seed_dashboard.sql (#68) is *what the loop has done*, and a
--- dashboard assertion that could not name `acme-robotics` would be asserting nothing.
+-- Three migrations, one suite, because they describe one database: R__dev_seed.sql (#23)
+-- is *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*, and
+-- R__dev_seed_providers.sql (#221) is *what it is allowed to call* — and a dashboard
+-- assertion that could not name `acme-robotics` would be asserting nothing. The last two
+-- share a table: a provider card's monthly meter is the dashboard seed's spend of today
+-- plus the providers seed's spend of earlier this month, so the figures below are asserted
+-- over the sum rather than over either file's rows.
 --
 -- Run it against a database migrated **with the seed enabled** — the compose stack, or
 -- `scripts/migrate --config flyway.seed.toml`:
@@ -31,7 +35,8 @@
 --
 -- Filed as issue #23; moved to the BetterAuth shape by #708; grown to the full
 -- auth-aware demo set — three organizations, password sign-in — by #709; extended with
--- the dashboard read-model — mockup 02, number for number — by #68.
+-- the dashboard read-model — mockup 02, number for number — by #68, and with mockup 07's
+-- five provider cards by #221.
 
 \set ON_ERROR_STOP on
 
@@ -638,6 +643,313 @@ select pg_temp.must_hold(
      select id from ouroboros.token_usage where id::text like '5eed000b-0000-4000-8000-%'
    ) as seeded),
   'the dashboard seed created its seventy-seven prefixed rows and no seventy-eighth');
+
+-- ===========================================================================
+-- R__dev_seed_providers.sql — mockup 07, card for card.
+--
+-- The third seed's rows: five `provider_connections` (`5eed000c…`), eleven
+-- `provider_models` (`5eed000d…`) and the eleven `token_usage` events (`5eed000e…`) that
+-- make the meters read what the mockup prints. Scoped to those ids and to `acme-robotics`,
+-- for the reason the dashboard's assertions are: a developer who added a provider of their
+-- own must not fail this suite.
+--
+-- The counts are exact, so this is the providers seed's idempotency test as well.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- The five cards.
+--
+-- One assertion per card, naming everything on it that is not a live API call: the kind
+-- and name in its head, the status pill, the switch, the cap field, the capability line,
+-- and the meta row's date and person. A seed that moved any of them would change what
+-- mockup 07 renders, and this is where that is noticed.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections conn
+     join ouroboros.organization org  on org."id" = conn.organization_id
+     join ouroboros."user" person     on person."id" = conn.added_by
+    where conn.id = '5eed000c-0000-4000-8000-000000000001'
+      and org."slug" = 'acme-robotics'
+      and person."email" = 'ken@acme-robotics.dev'
+      and conn.kind = 'anthropic'
+      and conn.display_name = 'Anthropic Claude'
+      and conn.status = 'active'
+      and conn.enabled
+      and conn.monthly_cap_cents = 60000
+      and conn.capability_note = 'api.anthropic.com · primary coding lane'
+      and (conn.created_at at time zone 'utc')::date = date '2026-06-12'
+      and conn.credentials_encrypted like 'ouro.v1.%'),
+  'the Anthropic card is seeded — connected, on, $600 cap, added by Ken on 2026-06-12');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections conn
+    where conn.id = '5eed000c-0000-4000-8000-000000000002'
+      and conn.kind = 'cursor'
+      and conn.display_name = 'Cursor'
+      and conn.status = 'active'
+      and conn.enabled
+      and conn.monthly_cap_cents = 12000
+      and conn.capability_note = 'api.cursor.com · used for second-opinion reviews'
+      and (conn.created_at at time zone 'utc')::date = date '2026-07-02'
+      and conn.credentials_encrypted like 'ouro.v1.%'),
+  'the Cursor card is seeded — connected, on, $120 cap');
+
+-- The one card that is not green. `status = 'error'` is what AC.1's taxonomy coarsens an
+-- upstream failure to (#216), and the detail is the sentence its foot prints.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections conn
+    where conn.id = '5eed000c-0000-4000-8000-000000000003'
+      and conn.kind = 'copilot'
+      and conn.display_name = 'GitHub Copilot'
+      and conn.status = 'error'
+      and conn.enabled
+      and conn.monthly_cap_cents = 9500
+      and conn.health ->> 'detail' = '503 upstream · retrying'
+      and conn.capability_note = 'billed through GitHub org acme-robotics'
+      and (conn.created_at at time zone 'utc')::date = date '2026-06-18'),
+  'the Copilot card is seeded — degraded upstream, still switched on, $95 cap');
+
+-- The two local providers: an address, no cap, and no credential. Their cards are the ones
+-- that render the mockup's em-dash where a cap would be.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections conn
+    where conn.id = '5eed000c-0000-4000-8000-000000000004'
+      and conn.kind = 'openai_compatible'
+      and conn.display_name = 'OpenAI-compatible · local vLLM'
+      and conn.base_url = 'http://10.0.4.20:8000/v1'
+      and conn.status = 'active'
+      and conn.enabled
+      and conn.monthly_cap_cents is null
+      and conn.credentials_encrypted is null
+      and conn.capability_note = 'self-hosted · A100 ×2'),
+  'the local vLLM card is seeded — an address, no cap, no key configured');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_connections conn
+    where conn.id = '5eed000c-0000-4000-8000-000000000005'
+      and conn.kind = 'ollama'
+      and conn.display_name = 'Ollama · workstation'
+      and conn.base_url = 'http://ken-station.local:11434'
+      and conn.status = 'active'
+      and conn.enabled
+      and conn.monthly_cap_cents is null
+      and conn.credentials_encrypted is null
+      and conn.capability_note = 'zero-cost lane — used for docs & commit messages'),
+  'the Ollama card is seeded — a host, no cap, and no credential to hold');
+
+-- …and no sixth, which would be a card mockup 07 does not draw.
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.provider_connections conn
+     join ouroboros.organization org on org."id" = conn.organization_id
+    where org."slug" = 'acme-robotics'),
+  'acme-robotics has exactly the mockup''s five connections');
+
+-- The meta row's second half. *last used 3m ago* is only true measured from now, so these
+-- are relative — and every one of them is in the past and recent, whatever hour the stack
+-- came up at.
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.provider_connections conn
+    where conn.id::text like '5eed000c%'
+      and conn.last_used_at <= now()
+      and conn.last_used_at > now() - interval '2 hours'
+      and conn.last_checked_at <= now()),
+  'every seeded connection was used minutes ago and checked minutes ago');
+
+-- ---------------------------------------------------------------------------
+-- What discovery found — the chips and the pull-list.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 11 from ouroboros.provider_models model
+    where model.id::text like '5eed000d%'),
+  'the seed discovered eleven models across the five connections');
+
+select pg_temp.must_hold(
+  (select count(*) = 5
+     from (select conn.kind, count(model.id) as chips
+             from ouroboros.provider_connections conn
+             left join ouroboros.provider_models model
+               on model.provider_connection_id = conn.id
+            where conn.id::text like '5eed000c%'
+            group by conn.kind) as card
+    where (card.kind, card.chips) in (('anthropic', 4), ('cursor', 1), ('copilot', 1),
+                                      ('openai_compatible', 2), ('ollama', 3))),
+  'each card lists what the mockup shows: four Anthropic chips, one each for Cursor and Copilot, two vLLM and three Ollama');
+
+-- The pull-list's three tags, in bytes. `19 GB`, `63 GB` and `9.1 GB` are what AE.4 (#230)
+-- formats these into — base ten, which is the unit Ollama itself prints.
+select pg_temp.must_hold(
+  (select array_agg(model.size_bytes order by model.size_bytes desc)
+            = array[63000000000, 19000000000, 9100000000]::bigint[]
+     from ouroboros.provider_models model
+     join ouroboros.provider_connections conn on conn.id = model.provider_connection_id
+    where conn.kind = 'ollama' and conn.id::text like '5eed000c%'),
+  'the workstation''s three models carry the sizes the pull-list renders as 63 GB, 19 GB and 9.1 GB');
+
+-- Only a locally-pulled model has a size. A cloud chip with a byte count would be a tag
+-- claiming something nobody downloaded.
+select pg_temp.must_hold(
+  (select count(*) = 8 from ouroboros.provider_models model
+     join ouroboros.provider_connections conn on conn.id = model.provider_connection_id
+    where model.id::text like '5eed000d%'
+      and conn.kind <> 'ollama'
+      and model.size_bytes is null),
+  'every model that is not on the workstation carries no size at all');
+
+-- The chips print `display`, which is why the local ones differ from their model ids —
+-- `llama-4-maverick` is served as `local/llama-4-maverick`.
+select pg_temp.must_hold(
+  (select array_agg(model.display order by model.display)
+            = array['local/deepseek-v3.2', 'local/llama-4-maverick']
+     from ouroboros.provider_models model
+     join ouroboros.provider_connections conn on conn.id = model.provider_connection_id
+    where conn.kind = 'openai_compatible' and conn.id::text like '5eed000c%'),
+  'the vLLM chips print the namespaced display, not the raw model id');
+
+-- The `priority tier` pill's *real signal* (AE.2): it is on the discovered models rather
+-- than invented by the card, and no other connection claims one.
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.provider_models model
+     join ouroboros.provider_connections conn on conn.id = model.provider_connection_id
+    where conn.kind = 'anthropic'
+      and conn.id::text like '5eed000c%'
+      and model.meta ->> 'tier' = 'priority')
+   and (select count(*) = 0 from ouroboros.provider_models model
+          join ouroboros.provider_connections conn on conn.id = model.provider_connection_id
+         where conn.kind <> 'anthropic'
+           and model.id::text like '5eed000d%'
+           and model.meta ? 'tier'),
+  'the priority-tier pill has four rows behind it, and no other card claims a tier');
+
+-- Every chip carries the context length CH.2 (#585) merges with an adapter's param schema,
+-- under the key `model_prices.meta` already uses.
+select pg_temp.must_hold(
+  (select count(*) = 11 from ouroboros.provider_models model
+    where model.id::text like '5eed000d%'
+      and (model.meta -> 'context_tokens') is not null
+      and jsonb_typeof(model.meta -> 'context_tokens') = 'number'),
+  'every discovered model reports a context length, spelled the way the price catalog spells it');
+
+-- ---------------------------------------------------------------------------
+-- The meters — the arithmetic three seeds share.
+--
+-- A card's *This month* figure is calendar-month spend over `token_usage`, summed for the
+-- connection's kind, and it is **two seeds added together**: #68's twelve events of today
+-- and this seed's eleven from earlier in the month. The query below is the one V017's
+-- header documents, so what is asserted is the meter itself rather than a restatement of
+-- the seed.
+--
+-- **On the first of a month there is no "earlier this month"**, and the providers seed says
+-- so: its rows fall on the last day of the previous one, and the meters read the day's
+-- spend alone. Both branches are asserted, because a fixture that quietly meant something
+-- else for one day in thirty is worse than one that says which day it is.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select coalesce(sum(usage.cost_cents), 0)
+            = case when date_trunc('day', now() at time zone 'utc')
+                        = date_trunc('month', now() at time zone 'utc')
+                   then 1140 else 41280 end
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.provider = 'anthropic'
+      and usage.occurred_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'),
+  'the Anthropic meter reads $412.80 of its $600 cap — or the day''s $11.40 alone, on the first of a month');
+
+select pg_temp.must_hold(
+  (select coalesce(sum(usage.cost_cents), 0)
+            = case when date_trunc('day', now() at time zone 'utc')
+                        = date_trunc('month', now() at time zone 'utc')
+                   then 180 else 6410 end
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.provider = 'cursor'
+      and usage.occurred_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'),
+  'the Cursor meter reads $64.10 of its $120 cap — or the day''s $1.80 alone, on the first of a month');
+
+select pg_temp.must_hold(
+  (select coalesce(sum(usage.cost_cents), 0)
+            = case when date_trunc('day', now() at time zone 'utc')
+                        = date_trunc('month', now() at time zone 'utc')
+                   then 540 else 7600 end
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.provider = 'copilot'
+      and usage.occurred_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'),
+  'the Copilot meter reads $76.00 of its $95 cap, which is the 80% the mockup draws as a warning');
+
+-- The two zero meters, and they are zero for different reasons. Ollama has spent 2.1M
+-- tokens that nobody priced — `$0.00 · 2.1M tokens on-box` — and vLLM has no rows at all,
+-- which is what *no metered spend* means: an absence rather than a row claiming a call
+-- that cost nothing.
+select pg_temp.must_hold(
+  (select coalesce(sum(usage.cost_cents), 0) = 0
+      and sum(usage.tokens_in + usage.tokens_out)
+            = case when date_trunc('day', now() at time zone 'utc')
+                        = date_trunc('month', now() at time zone 'utc')
+                   then 500000 else 2100000 end
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.provider = 'ollama'
+      and usage.occurred_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'),
+  'the Ollama meter costs nothing and counts 2.1M on-box tokens — unpriced is not free of charge');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.provider = 'openai_compatible'),
+  'the local vLLM connection has no usage rows at all, which is what "no metered spend" means');
+
+-- **Nothing this seed wrote lands on today**, which is what keeps mockup 02's *Token spend
+-- · today* card exactly #68's twelve events. The dashboard section above asserts that
+-- number; this asserts the rule that protects it.
+select pg_temp.must_hold(
+  (select count(*) = 11 from ouroboros.token_usage usage
+    where usage.id::text like '5eed000e%'
+      and usage.occurred_at < date_trunc('day', now() at time zone 'utc') at time zone 'utc'
+      and usage.occurred_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'
+                                - interval '14 days'),
+  'all eleven provider-spend events fall before today and inside the fortnight behind it');
+
+-- ---------------------------------------------------------------------------
+-- The empty workspaces, again — this time as the providers guidance fixture.
+--
+-- AE.6 (#233) renders the *connect your first provider* path against a workspace with no
+-- connections, and `kensuenobu` is it. `acme-labs` is empty for the same reason the
+-- dashboard seed leaves it empty.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.provider_connections conn
+     join ouroboros.organization org on org."id" = conn.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'neither the personal workspace nor acme-labs has a provider connection — AE.6''s guidance fixture');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.provider_models model
+     join ouroboros.provider_connections conn on conn.id = model.provider_connection_id
+     join ouroboros.organization org on org."id" = conn.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'and neither has a discovered model, because neither has a connection to discover one on');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the providers seed's own rows.
+--
+-- Twenty-seven rows under three prefixes — `5eed000c…` a connection, `5eed000d…` a
+-- discovered model, `5eed000e…` a spend event — so a row added later with a generated id is
+-- caught here rather than by nobody.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 27 from (
+     select id from ouroboros.provider_connections where id::text like '5eed000c-0000-4000-8000-%'
+     union all
+     select id from ouroboros.provider_models      where id::text like '5eed000d-0000-4000-8000-%'
+     union all
+     select id from ouroboros.token_usage          where id::text like '5eed000e-0000-4000-8000-%'
+   ) as seeded),
+  'the providers seed created its twenty-seven prefixed rows and no twenty-eighth');
 
 \o
 \echo 'seed.sql: all assertions passed'

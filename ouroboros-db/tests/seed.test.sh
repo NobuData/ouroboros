@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 #
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
-# migrations/R__dev_seed_dashboard.sql, and the configuration that decides whether they do
-# anything.
+# migrations/R__dev_seed_dashboard.sql, migrations/R__dev_seed_providers.sql, and the
+# configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -10,10 +10,11 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are two files because they answer different questions — R__dev_seed.sql (#23) is
-# *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done* — and the
-# structural rules below are asserted over both, in a loop, so that a third seed inherits
-# them by being added to one list.
+# There are three files because they answer different questions — R__dev_seed.sql (#23) is
+# *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*, and
+# R__dev_seed_providers.sql (#221) is *what it is allowed to call* — and the structural
+# rules below are asserted over all of them, in a loop, so that a fourth seed inherits them
+# by being added to one list.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
 # this needs no database, no Docker and no network — the same contract as
@@ -52,6 +53,7 @@ BIN="$base/ouroboros-db/scripts"
 
 SEED="$MODULE_DIR/migrations/R__dev_seed.sql"
 DASHBOARD_SEED="$MODULE_DIR/migrations/R__dev_seed_dashboard.sql"
+PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -80,8 +82,10 @@ seed_body() {
 
 BODY="$work/seed-body.sql"
 DASHBOARD_BODY="$work/seed-body-dashboard.sql"
+PROVIDERS_BODY="$work/seed-body-providers.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
+seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -100,10 +104,11 @@ printf 'The migrations\n'
 
 check_exists "$SEED" 'migrations/R__dev_seed.sql exists'
 check_exists "$DASHBOARD_SEED" 'migrations/R__dev_seed_dashboard.sql exists'
+check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
-for seed_file in "$SEED" "$DASHBOARD_SEED"; do
+for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -123,10 +128,16 @@ base_description=$(basename -- "$SEED" .sql)
 base_description=${base_description#R__}
 dashboard_description=$(basename -- "$DASHBOARD_SEED" .sql)
 dashboard_description=${dashboard_description#R__}
+providers_description=$(basename -- "$PROVIDERS_SEED" .sql)
+providers_description=${providers_description#R__}
 
-check_equals "$base_description" \
-  "$(printf '%s\n%s\n' "$base_description" "$dashboard_description" | LC_ALL=C sort | head -n 1)" \
-  'the dashboard seed sorts after the seed whose rows it hangs off, so Flyway applies it second'
+# The providers seed hangs off the first one too — it finds the workspace by slug and Ken
+# by email — so the whole order is asserted rather than the first pair of it, and a
+# rename that reshuffled any of the three fails here.
+check_equals "$(printf '%s %s %s' "$base_description" "$dashboard_description" "$providers_description")" \
+  "$(printf '%s\n%s\n%s\n' "$base_description" "$dashboard_description" "$providers_description" |
+     LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
+  'the three seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -136,10 +147,11 @@ check_equals "$base_description" \
 # carries a deferrable unique key, and PostgreSQL refuses a targetless `on conflict` on
 # such a table outright. Naming the primary key is what that statement does instead, and it
 # is still the "applied twice writes nothing" rule this check exists for.
-for seed_file in "$SEED" "$DASHBOARD_SEED"; do
+for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$DASHBOARD_SEED" ] && body=$DASHBOARD_BODY
+  [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\}$' "$body")
@@ -236,6 +248,54 @@ check_absent "$DASHBOARD_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
   'the dashboard seed carries no literal date — every window is relative to now()'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_providers.sql — mockup 07's five cards
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_providers.sql — the providers\n'
+
+# Three prefixes again, one per table: a connection, a discovered model and a spend event
+# are told apart on sight. The connections are five literals; the other twenty-two ids are
+# built from a prefix and an ordinal, which is why the prefix is what gets asserted.
+for prefix in '5eed000c' '5eed000d' '5eed000e'; do
+  check_contains "$PROVIDERS_BODY" "$prefix-0000-4000-8000-" \
+    "the providers seed builds its ids from the $prefix… prefix"
+done
+
+# The three tables mockup 07 is drawn from, and no fourth. An insert into `model_aliases`
+# here would be Y.4's (#192) rows written from the wrong file, and the two would then have
+# to agree about which of them owns the routing fixture.
+providers_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$PROVIDERS_BODY" |
+  sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
+check_equals 'provider_connections provider_models token_usage ' "$providers_tables" \
+  'the providers seed writes the connections, their catalog and their spend, and nothing else'
+
+# Parents by natural key, exactly as the dashboard seed does — the workspace by slug, Ken
+# by email, a connection by its kind and name.
+check_absent "$PROVIDERS_BODY" '5eed0001-0000-4000-8000' \
+  'the providers seed names no id from the other seeds — it joins by slug, email and kind'
+check_absent "$PROVIDERS_BODY" '5eed000b-0000-4000-8000' \
+  'and no usage id from the dashboard seed, whose rows it only has to avoid colliding with'
+
+# **The one seed here that carries literal dates, and exactly five of them.** *Added by Ken
+# · 2026-06-12* is a date the card prints, so it cannot move with the stack's clock; every
+# other timestamp in the file is relative to `now()`, because *last used 3m ago* and the
+# calendar-month window are only true measured from it.
+providers_dates=$(grep -Eoc "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9] " "$PROVIDERS_BODY" || true)
+check_equals 5 "$(printf '%s' "$providers_dates" | tr -d ' ')" \
+  'the providers seed carries five literal dates, one per card meta row, and no sixth'
+
+# The credentials are envelopes and nothing else: three `ouro.v1.…` values, and not one
+# string shaped like the vendor keys mockup 07 masks. The column's CHECK (V015) refuses a
+# plaintext outright; this is the half that keeps one out of the file in the first place.
+providers_envelopes=$(grep -Eoc "'ouro\.v1\.[0-9]+\." "$PROVIDERS_BODY" || true)
+check_equals 3 "$(printf '%s' "$providers_envelopes" | tr -d ' ')" \
+  'the providers seed seals three credentials and leaves the two local connections without one'
+for shape in 'sk-ant' 'ghu_' 'key_cur'; do
+  check_absent "$PROVIDERS_BODY" "$shape" \
+    "the providers seed carries nothing shaped like a $shape… credential"
+done
+
+# ---------------------------------------------------------------------------
 # The guard is off by default
 # ---------------------------------------------------------------------------
 
@@ -313,6 +373,7 @@ printf '\nDocumentation\n'
 README="$MODULE_DIR/README.md"
 check_contains "$README" 'R__dev_seed\.sql' 'README.md documents the seed migration'
 check_contains "$README" 'R__dev_seed_dashboard\.sql' 'README.md documents the dashboard seed'
+check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the providers seed'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
 check_contains "$README" 'acme-robotics' 'README.md names the demo tenant a developer will find'
 check_contains "$README" 'tests/seed\.sql' 'README.md says how to assert the seeded content'
