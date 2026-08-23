@@ -926,7 +926,7 @@ summary.
 
 ```
 core services ──imports──▶ ModelProviderAdapter ◀──implements── adapters/*
- (AD.2 · Z.3 · discovery)          ▲                            (none yet — AC.2–AC.5)
+ (AD.2 · Z.3 · discovery)          ▲                        anthropic · AC.3–AC.5 next
                                    └── ModelProviderRegistry.get(kind)
 ```
 
@@ -998,12 +998,47 @@ yarn lint      # eslint, then depcruise src
 configuration reports it — a rule whose pattern has quietly stopped matching looks identical
 to a codebase with no violations.
 
-**`REGISTERED_ADAPTERS` is empty**, so every kind is a `501 provider_kind_unsupported`
-today. That is the accurate thing for this build to say about `anthropic`: V015 accepts the
-row, and nothing here knows how to reach it yet. AC.2–AC.5
-([#217](https://github.com/NobuData/ouroboros/issues/217)–[#220](https://github.com/NobuData/ouroboros/issues/220))
+**`REGISTERED_ADAPTERS` holds one adapter**, so `anthropic` resolves and every other kind is
+a `501 provider_kind_unsupported`. That is the accurate thing for this build to say about
+`ollama`: V015 accepts the row, and nothing here knows how to reach it yet. AC.3–AC.5
+([#218](https://github.com/NobuData/ouroboros/issues/218)–[#220](https://github.com/NobuData/ouroboros/issues/220))
 each add one line. `adapters/fake.adapter.fixture.ts` is the in-memory adapter that powers
 core tests without touching a network, and it is the worked example the walkthrough reads.
+
+### The Anthropic adapter
+
+**The first real one** ([#217](https://github.com/NobuData/ouroboros/issues/217)), and the
+bar the other four are measured against. `adapters/anthropic.adapter.ts` is mockup 07's `AN`
+card as code: a masked key row and nothing else, a **Test connection** that is a one-row
+models listing, and **Models available** chips from `/v1/models`.
+
+```
+configSchema   ─▶ { apiKey: secret }                 no Base URL — the endpoint is fixed
+validate(key)  ─▶ GET /v1/models?limit=1 · 200       →  ✓ 200 · 38ms
+                                       401/403       →  auth        · key rejected
+                                       429           →  rate_limit  · rate limited
+                                       5xx           →  upstream    · degraded upstream
+                                       socket        →  network     · unreachable
+                                       no key at all →  config      · needs configuration
+discoverModels ─▶ /v1/models, paged   →  claude-fable-5 · claude-opus-5 · claude-sonnet-5 · …
+                  response headers    →  `priority tier`, only on a real signal
+```
+
+**The `priority tier` pill renders only on a real entitlement signal** — decision **P8**.
+Anthropic sends `anthropic-priority-…-limit` headers only to an organization that has that
+capacity, so the adapter reads them from the listing it already had to make and reports
+`NormalizedModel.tier` as `priority` when one carries a positive allowance, `null`
+otherwise. `null` reaches `provider_models.meta.tier` as nothing, and the card draws no
+pill. There is no fallback and no inference: a person who cannot tell an invented pill from
+an earned one has to distrust all of them.
+
+**It logs nothing at all**, which is the only version of *the credential is never logged*
+that survives somebody adding a debug line in a hurry — `anthropic.adapter.spec.ts` reads
+the file's own source and fails if a logger appears in it. Every refusal's body is cancelled
+unread, so a vendor error object quoting request headers never reaches a `detail`.
+
+**Its fixtures are recorded** — `adapters/anthropic.recordings.fixture.ts` — so the
+conformance kit and the unit suite both run in `yarn test` without a key or a socket.
 
 ## BetterAuth
 
@@ -1889,6 +1924,7 @@ ouroboros-rest/
 │       ├── provider-health/ # passive-first health + the strip payload     · #196
 │       │                   #   scheduled, jittered — and never a completion
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
+│       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/ is the only place a provider SDK may be imported
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
@@ -2003,6 +2039,7 @@ model pricing [#586](https://github.com/NobuData/ouroboros/issues/586) ·
 the model registry [#189](https://github.com/NobuData/ouroboros/issues/189) ·
 provider health [#196](https://github.com/NobuData/ouroboros/issues/196) ·
 provider adapters [#216](https://github.com/NobuData/ouroboros/issues/216) ·
+the Anthropic adapter [#217](https://github.com/NobuData/ouroboros/issues/217) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

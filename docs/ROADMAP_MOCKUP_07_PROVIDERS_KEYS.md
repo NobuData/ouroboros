@@ -222,7 +222,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AC.1 | #216 | 🟢 Done | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
-| AC.2 | #217 | 🟡 Open | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
+| AC.2 | #217 | 🟢 Done | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.3 | #218 | 🟡 Open | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.4 | #219 | 🟡 Open | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
 | AC.5 | #220 | 🟡 Open | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
@@ -351,8 +351,58 @@ core ──imports──▶ SPI only   adapters/{anthropic,openai_compat,ollama,
 
 ### Issue AC.2 — ouroboros-rest: [AC.2] Anthropic adapter
 
-> **GitHub issue:** #217 · **Status:** 🟡 Open · **Parent epic:** #212
+> **GitHub issue:** #217 · **Status:** 🟢 Done · **Parent epic:** #212
 
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/providers/adapters/anthropic.adapter.ts`](../ouroboros-rest/src/modules/providers/adapters/anthropic.adapter.ts),
+> its recorded fixtures beside it, and the walkthrough at
+> [`docs/MODEL_PROVIDERS.md`](MODEL_PROVIDERS.md).
+>
+> **The `priority tier` pill is the one genuinely tricky element, and decision P8 settles
+> it.** Anthropic exposes the entitlement as *response headers* — an organization with
+> priority-tier capacity is told its allowances under `anthropic-priority-…-limit`, and one
+> without is told nothing — so the adapter reads them from the listing it already had to
+> make, reports `priority` when an allowance is a positive number, and reports `null`
+> otherwise. There is no fallback, no default and no inference from the models a key can see.
+> The signal reaches the card as `NormalizedModel.tier` → `provider_models.meta.tier`, which
+> is the key `R__dev_seed_providers.sql` already writes on the four Anthropic rows, so the
+> seeded stack and a real discovery produce one catalog rather than two that look alike. Both
+> branches are recorded: a listing with the headers and a listing with only the standard
+> `anthropic-ratelimit-…` family, which is the near-miss a careless prefix match would report
+> as an entitlement.
+>
+> **`entitlements` stays `false`, and the pill is not a counter-example.** That flag is a
+> promise about `validate`'s `detail` — the Copilot card's *org-billed · 4 seats* — and AC.1
+> names AC.5 (#220) as the adapter that sets it. This card's capability line is prose an
+> operator wrote (`capability_note`); its entitlement travels the other road entirely, per
+> model, through discovery. Setting the flag would put an entitlement on the card foot where
+> the mockup prints `✓ 200 · 38ms`.
+>
+> **The card has no Base URL field**, because the endpoint is fixed and the capability line is
+> where `api.anthropic.com` is shown. `card.shapes.fixture.ts` recorded that shape before the
+> adapter existed and the suite asserts the two still agree — which is what gives that fixture
+> a job after AC.1 rather than leaving it as a copy of something that has moved on.
+>
+> **Being the first real adapter surfaced one hole in the kit.** A schema whose credential is
+> *required* could not pass it: the kit validated the stored configuration against the form's
+> own schema, and the value that schema demands is by design in the vault rather than in
+> `provider_connections.config`. `storedConfigSchema()` is the projection that fixes it — the
+> schema minus the credential — and the submission is still validated against the schema
+> itself, so the key row's own `minLength` is exercised rather than dropped.
+>
+> **It logs nothing at all.** There is no logger in the file, which is the only version of
+> *never logged* that survives somebody adding a debug line in a hurry, and the suite reads
+> the source to keep it that way. Every refusal's body is cancelled unread, so a vendor error
+> object — which quotes request headers — never reaches a `detail`.
+>
+> **What this ticket could not finish, and why.** The acceptance criterion *"discovery upserts
+> the four models into `provider_models`"* has two halves, and only one of them is an
+> adapter's. This module holds no database — that is the design AC.1 argues for, and
+> `providers.module.ts` imports neither `DbModule` nor `VaultModule` — so the `insert … on
+> conflict` V017 writes is AE.4's (#230), which owns the test-and-discovery routes. What the
+> adapter owes that upsert is delivered and asserted: ids are the provider's own spellings,
+> unchanged, unique within an answer and identical across repeated runs, which is exactly what
+> makes `(provider_connection_id, model_id)` an upsert rather than a doubled row of chips.
 
 - **Problem Statement:** The primary coding lane: key-authed, discoverable,
   testable — the first real conforming adapter.

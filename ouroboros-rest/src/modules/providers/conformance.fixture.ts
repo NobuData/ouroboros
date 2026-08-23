@@ -72,7 +72,7 @@ import {
   PROVIDER_ERROR_PILLS,
   type ProviderErrorClass,
 } from "./provider.errors";
-import { secretFieldName, toFormFields } from "./provider.forms";
+import { secretFieldName, storedConfigSchema, toFormFields } from "./provider.forms";
 
 /**
  * Everything the kit needs from an adapter author.
@@ -94,7 +94,16 @@ export interface AdapterConformance {
    * really pass it to the adapter, or the check proves nothing.
    */
   readonly secret: string | null;
-  /** A configuration the adapter considers well-formed. Validated against its own schema. */
+  /**
+   * A **stored** configuration the adapter considers well-formed — the submission minus the
+   * credential, which is what `provider_connections.config` holds and what
+   * {@link ProviderConnectionContext.config} hands back.
+   *
+   * Empty is a legitimate value: an adapter whose only field is the key row has nothing else
+   * to store. It is validated against `storedConfigSchema()`, and the submission the form
+   * would have made — this plus {@link secret} — against the schema itself. See
+   * {@link ajvViolations}.
+   */
   readonly sampleConfig: ProviderConnectionConfig;
   /** A `validate` call arranged from a recorded success. */
   readonly validateSuccess: () => Promise<ProviderValidation>;
@@ -229,7 +238,7 @@ export function schemaViolations(
   }
 
   violations.push(...formViolations(schema));
-  violations.push(...ajvViolations(schema, adapter.kind, sampleConfig));
+  violations.push(...ajvViolations(schema, adapter.kind, sampleConfig, secret));
 
   return violations;
 }
@@ -272,23 +281,35 @@ function formViolations(schema: ProviderConfigSchema): string[] {
 }
 
 /**
- * Everything Ajv says about the schema, and about the sample config under it.
+ * Everything Ajv says about the schema, about the form it validates, and about the stored
+ * configuration underneath it.
  *
  * The dialect check in `provider.config.ts` knows this codebase's extra rules; Ajv knows JSON
  * Schema. Both matter: AE.5 may hand the schema to a generic validator, and a schema that
- * rejected its own adapter's sample configuration would fail the add-form on a value the
- * adapter considers correct.
+ * rejected its own adapter's sample values would fail the add-form on values the adapter
+ * considers correct.
+ *
+ * **Two schemas are checked, because there are two.** `configSchema()` describes the *form* —
+ * every row including the key row — and what a submitted form validates against is that. What
+ * reaches `provider_connections.config` is the same object with the credential removed, so it
+ * validates against `storedConfigSchema()`. Checking a stored config against the form's schema
+ * would fail every adapter whose credential is mandatory, which is most of them; checking a
+ * submission against the stored projection would never exercise the key row's own `minLength`.
+ * Each value is therefore checked against the schema it is actually governed by.
  *
  * @param schema - The adapter's schema.
- * @param kind - The adapter's kind, used only as the schema's `$id` so two compiled schemas in
- *   one run cannot collide.
- * @param sampleConfig - The configuration to validate through it.
+ * @param kind - The adapter's kind, used only as each compiled schema's `$id` so two in one run
+ *   cannot collide.
+ * @param sampleConfig - The stored configuration to validate.
+ * @param secret - The credential the harness uses, or null. Put back into the sample as the
+ *   form would have submitted it, so the key row's own keywords are exercised.
  * @returns The violations.
  */
 function ajvViolations(
   schema: ProviderConfigSchema,
   kind: string,
   sampleConfig: ProviderConnectionConfig,
+  secret: string | null,
 ): string[] {
   // `strict: false` for the reason `openapi.spec.ts` sets it: the schema carries `x-ouroboros-…`
   // annotations, which are JSON Schema's own extension mechanism and which strict mode reports
@@ -296,19 +317,40 @@ function ajvViolations(
   const ajv = new Ajv2020({ strict: false, allErrors: true });
   addFormats(ajv);
 
-  let validate;
+  const secretField = secretFieldName(schema);
+  const submission =
+    secretField === null || secret === null
+      ? { ...sampleConfig }
+      : { ...sampleConfig, [secretField]: secret };
+
+  let validateSubmission;
+  let validateStored;
 
   try {
-    validate = ajv.compile({ ...schema, $id: `urn:ouroboros:provider-config:${kind}` });
+    validateSubmission = ajv.compile({ ...schema, $id: `urn:ouroboros:provider-config:${kind}` });
+    validateStored = ajv.compile({
+      ...storedConfigSchema(schema),
+      $id: `urn:ouroboros:provider-config:${kind}:stored`,
+    });
   } catch (error) {
     return [`schema is not valid JSON Schema: ${describeThrown(error)}`];
   }
 
-  return validate(sampleConfig)
-    ? []
-    : [
-        `the adapter's own sample config is rejected by its schema: ${ajv.errorsText(validate.errors)}`,
-      ];
+  const violations: string[] = [];
+
+  if (!validateSubmission(submission)) {
+    violations.push(
+      `the adapter's own sample submission is rejected by its schema: ${ajv.errorsText(validateSubmission.errors)}`,
+    );
+  }
+
+  if (!validateStored(sampleConfig)) {
+    violations.push(
+      `the adapter's own sample config is rejected by its stored-config schema: ${ajv.errorsText(validateStored.errors)}`,
+    );
+  }
+
+  return violations;
 }
 
 /**
@@ -414,9 +456,34 @@ export function normalizedModelViolations(models: readonly NormalizedModel[]): s
 
     violations.push(...measureViolations(at, "contextLength", model.contextLength, 1));
     violations.push(...measureViolations(at, "sizeBytes", model.sizeBytes, 0));
+    violations.push(...tierViolations(at, model.tier));
   }
 
   return violations;
+}
+
+/**
+ * Whether a reported service tier is absent or a word worth rendering.
+ *
+ * The shape half of decision **P8**. A kit cannot see whether an adapter *read* its tier from
+ * a response or made it up — that is what each adapter's own recorded fixtures are for, and
+ * why the Anthropic suite records a listing with the signal and one without. What a kit can
+ * refuse is the shape that turns *nothing was said* into a pill: an empty string, which is
+ * falsy in the adapter and truthy nowhere useful, and reaches `provider_models.meta.tier` as
+ * a value that a `tier is not null` read then treats as an entitlement.
+ *
+ * @param at - Which model, for the message.
+ * @param tier - What the adapter answered.
+ * @returns The violations.
+ */
+function tierViolations(at: string, tier: string | null): string[] {
+  if (tier === null) {
+    return [];
+  }
+
+  return typeof tier === "string" && tier.length > 0
+    ? []
+    : [`${at}: tier must be null or a non-empty string — an absent signal is null (P8)`];
 }
 
 /**

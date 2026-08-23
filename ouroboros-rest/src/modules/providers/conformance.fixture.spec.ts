@@ -186,11 +186,58 @@ describe("schemaViolations", () => {
 
   it("catches a sample config the adapter's own schema rejects", () => {
     // An add-form that refused a value the adapter considers correct is the failure this
-    // prevents, and it is only findable by running the schema as a schema.
+    // prevents, and it is only findable by running the schema as a schema. Both projections
+    // report it, because a bad address is bad in the form and bad in the stored row.
     expect(
       schemaViolations(new FakeModelProviderAdapter(), FAKE_SECRET, { baseUrl: "not a uri" }),
     ).toEqual([
-      'the adapter\'s own sample config is rejected by its schema: data/baseUrl must match format "uri"',
+      'the adapter\'s own sample submission is rejected by its schema: data/baseUrl must match format "uri"',
+      'the adapter\'s own sample config is rejected by its stored-config schema: data/baseUrl must match format "uri"',
+    ]);
+  });
+
+  it("passes an adapter whose credential is required, because a stored config never holds one", () => {
+    // The shape AC.2 (#217) ships: one field, marked as the credential and required, so the
+    // configuration that reaches `provider_connections.config` is legitimately empty. Checked
+    // against the form's own schema it would be "missing apiKey" — which is the reason
+    // `storedConfigSchema` exists and the reason this case is here rather than only in the
+    // Anthropic suite.
+    const adapter = brokenAdapter({
+      configSchema: () => ({
+        $schema: PROVIDER_CONFIG_DIALECT,
+        type: "object",
+        title: "Connect a provider",
+        properties: {
+          apiKey: { type: "string", title: "API key", minLength: 1, "x-ouroboros-secret": true },
+        },
+        required: ["apiKey"],
+        additionalProperties: false,
+      }),
+    });
+
+    expect(schemaViolations(adapter, FAKE_SECRET, {})).toEqual([]);
+  });
+
+  it("still exercises the credential row's own keywords, through the submission", () => {
+    // The other half of the split: dropping the key row from the stored projection must not
+    // mean nothing ever validates it. A blank credential against `minLength: 1` is what the
+    // form itself would refuse.
+    const adapter = brokenAdapter({
+      configSchema: () => ({
+        $schema: PROVIDER_CONFIG_DIALECT,
+        type: "object",
+        title: "Connect a provider",
+        properties: {
+          apiKey: { type: "string", title: "API key", minLength: 8, "x-ouroboros-secret": true },
+        },
+        required: ["apiKey"],
+        additionalProperties: false,
+      }),
+    });
+
+    expect(schemaViolations(adapter, "short", {})).toEqual([
+      "the adapter's own sample submission is rejected by its schema: " +
+        "data/apiKey must NOT have fewer than 8 characters",
     ]);
   });
 
@@ -298,6 +345,7 @@ describe("normalizedModelViolations", () => {
     display: "Fake Small",
     contextLength: 200_000,
     sizeBytes: 1_024,
+    tier: null,
   };
 
   it("passes a normalized list, including an empty one", () => {
@@ -310,6 +358,21 @@ describe("normalizedModelViolations", () => {
   it("accepts absent measures, which mean the provider did not say", () => {
     expect(normalizedModelViolations([{ ...model, contextLength: null, sizeBytes: null }])).toEqual(
       [],
+    );
+  });
+
+  it("accepts a reported tier, and an absent one", () => {
+    // Decision P8's two legitimate answers: the provider said `priority`, or it said nothing.
+    expect(normalizedModelViolations([{ ...model, tier: "priority" }])).toEqual([]);
+    expect(normalizedModelViolations([{ ...model, tier: null }])).toEqual([]);
+  });
+
+  it("catches a tier that is present but says nothing", () => {
+    // The shape that turns *nothing was said* into a pill: empty is falsy in the adapter and
+    // truthy to a `meta.tier is not null` read, so the two halves of the product disagree about
+    // whether an entitlement was found.
+    expect(normalizedModelViolations([{ ...model, tier: "" }])).toContain(
+      "model 0: tier must be null or a non-empty string — an absent signal is null (P8)",
     );
   });
 

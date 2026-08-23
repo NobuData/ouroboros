@@ -1,5 +1,6 @@
 import { Test } from "@nestjs/testing";
 
+import { AnthropicAdapter } from "./adapters/anthropic.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
 import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.registry";
 import { ProvidersModule, REGISTERED_ADAPTERS } from "./providers.module";
@@ -7,9 +8,9 @@ import { ProvidersModule, REGISTERED_ADAPTERS } from "./providers.module";
 /**
  * The wiring, and the registration seam AC.2–AC.5 each add one line to.
  *
- * The seam is the thing worth asserting. {@link REGISTERED_ADAPTERS} being empty is accurate
- * today and will be wrong the moment AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217))
- * lands, so what this suite pins is not the contents but the *mechanism*: the list is what the
+ * The seam is the thing worth asserting. {@link REGISTERED_ADAPTERS} grows with every adapter —
+ * AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) put the first entry in it —
+ * so what this suite pins is not mainly the contents but the *mechanism*: the list is what the
  * factory injects, the factory's answer is what the registry reads, and the result is frozen.
  * `vault.module.spec.ts` guards `VAULT_SECRET_STORES` the same way — an adapter written, tested
  * and then never reachable because nobody added the line is the failure both are for.
@@ -37,15 +38,27 @@ describe("the providers module", () => {
     await moduleRef.close();
   });
 
-  it("ships with no adapters, which is what makes every kind a 501 today", async () => {
-    // Accurate rather than a stub — `provider.registry.ts` argues why, and AD.1's empty
-    // VAULT_SECRET_STORES is the precedent. This assertion is expected to be *changed* by AC.2
-    // rather than to keep passing, and that is the point: adding an adapter is a visible diff
-    // here.
+  it("reaches anthropic, and leaves the kinds AC.3–AC.5 own a 501", async () => {
+    // Accurate rather than a stub — `provider.registry.ts` argues why, and AD.1's
+    // VAULT_SECRET_STORES is the precedent. This assertion is expected to be *changed* by each
+    // of AC.3–AC.5 rather than to keep passing, and that is the point: adding an adapter is a
+    // visible diff here.
+    const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
+    const registry = moduleRef.get(ModelProviderRegistry);
+
+    expect(REGISTERED_ADAPTERS).toEqual([AnthropicAdapter]);
+    expect(registry.kinds()).toEqual(["anthropic"]);
+    expect(registry.find("ollama")).toBeUndefined();
+
+    await moduleRef.close();
+  });
+
+  it("resolves the registered adapter as one Nest constructed", async () => {
+    // The half a `REGISTERED_ADAPTERS` list alone cannot prove: a class named in `inject` that
+    // is not also in `providers` fails to resolve, and the failure is at boot rather than here.
     const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
 
-    expect(REGISTERED_ADAPTERS).toEqual([]);
-    expect(moduleRef.get(ModelProviderRegistry).kinds()).toEqual([]);
+    expect(moduleRef.get(ModelProviderRegistry).get("anthropic")).toBeInstanceOf(AnthropicAdapter);
 
     await moduleRef.close();
   });
