@@ -135,6 +135,28 @@ export class AppConfigService {
   }
 
   /**
+   * Seconds between provider health sweeps — `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`.
+   *
+   * The nominal interval. `src/modules/provider-health/` jitters every delay by ±25% around
+   * it, so a fleet of self-hosted instances does not converge on one schedule; it is also the
+   * age at which a *local* provider's last check counts as stale.
+   */
+  get providerHealthIntervalSeconds(): number {
+    return this.config.getOrThrow<number>("providerHealthIntervalSeconds");
+  }
+
+  /**
+   * Seconds before a cloud provider's key validation is redone —
+   * `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS`.
+   *
+   * Much slower than the sweep, and separate from it, because it governs requests to somebody
+   * else's rate-limited service rather than to the operator's own machine.
+   */
+  get providerHealthKeyCheckSeconds(): number {
+    return this.config.getOrThrow<number>("providerHealthKeyCheckSeconds");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -179,6 +201,8 @@ export class AppConfigService {
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,
       listenHostOverride: this.listenHostOverride,
+      providerHealthIntervalSeconds: this.providerHealthIntervalSeconds,
+      providerHealthKeyCheckSeconds: this.providerHealthKeyCheckSeconds,
       localProviderUrls: this.localProviderUrls,
     };
   }

@@ -875,6 +875,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/routing/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's providers, and what is honestly known about each
+         * @description The chips mockup 06 draws above the routing matrix
+         *     ([#196](https://github.com/NobuData/ouroboros/issues/196)) — one per provider
+         *     connection, ordered by name so they do not reshuffle between polls.
+         *
+         *     **Every field is what a check found, or `null`.** `latencyMs` is present only where a
+         *     check measured one, `models` only where a check counted them, and neither has a
+         *     fallback — see the `routing` tag for why `0ms` is the one answer this endpoint must
+         *     never invent. `check` says *which* question produced the state, because *the socket
+         *     answered* and *the credential is valid* are different claims and a hover that explains
+         *     one should not be able to print the other.
+         *
+         *     **`meta` is the chip's line, already composed** — `workstation · 3 models`, `42ms`,
+         *     `degraded · elevated latency`, or `null` when nothing measured is worth printing. A
+         *     client is free to render from the fields instead; what it should not have to invent is
+         *     the composition rule, so that the strip and the route inspector cannot draw two
+         *     different sentences from one row.
+         *
+         *     **Nothing here triggers a check.** The cadence belongs to this service's scheduler and
+         *     the page polls. A *check now* button would let anybody holding a session make this
+         *     service issue outbound requests at whatever rate they can click, against a vendor's
+         *     rate limit and signed with the workspace's own credential.
+         *
+         *     **Any member may read it**, viewers included: *is Ollama up* is the kind of thing a
+         *     viewer exists to be able to look at.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs.
+         */
+        get: operations["listProviderHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/preferences": {
         parameters: {
             query?: never;
@@ -2694,6 +2741,98 @@ export interface components {
             limit: number;
             /** @example 0 */
             offset: number;
+        };
+        /**
+         * ProviderHealth
+         * @description One chip on the routing page's provider health strip — a provider connection, and what
+         *     the last check honestly found. Every optional fact is `null` rather than a stand-in
+         *     value; see the `routing` tag.
+         */
+        ProviderHealth: {
+            /**
+             * Format: uuid
+             * @description The connection, as every other surface addresses it.
+             * @example 9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e03
+             */
+            id: string;
+            /**
+             * @description Which adapter reaches this provider.
+             * @example ollama
+             * @enum {string}
+             */
+            kind: "anthropic" | "openai_compatible" | "ollama" | "copilot" | "cursor" | "custom";
+            /**
+             * @description The chip's name. Free text a workspace chose, and deliberately not unique — two
+             *     Ollama daemons on two machines are two legitimate connections.
+             * @example Ollama
+             */
+            displayName: string;
+            /**
+             * @description Whether the provider is usable, as far as anything knows.
+             *
+             *     `unknown` is a state and **must never be rendered as healthy**: it is what a
+             *     connection is before anything checked it. `paused` is an operator's intent rather
+             *     than a conclusion from a check, which is why nothing ties it to `checkedAt`.
+             * @example active
+             * @enum {string}
+             */
+            status: "active" | "paused" | "error" | "unknown";
+            /**
+             * @description Which question produced this state, or `null` when no check this service performs
+             *     did — a seeded state, or a provider it has nothing cheap and truthful to ask.
+             * @example reachability
+             * @enum {string|null}
+             */
+            check: "reachability" | "key_validation" | null;
+            /**
+             * Format: date-time
+             * @description When the last check finished, or `null` when none has.
+             * @example 2026-08-23T09:59:41.882Z
+             */
+            checkedAt: string | null;
+            /**
+             * @description The hostname this connection points at — no scheme, no port — or `null` when it
+             *     names no address. It is what makes two chips both called `Ollama` tellable apart.
+             * @example workstation
+             */
+            host: string | null;
+            /**
+             * @description Milliseconds the last check measured, or **`null`** when none measured one. There
+             *     is deliberately no default: `0ms` is an excellent latency, not an absence.
+             * @example 42
+             */
+            latencyMs: number | null;
+            /**
+             * @description How many models the provider listed, or `null` when nothing counted them. Null and
+             *     `0` are different facts: one is *we could not read the list*, the other is *the
+             *     list was empty*.
+             * @example 3
+             */
+            models: number | null;
+            /**
+             * @description Why the provider is in this state, in a phrase — `unreachable (ECONNREFUSED)`,
+             *     `key rejected (401)`, `degraded · elevated latency`. Never a driver's own message,
+             *     which would carry a host and a port.
+             * @example key rejected (401)
+             */
+            detail: string | null;
+            /**
+             * @description The chip's line, already composed from the facts above in the order the design
+             *     draws them — address, models, latency, detail — or `null` when there is nothing
+             *     measured worth printing.
+             * @example workstation · 3 models
+             */
+            meta: string | null;
+        };
+        /**
+         * ProviderHealthStrip
+         * @description The routing page's provider health strip. Unpaged: a workspace's strip is a handful of
+         *     chips, and a page over a list that short would cost a client a second request to
+         *     discover there was nothing more.
+         */
+        ProviderHealthStrip: {
+            /** @description Every connection in the workspace, ordered by display name. */
+            providers: components["schemas"]["ProviderHealth"][];
         };
         /**
          * EngineStatus
@@ -5123,6 +5262,185 @@ export interface operations {
              *     `details` carries the entry keyed by the field.
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listProviderHealth: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The strip. Empty for a workspace that has configured no providers — the page's
+             *     empty state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "providers": [
+                     *         {
+                     *           "id": "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+                     *           "kind": "anthropic",
+                     *           "displayName": "Anthropic",
+                     *           "status": "active",
+                     *           "check": "key_validation",
+                     *           "checkedAt": "2026-08-23T09:58:12.004Z",
+                     *           "host": null,
+                     *           "latencyMs": 42,
+                     *           "models": null,
+                     *           "detail": null,
+                     *           "meta": "42ms"
+                     *         },
+                     *         {
+                     *           "id": "7a2e3d4c-5b6a-4f98-8d21-3e4f5a6b7c81",
+                     *           "kind": "cursor",
+                     *           "displayName": "Cursor",
+                     *           "status": "unknown",
+                     *           "check": null,
+                     *           "checkedAt": null,
+                     *           "host": null,
+                     *           "latencyMs": null,
+                     *           "models": null,
+                     *           "detail": null,
+                     *           "meta": null
+                     *         },
+                     *         {
+                     *           "id": "8b3f4e5d-6c7b-4a09-9e32-4f5a6b7c8d92",
+                     *           "kind": "copilot",
+                     *           "displayName": "GitHub Copilot",
+                     *           "status": "error",
+                     *           "check": null,
+                     *           "checkedAt": "2026-08-23T09:41:00.000Z",
+                     *           "host": null,
+                     *           "latencyMs": null,
+                     *           "models": null,
+                     *           "detail": "degraded · elevated latency",
+                     *           "meta": "degraded · elevated latency"
+                     *         },
+                     *         {
+                     *           "id": "9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e03",
+                     *           "kind": "ollama",
+                     *           "displayName": "Ollama",
+                     *           "status": "active",
+                     *           "check": "reachability",
+                     *           "checkedAt": "2026-08-23T09:59:41.882Z",
+                     *           "host": "workstation",
+                     *           "latencyMs": null,
+                     *           "models": 3,
+                     *           "detail": null,
+                     *           "meta": "workstation · 3 models"
+                     *         },
+                     *         {
+                     *           "id": "0d5b6a7f-8e9d-4c21-9a54-6b7c8d9e0f14",
+                     *           "kind": "openai_compatible",
+                     *           "displayName": "OpenAI-compatible",
+                     *           "status": "active",
+                     *           "check": "reachability",
+                     *           "checkedAt": "2026-08-23T09:59:41.902Z",
+                     *           "host": "vllm-local",
+                     *           "latencyMs": null,
+                     *           "models": 2,
+                     *           "detail": null,
+                     *           "meta": "vllm-local · 2 models"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderHealthStrip"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

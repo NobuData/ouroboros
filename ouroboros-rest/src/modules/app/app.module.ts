@@ -13,6 +13,7 @@ import { HealthModule } from "../health/health.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
+import { ProviderHealthModule } from "../provider-health/provider-health.module";
 import { RegistryModule } from "../registry/registry.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
@@ -80,6 +81,16 @@ import { AppService } from "./app.service";
  * need it (AD.2, AC.2/3/5), and because its key wrapper decodes `OURO_VAULT_MASTER_KEY` when
  * it is constructed, which is at boot. A deployment with a malformed key therefore fails
  * while it is starting rather than on the first credential anybody stores.
+ *
+ * `ProviderHealthModule` ([#196](https://github.com/NobuData/ouroboros/issues/196)) follows
+ * `VaultModule`, and it is the first module in this list that could not have been placed
+ * before another one for a reason that is not about guards: it *imports* the vault, because
+ * validating a provider key means presenting it. Its one route is tenant-required and
+ * readable by every role, which says nothing new; what is new is that it is also the first
+ * module here to run **periodic work**. It brings `@nestjs/schedule` and a sweep that starts
+ * on `onApplicationBootstrap`, so a process that has this module in it is a process that
+ * makes outbound requests nobody asked for — see that module's header for the rules that
+ * keeps honest, and `vault.rotation.ts`'s for what this service looked like before it.
  *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
@@ -153,6 +164,7 @@ export class AppModule {
         PricingModule,
         RegistryModule,
         VaultModule,
+        ProviderHealthModule,
         InternalModule,
       ],
     };

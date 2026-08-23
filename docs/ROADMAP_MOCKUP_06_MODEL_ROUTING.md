@@ -491,7 +491,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | Z.1 | #194 | 🟡 Open | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
 | Z.2 | #195 | 🟡 Open | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
-| Z.3 | #196 | 🟡 Open | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
+| Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
 | Z.4 | #197 | 🟡 Open | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate`; engine estimator + WF catalog amendments | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest, ouroboros-engine |
 | Z.5 | #198 | 🟡 Open | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
 | Z.6 | #199 | 🟡 Open | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
@@ -564,7 +564,87 @@ PUT /routes/implement {hops:[…], floor:2, maxCost:250} ─▶ revision recorde
 
 ### Issue Z.3 — ouroboros-rest: [Z.3] Provider health service (passive-first)
 
-> **GitHub issue:** #196 · **Status:** 🟡 Open · **Parent epic:** #186
+> **GitHub issue:** #196 · **Status:** 🟢 Done · **Parent epic:** #186
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/provider-health/`](../ouroboros-rest/src/modules/provider-health/),
+> `GET /api/v1/routing/providers` in
+> [`ouroboros-rest/openapi.yaml`](../ouroboros-rest/openapi.yaml), and the two cadence
+> variables in [`.env.example`](../.env.example).
+>
+> **Option 2-B is refused as code rather than as a comment.** The tempting health strip fires
+> a one-token completion at every provider every minute — real latency, every dot green, and a
+> bill that grows forever to decorate a status bar. What ships instead is a frozen table of
+> *listing* routes, and the non-goal is asserted in two halves that cover each other:
+> `checks.spec.ts` proves no entry in that table names a generation route, and
+> `probe.client.spec.ts` drives every entry through the client and proves a `GET` with no
+> body. The integration suite then sweeps all five kinds against real loopback servers and
+> reads the record of what they were actually sent. There is no parameter anywhere in the
+> module for a method, a body or a model.
+>
+> **The service writes only states it observed, and that is what makes `unknown` real.** A
+> check that ran writes `active` or `error`. A check that could not run — a kind with nothing
+> cheap to ask, a row with no address, a cloud connection whose key has not been entered, a
+> credential this deployment cannot open — writes *nothing at all*, and the row keeps whatever
+> it had. Copilot and Cursor therefore stay at V015's default rather than being overwritten
+> with a state nobody measured, Y.4's seeded chips survive a sweep instead of being flattened
+> by one, and a `paused` row never leaves the database: the sweep's `where` clause excludes it,
+> so there is no code path on which an operator's intent is reached and then discarded.
+>
+> **A latency appears only where a check measured one**, and one measured latency is
+> deliberately discarded. There is no default and no zero — on a strip somebody reads
+> reliability from, `0ms` is an excellent latency for a provider nothing has ever called. The
+> discarded one is the local daemon's: it is measured, and it is dominated by the loopback
+> interface, so a chip printing an unvarying `0ms` beside Anthropic's real `42ms` would teach
+> its reader to ignore both. That judgement lives on the check rather than in the writer, as
+> `ProviderCheck.reportsLatency`, so it is one line to revisit when AB.2 makes every hop's
+> latency mean something.
+>
+> **AB.2's reservation is kept by the writer, not by a comment.** The probe owns `check`,
+> `latency_ms`, `models` and `detail`; `traffic` is reserved for #208's error-rate and p95
+> windows and needs no migration, because jsonb has no columns to add. What makes that true is
+> that this service *merges* — everything it does not own is copied through untouched — so a
+> traffic window written by #208 is still there after the next sweep sixty seconds later. Both
+> the unit suite and the integration suite assert it, because the person who would otherwise
+> discover it is that ticket's author, six months from now, with no idea why their window keeps
+> vanishing.
+>
+> **The cadence is jittered including the first cycle**, which is the half that matters.
+> Ouroboros is self-hosted: a hundred installations checking on a whole-minute boundary are a
+> hundred requests arriving at a vendor's endpoint in the same second, from addresses that look
+> unrelated to each other and coordinated to the vendor. Jittering only *subsequent* delays
+> would leave a fleet restarted together — a rolled deployment, a host reboot — converged for
+> the rest of its life. The cost is one cycle of honest `unknown` chips after a cold start,
+> which is what a page should show before anything has been checked.
+>
+> **This is the first periodic work in `ouroboros-rest`**, and `vault.rotation.ts`'s header
+> said so: no scheduler anywhere, and acquiring one was larger than that ticket. Z.3 acquires
+> it. The sweep is a self-rescheduling timeout on `SchedulerRegistry` rather than an
+> `@Interval`, because a decorator fixes its period when the class is defined and this one has
+> to differ on every tick; it never overlaps itself, a failed cycle is logged and the loop
+> continues, and shutdown clears the timer.
+>
+> **It is also the first module here to hold a plaintext provider credential**, for the length
+> of one probe. `RegistryModule` makes a point of importing no vault — a resolution carries an
+> address and never a key — and this module is the different case, so the import is a visible
+> statement with a reviewer attached to it. The sweep's own read reports the sealed column as a
+> *boolean*; one method selects the ciphertext, for one row, selecting nothing beside it. A
+> credential the vault cannot open is this deployment's fault rather than Anthropic's, so it is
+> logged for an operator and the row is left alone — recording `error` would put our own fault
+> on somebody else's chip.
+>
+> **The strip payload is a read and only a read.** A *check now* button would let anybody with
+> a session make this service issue outbound requests at whatever rate they can click, against
+> a vendor's rate limit and signed with the workspace's own credential. `GET
+> /api/v1/routing/providers` lives under `routing/` rather than on `/api/v1/providers`, which
+> is mockup 07's collection root (decision **M2**), and serves `meta` — the composed chip line
+> — beside the facts, so the strip and the route inspector cannot draw two different sentences
+> from one row.
+>
+> Deliberately **not** here: traffic-derived `degraded` (AB.2, #208 — the state the mockup's
+> Copilot chip shows, which no free check can produce), any write surface over
+> `provider_connections` (mockup 07), and the resolution that consumes these snapshots (Z.1,
+> #194 — this ticket exports them as pure inputs and resolves nothing).
 
 
 - **Problem Statement:** The health strip and resolution need provider states —
