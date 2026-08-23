@@ -50,13 +50,21 @@
  * ignores them, so the schema stays portable.
  *
  * ---------------------------------------------------------------------------
- * **{@link BASE_URL_FIELD} is the one reserved name, and it is the whole trick.**
+ * **{@link BASE_URL_FIELD} is the load-bearing reserved name, and it is the whole trick.**
  *
  * Ollama's card says **Host**, the vLLM card says **Base URL**, and they are the same field:
  * `baseUrl`, whose value lands in `provider_connections.base_url`. What differs is the
  * `title`, which is *data*. If the two adapters had each named the field after their own
  * vendor's word for it, the card would need to know which vendor it was rendering in order to
  * find the address — and that is precisely the `switch (kind)` decision **P1** refuses.
+ *
+ * {@link CAPABILITY_NOTE_FIELD} is the second, added by AC.3
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)) and reserved for the same reason:
+ * its value is `provider_connections.capability_note` (V017), the card's second line —
+ * mockup 07's *self-hosted · A100 ×2* under the vLLM card's name, *api.anthropic.com · primary
+ * coding lane* under Anthropic's. A whole-connection fact rather than a provider setting, so
+ * an adapter that wanted to collect one had to be able to say *this field is that column*
+ * without every consumer learning the adapter's own word for it.
  */
 
 /** The JSON Schema dialect every provider config schema declares. */
@@ -69,6 +77,24 @@ export const PROVIDER_CONFIG_DIALECT = "https://json-schema.org/draft/2020-12/sc
  * this file's header for why that is the load-bearing convention rather than a tidiness rule.
  */
 export const BASE_URL_FIELD = "baseUrl";
+
+/**
+ * The field name whose value is `provider_connections.capability_note`.
+ *
+ * Reserved, for {@link BASE_URL_FIELD}'s reason — see this file's header. Optional wherever it
+ * is declared: a connection with nothing worth saying about it is the ordinary case, and V017
+ * makes the column nullable rather than defaulting it to a sentence nobody wrote.
+ */
+export const CAPABILITY_NOTE_FIELD = "capabilityNote";
+
+/**
+ * The longest capability note V017 will store.
+ *
+ * `provider_connections_capability_note_present` refuses anything longer, so a schema that
+ * declared no `maxLength` would render a form whose valid-looking submission fails at the
+ * insert — a constraint violation where the field should simply have said *too long*.
+ */
+export const CAPABILITY_NOTE_MAX_LENGTH = 160;
 
 /** The annotation marking the field that is routed to the vault. */
 export const SECRET_ANNOTATION = "x-ouroboros-secret";

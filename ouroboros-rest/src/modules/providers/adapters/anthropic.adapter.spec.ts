@@ -25,15 +25,17 @@ import {
   ANTHROPIC_PRIORITY_HEADERS,
   ANTHROPIC_SECRET,
   ANTHROPIC_STANDARD_HEADERS,
+  recordedListing,
+  recordedRefusal,
+} from "./anthropic.recordings.fixture";
+import {
   recordFailure,
   recordRepeatedly,
   recordResponses,
-  recordedListing,
-  recordedRefusal,
   recordedRequest,
   recordedTimeout,
   recordedTransportFailure,
-} from "./anthropic.recordings.fixture";
+} from "./http.recordings.fixture";
 
 /**
  * The Anthropic adapter, against recorded responses.

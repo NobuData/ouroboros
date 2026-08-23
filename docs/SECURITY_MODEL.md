@@ -581,9 +581,12 @@ true today.
 
 ### 6.1 SSRF: private ranges are deliberately allowed
 
-> **Status: Specified** — AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)) and
-> AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)). The same policy already
-> governs `OURO_LOCAL_PROVIDER_URLS` today, which is **Shipped**.
+> **Status: Shipped for AC.3** ([#218](https://github.com/NobuData/ouroboros/issues/218)) —
+> `ouroboros-rest/src/modules/providers/provider.address.ts`, tested by
+> `provider.address.spec.ts` and, from the outside, by
+> `adapters/openai-compatible.adapter.spec.ts`. **Specified** for AC.4
+> ([#219](https://github.com/NobuData/ouroboros/issues/219)), which shares the same module. The
+> same policy already governs `OURO_LOCAL_PROVIDER_URLS`, which is **Shipped**.
 
 Two provider adapters take an address from the user: the OpenAI-compatible adapter takes a
 `base_url` and the Ollama adapter takes a `host`. The reflexive security rule for
@@ -600,10 +603,21 @@ rejection at connect time.
 What is enforced instead:
 
 - **A scheme allow-list.** `http` and `https` and nothing else — no `file:`, `gopher:`,
-  `ftp:`, or anything else a URL parser will accept.
+  `ftp:`, or anything else a URL parser will accept. `resolveProviderAddress` is the one
+  door; an adapter must not `fetch` a configured address it did not receive back from it.
 - **No redirect following.** A redirect is the mechanism by which an allowed address
   becomes a disallowed one after the check has passed, so the check is not asked to be
-  clever; the redirect is simply not followed.
+  clever; the redirect is simply not followed. Every request sets `redirect: "manual"`,
+  which makes a `3xx` an ordinary refusal classified as the connection's own settings —
+  and the `Location` it carried is never printed, because that would report where an
+  endpoint tried to steer the service.
+- **A response size cap.** One mebibyte, counted as the bytes arrive rather than trusted
+  from a `content-length`. A `GET` against a stranger's endpoint that answers with a
+  hundred megabytes is a denial of service on the control plane.
+- **No credential in the address.** A `http://key:secret@host/v1` is refused, because
+  `provider_connections.config` is the one column designed to be readable and the sealed
+  one is `credentials_encrypted`. The supported way to supply a key is the schema's
+  `x-ouroboros-secret` field.
 - **Kind scoping.** Only these two adapter kinds accept an operator-supplied address at
   all. Cloud adapters have fixed hosts and no address field to point anywhere.
 - **Role scoping.** Configuring a connection is an owner/admin action, not a member one.

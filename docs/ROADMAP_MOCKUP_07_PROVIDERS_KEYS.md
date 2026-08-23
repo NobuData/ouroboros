@@ -223,7 +223,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AC.1 | #216 | 🟢 Done | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
 | AC.2 | #217 | 🟢 Done | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
-| AC.3 | #218 | 🟡 Open | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
+| AC.3 | #218 | 🟢 Done | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.4 | #219 | 🟡 Open | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
 | AC.5 | #220 | 🟡 Open | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
 | AC.6 | #221 | 🟢 Done | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
@@ -425,8 +425,67 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 
 ### Issue AC.3 — ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.)
 
-> **GitHub issue:** #218 · **Status:** 🟡 Open · **Parent epic:** #212
+> **GitHub issue:** #218 · **Status:** 🟢 Done · **Parent epic:** #212
 
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/providers/adapters/openai-compatible.adapter.ts`](../ouroboros-rest/src/modules/providers/adapters/openai-compatible.adapter.ts),
+> the SSRF policy at
+> [`provider.address.ts`](../ouroboros-rest/src/modules/providers/provider.address.ts), and
+> the walkthrough's new section in [`docs/MODEL_PROVIDERS.md`](MODEL_PROVIDERS.md).
+>
+> **The SSRF policy is a module rather than a paragraph, because AC.4 shares it.** Every other
+> adapter talks to a fixed host; this one accepts an address somebody typed and then fetches it
+> from inside the control plane. `provider.address.ts` is the one door — a scheme allow-list, a
+> `redirect: "manual"` on every request, a one-mebibyte response cap counted as the bytes
+> arrive, and a refusal of any address carrying userinfo, because `http://key:secret@host/v1`
+> would write a credential into the one column V015 designed to be readable.
+>
+> **And private ranges are deliberately allowed**, which is the decision the whole module
+> exists to state. These adapters exist to reach `10.0.4.20:8000`; one that rejected RFC-1918
+> could not do the only job it has. There is no branch anywhere that inspects an address range,
+> and `provider.address.spec.ts` asserts the allow explicitly — so the way it breaks, somebody
+> adding a reflexive check months from now and every self-hosted card going dark, is a red test
+> rather than a support ticket. [`SECURITY_MODEL.md` §6.1](SECURITY_MODEL.md#61-ssrf-private-ranges-are-deliberately-allowed)
+> is the same decision for a reader auditing rather than editing, and it now says **Shipped**.
+>
+> `manual` rather than `error` for the redirect is the one subtle choice: Node's `fetch` hands
+> a `3xx` back intact, so it arrives as an ordinary refusal that `classifyHttpStatus` already
+> reads as `config` — an address one level above the API. With `error` it would arrive as a
+> `TypeError` indistinguishable from a closed socket, and a redirect would render *unreachable*.
+> The `Location` is never printed, because that would report where an endpoint tried to steer
+> this service.
+>
+> **Both spellings of the base URL work.** The ticket writes the call as `{base}/v1/models` and
+> mockup 07's field holds `http://10.0.4.20:8000/v1` — an OpenAI-style root, which by that
+> ecosystem's convention already ends in `/v1`. Appending unconditionally would have made the
+> card's own placeholder request `/v1/v1/models`, so the segment is appended only when it is not
+> already there, and the two conformance runs use one spelling each.
+>
+> **The kit runs twice, which is the acceptance criterion.** A kit green against one vendor's
+> capture proves the claim about one vendor, and this adapter's claim is *"any OpenAI-compatible
+> endpoint"*. The vLLM capture is rich — `max_model_len`, a `root` naming the checkpoint — and
+> the generic one is bare, so its expected models carry `contextLength: null`, which is the
+> assertion that the adapter does not invent one. The recorded `401` really contains the
+> credential, the way these servers really answer, so *the detail never quotes the provider's
+> body* is asserted against a body that would genuinely leak.
+>
+> **The chips carry `local/` and the ids do not.** The prefix is a display decision:
+> `model_aliases.model` and `model_prices.match_model` are written against the server's own
+> spelling, so an adapter that prefixed the id would break the join that makes a chip's price
+> real. And there is no tier on anything — the OpenAI wire format carries no entitlement signal,
+> and decision **P8** is that a plausible-looking default would make Anthropic's earned pill
+> unreadable too.
+>
+> **The capability note is the second reserved field name.** `capabilityNote` →
+> `provider_connections.capability_note` (V017), bounded at that column's 160 characters, for
+> `baseUrl`'s reason: the card's second line is a whole-connection fact, and a consumer should
+> not have to learn each adapter's word for it.
+>
+> **What this ticket could not finish, and why.** As with AC.2, the acceptance criterion about
+> upserting into `provider_models` has two halves and only one is an adapter's — this module
+> holds no database, which is the design AC.1 argues for. The `insert … on conflict` is AE.4's
+> (#230). What the adapter owes it is delivered and asserted: ids are the server's own
+> spellings, unique within an answer and identical across repeated runs.
 
 - **Problem Statement:** The self-hosted lane (vLLM, and by extension LM
   Studio, llama.cpp servers, TGI): base-URL-configured, key-optional — the
