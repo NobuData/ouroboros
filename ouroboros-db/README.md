@@ -249,20 +249,22 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **two migrations**, because they answer two questions and change on different days:
+It is **three migrations**, because they answer three questions and change on different
+days:
 
 | File | Holds | Issue |
 |---|---|---|
 | [`R__dev_seed.sql`](migrations/R__dev_seed.sql) | *Who exists* — the workspaces, the people, and where the loop may run | [#23](https://github.com/NobuData/ouroboros/issues/23) |
 | [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
+| [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
-> their *descriptions*, and every row the dashboard seed writes finds its parent by
-> natural key — so `dev_seed_dashboard` has to sort after `dev_seed`, and does.
-> `tests/seed.test.sh` asserts it, because the failure mode is silent: applied in the
-> wrong order, every join finds nothing, every insert inserts nothing, and a second
-> `migrate` does not put it right (Flyway re-applies a repeatable migration only when its
-> checksum changes).
+> their *descriptions*, and every row the second and third seeds write finds its parent by
+> natural key — so `dev_seed_dashboard` and `dev_seed_providers` both have to sort after
+> `dev_seed`, and do. `tests/seed.test.sh` asserts the whole order, because the failure
+> mode is silent: applied in the wrong order, every join finds nothing, every insert
+> inserts nothing, and a second `migrate` does not put it right (Flyway re-applies a
+> repeatable migration only when its checksum changes).
 
 #### Who exists
 
@@ -301,10 +303,43 @@ days against **19** the week before — the `▲ 8`.
 > runs divides 27 into 92%. The seed makes 92% exact over the population it can — the whole
 > fourteen days it spans, 46 of 50 — and states both figures.
 
+#### What it may call
+
+Mockup 07's five cards, and everything on one of them that is not a live API call. All of
+it belongs to `acme-robotics`, and it is drawn from three tables:
+
+| Table | Rows | What mockup 07 renders from them |
+|---|---|---|
+| `provider_connections` | 5 | The five cards — *Anthropic Claude* `$600` cap, *Cursor* `$120`, *GitHub Copilot* `$95` and *degraded upstream*, *OpenAI-compatible · local vLLM* and *Ollama · workstation* with no cap at all. Every switch is on; every meta row reads *Added by Ken · <date> · last used <minutes> ago* |
+| `provider_models` | 11 | The chips — four Anthropic models carrying `"tier": "priority"`, one apiece for Cursor and Copilot, two `local/…` from vLLM — and the workstation's pull-list, `qwen3-coder:32b` `19 GB`, `llama4:scout` `63 GB`, `phi4:14b` `9.1 GB` |
+| `token_usage` | 11 | The month's spend behind the meters, *earlier this month* |
+
+> **The meters are two seeds added together.** A card's *This month* figure is calendar-
+> month spend over `token_usage`, and the dashboard seed already writes twelve events dated
+> *today*. So the providers seed writes the remainder — `$401.40` of Anthropic, `$62.30` of
+> Cursor, `$70.60` of Copilot and 1.6M unpriced Ollama tokens — and the two together are the
+> mockup's `$412.80`, `$64.10`, `$76.00` and *2.1M tokens on-box*. Nothing the providers seed
+> writes lands on *today*, which is what keeps mockup 02's *Token spend · today* card
+> exactly the dashboard seed's twelve events; `tests/seed.sql` asserts both totals and the
+> rule that keeps them apart. On the first of a month there is no *earlier this month*: the
+> rows fall on the last day of the previous one and the meters read the day's spend alone,
+> which is the one day in thirty the cards are not the mockup's figures — asserted as such
+> rather than left to be discovered.
+
+The three cloud connections carry a sealed `ouro.v1.…` credential whose body decodes to
+*dev-seed-value-not-a-real-credential-…*: it is a well-formed envelope, so the card renders
+its masked key row and V015's envelope-only rule is exercised by the data a developer
+actually has, and it is **not decryptable** — a real one is AES-256-GCM under a workspace
+DEK bound to the row's id, which no SQL file can produce. *Reveal* against a seeded
+connection therefore fails in the designed way rather than showing a key. The two local
+connections carry none, because a local provider needs none.
+
 **`kensuenobu` and `acme-labs` get no dashboard rows at all.** That is not an omission: the
 personal workspace is the *empty-state fixture* the zero-state cards
 ([#86](https://github.com/NobuData/ouroboros/issues/86)) are rendered against, so switching
-the active organization to it is how a developer sees the empty dashboard. Neither gets a
+the active organization to it is how a developer sees the empty dashboard. **Neither gets a
+provider connection either**, which is the same fixture for mockup 07's *connect your first
+provider* guidance ([#233](https://github.com/NobuData/ouroboros/issues/233)). Neither gets a
 `workspace_settings` row either, which keeps "answered no" and "never asked" distinguishable
 — `workspace_settings_effective` resolves both to `false`, and only it says which.
 
@@ -315,7 +350,10 @@ sight in a log or a URL, and a test can name a row without looking it up. The wo
 seed lists all of its ids; the dashboard seed builds its seventy-seven from three
 documented prefixes (`5eed0009…` runs, `5eed000a…` queue items, `5eed000b…` usage events)
 and the issue number or ordinal of the row, which is as deterministic and rather more
-readable than seventy-seven literals.
+readable than seventy-seven literals. The providers seed takes the three prefixes after
+those — `5eed000c…` connections, `5eed000d…` discovered models, `5eed000e…` its own spend
+events — which is also what keeps its usage rows and the dashboard's apart on sight in a
+table both of them write.
 
 **Neither can run against anything but a development database.** Each statement in either
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
@@ -461,8 +499,9 @@ as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh)
 every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
 — because `validate` compares checksums rather than behaviour, and a `unique` on the
 wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
-what the two `R__dev_seed*.sql` migrations actually put in a development database, one
-assertion per row — the workspaces, and mockup 02's dashboard number for number.
+what the three `R__dev_seed*.sql` migrations actually put in a development database, one
+assertion per row — the workspaces, mockup 02's dashboard number for number, and mockup
+07's five provider cards with the meters their two seeds add up to.
 Run them against a migrated database:
 
 ```bash
@@ -493,13 +532,16 @@ outside. The only way to tell them apart is to break a rule on purpose and check
 right probe goes red for the right reason.
 
 [`tests/verify-constraint-probes.sh`](tests/verify-constraint-probes.sh) is that check for
-the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)). It drops
-one rule at a time — the `runs.status` and `queue_items.effort` vocabularies, the
-terminal-run rule, the queue's position and issue keys, the `workspace_settings` primary
-key — and rewrites the two expressions `token_usage_daily` computes its sums from, since
-that bullet is arithmetic rather than a constraint and no drop can falsify it. For each, it
-requires the suite to fail **and** to name the assertion that caught it: a bare non-zero
-status would also be produced by a mutation that broke on its own statement.
+the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)) and for
+the provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)). It drops one
+rule at a time — the `runs.status` and `queue_items.effort` vocabularies, the terminal-run
+rule, the queue's position and issue keys, the `workspace_settings` primary key; the
+monthly cap's floor, the discovered catalog's uniqueness, the `enabled` switch's `not null`
+and the health vocabulary beside it, the `added_by` reference — and rewrites the two
+expressions `token_usage_daily` computes its sums from, since that bullet is arithmetic
+rather than a constraint and no drop can falsify it. For each, it requires the suite to
+fail **and** to name the assertion that caught it: a bare non-zero status would also be
+produced by a mutation that broke on its own statement.
 
 ```bash
 PGPASSWORD=ouroboros ouroboros-db/tests/verify-constraint-probes.sh
@@ -857,8 +899,9 @@ outside this module alters it.
 | `token_usage` | `V010` | What the loop has spent — one append-only event per provider call, not one total per organization | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization |
 | `workspace_settings` | `V011` | Org-scoped typed product settings — today the auto-merge switch, the dashboard's only write | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
 | `github_issues` | `V014` | The backlog as Ouroboros sees it — one row per mirrored GitHub issue, behind mockup 03's table and detail panel. **A cache, not a fork** (decision **K3**): GitHub owns every column but `sizing_status` | `(github_repo_id, number)` unique, which is also the sync's upsert key; `state` is `open\|closed` and `sizing_status` one of `unsized\|estimating\|sized\|needs_human`, defaulting to `unsized`; `labels` must be a JSON array of at most 100 non-empty **names** — GitHub's, not ours; `gh_url` must be `https` with a host, because it becomes an `href`; `gh_updated_at` cannot precede `gh_created_at`; the issue's repository must belong to the issue's organization |
-| `provider_connections` | `V015` | Where a workspace's model providers are, and the sealed credential for the ones that need one — mockup 06's `.phealth` strip, and the shared foundation mockup 07 will manage (decision **M2**) | `kind` is one of `anthropic\|openai_compatible\|ollama\|copilot\|cursor\|custom` and `status` one of `active\|paused\|error\|unknown`, defaulting to `unknown` because a connection nothing has checked is genuinely unknown (decision **M8**); `credentials_encrypted` is **envelope-only** — an `ouro.v1.…` value or null, so a plaintext key cannot be stored by any writer — and null is legitimate, because a local provider needs none; `base_url` is `http`/`https` and required for `ollama` and `openai_compatible`, which have no public endpoint; `health` must be an object, may only carry content once `last_checked_at` exists, and a `latency_ms` must be a non-negative number — there is deliberately no defaulted `0ms` |
+| `provider_connections` | `V015`, cards' columns `V017` | Where a workspace's model providers are, and the sealed credential for the ones that need one — mockup 06's `.phealth` strip, and the shared foundation mockup 07 manages (decision **M2**). Since `V017` it also carries what a card *shows*: `monthly_cap_cents`, `added_by`, `last_used_at`, `capability_note` and the `enabled` switch | `kind` is one of `anthropic\|openai_compatible\|ollama\|copilot\|cursor\|custom` and `status` one of `active\|paused\|error\|unknown`, defaulting to `unknown` because a connection nothing has checked is genuinely unknown (decision **M8**); `credentials_encrypted` is **envelope-only** — an `ouro.v1.…` value or null, so a plaintext key cannot be stored by any writer — and null is legitimate, because a local provider needs none; `base_url` is `http`/`https` and required for `ollama` and `openai_compatible`, which have no public endpoint; `health` must be an object, may only carry content once `last_checked_at` exists, and a `latency_ms` must be a non-negative number — there is deliberately no defaulted `0ms`; `monthly_cap_cents` is non-negative and **nullable**, where null is *no cap* (the mockup's em-dash) and zero is the real instruction *spend nothing*; `added_by` references `"user"` and **sets null**, because deleting the person who added a provider must not delete the provider; `enabled` is `not null default true` and is **not** `status` — the switch is what a person decided, the status is what the last check measured, and a card draws both |
 | `model_aliases` | `V015` | The names a workspace's routes may use, and what each resolves to — the shared foundation mockup 21 will manage | `alias` unique **per organization** and constrained to lower-case kebab, so uniqueness cannot be defeated by capitalisation; `model_id` is the raw provider model string and the **only** place one lives (decision **M1**); `params` must be an object; the connection is reached through a **composite** foreign key on `(organization_id, provider_connection_id)`, which is what holds an alias and its connection to one workspace, and it **restricts** on delete, so a provider aliases depend on cannot be removed out from under the routes that reach it |
+| `provider_models` | `V017` | The models a connection has, as discovery reported them — the cards' chips and Ollama pull-list, mockup 21's registry, and what Y.1's aliases are validated against (decision **P6**) | `(provider_connection_id, model_id)` is unique, which is what makes discovery an **upsert** rather than a duplication; `display` is required, because a chip with no text is a chip nobody can click; `size_bytes` is positive or null — only a locally-pulled model has one, and null rather than zero is how *no size* is said; `meta` must be an object, and carries `context_tokens` under the key `model_prices.meta` already uses; cascades from the connection, which is deliberately its **only** tenancy — a discovered model is a fact about a connection, and every read enters through one |
 | `task_kinds` | `V016` | The kinds of work a route can be written for — mockup 06's `8 task kinds`, and the vocabulary the WF stage catalog ([#145](https://github.com/NobuData/ouroboros/issues/145)), the estimator and the DSL's `route.task()` all read rather than each hardcode (decision **M3**) | `name` unique **per workspace** and lower-case kebab, so uniqueness cannot be defeated by capitalisation; `description` is required, because it is the matrix line that tells one row from its neighbour; `sort_order` is unique per workspace and **deferrable**, so a drag-reorder is plain SQL — and deliberately **not** dense, because nothing reads those numbers |
 | `routes` | `V016` | One task kind's route: the owner of the ordered alias chain and of mockup 06's policy triple — **Allow fallback to local models**, the floor, and **Max cost per run** (decision **M4**) | **Exactly one route per task kind**, as a unique key rather than as application code, so resolution's *"the route of this kind"* has one answer; `tag` unique per workspace and its own column rather than derived, because the mockup's tags are not mechanical (`test-gen` → `testgen-primary`); `max_cost_cents_per_run` is **integer cents** — `$2.50` is `250`, never a float; `floor_hop_index` is null-permitting, at least 1 by CHECK and never past the end of the chain, which is `route_chain_intact()`; `updated_by` **sets null** rather than cascading, because deleting the person who last saved a route must not delete the route |
 | `route_hops` | `V016` | The ordered fallback chain — mockup 06's numbered inspector rail, each hop naming a registry alias and carrying the hop-meta line beside it | `position` unique per route and **deferrable**, so a reorder swaps inside a transaction, and **dense from 1** by the `route_chain_intact()` constraint trigger — unlike `queue_items.position`, because these numbers are read: `floor_hop_index` counts them; a route may never be left with an empty chain; the alias is reached through a **composite** foreign key on `(organization_id, model_alias_id)` and it **restricts** on delete, so an alias a chain names cannot be retired out from under it; **there is no raw model id column here, in any of the three tables** — decision **M1** by construction |
@@ -874,6 +917,21 @@ query instead of an opaque function scan.
 **`ouroboros.import_model_price_catalog(version, effective_at, rows)`** is the write, and
 the whole of what `R__model_price_catalog.sql` does: idempotent, sweeping the previous
 snapshot, and structurally unable to touch a workspace's override.
+
+Two more **functions**, `V017`'s, and one row trigger over them.
+**`ouroboros.provider_model_discovered(connection, model)`** answers *has discovery
+reported this model on this connection* — the predicate behind the alias warning, exposed
+on its own so a service, mockup 21's discovery-mismatch state and `tests/constraints.sql`
+all read one definition. **`ouroboros.warn_undiscovered_alias_model()`** is the trigger
+function on `model_aliases` that consults it and **raises a `WARNING` without refusing the
+write** (decision **P6**): discovery is not yet universal — a connection exists before
+anything has discovered it, and an operator may create an alias ahead of a key — so a hard
+foreign key would refuse configurations that are valid during that gap. It tells a *gap*
+(nothing discovered on this connection yet) from a *mismatch* (its catalog lists other
+models), and becomes enforcement the day discovery covers every adapter, by raising instead
+of warning. `ci/db` greps the `constraints.sql` transcript for both branches, because
+nothing in SQL can catch a warning and a suite that had lost the trigger would be exactly
+as green.
 
 One **constraint trigger function**, `V016`'s. **`ouroboros.route_chain_intact()`** holds
 the two rules that are properties of a *chain* rather than of a row — a route's hop
@@ -1022,6 +1080,8 @@ BetterAuth core schema [#706](https://github.com/NobuData/ouroboros/issues/706) 
 organization schema [#707](https://github.com/NobuData/ouroboros/issues/707) *(done)* ·
 tenancy cut-over [#708](https://github.com/NobuData/ouroboros/issues/708) *(done)* ·
 model pricing catalog [#580](https://github.com/NobuData/ouroboros/issues/580) *(done)* ·
+provider connections & aliases [#189](https://github.com/NobuData/ouroboros/issues/189) *(done)* ·
+provider schema extensions, discovered models & seeds [#221](https://github.com/NobuData/ouroboros/issues/221) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).

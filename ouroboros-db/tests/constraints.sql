@@ -4619,6 +4619,401 @@ select pg_temp.must_hold(
          where route_id = 'e9000000-0000-0000-0000-00000000000f'),
   'retiring a task kind takes its route, and the route takes its chain');
 
+-- ===========================================================================
+-- V017 — what the provider cards show, the discovered catalog, and soft validation (#221)
+-- ===========================================================================
+--
+-- AC.6 extends V015 rather than forking it, so this section extends V015's above rather
+-- than restating it: the rules asserted here are the five columns mockup 07's cards read,
+-- `provider_models`, and the alias warning that is deliberately not a foreign key.
+--
+-- Four of the ticket's criteria are what most of it is about:
+--
+--   * **`enabled` and `status` are independently settable, and the card distinguishes
+--     them.** All four combinations are inserted, because a schema that had quietly
+--     collapsed the switch into the health vocabulary would still be green everywhere else.
+--   * **`(provider_connection_id, model_id)` uniqueness holds, and re-running discovery
+--     upserts rather than duplicating.** Both halves: the constraint refuses the second
+--     row, and the upsert statement AE.4 will issue refreshes the first one in place.
+--   * **The alias-to-unknown-model warning fires and does not block the write.** The row is
+--     read back after the statement that warned about it, which is the only half of "warns"
+--     that SQL can observe: nothing in plpgsql can catch a warning. The message is asserted
+--     by the `ci/db` step that greps this suite's transcript for both of the states it
+--     tells apart, and the predicate underneath it is asserted here in both directions.
+--   * **A cap cannot be negative**, which is the rule the meter's arithmetic rests on.
+--
+-- Its own fixtures again, in a workspace of their own — the sections above have deleted
+-- theirs, and a card fixture that shared a workspace with V015's would make the cascade
+-- assertions at the foot ambiguous.
+--
+-- One consequence of the warning reaches back through the whole file, and is worth knowing
+-- before reading a transcript: **every alias the V015 and V016 sections create now warns**,
+-- because those fixtures name models nothing has discovered on their connections. That is
+-- the rule doing exactly what it is for — it is soft, so those sections still pass — and it
+-- is why the `ci/db` grep looks for the *mismatch* branch, which only the fixture below
+-- produces.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-cards', 'Cards Works', 'cards-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values
+  ('user-adder', 'Ada Adder', 'ada@cards-works.dev', true, now(), now());
+
+-- Three of mockup 07's five cards, chosen for what they differ in: a capped cloud provider
+-- with a credential and a catalog, an uncapped local one, and a connection nothing has
+-- discovered anything on. The fourth row is the *switched off* card, which no mockup draws
+-- and every card component has to be able to.
+insert into ouroboros.provider_connections
+    (id, organization_id, kind, display_name, base_url, status, last_checked_at, health,
+     monthly_cap_cents, added_by, last_used_at, capability_note, enabled) values
+  ('eb000000-0000-0000-0000-00000000000a', 'org-cards', 'anthropic', 'Anthropic Claude',
+   null, 'active', now(), '{"latency_ms": 38}', 60000, 'user-adder',
+   now() - interval '3 minutes', 'api.anthropic.com · primary coding lane', true),
+  ('eb000000-0000-0000-0000-00000000000b', 'org-cards', 'ollama', 'Ollama · workstation',
+   'http://workstation.local:11434', 'active', now(), '{"latency_ms": 4}', null,
+   'user-adder', now() - interval '41 seconds',
+   'zero-cost lane — used for docs & commit messages', true),
+  ('eb000000-0000-0000-0000-00000000000c', 'org-cards', 'copilot', 'GitHub Copilot',
+   null, 'error', now(), '{"detail": "503 upstream · retrying"}', 9500, 'user-adder',
+   now() - interval '72 minutes', 'billed through GitHub org acme-robotics', true),
+  ('eb000000-0000-0000-0000-00000000000d', 'org-cards', 'cursor', 'Cursor',
+   null, 'active', now(), '{"latency_ms": 51}', 0, 'user-adder', null,
+   'switched off while the trial is decided', false);
+
+-- Anthropic's four chips, and the workstation's three pull-list lines with their sizes.
+insert into ouroboros.provider_models
+    (id, provider_connection_id, model_id, display, size_bytes, meta) values
+  ('ec000000-0000-0000-0000-00000000000a', 'eb000000-0000-0000-0000-00000000000a',
+   'claude-fable-5', 'claude-fable-5', null, '{"context_tokens": 1000000, "tier": "priority"}'),
+  ('ec000000-0000-0000-0000-00000000000b', 'eb000000-0000-0000-0000-00000000000a',
+   'claude-haiku-4-5', 'claude-haiku-4-5', null, '{"context_tokens": 200000}'),
+  ('ec000000-0000-0000-0000-00000000000c', 'eb000000-0000-0000-0000-00000000000b',
+   'qwen3-coder:32b', 'qwen3-coder:32b', 19000000000, '{}'),
+  ('ec000000-0000-0000-0000-00000000000d', 'eb000000-0000-0000-0000-00000000000b',
+   'llama4:scout', 'llama4:scout', 63000000000, '{}');
+
+-- --- the migration says what it is, in the database ---------------------------
+--
+-- The same reasoning V015's section gives: a header is a comment in a file, and the claim
+-- that survives into `\d+` and into any tool that reads the catalogue is the comment on the
+-- object. P6 is the decision this table exists for, so the table has to name it.
+select pg_temp.must_hold(
+  (select obj_description('ouroboros.provider_models'::regclass) like '%decision P6%'
+      and obj_description('ouroboros.provider_models'::regclass) like '%discovery%'),
+  'provider_models names decision P6 and discovery as what it is for');
+
+select pg_temp.must_hold(
+  (select col_description('ouroboros.provider_connections'::regclass,
+                          (select attnum from pg_attribute
+                            where attrelid = 'ouroboros.provider_connections'::regclass
+                              and attname = 'enabled')) like '%NOT the health status%'),
+  'the enabled column says in the catalogue that it is not the health status');
+
+-- --- a freshly added connection renders honestly -------------------------------
+--
+-- Every column AC.6 adds is nullable but one, and the one exception defaults to *on*. That
+-- is the state a connection the add-form (AE.5) has just stored is in, and each of the five
+-- values is something a card draws: no cap is the mockup's em-dash, no `last_used_at` is
+-- *never used*, and no note is a card with one line instead of two.
+insert into ouroboros.provider_connections (id, organization_id, kind, display_name) values
+  ('eb000000-0000-0000-0000-00000000000e', 'org-cards', 'custom', 'Freshly Added');
+
+select pg_temp.must_hold(
+  (select enabled
+      and monthly_cap_cents is null
+      and added_by is null
+      and last_used_at is null
+      and capability_note is null
+     from ouroboros.provider_connections
+    where id = 'eb000000-0000-0000-0000-00000000000e'),
+  'a connection added with nothing extra is enabled, uncapped, unattributed and never used');
+
+-- --- the switch is not the health, and the card has to draw both ---------------
+--
+-- Acceptance criterion: *`enabled` and health `status` are independently settable*. All
+-- four combinations, written as four updates of one row rather than four rows, so what is
+-- asserted is that neither column moves the other — the failure a trigger or a collapsed
+-- vocabulary would produce.
+update ouroboros.provider_connections
+   set enabled = false, status = 'active'
+ where id = 'eb000000-0000-0000-0000-00000000000e';
+select pg_temp.must_hold(
+  (select not enabled and status = 'active'
+     from ouroboros.provider_connections
+    where id = 'eb000000-0000-0000-0000-00000000000e'),
+  'a connection may be switched off while its last health check still says active');
+
+update ouroboros.provider_connections
+   set enabled = true, status = 'error'
+ where id = 'eb000000-0000-0000-0000-00000000000e';
+select pg_temp.must_hold(
+  (select enabled and status = 'error'
+     from ouroboros.provider_connections
+    where id = 'eb000000-0000-0000-0000-00000000000e'),
+  'and may be left switched on while the provider is failing, which is the card the mockup draws');
+
+update ouroboros.provider_connections
+   set enabled = false, status = 'error'
+ where id = 'eb000000-0000-0000-0000-00000000000e';
+
+-- All four, across the workspace's rows: Anthropic on and healthy, Copilot on and failing,
+-- Cursor off while its last check succeeded, and this one off and failing. A schema that
+-- had collapsed the switch into the health vocabulary could not produce four.
+select pg_temp.must_hold(
+  (select count(*) = 4 from (
+     select distinct enabled, status
+       from ouroboros.provider_connections
+      where organization_id = 'org-cards'
+        and status in ('active', 'error')
+   ) as combinations),
+  'both switch positions occur against both health outcomes, which is four cards to draw');
+
+-- The switch has two positions and no third. A nullable one would be a card that can
+-- render neither on nor off, which is the state a boolean exists to rule out.
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set enabled = null
+     where id = 'eb000000-0000-0000-0000-00000000000e'$$,
+  'the enable switch has no third state');
+
+-- --- the cap is money, and money has a floor -----------------------------------
+--
+-- Acceptance criterion, and the rule the meter rests on: a negative cap renders a meter
+-- already past 100% for a workspace that has spent nothing. Zero is admitted deliberately —
+-- *spend nothing* is a real instruction, and V017's header says why it is not the same as
+-- no cap at all.
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set monthly_cap_cents = -1
+     where id = 'eb000000-0000-0000-0000-00000000000a'$$,
+  'a negative monthly cap is refused', 'provider_connections_monthly_cap_nonnegative');
+
+select pg_temp.must_hold(
+  (select monthly_cap_cents = 0 from ouroboros.provider_connections
+    where id = 'eb000000-0000-0000-0000-00000000000d'),
+  'a cap of zero is a cap — spend nothing — and is stored as one');
+
+select pg_temp.must_hold(
+  (select monthly_cap_cents is null from ouroboros.provider_connections
+    where id = 'eb000000-0000-0000-0000-00000000000b'),
+  'a local provider carries no cap at all, which is the em-dash the mockup renders');
+
+-- --- the capability line is a line, or it is absent ----------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set capability_note = '   '
+     where id = 'eb000000-0000-0000-0000-00000000000a'$$,
+  'a blank capability line is refused rather than rendered as an empty second row',
+  'provider_connections_capability_note_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set capability_note = repeat('x', 161)
+     where id = 'eb000000-0000-0000-0000-00000000000a'$$,
+  'a capability line longer than the card can hold is refused',
+  'provider_connections_capability_note_present');
+
+-- --- who added it, and what happens when they leave ----------------------------
+--
+-- Acceptance criterion for the meta row, and the pair of rules underneath it: the
+-- attribution has to name somebody who exists, and losing them must not lose the provider.
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set added_by = 'nobody-at-all'
+     where id = 'eb000000-0000-0000-0000-00000000000a'$$,
+  'a connection cannot be attributed to a person who does not exist',
+  'provider_connections_added_by_fk');
+
+delete from ouroboros."user" where "id" = 'user-adder';
+
+select pg_temp.must_hold(
+  (select count(*) = 5 and count(*) filter (where added_by is null) = 5
+     from ouroboros.provider_connections
+    where organization_id = 'org-cards'),
+  'deleting the person who added the providers keeps every one of them, unattributed');
+
+-- --- the catalog is unique per connection, and shared across them ---------------
+--
+-- Acceptance criterion: *(provider_connection_id, model_id) uniqueness holds*. The second
+-- half is the one worth stating — the same model id on a *different* connection is two
+-- rows, because two workspaces (or two Ollama daemons) offering `qwen3-coder:32b` are two
+-- separate facts about two separate providers.
+select pg_temp.must_reject(
+  $$insert into ouroboros.provider_models (provider_connection_id, model_id, display)
+    values ('eb000000-0000-0000-0000-00000000000a', 'claude-fable-5', 'Claude Fable 5')$$,
+  'one connection cannot list the same model twice',
+  'provider_models_connection_model_key');
+
+insert into ouroboros.provider_models (provider_connection_id, model_id, display) values
+  ('eb000000-0000-0000-0000-00000000000c', 'claude-fable-5', 'copilot/claude-fable-5');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.provider_models
+    where model_id = 'claude-fable-5'),
+  'the same model id on two connections is two rows, because it is two facts');
+
+-- --- re-running discovery refreshes rather than duplicates ----------------------
+--
+-- Acceptance criterion, asserted with the statement AE.4 (#230) will actually issue: the
+-- upsert V017's header documents. What makes it work is the unique key above, so this is
+-- the same rule read from the other side — and the size and the stamp have to move, because
+-- a second pass over a model that has been re-pulled is exactly when they change.
+insert into ouroboros.provider_models
+     (provider_connection_id, model_id, display, size_bytes, meta, discovered_at)
+values ('eb000000-0000-0000-0000-00000000000b', 'qwen3-coder:32b', 'qwen3-coder:32b',
+        20100000000, '{"context_tokens": 262144}', now())
+    on conflict (provider_connection_id, model_id) do update
+       set display       = excluded.display,
+           size_bytes    = excluded.size_bytes,
+           meta          = excluded.meta,
+           discovered_at = excluded.discovered_at;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.provider_models
+    where provider_connection_id = 'eb000000-0000-0000-0000-00000000000b'
+      and model_id = 'qwen3-coder:32b'
+      and size_bytes = 20100000000
+      and meta = '{"context_tokens": 262144}'::jsonb),
+  'discovery run twice leaves one row, carrying the second run''s size and metadata');
+
+-- --- a size is a size, and metadata is an object --------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.provider_models set size_bytes = -1
+     where id = 'ec000000-0000-0000-0000-00000000000c'$$,
+  'a negative model size is refused', 'provider_models_size_bytes_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_models set size_bytes = 0
+     where id = 'ec000000-0000-0000-0000-00000000000c'$$,
+  'a zero model size is refused — the way to say "no size" is null, not a tag claiming none',
+  'provider_models_size_bytes_positive');
+
+select pg_temp.must_hold(
+  (select size_bytes is null from ouroboros.provider_models
+    where id = 'ec000000-0000-0000-0000-00000000000a'),
+  'a cloud model carries no size at all, which is what the card renders no tag for');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_models set meta = '[]'
+     where id = 'ec000000-0000-0000-0000-00000000000a'$$,
+  'discovery metadata must be an object a caller can merge', 'provider_models_meta_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.provider_models (provider_connection_id, model_id, display)
+    values ('eb000000-0000-0000-0000-00000000000a', 'claude-opus-5', '  ')$$,
+  'a chip with no text is refused', 'provider_models_display_present');
+
+-- --- the catalog has no workspace of its own ------------------------------------
+--
+-- V017's one deliberate departure from this schema's tenancy habit, asserted as a
+-- catalogue read rather than left in the header: a `organization_id` added here later would
+-- be a second copy of a fact the connection already carries, and this is what notices.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name = 'provider_models'
+      and column_name in ('organization_id', 'tenant_id')),
+  'provider_models carries no workspace id: its tenancy is the connection it hangs off');
+
+-- --- listing a connection's models, and deleting one, reach an index -------------
+--
+-- The unique key is doing three jobs — the rule, the read, and the referencing side of the
+-- foreign key — which is why V017 adds no index of its own. If that ever stopped being
+-- true, the delete below would start scanning the catalog.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select model_id from ouroboros.provider_models
+     where provider_connection_id = 'eb000000-0000-0000-0000-00000000000a'$$,
+  'provider_models_connection_model_key');
+set local enable_seqscan = on;
+
+-- --- soft validation: the warning fires, and the row is written ------------------
+--
+-- Acceptance criterion: *the alias-to-unknown-model warning fires on a fixture and does not
+-- block the write*. The predicate is asserted in both directions first, because it is what
+-- the trigger consults and what mockup 21's discovery-mismatch state will read; then the
+-- alias that trips it is inserted and read back.
+select pg_temp.must_hold(
+  ouroboros.provider_model_discovered('eb000000-0000-0000-0000-00000000000a', 'claude-fable-5'),
+  'a model discovery reported on that connection is known to the predicate');
+
+select pg_temp.must_hold(
+  not ouroboros.provider_model_discovered('eb000000-0000-0000-0000-00000000000a', 'claude-fable-6'),
+  'a model it did not report is not — and a near-miss spelling is the ordinary way that happens');
+
+select pg_temp.must_hold(
+  not ouroboros.provider_model_discovered('eb000000-0000-0000-0000-00000000000e', 'anything-at-all'),
+  'nor is anything at all on a connection nothing has been discovered on');
+
+-- The gap branch — a connection with no catalog — and the mismatch branch, on a connection
+-- that has one. Both warn; the transcript is where the message is read, and `ci/db` greps
+-- it. What is asserted here is the half that is not a message: the rows exist.
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id) values
+  ('ed000000-0000-0000-0000-00000000000a', 'org-cards', 'coder-max',
+   'eb000000-0000-0000-0000-00000000000a', 'claude-fable-5'),
+  ('ed000000-0000-0000-0000-00000000000b', 'org-cards', 'coder-ghost',
+   'eb000000-0000-0000-0000-00000000000a', 'claude-fable-6'),
+  ('ed000000-0000-0000-0000-00000000000c', 'org-cards', 'undiscovered-lane',
+   'eb000000-0000-0000-0000-00000000000e', 'anything-at-all');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.model_aliases where organization_id = 'org-cards'),
+  'an alias naming a model discovery has not reported is written, warning and all — soft in MVP by P6');
+
+select pg_temp.must_hold(
+  (select model_id = 'claude-fable-6' from ouroboros.model_aliases
+    where id = 'ed000000-0000-0000-0000-00000000000b'),
+  'and it is stored exactly as it was written, so the mismatch is visible rather than corrected');
+
+-- Repointing an alias at a model that *is* in the catalog is the fix, and it passes through
+-- the same trigger without a word.
+update ouroboros.model_aliases set model_id = 'claude-haiku-4-5'
+ where id = 'ed000000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  ouroboros.provider_model_discovered(
+    (select provider_connection_id from ouroboros.model_aliases
+      where id = 'ed000000-0000-0000-0000-00000000000b'),
+    (select model_id from ouroboros.model_aliases
+      where id = 'ed000000-0000-0000-0000-00000000000b')),
+  'repointing the alias at a discovered model is what clears the mismatch');
+
+-- --- the trigger watches the two columns that can create a mismatch --------------
+--
+-- `before insert or update of provider_connection_id, model_id`, read from the catalogue.
+-- Without the column list, pinning a temperature — an update of `params` alone — would
+-- re-warn about a model nobody touched, and a warning that fires on writes it has nothing
+-- to say about is a warning people learn to ignore.
+select pg_temp.must_hold(
+  (select array_agg(att.attname::text order by att.attname) = array['model_id', 'provider_connection_id']
+     from pg_trigger trg
+     cross join lateral unnest(trg.tgattr) as columns (attnum)
+     join pg_attribute att
+       on att.attrelid = trg.tgrelid and att.attnum = columns.attnum
+    where trg.tgrelid = 'ouroboros.model_aliases'::regclass
+      and trg.tgname = 'model_aliases_warn_undiscovered_model'),
+  'the warning watches provider_connection_id and model_id, and nothing else');
+
+-- --- the catalog goes when its connection does, and both go with the workspace ----
+delete from ouroboros.provider_connections
+ where id = 'eb000000-0000-0000-0000-00000000000c';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.provider_models
+    where provider_connection_id = 'eb000000-0000-0000-0000-00000000000c'),
+  'deleting a connection takes its discovered catalog with it');
+
+select pg_temp.must_hold(
+  (select count(*) > 0 from ouroboros.provider_models pm
+     join ouroboros.provider_connections c on c.id = pm.provider_connection_id
+    where c.organization_id = 'org-cards'),
+  'the workspace about to be deleted really does still have a catalog');
+
+delete from ouroboros.organization where "id" = 'org-cards';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.provider_connections where organization_id = 'org-cards')
+   and (select count(*) = 0 from ouroboros.model_aliases where organization_id = 'org-cards')
+   and (select count(*) = 0 from ouroboros.provider_models pm
+         where pm.id::text like 'ec000000%'),
+  'deleting the workspace takes its connections, its aliases and every discovered model with them');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

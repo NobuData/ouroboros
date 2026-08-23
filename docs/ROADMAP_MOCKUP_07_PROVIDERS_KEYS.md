@@ -226,7 +226,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | AC.3 | #218 | 🟡 Open | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.4 | #219 | 🟡 Open | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
 | AC.5 | #220 | 🟡 Open | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
-| AC.6 | #221 | 🟡 Open | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
+| AC.6 | #221 | 🟢 Done | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
 
 ### Issue AC.1 — ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry
 
@@ -455,7 +455,7 @@ cursor:  key → ok · catalog [cursor/composer-2]
 
 ### Issue AC.6 — ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds
 
-> **GitHub issue:** #221 · **Status:** 🟡 Open · **Parent epic:** #212
+> **GitHub issue:** #221 · **Status:** 🟢 Done · **Parent epic:** #212
 
 
 - **Problem Statement:** Y.1's foundation lacks what the cards show: caps, meta

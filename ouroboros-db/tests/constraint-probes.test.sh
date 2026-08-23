@@ -3,7 +3,9 @@
 # constraint-probes.test.sh — tests for tests/verify-constraint-probes.sh.
 #
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
-# where a database exists: the `ci/db` step that runs it. What is asserted here is
+# where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
+# read-model and #221's provider tables, and every constraint either of them names is
+# checked below against the migrations that create it. What is asserted here is
 # everything it decides *before* it connects — the arguments it accepts, the ones it
 # refuses, and its refusal to reach for a database with no password in the environment —
 # so the module's suite keeps covering it without a daemon or a network.
@@ -84,7 +86,11 @@ for probe_constraint in \
   runs_terminal_finished_at \
   queue_items_effort \
   queue_items_organization_position_key \
-  queue_items_organization_issue_key
+  queue_items_organization_issue_key \
+  provider_connections_monthly_cap_nonnegative \
+  provider_connections_status \
+  provider_connections_added_by_fk \
+  provider_models_connection_model_key
 do
   check_contains "$PROBES" "drop constraint $probe_constraint" \
     "the suite mutates $probe_constraint"
@@ -103,6 +109,15 @@ check_contains "$PROBES" 'drop constraint workspace_settings_pkey' \
 check_contains "$MODULE_DIR/migrations/V011__workspace_settings.sql" \
   'organization_id .*primary key' \
   'and V011 declares that primary key'
+
+# `enabled` is a boolean, so the rule that gives it two states and not three is its
+# `not null` — which has no name to drop. The mutation widens the column instead, and the
+# migration that declares it is what this checks against.
+check_contains "$PROBES" 'alter column enabled drop not null' \
+  'the suite widens the enable switch'
+check_contains "$MODULE_DIR/migrations/V017__provider_extensions_model_catalog.sql" \
+  'enabled +boolean +not null default true' \
+  'and V017 declares it as a switch with two positions'
 
 # The two view rewrites cover the one scope bullet that is arithmetic rather than a
 # constraint, so neither can be expressed as a drop.
