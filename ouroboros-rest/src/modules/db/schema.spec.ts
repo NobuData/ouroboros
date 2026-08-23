@@ -232,7 +232,18 @@ describe("TABLE_COLUMNS", () => {
     //
     // The thirteenth is V013's `tenant_keys` (#222) — the credential vault's sealed
     // per-workspace keys, and the first table here this service is the *only* writer of.
-    expect(TABLE_NAMES).toHaveLength(13);
+    //
+    // The fourteenth is V012's `model_prices` (#580), which CH.3 (#586) reads and writes
+    // overrides in.
+    expect(TABLE_NAMES).toHaveLength(14);
+  });
+
+  it("mirrors the model pricing catalog V012 created", () => {
+    // Named as well as counted, for the reason the vault's table is: a mirror missing this one
+    // is a registry that renders "—" for every model in the catalog, and the failure would
+    // otherwise read as an off-by-one in a total.
+    expect(TABLE_NAMES).toContain("model_prices");
+    expect(READ_ONLY_VIEWS).not.toContain("model_prices");
   });
 
   it("mirrors the vault's key table V013 created", () => {

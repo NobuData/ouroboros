@@ -82,8 +82,15 @@ import {
   uniqueName,
 } from "./integration.fixture";
 
-/** The verbs this API answers to, which is every verb a suite has to be able to send. */
-export type Method = "get" | "post" | "patch" | "delete";
+/**
+ * The verbs this API answers to, which is every verb a suite has to be able to send.
+ *
+ * `put` arrived with the price overrides
+ * ([#586](https://github.com/NobuData/ouroboros/issues/586)) — the first operation in this API
+ * that *replaces* a thing outright rather than amending it, which is what `patch` means
+ * everywhere else here.
+ */
+export type Method = "get" | "post" | "put" | "patch" | "delete";
 
 /** Somebody signed in: the person, and the cookie their browser carries. */
 export interface Person {

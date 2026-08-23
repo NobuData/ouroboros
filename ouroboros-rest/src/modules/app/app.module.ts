@@ -11,6 +11,7 @@ import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { HealthModule } from "../health/health.module";
 import { PreferencesModule } from "../preferences/preferences.module";
+import { PricingModule } from "../pricing/pricing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
@@ -50,6 +51,14 @@ import { AppService } from "./app.service";
  * write, tenant-required again and the first module outside `tenancy` to lean on the roles
  * guard — registered globally by `TenancyModule`, which is one more reason nothing here
  * could precede it.
+ *
+ * `PricingModule` ([#586](https://github.com/NobuData/ouroboros/issues/586)) follows it, and
+ * is the first module here whose reason for existing is only half its routes. Its three
+ * `/api/v1/registry/prices` operations are tenant-required and role-gated exactly as the
+ * settings write is, so its position says the same thing theirs does; what is new is that it
+ * *exports* a provider. DASH-J.4 (#92), Z.5 (#198), AB.4 (#210) and CH.5 (#588) all have to
+ * answer *what does this model cost*, and importing this module is what stops that being four
+ * answers.
  *
  * `VaultModule` ([#222](https://github.com/NobuData/ouroboros/issues/222)) closes the list,
  * and breaks its pattern: it declares no controller and no route, so its position says
@@ -118,6 +127,7 @@ export class AppModule {
         RunsModule,
         QueueModule,
         SettingsModule,
+        PricingModule,
         VaultModule,
       ],
     };

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.24.1"
+  version: "0.24.2"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -298,6 +298,42 @@ tags:
       **Absence is a zero, never a null.** An organization with no runs, no queue and no spend
       answers zeros and empty arrays throughout, so a card renders from this payload without a
       fallback branch and an empty state is a design decision rather than a crash.
+
+  - name: registry
+    description: |-
+      **The model registry — what a workspace may run, and what it costs**
+      ([#576](https://github.com/NobuData/ouroboros/issues/576), mockup 21).
+
+      One operation family is published so far: the workspace's own **price corrections**
+      ([#586](https://github.com/NobuData/ouroboros/issues/586)). Resolution itself — *what
+      does this model cost* — is deliberately not a route. It is served inside this service
+      to the registry table ([#588](https://github.com/NobuData/ouroboros/issues/588)), to
+      priced token accounting ([#92](https://github.com/NobuData/ouroboros/issues/92)) and to
+      route spend ([#198](https://github.com/NobuData/ouroboros/issues/198)), and a second
+      endpoint answering the same question would be a second place for the answer to come
+      from.
+
+      **The `$ per 1M in·out` column has four shapes and one absence**, and the rule behind
+      all five is *never say a number you cannot source*:
+
+      | Cell | What it means |
+      |---|---|
+      | `$10 · $50` | Per-token rates, in cents per one million tokens |
+      | `seat-based` | Billed per person, not per call — GitHub Copilot |
+      | `usage-based` | Metered by the vendor on terms this catalog cannot express — Cursor |
+      | `$0` | Genuinely free per call — a model running on local hardware |
+      | `—` | **We have no price for this model** |
+
+      **`$0` and `—` are different facts and never collapse into each other.** A budget is
+      sized off this column, and an unknown price rendered as free is the one error that
+      would be acted on. Every priced answer also carries its **provenance**: which snapshot
+      it came from, or that this workspace overrode it.
+
+      **The prices come from a vendored, version-stamped snapshot**
+      ([#580](https://github.com/NobuData/ouroboros/issues/580)) that ships with the
+      migrations — no third-party call on the render path, so an air-gapped deployment keeps
+      the column — and a workspace that has negotiated its own rates corrects them here. An
+      override always wins, and says so.
 
   - name: tenancy
     description: |-
@@ -1833,6 +1869,330 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/registry/prices:
+    get:
+      tags: [registry]
+      summary: This workspace's price corrections
+      description: |-
+        One page of the prices this workspace has recorded for itself
+        ([#586](https://github.com/NobuData/ouroboros/issues/586)), ordered by provider kind
+        then model.
+
+        **The bundled catalog is not in this listing, and that is what the listing means.**
+        The snapshot is the same hundred and twenty-nine rows for every workspace and nobody
+        here wrote it; *what have we corrected* is a question about a workspace's own list.
+        An empty page therefore means this workspace is on the catalog's own numbers
+        throughout — not that no model has a price.
+
+        **Any member may read it**, viewers included, exactly as the auto-merge switch is
+        readable by the role that exists to be able to look. Writing one is `owner` or
+        `admin`; see the `PUT` beside this.
+
+        Each entry carries `display` — the cell mockup 21 would draw for that correction —
+        so a settings table can show what a rate will look like without re-deriving the
+        formatting. `—` never appears there: an override is a price by definition, and the
+        `—` cell is the absence of a row rather than the content of one.
+
+        **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before the operation runs.
+      operationId: listPriceOverrides
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The page. Empty for a workspace that has corrected nothing — a state to render,
+            not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceOverridePage"
+              example:
+                items:
+                  - connectionKind: anthropic
+                    modelId: claude-fable-5
+                    billingMode: token
+                    inputCentsPer1m: 1200
+                    outputCentsPer1m: 6000
+                    display: "$12 · $60"
+                    effectiveAt: "2026-08-22T09:00:00.000Z"
+                    updatedAt: "2026-08-22T09:00:00.000Z"
+                  - connectionKind: openai_compatible
+                    modelId: "*"
+                    billingMode: free
+                    inputCentsPer1m: null
+                    outputCentsPer1m: null
+                    display: $0
+                    effectiveAt: "2026-08-22T09:04:11.220Z"
+                    updatedAt: "2026-08-22T09:04:11.220Z"
+                total: 2
+                limit: 25
+                offset: 0
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `limit` or `offset` was out of range or not an integer.
+            `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [registry]
+      summary: Record what this workspace pays for a model
+      description: |-
+        Replace this workspace's statement about one model's price. An override always beats
+        the bundled catalog, and every answer that resolves through it says
+        `provenance.source: override` — which is what lets a reader tell a negotiated rate
+        from a published one.
+
+        **`owner` or `admin`, and nobody else.** This number is multiplied by a token count
+        in every spend report this product draws, so the write is role-gated where the read
+        is not: a `member` or a `viewer` gets the API's one `403` and writes nothing.
+
+        **A `PUT`, and every field the mode requires is required.** This replaces the
+        workspace's statement outright rather than amending it. A partial correction — change
+        the output rate, keep the input one — cannot be checked against the billing-mode rules
+        without reading the stored row first, and a price assembled from half a request and
+        half a row is a number nobody entered.
+
+        **The amounts have to match the billing mode**, which is a rule of the schema
+        ([#580](https://github.com/NobuData/ouroboros/issues/580)) and not a preference:
+
+        | `billingMode` | `inputCentsPer1m` / `outputCentsPer1m` | Renders |
+        |---|---|---|
+        | `token` | **both required**, and not both zero | `$12 · $60` |
+        | `seat` | **must be omitted** | `seat-based` |
+        | `usage` | **must be omitted** | `usage-based` |
+        | `free` | omitted, or `0` | `$0` |
+
+        A body that breaks one of those is a `422` naming the field, not a `500`. A `token`
+        price of zero in both directions is refused specifically: that is a free model
+        recorded under the wrong mode, and it would render `$0` for something somebody is
+        being invoiced for.
+
+        **`modelId` may be `*`**, which prices every model of the kind — the family row a
+        seat- or usage-billed provider is priced by, and how a workspace says *everything I
+        reach through this OpenAI-compatible endpoint runs on our own hardware*
+        (`connectionKind: openai_compatible`, `modelId: "*"`, `billingMode: free`). It is the
+        only wildcard there is: a `*` inside an identifier is refused.
+
+        **Idempotent.** The same body sent twice leaves one row; the second send is a
+        re-affirmation that moves `effectiveAt` and `updatedAt` rather than a second
+        correction. `connectionKind` is folded to lower case, so `Anthropic` and `anthropic`
+        address one row rather than two that would shadow each other.
+
+        **The correction is visible immediately.** The service's short-lived price cache is
+        dropped for this workspace inside the same request, so no read after this one can
+        answer with the number it replaced.
+      operationId: putPriceOverride
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PriceOverrideWrite"
+            example:
+              connectionKind: anthropic
+              modelId: claude-fable-5
+              billingMode: token
+              inputCentsPer1m: 1200
+              outputCentsPer1m: 6000
+      responses:
+        "200":
+          description: The correction as stored, with the cell it renders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceOverride"
+              example:
+                connectionKind: anthropic
+                modelId: claude-fable-5
+                billingMode: token
+                inputCentsPer1m: 1200
+                outputCentsPer1m: 6000
+                display: "$12 · $60"
+                effectiveAt: "2026-08-22T09:00:00.000Z"
+                updatedAt: "2026-08-22T09:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Recording a price is `owner` or `admin`; `member` and `viewer` may read the
+            corrections and may not write one. `details.role` is what you hold and
+            `details.required` is what would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body was refused. `details` carries one entry per field,
+            keyed by its name, so a form can render each message beside the input that
+            produced it: a rate missing when `billingMode` is `token`, a rate present when it
+            is `seat` or `usage`, a rate finer than four decimal places, a `modelId` carrying
+            a `*` of its own, or a `token` price of zero in both directions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [registry]
+      summary: Withdraw a price correction
+      description: |-
+        Remove this workspace's override for one model, so the bundled catalog answers for it
+        again.
+
+        **Withdrawing a correction is not pricing a model at nothing.** The row goes and the
+        lookup falls back to the snapshot; a model the snapshot does not cover goes back to
+        reading `—`, which is true. That is why this is a `DELETE` rather than a write of
+        zeros — a `free` override would claim the model costs nothing, which is a different
+        and much stronger statement.
+
+        **`owner` or `admin`**, as the `PUT` is, and for the same reason.
+
+        **The pair is in the query string rather than the path**, because a model identifier
+        is a vendor's string — `qwen3-coder:32b`, `openai/gpt-oss-120b`, `*` — and half of
+        those need escaping to survive a path segment.
+
+        **A missing override is a `404`, not a quiet success.** *Withdraw my correction* and
+        *there was no correction* are different outcomes, and a client that believed it had
+        removed one needs to learn that the price it is now looking at was already the
+        catalog's.
+      operationId: deletePriceOverride
+      parameters:
+        - $ref: "#/components/parameters/OverrideConnectionKind"
+        - $ref: "#/components/parameters/OverrideModelId"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "204":
+          description: |-
+            Gone. No body: what was removed is of no further use to the client that asked for
+            it, and what the price is *now* is a different question with its own answer.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Withdrawing a price correction is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `price_override_not_found` — this workspace has no correction recorded for that
+            model. `details` echoes the `connectionKind` (folded, as it was looked up) and the
+            `modelId`, so a client that spelled the kind differently can see which spelling
+            was searched for.
+
+            Or `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `connectionKind` or `modelId` was missing or malformed.
+            `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/me/preferences:
     get:
       tags: [preferences]
@@ -3324,6 +3684,40 @@ components:
         minimum: 0
         default: 0
       example: 0
+
+    OverrideConnectionKind:
+      name: connectionKind
+      in: query
+      required: true
+      description: |-
+        Which provider kind the correction being withdrawn applies to, or `*` for every kind.
+
+        Folded to lower case before the lookup, so `Anthropic` and `anthropic` address one
+        row. The vocabulary is the adapter registry's — `anthropic`, `openai_compatible`,
+        `ollama`, `copilot`, `cursor`, … — and is deliberately not enumerated here: the list
+        grows, and a document that fixed it would refuse a price for a provider this product
+        really supports.
+      schema:
+        type: string
+        pattern: ^(\*|[A-Za-z0-9]+([._-][A-Za-z0-9]+)*)$
+        maxLength: 64
+      example: anthropic
+
+    OverrideModelId:
+      name: modelId
+      in: query
+      required: true
+      description: |-
+        Which model the correction being withdrawn applies to, or `*` for every model of the
+        kind.
+
+        Never folded: a model identifier is a name the vendor chose and some of them carry
+        capitals. `*` is the only wildcard — a `*` inside an identifier is refused.
+      schema:
+        type: string
+        pattern: ^(\*|[^*\s]([^*\n\r]*[^*\s])?)$
+        maxLength: 200
+      example: claude-fable-5
 
     RunId:
       name: id
@@ -5051,6 +5445,172 @@ components:
           description: |-
             The switch's new position. A boolean and nothing else — a `"true"`, a `1` or a
             `null` is a `422` naming the field, never a coercion.
+
+    BillingMode:
+      type: string
+      title: BillingMode
+      description: |-
+        How the money works for one model — which of mockup 21's four cells it renders, and
+        which rates it may carry at all.
+
+        | Value | Means | Rates |
+        |---|---|---|
+        | `token` | Per-token rates | both present |
+        | `seat` | Billed per person, not per call | none |
+        | `usage` | Metered by the vendor on terms this catalog cannot express | none |
+        | `free` | No per-call charge — a model running locally | zero or absent |
+
+        **There is no fifth value for "unknown".** *We have no price for this model* is the
+        absence of a price, not a mode a price can be in — which is what keeps `—` and `$0`
+        from ever collapsing into each other.
+      enum: [token, seat, usage, free]
+      examples: [token]
+
+    PriceOverride:
+      type: object
+      title: PriceOverride
+      description: |-
+        One price this workspace has recorded for itself, overriding the bundled catalog.
+
+        It has no `source`: every row here is this workspace's own statement, which is what
+        `source: override` would say. What it does carry is `display` — the cell this
+        correction renders — so a settings table shows the same string the registry column
+        will.
+      additionalProperties: false
+      required:
+        [
+          connectionKind,
+          modelId,
+          billingMode,
+          inputCentsPer1m,
+          outputCentsPer1m,
+          display,
+          effectiveAt,
+          updatedAt,
+        ]
+      properties:
+        connectionKind:
+          type: string
+          pattern: ^(\*|[a-z0-9]+([._-][a-z0-9]+)*)$
+          maxLength: 64
+          description: The provider kind, folded, or `*` for every kind.
+          examples: [anthropic]
+        modelId:
+          type: string
+          maxLength: 200
+          description: The model identifier as the vendor spells it, or `*` for every model of the kind.
+          examples: [claude-fable-5]
+        billingMode:
+          $ref: "#/components/schemas/BillingMode"
+        inputCentsPer1m:
+          description: |-
+            Input rate in **cents per one million tokens**, or null for a mode that carries no
+            rate. Cents per 1M because that is the unit vendors publish and the unit the
+            column renders; four decimal places are kept, because a rate rounded down to zero
+            is the one arithmetic error this surface must not make.
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 9999999999.9999
+            - type: "null"
+          examples: [1200]
+        outputCentsPer1m:
+          description: Output rate, same unit and same rules. Kept apart because every vendor prices the two differently.
+          oneOf:
+            - type: number
+              minimum: 0
+              maximum: 9999999999.9999
+            - type: "null"
+          examples: [6000]
+        display:
+          type: string
+          description: |-
+            The cell this correction renders — `$12 · $60`, `seat-based`, `usage-based` or
+            `$0`. Never `—`: an override is a price by definition.
+          examples: ["$12 · $60"]
+        effectiveAt:
+          type: string
+          format: date-time
+          description: When this correction took effect. Moves on every save, including a re-affirming one.
+          examples: ["2026-08-22T09:00:00.000Z"]
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the row last changed — the database's own stamp, never the client's.
+          examples: ["2026-08-22T09:00:00.000Z"]
+
+    PriceOverrideWrite:
+      type: object
+      title: PriceOverrideWrite
+      description: |-
+        The body of `PUT /api/v1/registry/prices`.
+
+        **The rates and the billing mode have to agree**, and the operation's description
+        carries the table. In short: `token` requires both and refuses two zeros, `seat` and
+        `usage` refuse either, and `free` accepts none or `0`. A body that breaks one of those
+        is a `422` naming the field.
+      additionalProperties: false
+      required: [connectionKind, modelId, billingMode]
+      properties:
+        connectionKind:
+          type: string
+          pattern: ^(\*|[A-Za-z0-9]+([._-][A-Za-z0-9]+)*)$
+          maxLength: 64
+          description: |-
+            The provider kind, in any casing — it is folded before it is stored — or `*` for
+            every kind.
+          examples: [anthropic]
+        modelId:
+          type: string
+          pattern: ^(\*|[^*\s]([^*\n\r]*[^*\s])?)$
+          maxLength: 200
+          description: |-
+            The model identifier, or `*` for every model of the kind. Never folded. A `*`
+            *inside* an identifier is refused: `*` is the only wildcard there is.
+          examples: [claude-fable-5]
+        billingMode:
+          $ref: "#/components/schemas/BillingMode"
+        inputCentsPer1m:
+          type: number
+          minimum: 0
+          maximum: 9999999999.9999
+          description: |-
+            Input rate in cents per one million tokens. Required when `billingMode` is
+            `token`, refused when it is `seat` or `usage`, and `0` or omitted when it is
+            `free`. At most four decimal places — a finer one would be rounded on the way in,
+            and a workspace should not be billed against a number it did not enter.
+          examples: [1200]
+        outputCentsPer1m:
+          type: number
+          minimum: 0
+          maximum: 9999999999.9999
+          description: Output rate, same unit and same rules.
+          examples: [6000]
+
+    PriceOverridePage:
+      type: object
+      title: PriceOverridePage
+      description: One page of a workspace's price corrections, ordered by provider kind then model.
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceOverride"
+        total:
+          type: integer
+          minimum: 0
+          examples: [2]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          examples: [25]
+        offset:
+          type: integer
+          minimum: 0
+          examples: [0]
 
     EngineStatus:
       type: object

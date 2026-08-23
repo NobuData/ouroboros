@@ -88,7 +88,7 @@ the Spend tab.
 | Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended** — alias health derives from provider health + binding state (CH.5, no alias-level probes); the Registry tab goes live (CI.1 amendment, mirroring AE.1's). |
 | Providers AC.1 adapter SPI, AC.6 `provider_models` discovered catalog + P6 ("discovery feeds the registry") + soft alias-validation hook | **Consumed + extended** — the inspector's live model list and the import wizard read `provider_models`; CH.2 extends the SPI with per-model param/capability schemas; the AC.6 unknown-model warning gets its UI surface (CI.2/CI.3). |
 | Providers AD.2 (provider delete blocked while aliases depend, 409 naming aliases) | **Mirrored** — the registry enforces the same discipline in the other direction (alias delete blocked while routes/workflows/rules/commands reference it). |
-| Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here, and CG.2 (#580) is 🟢 delivered** — the `$ per 1M in·out` column needs a pricing catalog *now*, so `model_prices` is the shared price-table layer J.4 and Z.5/AB.4 consume rather than re-invent: bundled snapshot plus org overrides, four billing modes, provenance on every row. CH.3 (#586) is the service over it. |
+| Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here, and CG.2 (#580) is 🟢 delivered** — the `$ per 1M in·out` column needs a pricing catalog *now*, so `model_prices` is the shared price-table layer J.4 and Z.5/AB.4 consume rather than re-invent: bundled snapshot plus org overrides, four billing modes, provenance on every row. CH.3 (#586) is the service over it, and is 🟢 delivered. |
 | Workflow-builder P.2 (DSL JSON Schema, zod+pydantic parity, publish validation) | **Amended** — the governance card's "raw model strings are rejected at publish time" lands as a P.2 schema amendment: `llm` nodes reference registry aliases structurally (CH.6), which also makes workflow references queryable for CG.3. |
 | ChatOps BZ.3 (`/ouro route <task> <alias>` binding, alias completions) | **Consumed** — the inspector hint "referenced by … /ouro commands"; chat route pins are the fourth reference kind (CG.3, soft until BZ.3 exists). |
 | Run console roadmap (stage model pill "from the active stage's resolution") | **Coordinated** — CH.6's persisted resolution snapshot is the shared truth the chain card renders and the run console transcript inspects. |
@@ -490,7 +490,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CH.1 | #584 | 🟡 Open | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
 | CH.2 | #585 | 🟡 Open | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
-| CH.3 | #586 | 🟡 Open | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
+| CH.3 | #586 | 🟢 Done | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
 | CH.4 | #587 | 🟡 Open | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
 | CH.5 | #588 | 🟡 Open | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
 | CH.6 | #589 | 🟡 Open | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
@@ -583,7 +583,81 @@ params {thinking: max} on qwen3-coder ─▶ 422 "model does not support thinkin
 
 ### Issue CH.3 — ouroboros-rest: [CH.3] Pricing service
 
-> **GitHub issue:** #586 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #586 · **Status:** 🟢 Done · **Parent epic:** #576
+
+> **Shipped.** [`src/modules/pricing/`](../ouroboros-rest/src/modules/pricing) in
+> `ouroboros-rest` — `PricingService.resolve(connectionKind, modelId, organizationId)` over
+> CG.2's `ouroboros.model_price()`, the render rules in
+> [`price.ts`](../ouroboros-rest/src/modules/pricing/price.ts), a short-TTL cache, and
+> `GET`/`PUT`/`DELETE /api/v1/registry/prices` for a workspace's own corrections.
+> `PricingModule` **exports** `PricingService`, which is the first module in that service to
+> export anything and is the whole of the *consume, don't re-invent* instruction to #92, #198,
+> #210 and #588.
+>
+> **The precedence stayed in the database.** Nothing in the service re-derives *override beats
+> bundled, exact model beats a family row, exact kind beats `'*'`* — both read paths call
+> `ouroboros.model_price()`, which is `language sql stable` and therefore inlines, so a lookup
+> is the `model_prices_lookup_idx` scan rather than a function scan.
+> `pricing.repository.spec.ts` asserts the statement names the function and carries no
+> `order by` of its own, because a second copy of a four-way precedence about money is exactly
+> the failure R4 was written to avoid.
+>
+> **`—` is an absence, not a value, and the type says so.** `ResolvedPrice` is a union of the
+> four billing modes with no member meaning *unknown*, so an uncovered model resolves to
+> `undefined` and cannot be handed to a formatter that would render it as a number; the
+> resource's `price` is `null` where the shape has nowhere for a rate to be. That is the
+> `$0`-versus-`—` line made structural rather than tested for — a nullable amount rendered
+> through a `?? 0` fallback would pass every other assertion in the module.
+>
+> **The batch is one statement.** `unnest(kinds, models) with ordinality` joined
+> `left join lateral` to the lookup, so the eight-alias table costs one round trip and an
+> uncovered pair produces a filler row that keeps its place — an inner join would silently
+> shorten the answer and leave every price after the gap attributed to the wrong model. The
+> integration suite counts the statements at the driver (`pg.Client.prototype.query`) rather
+> than inferring them from a mock: eight aliases cold is **1**, warm is **0**.
+>
+> **Cache invalidation is per workspace, never per key** — an override may be a family row
+> (`('openai_compatible', '*') → free` is the one that makes `llama-4-maverick` read `$0`), and
+> a family row changes the answer for models it never names. Dropping only the key that was
+> written would leave exactly those stale, which is the *a stale price cannot survive a save*
+> criterion failed in the way that is hardest to see. Misses are cached too, because the
+> uncovered row is on the same page as the priced ones. The bundled catalog is imported by a
+> repeatable migration in another container and nothing can tell this process about it, so the
+> 30-second TTL is the honest bound on that and `invalidateCatalog()` is the seam CJ.1 (#598)
+> will call — a real binding rather than a comment.
+>
+> **The eight aliases render against the shipped snapshot**, re-imported after each truncation
+> by re-running the committed `R__model_price_catalog.sql` rather than by seeding a fixture —
+> the point of the assertion is that the *catalog* draws the mockup's cells. Two corrections to
+> the mockup, both inherited from CG.2 rather than introduced here: the illustrative
+> `$15 · $75` and `$3 · $15` are `$10 · $50` and `$2 · $10` in the pinned snapshot (V012's
+> header records this), and `llama-4-maverick` reaches `$0` through an org override rather than
+> a bundled row, per V012's narrowing 3 — the OpenAI-compatible kind fronts a local vLLM *and*
+> `api.openai.com`, so local-ness is a property of the connection and a bundled
+> `('openai_compatible', '*') → free` row would price every uncovered OpenAI model at zero.
+>
+> **The DTO restates V012's four amount CHECKs**, so a `seat` row carrying a rate is a `422`
+> naming `inputCentsPer1m` rather than a constraint violation surfacing as `500`. The database
+> is still the authority; what changed is whether the person who typed it can act on the
+> answer. A `token` price of zero in both directions is refused specifically, reported against
+> `billingMode`, because that row is a free model wearing the wrong mode.
+>
+> **The read is every member's; both writes are `owner`/`admin`.** The ticket scopes the CRUD
+> group to administrators and its acceptance criterion to *writes*; the `GET` follows this
+> service's standing rule that a bare route is any of the four roles, because a viewer is a
+> role that exists to be able to look at what the workspace pays. The listing pages per the
+> #31 convention and carries corrections only — 129 bundled rows are in the table throughout
+> and none of them is an answer to *what have we changed*.
+>
+> **There is no route that resolves a price**, deliberately: CH.5 (#588) publishes resolution
+> as part of the registry table's one payload, and `pricing.controller.spec.ts` asserts the
+> handler set is exactly `list`/`save`/`remove` so the obvious next endpoint has to argue for
+> itself. `PricingService.priceModels()` is the resource shape that ticket embeds.
+>
+> Also landed: `model_prices` in `src/modules/db/schema.ts` (the mirror's fourteenth table),
+> the `registry` tag and three operations in `openapi.yaml`, and `put` added to the
+> integration harness's verbs — this is the API's first `PUT`.
+
 
 - **Problem Statement:** The `$ per 1M in·out` cell has four honest shapes —
   priced, billing-mode word, `$0`, `—` — and downstream accounting

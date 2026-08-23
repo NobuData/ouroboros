@@ -543,6 +543,116 @@ export interface TenantKeysTable {
 }
 
 /**
+ * `ouroboros.model_prices.billing_mode` — how the money works for one priced model (V012).
+ *
+ * Four words, and the whole reason the table is not two nullable amounts. Each of them is a
+ * different *shape* of answer rather than a different value of one answer, which is why
+ * mockup 21's `$ per 1M in·out` column renders four things and why `pricing/render.ts` is a
+ * `switch` over this union rather than a format string with a fallback:
+ *
+ * | Mode | What it claims | The cell |
+ * |---|---|---|
+ * | `token` | per-token rates, both present | `$10 · $50` |
+ * | `seat` | billed per person, not per call | `seat-based` |
+ * | `usage` | metered on terms this catalog cannot express | `usage-based` |
+ * | `free` | no per-call charge — a model running locally | `$0` |
+ *
+ * The fifth shape, `—`, is deliberately **not** a member: *we have no price for this* is the
+ * absence of a row, not a mode a row can carry. See {@link ModelPricesTable}.
+ */
+export type BillingMode = "token" | "seat" | "usage" | "free";
+
+/**
+ * `ouroboros.model_prices.source` — who made this claim about money (V012).
+ *
+ * `bundled` is the vendored snapshot's statement and applies to every workspace; `override`
+ * is one workspace's own, and it wins. The column is stamped rather than inferred from
+ * `organization_id` being null — V012's own reasoning — and it is what a price's provenance
+ * is reported from, which the registry's hover surfaces (#592).
+ */
+export type PriceSource = "bundled" | "override";
+
+/**
+ * `ouroboros.model_prices` — the model pricing catalog (V012,
+ * [#580](https://github.com/NobuData/ouroboros/issues/580)).
+ *
+ * The truth source behind mockup 21's `$ per 1M in·out` column, and the shared price table
+ * DASH-J.4 (#92), Z.5 (#198) and AB.4 (#210) read rather than re-invent. Two populations in
+ * one table, told apart by {@link ModelPricesTable.source}: the bundled snapshot
+ * (`organization_id` null, swept and replaced wholesale by each import) and a workspace's
+ * own overrides, which survive every import and beat the snapshot on lookup.
+ *
+ * **Absence is the fifth shape.** No row means *we do not know what this costs*, which
+ * renders `—`; a `free` row means *this costs nothing*, which renders `$0`. Nothing in this
+ * mirror defaults an amount to zero, for the reason V012 refuses to: on a page a user sizes
+ * a budget from, turning "unknown" into "free" is the one lie the schema is built to
+ * prevent.
+ *
+ * **Read it through `ouroboros.model_price()`**, never by re-deriving the precedence here.
+ * The function is `language sql stable` so PostgreSQL inlines it, which is what makes a
+ * lookup one indexed scan; `pricing/pricing.repository.ts` is the only thing in this service
+ * that calls it.
+ */
+export interface ModelPricesTable {
+  id: Generated<string>;
+  /**
+   * Whose statement this is: null for the bundled catalog, set for a workspace's override.
+   *
+   * `on delete cascade` — an override for a deleted workspace is unreachable, and leaving it
+   * would let a later workspace that reused the id inherit somebody else's negotiated rate.
+   */
+  organization_id: string | null;
+  /** The provider kind this row prices, or `'*'` for every kind. Folded lower-case. */
+  match_provider_kind: string;
+  /** The model identifier this row prices, or `'*'` for every model of the kind. Unfolded. */
+  match_model: string;
+  /** Which of the four cells this row renders, and which amounts it may carry at all. */
+  billing_mode: BillingMode;
+  /**
+   * Input rate in cents per **one million** tokens, or null.
+   *
+   * `numeric(14, 4)`, and therefore a **string** — the same trade, and the same reason, as
+   * {@link TokenUsageTable.cost_cents}: `pg` hands numerics back as text rather than lose the
+   * precision the column exists to keep, and whole cents per 1M would round the cheapest
+   * models to a `0` that reads as the `$0` this whole surface refuses to fake.
+   *
+   * Required exactly when `billing_mode` is `token`; zero or null when `free`; never present
+   * on `seat` or `usage`. Four CHECKs in V012 make that structural rather than conventional.
+   */
+  input_cents_per_1m: string | null;
+  /** Output rate, same rules and same type. Kept apart because every vendor prices the two differently. */
+  output_cents_per_1m: string | null;
+  /** `bundled` or `override` — the first half of a price's provenance. */
+  source: PriceSource;
+  /**
+   * Which snapshot a bundled row came from — `2026-08-15+litellm.70d51a1`. The second half of
+   * a price's provenance, and null on an override, which is not a version of anything.
+   */
+  catalog_version: string | null;
+  /**
+   * What the catalog knows besides the price — context window, maximum output, capability
+   * flags, the upstream entry the row was transformed from.
+   *
+   * `Generated` rather than writeable: it has a `default '{}'::jsonb`, and **nothing in this
+   * service writes it**. An override this service creates carries the default, because a
+   * workspace correcting a rate is not thereby claiming a context window. CH.2
+   * ([#585](https://github.com/NobuData/ouroboros/issues/585)) is what gives this object a
+   * shape; until then it is read as what it is, an upstream vendor's vocabulary.
+   */
+  meta: Generated<Record<string, unknown>>;
+  /**
+   * When these prices took effect as far as the source knows — the snapshot's upstream commit
+   * date for a bundled row, and when a workspace says its own rate started for an override.
+   *
+   * **Not a history axis.** One row per (workspace, kind, model), so the table holds what is
+   * true now; re-pricing a ledger against last quarter's rates is #598's question.
+   */
+  effective_at: Generated<Date>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -622,7 +732,7 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * This is the type parameter the whole module is built around: `Kysely<Database>` is what
  * makes `selectFrom("organization").select("slug")` compile and `select("slugg")` not.
  *
- * **Two of the thirteen entries are views** rather than tables — see {@link READ_ONLY_VIEWS},
+ * **Two of the fourteen entries are views** rather than tables — see {@link READ_ONLY_VIEWS},
  * which is the rule that keeps a write off them. `Database` has no vocabulary for the
  * difference, so the list beside it is the vocabulary.
  *
@@ -637,6 +747,15 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * thirteenth**, and the first table here that this service both writes and is the *only*
  * writer of: `src/modules/vault/` owns every statement against it, and there is no seed row,
  * because a workspace's key is created the first time it stores a secret.
+ *
+ * **`model_prices` (V012, [#580](https://github.com/NobuData/ouroboros/issues/580)) is the
+ * fourteenth**, and the first with *two* writers that are not the same thing: a repeatable
+ * migration writes the bundled catalog through `ouroboros.import_model_price_catalog()`, and
+ * `src/modules/pricing/` writes a workspace's overrides and nothing else
+ * ([#586](https://github.com/NobuData/ouroboros/issues/586)). The two populations cannot
+ * collide — every row the import writes is `organization_id null / source bundled`, and every
+ * row this service writes is the opposite — which is a property of the conflict target rather
+ * than of anybody's care.
  *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
@@ -657,6 +776,7 @@ export interface Database {
   token_usage: TokenUsageTable;
   workspace_settings: WorkspaceSettingsTable;
   tenant_keys: TenantKeysTable;
+  model_prices: ModelPricesTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -760,6 +880,21 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  model_prices: [
+    "id",
+    "organization_id",
+    "match_provider_kind",
+    "match_model",
+    "billing_mode",
+    "input_cents_per_1m",
+    "output_cents_per_1m",
+    "source",
+    "catalog_version",
+    "meta",
+    "effective_at",
+    "created_at",
+    "updated_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -845,6 +980,21 @@ export type NewWorkspaceSettings = Insertable<WorkspaceSettingsTable>;
 export type TenantKey = Selectable<TenantKeysTable>;
 /** The columns an `insert` into `ouroboros.tenant_keys` may carry. */
 export type NewTenantKey = Insertable<TenantKeysTable>;
+
+/**
+ * A row of `ouroboros.model_prices`, as a `select` returns it — one claim about what a model
+ * costs, with the provenance that makes it quotable.
+ */
+export type ModelPrice = Selectable<ModelPricesTable>;
+/**
+ * The columns an `insert` into `ouroboros.model_prices` may carry.
+ *
+ * **This service inserts overrides and nothing else.** Bundled rows are the import function's
+ * — `ouroboros.import_model_price_catalog()`, called by a repeatable migration — and a row
+ * written from here always carries `organization_id` and `source: "override"`, which V012's
+ * coherence CHECK requires to agree.
+ */
+export type NewModelPrice = Insertable<ModelPricesTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.24.1",
+    "version": "0.24.2",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -53,6 +53,10 @@
     {
       "name": "dashboard",
       "description": "**Mission control, in one request** ([#70](https://github.com/NobuData/ouroboros/issues/70))\n— what the loop is doing, what it will do next, what it has spent doing so, and how\nwell it has been doing it.\n\n**One endpoint paints six cards, and that is a decision rather than a convenience.**\nAssembling the page from six requests would tear it — the cards would land at different\nmoments, each with its own idea of where \"the last seven days\" begins — and would\nmultiply the cost of a loop that runs for as long as somebody is looking at the screen.\nSo the whole page is one payload, measured between one set of boundaries. The drill-in\nendpoints exist for the screens that go deeper, not for the dashboard to build itself\nout of.\n\n**It is polled, so it is conditional.** Every answer carries a strong `ETag` derived\nfrom a cheap version source — the row counts and newest change of the four tables the\npage is made of, plus the calendar day. Echo it in `If-None-Match` and an unchanged\ndashboard is a `304` with no body. `Cache-Control: private, no-cache` is the other half:\nkeep the body, but never reuse it without asking.\n\n**The server owns the cadence** ([#75](https://github.com/NobuData/ouroboros/issues/75)).\nPoll a visible tab every 15 seconds and a hidden one not at all — and treat the\n`X-Ouro-Poll-After` header on every answer as the current interval, because it is how\na deployment under load slows its consumers without shipping them anything. The full\ncontract, including the SSE upgrade path that will eventually replace polling for\nlive runs, is `docs/ARCHITECTURE.md` § 5.4.\n\n**Every window is stated, because a number whose definition is not published is a\nnumber a screen renders under the wrong label.** The rolling windows — seven days, and\nfourteen for the merge rate — are durations back from the moment of the request, not\ncalendar weeks, so no timezone and no daylight-saving transition can move them. The two\nnumbers that *are* calendar facts — the day's token spend, and what has merged \"since\nthis morning\" — are measured from **midnight UTC**, which is the day\n`token_usage_daily` is keyed by. A workspace cannot yet state a timezone of its own;\nwhen it can, that is the boundary that will follow it.\n\n**Absence is a zero, never a null.** An organization with no runs, no queue and no spend\nanswers zeros and empty arrays throughout, so a card renders from this payload without a\nfallback branch and an empty state is a design decision rather than a crash."
+    },
+    {
+      "name": "registry",
+      "description": "**The model registry — what a workspace may run, and what it costs**\n([#576](https://github.com/NobuData/ouroboros/issues/576), mockup 21).\n\nOne operation family is published so far: the workspace's own **price corrections**\n([#586](https://github.com/NobuData/ouroboros/issues/586)). Resolution itself — *what\ndoes this model cost* — is deliberately not a route. It is served inside this service\nto the registry table ([#588](https://github.com/NobuData/ouroboros/issues/588)), to\npriced token accounting ([#92](https://github.com/NobuData/ouroboros/issues/92)) and to\nroute spend ([#198](https://github.com/NobuData/ouroboros/issues/198)), and a second\nendpoint answering the same question would be a second place for the answer to come\nfrom.\n\n**The `$ per 1M in·out` column has four shapes and one absence**, and the rule behind\nall five is *never say a number you cannot source*:\n\n| Cell | What it means |\n|---|---|\n| `$10 · $50` | Per-token rates, in cents per one million tokens |\n| `seat-based` | Billed per person, not per call — GitHub Copilot |\n| `usage-based` | Metered by the vendor on terms this catalog cannot express — Cursor |\n| `$0` | Genuinely free per call — a model running on local hardware |\n| `—` | **We have no price for this model** |\n\n**`$0` and `—` are different facts and never collapse into each other.** A budget is\nsized off this column, and an unknown price rendered as free is the one error that\nwould be acted on. Every priced answer also carries its **provenance**: which snapshot\nit came from, or that this workspace overrode it.\n\n**The prices come from a vendored, version-stamped snapshot**\n([#580](https://github.com/NobuData/ouroboros/issues/580)) that ships with the\nmigrations — no third-party call on the render path, so an air-gapped deployment keeps\nthe column — and a workspace that has negotiated its own rates corrects them here. An\noverride always wins, and says so."
     },
     {
       "name": "tenancy",
@@ -1622,6 +1626,312 @@
         }
       }
     },
+    "/api/v1/registry/prices": {
+      "get": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "This workspace's price corrections",
+        "description": "One page of the prices this workspace has recorded for itself\n([#586](https://github.com/NobuData/ouroboros/issues/586)), ordered by provider kind\nthen model.\n\n**The bundled catalog is not in this listing, and that is what the listing means.**\nThe snapshot is the same hundred and twenty-nine rows for every workspace and nobody\nhere wrote it; *what have we corrected* is a question about a workspace's own list.\nAn empty page therefore means this workspace is on the catalog's own numbers\nthroughout — not that no model has a price.\n\n**Any member may read it**, viewers included, exactly as the auto-merge switch is\nreadable by the role that exists to be able to look. Writing one is `owner` or\n`admin`; see the `PUT` beside this.\n\nEach entry carries `display` — the cell mockup 21 would draw for that correction —\nso a settings table can show what a rate will look like without re-deriving the\nformatting. `—` never appears there: an override is a price by definition, and the\n`—` cell is the absence of a row rather than the content of one.\n\n**The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this\npath, the session's active organization or `X-Ouro-Tenant` decides, and membership is\nchecked before the operation runs.",
+        "operationId": "listPriceOverrides",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page. Empty for a workspace that has corrected nothing — a state to render,\nnot a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceOverridePage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "connectionKind": "anthropic",
+                      "modelId": "claude-fable-5",
+                      "billingMode": "token",
+                      "inputCentsPer1m": 1200,
+                      "outputCentsPer1m": 6000,
+                      "display": "$12 · $60",
+                      "effectiveAt": "2026-08-22T09:00:00.000Z",
+                      "updatedAt": "2026-08-22T09:00:00.000Z"
+                    },
+                    {
+                      "connectionKind": "openai_compatible",
+                      "modelId": "*",
+                      "billingMode": "free",
+                      "inputCentsPer1m": null,
+                      "outputCentsPer1m": null,
+                      "display": "$0",
+                      "effectiveAt": "2026-08-22T09:04:11.220Z",
+                      "updatedAt": "2026-08-22T09:04:11.220Z"
+                    }
+                  ],
+                  "total": 2,
+                  "limit": 25,
+                  "offset": 0
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `limit` or `offset` was out of range or not an integer.\n`details` carries the entry keyed by the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "Record what this workspace pays for a model",
+        "description": "Replace this workspace's statement about one model's price. An override always beats\nthe bundled catalog, and every answer that resolves through it says\n`provenance.source: override` — which is what lets a reader tell a negotiated rate\nfrom a published one.\n\n**`owner` or `admin`, and nobody else.** This number is multiplied by a token count\nin every spend report this product draws, so the write is role-gated where the read\nis not: a `member` or a `viewer` gets the API's one `403` and writes nothing.\n\n**A `PUT`, and every field the mode requires is required.** This replaces the\nworkspace's statement outright rather than amending it. A partial correction — change\nthe output rate, keep the input one — cannot be checked against the billing-mode rules\nwithout reading the stored row first, and a price assembled from half a request and\nhalf a row is a number nobody entered.\n\n**The amounts have to match the billing mode**, which is a rule of the schema\n([#580](https://github.com/NobuData/ouroboros/issues/580)) and not a preference:\n\n| `billingMode` | `inputCentsPer1m` / `outputCentsPer1m` | Renders |\n|---|---|---|\n| `token` | **both required**, and not both zero | `$12 · $60` |\n| `seat` | **must be omitted** | `seat-based` |\n| `usage` | **must be omitted** | `usage-based` |\n| `free` | omitted, or `0` | `$0` |\n\nA body that breaks one of those is a `422` naming the field, not a `500`. A `token`\nprice of zero in both directions is refused specifically: that is a free model\nrecorded under the wrong mode, and it would render `$0` for something somebody is\nbeing invoiced for.\n\n**`modelId` may be `*`**, which prices every model of the kind — the family row a\nseat- or usage-billed provider is priced by, and how a workspace says *everything I\nreach through this OpenAI-compatible endpoint runs on our own hardware*\n(`connectionKind: openai_compatible`, `modelId: \"*\"`, `billingMode: free`). It is the\nonly wildcard there is: a `*` inside an identifier is refused.\n\n**Idempotent.** The same body sent twice leaves one row; the second send is a\nre-affirmation that moves `effectiveAt` and `updatedAt` rather than a second\ncorrection. `connectionKind` is folded to lower case, so `Anthropic` and `anthropic`\naddress one row rather than two that would shadow each other.\n\n**The correction is visible immediately.** The service's short-lived price cache is\ndropped for this workspace inside the same request, so no read after this one can\nanswer with the number it replaced.",
+        "operationId": "putPriceOverride",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceOverrideWrite"
+              },
+              "example": {
+                "connectionKind": "anthropic",
+                "modelId": "claude-fable-5",
+                "billingMode": "token",
+                "inputCentsPer1m": 1200,
+                "outputCentsPer1m": 6000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The correction as stored, with the cell it renders.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceOverride"
+                },
+                "example": {
+                  "connectionKind": "anthropic",
+                  "modelId": "claude-fable-5",
+                  "billingMode": "token",
+                  "inputCentsPer1m": 1200,
+                  "outputCentsPer1m": 6000,
+                  "display": "$12 · $60",
+                  "effectiveAt": "2026-08-22T09:00:00.000Z",
+                  "updatedAt": "2026-08-22T09:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Recording a price is `owner` or `admin`; `member` and `viewer` may read the\ncorrections and may not write one. `details.role` is what you hold and\n`details.required` is what would have been enough.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body was refused. `details` carries one entry per field,\nkeyed by its name, so a form can render each message beside the input that\nproduced it: a rate missing when `billingMode` is `token`, a rate present when it\nis `seat` or `usage`, a rate finer than four decimal places, a `modelId` carrying\na `*` of its own, or a `token` price of zero in both directions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "Withdraw a price correction",
+        "description": "Remove this workspace's override for one model, so the bundled catalog answers for it\nagain.\n\n**Withdrawing a correction is not pricing a model at nothing.** The row goes and the\nlookup falls back to the snapshot; a model the snapshot does not cover goes back to\nreading `—`, which is true. That is why this is a `DELETE` rather than a write of\nzeros — a `free` override would claim the model costs nothing, which is a different\nand much stronger statement.\n\n**`owner` or `admin`**, as the `PUT` is, and for the same reason.\n\n**The pair is in the query string rather than the path**, because a model identifier\nis a vendor's string — `qwen3-coder:32b`, `openai/gpt-oss-120b`, `*` — and half of\nthose need escaping to survive a path segment.\n\n**A missing override is a `404`, not a quiet success.** *Withdraw my correction* and\n*there was no correction* are different outcomes, and a client that believed it had\nremoved one needs to learn that the price it is now looking at was already the\ncatalog's.",
+        "operationId": "deletePriceOverride",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/OverrideConnectionKind"
+          },
+          {
+            "$ref": "#/components/parameters/OverrideModelId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Gone. No body: what was removed is of no further use to the client that asked for\nit, and what the price is *now* is a different question with its own answer."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Withdrawing a price correction is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`price_override_not_found` — this workspace has no correction recorded for that\nmodel. `details` echoes the `connectionKind` (folded, as it was looked up) and the\n`modelId`, so a client that spelled the kind differently can see which spelling\nwas searched for.\n\nOr `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `connectionKind` or `modelId` was missing or malformed.\n`details` carries the entry keyed by the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/preferences": {
       "get": {
         "tags": [
@@ -3154,6 +3464,30 @@
           "default": 0
         },
         "example": 0
+      },
+      "OverrideConnectionKind": {
+        "name": "connectionKind",
+        "in": "query",
+        "required": true,
+        "description": "Which provider kind the correction being withdrawn applies to, or `*` for every kind.\n\nFolded to lower case before the lookup, so `Anthropic` and `anthropic` address one\nrow. The vocabulary is the adapter registry's — `anthropic`, `openai_compatible`,\n`ollama`, `copilot`, `cursor`, … — and is deliberately not enumerated here: the list\ngrows, and a document that fixed it would refuse a price for a provider this product\nreally supports.",
+        "schema": {
+          "type": "string",
+          "pattern": "^(\\*|[A-Za-z0-9]+([._-][A-Za-z0-9]+)*)$",
+          "maxLength": 64
+        },
+        "example": "anthropic"
+      },
+      "OverrideModelId": {
+        "name": "modelId",
+        "in": "query",
+        "required": true,
+        "description": "Which model the correction being withdrawn applies to, or `*` for every model of the\nkind.\n\nNever folded: a model identifier is a name the vendor chose and some of them carry\ncapitals. `*` is the only wildcard — a `*` inside an identifier is refused.",
+        "schema": {
+          "type": "string",
+          "pattern": "^(\\*|[^*\\s]([^*\\n\\r]*[^*\\s])?)$",
+          "maxLength": 200
+        },
+        "example": "claude-fable-5"
       },
       "RunId": {
         "name": "id",
@@ -5210,6 +5544,207 @@
           "enabled": {
             "type": "boolean",
             "description": "The switch's new position. A boolean and nothing else — a `\"true\"`, a `1` or a\n`null` is a `422` naming the field, never a coercion."
+          }
+        }
+      },
+      "BillingMode": {
+        "type": "string",
+        "title": "BillingMode",
+        "description": "How the money works for one model — which of mockup 21's four cells it renders, and\nwhich rates it may carry at all.\n\n| Value | Means | Rates |\n|---|---|---|\n| `token` | Per-token rates | both present |\n| `seat` | Billed per person, not per call | none |\n| `usage` | Metered by the vendor on terms this catalog cannot express | none |\n| `free` | No per-call charge — a model running locally | zero or absent |\n\n**There is no fifth value for \"unknown\".** *We have no price for this model* is the\nabsence of a price, not a mode a price can be in — which is what keeps `—` and `$0`\nfrom ever collapsing into each other.",
+        "enum": [
+          "token",
+          "seat",
+          "usage",
+          "free"
+        ],
+        "examples": [
+          "token"
+        ]
+      },
+      "PriceOverride": {
+        "type": "object",
+        "title": "PriceOverride",
+        "description": "One price this workspace has recorded for itself, overriding the bundled catalog.\n\nIt has no `source`: every row here is this workspace's own statement, which is what\n`source: override` would say. What it does carry is `display` — the cell this\ncorrection renders — so a settings table shows the same string the registry column\nwill.",
+        "additionalProperties": false,
+        "required": [
+          "connectionKind",
+          "modelId",
+          "billingMode",
+          "inputCentsPer1m",
+          "outputCentsPer1m",
+          "display",
+          "effectiveAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "connectionKind": {
+            "type": "string",
+            "pattern": "^(\\*|[a-z0-9]+([._-][a-z0-9]+)*)$",
+            "maxLength": 64,
+            "description": "The provider kind, folded, or `*` for every kind.",
+            "examples": [
+              "anthropic"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The model identifier as the vendor spells it, or `*` for every model of the kind.",
+            "examples": [
+              "claude-fable-5"
+            ]
+          },
+          "billingMode": {
+            "$ref": "#/components/schemas/BillingMode"
+          },
+          "inputCentsPer1m": {
+            "description": "Input rate in **cents per one million tokens**, or null for a mode that carries no\nrate. Cents per 1M because that is the unit vendors publish and the unit the\ncolumn renders; four decimal places are kept, because a rate rounded down to zero\nis the one arithmetic error this surface must not make.",
+            "oneOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 9999999999.9999
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              1200
+            ]
+          },
+          "outputCentsPer1m": {
+            "description": "Output rate, same unit and same rules. Kept apart because every vendor prices the two differently.",
+            "oneOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 9999999999.9999
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              6000
+            ]
+          },
+          "display": {
+            "type": "string",
+            "description": "The cell this correction renders — `$12 · $60`, `seat-based`, `usage-based` or\n`$0`. Never `—`: an override is a price by definition.",
+            "examples": [
+              "$12 · $60"
+            ]
+          },
+          "effectiveAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this correction took effect. Moves on every save, including a re-affirming one.",
+            "examples": [
+              "2026-08-22T09:00:00.000Z"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the row last changed — the database's own stamp, never the client's.",
+            "examples": [
+              "2026-08-22T09:00:00.000Z"
+            ]
+          }
+        }
+      },
+      "PriceOverrideWrite": {
+        "type": "object",
+        "title": "PriceOverrideWrite",
+        "description": "The body of `PUT /api/v1/registry/prices`.\n\n**The rates and the billing mode have to agree**, and the operation's description\ncarries the table. In short: `token` requires both and refuses two zeros, `seat` and\n`usage` refuse either, and `free` accepts none or `0`. A body that breaks one of those\nis a `422` naming the field.",
+        "additionalProperties": false,
+        "required": [
+          "connectionKind",
+          "modelId",
+          "billingMode"
+        ],
+        "properties": {
+          "connectionKind": {
+            "type": "string",
+            "pattern": "^(\\*|[A-Za-z0-9]+([._-][A-Za-z0-9]+)*)$",
+            "maxLength": 64,
+            "description": "The provider kind, in any casing — it is folded before it is stored — or `*` for\nevery kind.",
+            "examples": [
+              "anthropic"
+            ]
+          },
+          "modelId": {
+            "type": "string",
+            "pattern": "^(\\*|[^*\\s]([^*\\n\\r]*[^*\\s])?)$",
+            "maxLength": 200,
+            "description": "The model identifier, or `*` for every model of the kind. Never folded. A `*`\n*inside* an identifier is refused: `*` is the only wildcard there is.",
+            "examples": [
+              "claude-fable-5"
+            ]
+          },
+          "billingMode": {
+            "$ref": "#/components/schemas/BillingMode"
+          },
+          "inputCentsPer1m": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 9999999999.9999,
+            "description": "Input rate in cents per one million tokens. Required when `billingMode` is\n`token`, refused when it is `seat` or `usage`, and `0` or omitted when it is\n`free`. At most four decimal places — a finer one would be rounded on the way in,\nand a workspace should not be billed against a number it did not enter.",
+            "examples": [
+              1200
+            ]
+          },
+          "outputCentsPer1m": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 9999999999.9999,
+            "description": "Output rate, same unit and same rules.",
+            "examples": [
+              6000
+            ]
+          }
+        }
+      },
+      "PriceOverridePage": {
+        "type": "object",
+        "title": "PriceOverridePage",
+        "description": "One page of a workspace's price corrections, ordered by provider kind then model.",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceOverride"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              2
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "examples": [
+              25
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              0
+            ]
           }
         }
       },

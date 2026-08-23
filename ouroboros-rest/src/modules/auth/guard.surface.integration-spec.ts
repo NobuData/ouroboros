@@ -89,7 +89,7 @@ function withParameters(path: string): string {
 const NOTHING = {};
 
 /** The verbs the harness can send, which every route in the table has to be one of. */
-const SENDABLE: readonly Method[] = ["get", "post", "patch", "delete"];
+const SENDABLE: readonly Method[] = ["get", "post", "put", "patch", "delete"];
 
 describe("what the guard actually answers, for every route in the table", () => {
   let api: ApiHarness;
