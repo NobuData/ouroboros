@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useListOrganizations, useSession } from "@/app/api/auth-client";
 import type { EnabledRepo } from "@/app/api/enablement";
 
-import { type MenuWorkspace, accountView, tenantChipLabel } from "./account";
+import { type MenuWorkspace, accountView, tenantChipLabel, tenantChipTitle } from "./account";
 import {
   ALL_REPOS_LABEL,
   focusRepoIn,
@@ -355,6 +355,11 @@ export function TenantChip() {
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         aria-label={tenantChipLabel(active.slug, repoLabel)}
+        // Both halves below truncate, and at 150% they do — so the tooltip carries what the
+        // ellipsis hides (§ 4's own remedy; `tenantChipTitle` says why it is the visible
+        // text rather than the accessible name). On the button rather than on each span, so
+        // one control offers one tooltip instead of two that fight over the pointer.
+        title={tenantChipTitle(active.slug, repoLabel)}
         // Closing through `close()` rather than by flipping `open`, so a menu re-opened from
         // the chip opens in the state a menu opens in: submenus shut, nothing reported. No
         // focus is restored, because the press that closed it already put focus here.

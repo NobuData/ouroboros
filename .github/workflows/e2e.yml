@@ -25,15 +25,22 @@ name: ouroboros · e2e
 #
 # ## Two jobs, and the second one is the interesting one
 #
-# `e2e` is the suite: green from a cold compose stack, under ten minutes.
+# `e2e` is the suite: green from a cold compose stack, under ten minutes. Since #650 it
+# then runs the **readability matrix** as a second step against the same stack — scale ×
+# theme × page screenshots and the 150% audit, under a three-minute budget of its own
+# (tests/e2e/playwright.readability.config.ts). Two steps rather than two jobs because the
+# stack is the expensive part and `run.sh --keep` has already paid for it; two *budgets*
+# because they are two gates, and one number covering both is the number the first to
+# overrun quietly borrows from the other.
 #
 # `e2e/failure-modes` is the issue's second acceptance criterion — each leg must *fail*
 # when its service is stopped. It runs after, on its own stack, because a green suite
 # cannot distinguish a working system from a suite that asserts nothing, and only breaking
 # the system on purpose can. It is separate so its runtime is not charged against the
 # ten-minute budget the suite enforces on itself. Since #647 it also carries the shell
-# leg's containment spot-verify: the same question — can this green go red? — asked of
-# the CSS containment assertions by planting each offence.
+# leg's containment spot-verify — the same question, can this green go red?, asked of the
+# CSS containment assertions by planting each offence — and since #650 the readability
+# audit's, which plants four more.
 
 on:
   schedule:
@@ -100,8 +107,18 @@ jobs:
         working-directory: tests/e2e
         run: scripts/run.sh --keep
 
+      # #650, against the stack the step above left up (--keep). Its own config, so its own
+      # three-minute globalTimeout: this is the readability gate, not part of the smoke
+      # suite's ten. A red smoke suite stops the job before this runs, which is the right
+      # order — screenshots of a stack that did not work say nothing.
+      - name: Run the readability matrix
+        working-directory: tests/e2e
+        run: yarn readability
+
       # `if: always()` so a failure is diagnosable: the trace and the screenshots are the
-      # whole diagnosis for a job nobody was watching.
+      # whole diagnosis for a job nobody was watching. Both reports, because either step
+      # above can be the one that went red — the matrix writes into its own subdirectory of
+      # each so the second run cannot overwrite the first's evidence.
       - name: Upload the report
         if: always()
         uses: actions/upload-artifact@v4
@@ -162,6 +179,15 @@ jobs:
       - name: Verify a broken containment turns the shell leg red
         working-directory: tests/e2e
         run: scripts/verify-containment.sh
+
+      # #650's spot-verify, the same argument at the next scale up: plant pane-level
+      # overflow, a clipped label, a header over the pane and a sticky bar on the subnav's
+      # edge, and require the 150% audit to go red naming each. The matrix's screenshots
+      # are deliberately not rerun under a plant — every pixel would move, which says
+      # nothing about whether the probes work.
+      - name: Verify a broken readability turns the 150% audit red
+        working-directory: tests/e2e
+        run: scripts/verify-readability.sh
 
       - name: Tear the stack down
         if: always()

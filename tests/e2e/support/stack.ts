@@ -49,6 +49,22 @@ export const REST_URL = address("OURO_E2E_REST_URL", "http://localhost:4000");
  */
 export const SUITE_BUDGET_MS = 10 * 60 * 1000;
 
+/**
+ * The readability matrix's own wall-clock budget, in milliseconds.
+ *
+ * Three minutes, which is issue
+ * [#650](https://github.com/NobuData/ouroboros/issues/650)'s first acceptance criterion
+ * written as a number `playwright.readability.config.ts` enforces. It is deliberately
+ * *not* part of {@link SUITE_BUDGET_MS}: that leg runs under a config of its own, in its
+ * own CI step, because one number covering two gates is a number the first gate to overrun
+ * quietly borrows from the other.
+ *
+ * The matrix is sized to fit it rather than the other way round — three scales rather than
+ * § 4's five, and the page set the issue chose. A page that does not fit is a page whose
+ * screenshots have to be made cheaper.
+ */
+export const READABILITY_BUDGET_MS = 3 * 60 * 1000;
+
 /** How long one test may take before it is failed. */
 export const TEST_TIMEOUT_MS = 60 * 1000;
 

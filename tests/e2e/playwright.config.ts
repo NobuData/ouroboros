@@ -56,9 +56,19 @@ import { EXPECT_TIMEOUT_MS, SUITE_BUDGET_MS, TEST_TIMEOUT_MS, UI_URL } from "./s
  * checkout produces different pixels on Linux and macOS, and a baseline that did not say
  * which it came from would make every developer's first run red for a reason that is not a
  * regression. CI is Linux and the baselines committed here are Linux's.
+ *
+ * ### One spec is deliberately not here
+ *
+ * `specs/readability.spec.ts` — leg 8, the scale × theme × page matrix
+ * ([#650](https://github.com/NobuData/ouroboros/issues/650)) — runs under
+ * [`playwright.readability.config.ts`](playwright.readability.config.ts) instead, because
+ * its acceptance criterion is a budget of its own (three minutes) and `globalTimeout` is
+ * the only thing that enforces one. `testIgnore` below is what keeps it from being charged
+ * against this suite's ten as well; that file's header argues the split.
  */
 export default defineConfig({
   testDir: "./specs",
+  testIgnore: "readability.spec.ts",
 
   // The issue's third acceptance criterion, enforced.
   globalTimeout: SUITE_BUDGET_MS,

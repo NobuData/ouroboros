@@ -45,7 +45,7 @@
  * because the next run needs to know.
  */
 
-import type { BrowserContext } from "@playwright/test";
+import { expect, type BrowserContext, type Page } from "@playwright/test";
 
 import { SESSION_COOKIE, sessionTokenOf } from "./session";
 import { REST_URL } from "./stack";
@@ -135,6 +135,45 @@ export const FONT_SCALE_ATTRIBUTE = "data-font-scale";
  */
 export function rootFontSize(scale: FontScale): string {
   return `${(16 * Number.parseFloat(scale)) / 100}px`;
+}
+
+/**
+ * Assert the document is rendering at a step — both halves, and the default's two
+ * spellings.
+ *
+ * The **root size** is asserted first and always, because it is the half that is about the
+ * deployment: the attribute proves only that the preference was read, and only a moved root
+ * size proves that one of the five `:root[data-font-scale]` rules in `app/globals.css`
+ * shipped in the image and acted on it.
+ *
+ * The **attribute** is then required to say which step chose that size — except at
+ * {@link DEFAULT_FONT_SCALE}, which has two legal spellings and this suite meets both:
+ *
+ *   * **absent**, for a reader who has never chosen. `app/font-scale.ts` stamps on a
+ *     *change*, and 100% is where the document already is, so nothing stamps it — the same
+ *     convention `data-sidebar` uses for a sidebar nobody has collapsed.
+ *   * **`"100"`**, after a step back down to the default, or after a reload with `100` in
+ *     the `localStorage` mirror the boot script reads.
+ *
+ * Both are 100%, and the root size is 16px either way.
+ *
+ * @param page - The page to inspect.
+ * @param scale - The step it must be rendering at.
+ * @returns When the size and the attribute agree.
+ */
+export async function expectFontScale(page: Page, scale: FontScale): Promise<void> {
+  const html = page.locator("html");
+
+  await expect(html).toHaveCSS("font-size", rootFontSize(scale));
+
+  const stamped = await html.getAttribute(FONT_SCALE_ATTRIBUTE);
+  if (scale === DEFAULT_FONT_SCALE && stamped === null) return;
+
+  expect(
+    stamped,
+    `the root is the right size for ${scale}%, but nothing says the preference is what ` +
+      "chose it",
+  ).toBe(scale);
 }
 
 /**

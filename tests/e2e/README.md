@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and two amended in since:
+deployment. Five legs from the issue, and three amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -24,7 +24,8 @@ deployment. Five legs from the issue, and two amended in since:
 | 4 | [`specs/engine.spec.ts`](specs/engine.spec.ts) | The gateway calling the engine over the compose network — and the boundary still being closed |
 | 5 | [`specs/health.spec.ts`](specs/health.spec.ts) | Both probes, and the two dependencies readiness names |
 | 6 | [`specs/dashboard.spec.ts`](specs/dashboard.spec.ts) | Mockup 02 drawn from the rows Flyway seeded — and the same page telling the truth in a workspace that has none |
-| 7 | [`specs/shell-nav.spec.ts`](specs/shell-nav.spec.ts) | The shell's promises on a laid-out page: chrome that holds still under a deep pane scroll, containment nothing escapes, the sidebar's eleven honest entries, the rail and the drawer — in both themes |
+| 7 | [`specs/shell-nav.spec.ts`](specs/shell-nav.spec.ts) | The shell's promises on a laid-out page: chrome that holds still under a deep pane scroll, containment nothing escapes, the sidebar's eleven honest entries, the rail and the drawer — in both themes, and the reader's own font-size stepper taken to 150% and back |
+| 8 | [`specs/readability.spec.ts`](specs/readability.spec.ts) | Whether the product is still usable at the top of the font-size range: {100%, 125%, 150%} × both palettes × the dense pages, diffed; and the four things at 150% a screenshot review cannot see — pane-level scroll, clipped labels, chrome over chrome, AA contrast |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -32,6 +33,18 @@ route-migration gate. Its containment assertions come with their own falsifier:
 element and a pane-level horizontal overflow (`support/shell.ts` grows both) and requires
 the leg to go red naming each — the same philosophy as the failure-modes script, applied
 to CSS instead of services.
+
+Leg 8 is [#650](https://github.com/NobuData/ouroboros/issues/650)'s, CQ.3 — the readability
+bar of `docs/DESIGN_SYSTEM_APP_SHELL.md` § 4, which is a *bar* rather than a promise: *at
+150% no clipped labels, no overlapping chrome, tables degrade to horizontal scroll in their
+wrappers; screenshot matrix (scale × theme × key pages) in CI*. It is the one leg that does
+not run under [`playwright.config.ts`](playwright.config.ts) — see § *The two budgets* — and
+it comes with its own falsifier,
+[`scripts/verify-readability.sh`](scripts/verify-readability.sh), which plants four offences
+and requires the audit to go red naming each. Its own note and
+[`support/readability.ts`](support/readability.ts) argue the roster: the issue names five
+dense pages, one is built, and the four that are not are asserted **absent** so that the day
+one lands this leg says so.
 
 Leg 6 is [#88](https://github.com/NobuData/ouroboros/issues/88), the dashboard roadmap's MVP
 gate, and it is the first leg amended in by a mockup roadmap. Its subject is the distance
@@ -83,6 +96,13 @@ yarn e2e specs/engine.spec.ts          # one leg
 
 From the repository root, `yarn e2e` is the same thing.
 
+**Leg 8 is a separate command**, because it is a separate gate with a separate budget:
+
+```bash
+yarn readability                       # the matrix and the 150% audit
+yarn readability --grep "the 150% audit"    # the probes only, no screenshots
+```
+
 ### Verifying the suite still asserts something
 
 A green suite cannot tell you whether the system works or whether the tests assert nothing;
@@ -94,8 +114,22 @@ habit:
 scripts/verify-failure-modes.sh --up
 ```
 
-It stops a service, runs the one leg that depends on it, requires that leg to fail, and
-requires the output to *name* the failure — `engine_unavailable`, a `503`,
+Two sibling scripts ask the same question of CSS rather than of services — a green layout
+assertion is exactly as uninformative as a green service one:
+
+```bash
+scripts/verify-containment.sh          # #647: a viewport-fixed bar, a pane-level overflow
+scripts/verify-readability.sh          # #650: overflow, a clipped label, two chrome collisions
+```
+
+Each plants an offence, runs the leg that should catch it, and requires the run to go red
+with the matching assertion *by name*. The plants live in
+[`support/plants.ts`](support/plants.ts), in one table beside the list of which assertion
+must catch each, so a rewritten probe that no longer sees its plant fails loudly instead of
+passing quietly.
+
+`verify-failure-modes.sh` stops a service, runs the one leg that depends on it, requires that
+leg to fail, and requires the output to *name* the failure — `engine_unavailable`, a `503`,
 `internal_error`, `ECONNREFUSED` — because a leg that fails with an unexplained timeout is
 a leg somebody will mark flaky and retry. It runs nightly in CI, after the suite, and its
 runtime is not charged against the suite's budget.
@@ -149,13 +183,19 @@ nothing, and #33's `ouro_session` is neither honoured nor crashed into.
 ```
 tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer
+├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # leg 6's baselines, one per theme — recorded when it runs
+│   └── __screenshots__/        # leg 6's baselines, and leg 8's matrix under readability/
 ├── support/
-│   ├── stack.ts                # addresses and timeouts
+│   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
 │   ├── dashboard.ts            # what mockup 02 renders against those values (leg 6)
-│   ├── shell.ts                # the containment contract as assertions, and its plants (leg 7)
+│   ├── shell.ts                # the containment contract as assertions (leg 7)
+│   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
+│   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
+│   ├── settle.ts               # read it twice: why an `evaluate` needs what a screenshot gets free
+│   ├── plants.ts               # the offences planted on purpose, and what must catch each
+│   ├── theme.ts                # pinning a palette through the control a reader would use
 │   ├── session.ts              # signing in — one HTTP call; read the header
 │   ├── workspace.ts            # putting a context into a workspace without re-clicking
 │   ├── settings.ts             # the font scale and the auto-merge switch, set and put back
@@ -163,8 +203,27 @@ tests/e2e/
 └── scripts/
     ├── run.sh                  # stack up (with the e2e compose override) → suite → down
     ├── verify-failure-modes.sh # #56 acceptance criterion 2
-    └── verify-containment.sh   # #647's spot-verify: planted offences must go red
+    ├── verify-containment.sh   # #647's spot-verify: planted offences must go red
+    └── verify-readability.sh   # #650's, at 150%: four offences, four probes
 ```
+
+### The two budgets
+
+There are two gates here and they are timed separately, which is the one place this
+directory's *the budget is one number* rule (§ *Adding a leg*) has an exception — argued
+in [`playwright.readability.config.ts`](playwright.readability.config.ts) rather than
+assumed:
+
+| gate | budget | enforced by | what it answers |
+|---|---|---|---|
+| the smoke suite, legs 1–7 | 10 minutes | `SUITE_BUDGET_MS` | is the deployment the product? (#56) |
+| the readability matrix, leg 8 | 3 minutes | `READABILITY_BUDGET_MS` | is it still usable at 150%? (#650) |
+
+Both are `globalTimeout`s rather than sentences somebody measures. They are separate because
+they are separate acceptance criteria owned by separate issues: folded into one number, the
+first gate to grow would spend the other's allowance and neither issue's criterion would
+still be checked. In CI they are two steps of the same job, sharing one compose stack —
+bringing the stack up is the expensive part, and `run.sh --keep` has already paid for it.
 
 Four things in [`playwright.config.ts`](playwright.config.ts) are decisions rather than
 defaults, and each is argued in that file: there is **no `webServer`** (what is under test
@@ -190,6 +249,54 @@ signed-in dashboard is what recording one needs, and § *Signing in* is how the 
 one. Both palettes live in `specs/__screenshots__/`, masked where the seeded group's prose
 explains.
 
+Leg 8 adds twelve more under `specs/__screenshots__/readability/`, named
+`<page>-<scale>-<theme>-chromium-linux.png`. Same rules, one more axis.
+
+#### Refreshing them
+
+A baseline nobody can refresh becomes a suite somebody disables, so the procedure is written
+down rather than remembered. It has one precondition and it is the one that actually catches
+people out.
+
+**The seed must be fresh.** `R__dev_seed_dashboard.sql` dates its rows relative to `now()`,
+so a database volume that has been up for a week has an empty *7 days* window — the stat
+tiles read `0`, the pulse card's rates move, and baselines recorded against it are baselines
+of a stale fixture that CI, which always starts cold, will never reproduce. Recording begins
+by throwing the volume away:
+
+```bash
+# 1. A cold stack on a fresh volume — `-v` is the load-bearing flag.
+docker compose --profile full down -v --remove-orphans
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml --profile full up --build --wait -d
+
+# 2. Record. Delete first: --update-snapshots rewrites what it compares, but it will not
+#    notice a baseline whose test no longer exists, and a stale file is invisible forever.
+cd tests/e2e
+rm -rf specs/__screenshots__/readability
+yarn readability --update-snapshots
+
+# 3. Verify, twice. The first run proves the baselines match the pages they came from; the
+#    second proves they are stable rather than a lucky frame.
+yarn readability
+yarn readability
+
+# 4. Read the diff before committing. `git diff --stat` says which images moved; open the
+#    ones that did and satisfy yourself the change is the one you made. A screenshot suite
+#    is only worth its disk if somebody looks.
+git status --short specs/__screenshots__
+```
+
+Leg 6's pair refreshes the same way with `yarn e2e specs/dashboard.spec.ts
+--update-snapshots` at step 2 — the precondition is the same, and it is the same seed.
+
+**Baselines are Linux's.** A refresh recorded on macOS will be rejected by CI for a reason
+that is not a regression; the platform is in every filename so this is visible rather than
+mysterious.
+
+This procedure was exercised once when #650 landed, which is how the stale-seed precondition
+came to be written down: the first recording of the matrix was made against a week-old
+volume and produced a dashboard reading zeroes.
+
 ### Adding a leg
 
 This suite is scheduled to grow. Every mockup roadmap amends a leg into
@@ -203,9 +310,16 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
    the runner enforces it. A leg that does not fit is a leg that has to be made cheaper, not
    a number to raise quietly. Leg 6's own stated allowance is **two minutes**, which fits
    inside the ten with room to spare, so the total did not move.
+
+   Leg 8 is the exception that proves the rule and is allowed to be one for a stated
+   reason: its runtime *is* an acceptance criterion of a different issue, so it has a
+   config, a budget and a CI step of its own rather than three minutes of #56's ten (§ *The
+   two budgets*). That is the bar for a second number — a leg with its own gate to answer
+   for, not a leg that turned out to be slow.
 2. **A new leg brings its failure mode.** Add the pair to
-   `scripts/verify-failure-modes.sh`. A leg that has never been seen to fail is a leg that
-   has never been shown to assert anything.
+   `scripts/verify-failure-modes.sh` — or, for a leg whose subject is CSS rather than a
+   service, a plant to `support/plants.ts` and a step to the matching `verify-*.sh`. A leg
+   that has never been seen to fail is a leg that has never been shown to assert anything.
 
    A pair whose leg is **parked** is registered anyway and reports itself as parked — not as
    a pass, which would claim it had been shown to fail, and not as a failure, which would
@@ -222,3 +336,6 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#15](https://github.com/NobuData/ouroboros/issues/15) — the icon `<link>` tags leg 1 cannot assert yet
 - [#88](https://github.com/NobuData/ouroboros/issues/88) — leg 6, the dashboard, and the mockup 02 roadmap's MVP gate
 - [#68](https://github.com/NobuData/ouroboros/issues/68) — the dashboard seed leg 6 asserts against
+- [#647](https://github.com/NobuData/ouroboros/issues/647) — leg 7, the shell's containment, and the compose override that unparked sign-in
+- [#650](https://github.com/NobuData/ouroboros/issues/650) — leg 8, the readability matrix and the 150% audit
+- [#649](https://github.com/NobuData/ouroboros/issues/649) — the font-size preference legs 7 and 8 drive
