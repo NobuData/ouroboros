@@ -1,0 +1,230 @@
+/**
+ * `/api/v1/providers` — the credential lifecycle
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)).
+ *
+ * **The workspace is the session's, never the request's** — the same sentence the dashboard,
+ * runs, queue, settings, pricing and provider-health controllers open with, and load-bearing
+ * here in the way it is nowhere else: the rows these operations address carry sealed
+ * credentials, so a workspace taken from a path segment would be one edited URL away from
+ * another tenant's key. There is no `{orgId}` in these paths; the tenant guard resolves and
+ * membership-checks the active organization, and these handlers read what it established.
+ *
+ * **Members read; administrators write.** The two `GET`s carry no `@Roles()`, per the roles
+ * guard's own rule that a bare route is any of the four — a viewer is a role that exists to
+ * be able to look at which providers a workspace has, and every field they can see is
+ * masked. Everything else carries `@Roles(...ADMINISTRATORS)`, which is the ticket's *member
+ * role is read-only across every write endpoint, enforced server-side*. **Reveal is a write
+ * for this purpose**, and that is the one classification worth defending: it changes
+ * nothing, and it is the single operation in this API that hands back a live credential, so
+ * grouping it with the reads because of its side effects would be filing it by the wrong
+ * property.
+ *
+ * **This is the path `provider-health` deliberately did not take.** Z.3's health strip is
+ * served at `/api/v1/routing/providers` precisely so that `/api/v1/providers` was free for
+ * mockup 07's CRUD surface — decision **M2**, and that controller's header says so in as
+ * many words. This is that surface.
+ *
+ * Sessions are required without anything here saying so — the global guard — and a tenant is
+ * required *because* nothing here says otherwise: no `@TenantOptional()`, so a session
+ * acting in no workspace is a `400 organization_required` before any handler runs.
+ */
+
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from "@nestjs/common";
+import { Session } from "@thallesp/nestjs-better-auth";
+
+import type { AuthRequest } from "../auth/http";
+import type { Principal } from "../auth/principal";
+import type { Organization } from "../db/schema";
+import type { Page } from "../tenancy/pagination";
+import { ADMINISTRATORS, Roles } from "../tenancy/roles.guard";
+import { CurrentTenant } from "../tenancy/tenant.decorators";
+import {
+  ConnectionParams,
+  CreateConnectionDto,
+  ListConnectionsQuery,
+  RevealConnectionDto,
+  RotateConnectionDto,
+  UpdateConnectionDto,
+} from "./provider-connections.dto";
+import { ProviderConnectionsService } from "./provider-connections.service";
+import type { ProviderConnectionResource, RevealResource } from "./resources";
+
+@Controller("providers")
+export class ProviderConnectionsController {
+  constructor(private readonly connections: ProviderConnectionsService) {}
+
+  /**
+   * `GET /api/v1/providers` — this workspace's connections, each with a masked credential.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param query - The window. Defaults per the #31 pagination convention.
+   * @returns The page, ordered by name.
+   */
+  @Get()
+  list(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: ListConnectionsQuery,
+  ): Promise<Page<ProviderConnectionResource>> {
+    return this.connections.list(tenant.id, query);
+  }
+
+  /**
+   * `GET /api/v1/providers/{id}` — one connection, with a masked credential.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param params - The connection's id.
+   * @returns The connection.
+   */
+  @Get(":id")
+  read(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: ConnectionParams,
+  ): Promise<ProviderConnectionResource> {
+    return this.connections.read(tenant.id, params.id);
+  }
+
+  /**
+   * `POST /api/v1/providers` — connect a provider.
+   *
+   * `201`, because a resource is created — and it is created only after the provider itself
+   * has agreed, which is the whole shape of the operation. See the service.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session, for `added_by` and for the audit event. Read from the
+   *   session rather than from the body: *who added this provider* is a fact about the
+   *   request, and a body field would let a client attribute its own writes to somebody else.
+   * @param body - The validated request.
+   * @returns The connection as stored.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post()
+  add(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Body() body: CreateConnectionDto,
+  ): Promise<ProviderConnectionResource> {
+    return this.connections.add(tenant.id, principal.user.id, body);
+  }
+
+  /**
+   * `POST /api/v1/providers/{id}/reveal` — hand back a stored credential.
+   *
+   * `200` rather than Nest's default `201` for a `POST`: nothing is created. The verb is
+   * protecting the argument rather than describing one — a password may be in the body, and
+   * a `GET` would put the operation in a request line, a browser history and a `Referer`,
+   * and would make the one endpoint that answers with a credential cacheable by anything in
+   * between. `POST /api/v1/auth/discover` is written the same way for the same two reasons.
+   *
+   * `Cache-Control: no-store` is declared here rather than in the service, because it is a
+   * fact about the *response* and the service returns a value. It is the strongest of the
+   * cache directives and the correct one: `no-cache` permits a stored copy that is
+   * revalidated, which for a credential is a stored copy.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session — whose attempts are counted and whose step-up is checked.
+   * @param request - The raw request, for the `Cookie` header the step-up's password check
+   *   authenticates with. Nothing else on it is read; see `auth/http.ts` on why the surface
+   *   is named rather than imported from Express.
+   * @param params - The connection's id.
+   * @param body - The validated request; carries a password when stepping up with one.
+   * @returns The credential, and when a client should stop showing it.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post(":id/reveal")
+  @HttpCode(HttpStatus.OK)
+  @Header("Cache-Control", "no-store")
+  reveal(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Req() request: AuthRequest,
+    @Param() params: ConnectionParams,
+    @Body() body: RevealConnectionDto,
+  ): Promise<RevealResource> {
+    return this.connections.reveal(tenant.id, principal, request, params.id, body);
+  }
+
+  /**
+   * `POST /api/v1/providers/{id}/rotate` — replace a credential, verify-then-retire.
+   *
+   * `200` for {@link reveal}'s reason: the connection is updated rather than created, and
+   * what comes back is the connection as it now stands.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session, for the audit event.
+   * @param params - The connection's id.
+   * @param body - The new credential.
+   * @returns The connection after the swap.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Post(":id/rotate")
+  @HttpCode(HttpStatus.OK)
+  rotate(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Param() params: ConnectionParams,
+    @Body() body: RotateConnectionDto,
+  ): Promise<ProviderConnectionResource> {
+    return this.connections.rotate(tenant.id, principal.user.id, params.id, body);
+  }
+
+  /**
+   * `PATCH /api/v1/providers/{id}` — the switch, the cap, the note, the address.
+   *
+   * A `PATCH` rather than a `PUT`, which is the opposite of the choice `pricing.controller.ts`
+   * makes and for a reason that is about the resource rather than about taste: a price is one
+   * statement replaced outright, and a connection is a row of independent settings where
+   * *turn this off* should not require resending an address a client may not even have.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session, for the audit event.
+   * @param params - The connection's id.
+   * @param body - The validated request.
+   * @returns The connection after the change.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Patch(":id")
+  update(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Param() params: ConnectionParams,
+    @Body() body: UpdateConnectionDto,
+  ): Promise<ProviderConnectionResource> {
+    return this.connections.update(tenant.id, principal.user.id, params.id, body);
+  }
+
+  /**
+   * `DELETE /api/v1/providers/{id}` — disconnect a provider.
+   *
+   * `204`, and no body: there is nothing to say about a row that no longer exists, and a
+   * `200` carrying the deleted resource invites a client to keep using it — the same
+   * sentence `domains.controller.ts` opens its own delete with.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @param principal - The session, for the audit event.
+   * @param params - The connection's id.
+   * @returns When it is gone.
+   */
+  @Roles(...ADMINISTRATORS)
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @CurrentTenant() tenant: Organization,
+    @Session() principal: Principal,
+    @Param() params: ConnectionParams,
+  ): Promise<void> {
+    return this.connections.remove(tenant.id, principal.user.id, params.id);
+  }
+}

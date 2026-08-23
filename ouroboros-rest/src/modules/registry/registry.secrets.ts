@@ -10,10 +10,11 @@
  * ---------------------------------------------------------------------------
  * **Why this lands with the column rather than with the first thing that writes one.**
  *
- * Nothing stores a provider credential yet — AD.2
- * ([#223](https://github.com/NobuData/ouroboros/issues/223)) owns that lifecycle. It would
- * be reasonable to think a store for rows that do not exist is premature, and the opposite
- * is true: a *rotation* is what makes an old key version retirable, and
+ * Nothing stored a provider credential when this landed — AD.2
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)) owns that lifecycle and has
+ * since shipped it, in `src/modules/provider-connections/`. It would have been reasonable to
+ * think a store for rows that did not exist was premature, and the opposite was true: a
+ * *rotation* is what makes an old key version retirable, and
  * `VaultRotation.rotate` retires the old version once the sweep reports nothing left on it.
  * A sealed column the sweep cannot see is therefore not an inert gap — it is a rotation that
  * reports success while leaving ciphertext on a key nobody knows is still in use, and the
@@ -83,8 +84,9 @@ export class ProviderCredentialStore implements VaultSecretStore {
    *
    * @param organizationId - The workspace.
    * @param version - The key version everything should end up on.
-   * @returns One record per connection needing work. Empty is the expected steady state, and
-   *   is the answer for every workspace today because nothing writes a credential yet.
+   * @returns One record per connection needing work. Empty is the expected steady state — a
+   *   workspace whose credentials are all on the current key version, which is every workspace
+   *   until the next rotation.
    */
   async pending(organizationId: string, version: number): Promise<readonly VaultSecretRecord[]> {
     const rows = await this.database.db

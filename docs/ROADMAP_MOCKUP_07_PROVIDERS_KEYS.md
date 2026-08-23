@@ -566,9 +566,10 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 >
 > **What this ticket could not finish, and why.** The status endpoint AE.4 polls is a handler
 > over `ModelPullTracker.find` and `list`, and it needs a connection resolved from
-> `/api/v1/providers` — a surface AD.2 (#223) owns and has not shipped. Writing a slice of it
-> here would be something that ticket then had to negotiate with rather than write, which is the
-> same reason `providers/` still declares no controller. The tracker is the half that had to
+> `/api/v1/providers` — a surface AD.2 (#223) owns and had not shipped at the time. Writing a
+> slice of it here would have been something that ticket then had to negotiate with rather than
+> write, which is the same reason `providers/` still declares no controller. AD.2 has since
+> landed that surface; the status endpoint remains AE.4's. The tracker is the half that had to
 > exist first, and it is complete and asserted.
 >
 > The *pull of a small model against the compose Ollama* criterion is a manual check: the
@@ -762,7 +763,7 @@ erDiagram
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AD.1 | #222 | 🟢 Done | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
-| AD.2 | #223 | 🟡 Open | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
+| AD.2 | #223 | 🟢 Done | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
 | AD.3 | #224 | 🟢 Done | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
 | AD.4 | #225 | 🟡 Open | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
 | AD.5 | #226 | 🟢 Done | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
@@ -849,7 +850,78 @@ flowchart LR
 
 ### Issue AD.2 — ouroboros-rest: [AD.2] Credential lifecycle API
 
-> **GitHub issue:** #223 · **Status:** 🟡 Open · **Parent epic:** #213
+> **GitHub issue:** #223 · **Status:** 🟢 Done · **Parent epic:** #213
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/provider-connections/`](../ouroboros-rest/src/modules/provider-connections)
+> — seven operations over four paths, published in
+> [`openapi.yaml`](../ouroboros-rest/openapi.yaml) under a new `providers` tag. Decision
+> **P4**, one file per rule: `masking.ts`, `step-up.ts`, `reveal.limiter.ts`,
+> `config.validation.ts`, `config.mapping.ts` and `connection.audit.ts` beside the usual
+> controller/service/repository three.
+>
+> **The order of operations *is* the ticket, and every acceptance criterion is a claim about
+> it.** `add` calls the adapter before it seals and before it inserts, so *a bad key is never
+> stored* is a property of the control flow rather than of a rollback — there is no row to
+> clean up because there was never a row. `rotate` validates the new credential and only then
+> issues one conditional `UPDATE`, so a refusal leaves the old key live and a success has no
+> window in which neither works. `reveal` counts the attempt **before** it checks the
+> step-up, which is the one ordering here that is a security property rather than a
+> preference: a limiter behind the step-up would leave the password comparison unlimited.
+>
+> **Masking is computed from bytes, not from a string.** `VaultService.decrypt` hands over a
+> `Buffer` the caller owns; `masking.ts` decodes only its last sixteen bytes and answers
+> `••••Xq4A`, so the plaintext never becomes an immutable string on the list path and the
+> visible half is four characters every vendor console already shows. The contract test the
+> criteria ask for lives twice — over the built payloads in `payloads.spec.ts` and over the
+> bytes that crossed a socket in the integration suite — and it is *demonstrated to be
+> capable of failing* by being pointed at the one payload that does carry a credential.
+>
+> **The step-up is the two capabilities BetterAuth actually gives this build**, which is
+> narrower than the ticket's "fresh session / password / provider re-confirm" and is written
+> down as such. `session` is a session created inside the window — the only method a
+> GitHub-only account has, and the reason `SessionRecord` gained `createdAt` (never
+> `updatedAt`, which slides on every renewal). `password` is `auth.api.verifyPassword`, a
+> server-scope endpoint that works in production too, because `emailAndPassword.enabled`
+> gates the sign-in *routes* and verification reads the credential account directly. A
+> provider re-confirm is deliberately absent: it is a redirect, a callback and a new session,
+> which is the `session` method with extra steps. **A wrong password answers exactly as an
+> absent one does**, or this endpoint would be a password oracle for whoever holds a stolen
+> session.
+>
+> **Two singletons hold state, and what that costs is stated rather than discovered.** The
+> reveal limiter and the step-up registry are in-memory, so a second replica has its own
+> counters and its own confirmations: a limit of ten becomes twenty across two processes, and
+> a person behind a round-robin balancer may be asked to confirm again. The second is a
+> re-prompt, which is the safe direction to fail in; the first is bounded and honest, and the
+> alternative — Redis, or a table written on every attempt — is not something this ticket
+> gets to add to a deployment. `ModelPullTracker` is the precedent.
+>
+> **The delete guard is Y.1's foreign key, thrown at last.**
+> `registry.errors.ts`'s `providerConnectionInUse` was written under #189 *for* this ticket
+> and had no caller; both of its directions are now used — the pre-flight that can name the
+> aliases, and the recogniser for the race the pre-flight cannot close.
+>
+> **One gap is refused rather than papered over, and it is worth knowing about.**
+> `provider_connections` keeps a connection's settings in *columns* — `base_url` and
+> `capability_note`, which is why `provider.config.ts` reserves those two field names — and
+> has no general column for anything else. AC.5's Copilot schema declares one field that is
+> neither: an optional billing `organization`. Dropping it would store a connection that
+> quietly disagrees with what somebody typed, and the disagreement would surface much later
+> as an entitlement line reading *personal plan* for an org-billed seat; adding a column is a
+> migration, and AD.2's scope is `ouroboros-rest`. So a submitted setting with nowhere to go
+> is a designed **`501 provider_config_not_storable`** naming the field — the same shape
+> `provider_kind_unsupported` has, and for the same reason. Copilot connects perfectly well
+> without one, which its own schema calls the ordinary case. **A `provider_connections.config`
+> column is the fix**, and whichever ticket adds it deletes `config.mapping.ts`'s
+> `unstorableFields` and that error together.
+>
+> **Every operation is audited on AD.3's interim seam.** `connection.audit.ts` emits
+> `provider.added|revealed|rotated|updated|deleted` — AD.4's (#225) own vocabulary, agreed
+> before the trail exists — to the service log, with every field that issue's row will carry;
+> a reveal records *how* the step-up was satisfied, which is the difference between somebody
+> with this session and somebody who proved they are this person. When #225 lands, five method
+> bodies become an insert and no caller, field or event name changes.
 
 
 - **Problem Statement:** The key row's affordances — masked display, Reveal,

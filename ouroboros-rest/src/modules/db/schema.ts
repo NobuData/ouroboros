@@ -708,10 +708,12 @@ export const PROVIDER_CONNECTION_STATUSES = [
  * `ouroboros.provider_connections` — where a workspace's model providers are (V015,
  * [#189](https://github.com/NobuData/ouroboros/issues/189)).
  *
- * The shared foundation mockup 07 (*Providers & keys*) will build its management UI on —
- * roadmap decision **M2**. This service reads it to resolve an alias and to answer *what
- * providers does this workspace have*; it deliberately declares no create, update or delete
- * surface, because that is 07's to design.
+ * The shared foundation mockup 07 (*Providers & keys*) builds its management UI on — roadmap
+ * decision **M2**. This service reads it to resolve an alias and to answer *what providers
+ * does this workspace have*, and writes it from exactly one module:
+ * `src/modules/provider-connections/`, the credential lifecycle AD.2
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)) owns. `registry/` still declares
+ * no create, update or delete surface of its own, which is what M2 asked for.
  *
  * **{@link ProviderConnectionsTable.credentials_encrypted} is the one column in this mirror
  * that must never reach a response.** `src/modules/registry/` selects it in exactly one

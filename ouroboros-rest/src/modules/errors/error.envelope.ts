@@ -210,6 +210,32 @@ export class InvalidRequestError extends DomainError {
 }
 
 /**
+ * `429` — the caller may do this, and has done it too often to be allowed another one now.
+ *
+ * Distinct from {@link ForbiddenError} on the axis that matters to whoever reads it: a `403`
+ * is about *who* is asking and never becomes a `200` by waiting, and this one is about *how
+ * often* and becomes a `200` by waiting exactly as long as `details.retryAfterSeconds` says.
+ *
+ * It exists for AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223))'s reveal,
+ * which is the one operation in this API that answers with a live credential: an endpoint
+ * that hands one back is an endpoint worth taking one attempt at a time, and *rate-limited
+ * per user and per connection* is that ticket's acceptance criterion. `codeForStatus` has
+ * spelled the generic version `rate_limited` since #33 — this is the deliberate half, whose
+ * code names which limit was reached.
+ *
+ * **`details.retryAfterSeconds` is a number rather than a `Retry-After` header**, because
+ * this service's contract is the envelope: a client that already branches on
+ * `error.details` should not need a second reader for a header to learn the one fact that
+ * makes the refusal actionable. Nothing stops a future caller adding the header too; what
+ * would be wrong is having only the header.
+ */
+export class TooManyRequestsError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.TOO_MANY_REQUESTS, code, message, details);
+  }
+}
+
+/**
  * `501` — this operation is a published contract that nothing implements yet.
  *
  * The only class here above the {@link SERVER_ERROR_FLOOR}, and the only one whose message

@@ -49,11 +49,17 @@ export const FIXTURE_ACTIVE_ORGANIZATION = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10
  * @param activeOrganizationId - Where it is acting. Defaults to
  *   {@link FIXTURE_ACTIVE_ORGANIZATION}; pass `null` for the signed-in-and-acting-nowhere
  *   session that [#713](https://github.com/NobuData/ouroboros/issues/713) answers `400` for.
+ * @param createdAt - When the sign-in happened. Defaults to {@link FIXTURE_INSTANT}, which
+ *   is a fixed instant in the past — so a fixture session is *not* fresh unless a suite
+ *   says so, which is the polarity AD.2's step-up
+ *   ([#223](https://github.com/NobuData/ouroboros/issues/223)) needs: a check that passed by
+ *   default would pass in every test that never thought about it.
  * @returns The principal a `@Session()` parameter would be handed.
  */
 export function principalFor(
   user: SessionUser = FIXTURE_USER,
   activeOrganizationId: string | null = FIXTURE_ACTIVE_ORGANIZATION,
+  createdAt: Date = FIXTURE_INSTANT,
 ): Principal {
   return {
     session: {
@@ -61,6 +67,7 @@ export function principalFor(
       token: "a-session-token",
       userId: user.id,
       expiresAt: new Date("2026-08-18T10:20:23.114Z"),
+      createdAt,
       activeOrganizationId,
     },
     user,

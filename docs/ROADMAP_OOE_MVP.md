@@ -664,7 +664,7 @@ that roadmap's "Existing issues affected" section.
 | 105 | **AC.3** | ✅ [#218](https://github.com/NobuData/ouroboros/issues/218) | OpenAI-compatible adapter (vLLM et al.) | ouroboros-rest | S | AC.1, AD.1 |
 | 106 | **AC.4** | ✅ [#219](https://github.com/NobuData/ouroboros/issues/219) | Ollama adapter with model pulls | ouroboros-rest | M | AC.1 |
 | 107 | **AC.5** | ✅ [#220](https://github.com/NobuData/ouroboros/issues/220) | Copilot & Cursor adapters | ouroboros-rest | M | AC.1, AD.1 |
-| 108 | **AD.2** | [#223](https://github.com/NobuData/ouroboros/issues/223) | Credential lifecycle API | ouroboros-rest | M | AC.1, AD.1 |
+| 108 | **AD.2** | ✅ [#223](https://github.com/NobuData/ouroboros/issues/223) | Credential lifecycle API | ouroboros-rest | M | AC.1, AD.1 |
 | 109 | **CG.1** | [#579](https://github.com/NobuData/ouroboros/issues/579) | Alias lifecycle, binding & params extensions | ouroboros-db | M | Y.1, AC.6 |
 | 110 | **CH.2** | [#585](https://github.com/NobuData/ouroboros/issues/585) | Param & capability service | ouroboros-rest | M | AC.1, AC.6 |
 | 111 | **Y.4** | [#192](https://github.com/NobuData/ouroboros/issues/192) | Routing dev seeds — mockup-06 parity | ouroboros-db | M | Y.3 |

@@ -14,6 +14,7 @@ import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { ProviderHealthModule } from "../provider-health/provider-health.module";
+import { ProviderConnectionsModule } from "../provider-connections/provider-connections.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -102,6 +103,17 @@ import { AppService } from "./app.service";
  * register their adapter by adding one line to that module rather than by touching this one.
  * Until they do, every kind is an honest `501` — see `providers/provider.registry.ts`.
  *
+ * `ProviderConnectionsModule` ([#223](https://github.com/NobuData/ouroboros/issues/223)) is
+ * next, and it is the surface the entry above was waiting for: `/api/v1/providers`, the
+ * add/reveal/rotate/edit/delete lifecycle over V015's `provider_connections`. Its position
+ * says two things. It is after `TenancyModule`, because every one of its six routes is
+ * tenant-required and four of them are role-gated — the workspace is the session's and never
+ * the path's, which for rows carrying sealed credentials is not a stylistic preference. And
+ * it is after `VaultModule`, `ProvidersModule` and `RegistryModule`, because it injects a
+ * provider from each: the envelope encryption that seals a credential, the adapter registry
+ * that live-validates one before it is stored, and the alias resolution that turns Y.1's
+ * foreign key into a `409` naming what depends on a connection.
+ *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
  * It declares no controller and protects nothing: it mounts a handler on the HTTP adapter
@@ -176,6 +188,7 @@ export class AppModule {
         VaultModule,
         ProviderHealthModule,
         ProvidersModule,
+        ProviderConnectionsModule,
         InternalModule,
       ],
     };
