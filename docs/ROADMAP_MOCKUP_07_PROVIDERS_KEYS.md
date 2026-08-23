@@ -221,7 +221,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AC.1 | #216 | 🟡 Open | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
+| AC.1 | #216 | 🟢 Done | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
 | AC.2 | #217 | 🟡 Open | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.3 | #218 | 🟡 Open | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.4 | #219 | 🟡 Open | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
@@ -230,7 +230,90 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ### Issue AC.1 — ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry
 
-> **GitHub issue:** #216 · **Status:** 🟡 Open · **Parent epic:** #212
+> **GitHub issue:** #216 · **Status:** 🟢 Done · **Parent epic:** #212
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/providers/`](../ouroboros-rest/src/modules/providers/),
+> [`ouroboros-rest/.dependency-cruiser.cjs`](../ouroboros-rest/.dependency-cruiser.cjs), and
+> the walkthrough at [`docs/MODEL_PROVIDERS.md`](MODEL_PROVIDERS.md).
+>
+> **The error taxonomy is the load-bearing half, and it is 1:1 by test rather than by
+> table.** Five provider-neutral classes — `auth`, `network`, `upstream`, `rate_limit`,
+> `config` — each render as one distinct pill, and `provider.errors.spec.ts` asserts the
+> injectivity rather than trusting the documented table to stay true. `connected` and
+> `degraded upstream` are lifted verbatim from the page, so the two cannot drift. What the
+> table *also* records is a deliberate flattening: every failure coarsens to
+> `provider_connections.status = 'error'`, because V015 has no status meaning *working, but
+> throttled*, and letting a rate limit read as `active` would keep Z.1 routing to a provider
+> that is currently refusing. The pill answers *why*; the column answers *may I use this*.
+>
+> **The capability gate is a compile error, not a runtime one.** `ModelProviderAdapter` has
+> no `pullModel` at all — an adapter that pulls implements `PullCapableAdapter`, and the only
+> doors to the member are `supportsPull` and `ModelProviderRegistry.pullCapable`. So
+> `registry.get("copilot").pullModel(…)` does not compile, which is the acceptance criterion
+> as a type; `provider.adapter.spec.ts` holds it with a `@ts-expect-error`, so the day
+> somebody adds an optional member to the interface that suite stops compiling. `supportsPull`
+> narrows on the *flag* rather than on the member being present, and the registry refuses at
+> boot any adapter whose flag and member disagree — an adapter is entitled to say what it can
+> do, and a half-finished `pullModel` must not become callable because it happens to exist.
+>
+> **`invocation` is reserved and documented, and the reservation is spendable exactly once.**
+> AF.2 (#235) adds an `InvocationCapableAdapter` in the shape `PullCapableAdapter` already
+> demonstrates — extend the interface, narrow `capabilities()`, declare the member, add a
+> guard beside it — against request and event shapes that already exist in
+> `internal/invoke.contract.ts` (AD.3). Nothing in the SPI has to move, which is the point of
+> declaring the flag now, and the kit fails any adapter that sets it today.
+>
+> **"Zero UI special-casing" is proven with a fixture rather than asserted.**
+> `card.shapes.fixture.ts` is mockup 07's five cards written as config schemas — Anthropic's
+> masked key row, the vLLM card's address field *plus* optional key, Ollama's host field and
+> no key at all — and all five render through the one `toFormFields`. The proof that no
+> branch is hiding in it is `provider.forms.spec.ts` reading the renderer's own source with
+> its comments stripped and failing if any of V015's six kinds appears in the code. The trick
+> that makes it work is one reserved name: the field carrying an address is always `baseUrl`,
+> and *Host* versus *Base URL* is its `title`. If each adapter had named the field after its
+> own vendor's word, a card looking for the address would have to know which vendor it was
+> drawing.
+>
+> **The config dialect is deliberately narrow** — one flat object of string fields,
+> `additionalProperties: false`, no `$ref`, no composition. A renderer that handles
+> composition keywords has the same special cases, moved from *per provider* to *per keyword*,
+> and the second list has no end. The gate is `configSchemaViolations`, the kit also compiles
+> each schema with Ajv and validates the adapter's own sample config through it, and
+> `partitionSubmission` is the one place a submitted form is split — because a consumer that
+> gets that split wrong writes a plaintext credential into a column V015's CHECK does not
+> guard.
+>
+> **The conformance kit is green for the fake, and it has been watched failing.** Every check
+> is a function returning sentences with an `it` wrapped round it, so
+> `conformance.fixture.spec.ts` can run each one against an adapter that is wrong on purpose:
+> a schema the caller can mutate back in, capabilities that change between calls, a detail
+> that quotes the credential, a fabricated latency, a duplicate model id, a pull stream that
+> just stops. A conformance kit nobody has watched fail is a conformance kit that passes
+> everything. Every adapter must record a fixture for **all five** error classes — there is no
+> *"this cannot happen for my provider"* escape hatch, because all five are arrangeable for
+> anything that talks HTTP and an author who cannot produce one has not decided what their
+> adapter does about it.
+>
+> **The lint boundary fails the build, spot-verified by adding one.** Three rules in
+> `.dependency-cruiser.cjs`, run by `yarn lint`: a provider SDK imported outside `adapters/`,
+> a core service importing an adapter directly, and any cycle. `boundary.spec.ts` builds a
+> tree containing exactly each violation, cruises it with the *real* configuration, and
+> asserts the named rule fires and the process exits non-zero — a rule whose regular
+> expression has quietly stopped matching looks identical to a codebase with no violations.
+> Tests are exempt from the second rule, because the in-memory fake exists to power them.
+>
+> **`REGISTERED_ADAPTERS` ships empty, which is accurate rather than a stub** — AD.1's
+> `VAULT_SECRET_STORES` did the same and grew the same way. Until AC.2–AC.5 each add their
+> line, every kind is a `501 provider_kind_unsupported`, which is exactly what this build can
+> honestly say about `anthropic`: V015 accepts the row, and nothing here knows how to reach
+> it yet.
+>
+> Deliberately **not** here: any real adapter (AC.2–AC.5), any route or controller — AD.2
+> (#223) owns add/reveal/rotate, AE.4 (#230) owns test and discovery, AE.5 (#231) owns the
+> add-form — and any import of `DbModule` or `VaultModule`, because an adapter is handed an
+> already-opened connection context by its caller and a plaintext's lifetime stays in that
+> caller's request scope.
 
 
 - **Problem Statement:** Five provider kinds ship in MVP and the add-card

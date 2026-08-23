@@ -361,6 +361,7 @@ routing table, the Node and Python pins, and that every step waits for its scaff
 | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) | Toolchains, env vars, containers, code style, git workflow |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System diagram, module contracts, request paths, auth flow, API contracts, port map, `OURO_*` registry, invariants |
 | [`docs/SECURITY_MODEL.md`](docs/SECURITY_MODEL.md) | How credentials are encrypted and who holds the key, per deployment mode; what a worker is given; what is audited; the approved security copy and the badge policy |
+| [`docs/MODEL_PROVIDERS.md`](docs/MODEL_PROVIDERS.md) | The `ModelProviderAdapter` SPI: the interface, the five-word error taxonomy and the pills it renders as, the config-schema dialect, the conformance kit, and a walkthrough for writing an adapter |
 | [`docs/BRAND.md`](docs/BRAND.md) | The logo asset set, which treatment goes on which surface, clear space, minimum sizes |
 | [`docs/DESIGN_TOKENS.md`](docs/DESIGN_TOKENS.md) | The light and dark palettes as CSS custom properties, the type, spacing and shape scales, and the measured WCAG contrast for both |
 | [`docs/DESIGN_SYSTEM_APP_SHELL.md`](docs/DESIGN_SYSTEM_APP_SHELL.md) | The application shell specification |

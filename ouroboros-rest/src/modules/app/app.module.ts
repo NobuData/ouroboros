@@ -14,6 +14,7 @@ import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { ProviderHealthModule } from "../provider-health/provider-health.module";
+import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
@@ -92,6 +93,15 @@ import { AppService } from "./app.service";
  * makes outbound requests nobody asked for — see that module's header for the rules that
  * keeps honest, and `vault.rotation.ts`'s for what this service looked like before it.
  *
+ * `ProvidersModule` ([#216](https://github.com/NobuData/ouroboros/issues/216)) follows it and
+ * is the quietest entry in this list: no controller, no route, no import of its own, and — for
+ * now — no adapters. It is here for the reason `VaultModule` is, one ticket earlier in its own
+ * life: `ModelProviderRegistry` has to be *in* the running application before AD.2
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)) and AE.4
+ * ([#230](https://github.com/NobuData/ouroboros/issues/230)) can inject it, and AC.2–AC.5 each
+ * register their adapter by adding one line to that module rather than by touching this one.
+ * Until they do, every kind is an honest `501` — see `providers/provider.registry.ts`.
+ *
  * `BetterAuthModule` is the exception to that reading and comes first, from `src/auth/`
  * rather than from `src/modules/` ([#701](https://github.com/NobuData/ouroboros/issues/701)).
  * It declares no controller and protects nothing: it mounts a handler on the HTTP adapter
@@ -165,6 +175,7 @@ export class AppModule {
         RegistryModule,
         VaultModule,
         ProviderHealthModule,
+        ProvidersModule,
         InternalModule,
       ],
     };
