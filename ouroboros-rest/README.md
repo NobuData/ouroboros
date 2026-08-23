@@ -578,15 +578,18 @@ value sealed under version 3 still opens after version 4 arrives. What finishes 
 `VaultRotation` — lazy re-encryption when a consumer writes a record anyway, and a sweep for
 everything nobody touched, started detached by `rotate` and awaitable on its own.
 
-**Nothing is registered with the sweep yet, and the module says so.** The three roadmaps
-that will hold encrypted credentials — Q.1
-([#138](https://github.com/NobuData/ouroboros/issues/138)), K.3
-([#101](https://github.com/NobuData/ouroboros/issues/101)) and Y.1
-([#189](https://github.com/NobuData/ouroboros/issues/189)) — are open, and no migration
-declares an encrypted column, so `VAULT_SECRET_STORES` is an empty array and a sweep run
-today honestly reports zeros. Each of those tickets registers a `VaultSecretStore`, and the
-same pass both re-seals what this service already sealed and adopts what it never did — the
-one-time migration and the sweep are one code path.
+**One store is registered with the sweep, and the module says which.** Y.1
+([#189](https://github.com/NobuData/ouroboros/issues/189)) brought the first encrypted
+column this schema has — `provider_connections.credentials_encrypted`, V015 — so
+`VAULT_SECRET_STORES` holds `registry/`'s `ProviderCredentialStore` and a rotation re-seals
+it. Q.1 ([#138](https://github.com/NobuData/ouroboros/issues/138)) and K.3
+([#101](https://github.com/NobuData/ouroboros/issues/101)) are still open and register
+theirs the same way. **A store lands with the migration that creates its column**, not with
+the first thing that writes one: a sealed column the sweep cannot see is a rotation that
+reports success while leaving ciphertext on the key version it then retires. The same pass
+both re-seals what this service already sealed and adopts what it never did — the one-time
+migration and the sweep are one code path, and V015's own CHECK means there is nothing here
+to adopt, because that column cannot hold an unsealed value.
 
 **There is no route.** `VaultModule` declares no controller: a route that decrypted a
 credential would be a route that returned one, and which of those exist is AD.2's
@@ -771,6 +774,58 @@ both writes are `owner`/`admin`. There is no route that *resolves* a price: CH.5
 table's one payload, and a second endpoint answering the same question would be a second place
 for the answer to come from. `PricingModule` exports `PricingService` for exactly that reason —
 it is the only module here that exports anything.
+
+## The model registry
+
+**One resolution of *what does this alias mean*, and no way to change one**
+([#189](https://github.com/NobuData/ouroboros/issues/189)). `src/modules/registry/` reads
+V015's `provider_connections` and `model_aliases` — where a workspace's model providers are,
+and the names its routes are allowed to use.
+
+```
+resolve(org, "coder-max")  ─▶ claude-fable-5 · Anthropic          · {thinking: max}
+resolve(org, "local-docs") ─▶ llama-4-maverick · Ollama           · http://workstation.local:11434
+resolve(org, "Coder-Max")  ─▶ 404 model_alias_not_found            (aliases are stored folded)
+list(org)                  ─▶ every alias, resolved, ordered by name — the swap menu's payload
+dependentAliases(org, id)  ─▶ ["coder-max", "local-docs"]          — what blocks removing a provider
+```
+
+**An alias is the only thing a route may name** — roadmap decision **M1**.
+`model_aliases.model_id` is the one column in the schema where a raw provider model string
+lives, so swapping `coder-max` from one model to another is one edit of one row rather than a
+search-and-replace across every routing table. `ResolvedAlias` is what makes that useful to a
+consumer: it hands back the model, its parameters, and enough about the connection to reach it.
+
+**There is no CRUD here, and that is decision M2.** Mockup 07 (*Providers & keys*) owns
+provider management and mockup 21 (*Model registry*) owns alias management. Routing is
+unbuildable without the rows underneath both, so the schema and these accessors land first and
+every create, update and delete stays with those roadmaps. `RegistryModule` therefore declares
+**no controller**; Z.2 ([#195](https://github.com/NobuData/ouroboros/issues/195)) is what puts
+the alias list on a route, and `registry.module.spec.ts` fails if a controller appears here
+first.
+
+**A resolution cannot carry a credential.** `ResolvedConnection` has no field for one, the
+statements name explicit columns and never `credentials_encrypted`, and both are *probes*
+rather than conventions: `registry.repository.spec.ts` compiles every read statement and
+asserts the SQL does not mention the column (nor use a `select *` that would pull it in
+unnamed), and `registry.integration-spec.ts` puts a real ciphertext on a row and looks for it
+in every answer and every log line. V015 is the third layer — the column accepts an
+`ouro.v1.…` envelope and nothing else, so what leaks in the worst case is ciphertext.
+
+**Removing a provider aliases depend on is refused, and the refusal says what is in the way.**
+V015's composite foreign key restricts on delete, which is correct and unreadable —
+*violates foreign key constraint "model_aliases_provider_fk"* is not a sentence anybody can
+act on. `registry.errors.ts` is the designed answer: a `409 provider_connection_in_use` naming
+the aliases, built from `dependentAliases`. `isProviderConnectionInUse` recognises the same
+violation raised by the race that pre-flight cannot close, so mockup 07's delete has both
+halves waiting for it.
+
+**It registers the vault's first secret store.** `VAULT_SECRET_STORES` was an empty array
+until V015, because no migration declared an encrypted column;
+`registry/registry.secrets.ts` is `provider_connections`'s, and it lands with the migration
+rather than with the first thing that writes a credential — a sealed column the re-encryption
+sweep cannot see is a rotation that reports success while leaving ciphertext on the key
+version it then retires.
 
 ## BetterAuth
 
@@ -1651,7 +1706,8 @@ ouroboros-rest/
 │       ├── preferences/    # the caller's own font scale                  · #649
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 │       ├── pricing/        # what a model costs, with provenance          · #586
-│       │                   #   the one module that exports its service
+│       ├── registry/       # alias → model on a provider connection       · #189
+│       │                   #   no controller — decision M2 leaves CRUD to 07/21
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
 │       └── internal/       # /internal/* — the engine-facing surface       · #224

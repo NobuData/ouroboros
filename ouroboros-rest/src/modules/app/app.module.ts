@@ -13,6 +13,7 @@ import { HealthModule } from "../health/health.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
+import { RegistryModule } from "../registry/registry.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
@@ -60,6 +61,17 @@ import { AppService } from "./app.service";
  * *exports* a provider. DASH-J.4 (#92), Z.5 (#198), AB.4 (#210) and CH.5 (#588) all have to
  * answer *what does this model cost*, and importing this module is what stops that being four
  * answers.
+ *
+ * `RegistryModule` ([#189](https://github.com/NobuData/ouroboros/issues/189)) follows it and
+ * has no routes at all, so its position says nothing about middleware. It is here for the
+ * reason `DbModule` and `VaultModule` are — a provider has to be *in* the running
+ * application to be injectable — and it is listed *before* `VaultModule` because
+ * `VaultModule` now imports it: the vault's re-encryption sweep reaches
+ * `provider_connections.credentials_encrypted` through this module's store. Its own reason
+ * for having no controller is decision **M2**: the CRUD over V015's two tables belongs to
+ * mockup 07 and mockup 21, and Z.2
+ * ([#195](https://github.com/NobuData/ouroboros/issues/195)) is what gives the alias list a
+ * route.
  *
  * `VaultModule` ([#222](https://github.com/NobuData/ouroboros/issues/222)) closes the list,
  * and breaks its pattern: it declares no controller and no route, so its position says
@@ -139,6 +151,7 @@ export class AppModule {
         QueueModule,
         SettingsModule,
         PricingModule,
+        RegistryModule,
         VaultModule,
         InternalModule,
       ],

@@ -20,21 +20,29 @@
  * exercised once and then never again.
  *
  * ---------------------------------------------------------------------------
- * **Nothing is registered today, and that is stated rather than implied.**
+ * **What is registered today, and that is stated rather than implied.**
  *
- * {@link VAULT_SECRET_STORES} is provided as an empty array by `vault.module.ts`. The three
- * roadmaps that will hold encrypted credentials —
- * Q.1 ([#138](https://github.com/NobuData/ouroboros/issues/138)),
- * K.3 ([#101](https://github.com/NobuData/ouroboros/issues/101)) and
- * Y.1 ([#189](https://github.com/NobuData/ouroboros/issues/189)) — are all still open, no
- * migration in `ouroboros-db` declares an encrypted column, and there is consequently
- * nothing in the database for a migration job to convert. So this ships as the seam those
- * tickets register against, proved by a fake store in `vault.rotation.spec.ts`, and a sweep
- * run today honestly reports that it found nothing.
+ * {@link VAULT_SECRET_STORES} holds one store: `registry/registry.secrets.ts`, over V015's
+ * `provider_connections.credentials_encrypted` — Y.1
+ * ([#189](https://github.com/NobuData/ouroboros/issues/189)), the first migration in
+ * `ouroboros-db` to declare an encrypted column. Q.1
+ * ([#138](https://github.com/NobuData/ouroboros/issues/138)) and K.3
+ * ([#101](https://github.com/NobuData/ouroboros/issues/101)) are still open and register
+ * theirs the same way.
  *
- * The alternative — inventing a placeholder encrypted column so the job would have something
- * to do — would have made the acceptance criterion demonstrable by adding schema nobody
- * asked for, which is a worse trade than saying what is true.
+ * A store is registered **with the migration that creates its column** rather than with the
+ * first thing that writes a value into it. Nothing stores a provider credential yet — AD.2
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)) owns that lifecycle — and the
+ * store is here anyway, because {@link VaultRotation.rotate} retires the old key version once
+ * the sweep reports nothing left on it: a sealed column the sweep cannot see is not an inert
+ * gap, it is a rotation that reports success while leaving ciphertext on a key nobody knows
+ * is still in use.
+ *
+ * Until V015 this shipped as a seam with an empty array behind it, proved by a fake store in
+ * `vault.rotation.spec.ts`. The alternative then — inventing a placeholder encrypted column
+ * so the job would have something to do — would have made the acceptance criterion
+ * demonstrable by adding schema nobody asked for, which was a worse trade than saying what
+ * was true.
  *
  * ---------------------------------------------------------------------------
  * **The sweep runs detached, and there is no scheduler.** `ouroboros-rest` has no periodic
