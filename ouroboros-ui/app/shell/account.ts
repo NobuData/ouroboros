@@ -238,3 +238,29 @@ export function accountMenuLabel(view: AccountView): string {
 export function tenantChipLabel(workspace: string, repo: string): string {
   return `Workspace and focus repository: ${workspace} / ${repo}`;
 }
+
+/**
+ * The tenant chip's tooltip — what the ellipsis is hiding
+ * ([#650](https://github.com/NobuData/ouroboros/issues/650)).
+ *
+ * Both halves of the chip truncate (`shell.css`: `text-overflow: ellipsis` on
+ * `.shell-tenant__org` and `.shell-tenant__repo`), and at the top of § 4's font-size range
+ * they genuinely do: at 150% the header's other chrome leaves the chip about sixty pixels
+ * short of the workspace slug alone. A screen reader is unaffected —
+ * {@link tenantChipLabel} carries both names in full — but a **sighted pointer user** was
+ * left with `acme-rob… / All rep…` and no way to see the rest, which is the exact failure
+ * `docs/DESIGN_SYSTEM_APP_SHELL.md` § 4 answers with *truncation with tooltips*. The
+ * readability audit measured it (`tests/e2e/support/readability.ts`) and this is the answer.
+ *
+ * It is the **visible text**, not the accessible name: a tooltip is read by somebody who
+ * can already see the control and wants the characters the box cut off, so prefixing it
+ * with *Workspace and focus repository* would make them read a sentence to find two words.
+ * The name says what the control is; this says what it says.
+ *
+ * @param workspace The active workspace's slug, as the chip draws it.
+ * @param repo The focus repository's name, or the words the chip uses for *all of them*.
+ * @returns The tooltip.
+ */
+export function tenantChipTitle(workspace: string, repo: string): string {
+  return `${workspace} / ${repo}`;
+}

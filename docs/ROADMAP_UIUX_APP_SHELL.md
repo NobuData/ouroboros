@@ -40,7 +40,7 @@ their topbar chrome is superseded by the spec.
 | Mockup 16 (Needs You) roadmap BM–BP | **Consumed** — the sidebar's Needs You badge renders its live count via the CP.2 badge slot. |
 | Every mockup roadmap's route/frame + e2e issues (AA.1, AE.1, CI.1, CN.1, AM.1, …) | **Amended in place** — each roadmap now carries a **UI/UX Shell Compliance** section listing its affected issues; those issues mount in the content pane and register sidebar entries instead of topbar links. |
 | Login/BetterAuth roadmap, Onboarding (13) | **Outside the shell** — standalone screens; §3 standards + font scaling still apply (their compliance sections say so). |
-| #56 e2e smoke | **Extended** — CP.5 adds the shell leg (fixed chrome under scroll, nav states); CQ.3 adds the font-scale screenshot matrix. |
+| #56 e2e smoke | **Extended** — CP.5 adds the shell leg (fixed chrome under scroll, nav states); CQ.3 adds the font-scale screenshot matrix as leg 8, with its own three-minute budget. |
 | Pluggable ticket sources requirement (description boilerplate) | **Already satisfied** by WF Epic Q; nothing source-related in shell work. |
 
 Epic letters continue the sequence (…CK–CO): this roadmap uses
@@ -414,9 +414,10 @@ sidebar: ▦ Dashboard ◉ Issues ⑂ Workflows ⬡ Models ⛭ Build Farm ▤ Kn
 > full keyboard path around them), `__tests__/shell/account.test.ts` (the role's five
 > decisions), `__tests__/theme.test.ts` (`describeTheme`, moved with its function), and
 > `__tests__/shell/shell-header.test.tsx`, which now asserts the two controls stay *out*
-> of the row. **Left to CP.5 (#647) and CQ.3 (#650), by this roadmap's own split:** the
-> browser-observed legs — AA contrast at every scale × theme, and the cross-device
-> persistence walk a jsdom suite can only stub.
+> of the row. **What CP.5 (#647) and CQ.3 (#650) then added, by this roadmap's own split:**
+> the browser-observed legs — AA contrast in both palettes at 150%, measured over what the
+> browser painted (`tests/e2e/support/contrast.ts`), and the stepper walked end to end
+> against the store, 100% → 150% → 100%, in leg 7.
   with standard SaaS applications)" — the avatar must open a real account
   menu, and it is the spec'd home of the font-size quick control (spec
   §1.1, §4).
@@ -543,7 +544,7 @@ e2e: fixed chrome ✓ · nav states ×11 ✓ · rail/drawer ✓ · restoration �
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CQ.1 | #648 | 🟢 Done | ouroboros-ui: [CQ.1] rem-based token scale & px lint | #16/#40 type+spacing to rem; stylelint rule bans px text | mvp, shell, ui, design | N (after #16, #40) | Y | M | ouroboros-ui, docs |
 | CQ.2 | #649 | 🟢 Done | ouroboros-rest: [CQ.2] Font-size preference & no-flash boot | Pref API (5 steps), root application, localStorage mirror, controls | mvp, shell, ui, rest | N (after CQ.1, #31) | Y | M | ouroboros-rest, ouroboros-ui |
-| CQ.3 | #650 | 🟡 Open | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
+| CQ.3 | #650 | 🟢 Done | ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix | Scale×theme×page screenshots in CI; 150% overflow audit | mvp, shell, ui, ci | N (after CQ.2, CP.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue CQ.1 — ouroboros-ui: [CQ.1] rem-based token scale & px lint
 
@@ -646,10 +647,13 @@ stylelint: "font-size: 12px" ─▶ ✗ error (use rem token)
 > only writer: apply locally (the live preview), then `saveFontScale`, whose failure is
 > quiet — the reader is already reading at the size they chose.
 >
-> **What is left to CP.5 (#647) and CQ.3 (#650), by this roadmap's own split:** the
-> throttled-reload no-flash proof and the reflow-artifact criterion are browser
-> observations — jsdom computes no layout and the e2e leg deliberately does not run on
-> pull requests — and the scale × theme × page screenshot matrix is CQ.3's entire remit.
+> **What CP.5 (#647) and CQ.3 (#650) then added, by this roadmap's own split:** the
+> reflow-artifact criterion is a browser observation — jsdom computes no layout — and it is
+> now leg 8's 150% audit, which measures clipping, chrome overlap and pane-level scroll
+> rather than looking for them; the scale × theme × page screenshot matrix was CQ.3's
+> entire remit and is its twelve committed baselines. The throttled-reload no-flash proof
+> remains unwritten: the e2e suite deliberately does not run on pull requests, so it would
+> be a nightly-only assertion about a first paint, and nothing has needed it.
   high-resolution monitors — per user, instant, persistent, and applied
   without a flash of wrong-size text (spec §4; decision S4).
 - **Solution/Scope:** **Pref API**: user preference `font_scale` CHECK
@@ -679,7 +683,53 @@ boot: inline script reads mirror ─▶ no flash ─▶ session reconciles
 
 ### Issue CQ.3 — ouroboros-ui: [CQ.3] Readability QA & visual-regression matrix
 
-> **GitHub issue:** #650 · **Status:** 🟡 Open · **Parent epic:** #641
+> **GitHub issue:** #650 · **Status:** 🟢 Done · **Parent epic:** #641
+
+> **Shipped.** The bar is **leg 8** of the #56 suite —
+> [`tests/e2e/specs/readability.spec.ts`](../tests/e2e/specs/readability.spec.ts) — running
+> under a **config and a three-minute budget of its own**
+> (`playwright.readability.config.ts`), enforced as a `globalTimeout` rather than measured,
+> and as its own CI step against the stack the smoke suite leaves up. It runs in well under
+> the budget today. Three parts: the **matrix** ({100%, 125%, 150%} × both palettes × the
+> roster, twelve baselines under `specs/__screenshots__/readability/`); the **150% audit**
+> — pane-level horizontal scroll, clipped text measured as scroll size against client size
+> on any element that clips its own label, the CP.4 sticky stack and the shell frame
+> checked for overlap, and AA contrast computed over what the browser actually painted
+> (`support/contrast.ts`); and the **roster**, below.
+>
+> **Four of the issue's five pages do not exist yet.** The routing matrix (#201), the
+> registry table (#592), the research brief (#627) and settings (#491) each arrive with
+> their own roadmap, so the matrix photographs the two dense pages that are built —
+> `/dashboard`, and `/workshop/chrome` standing in for the routing matrix, being the only
+> built page that stacks a subnav, a sticky bar and a sticky table header at once — and
+> asserts the other four are **still 404**. No `test.fixme`: the day one of them lands, the
+> leg goes red naming the page to photograph.
+>
+> **The manual pass found two offenders and both are fixed here.** The dashboard's pulse
+> card put `Human interventions · 7 days` beside `0 this week` in a four-column card whose
+> width is a fraction of the pane while its type is `rem`; at 150% the row needed ~290px of
+> 212 and the excess left the card, left the grid and started the **pane** scrolling
+> sideways — 21px of the § 1.3 violation this epic exists to prevent. The row now wraps,
+> and nothing moves at 100% or 125%. The header's tenant chip truncated both halves with an
+> ellipsis and no tooltip, leaving a pointer user with `acme-rob… / All rep…` and no way to
+> see the rest; it now carries § 4's own remedy, a `title` with the visible text.
+>
+> **Spot-verified**, as acceptance criterion 2 asks:
+> [`scripts/verify-readability.sh`](../tests/e2e/scripts/verify-readability.sh) plants four
+> offences — a wrapper-less 3000px box, a squeezed sidebar label, the pane pulled under the
+> header, the sticky bar dropped onto the subnav — and requires the audit to go red naming
+> each. It runs in the nightly `failure-modes` job beside #647's containment script. The
+> plants moved into `support/plants.ts`, one vocabulary for both.
+>
+> **#56 carries the scale-switch smoke** in leg 7: the reader steps 100% → 150% → 100%
+> through the profile menu's own stepper, and the preference applies, survives a reload,
+> and leaves the page usable at the top of the range.
+>
+> **The baseline refresh procedure** is `tests/e2e/README.md` § *Refreshing them*, and it
+> was exercised once — which is how its load-bearing precondition came to be written down:
+> the dashboard seed dates its rows relative to `now()`, so a week-old database volume has
+> an empty *7 days* window and the first recording of the matrix caught a dashboard reading
+> zeroes. A refresh starts with `down -v`.
 
 - **Problem Statement:** Five scales × two themes × dense pages is a
   combinatorial surface where clipping and overflow hide; the QA bar must
@@ -797,7 +847,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 1. **Phase 0:** #16, #39/#40, #31, #33, #46/#48.
 2. **Phase 1:** { CP.1 (#643) ⊕ CQ.1 (#648) }
 3. **Phase 2:** { CP.2 (#644) ⊕ CP.4 (#646) ⊕ CQ.2 (#649) } → CP.3 (#645)
-4. **Phase 3:** CP.5 (#647) ✅ → **CQ.3 (#650)** *(MVP gate with CP.5;
+4. **Phase 3:** CP.5 (#647) ✅ → **CQ.3 (#650) ✅** *(MVP gate with CP.5;
    amends #41, #49, #56, the mockup-17 Settings surface, and every roadmap's
    compliance table)*
 5. **v2:** CR.1 (#651) ⊕ CR.2 (#652) ⊕ CR.3 (#653).
@@ -821,7 +871,7 @@ Amendments posted at filing:
 |---|---|
 | #41 | **Re-scoped**: header keeps brand/tenant/profile and carries **no nav links**; navigation moves to the registry-driven sidebar (CP.2, #644); scroll containment added (CP.1, #643); the old topbar retires during migration (CP.5, #647) |
 | #49 | Placeholder routes now **mount in the content pane** and register sidebar entries; individual placeholders continue to be retired by their own roadmaps' frame issues |
-| #56 | Gains the **shell leg** (CP.5, #647 — fixed chrome under deep scroll, eleven nav states, rail/drawer, scroll restoration, both themes) and the **scale-switch smoke** (CQ.3, #650) |
+| #56 | Gains the **shell leg** (CP.5, #647 — fixed chrome under deep scroll, eleven nav states, rail/drawer, scroll restoration, both themes) and the **scale-switch smoke** (CQ.3, #650, in leg 7); CQ.3 also adds **leg 8**, the readability matrix, under a budget and a CI step of its own |
 | #16 | Token sheet goes **rem-based** (CQ.1, #648) with a stylelint ban on `px` font sizes; proven a no-op at 100% by screenshot diff |
 | #40 | Global styles: rem type scale, the `html`/`body` scroll lock, and the lint rule with its documented allowlist |
 | #46 | **ShellHeader, ContentPane, SidebarNav, StickyBar, PageSubnav** join the primitive set, plus the sticky table-header recipe; existing primitives swept for `px` type |

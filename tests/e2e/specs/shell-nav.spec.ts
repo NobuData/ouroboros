@@ -20,6 +20,12 @@
  *   * **The rail and the drawer work, keyboard included** (§ 1.2) — the collapse choice
  *     survives a reload without a flash, and the drawer opens from the header, traps focus,
  *     and closes on Escape with focus returned.
+ *   * **The font scale switches, and comes back** (§ 4) — the reader steps 100% → 150% →
+ *     100% through the profile menu's own stepper; the preference applies, survives a
+ *     reload, and the page stays usable at the top of the range. Amended in by
+ *     [#650](https://github.com/NobuData/ouroboros/issues/650) (CQ.3), whose matrix and
+ *     150% audit are a leg of their own — this is the *smoke*: that the control works at
+ *     all, on the stack, through the store #649 gave it.
  *
  * Scroll restoration — the other § 1.3 promise — already has its group in
  * `specs/shell.spec.ts`, written under the parking and running since #647 removed it.
@@ -37,10 +43,16 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { applyPlant } from "../support/plants";
 import { SEED_OWNER, SEED_TENANT } from "../support/seed";
 import { signIn } from "../support/session";
 import {
-  applyPlant,
+  DEFAULT_FONT_SCALE,
+  expectFontScale,
+  type FontScale,
+  restoreFontScale,
+} from "../support/settings";
+import {
   chromeBoxes,
   expectDocumentUnscrolled,
   expectNoPaneHorizontalScroll,
@@ -48,6 +60,7 @@ import {
   expectNoViewportFixedElements,
   scrollPaneTo,
 } from "../support/shell";
+import { pinTheme, THEMES } from "../support/theme";
 import { selectWorkspace } from "../support/workspace";
 
 /**
@@ -93,30 +106,6 @@ function sidebar(page: Page) {
   return page.getByRole("navigation", { name: "Primary" });
 }
 
-/**
- * Stamp a palette through the account menu's theme radios, and put the menu away again.
- *
- * Through the control rather than through `localStorage`, so a theme the chrome is
- * measured under is one a reader can actually reach (`app/shell/user-menu.tsx` — CP.3's
- * radios). Closed afterwards with Escape, because what this file measures next is the
- * chrome, and an open panel over it would be the measurement's own artefact.
- *
- * @param page - The page, already inside the shell.
- * @param theme - Which palette to stamp.
- * @returns When `<html data-theme>` says so and the menu is closed.
- */
-async function stampTheme(page: Page, theme: "light" | "dark"): Promise<void> {
-  await page.getByRole("button", { name: /^Account menu/ }).click();
-
-  const menu = page.getByRole("menu", { name: "Account" });
-
-  await menu.getByRole("menuitemradio", { name: theme === "light" ? "Light" : "Dark" }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-
-  await page.keyboard.press("Escape");
-  await expect(menu).not.toBeVisible();
-}
-
 test.beforeEach(async ({ context, page }) => {
   await signIn(context, SEED_OWNER.id);
   await selectWorkspace(context, SEED_TENANT.slug);
@@ -130,9 +119,9 @@ for (const { route, ready } of IN_SHELL_ROUTES) {
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(ready);
     });
 
-    for (const theme of ["light", "dark"] as const) {
+    for (const theme of THEMES) {
       test(`header and sidebar do not move under a deep scroll — ${theme}`, async ({ page }) => {
-        await stampTheme(page, theme);
+        await pinTheme(page, theme);
 
         const before = await chromeBoxes(page);
 
@@ -269,6 +258,84 @@ test.describe("the rail: the collapse choice, and its survival", () => {
     // Home and End belong to the ring and must not scroll the pane while it holds a row.
     await page.keyboard.press("End");
     await expect(sidebar(page).locator("[data-nav-id]:focus")).toHaveCount(1);
+  });
+});
+
+test.describe("the font scale: the reader steps up to 150% and back", () => {
+  /** How many presses of *Larger text* separate the default from the top of the range —
+   *  100% → 112.5% → 125% → 150%, from the five steps § 4 publishes. */
+  const STEPS_TO_LARGEST = 3;
+
+  /** The top of § 4's range, and the size the whole QA bar is written about. */
+  const LARGEST: FontScale = "150";
+
+  /**
+   * Press one of the profile menu's two stepper buttons, `times` times, and put the menu
+   * away.
+   *
+   * Through the control rather than through the API, unlike every other leg that moves this
+   * preference (`support/settings.ts` says why those do it the other way): the thing under
+   * test here *is* the control — the stepper, its Server Action, and the store behind it —
+   * so a leg that wrote the row directly would assert everything except the part #650
+   * amended this suite to cover.
+   *
+   * @param page - The page, inside the shell.
+   * @param label - Which button: `Larger text` or `Smaller text`.
+   * @param times - How many presses.
+   * @returns When the menu is closed again.
+   */
+  async function step(page: Page, label: string, times: number): Promise<void> {
+    await page.getByRole("button", { name: /^Account menu/ }).click();
+
+    const menu = page.getByRole("menu", { name: "Account" });
+
+    for (let press = 0; press < times; press += 1) {
+      await menu.getByRole("menuitem", { name: label }).click();
+    }
+
+    await page.keyboard.press("Escape");
+    await expect(menu).not.toBeVisible();
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(IN_SHELL_ROUTES[0].ready);
+  });
+
+  // The scale is a row keyed on the person and outlives this context. Put back even though
+  // the test ends at the default, because a test that failed halfway did not.
+  test.afterEach(async ({ context }) => {
+    await restoreFontScale(context);
+  });
+
+  test("100% → 150% → 100% applies, persists, and leaves the page usable", async ({ page }) => {
+    await expectFontScale(page, DEFAULT_FONT_SCALE);
+
+    await step(page, "Larger text", STEPS_TO_LARGEST);
+    await expectFontScale(page, LARGEST);
+
+    // Usable at the top of the range, in the three ways § 4's QA bar means it: the chrome
+    // is still there and still beside the pane rather than over it, and nothing has started
+    // the pane scrolling sideways. What *clipping* and *contrast* do at this size is
+    // `specs/readability.spec.ts`'s question, at its own budget; this is the smoke.
+    await expect(page.getByRole("banner")).toBeVisible();
+    await expect(sidebar(page)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expectNoPaneHorizontalScroll(page);
+
+    // The preference is the person's and lives on the server, so a reload is what tells
+    // apart a stamped document from a stored choice.
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(IN_SHELL_ROUTES[0].ready);
+    await expectFontScale(page, LARGEST);
+
+    // And back down the same way it went up.
+    await step(page, "Smaller text", STEPS_TO_LARGEST);
+    await expectFontScale(page, DEFAULT_FONT_SCALE);
+
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(IN_SHELL_ROUTES[0].ready);
+    await expectFontScale(page, DEFAULT_FONT_SCALE);
   });
 });
 

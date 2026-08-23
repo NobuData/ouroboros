@@ -133,6 +133,18 @@ inside the shell and start at their page head.
   to horizontal scroll in their wrappers; screenshot matrix (scale × theme ×
   key pages) in CI (CQ.3).
 
+  **Landed** (CQ.3, #650) as leg 8 of the #56 e2e suite —
+  [`tests/e2e/specs/readability.spec.ts`](../tests/e2e/specs/readability.spec.ts) over
+  [`support/readability.ts`](../tests/e2e/support/readability.ts). The matrix is
+  {100%, 125%, 150%} × both palettes × the dense pages, diffed against committed
+  baselines; the 150% audit measures the three things a screenshot review cannot —
+  pane-level horizontal scroll, text clipped by its own container, and sticky chrome
+  overlapping sticky chrome — and spot-checks AA contrast on what the browser actually
+  painted. `scripts/verify-readability.sh` plants each offence and requires the audit to go
+  red naming it. Two offenders were found and fixed on the way in: the dashboard's pulse
+  card, whose caption row now wraps rather than pushing the pane sideways, and the header's
+  tenant chip, which now carries a tooltip with what its ellipsis hides.
+
 ## 5. What this supersedes / amends
 
 | Existing artifact | Disposition |

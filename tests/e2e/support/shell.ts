@@ -11,12 +11,14 @@
  * ## The planted failures
  *
  * A green containment leg is only worth something if it is provably capable of going red —
- * the same philosophy as `scripts/verify-failure-modes.sh`. {@link applyPlant} is that
- * proof's hook: `scripts/verify-containment.sh` runs the containment tests twice with
- * `OURO_E2E_PLANT` set, each value injecting one of the two offences the per-route audit
- * hunts (a viewport-fixed bar; pane-level horizontal overflow), and requires the run to go
- * red naming the matching assertion. In an ordinary run the variable is unset and the hook
- * does nothing.
+ * the same philosophy as `scripts/verify-failure-modes.sh`. The proof's hook is
+ * `applyPlant` in [`support/plants.ts`](plants.ts), which
+ * `scripts/verify-containment.sh` drives with `OURO_E2E_PLANT` set to each of the two
+ * offences the per-route audit hunts (a viewport-fixed bar; pane-level horizontal
+ * overflow), requiring the run to go red naming the matching assertion. The plants moved
+ * out of this file when [#650](https://github.com/NobuData/ouroboros/issues/650)'s
+ * readability audit grew two more of its own: one vocabulary, one variable, one place to
+ * add the next.
  */
 
 import { expect, type Page } from "@playwright/test";
@@ -28,15 +30,6 @@ import { expect, type Page } from "@playwright/test";
  * id beside it belongs to the skip link.
  */
 export const PANE_SELECTOR = "[data-shell-pane]";
-
-/** How the two plants are asked for — `OURO_E2E_PLANT`, read by {@link applyPlant}. */
-export const PLANT_VARIABLE = "OURO_E2E_PLANT";
-
-/** The two offences the audit hunts, spelled the way the variable accepts them. */
-export const PLANTS = ["viewport-fixed", "pane-overflow"] as const;
-
-/** One of {@link PLANTS}. */
-export type Plant = (typeof PLANTS)[number];
 
 /** A bounding box as plain numbers — what `getBoundingClientRect` measures, minus the
  *  live object, so two measurements compare with `toEqual` and a failure prints both. */
@@ -194,64 +187,4 @@ export async function expectNoTopbarRemnants(page: Page): Promise<void> {
     page.locator(".topbar, .topbar-inner, nav.nav"),
     "a mockup topbar remnant is in the rendered page",
   ).toHaveCount(0);
-}
-
-/**
- * Inject the requested containment offence, when one was requested at all.
- *
- * Called before the first `goto` of each containment test. Reads {@link PLANT_VARIABLE}
- * from this runner's own environment — the way `scripts/verify-containment.sh` passes it —
- * and installs an init script so the offence exists in the page the assertions then
- * measure. Unset (every ordinary run), it does nothing and costs nothing.
- *
- * The offences are what the audit hunts, made flesh:
- *
- *   * `viewport-fixed` — a `position: fixed` toolbar, the shape of every mockup topbar and
- *     of any widget that escapes the pane. {@link expectNoViewportFixedElements} must name
- *     it.
- *   * `pane-overflow` — a 3000px-wide element appended to the pane with no wrapper of its
- *     own, the shape of an unwrapped table. {@link expectNoPaneHorizontalScroll} must
- *     measure it.
- *
- * @param page - The page about to navigate.
- * @returns When the init script is installed, or immediately when no plant is requested.
- * @throws {Error} If the variable names a plant this module does not grow — a typo in a
- *   script should be a loud failure, not a green run that verified nothing.
- */
-export async function applyPlant(page: Page): Promise<void> {
-  const plant = process.env[PLANT_VARIABLE];
-  if (plant === undefined || plant === "") return;
-
-  if (!PLANTS.includes(plant as Plant)) {
-    throw new Error(
-      `${PLANT_VARIABLE}=${plant} names no known plant; expected one of: ${PLANTS.join(", ")}`,
-    );
-  }
-
-  await page.addInitScript((kind) => {
-    // At DOMContentLoaded the server's markup — pane included — is parsed and present;
-    // nothing here waits for React, because the offence being planted is a markup fact.
-    document.addEventListener("DOMContentLoaded", () => {
-      if (kind === "viewport-fixed") {
-        // A real element, because the assertion it must defeat enumerates elements.
-        // Appended to `<body>`, where hydration tolerates a stray node.
-        const bar = document.createElement("div");
-        bar.className = "e2e-planted-viewport-fixed";
-        bar.style.cssText =
-          "position: fixed; top: 0; left: 0; right: 0; height: 40px; z-index: 9999;";
-        document.body.append(bar);
-        return;
-      }
-
-      // A stylesheet rather than an element: the pane's subtree is hydrated, and React
-      // reconciles a stray child right back out of it — the first run of
-      // verify-containment.sh proved it, by this plant silently failing to break
-      // anything. A pseudo-element is a box the assertion's `scrollWidth` still
-      // measures, and no reconciler removes a stylesheet.
-      const wide = document.createElement("style");
-      wide.textContent =
-        '[data-shell-pane]::after { content: ""; display: block; width: 3000px; height: 1px; }';
-      document.head.append(wide);
-    });
-  }, plant);
 }

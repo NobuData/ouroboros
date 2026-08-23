@@ -143,6 +143,20 @@ describe("what the chip says", () => {
     ).toBeInTheDocument();
   });
 
+  it("offers the whole of both names to a pointer, since both halves truncate", () => {
+    // #650: `text-overflow: ellipsis` on each half is what keeps the chip inside the header
+    // at every font scale, and at 150% it genuinely cuts — so § 4's remedy, a tooltip
+    // carrying what was hidden. The visible text, not the accessible name: the reader
+    // hovering it can already see the control and wants the characters, not the sentence.
+    setFocusRepo(WORKSPACES[0].id, { id: HELIOS.id, name: HELIOS.name });
+    render(<TenantChip />);
+
+    expect(screen.getByRole("button", { name: /^Workspace and focus repository/ })).toHaveAttribute(
+      "title",
+      "acme-robotics / helios-firmware",
+    );
+  });
+
   it("is a control that opens a menu, and says so before it is opened", () => {
     render(<TenantChip />);
     const trigger = screen.getByRole("button", { name: /^Workspace and focus repository/ });

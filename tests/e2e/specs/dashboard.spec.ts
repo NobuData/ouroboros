@@ -78,6 +78,7 @@ import {
   rootFontSize,
   setFontScale,
 } from "../support/settings";
+import { pinTheme } from "../support/theme";
 import { selectWorkspace } from "../support/workspace";
 
 /**
@@ -558,30 +559,11 @@ test.describe("the dashboard is drawn in both palettes", () => {
     await enterDashboard(context, page, SEED_TENANT.slug);
   });
 
-  /**
-   * Pin a palette through the account menu's theme radios (`app/shell/user-menu.tsx` —
-   * CP.3's control), and close the menu so the shutter sees the page rather than the
-   * panel. A fresh context has stored no choice and starts at *system*; pinning is what
-   * makes the two baselines a comparison of palettes rather than of whatever the
-   * runner's OS happened to prefer.
-   */
-  async function pinTheme(page: Page, choice: "Light" | "Dark"): Promise<void> {
-    await page.getByRole("button", { name: /^Account menu/ }).click();
-
-    const menu = page.getByRole("menu", { name: "Account" });
-
-    await menu.getByRole("menuitemradio", { name: choice }).click();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", choice.toLowerCase());
-
-    await page.keyboard.press("Escape");
-    await expect(menu).not.toBeVisible();
-  }
-
   test("light and dark are both the dashboard", async ({ page }) => {
-    await pinTheme(page, "Light");
+    await pinTheme(page, "light");
     await expect(page).toHaveScreenshot("dashboard-light.png", { mask: volatile(page) });
 
-    await pinTheme(page, "Dark");
+    await pinTheme(page, "dark");
     await expect(page).toHaveScreenshot("dashboard-dark.png", { mask: volatile(page) });
   });
 });
