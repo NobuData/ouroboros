@@ -654,8 +654,8 @@ that roadmap's "Existing issues affected" section.
 | 95 | **CH.3** | ✅ [#586](https://github.com/NobuData/ouroboros/issues/586) | Pricing service | ouroboros-rest | M | CG.2 |
 | 96 | **AD.3** | ✅ [#224](https://github.com/NobuData/ouroboros/issues/224) | Worker credential delivery (proxied + scoped lease spec) | ouroboros-rest, ouroboros-engine | M | AD.1 |
 | 97 | **AD.5** | ✅ [#226](https://github.com/NobuData/ouroboros/issues/226) | Security model documentation | docs | S | AD.1, AD.3 |
-| 98 | **Y.1** | [#189](https://github.com/NobuData/ouroboros/issues/189) | Provider connections & model alias foundations | ouroboros-db | M | 3.1, B.3 |
-| 99 | **Y.2** | [#190](https://github.com/NobuData/ouroboros/issues/190) | Task kinds, routes & fallback chains | ouroboros-db | M | Y.1 |
+| 98 | **Y.1** | ✅ [#189](https://github.com/NobuData/ouroboros/issues/189) | Provider connections & model alias foundations | ouroboros-db | M | 3.1, B.3 |
+| 99 | **Y.2** | ✅ [#190](https://github.com/NobuData/ouroboros/issues/190) | Task kinds, routes & fallback chains | ouroboros-db | M | Y.1 |
 | 100 | **Z.3** | [#196](https://github.com/NobuData/ouroboros/issues/196) | Provider health service (passive-first) | ouroboros-rest | M | Y.1 |
 | 101 | **AC.1** | [#216](https://github.com/NobuData/ouroboros/issues/216) | ModelProviderAdapter SPI & registry | ouroboros-rest | L | Y.1 |
 | 102 | **AC.6** | [#221](https://github.com/NobuData/ouroboros/issues/221) | Schema extensions, discovered-models catalog & seeds | ouroboros-db, .github | M | Y.1 |

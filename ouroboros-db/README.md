@@ -80,6 +80,16 @@
 > column in this schema where a raw provider model string may live (decision **M1**), and
 > `provider_connections.credentials_encrypted` accepts an `ouro.v1.…` envelope and
 > nothing else — so a plaintext API key cannot be stored in it by any writer.
+> `V016` ([#190](https://github.com/NobuData/ouroboros/issues/190)) builds the routing
+> matrix on top of it: `task_kinds`, `routes` and ordered `route_hops`. It is the one
+> migration where **ordering is a correctness rule rather than a convention** — hop
+> positions are unique *and* dense from 1, because `floor_hop_index` is a rule about a hop
+> *number* and a chain that numbers itself 1, 2, 5 makes *"fail instead of degrading below
+> fallback 2"* mean nothing. Both ordering rules are deferred to `commit`, so a drag-reorder
+> is plain SQL with no ceremony in it; the header carries the transaction Z.2 is meant to
+> inherit rather than reinvent. It is also where decision **M1** stops being a statement and
+> becomes structural: a hop names a `model_aliases` row, and there is no column in any of
+> the three tables a raw provider model string could be put in.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -111,7 +121,9 @@ unattended, one row per organization. Since `V014` it also holds the **backlog t
 are drawn from** — one row per mirrored GitHub issue, which is a cache and not a fork
 (decision **K3**). Since `V015` it also holds the **model providers a workspace has
 configured and the aliases its routes name** — the foundation mockups 06, 07 and 21 all
-read, and the only place a raw provider model string lives (decision **M1**).
+read, and the only place a raw provider model string lives (decision **M1**) — and since
+`V016` the **routing matrix over them**: which kinds of work exist, the one route each has,
+and the ordered chain of aliases that route falls back through.
 
 Flyway is the **sole owner of DDL**. No application module creates or alters tables;
 `ouroboros-rest` reads and writes through Kysely against a schema this module defines.
@@ -795,6 +807,8 @@ ouroboros-db/
 │   ├── V014__github_issue_cache.sql  # github_issues + the per-repo sync cursor — #99
 │   ├── V015__provider_connections_model_aliases.sql
 │   │                                 # provider_connections + model_aliases — the routing foundation — #189
+│   ├── V016__task_kinds_routes_hops.sql
+│   │                                 # task_kinds + routes + ordered route_hops — the routing matrix — #190
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
@@ -845,6 +859,9 @@ outside this module alters it.
 | `github_issues` | `V014` | The backlog as Ouroboros sees it — one row per mirrored GitHub issue, behind mockup 03's table and detail panel. **A cache, not a fork** (decision **K3**): GitHub owns every column but `sizing_status` | `(github_repo_id, number)` unique, which is also the sync's upsert key; `state` is `open\|closed` and `sizing_status` one of `unsized\|estimating\|sized\|needs_human`, defaulting to `unsized`; `labels` must be a JSON array of at most 100 non-empty **names** — GitHub's, not ours; `gh_url` must be `https` with a host, because it becomes an `href`; `gh_updated_at` cannot precede `gh_created_at`; the issue's repository must belong to the issue's organization |
 | `provider_connections` | `V015` | Where a workspace's model providers are, and the sealed credential for the ones that need one — mockup 06's `.phealth` strip, and the shared foundation mockup 07 will manage (decision **M2**) | `kind` is one of `anthropic\|openai_compatible\|ollama\|copilot\|cursor\|custom` and `status` one of `active\|paused\|error\|unknown`, defaulting to `unknown` because a connection nothing has checked is genuinely unknown (decision **M8**); `credentials_encrypted` is **envelope-only** — an `ouro.v1.…` value or null, so a plaintext key cannot be stored by any writer — and null is legitimate, because a local provider needs none; `base_url` is `http`/`https` and required for `ollama` and `openai_compatible`, which have no public endpoint; `health` must be an object, may only carry content once `last_checked_at` exists, and a `latency_ms` must be a non-negative number — there is deliberately no defaulted `0ms` |
 | `model_aliases` | `V015` | The names a workspace's routes may use, and what each resolves to — the shared foundation mockup 21 will manage | `alias` unique **per organization** and constrained to lower-case kebab, so uniqueness cannot be defeated by capitalisation; `model_id` is the raw provider model string and the **only** place one lives (decision **M1**); `params` must be an object; the connection is reached through a **composite** foreign key on `(organization_id, provider_connection_id)`, which is what holds an alias and its connection to one workspace, and it **restricts** on delete, so a provider aliases depend on cannot be removed out from under the routes that reach it |
+| `task_kinds` | `V016` | The kinds of work a route can be written for — mockup 06's `8 task kinds`, and the vocabulary the WF stage catalog ([#145](https://github.com/NobuData/ouroboros/issues/145)), the estimator and the DSL's `route.task()` all read rather than each hardcode (decision **M3**) | `name` unique **per workspace** and lower-case kebab, so uniqueness cannot be defeated by capitalisation; `description` is required, because it is the matrix line that tells one row from its neighbour; `sort_order` is unique per workspace and **deferrable**, so a drag-reorder is plain SQL — and deliberately **not** dense, because nothing reads those numbers |
+| `routes` | `V016` | One task kind's route: the owner of the ordered alias chain and of mockup 06's policy triple — **Allow fallback to local models**, the floor, and **Max cost per run** (decision **M4**) | **Exactly one route per task kind**, as a unique key rather than as application code, so resolution's *"the route of this kind"* has one answer; `tag` unique per workspace and its own column rather than derived, because the mockup's tags are not mechanical (`test-gen` → `testgen-primary`); `max_cost_cents_per_run` is **integer cents** — `$2.50` is `250`, never a float; `floor_hop_index` is null-permitting, at least 1 by CHECK and never past the end of the chain, which is `route_chain_intact()`; `updated_by` **sets null** rather than cascading, because deleting the person who last saved a route must not delete the route |
+| `route_hops` | `V016` | The ordered fallback chain — mockup 06's numbered inspector rail, each hop naming a registry alias and carrying the hop-meta line beside it | `position` unique per route and **deferrable**, so a reorder swaps inside a transaction, and **dense from 1** by the `route_chain_intact()` constraint trigger — unlike `queue_items.position`, because these numbers are read: `floor_hop_index` counts them; a route may never be left with an empty chain; the alias is reached through a **composite** foreign key on `(organization_id, model_alias_id)` and it **restricts** on delete, so an alias a chain names cannot be retired out from under it; **there is no raw model id column here, in any of the three tables** — decision **M1** by construction |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in
@@ -857,6 +874,15 @@ query instead of an opaque function scan.
 **`ouroboros.import_model_price_catalog(version, effective_at, rows)`** is the write, and
 the whole of what `R__model_price_catalog.sql` does: idempotent, sweeping the previous
 snapshot, and structurally unable to touch a workspace's override.
+
+One **constraint trigger function**, `V016`'s. **`ouroboros.route_chain_intact()`** holds
+the two rules that are properties of a *chain* rather than of a row — a route's hop
+positions are dense from 1 and never empty, and its `floor_hop_index` points at a hop that
+exists — for both `routes` and `route_hops`. Neither can be a `CHECK`, because both look at
+rows other than the one being written, and both are **deferred to `commit`** so that a
+reorder, a whole-chain rewrite, and an `insert route; insert hops` sequence may each be
+momentarily inconsistent inside their transaction and correct when it ends. It raises class
+23 naming the trigger, so each table reports its own constraint name.
 
 Two **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
 UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
