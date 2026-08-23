@@ -6,6 +6,7 @@ import { testConfiguration } from "../config/configuration.fixture";
 import { DatabaseService } from "../db/db.service";
 import { KEY_WRAPPER, type KeyWrapper } from "./key.wrapper";
 import { MASTER_WRAPPER_ID, MasterKeyWrapper } from "./master.key.wrapper";
+import { ProviderCredentialStore } from "../registry/registry.secrets";
 import { REGISTERED_SECRET_STORES, VaultModule } from "./vault.module";
 import { VAULT_SECRET_STORES, VaultRotation, type VaultSecretStore } from "./vault.rotation";
 import { VaultService } from "./vault.service";
@@ -15,8 +16,8 @@ import { VaultService } from "./vault.service";
  *
  * `KEY_WRAPPER` is bound to `MasterKeyWrapper` by one `useClass`, and AF.3
  * ([#236](https://github.com/NobuData/ouroboros/issues/236)) changes that line and ships no
- * data migration. `VAULT_SECRET_STORES` is bound to an empty array, which is *accurate*
- * rather than a stub — no module in this service holds an encrypted secret yet. Both are
+ * data migration. `VAULT_SECRET_STORES` is the list of tables holding a sealed value, and Y.1
+ * ([#189](https://github.com/NobuData/ouroboros/issues/189)) put the first one in it. Both are
  * asserted here so that a change to either is a change to a test rather than a quiet one.
  *
  * The module is built with a stand-in `DatabaseService`, because constructing the real one
@@ -54,15 +55,26 @@ describe("the vault module", () => {
     expect(wrapper.id).toBe(MASTER_WRAPPER_ID);
   });
 
-  it("registers no secret stores, because no module holds an encrypted secret yet", async () => {
-    // #138 (ticket sources), #101 (GitHub credentials) and #189 (providers) are all open, and
-    // no migration declares an encrypted column — so the sweep and the one-time migration
-    // have nothing to find, and say so. This test is what makes that a claim rather than a
-    // sentence in a pull request, and it fails the day the first store lands.
+  it("registers one secret store — V015's provider credential column", async () => {
+    // #189 is the first migration to declare an encrypted column, so it is the first ticket
+    // to put a store in this list. #138 (ticket sources) and #101 (GitHub credentials) are
+    // still open and add theirs the same way. This test is what makes the list a claim rather
+    // than a sentence in a pull request, and it fails the day the next one lands.
     const module = await build();
+    const stores = module.get<readonly VaultSecretStore[]>(VAULT_SECRET_STORES);
 
-    expect(module.get<readonly VaultSecretStore[]>(VAULT_SECRET_STORES)).toEqual([]);
-    expect(REGISTERED_SECRET_STORES).toEqual([]);
+    expect(REGISTERED_SECRET_STORES).toEqual([ProviderCredentialStore]);
+    expect(stores.map((store) => store.name)).toEqual(["provider_connections"]);
+  });
+
+  it("hands the rotation a list it cannot grow", async () => {
+    // `VaultRotation` iterates this list; a store appended at run time would be one the
+    // module's own documentation does not mention, and the sweep's report would name a
+    // table nobody registered.
+    const module = await build();
+    const stores = module.get<readonly VaultSecretStore[]>(VAULT_SECRET_STORES);
+
+    expect(Object.isFrozen(stores)).toBe(true);
   });
 
   it("declares no controller — nothing here is reachable over HTTP", async () => {

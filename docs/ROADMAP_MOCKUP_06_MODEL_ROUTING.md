@@ -200,7 +200,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| Y.1 | #189 | 🟡 Open | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
+| Y.1 | #189 | 🟢 Done | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | Y.2 | #190 | 🟡 Open | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
 | Y.3 | #191 | 🟡 Open | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
 | Y.4 | #192 | 🟡 Open | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 6 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
@@ -208,7 +208,58 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ### Issue Y.1 — ouroboros-db: [Y.1] Provider connections & model alias foundations
 
-> **GitHub issue:** #189 · **Status:** 🟡 Open · **Parent epic:** #185
+> **GitHub issue:** #189 · **Status:** 🟢 Done · **Parent epic:** #185
+
+> **Shipped 2026-08-22.**
+> [`ouroboros-db/migrations/V015__provider_connections_model_aliases.sql`](../ouroboros-db/migrations/V015__provider_connections_model_aliases.sql)
+> and [`ouroboros-rest/src/modules/registry/`](../ouroboros-rest/src/modules/registry).
+> The migration header opens by naming this the **07/21 shared foundation** and decision
+> **M2**, and the two table comments carry the same sentence into the catalogue —
+> `tests/constraints.sql` asserts they do, so the criterion is checked rather than
+> reviewed.
+>
+> **`credentials_encrypted` is envelope-only, which is a stronger guarantee than "the
+> service always encrypts".** The column accepts an `ouro.v1.<version>.<nonce>.<ciphertext>`
+> value or null and nothing else, so a plaintext key cannot be stored by a migration, a
+> fixture, a hand-written `update` or a service that forgot to seal — the service is one
+> writer, and the CHECK is every writer. It is `text` rather than the ticket's `bytea`
+> because AD.1's helper produces that envelope *string*, and the key version in its middle
+> field is what makes rotation additive; a `bytea` column would be a second encoding and a
+> second place the version could be lost. Null stays legitimate: a local provider needs no
+> credential.
+>
+> **The tenancy rule is a composite foreign key rather than a trigger.** V008–V014 met the
+> same shape and answered it with `ouroboros.repo_in_organization()`, because `github_repos`
+> has no unique key on `(organization_id, id)` to reference. This migration creates both
+> tables, so it declares one — and `model_aliases_provider_fk` is therefore referential,
+> carries the **restrict** the ticket asks for, and needs no plpgsql beside it. The
+> interaction worth knowing is written into the header and asserted: deleting a *workspace*
+> still works, because both cascades are queued as after-triggers of the same statement and
+> run before the referential check the connection delete appends.
+>
+> **`health` cannot claim a measurement that did not happen** (decision M8). It defaults to
+> `{}`, content requires a `last_checked_at`, and a `latency_ms` must be a non-negative JSON
+> number — a string `"42ms"` and an explicit JSON `null` are both refused. There is
+> deliberately no defaulted `0ms`, which is not "unknown" but a very good latency. `status`
+> is deliberately *not* tied to `last_checked_at`: `paused` is operator intent rather than a
+> conclusion, and the transitions between the other three are Z.3's (#196).
+>
+> **`ouroboros-rest/src/modules/registry/` is the accessor and declares no controller.**
+> `resolve`, `list` and `dependentAliases`, and nothing that writes — Z.2 (#195) is what
+> puts the alias list on a route, and `registry.module.spec.ts` fails if a controller
+> appears here first. *Credentials never in logs or responses* is two probes rather than
+> inspection: the repository's suite compiles every read statement and asserts the SQL names
+> neither the column nor a `select *`, and the integration suite puts a real ciphertext on a
+> row and looks for it in every answer and every log sink. The designed refusal mockup 07
+> will need ships with it — a `409 provider_connection_in_use` naming the aliases in the
+> way, built from a real foreign-key violation in the integration suite rather than from a
+> hand-written error.
+>
+> **It also registers the vault's first secret store.** `VAULT_SECRET_STORES` had been an
+> empty array since AD.1 (#222) because no migration declared an encrypted column. V015's
+> is the first, and the store lands with the *migration* rather than with AD.2's (#223)
+> credential lifecycle for a reason: a sealed column the re-encryption sweep cannot see is a
+> rotation that reports success while leaving ciphertext on the key version it then retires.
 
 
 - **Problem Statement:** Routes point at aliases; aliases resolve to models on
@@ -1007,6 +1058,10 @@ are filed; the BetterAuth roadmap (BA-B.3, BA-C.3, BA-D.5) is **not yet filed** 
 gates Y.1, Z.2 and AA.1. INTAKE-L.2 (#106) and WF-R.3 (#145) must exist for the Z.4
 amendments.
 
-Once those are in place, begin with **#189** ([Y.1] provider connections and model
-alias foundations) — the table pair everything else in this roadmap resolves
-through.
+**#189** ([Y.1] provider connections and model alias foundations) has landed — the
+table pair everything else in this roadmap resolves through, plus the internal
+accessors Y.2, Z.1, Z.2 and Z.3 consume. Its BA-B.3 dependency was satisfied ahead of
+the BetterAuth roadmap being filed: V005 and V006 already own `organization`, so both
+tables hang off it today. Next is **#190** ([Y.2] task kinds, routes and fallback
+chains), whose alias foreign key is what makes decision **M1** structural rather than
+conventional.

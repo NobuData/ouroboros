@@ -1,6 +1,7 @@
 import { Logger } from "@nestjs/common";
 
 import { parseEnvelope } from "./envelope";
+import { ProviderCredentialStore } from "../registry/registry.secrets";
 import { REGISTERED_SECRET_STORES } from "./vault.module";
 import { NO_VERSION, VaultRotation } from "./vault.rotation";
 import {
@@ -286,12 +287,13 @@ describe("rotating through the job rather than the service", () => {
 });
 
 describe("what is registered today", () => {
-  // The honest statement, as a test. #138, #101 and #189 are all open and no migration
-  // declares an encrypted column, so there is nothing for the sweep to find — and this fails
-  // the day one of them lands, which is when the sweep's behaviour needs a second look
-  // rather than a green suite.
-  it("registers no secret stores, because no module holds an encrypted secret yet", () => {
-    expect(REGISTERED_SECRET_STORES).toEqual([]);
+  // The honest statement, as a test. V015 (#189) is the first migration to declare an
+  // encrypted column, so `provider_connections` is the first — and so far only — table the
+  // sweep has to visit. #138 (ticket sources) and #101 (GitHub credentials) are still open,
+  // and this fails the day one of them lands, which is when the sweep's behaviour needs a
+  // second look rather than a green suite.
+  it("registers the one store a migration has given it", () => {
+    expect(REGISTERED_SECRET_STORES).toEqual([ProviderCredentialStore]);
   });
 
   it("reports zeros rather than pretending to have swept", async () => {

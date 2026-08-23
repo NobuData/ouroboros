@@ -235,7 +235,21 @@ describe("TABLE_COLUMNS", () => {
     //
     // The fourteenth is V012's `model_prices` (#580), which CH.3 (#586) reads and writes
     // overrides in.
-    expect(TABLE_NAMES).toHaveLength(14);
+    //
+    // The fifteenth and sixteenth are V015's `provider_connections` and `model_aliases`
+    // (#189) — the routing foundation, read by `src/modules/registry/` and written by
+    // mockups 07 and 21 when they land.
+    expect(TABLE_NAMES).toHaveLength(16);
+  });
+
+  it("mirrors the routing foundation V015 created", () => {
+    // Named as well as counted, for the reason the pricing catalog and the vault's table are:
+    // a mirror missing one of these is a service that cannot resolve an alias at all, and the
+    // failure would otherwise read as an off-by-one in a total.
+    for (const table of ["provider_connections", "model_aliases"] as const) {
+      expect(TABLE_NAMES).toContain(table);
+      expect(READ_ONLY_VIEWS).not.toContain(table);
+    }
   });
 
   it("mirrors the model pricing catalog V012 created", () => {

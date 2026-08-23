@@ -653,6 +653,169 @@ export interface ModelPricesTable {
 }
 
 /**
+ * `ouroboros.provider_connections.kind` — which adapter reaches one provider (V015,
+ * [#189](https://github.com/NobuData/ouroboros/issues/189)).
+ *
+ * The same six spellings AC.1's adapter registry keys on, and the same ones
+ * {@link ModelPricesTable.match_provider_kind} carries, so a connection and a price agree
+ * about what kind of thing they are describing without either translating.
+ *
+ * Two of them — `ollama` and `openai_compatible` — are the pair `src/modules/internal/`
+ * calls leasable (AD.3, [#224](https://github.com/NobuData/ouroboros/issues/224)): both are
+ * reachable without a credential, which is the property that makes an address worth handing
+ * to a worker. That is why V015 requires a `base_url` for exactly those two and not for the
+ * rest: they have no public endpoint to fall back on.
+ */
+export type ProviderConnectionKind =
+  "anthropic" | "openai_compatible" | "ollama" | "copilot" | "cursor" | "custom";
+
+/** The six kinds as values, in the order V015's CHECK declares them. */
+export const PROVIDER_CONNECTION_KINDS = [
+  "anthropic",
+  "openai_compatible",
+  "ollama",
+  "copilot",
+  "cursor",
+  "custom",
+] as const satisfies readonly ProviderConnectionKind[];
+
+/**
+ * `ouroboros.provider_connections.status` — whether a connection is usable, as far as
+ * anything knows (V015).
+ *
+ * **`unknown` is a state, not a placeholder** — roadmap decision **M8**. A connection
+ * nothing has checked is `unknown`, and mockup 06's `.phealth` strip renders it as such,
+ * because the alternative is a green dot the product has no evidence for. It is also the
+ * column's default, so the honest answer is what a row starts with rather than something a
+ * writer has to remember.
+ *
+ * `paused` is the odd one out and is worth knowing about: it is an *operator's intent*
+ * rather than a conclusion from a check, which is why V015 deliberately does not tie
+ * `status` to `last_checked_at`. Z.3 ([#196](https://github.com/NobuData/ouroboros/issues/196))
+ * owns the transitions between the other three.
+ */
+export type ProviderConnectionStatus = "active" | "paused" | "error" | "unknown";
+
+/** The four statuses as values, in the order V015's CHECK declares them. */
+export const PROVIDER_CONNECTION_STATUSES = [
+  "active",
+  "paused",
+  "error",
+  "unknown",
+] as const satisfies readonly ProviderConnectionStatus[];
+
+/**
+ * `ouroboros.provider_connections` — where a workspace's model providers are (V015,
+ * [#189](https://github.com/NobuData/ouroboros/issues/189)).
+ *
+ * The shared foundation mockup 07 (*Providers & keys*) will build its management UI on —
+ * roadmap decision **M2**. This service reads it to resolve an alias and to answer *what
+ * providers does this workspace have*; it deliberately declares no create, update or delete
+ * surface, because that is 07's to design.
+ *
+ * **{@link ProviderConnectionsTable.credentials_encrypted} is the one column in this mirror
+ * that must never reach a response.** `src/modules/registry/` selects it in exactly one
+ * file — the vault's re-encryption store — and `registry.repository.spec.ts` reads this
+ * module's own source to keep that true. The `ouroboros/no-secret-in-internal-response`
+ * lint rule is the second half, and V015's own CHECK is the third: the column cannot hold a
+ * plaintext at all, so what leaks in the worst case is ciphertext.
+ */
+export interface ProviderConnectionsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /** Which adapter reaches this provider. */
+  kind: ProviderConnectionKind;
+  /** What the `.phealth` strip prints. Free text, and deliberately not unique. */
+  display_name: string;
+  /**
+   * Where this provider is — `http`/`https`, and RFC-1918 is deliberately allowed.
+   *
+   * Required by V015 for `ollama` and `openai_compatible`, which have no public endpoint,
+   * and optional elsewhere, where a proxy or a regional endpoint is a legitimate reason to
+   * set one. The type cannot express the implication; the CHECK does.
+   */
+  base_url: string | null;
+  /**
+   * The provider credential, sealed — an `ouro.v1.…` envelope from `src/modules/vault/`.
+   *
+   * **Never selected outside the re-encryption store.** See this interface's header, and
+   * note that V015 refuses any value that is not an envelope, so this column cannot hold a
+   * key in the clear whatever writes it. Null where the provider needs none, which is the
+   * ordinary state of a local one rather than an unfinished row.
+   */
+  credentials_encrypted: string | null;
+  /** Whether the connection is usable. `Generated` — V015 defaults it to `unknown`. */
+  status: Generated<ProviderConnectionStatus>;
+  /** When the last health check finished; null until one has. */
+  last_checked_at: Date | null;
+  /**
+   * What that check measured — `{ latency_ms: 42 }`, `{ detail: "elevated latency" }`.
+   *
+   * **Empty means nothing was measured**, and V015 keeps that honest rather than
+   * conventional: content requires a `last_checked_at`, and a `latency_ms` must be a
+   * non-negative number. Nothing here defaults a latency to zero, for the reason the
+   * pricing mirror refuses to default an amount — on a strip a person reads reliability
+   * from, `0ms` is not "unknown", it is a very good latency.
+   *
+   * `Generated` because the column has a `default '{}'::jsonb`; unlike
+   * {@link ModelPricesTable.meta} it *is* written from this service, by Z.3 (#196).
+   */
+  health: Generated<Record<string, unknown>>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.model_aliases` — the names a workspace's routes may use (V015,
+ * [#189](https://github.com/NobuData/ouroboros/issues/189)).
+ *
+ * The shared foundation mockup 21 (*Model registry*) will build its management UI on —
+ * decision **M2** again, and the same division: this service resolves aliases and lists
+ * them, and creates none.
+ *
+ * **{@link ModelAliasesTable.model_id} is the only place in this schema a raw provider
+ * model string lives** — roadmap decision **M1**. Y.2's routes and hops, Y.3's escalation
+ * rules and the DSL's `route.task(...)` all name an alias, which is what makes swapping
+ * `coder-max` from one model to another one edit of one row.
+ */
+export interface ModelAliasesTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /**
+   * The name routes use — `coder-max`, `sizer`, `local-docs`. Unique per workspace.
+   *
+   * Lower-case kebab by CHECK, which V015 argues is a correctness rule rather than a style
+   * one: uniqueness is enforced on the stored text, so admitting `Coder-Max` beside
+   * `coder-max` would give one name two resolutions.
+   */
+  alias: string;
+  /**
+   * The connection this alias resolves on.
+   *
+   * Held to the *same workspace* as `organization_id` by a composite foreign key rather
+   * than by a trigger — V015 creates both tables, so it can declare the unique key that
+   * makes the rule referential. An alias reaching another workspace's connection would
+   * resolve onto that workspace's credential.
+   */
+  provider_connection_id: string;
+  /** The raw provider model string, and the only one in this schema (decision M1). Unfolded. */
+  model_id: string;
+  /**
+   * Per-alias invocation defaults — the inspector's *"(max thinking)"*, a pinned
+   * temperature.
+   *
+   * `Generated` for its `default '{}'::jsonb`. Opaque here, exactly as
+   * {@link ModelPricesTable.meta} is: giving it a shape is AB.1's, when there is an
+   * invocation path to merge it into.
+   */
+  params: Generated<Record<string, unknown>>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -732,7 +895,7 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * This is the type parameter the whole module is built around: `Kysely<Database>` is what
  * makes `selectFrom("organization").select("slug")` compile and `select("slugg")` not.
  *
- * **Two of the fourteen entries are views** rather than tables — see {@link READ_ONLY_VIEWS},
+ * **Two of the sixteen entries are views** rather than tables — see {@link READ_ONLY_VIEWS},
  * which is the rule that keeps a write off them. `Database` has no vocabulary for the
  * difference, so the list beside it is the vocabulary.
  *
@@ -757,6 +920,15 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * row this service writes is the opposite — which is a property of the conflict target rather
  * than of anybody's care.
  *
+ * **`provider_connections` and `model_aliases` (V015,
+ * [#189](https://github.com/NobuData/ouroboros/issues/189)) are the fifteenth and
+ * sixteenth**, and they are the first pair here that this service *reads* on behalf of two
+ * roadmaps that have not started. Decision **M2** puts the schema and the resolution
+ * accessors in `src/modules/registry/` and leaves every create, update and delete to mockup
+ * 07 and mockup 21 — so the mirror declares the columns those surfaces will write, and this
+ * service writes exactly one of them: `credentials_encrypted`, and only when the vault's
+ * re-encryption sweep re-seals a value it already held.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -777,6 +949,8 @@ export interface Database {
   workspace_settings: WorkspaceSettingsTable;
   tenant_keys: TenantKeysTable;
   model_prices: ModelPricesTable;
+  provider_connections: ProviderConnectionsTable;
+  model_aliases: ModelAliasesTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -895,6 +1069,29 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  provider_connections: [
+    "id",
+    "organization_id",
+    "kind",
+    "display_name",
+    "base_url",
+    "credentials_encrypted",
+    "status",
+    "last_checked_at",
+    "health",
+    "created_at",
+    "updated_at",
+  ],
+  model_aliases: [
+    "id",
+    "organization_id",
+    "alias",
+    "provider_connection_id",
+    "model_id",
+    "params",
+    "created_at",
+    "updated_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -995,6 +1192,33 @@ export type ModelPrice = Selectable<ModelPricesTable>;
  * coherence CHECK requires to agree.
  */
 export type NewModelPrice = Insertable<ModelPricesTable>;
+
+/**
+ * A row of `ouroboros.provider_connections`, as a `select` returns it.
+ *
+ * **Includes `credentials_encrypted`**, which is why almost nothing selects a whole row: the
+ * repository names its columns, and the one place that asks for the sealed value is the
+ * vault's re-encryption store. See {@link ProviderConnectionsTable}.
+ */
+export type ProviderConnection = Selectable<ProviderConnectionsTable>;
+/**
+ * The columns an `insert` into `ouroboros.provider_connections` may carry.
+ *
+ * Declared for completeness rather than for a caller: creating a connection is mockup 07's
+ * surface (decision **M2**) and this service has none. The type exists so that when 07
+ * writes one, the mirror is already the thing it type-checks against.
+ */
+export type NewProviderConnection = Insertable<ProviderConnectionsTable>;
+
+/** A row of `ouroboros.model_aliases`, as a `select` returns it. */
+export type ModelAlias = Selectable<ModelAliasesTable>;
+/**
+ * The columns an `insert` into `ouroboros.model_aliases` may carry.
+ *
+ * Declared for the same reason {@link NewProviderConnection} is: creating an alias is mockup
+ * 21's surface, not this service's.
+ */
+export type NewModelAlias = Insertable<ModelAliasesTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

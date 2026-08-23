@@ -26,8 +26,9 @@
 -- The product tables added since stand on that base and have a section each:
 -- `user_preferences` (V007, #649), the dashboard read-model — `runs` (V008, #64),
 -- `queue_items` (V009, #65), `token_usage` (V010, #66) and `workspace_settings` (V011,
--- #67) — `model_prices` (V012, #580), `tenant_keys` (V013, #222), and the intake mirror
--- `github_issues` with its sync cursor on `github_repos` (V014, #99).
+-- #67) — `model_prices` (V012, #580), `tenant_keys` (V013, #222), the intake mirror
+-- `github_issues` with its sync cursor on `github_repos` (V014, #99), and the routing
+-- foundation `provider_connections` and `model_aliases` (V015, #189).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -3503,6 +3504,427 @@ delete from ouroboros.organization where "id" = 'org-astray';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.github_issues where organization_id = 'org-astray'),
   'deleting an organization cascades through its orgs and repos to its mirrored issues');
+
+-- ===========================================================================
+-- V015 — provider_connections and model_aliases, the routing foundation (#189)
+-- ===========================================================================
+--
+-- The pair mockups 07 and 21 will build their management UIs on (decision **M2**), landed
+-- here because routing is unbuildable without them. Nothing writes them yet — Z.2 (#195)
+-- is the swap menu, Z.3 (#196) is the health service and AD.2 (#223) is what stores a
+-- credential — so, as with every read-model section above, every rule a reader depends on
+-- is a constraint here rather than an application invariant.
+--
+-- Three of this ticket's criteria are what most of this section is about, and each is a
+-- rule that would be invisible if it were merely intended:
+--
+--   * **A credential cannot be stored in the clear.** `credentials_encrypted` accepts an
+--     `ouro.v1.…` envelope and nothing else, so a plaintext key written by a fixture, a
+--     hand-run `update` or a service that forgot to seal is refused by the server. That is
+--     the database half of *credentials never appear in logs or responses*; the response
+--     half is `ouroboros-rest`'s `registry.integration-spec.ts`, which asks the accessors
+--     for a resolution with a real ciphertext in the row and looks for it in the answer.
+--   * **`health` cannot lie about a measurement that did not happen** (decision M8).
+--     Content requires a `last_checked_at`, a latency is a number, and there is no
+--     defaulted `0ms` for a provider nothing has called.
+--   * **A connection with dependent aliases cannot be deleted, and a workspace still
+--     can.** Both are asserted, because the second is a consequence of trigger ordering
+--     that a reader would reasonably doubt.
+--
+-- Its own fixtures again: the V014 section deleted `org-astray`, and `org-intake` carries
+-- no connections. Two fresh workspaces, for the reason the sections above needed two — one
+-- to own the aliases, one to own a connection they must not be allowed to name.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-routes',    'Routes Works',    'routes-works',    now()),
+  ('org-elsewhere', 'Elsewhere Works', 'elsewhere-works', now());
+
+-- Four of mockup 06's five `.phealth` pills, one per kind that can be told apart, plus the
+-- connection in the other workspace that the cross-tenancy assertions aim at.
+--
+-- The Anthropic row carries a real-shaped envelope rather than a placeholder: the CHECK it
+-- has to satisfy is the point of half this section, and a fixture that could not satisfy it
+-- would have to be exempted from the rule under test.
+insert into ouroboros.provider_connections
+    (id, organization_id, kind, display_name, base_url, credentials_encrypted,
+     status, last_checked_at, health) values
+  ('e0000000-0000-0000-0000-00000000000a', 'org-routes', 'anthropic', 'Anthropic',
+   null, 'ouro.v1.1.AAAAAAAAAAAAAAAA.ZmFrZS1jaXBoZXJ0ZXh0LWZvci10ZXN0cw',
+   'active', now(), '{"latency_ms": 42}'),
+  ('e0000000-0000-0000-0000-00000000000b', 'org-routes', 'copilot', 'GitHub Copilot',
+   null, null, 'error', now(), '{"detail": "elevated latency"}'),
+  ('e0000000-0000-0000-0000-00000000000c', 'org-routes', 'openai_compatible',
+   'OpenAI-compatible', 'http://vllm.local:8000/v1', null, 'active', now(),
+   '{"detail": "vLLM local"}'),
+  ('e0000000-0000-0000-0000-00000000000d', 'org-routes', 'ollama', 'Ollama',
+   'http://workstation.local:11434', null, 'unknown', null, '{}'),
+  ('e0000000-0000-0000-0000-00000000000e', 'org-elsewhere', 'anthropic', 'Anthropic',
+   null, null, 'unknown', null, '{}');
+
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id, params) values
+  ('e1000000-0000-0000-0000-00000000000a', 'org-routes', 'coder-max',
+   'e0000000-0000-0000-0000-00000000000a', 'claude-fable-5', '{"thinking": "max"}'),
+  ('e1000000-0000-0000-0000-00000000000b', 'org-routes', 'coder-fallback',
+   'e0000000-0000-0000-0000-00000000000b', 'gpt-4o', '{}'),
+  ('e1000000-0000-0000-0000-00000000000c', 'org-routes', 'local-docs',
+   'e0000000-0000-0000-0000-00000000000d', 'llama-4-maverick', '{}');
+
+-- --- the migration says what it is, in the database ---------------------------
+--
+-- Acceptance criterion: *the migration header documents this as the 07/21 shared
+-- foundation, naming decision M2*. A header is a comment in a file, and a file can be
+-- rewritten by somebody who never read it — so the claim is also carried by the table
+-- comments, where it survives into `\d+` and into any tool that reads the catalogue.
+-- Asserting it here is what makes the criterion checked rather than reviewed.
+select pg_temp.must_hold(
+  (select obj_description('ouroboros.provider_connections'::regclass) like '%decision M2%'
+      and obj_description('ouroboros.provider_connections'::regclass) like '%mockup 07%'),
+  'provider_connections names mockup 07 and decision M2 as what it is a foundation for');
+
+select pg_temp.must_hold(
+  (select obj_description('ouroboros.model_aliases'::regclass) like '%M1%'
+      and obj_description('ouroboros.model_aliases'::regclass) like '%mockup 21%'),
+  'model_aliases names mockup 21 and decision M1 as what it is a foundation for');
+
+-- --- the two vocabularies are closed ------------------------------------------
+--
+-- Acceptance criterion: *status and kind vocabularies are CHECK-constrained*. Both are
+-- text with a check rather than an enum, so widening one later is an ordinary migration —
+-- which is exactly why the current width has to be asserted rather than assumed.
+select pg_temp.must_reject(
+  $$insert into ouroboros.provider_connections (organization_id, kind, display_name)
+    values ('org-routes', 'bedrock', 'Amazon Bedrock')$$,
+  'a provider kind outside the six is refused', 'provider_connections_kind');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set status = 'degraded'
+    where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'a status outside the four is refused', 'provider_connections_status');
+
+-- All six kinds are reachable, so the CHECK is the vocabulary and not a subset of it. The
+-- three not already in the fixtures; `custom` needs no base URL and `cursor` is a cloud
+-- kind like `copilot`.
+insert into ouroboros.provider_connections (organization_id, kind, display_name) values
+  ('org-routes', 'cursor', 'Cursor'),
+  ('org-routes', 'custom', 'House LLM');
+
+select pg_temp.must_hold(
+  (select count(distinct kind) = 6 from ouroboros.provider_connections
+    where organization_id = 'org-routes'),
+  'all six provider kinds are representable');
+
+-- --- unknown is the state a connection starts in (decision M8) -----------------
+--
+-- Not a placeholder and not a default somebody forgot to change: a connection nothing has
+-- checked is `unknown`, and `health` is empty, and both are what the strip renders.
+select pg_temp.must_hold(
+  (select status = 'unknown' and health = '{}'::jsonb and last_checked_at is null
+     from ouroboros.provider_connections
+    where organization_id = 'org-routes' and display_name = 'House LLM'),
+  'a connection nothing has checked is unknown, with no health and no check time');
+
+-- --- health accommodates an absent measurement without lying -------------------
+--
+-- Acceptance criterion, and the failure it names — *no default 0ms* — is the one that
+-- looks like a feature. `0ms` is not "unknown", it is a very good latency.
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set health = '{"latency_ms": 12}'
+    where id = 'e0000000-0000-0000-0000-00000000000d'$$,
+  'health cannot carry a measurement with no time it was taken',
+  'provider_connections_health_measured');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set health = '{"latency_ms": "42ms"}'
+    where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'a latency must be a number, not a string with a unit in it',
+  'provider_connections_health_latency');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set health = '{"latency_ms": null}'
+    where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'an explicit JSON null latency is refused — the way to say nothing was measured is to omit the key',
+  'provider_connections_health_latency');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set health = '{"latency_ms": -1}'
+    where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'a negative latency is refused', 'provider_connections_health_latency');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set health = '[]'
+    where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'health is an object, so a caller reading a key has something to read',
+  'provider_connections_health_object');
+
+-- The legitimate direction: a check that could not connect stamps its time, says so in
+-- `status`, and has no latency to report. That row must be representable, or the honesty
+-- rule would have made the failure case unstorable.
+update ouroboros.provider_connections
+   set status = 'error', last_checked_at = now(), health = '{"detail": "connection refused"}'
+ where id = 'e0000000-0000-0000-0000-00000000000d';
+
+select pg_temp.must_hold(
+  (select health ? 'detail' and not (health ? 'latency_ms')
+     from ouroboros.provider_connections
+    where id = 'e0000000-0000-0000-0000-00000000000d'),
+  'a failed check is storable: a time, a reason, and no latency');
+
+-- Restored, because the assertions below read this row as the unchecked one.
+update ouroboros.provider_connections
+   set status = 'unknown', health = '{}'::jsonb, last_checked_at = null
+ where id = 'e0000000-0000-0000-0000-00000000000d';
+
+-- --- a credential is an envelope or it is nothing ------------------------------
+--
+-- Acceptance criterion: *credentials never appear in logs or API responses*. This is the
+-- half of it the schema can hold — a column that cannot hold a plaintext is one no reader
+-- can leak a plaintext out of, whatever it does with the value.
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections
+       set credentials_encrypted = 'sk-ant-api03-not-a-secret-just-a-shape'
+     where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'a plaintext API key cannot be stored in credentials_encrypted',
+  'provider_connections_credentials_sealed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set credentials_encrypted = ''
+     where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'a blank credential is refused rather than read as "configured"',
+  'provider_connections_credentials_sealed');
+
+-- A shape that looks like an envelope and is not: the key version has to be a number,
+-- because it is what tells a decrypt which key to open the value with.
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections
+       set credentials_encrypted = 'ouro.v1.latest.AAAA.BBBB'
+     where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'an envelope whose key version is not a number is refused',
+  'provider_connections_credentials_sealed');
+
+-- And the ordinary state of a local provider: no credential at all, which is legitimate
+-- rather than incomplete.
+select pg_temp.must_hold(
+  (select credentials_encrypted is null from ouroboros.provider_connections
+    where id = 'e0000000-0000-0000-0000-00000000000d'),
+  'a local provider needs no credential, and null is not a missing value here');
+
+-- --- an address is required exactly where there is no public endpoint ----------
+select pg_temp.must_reject(
+  $$insert into ouroboros.provider_connections (organization_id, kind, display_name)
+    values ('org-routes', 'ollama', 'Nowhere')$$,
+  'an ollama connection with no address is refused', 'provider_connections_local_has_base_url');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.provider_connections (organization_id, kind, display_name, base_url)
+    values ('org-routes', 'openai_compatible', 'Bad scheme', 'file:///etc/passwd')$$,
+  'a base URL must be http or https', 'provider_connections_base_url_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.provider_connections set base_url = '   '
+     where id = 'e0000000-0000-0000-0000-00000000000c'$$,
+  'a blank base URL is refused rather than read as configured',
+  'provider_connections_base_url_present');
+
+-- A private address is deliberately allowed: refusing RFC-1918 would refuse the vLLM and
+-- the Ollama the column exists to reach. See docs/SECURITY_MODEL.md § SSRF.
+update ouroboros.provider_connections set base_url = 'http://192.168.1.20:11434'
+ where id = 'e0000000-0000-0000-0000-00000000000d';
+
+select pg_temp.must_hold(
+  (select base_url = 'http://192.168.1.20:11434' from ouroboros.provider_connections
+    where id = 'e0000000-0000-0000-0000-00000000000d'),
+  'a private address is a legitimate provider address, not an SSRF to be refused here');
+
+-- --- an alias is unique per workspace, and only per workspace ------------------
+--
+-- Acceptance criterion: *alias uniqueness enforced per organization*.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id)
+    values ('org-routes', 'coder-max', 'e0000000-0000-0000-0000-00000000000b', 'gpt-4o')$$,
+  'an alias is unique within a workspace', 'model_aliases_organization_alias_key');
+
+insert into ouroboros.model_aliases
+    (organization_id, alias, provider_connection_id, model_id)
+  values ('org-elsewhere', 'coder-max', 'e0000000-0000-0000-0000-00000000000e', 'claude-opus-5');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.model_aliases where alias = 'coder-max'),
+  'two workspaces may each have their own coder-max');
+
+-- The uniqueness is on the stored text, which is why the shape is a rule and not a style:
+-- `Coder-Max` beside `coder-max` would be one name with two resolutions.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id)
+    values ('org-routes', 'Coder-Max', 'e0000000-0000-0000-0000-00000000000a', 'claude-fable-5')$$,
+  'an alias is lower-case, so uniqueness cannot be defeated by capitalisation',
+  'model_aliases_alias_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id)
+    values ('org-routes', 'coder max', 'e0000000-0000-0000-0000-00000000000a', 'claude-fable-5')$$,
+  'an alias has no spaces — it is a URL segment, a DSL identifier and a CLI argument',
+  'model_aliases_alias_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id)
+    values ('org-routes', 'sizer', 'e0000000-0000-0000-0000-00000000000a', '  ')$$,
+  'an alias must resolve to a model id that is actually there',
+  'model_aliases_model_id_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id, params)
+    values ('org-routes', 'sizer', 'e0000000-0000-0000-0000-00000000000a', 'claude-sonnet-5',
+            '"max thinking"')$$,
+  'params is an object, so a caller has something to merge into a request body',
+  'model_aliases_params_object');
+
+-- --- an alias may not reach another workspace's connection ---------------------
+--
+-- Not a broken join: an alias resolving onto another workspace's connection resolves onto
+-- that workspace's *credential*. The composite foreign key is what makes this declarative,
+-- where V008–V014 needed a trigger — see V015's header.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id)
+    values ('org-routes', 'stolen', 'e0000000-0000-0000-0000-00000000000e', 'claude-opus-5')$$,
+  'an alias cannot name a connection belonging to another workspace',
+  'model_aliases_provider_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases
+      (organization_id, alias, provider_connection_id, model_id)
+    values ('org-routes', 'ghost', '00000000-0000-0000-0000-000000000000', 'claude-opus-5')$$,
+  'an alias cannot name a connection that does not exist', 'model_aliases_provider_fk');
+
+-- --- resolution is one indexed query ------------------------------------------
+--
+-- Acceptance criterion: *alias → provider + model resolution is a single indexed query,
+-- verified with EXPLAIN*. Sequential scans are off for the reason every other plan
+-- assertion in this file gives — a handful of fixture rows is genuinely cheaper to scan,
+-- and what is asserted is that a usable index exists at production size.
+--
+-- Both halves are checked. `must_use_index` names the entry point, which is the alias's
+-- own uniqueness index; `must_not_scan` covers the *other* relation in the same plan,
+-- because naming one index says nothing about the table it joins to — and a resolution
+-- that scans `provider_connections` is not one query, it is one query and a scan.
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select a.model_id, a.params, c.kind, c.base_url, c.status
+      from ouroboros.model_aliases a
+      join ouroboros.provider_connections c
+        on c.organization_id = a.organization_id and c.id = a.provider_connection_id
+     where a.organization_id = 'org-routes' and a.alias = 'coder-max'$$,
+  'model_aliases_organization_alias_key');
+
+select pg_temp.must_not_scan(
+  $$select a.model_id, a.params, c.kind, c.base_url, c.status
+      from ouroboros.model_aliases a
+      join ouroboros.provider_connections c
+        on c.organization_id = a.organization_id and c.id = a.provider_connection_id
+     where a.organization_id = 'org-routes' and a.alias = 'coder-max'$$);
+
+-- The swap menu Z.2 (#195) serves: every alias in a workspace with what it resolves to.
+select pg_temp.must_not_scan(
+  $$select a.alias, a.model_id, c.display_name
+      from ouroboros.model_aliases a
+      join ouroboros.provider_connections c
+        on c.organization_id = a.organization_id and c.id = a.provider_connection_id
+     where a.organization_id = 'org-routes'
+     order by a.alias$$);
+
+-- The `.phealth` strip: one workspace's connections, entered through the leading column of
+-- the composite unique key, which is why no separate index was created for it.
+select pg_temp.must_use_index(
+  $$select display_name, kind, status, health from ouroboros.provider_connections
+     where organization_id = 'org-routes'$$,
+  'provider_connections_organization_id_key');
+
+-- Not a read path: the foreign key's. PostgreSQL indexes the referenced side of a foreign
+-- key and never the referencing side, so without this every connection delete — and every
+-- workspace delete, which cascades into one — would scan this table.
+select pg_temp.must_use_index(
+  $$select alias from ouroboros.model_aliases
+     where organization_id = 'org-routes'
+       and provider_connection_id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'model_aliases_provider_idx');
+
+set local enable_seqscan = on;
+
+-- --- updated_at is the server's account, not the writer's ----------------------
+update ouroboros.provider_connections set updated_at = timestamptz '2000-01-01 00:00:00Z'
+ where id = 'e0000000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.provider_connections
+    where id = 'e0000000-0000-0000-0000-00000000000a'),
+  'provider_connections.updated_at is stamped from the server clock by its touch trigger');
+
+update ouroboros.model_aliases set updated_at = timestamptz '2000-01-01 00:00:00Z'
+ where id = 'e1000000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.model_aliases
+    where id = 'e1000000-0000-0000-0000-00000000000a'),
+  'model_aliases.updated_at is stamped from the server clock by its touch trigger');
+
+-- --- a connection an alias depends on cannot be deleted ------------------------
+--
+-- Acceptance criterion: *deleting a provider that has dependent aliases is blocked (FK
+-- restrict)*. The alternative — a cascade — would delete the *aliases*, which are what
+-- Y.2's routes point at, so a provider removed in mockup 07 would silently empty routes
+-- drawn in mockup 06.
+select pg_temp.must_reject(
+  $$delete from ouroboros.provider_connections
+     where id = 'e0000000-0000-0000-0000-00000000000a'$$,
+  'a connection with dependent aliases cannot be deleted', 'model_aliases_provider_fk');
+
+-- The list a designed refusal has to name — *"coder-max depends on this connection"* — is
+-- one indexed read, which is the second job model_aliases_provider_idx does.
+select pg_temp.must_hold(
+  (select array_agg(alias order by alias) = array['coder-max']
+     from ouroboros.model_aliases
+    where organization_id = 'org-routes'
+      and provider_connection_id = 'e0000000-0000-0000-0000-00000000000a'),
+  'the aliases blocking a delete are nameable, which is what makes the refusal designed');
+
+-- And the way through it: remove what depends on it first. The refusal is a sequencing
+-- rule, not a permanent one.
+delete from ouroboros.model_aliases where id = 'e1000000-0000-0000-0000-00000000000a';
+delete from ouroboros.provider_connections where id = 'e0000000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.provider_connections
+    where id = 'e0000000-0000-0000-0000-00000000000a'),
+  'a connection whose aliases are gone deletes normally');
+
+-- --- the workspace cascade, which the restrict must not block ------------------
+--
+-- The interaction V015's header writes down, asserted rather than argued: both tables
+-- cascade from `organization`, and the restrict above is checked immediately — so the
+-- obvious fear is that the connection cascade meets aliases that have not been deleted
+-- yet and refuses, making a workspace undeletable the moment it configured a provider.
+--
+-- It does not, because both cascades are queued as after-triggers of the same statement
+-- and run before the referential check the connection delete appends. This assertion is
+-- what would fail if that ever stopped being true.
+select pg_temp.must_hold(
+  (select count(*) > 0 from ouroboros.model_aliases where organization_id = 'org-routes')
+   and (select count(*) > 0 from ouroboros.provider_connections where organization_id = 'org-routes'),
+  'the workspace about to be deleted really does have both connections and aliases');
+
+delete from ouroboros.organization where "id" = 'org-routes';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.provider_connections where organization_id = 'org-routes')
+   and (select count(*) = 0 from ouroboros.model_aliases where organization_id = 'org-routes'),
+  'deleting a workspace takes its connections and aliases with it, restrict notwithstanding');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

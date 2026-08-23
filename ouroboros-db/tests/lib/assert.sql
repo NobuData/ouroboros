@@ -1,7 +1,7 @@
 -- assert.sql — the assertion helpers the live-database suites share.
 --
 -- The SQL counterpart of scripts/lib/checks.sh: constraints.sql and seed.sql both need
--- the same three, and one copy is what keeps a fix — or a failure message — the same in
+-- the same handful, and one copy is what keeps a fix — or a failure message — the same in
 -- both. Include it from a suite in this directory before the first assertion:
 --
 --   \ir lib/assert.sql
@@ -116,5 +116,33 @@ begin
     end if;
   end loop;
   raise exception 'FAILED: % did not use index %', query, idx;
+end;
+$$;
+
+-- Asserts a query's plan reaches every table it names through an index.
+--
+-- The sibling of must_use_index, for a plan with more than one relation in it. Naming one
+-- index proves that *one* table was entered through it and says nothing about the others,
+-- so a join whose second table is scanned passes must_use_index and is exactly the thing
+-- an "is this one indexed query" criterion is asking about.
+--
+-- Read it together with the caller's `set local enable_seqscan = off`, which is what makes
+-- the absence meaningful: with sequential scans discouraged, PostgreSQL still emits one
+-- when there is no alternative — so a Seq Scan surviving in the plan means that relation
+-- has no usable index, which is the state this asserts against. On a fixture of a handful
+-- of rows it is the *existence* of the index that is being checked, not the plan a
+-- production-sized table would get.
+--
+--   query — the SQL whose plan is inspected
+create function pg_temp.must_not_scan(query text)
+returns void language plpgsql as $$
+declare
+  line text;
+begin
+  for line in execute 'explain ' || query loop
+    if line like '%Seq Scan%' then
+      raise exception 'FAILED: % has no usable index — plan contains "%"', query, btrim(line);
+    end if;
+  end loop;
 end;
 $$;
