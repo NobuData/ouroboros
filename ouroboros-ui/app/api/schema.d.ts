@@ -765,6 +765,116 @@ export interface paths {
         patch: operations["patchAutoMergeSetting"];
         trace?: never;
     };
+    "/api/v1/registry/prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's price corrections
+         * @description One page of the prices this workspace has recorded for itself
+         *     ([#586](https://github.com/NobuData/ouroboros/issues/586)), ordered by provider kind
+         *     then model.
+         *
+         *     **The bundled catalog is not in this listing, and that is what the listing means.**
+         *     The snapshot is the same hundred and twenty-nine rows for every workspace and nobody
+         *     here wrote it; *what have we corrected* is a question about a workspace's own list.
+         *     An empty page therefore means this workspace is on the catalog's own numbers
+         *     throughout — not that no model has a price.
+         *
+         *     **Any member may read it**, viewers included, exactly as the auto-merge switch is
+         *     readable by the role that exists to be able to look. Writing one is `owner` or
+         *     `admin`; see the `PUT` beside this.
+         *
+         *     Each entry carries `display` — the cell mockup 21 would draw for that correction —
+         *     so a settings table can show what a rate will look like without re-deriving the
+         *     formatting. `—` never appears there: an override is a price by definition, and the
+         *     `—` cell is the absence of a row rather than the content of one.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs.
+         */
+        get: operations["listPriceOverrides"];
+        /**
+         * Record what this workspace pays for a model
+         * @description Replace this workspace's statement about one model's price. An override always beats
+         *     the bundled catalog, and every answer that resolves through it says
+         *     `provenance.source: override` — which is what lets a reader tell a negotiated rate
+         *     from a published one.
+         *
+         *     **`owner` or `admin`, and nobody else.** This number is multiplied by a token count
+         *     in every spend report this product draws, so the write is role-gated where the read
+         *     is not: a `member` or a `viewer` gets the API's one `403` and writes nothing.
+         *
+         *     **A `PUT`, and every field the mode requires is required.** This replaces the
+         *     workspace's statement outright rather than amending it. A partial correction — change
+         *     the output rate, keep the input one — cannot be checked against the billing-mode rules
+         *     without reading the stored row first, and a price assembled from half a request and
+         *     half a row is a number nobody entered.
+         *
+         *     **The amounts have to match the billing mode**, which is a rule of the schema
+         *     ([#580](https://github.com/NobuData/ouroboros/issues/580)) and not a preference:
+         *
+         *     | `billingMode` | `inputCentsPer1m` / `outputCentsPer1m` | Renders |
+         *     |---|---|---|
+         *     | `token` | **both required**, and not both zero | `$12 · $60` |
+         *     | `seat` | **must be omitted** | `seat-based` |
+         *     | `usage` | **must be omitted** | `usage-based` |
+         *     | `free` | omitted, or `0` | `$0` |
+         *
+         *     A body that breaks one of those is a `422` naming the field, not a `500`. A `token`
+         *     price of zero in both directions is refused specifically: that is a free model
+         *     recorded under the wrong mode, and it would render `$0` for something somebody is
+         *     being invoiced for.
+         *
+         *     **`modelId` may be `*`**, which prices every model of the kind — the family row a
+         *     seat- or usage-billed provider is priced by, and how a workspace says *everything I
+         *     reach through this OpenAI-compatible endpoint runs on our own hardware*
+         *     (`connectionKind: openai_compatible`, `modelId: "*"`, `billingMode: free`). It is the
+         *     only wildcard there is: a `*` inside an identifier is refused.
+         *
+         *     **Idempotent.** The same body sent twice leaves one row; the second send is a
+         *     re-affirmation that moves `effectiveAt` and `updatedAt` rather than a second
+         *     correction. `connectionKind` is folded to lower case, so `Anthropic` and `anthropic`
+         *     address one row rather than two that would shadow each other.
+         *
+         *     **The correction is visible immediately.** The service's short-lived price cache is
+         *     dropped for this workspace inside the same request, so no read after this one can
+         *     answer with the number it replaced.
+         */
+        put: operations["putPriceOverride"];
+        post?: never;
+        /**
+         * Withdraw a price correction
+         * @description Remove this workspace's override for one model, so the bundled catalog answers for it
+         *     again.
+         *
+         *     **Withdrawing a correction is not pricing a model at nothing.** The row goes and the
+         *     lookup falls back to the snapshot; a model the snapshot does not cover goes back to
+         *     reading `—`, which is true. That is why this is a `DELETE` rather than a write of
+         *     zeros — a `free` override would claim the model costs nothing, which is a different
+         *     and much stronger statement.
+         *
+         *     **`owner` or `admin`**, as the `PUT` is, and for the same reason.
+         *
+         *     **The pair is in the query string rather than the path**, because a model identifier
+         *     is a vendor's string — `qwen3-coder:32b`, `openai/gpt-oss-120b`, `*` — and half of
+         *     those need escaping to survive a path segment.
+         *
+         *     **A missing override is a `404`, not a quiet success.** *Withdraw my correction* and
+         *     *there was no correction* are different outcomes, and a client that believed it had
+         *     removed one needs to learn that the price it is now looking at was already the
+         *     catalog's.
+         */
+        delete: operations["deletePriceOverride"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/preferences": {
         parameters: {
             query?: never;
@@ -2464,6 +2574,128 @@ export interface components {
             enabled?: boolean;
         };
         /**
+         * BillingMode
+         * @description How the money works for one model — which of mockup 21's four cells it renders, and
+         *     which rates it may carry at all.
+         *
+         *     | Value | Means | Rates |
+         *     |---|---|---|
+         *     | `token` | Per-token rates | both present |
+         *     | `seat` | Billed per person, not per call | none |
+         *     | `usage` | Metered by the vendor on terms this catalog cannot express | none |
+         *     | `free` | No per-call charge — a model running locally | zero or absent |
+         *
+         *     **There is no fifth value for "unknown".** *We have no price for this model* is the
+         *     absence of a price, not a mode a price can be in — which is what keeps `—` and `$0`
+         *     from ever collapsing into each other.
+         * @example token
+         * @enum {string}
+         */
+        BillingMode: "token" | "seat" | "usage" | "free";
+        /**
+         * PriceOverride
+         * @description One price this workspace has recorded for itself, overriding the bundled catalog.
+         *
+         *     It has no `source`: every row here is this workspace's own statement, which is what
+         *     `source: override` would say. What it does carry is `display` — the cell this
+         *     correction renders — so a settings table shows the same string the registry column
+         *     will.
+         */
+        PriceOverride: {
+            /**
+             * @description The provider kind, folded, or `*` for every kind.
+             * @example anthropic
+             */
+            connectionKind: string;
+            /**
+             * @description The model identifier as the vendor spells it, or `*` for every model of the kind.
+             * @example claude-fable-5
+             */
+            modelId: string;
+            billingMode: components["schemas"]["BillingMode"];
+            /**
+             * @description Input rate in **cents per one million tokens**, or null for a mode that carries no
+             *     rate. Cents per 1M because that is the unit vendors publish and the unit the
+             *     column renders; four decimal places are kept, because a rate rounded down to zero
+             *     is the one arithmetic error this surface must not make.
+             * @example 1200
+             */
+            inputCentsPer1m: number | null;
+            /**
+             * @description Output rate, same unit and same rules. Kept apart because every vendor prices the two differently.
+             * @example 6000
+             */
+            outputCentsPer1m: number | null;
+            /**
+             * @description The cell this correction renders — `$12 · $60`, `seat-based`, `usage-based` or
+             *     `$0`. Never `—`: an override is a price by definition.
+             * @example $12 · $60
+             */
+            display: string;
+            /**
+             * Format: date-time
+             * @description When this correction took effect. Moves on every save, including a re-affirming one.
+             * @example 2026-08-22T09:00:00.000Z
+             */
+            effectiveAt: string;
+            /**
+             * Format: date-time
+             * @description When the row last changed — the database's own stamp, never the client's.
+             * @example 2026-08-22T09:00:00.000Z
+             */
+            updatedAt: string;
+        };
+        /**
+         * PriceOverrideWrite
+         * @description The body of `PUT /api/v1/registry/prices`.
+         *
+         *     **The rates and the billing mode have to agree**, and the operation's description
+         *     carries the table. In short: `token` requires both and refuses two zeros, `seat` and
+         *     `usage` refuse either, and `free` accepts none or `0`. A body that breaks one of those
+         *     is a `422` naming the field.
+         */
+        PriceOverrideWrite: {
+            /**
+             * @description The provider kind, in any casing — it is folded before it is stored — or `*` for
+             *     every kind.
+             * @example anthropic
+             */
+            connectionKind: string;
+            /**
+             * @description The model identifier, or `*` for every model of the kind. Never folded. A `*`
+             *     *inside* an identifier is refused: `*` is the only wildcard there is.
+             * @example claude-fable-5
+             */
+            modelId: string;
+            billingMode: components["schemas"]["BillingMode"];
+            /**
+             * @description Input rate in cents per one million tokens. Required when `billingMode` is
+             *     `token`, refused when it is `seat` or `usage`, and `0` or omitted when it is
+             *     `free`. At most four decimal places — a finer one would be rounded on the way in,
+             *     and a workspace should not be billed against a number it did not enter.
+             * @example 1200
+             */
+            inputCentsPer1m?: number;
+            /**
+             * @description Output rate, same unit and same rules.
+             * @example 6000
+             */
+            outputCentsPer1m?: number;
+        };
+        /**
+         * PriceOverridePage
+         * @description One page of a workspace's price corrections, ordered by provider kind then model.
+         */
+        PriceOverridePage: {
+            items: components["schemas"]["PriceOverride"][];
+            /** @example 2 */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
+        };
+        /**
          * EngineStatus
          * @description The body of a `GET /api/v1/engine/status` response.
          */
@@ -2676,6 +2908,26 @@ export interface components {
          * @example 0
          */
         Offset: number;
+        /**
+         * @description Which provider kind the correction being withdrawn applies to, or `*` for every kind.
+         *
+         *     Folded to lower case before the lookup, so `Anthropic` and `anthropic` address one
+         *     row. The vocabulary is the adapter registry's — `anthropic`, `openai_compatible`,
+         *     `ollama`, `copilot`, `cursor`, … — and is deliberately not enumerated here: the list
+         *     grows, and a document that fixed it would refuse a price for a provider this product
+         *     really supports.
+         * @example anthropic
+         */
+        OverrideConnectionKind: string;
+        /**
+         * @description Which model the correction being withdrawn applies to, or `*` for every model of the
+         *     kind.
+         *
+         *     Never folded: a model identifier is a name the vendor chose and some of them carry
+         *     capitals. `*` is the only wildcard — a `*` inside an identifier is refused.
+         * @example claude-fable-5
+         */
+        OverrideModelId: string;
         /**
          * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
          *     uuid is a `422` naming the field, before anything is read.
@@ -4392,6 +4644,483 @@ export interface operations {
              * @description `validation_failed` — `enabled` was not a boolean. `details` carries the entry
              *     keyed by the field. A `"true"`, a `1` or a `null` is refused, not coerced,
              *     because a workspace's merge posture is nothing to flip by accident of type.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPriceOverrides: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page. Empty for a workspace that has corrected nothing — a state to render,
+             *     not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "connectionKind": "anthropic",
+                     *           "modelId": "claude-fable-5",
+                     *           "billingMode": "token",
+                     *           "inputCentsPer1m": 1200,
+                     *           "outputCentsPer1m": 6000,
+                     *           "display": "$12 · $60",
+                     *           "effectiveAt": "2026-08-22T09:00:00.000Z",
+                     *           "updatedAt": "2026-08-22T09:00:00.000Z"
+                     *         },
+                     *         {
+                     *           "connectionKind": "openai_compatible",
+                     *           "modelId": "*",
+                     *           "billingMode": "free",
+                     *           "inputCentsPer1m": null,
+                     *           "outputCentsPer1m": null,
+                     *           "display": "$0",
+                     *           "effectiveAt": "2026-08-22T09:04:11.220Z",
+                     *           "updatedAt": "2026-08-22T09:04:11.220Z"
+                     *         }
+                     *       ],
+                     *       "total": 2,
+                     *       "limit": 25,
+                     *       "offset": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PriceOverridePage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `limit` or `offset` was out of range or not an integer.
+             *     `details` carries the entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putPriceOverride: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "connectionKind": "anthropic",
+                 *       "modelId": "claude-fable-5",
+                 *       "billingMode": "token",
+                 *       "inputCentsPer1m": 1200,
+                 *       "outputCentsPer1m": 6000
+                 *     }
+                 */
+                "application/json": components["schemas"]["PriceOverrideWrite"];
+            };
+        };
+        responses: {
+            /** @description The correction as stored, with the cell it renders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "connectionKind": "anthropic",
+                     *       "modelId": "claude-fable-5",
+                     *       "billingMode": "token",
+                     *       "inputCentsPer1m": 1200,
+                     *       "outputCentsPer1m": 6000,
+                     *       "display": "$12 · $60",
+                     *       "effectiveAt": "2026-08-22T09:00:00.000Z",
+                     *       "updatedAt": "2026-08-22T09:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PriceOverride"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Recording a price is `owner` or `admin`; `member` and `viewer` may read the
+             *     corrections and may not write one. `details.role` is what you hold and
+             *     `details.required` is what would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body was refused. `details` carries one entry per field,
+             *     keyed by its name, so a form can render each message beside the input that
+             *     produced it: a rate missing when `billingMode` is `token`, a rate present when it
+             *     is `seat` or `usage`, a rate finer than four decimal places, a `modelId` carrying
+             *     a `*` of its own, or a `token` price of zero in both directions.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deletePriceOverride: {
+        parameters: {
+            query: {
+                /**
+                 * @description Which provider kind the correction being withdrawn applies to, or `*` for every kind.
+                 *
+                 *     Folded to lower case before the lookup, so `Anthropic` and `anthropic` address one
+                 *     row. The vocabulary is the adapter registry's — `anthropic`, `openai_compatible`,
+                 *     `ollama`, `copilot`, `cursor`, … — and is deliberately not enumerated here: the list
+                 *     grows, and a document that fixed it would refuse a price for a provider this product
+                 *     really supports.
+                 * @example anthropic
+                 */
+                connectionKind: components["parameters"]["OverrideConnectionKind"];
+                /**
+                 * @description Which model the correction being withdrawn applies to, or `*` for every model of the
+                 *     kind.
+                 *
+                 *     Never folded: a model identifier is a name the vendor chose and some of them carry
+                 *     capitals. `*` is the only wildcard — a `*` inside an identifier is refused.
+                 * @example claude-fable-5
+                 */
+                modelId: components["parameters"]["OverrideModelId"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Gone. No body: what was removed is of no further use to the client that asked for
+             *     it, and what the price is *now* is a different question with its own answer.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Withdrawing a price correction is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `price_override_not_found` — this workspace has no correction recorded for that
+             *     model. `details` echoes the `connectionKind` (folded, as it was looked up) and the
+             *     `modelId`, so a client that spelled the kind differently can see which spelling
+             *     was searched for.
+             *
+             *     Or `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `connectionKind` or `modelId` was missing or malformed.
+             *     `details` carries the entry keyed by the field.
              */
             422: {
                 headers: {

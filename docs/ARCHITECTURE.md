@@ -60,6 +60,7 @@ flowchart LR
 
     UI -- "HTTPS / JSON<br/>generated TS client<br/>session cookie · X-Ouro-Tenant" --> REST
     REST -- "internal HTTP<br/>X-Ouro-Internal-Key" --> ENGINE
+    ENGINE -- "internal HTTP<br/>/internal/* · same key<br/>proxied invocation · local-provider lease" --> REST
     REST -- "Kysely over pg" --> DB
     GH["GitHub<br/>OAuth · issues · pull requests"] -.->|"OAuth code flow"| REST
 ```
@@ -721,6 +722,8 @@ checkout runs with:
 | `OURO_GITHUB_CLIENT_SECRET` | `ouroboros-rest` | GitHub OAuth application, client secret | `dev-github-client-secret` |
 | `OURO_VAULT_MASTER_KEY` | `ouroboros-rest` | The credential vault's key-encryption key ([#222](https://github.com/NobuData/ouroboros/issues/222), decision **P2**): **exactly** 32 bytes of base64, boot-validated. It seals `ouroboros.tenant_keys` and nothing else, which is why moving custody to KMS or Vault ([#236](https://github.com/NobuData/ouroboros/issues/236)) re-wraps that table and leaves every credential ciphertext byte-identical. Losing it loses every stored credential; its custody is the operator's problem in the default deployment | `b3Vyb2Jvcm9zLWRldi12YXVsdC1tYXN0ZXIta2V5ISE=` |
 | `OURO_CORS_ORIGINS` | `ouroboros-rest` | Comma-separated browser origins allowed to call the API with credentials — the origins the session cookie may travel to; never a wildcard | `http://localhost:3000` |
+| `OURO_LISTEN_HOST` | `ouroboros-rest` | Which interface to bind, when a stack has to choose explicitly — exactly `127.0.0.1` or `0.0.0.0` ([#647](https://github.com/NobuData/ouroboros/issues/647)). Unset is the posture every deployment should inherit: `NODE_ENV` decides on its own, loopback outside production. The one stack that sets it is the e2e compose override | `127.0.0.1` |
+| `OURO_LOCAL_PROVIDER_URLS` | `ouroboros-rest` | Where this deployment's **local** model providers are, as `kind=url` pairs — what a worker is told by `POST /internal/credentials/lease` ([#224](https://github.com/NobuData/ouroboros/issues/224), decision **P3**). Only `ollama` and `openai_compatible` may appear; naming a cloud provider stops the process at boot, because their credentials never leave the control plane. Unset is the normal posture | *(unset)* |
 | `OURO_DASHBOARD_POLL_SECONDS` | `ouroboros-rest` | Whole seconds sent as `X-Ouro-Poll-After` on every dashboard answer — the poll interval the client honours ([§ 5.4](#54-the-polling-contract)); raising it slows every open dashboard within one poll cycle | `15` |
 | `OURO_LOG_LEVEL` | `ouroboros-engine` | Log verbosity: `debug`, `info`, `warning`, `error` | `info` |
 | `OURO_TEST_DATABASE_DISPOSABLE` | `ouroboros-rest` tests | Whether `yarn test:integration` may empty the database between tests. The harness normally starts a throwaway PostgreSQL, which is disposable by definition; this is consulted only when `OURO_DATABASE_URL` points the suite at somebody else's, where truncation would take the development seed with it | `false` |
@@ -840,6 +843,7 @@ The system has three trust boundaries, and each one has a rule:
 |---|---|---|
 | Browser → REST | Session cookie | The cookie is `httpOnly` and signed; a request without a valid one is anonymous, and `/api/v1` is authenticated by default with explicit opt-outs (health, docs, auth routes) |
 | REST → engine | `X-Ouro-Internal-Key` | Constant-time comparison; failure is a 502 to the client and a log line internally — never a 401, and never the engine's address |
+| engine → REST | `X-Ouro-Internal-Key` | The same header and the same secret, the other way: `/internal/*` is refused with one constant `401` — a session cookie is never accepted there. A worker is given a **local provider's address** and never a credential; every cloud call is made by the control plane on its behalf ([#224](https://github.com/NobuData/ouroboros/issues/224), decision **P3**) |
 | REST → database | Connection string | Parameterised queries only; the tenant predicate comes from the resolved context, never from request input |
 
 Secrets follow one rule each way: **in through the environment, out through nothing.**

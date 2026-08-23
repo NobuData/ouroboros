@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -80,7 +80,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.4.0"
+                  "version": "0.5.0"
                 }
               }
             }
@@ -109,7 +109,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.4.0",
+                  "version": "0.5.0",
                   "uptime_seconds": 1234.567
                 }
               }
@@ -161,7 +161,7 @@
                       "note": "hello from ouroboros-rest"
                     }
                   },
-                  "engine_version": "0.4.0"
+                  "engine_version": "0.5.0"
                 }
               }
             }

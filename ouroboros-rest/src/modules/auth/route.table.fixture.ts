@@ -20,6 +20,15 @@
  *
  * A route added later is in both, whether or not anybody thought to add a test.
  *
+ * **Three categories, not two** since [#224](https://github.com/NobuData/ouroboros/issues/224).
+ * A route is *protected* (needs a session), *public* (needs nothing), or *internal* (needs
+ * the shared secret on `X-Ouro-Internal-Key`). The third one had to be named rather than
+ * folded into the second: an internal route carries `@AllowAnonymous()` — it must, because
+ * the caller is a worker holding no session and the session guard would refuse it before its
+ * own guard ran — and calling that *public* would put it in the list both suites assert a
+ * stranger can reach. It is the opposite of reachable, and `INTERNAL_SURFACE` below is where
+ * that is written down.
+ *
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs.
  */
 
@@ -29,6 +38,12 @@ import { DiscoveryService, MetadataScanner, Reflector } from "@nestjs/core";
 
 import { API_BASE_PATH } from "../../application";
 import { HEALTH_PATH, LIVE_ROUTE, READY_ROUTE } from "../health/health.paths";
+import { INTERNAL_ONLY } from "../internal/internal.decorators";
+import {
+  INTERNAL_LEASE_PATH,
+  INTERNAL_INVOKE_PATH,
+  isInternalPath,
+} from "../internal/internal.paths";
 import { ALLOW_ANONYMOUS } from "./anonymous";
 
 /**
@@ -61,6 +76,25 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   `POST ${API_BASE_PATH}/auth/discover`,
 ].sort();
 
+/**
+ * The routes that answer to `ouroboros-engine` rather than to a browser
+ * ([#224](https://github.com/NobuData/ouroboros/issues/224), decision **P3**).
+ *
+ * Written the same way `SHIPPED_PUBLIC_SURFACE` is, and read the same way: adding a line is
+ * how a route joins the engine-facing surface, and the line is the reviewable record of that
+ * decision. What the two lists mean is opposite — every route here refuses a stranger, and
+ * the suites assert exactly that — so a route that appeared in both would be one whose
+ * classification nobody had settled.
+ */
+export const INTERNAL_SURFACE: readonly string[] = [
+  // The scoped lease. Local-provider connection details only, TTL'd and audited — the one
+  // thing a worker is ever handed, and never a credential (`src/modules/internal/lease.ts`).
+  `POST ${INTERNAL_LEASE_PATH}`,
+  // The invocation proxy. Specified by #224 and implemented by AF.2 (#235); it answers
+  // `501` today, behind the same key, so the contract can be built against.
+  `POST ${INTERNAL_INVOKE_PATH}`,
+].sort();
+
 /** One route, as the enumeration sees it. */
 export interface Route {
   /** `METHOD path`, from the origin root. */
@@ -69,8 +103,17 @@ export interface Route {
   readonly method: string;
   /** The path, from the origin root, still carrying its `:name` parameters. */
   readonly path: string;
-  /** Whether the guard would let a request with no session through. */
+  /** Whether the session guard would let a request with no session through. */
   readonly anonymous: boolean;
+  /**
+   * Whether the route is part of the engine-facing surface.
+   *
+   * Always accompanied by {@link Route.anonymous}, and never a substitute for it: an internal
+   * route is *exempt from the session* and *guarded by the shared secret*, which is two
+   * decisions rather than one. Reading the two flags together is what lets a suite say the
+   * true thing about all three categories.
+   */
+  readonly internal: boolean;
 }
 
 /** Nest's numeric `RequestMethod`, as a verb. Indexed by the enum's own values. */
@@ -132,6 +175,12 @@ export function routeTable(app: INestApplication): Route[] {
             handler,
             controller,
           ]) === true,
+        // The same read `InternalKeyGuard` makes, through the same key — see
+        // `src/modules/internal/internal.decorators.ts` for why the guard is driven by
+        // metadata rather than by `@UseGuards()` on a controller somebody might forget.
+        internal:
+          reflector.getAllAndOverride<boolean | undefined>(INTERNAL_ONLY, [handler, controller]) ===
+          true,
       });
     }
   }
@@ -143,10 +192,12 @@ export function routeTable(app: INestApplication): Route[] {
  * Where a route answers, from the origin root.
  *
  * The health controller is `VERSION_NEUTRAL` and its path is excluded from the global
- * prefix, so it answers at the root; everything else sits under `/api/v1`. That is two
- * cases rather than a general rule because there are two cases —
- * `src/modules/health/health.paths.ts` is the list, and a third would be a decision
- * somebody made rather than a pattern to be inferred.
+ * prefix, so it answers at the root; the two internal controllers are the same
+ * ([#224](https://github.com/NobuData/ouroboros/issues/224)); everything else sits under
+ * `/api/v1`. Those are enumerated cases rather than a general rule, because each one is a
+ * decision somebody made and argued —  `src/modules/health/health.paths.ts` and
+ * `src/modules/internal/internal.paths.ts` are where. A fourth would be another such
+ * decision, not a pattern to be inferred.
  *
  * @param base - The controller's own path segment.
  * @param path - The handler's.
@@ -154,7 +205,7 @@ export function routeTable(app: INestApplication): Route[] {
  */
 export function fullPath(base: string, path: string): string {
   const segments = [base, path].filter((segment) => segment !== "" && segment !== "/");
-  const prefix = base === HEALTH_PATH ? "" : API_BASE_PATH;
+  const prefix = base === HEALTH_PATH || isInternalPath(base) ? "" : API_BASE_PATH;
   const joined = segments.join("/");
 
   return joined === "" ? prefix : `${prefix}/${joined}`;

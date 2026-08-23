@@ -80,7 +80,7 @@ Epic letters continue the sequence (…Y, Z, AA, AB): this roadmap uses
 
 | Option | Architecture | Fit | Trade-offs |
 |---|---|---|---|
-| **A — Control-plane proxied invocation** ⭐ recommended | Workers never hold provider keys: the engine calls the invocation gateway in `ouroboros-rest`; REST decrypts, calls the provider, streams back; per-run scoping + cost caps enforced at the single choke point | The subline's "keys never leave the control plane" made literal — stronger than the mockup's own 15-minute-token claim; one place for AB.1's per-hop errors, usage capture, cap enforcement | REST is on the token hot path (streaming throughput engineering); acceptable at MVP scale, measured before AF.2 finalizes |
+| **A — Control-plane proxied invocation** ⭐ recommended · 🟢 contract delivered (AD.3, #224) | Workers never hold provider keys: the engine calls the invocation gateway in `ouroboros-rest`; REST decrypts, calls the provider, streams back; per-run scoping + cost caps enforced at the single choke point | The subline's "keys never leave the control plane" made literal — stronger than the mockup's own 15-minute-token claim; one place for AB.1's per-hop errors, usage capture, cap enforcement | REST is on the token hot path (streaming throughput engineering); acceptable at MVP scale, measured before AF.2 finalizes |
 | B — Short-lived credential leases | Engine requests a lease (`POST /internal/credentials/lease {provider, run}` → decrypted key material, 15-min TTL, scoped, audited); engine calls providers directly | Matches the mockup copy exactly; keeps REST off the streaming path | Raw keys do reach workers (briefly); revocation is TTL-bounded, not immediate; more audit surface |
 | C — Vault dynamic secrets / STS-style broker | Vault issues true short-lived provider tokens where providers support them | Ideal custody | Almost no LLM providers support derived short-lived keys today; only workable generically via option C's own proxy — collapses into A |
 
@@ -427,7 +427,7 @@ erDiagram
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AD.1 | #222 | 🟢 Done | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
 | AD.2 | #223 | 🟡 Open | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
-| AD.3 | #224 | 🟡 Open | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
+| AD.3 | #224 | 🟢 Done | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
 | AD.4 | #225 | 🟡 Open | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
 | AD.5 | #226 | 🟡 Open | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
 
@@ -546,7 +546,86 @@ rotate ─▶ validate new ─▶ atomic swap ─▶ retire old     delete ─�
 
 ### Issue AD.3 — ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec)
 
-> **GitHub issue:** #224 · **Status:** 🟡 Open · **Parent epic:** #213
+> **GitHub issue:** #224 · **Status:** 🟢 Done · **Parent epic:** #213
+
+> **Shipped.** [`src/modules/internal/`](../ouroboros-rest/src/modules/internal) in
+> `ouroboros-rest`, [`openapi.internal.yaml`](../ouroboros-rest/openapi.internal.yaml) beside
+> it, and
+> [`control_plane/`](../ouroboros-engine/src/ouroboros_engine/control_plane) in
+> `ouroboros-engine`. Two paths, and the asymmetry between them *is* decision **P3**:
+> `POST /internal/llm/invoke` is specified and answers `501` naming AF.2 (#235);
+> `POST /internal/credentials/lease` is implemented and returns a **local** provider's base
+> URL — TTL'd at fifteen minutes, audited, and behind the #51 shared secret.
+>
+> **The mockup's own copy was improved on rather than implemented.** The page subline
+> promises *"workers only ever see short-lived tokens"*, and no token is minted anywhere in
+> this ticket. A fifteen-minute credential is still a credential: it reaches the worker,
+> revocation is bounded only by its TTL, and the audit surface widens to every process that
+> ever held one — and for most LLM providers it is fiction, because almost none support
+> deriving short-lived scoped keys, so such a token would be a full API key with a timer
+> bolted on by us. AD.5 (#226) owns the wording; this is the behaviour it will describe.
+>
+> **No secret can be returned, structurally.** `LeaseResource` has nowhere to put one —
+> every field is an identifier, an address or a timestamp — and
+> [`no-secret-responses.mjs`](../ouroboros-rest/src/modules/internal/no-secret-responses.mjs)
+> is the lint rule that refuses a field named for credential material in anything the
+> internal surface returns, in a declared shape or a returned literal. Its word list differs
+> from the vault's `no-secret-logging` on exactly two entries and the difference is argued in
+> the file: `key` is denied here and not there, and `token` is denied while `tokens` is not —
+> in this product the plural is a unit of text (`inputTokens`, `token_usage`) and the singular
+> is a credential.
+>
+> **The policy is enforced twice, and both are needed.** `lease.ts` refuses a cloud kind
+> before it consults configuration or the database, so no state can produce a grant; and
+> `configuration.ts` refuses to *start* a process whose `OURO_LOCAL_PROVIDER_URLS` names one.
+> A policy that lived only in the service could be walked around by an operator, and one that
+> lived only in configuration would miss a kind added to that variable by a later ticket. Both
+> halves are tested per cloud adapter kind rather than on a representative one.
+>
+> **`openai_compatible` is leasable, with the caveat V012 already wrote down.** The same
+> adapter fronts a vLLM on somebody's own GPU *and* `api.openai.com`, so local-ness is a
+> property of the connection rather than of the kind — which is why a lease for it still fails
+> unless the deployment declared an address. `OURO_LOCAL_PROVIDER_URLS` is the operator making
+> that connection-level statement once at deployment level; Y.1 (#189) replaces it with a row,
+> and `LocalProviders` is the seam that changes when it does.
+>
+> **The scope is a run, and the run is real.** The workspace a grant is attributed to is
+> resolved *from* the run rather than named by the caller — a worker naming its own workspace
+> would be a worker choosing which one to be audited against — and a run that does not exist
+> is a `404`. Every grant writes `credential.lease_granted` carrying the lease, the run, the
+> workspace, the provider and the address; the sink is the service log until AD.4 (#225)
+> brings `audit_events`, and `LeaseAudit` is where that becomes an insert with no caller
+> changing.
+>
+> **The internal surface is a second OpenAPI document, not a section of the first.** Folding
+> it into `openapi.yaml` would publish engine-facing operations into the client `ouroboros-ui`
+> generates. `yarn openapi` renders both pairs and `yarn test` holds both to the router in
+> both directions — which is what keeps *specified* from quietly meaning *described but
+> unreachable*: the proxy answers `501` today, so it is a route, and when AF.2 replaces that
+> method body nothing about the path, the guard, the document or the engine's client moves.
+>
+> **A third category of route now exists, and the guard suites say so.** An internal route
+> carries `@AllowAnonymous()` — its caller holds no session and could not be given one — so
+> `route.table.fixture.ts` gained an `internal` flag and `INTERNAL_SURFACE` beside
+> `SHIPPED_PUBLIC_SURFACE`. Calling those routes *public* would have put them in the list both
+> guard suites assert a stranger can reach; they are the opposite, and each suite now asserts
+> all three categories in both directions. `InternalKeyGuard` is registered as an `APP_GUARD`
+> keyed on `@InternalOnly()` rather than applied per controller, and
+> `internal.module.spec.ts` asserts the complement — every route whose *path* is under
+> `/internal` carries the decorator.
+>
+> **The engine's stub opens no socket, and that is a decision.** There is no executor yet, so
+> adding an HTTP library to that service's runtime dependencies would be shipping a dependency
+> on speculation and choosing sync or async on AF.2's behalf. `ControlPlaneClient` builds a
+> complete request — absolute URL, the key, the body in the control plane's `camelCase` — and
+> reads what comes back, including the NDJSON stream one event at a time;
+> `tests/test_control_plane_contract.py` reads the committed internal document and compares
+> the paths, the header, the provider kinds and AB.1's error taxonomy against the mirror.
+>
+> Also landed: `NotImplementedError` in `error.envelope.ts` — the one 5xx whose message a
+> caller is allowed to read, which is what makes a `501` a pointer rather than a dead end —
+> and `OURO_LOCAL_PROVIDER_URLS` in the environment registry, refused at boot when it names a
+> provider whose credentials never leave the control plane.
 
 
 - **Problem Statement:** The engine will need provider access (estimator O.2,
@@ -1036,7 +1115,7 @@ Plus **7 amendments** — comments posted and the `providers` label applied on
 |---|---|
 | #200 | AA.1's **Providers & keys** tab goes live via AE.1 (#227); registry and Spend stay honest stubs |
 | #56 | The e2e suite gains the providers leg AE.7 (#233), composing with the routing leg (#206) |
-| #26 | AD.4 (#225) early-adopts the `audit_events` shape — and lands the table if #26 is still unbuilt |
+| #26 | AD.4 (#225) early-adopts the `audit_events` shape — and lands the table if #26 is still unbuilt. AD.3 (#224) is the first emitter: `credential.lease_granted` is assembled at the one point a grant is known to have happened and written to the service log, and #225 changes that method body to an insert |
 | #138 | WF-Q.1's ad-hoc AES-GCM helper superseded by the AD.1 (#222) vault service, with a migration |
 | #101 | INTAKE-K.3's GitHub credential encryption likewise moves to AD.1 (#222) |
 | #189 | Routing Y.1's schema is **extended** by AC.6 (#221) — caps, meta, `enabled`, and `provider_models`; aliases gain soft validation against discovered models (P6) |
@@ -1109,7 +1188,7 @@ issues:
   keeps the product self-hostable with no extra infrastructure; the design's value
   is that moving to KMS or Vault (#236) re-wraps sealed DEKs and leaves every data
   ciphertext byte-identical — verified there, not assumed here.
-- **P3 — workers never hold keys** (#224). Proxied invocation rather than the
+- **P3 — workers never hold keys** (#224, 🟢 delivered). Proxied invocation rather than the
   mockup's 15-minute tokens, with a scoped lease for local providers only and a
   cloud lease refused by server-side policy.
 - **P4/P5 — the key row is not an exfiltration UI** (#223, #225, #229). Masked

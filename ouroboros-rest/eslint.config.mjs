@@ -5,6 +5,20 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 import { ouroborosPlugin } from "./src/modules/vault/no-secret-logging.mjs";
+import { noSecretResponses } from "./src/modules/internal/no-secret-responses.mjs";
+
+/**
+ * The plugin both local rules are registered through, as `ouroboros/…`.
+ *
+ * Composed here rather than in either rule's own file because a flat config may define a
+ * plugin name once: two config blocks each declaring `ouroboros` with a different object is
+ * an error, not a merge. The vault's export is the base — it is where the plugin started
+ * (#222) — and #224's rule is added to it.
+ */
+const ouroboros = {
+  ...ouroborosPlugin,
+  rules: { ...ouroborosPlugin.rules, "no-secret-in-internal-response": noSecretResponses },
+};
 
 /**
  * ESLint flat config for ouroboros-rest (docs/CONVENTIONS.md § 6).
@@ -144,8 +158,29 @@ export default tseslint.config(
     // correctly and reporting the file that implements it.
     files: ["src/**/*.ts"],
     ignores: ["src/modules/config/**/*.ts"],
-    plugins: { ouroboros: ouroborosPlugin },
+    plugins: { ouroboros },
     rules: { "ouroboros/no-secret-logging": "error" },
+  },
+
+  {
+    // Issue #224's last acceptance criterion, as a rule rather than as reviewer vigilance:
+    // *no other internal endpoint returns secret material*. Decision P3 says a worker never
+    // holds a provider credential — a cloud provider is reached through the invocation proxy
+    // and a lease carries an address — and this refuses the field that would make that false.
+    //
+    // Scoped to `src/modules/internal/`, which is the whole of the engine-facing surface: the
+    // two `/internal` controllers live there, `internal.module.spec.ts` asserts that they are
+    // the only two, and a rule applied to the rest of the service would fire on every
+    // legitimate mention of a key in the vault. `src/modules/internal/no-secret-responses.mjs`
+    // argues why its word list differs from the logging rule's, and why `key` is denied here
+    // and not there.
+    //
+    // The rule's own spec is exempt: it drives ESLint's `RuleTester` over source strings that
+    // *contain* the mistake, which is the rule working rather than the file being wrong.
+    files: ["src/modules/internal/**/*.ts"],
+    ignores: ["src/modules/internal/no-secret-responses.spec.ts"],
+    plugins: { ouroboros },
+    rules: { "ouroboros/no-secret-in-internal-response": "error" },
   },
 
   {

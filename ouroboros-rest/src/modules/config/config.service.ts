@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
+import type { LocalProviderKind } from "../internal/providers";
 import {
   listenHost,
   type Configuration,
@@ -110,6 +111,20 @@ export class AppConfigService {
   }
 
   /**
+   * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
+   *
+   * Read by one thing: `LocalProviders` in `src/modules/internal/`, which is what answers a
+   * worker's lease with an address. Empty for most installations, which is why that surface
+   * answers `404 local_provider_not_configured` rather than treating an empty map as a
+   * misconfiguration.
+   */
+  get localProviderUrls(): Readonly<Partial<Record<LocalProviderKind, string>>> {
+    return this.config.getOrThrow<Readonly<Partial<Record<LocalProviderKind, string>>>>(
+      "localProviderUrls",
+    );
+  }
+
+  /**
    * The bind-interface override, when set — `OURO_LISTEN_HOST`.
    *
    * `get` rather than `getOrThrow`: unset is the normal posture, and the only stack that
@@ -164,6 +179,7 @@ export class AppConfigService {
       corsOrigins: this.corsOrigins,
       dashboardPollSeconds: this.dashboardPollSeconds,
       listenHostOverride: this.listenHostOverride,
+      localProviderUrls: this.localProviderUrls,
     };
   }
 

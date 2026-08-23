@@ -10,6 +10,7 @@ import { RunsModule } from "../runs/runs.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { HealthModule } from "../health/health.module";
+import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -80,6 +81,16 @@ import { AppService } from "./app.service";
  * [#703](https://github.com/NobuData/ouroboros/issues/703) are what move people over and
  * delete it.
  *
+ * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
+ * its position is the only one it could have. It registers a global guard, and Nest runs
+ * global guards in the order their modules are initialised — so being listed after
+ * `BetterAuthModule` and `TenancyModule` is what lets its two routes be `@AllowAnonymous()`
+ * without being public: the session guard steps aside for them, the tenant guard steps aside
+ * behind it, and `InternalKeyGuard` then refuses anything that cannot prove it came from
+ * inside the network. It is also the first module here whose routes are *not* under
+ * `/api/v1`, which `src/application.ts` and `src/modules/internal/internal.paths.ts` between
+ * them make true.
+ *
  * `errors` is the exception to that shape and has no module: it holds the envelope every
  * failure is answered in, and the filter and pipe that produce it are registered on the
  * *application* rather than on a module, in `src/application.ts`, because they apply to
@@ -129,6 +140,7 @@ export class AppModule {
         SettingsModule,
         PricingModule,
         VaultModule,
+        InternalModule,
       ],
     };
   }

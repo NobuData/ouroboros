@@ -210,6 +210,29 @@ export class InvalidRequestError extends DomainError {
 }
 
 /**
+ * `501` — this operation is a published contract that nothing implements yet.
+ *
+ * The only class here above the {@link SERVER_ERROR_FLOOR}, and the only one whose message
+ * a caller is allowed to read. Everything else in the 5xx range is a failure whose text is
+ * kept inside the process — `error.filter.ts` replaces it with
+ * {@link INTERNAL_ERROR_MESSAGE}, because a status somebody chose and a message somebody
+ * wrote for a client are different things and a stack trace is neither. A `DomainError`
+ * *is* the answer, so this one keeps what it was constructed with, and that is the whole
+ * reason it is a subclass rather than a `throw new HttpException(…, 501)`.
+ *
+ * It exists for the shape AD.3 ([#224](https://github.com/NobuData/ouroboros/issues/224))
+ * introduces: a surface specified in one ticket and implemented in another, where the
+ * contract has to be callable before it can be built against. A `404` would be
+ * indistinguishable from a caller with the path wrong, which is the one thing an
+ * implementer of the other half needs to be able to rule out.
+ */
+export class NotImplementedError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.NOT_IMPLEMENTED, code, message, details);
+  }
+}
+
+/**
  * The code for a failure that named none — an exception from the framework, or one from a
  * library that never heard of this envelope.
  *
@@ -253,6 +276,7 @@ const GENERIC_CODES: Readonly<Record<number, string>> = Object.freeze({
   [HttpStatus.UNPROCESSABLE_ENTITY]: "unprocessable_entity",
   [HttpStatus.TOO_MANY_REQUESTS]: "rate_limited",
   [HttpStatus.INTERNAL_SERVER_ERROR]: "internal_error",
+  [HttpStatus.NOT_IMPLEMENTED]: "not_implemented",
   [HttpStatus.BAD_GATEWAY]: "bad_gateway",
   [HttpStatus.SERVICE_UNAVAILABLE]: "unavailable",
   [HttpStatus.GATEWAY_TIMEOUT]: "gateway_timeout",

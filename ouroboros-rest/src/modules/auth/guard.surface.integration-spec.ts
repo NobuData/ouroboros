@@ -3,7 +3,13 @@ import { ApiHarness, ORGS, type Method, type Person } from "../../testing/harnes
 import { bodyOf } from "../../testing/integration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { AUTH_ERRORS } from "./auth.errors";
-import { routeTable, SHIPPED_PUBLIC_SURFACE, type Route } from "./route.table.fixture";
+import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
+import {
+  INTERNAL_SURFACE,
+  routeTable,
+  SHIPPED_PUBLIC_SURFACE,
+  type Route,
+} from "./route.table.fixture";
 
 /**
  * **The public surface, enumerated — as answers.**
@@ -148,8 +154,11 @@ describe("what the guard actually answers, for every route in the table", () => 
     // over a real database. It is not redundant: this one is built by `createApplication` with
     // a pool that connects, and a module that only registers a controller when it can reach
     // the database would show up as a difference between the two lists.
-    expect(routes.filter((route) => route.anonymous).map((route) => route.signature)).toEqual(
-      SHIPPED_PUBLIC_SURFACE,
+    expect(
+      routes.filter((route) => route.anonymous && !route.internal).map((route) => route.signature),
+    ).toEqual(SHIPPED_PUBLIC_SURFACE);
+    expect(routes.filter((route) => route.internal).map((route) => route.signature)).toEqual(
+      INTERNAL_SURFACE,
     );
   });
 
@@ -201,12 +210,60 @@ describe("what the guard actually answers, for every route in the table", () => 
       // else on purpose — `/health/ready` is a `503` when a dependency is down, and
       // `POST /auth/discover` with no body is a `422` from the pipe that runs *after* the
       // guard, which is the assertion rather than a compromise.
+      //
+      // The internal routes are excluded, and that exclusion is #224's whole point: they are
+      // `anonymous` because their caller holds no session, and a stranger must get `401` from
+      // every one of them. The section below is where that is asserted.
       const refused: string[] = [];
 
-      for (const route of routes.filter((each) => each.anonymous)) {
+      for (const route of routes.filter((each) => each.anonymous && !each.internal)) {
         const { status } = await call(route);
 
         if (status === 401) {
+          refused.push(route.signature);
+        }
+      }
+
+      expect(refused).toEqual([]);
+    });
+
+    it("is refused by every route on the engine-facing surface", async () => {
+      // The category a browser can never reach, whatever it holds. A cookie is not a shared
+      // secret, so the answer is the same `401` a stranger gets — and it is the *guard's*,
+      // which is why this runs against a real database where a handler could otherwise have
+      // answered something.
+      const admitted: string[] = [];
+
+      for (const route of routes.filter((each) => each.internal)) {
+        const { status } = await call(route);
+
+        if (status !== 401) {
+          admitted.push(`${route.signature} → ${status}`);
+        }
+      }
+
+      expect(admitted).toEqual([]);
+    });
+  });
+
+  describe("a worker carrying the internal key", () => {
+    it("is admitted by every route on the engine-facing surface", async () => {
+      // Without this the section above would pass against a guard that refused everything,
+      // which is the shape of every over-corrected authentication bug — and the internal
+      // surface is the one where nobody would notice for a while, because its caller is a
+      // background process rather than a person looking at a screen.
+      //
+      // `not 401` is again the honest claim: past the guard, the lease route answers `422`
+      // to the empty body this file sends and the proxy answers the `501` it documents.
+      const refused: string[] = [];
+
+      for (const route of routes.filter((each) => each.internal)) {
+        const response = await api
+          .anonymous(route.method.toLowerCase() as Method, withParameters(route.path))
+          .set(INTERNAL_KEY_HEADER, api.configuration.engineSharedSecret)
+          .send(NOTHING);
+
+        if (response.status === 401) {
           refused.push(route.signature);
         }
       }

@@ -156,6 +156,17 @@ catalogue, a linter or a diff tool:
 | [`openapi.yaml`](openapi.yaml) | **Authoritative.** The one to edit — comments, block text, no escaping                          |
 | [`openapi.json`](openapi.json) | Rendered from it by `yarn openapi`. What the process loads, and what `openapi-typescript` wants |
 
+**A second document sits beside them**, and describes a different boundary:
+[`openapi.internal.yaml`](openapi.internal.yaml) is the two paths `ouroboros-engine` calls
+([#224](https://github.com/NobuData/ouroboros/issues/224)) — see
+[The internal surface](#the-internal-surface). `yarn openapi` renders both pairs and `yarn
+test` holds both to the router in both directions. It is a separate document rather than a
+section of the first because folding it in would publish engine-facing operations into the
+client `ouroboros-ui` generates, and **it is not served**: the public document answers at
+`/api/openapi.{json,yaml}` for a client generator on somebody's laptop, while this one is
+read out of the repository by AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)),
+AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) and the engine's client stub.
+
 ```bash
 yarn openapi           # re-render openapi.json from the YAML
 yarn openapi --check   # report drift without writing; exits non-zero
@@ -222,6 +233,7 @@ service never starts half-configured.
 | `OURO_CORS_ORIGINS`         | Browser origins allowed to call the API with credentials |        yes         | comma-separated origins — scheme, host, optional port; no path, no wildcard |
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 | `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
+| `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -1426,6 +1438,101 @@ The readiness probe is a separate request and stays that way. It reads `GET /hea
 the engine serves without the key, and reports rather than answers — see
 [Health and readiness](#health-and-readiness).
 
+## The internal surface
+
+Everything above is the browser's boundary. This is the other one: two paths
+`ouroboros-engine` calls, reachable from no browser at all
+([#224](https://github.com/NobuData/ouroboros/issues/224), roadmap decision **P3**).
+
+```
+POST /internal/llm/invoke          the control plane makes the call — keys never cross
+POST /internal/credentials/lease   local providers only — an address, TTL'd and audited
+```
+
+**A worker never holds a provider credential.** Mockup 07's page subline promises something
+weaker — *"workers only ever see short-lived tokens"* — and this surface is where the first
+half of it is made literal and the second is improved on. There is no token. A fifteen-minute
+credential is still a credential: it genuinely reaches the worker, revocation is bounded only
+by its TTL, and the audit surface widens to every process that ever held one. It is also,
+for most LLM providers, fiction — almost none support deriving short-lived scoped keys, so
+such a token would in practice be a full API key with a timer bolted on by us.
+
+So the division is by *what a provider needs in order to be reached*:
+
+| Provider kind | Reached by | Given to a worker |
+| --- | --- | --- |
+| `anthropic`, `copilot`, `cursor` | the control plane, which holds the key for one request scope | nothing — a lease is `403 provider_not_leasable` |
+| `ollama`, `openai_compatible` | the worker, directly | a base URL, TTL-bounded and audited |
+
+The exception is narrow and is not a compromise: an engine worker calling an Ollama daemon
+on the same box gains nothing from proxying its traffic through this service, because there
+is no key on that path to protect.
+
+**The policy is enforced in two places, and both are needed.** `lease.ts` refuses a cloud
+kind before it looks anything up, so no state and no configuration can produce a grant; and
+`configuration.ts` refuses to start a process whose `OURO_LOCAL_PROVIDER_URLS` names one, so
+an operator cannot configure their way past the first check. A policy that lived only in the
+service could be walked around, and one that lived only in configuration would miss a kind
+added to that variable by a later ticket.
+
+**A lease has nowhere to put a secret.** Every field of the answer is an identifier, an
+address or a timestamp, and `no-secret-responses.mjs` — a lint rule over
+`src/modules/internal/` — refuses a field named for credential material in anything this
+surface returns. That is the acceptance criterion *no secret, verified by payload
+inspection* made structural rather than watched for.
+
+```console
+$ curl -s -X POST localhost:4000/internal/credentials/lease \
+    -H "X-Ouro-Internal-Key: $OURO_ENGINE_SHARED_SECRET" \
+    -H 'Content-Type: application/json' \
+    -d '{"provider":"ollama","run":"4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94"}'
+{"id":"7c9e…","provider":"ollama","run":"4d2a…","organizationId":"aBcD…",
+ "baseUrl":"http://localhost:11434","grantedAt":"…","expiresAt":"…","ttlSeconds":900}
+
+$ curl -s -X POST localhost:4000/internal/credentials/lease … -d '{"provider":"anthropic",…}'
+{"code":"provider_not_leasable","message":"This provider is reached through the invocation
+ proxy; its credentials never leave the control plane. …","details":{"provider":"anthropic"}}
+```
+
+**A lease is not a bearer token**, which is why nothing stores one and there is no way to
+revoke one: holding it grants nothing that knowing the address would not. What the TTL bounds
+is how long a worker should keep believing the answer before asking again.
+
+**Where the address comes from, and where it will come from.** `OURO_LOCAL_PROVIDER_URLS`
+today — the operator saying *these kinds are local here, at these addresses* — because Y.1
+([#189](https://github.com/NobuData/ouroboros/issues/189)) has not landed and there is no
+`provider_connections` row to read. `LocalProviders` is the seam that changes when it does;
+nothing above it moves.
+
+**Every grant writes `credential.lease_granted`**, carrying the lease, the run, the workspace,
+the provider and the address — never secret material, because on this path there is none. The
+sink is the service log until AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225))
+brings `audit_events`; `LeaseAudit` is where that becomes an insert, and every caller stays
+as it is.
+
+**`POST /internal/llm/invoke` is a contract, not an implementation.** It answers `501
+invocation_not_implemented` naming AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)),
+deliberately rather than `404`, so an executor being written against it can tell *the path is
+right and the other half is not built yet* from *I have the URL wrong*. The request and
+streaming shapes are in [`openapi.internal.yaml`](openapi.internal.yaml) and in
+`invoke.contract.ts`, and `ouroboros-engine/src/ouroboros_engine/control_plane/` mirrors them
+— which is what makes AF.1's ([#234](https://github.com/NobuData/ouroboros/issues/234)) ADR a
+real decision rather than a description of whatever got built.
+
+**Authentication is the [#51](https://github.com/NobuData/ouroboros/issues/51) pattern, in
+the other direction.** Every route requires `X-Ouro-Internal-Key` carrying
+`OURO_ENGINE_SHARED_SECRET` — the same header and the same variable this service sends when
+*it* calls the engine. The comparison is constant time over digests, a missing header takes
+the same path as a wrong one, and the rejection is one constant body. A session cookie is not
+accepted here, whoever it belongs to: `guard.surface.spec.ts` enumerates all three categories
+of route — *needs a session*, *needs nothing*, *needs the key* — and asserts each one in both
+directions.
+
+**These paths are outside `/api` and unversioned**, for the reason the health probes are: the
+prefix is the browser's boundary — CORS-configured, session-authenticated, and published in
+the document `ouroboros-ui` generates a client from — and the only caller of these two is
+deployed alongside this service and upgraded with it.
+
 ## Container
 
 [`Dockerfile`](Dockerfile) is the production image
@@ -1545,13 +1652,17 @@ ouroboros-rest/
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 │       ├── pricing/        # what a model costs, with provenance          · #586
 │       │                   #   the one module that exports its service
-│       └── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
-│                           #   no controller — nothing here is a route
+│       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
+│       │                   #   no controller — nothing here is a route
+│       └── internal/       # /internal/* — the engine-facing surface       · #224
+│                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
 ├── Dockerfile.dockerignore # …and the context that image is built from
 ├── scripts/openapi.mjs     # `yarn openapi` — renders the JSON from the YAML
 ├── openapi.yaml            # the API specification — authoritative, hand-written
 ├── openapi.json            # rendered from it; the copy the service loads
+├── openapi.internal.yaml   # the engine-facing contract — authoritative      · #224
+├── openapi.internal.json   # rendered from it; read by AF.1/AF.2, served nowhere
 ├── eslint.config.mjs       # flat config; Prettier runs as a lint rule
 ├── jest.config.mjs         # unit suite — src/**/*.spec.ts, starts nothing
 ├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, on a container it starts
@@ -1580,6 +1691,15 @@ run after `auth/`'s guard because `AppModule` imports `AuthModule` first — and
 `tenancy.module.spec.ts` asserts the consequence of that ordering rather than the ordering
 itself, because the consequence is what matters: an unauthenticated caller must be a `401`
 before anything reaches a database.
+
+`internal/` contributes the third global guard and is the only module whose routes are
+outside `/api` ([#224](https://github.com/NobuData/ouroboros/issues/224)). `InternalKeyGuard`
+is registered there as an `APP_GUARD` and keyed on `@InternalOnly()` rather than applied to
+its two controllers, for the same reason the session guard is global: a guard somebody has to
+remember to add is a guard that will be forgotten, and here forgetting it means an
+unauthenticated internal endpoint. `internal.module.spec.ts` asserts the complement — every
+route whose *path* is under `/internal` carries the decorator — so neither half can go missing
+quietly.
 
 `errors/` is the one directory with no module of its own. It holds the envelope every
 failure is answered in, and the filter and pipe that produce it are registered on the
