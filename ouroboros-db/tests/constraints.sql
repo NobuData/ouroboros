@@ -28,8 +28,10 @@
 -- `queue_items` (V009, #65), `token_usage` (V010, #66) and `workspace_settings` (V011,
 -- #67) — `model_prices` (V012, #580), `tenant_keys` (V013, #222), the intake mirror
 -- `github_issues` with its sync cursor on `github_repos` (V014, #99), the routing
--- foundation `provider_connections` and `model_aliases` (V015, #189), and the routing
--- matrix itself — `task_kinds`, `routes` and ordered `route_hops` (V016, #190).
+-- foundation `provider_connections` and `model_aliases` (V015, #189), the routing matrix
+-- itself — `task_kinds`, `routes` and ordered `route_hops` (V016, #190) — what mockup
+-- 07's provider cards show and the discovered catalog beneath them (V017, #221), and the
+-- `escalation_rules` that modify a route (V018, #191).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -5013,6 +5015,517 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.provider_models pm
          where pm.id::text like 'ec000000%'),
   'deleting the workspace takes its connections, its aliases and every discovered model with them');
+
+-- ===========================================================================
+-- V018 — escalation_rules, the card's three sentences as structure (#191)
+-- ===========================================================================
+--
+-- Mockup 06's *ESCALATION RULES* card is the one place on the page where the cheap
+-- implementation is obvious and wrong: the three lines read like sentences, so storing them
+-- as sentences looks like the whole job — and then nothing can evaluate them. Decision M5
+-- takes the other path, and this section is where that becomes checkable rather than
+-- claimed.
+--
+-- The ticket's six criteria are what it is about:
+--
+--   * **The three mockup rules round-trip without loss.** Written as structure, read back as
+--     structure, and their derived sentences compared to the mockup **character for
+--     character** — which is the only comparison that means anything for a string a card
+--     prints verbatim.
+--   * **A malformed `"then"` cannot be stored, and is refused by a CHECK by name.** Unknown
+--     action keys, two actions at once, and every shape underneath each action.
+--   * **`"when"` is WF-P8's grammar scoped to routing, not a parallel one.** Asserted twice
+--     over: an unknown condition key is refused, and every effort size `queue_items_effort`
+--     names — read out of the catalogue rather than restated here — is a size a rule may
+--     name. Two closed vocabularies of five values are one vocabulary only for as long as
+--     nobody edits one of them.
+--   * **The sentence is derived, deterministically, and cannot be hand-written.** The
+--     column is `generated always … stored`, which is asserted from the catalogue and
+--     proved by watching PostgreSQL refuse a supplied value; the same structure renders the
+--     same sentence in a second workspace; and it renders in the *grammar's* key order even
+--     though jsonb stores those keys in another.
+--   * **A rule naming a task kind or an alias the workspace does not have is refused at
+--     write time.** Both directions — writing such a rule, and retiring the kind or alias a
+--     rule already names — because a reference held in only one direction is a reference
+--     that goes stale the first time somebody tidies up.
+--   * **`sort_order` is a deterministic evaluation order**, unique per workspace and
+--     reorderable, with the deferral proved not to mean unenforced.
+--
+-- Its own fixtures, and two workspaces again: one to own the rules, one to own the alias
+-- they must not be allowed to reach.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-rules',     'Rules Works',     'rules-works',     now()),
+  ('org-bystander', 'Bystander Works', 'bystander-works', now());
+
+insert into ouroboros.provider_connections (id, organization_id, kind, display_name) values
+  ('ee000000-0000-0000-0000-00000000000a', 'org-rules',     'anthropic', 'Anthropic'),
+  ('ee000000-0000-0000-0000-00000000000b', 'org-bystander', 'anthropic', 'Anthropic');
+
+-- `coder-max` in both workspaces, and one alias each workspace has alone: the pair is what
+-- makes the tenancy assertion below mean something.
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id) values
+  ('ef000000-0000-0000-0000-00000000000a', 'org-rules', 'coder-max',
+   'ee000000-0000-0000-0000-00000000000a', 'claude-fable-5'),
+  ('ef000000-0000-0000-0000-00000000000b', 'org-rules', 'second-opinion',
+   'ee000000-0000-0000-0000-00000000000a', 'composer-2'),
+  ('ef000000-0000-0000-0000-00000000000c', 'org-bystander', 'coder-max',
+   'ee000000-0000-0000-0000-00000000000b', 'claude-opus-5'),
+  ('ef000000-0000-0000-0000-00000000000d', 'org-bystander', 'bystander-only',
+   'ee000000-0000-0000-0000-00000000000b', 'claude-opus-5');
+
+insert into ouroboros.task_kinds (organization_id, name, description, sort_order) values
+  ('org-rules', 'implement', 'Write the change, run tests, iterate to green',      4),
+  ('org-rules', 'review',    'Self-review the PR against the acceptance criteria', 6),
+  ('org-bystander', 'plan',  'Decompose into steps, pick a workflow',              1);
+
+-- --- the three mockup rules, as structure -------------------------------------
+--
+-- Acceptance criterion: *all three serialize and round-trip through the schema without
+-- loss*. The literals below are the ticket's fixture table, and nothing but `id`,
+-- `enabled`, `sort_order` and the timestamps is supplied — `display` cannot be.
+insert into ouroboros.escalation_rules (id, organization_id, sort_order, "when", "then") values
+  ('f0000000-0000-0000-0000-000000000001', 'org-rules', 1,
+   '{"effort_gte": "l"}',
+   '{"use_alias": {"task_kind": "implement", "alias": "coder-max", "params": {"thinking": "max"}}}'),
+  ('f0000000-0000-0000-0000-000000000002', 'org-rules', 2,
+   '{"label": "security"}',
+   '{"add_vote": {"task_kind": "review", "alias": "second-opinion"}}'),
+  ('f0000000-0000-0000-0000-000000000003', 'org-rules', 3,
+   '{"diff_kind": "docs_only"}',
+   '{"route_local": {}}');
+
+-- The card's `3 active`, and the order it draws them in.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.escalation_rules
+    where organization_id = 'org-rules' and enabled),
+  'the workspace has the mockup''s three rules and all three are active');
+
+-- The sentences, character for character. This is the ticket's round-trip table, and it is
+-- the assertion the whole migration exists to make true.
+select pg_temp.must_hold(
+  (select array_agg(display order by sort_order) = array[
+     'effort ≥ L → implement uses coder-max (max thinking)',
+     'security label → review adds second-opinion vote',
+     'docs-only diff → everything routes local']
+     from ouroboros.escalation_rules where organization_id = 'org-rules'),
+  'the three mockup rules render the three sentences mockup 06 prints, exactly');
+
+-- And the structure came back unchanged — a round-trip is both halves, and a schema that
+-- had quietly normalised `params` away would still render the first sentence from what it
+-- kept.
+select pg_temp.must_hold(
+  (select "when" = '{"effort_gte": "l"}'::jsonb
+      and "then" = '{"use_alias": {"task_kind": "implement", "alias": "coder-max", "params": {"thinking": "max"}}}'::jsonb
+     from ouroboros.escalation_rules where id = 'f0000000-0000-0000-0000-000000000001'),
+  'the rule reads back as the structure it was written as, params and all');
+
+-- The mockup's *"(max thinking)"* is data rather than prose, which is what makes it
+-- mergeable over `model_aliases.params` by resolution (Z.1) instead of parseable.
+select pg_temp.must_hold(
+  (select "then" #> '{use_alias,params}' = '{"thinking": "max"}'::jsonb
+     from ouroboros.escalation_rules where id = 'f0000000-0000-0000-0000-000000000001'),
+  'the parenthesis in the mockup''s first rule is a params object, not a phrase');
+
+-- --- the sentence is derived, and cannot be written ---------------------------
+--
+-- Acceptance criterion: *display strings regenerate deterministically from structure* and
+-- hand-written text is rejected. The first half is a property of the column, read from the
+-- catalogue so that a later migration turning it into an ordinary text column is caught
+-- here rather than noticed when the two copies first disagree.
+select pg_temp.must_hold(
+  (select attgenerated = 's' from pg_attribute
+    where attrelid = 'ouroboros.escalation_rules'::regclass and attname = 'display'),
+  'display is a stored generated column, which is what makes the sentence underivable by hand');
+
+-- The refusal itself, which is PostgreSQL's rather than a trigger's — class 42, not 23, so
+-- it is asserted with must_raise rather than must_reject.
+select pg_temp.must_raise(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then", display)
+    values ('org-rules', 9, '{"effort_gte": "l"}', '{"route_local": {}}',
+            'effort ≥ L → everything is fine, honestly')$$,
+  '428C9',
+  'a hand-written display is refused by the column itself, whoever the writer is');
+
+-- Deterministic across workspaces: the same structure is the same sentence, because the
+-- derivation reads the two documents and nothing else.
+insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then") values
+  ('org-bystander', 1, '{"diff_kind": "docs_only"}', '{"route_local": {}}');
+
+select pg_temp.must_hold(
+  (select count(distinct display) = 1 from ouroboros.escalation_rules
+    where "then" = '{"route_local": {}}'::jsonb),
+  'the same rule renders the same sentence in a second workspace');
+
+-- And in the *grammar's* key order rather than the document's. jsonb orders an object's
+-- keys by length — so this rule stores `label` before `effort_gte` — and the sentence
+-- nevertheless leads with the effort, which is what makes it a function of the rule rather
+-- than of how somebody typed it.
+select pg_temp.must_hold(
+  (select array_agg(k) = array['label', 'effort_gte']
+     from jsonb_object_keys('{"effort_gte": "l", "label": "security"}'::jsonb) k),
+  'jsonb really does store these two keys in the other order');
+
+select pg_temp.must_hold(
+  ouroboros.escalation_rule_display(
+    '{"effort_gte": "l", "label": "security"}', '{"route_local": {}}')
+  = 'effort ≥ L and security label → everything routes local',
+  'a two-condition rule reads in the grammar''s order, and its clauses are ANDed');
+
+-- Editing the structure re-derives the sentence: an edited rule cannot keep the one it had.
+update ouroboros.escalation_rules
+   set "then" = '{"use_alias": {"task_kind": "implement", "alias": "coder-max"}}'
+ where id = 'f0000000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select display = 'effort ≥ L → implement uses coder-max'
+     from ouroboros.escalation_rules where id = 'f0000000-0000-0000-0000-000000000001'),
+  'dropping the params re-derives the sentence without the parenthesis');
+
+update ouroboros.escalation_rules
+   set "then" = '{"use_alias": {"task_kind": "implement", "alias": "coder-max", "params": {"thinking": "max"}}}'
+ where id = 'f0000000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select display = 'effort ≥ L → implement uses coder-max (max thinking)'
+     from ouroboros.escalation_rules where id = 'f0000000-0000-0000-0000-000000000001'),
+  'and putting them back restores it, which is what "regenerates from structure" means');
+
+-- Several params render in sorted key order, value before key, comma-joined — the one rule
+-- rather than a table of phrasings.
+select pg_temp.must_hold(
+  ouroboros.escalation_rule_display(
+    '{"effort_gte": "xl"}',
+    '{"use_alias": {"task_kind": "plan", "alias": "coder-max",
+                    "params": {"thinking": "max", "temperature": 0.2}}}')
+  = 'effort ≥ XL → plan uses coder-max (0.2 temperature, max thinking)',
+  'two params render sorted, value before key, in one parenthesis');
+
+-- --- the "then" shapes, and nothing else --------------------------------------
+--
+-- Acceptance criterion: *malformed `then` shapes are rejected by CHECK constraint — an
+-- unknown action key cannot be stored*. It is a domain constraint, so the refusal arrives at
+-- the value rather than at the row, which is what lets the derivation above be written for
+-- structures already known good.
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}', '{"delete_the_repository": {}}')$$,
+  'an action key outside the three cannot be stored', 'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"route_local": {}, "add_vote": {"task_kind": "review", "alias": "second-opinion"}}')$$,
+  'a rule carries exactly one action, because two would depend on which a reader saw first',
+  'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}', '"route_local"')$$,
+  'an action is an object under an action key, not a bare string',
+  'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}', '{"route_local": {"except": ["docs"]}}')$$,
+  'route_local takes no options today, and an unrecognised one is refused rather than ignored',
+  'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"use_alias": {"task_kind": "implement"}}')$$,
+  'use_alias names both a task kind and the alias it swaps in', 'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"add_vote": {"task_kind": "review", "alias": "second-opinion",
+                           "params": {"thinking": "max"}}}')$$,
+  'only use_alias carries params — a vote has no invocation defaults to merge',
+  'escalation_rule_then_shape');
+
+-- The names are shaped as the tables that hold them shape theirs, so a rule cannot name
+-- something `task_kinds` or `model_aliases` could never contain. `Coder-Max` is V015's
+-- example of why that shape is a correctness rule rather than a style one.
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"use_alias": {"task_kind": "implement", "alias": "Coder-Max"}}')$$,
+  'an alias in a rule is lower-case kebab, exactly as model_aliases.alias is',
+  'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"use_alias": {"task_kind": "implement", "alias": "coder-max", "params": {}}}')$$,
+  'an empty params object would render as an empty parenthesis; absence is how "none" is said',
+  'escalation_rule_then_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"use_alias": {"task_kind": "implement", "alias": "coder-max",
+                            "params": {"thinking": {"budget": "max"}}}}')$$,
+  'a params value is a scalar, because every one of them is rendered into the sentence',
+  'escalation_rule_then_shape');
+
+-- --- the "when" grammar is WF-P8's, scoped -------------------------------------
+--
+-- Acceptance criterion: *`when` predicates conform to the WF-P8 grammar (shared vocabulary,
+-- not a parallel one)*. `source` is one of WF's own trigger conditions and is deliberately
+-- the probe: routing has no such context, so a rule carrying it would be a rule nothing
+-- evaluates, stored as though it would be.
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"source": "github"}', '{"route_local": {}}')$$,
+  'a condition key routing has no context for is refused rather than ignored',
+  'escalation_rule_when_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{}', '{"route_local": {}}')$$,
+  'a rule with no condition always fires, which is a route rather than an escalation',
+  'escalation_rule_when_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "xxl"}', '{"route_local": {}}')$$,
+  'a sixth effort size is refused here exactly as it is on the queue',
+  'escalation_rule_when_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"label": "  "}', '{"route_local": {}}')$$,
+  'a blank label is not a label', 'escalation_rule_when_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"label": ["security", "urgent"]}', '{"route_local": {}}')$$,
+  'a label condition names one label; an array is a shape the derivation cannot render',
+  'escalation_rule_when_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"diff_kind": "tests_only"}', '{"route_local": {}}')$$,
+  'a diff classification nothing computes is a rule that can never fire',
+  'escalation_rule_when_grammar');
+
+-- One vocabulary, not two that currently agree. The five sizes are read out of
+-- `queue_items_effort` rather than restated here, so widening one of the two without the
+-- other is what goes red — which is the whole content of "shared vocabulary".
+select pg_temp.must_hold(
+  (select count(*) = 5 and bool_and(ouroboros.escalation_rule_when_valid(
+                                      jsonb_build_object('effort_gte', size)))
+     from (select (regexp_matches(pg_get_constraintdef(oid), '''([a-z]+)''::text', 'g'))[1] as size
+             from pg_constraint where conname = 'queue_items_effort') sizes),
+  'every effort size the queue accepts is one an escalation rule may name — five, and the same five');
+
+-- --- a rule cannot name what the workspace does not have -----------------------
+--
+-- Acceptance criterion: *a rule referencing an unknown task kind or alias is rejected at
+-- write time, not discovered at resolution time*. The names live inside jsonb, so this is a
+-- deferred constraint trigger rather than a foreign key — and deferred is not unenforced,
+-- which every probe below shows by asking for the check early.
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"use_alias": {"task_kind": "triage", "alias": "coder-max"}}');
+    set constraints ouroboros.escalation_rules_targets_exist immediate$$,
+  'a rule naming a task kind the workspace does not have is refused when it is written',
+  'escalation_rules_targets_exist');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"add_vote": {"task_kind": "review", "alias": "third-opinion"}}');
+    set constraints ouroboros.escalation_rules_targets_exist immediate$$,
+  'a rule naming an alias the workspace does not have is refused when it is written',
+  'escalation_rules_targets_exist');
+
+-- Tenancy, which is the same rule seen from the angle that matters: `bystander-only` is a
+-- real alias, and it is not this workspace's. Without the workspace in the lookup, a rule
+-- would resolve onto another workspace's model and credential — V015's failure, reached
+-- through a jsonb document instead of a column.
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 9, '{"effort_gte": "l"}',
+            '{"use_alias": {"task_kind": "implement", "alias": "bystander-only"}}');
+    set constraints ouroboros.escalation_rules_targets_exist immediate$$,
+  'an alias that exists in another workspace is not an alias this workspace may name',
+  'escalation_rules_targets_exist');
+
+-- The other direction, which is what keeps the reference from going stale the first time
+-- somebody tidies up: retiring a kind or renaming an alias a rule names is refused, exactly
+-- as retiring an alias a hop names is (V016).
+select pg_temp.must_reject(
+  $$delete from ouroboros.task_kinds
+     where organization_id = 'org-rules' and name = 'review';
+    set constraints ouroboros.task_kinds_escalation_targets_exist immediate$$,
+  'a task kind an escalation rule names cannot be retired out from under it',
+  'task_kinds_escalation_targets_exist');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set alias = 'coder-ultra'
+     where organization_id = 'org-rules' and alias = 'coder-max';
+    set constraints ouroboros.model_aliases_escalation_targets_exist immediate$$,
+  'an alias an escalation rule names cannot be renamed out from under it',
+  'model_aliases_escalation_targets_exist');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.model_aliases
+     where organization_id = 'org-rules' and alias = 'second-opinion';
+    set constraints ouroboros.model_aliases_escalation_targets_exist immediate$$,
+  'an alias an escalation rule names cannot be deleted out from under it',
+  'model_aliases_escalation_targets_exist');
+
+-- And the way through it, which is the whole reason the check is deferred: rename the alias
+-- and update the rules that name it in one transaction, in either order, with no ceremony.
+update ouroboros.model_aliases set alias = 'coder-ultra'
+ where organization_id = 'org-rules' and alias = 'coder-max';
+update ouroboros.escalation_rules
+   set "then" = '{"use_alias": {"task_kind": "implement", "alias": "coder-ultra", "params": {"thinking": "max"}}}'
+ where id = 'f0000000-0000-0000-0000-000000000001';
+set constraints ouroboros.model_aliases_escalation_targets_exist immediate;
+set constraints ouroboros.model_aliases_escalation_targets_exist deferred;
+
+select pg_temp.must_hold(
+  (select display = 'effort ≥ L → implement uses coder-ultra (max thinking)'
+     from ouroboros.escalation_rules where id = 'f0000000-0000-0000-0000-000000000001'),
+  'renaming an alias and its rules in one transaction succeeds, and the sentence follows');
+
+-- Back to the mockup's name, by the same route.
+update ouroboros.model_aliases set alias = 'coder-max'
+ where organization_id = 'org-rules' and alias = 'coder-ultra';
+update ouroboros.escalation_rules
+   set "then" = '{"use_alias": {"task_kind": "implement", "alias": "coder-max", "params": {"thinking": "max"}}}'
+ where id = 'f0000000-0000-0000-0000-000000000001';
+
+-- `route_local` names neither a kind nor an alias, so it has nothing to be held against —
+-- and a workspace with no local providers is resolution's honest failure (Z.1), not a rule
+-- this schema refuses to store.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.escalation_rules
+    where id = 'f0000000-0000-0000-0000-000000000003'),
+  'route_local names nothing, so there is nothing for the reference check to refuse');
+
+-- --- the evaluation order ------------------------------------------------------
+--
+-- Acceptance criterion: *sort_order gives rules a deterministic evaluation order*. Two rules
+-- can match one run — `effort ≥ L` and `security label` on the same issue — so without an
+-- order, which one swapped the model would depend on the query plan.
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 1, '{"effort_gte": "xs"}', '{"route_local": {}}');
+    set constraints ouroboros.escalation_rules_organization_sort_order_key immediate$$,
+  'two rules cannot share a place in one workspace''s evaluation order',
+  'escalation_rules_organization_sort_order_key');
+
+select pg_temp.must_hold(
+  (select condeferrable and condeferred from pg_constraint
+    where conrelid = 'ouroboros.escalation_rules'::regclass
+      and conname = 'escalation_rules_organization_sort_order_key'),
+  'the order key is deferrable and initially deferred, which is what makes a drag plain SQL');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.escalation_rules (organization_id, sort_order, "when", "then")
+    values ('org-rules', 0, '{"effort_gte": "xs"}', '{"route_local": {}}')$$,
+  'the first rule is first, not zeroth', 'escalation_rules_sort_order_positive');
+
+-- The reorder itself, in the form a drag really takes.
+update ouroboros.escalation_rules
+   set sort_order = case sort_order when 1 then 2 when 2 then 1 end
+ where organization_id = 'org-rules' and sort_order in (1, 2);
+
+select pg_temp.must_hold(
+  (select array_agg(display order by sort_order) = array[
+     'security label → review adds second-opinion vote',
+     'effort ≥ L → implement uses coder-max (max thinking)',
+     'docs-only diff → everything routes local']
+     from ouroboros.escalation_rules where organization_id = 'org-rules'),
+  'a one-statement reorder of the rules card succeeds inside a transaction');
+
+update ouroboros.escalation_rules
+   set sort_order = case sort_order when 1 then 2 when 2 then 1 end
+ where organization_id = 'org-rules' and sort_order in (1, 2);
+
+-- Deliberately not dense, like the matrix above it and unlike a hop chain: nothing counts
+-- these numbers, so a card rendering `order by sort_order` draws 1, 2, 7 as it draws 1, 2, 3.
+update ouroboros.escalation_rules set sort_order = 7
+ where id = 'f0000000-0000-0000-0000-000000000003';
+
+select pg_temp.must_hold(
+  (select array_agg(sort_order order by sort_order) = array[1, 2, 7]
+     from ouroboros.escalation_rules where organization_id = 'org-rules'),
+  'the order is not required to be dense, because nothing reads the numbers themselves');
+
+update ouroboros.escalation_rules set sort_order = 3
+ where id = 'f0000000-0000-0000-0000-000000000003';
+
+-- --- the switch ----------------------------------------------------------------
+--
+-- A suspended rule is a row, not an absence: it keeps its place in the order and the
+-- sentence the card greys out, which is the whole difference between a rule turned off and
+-- a rule that was never written.
+update ouroboros.escalation_rules set enabled = false
+ where id = 'f0000000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.escalation_rules
+    where organization_id = 'org-rules' and enabled)
+   and (select display = 'security label → review adds second-opinion vote' and sort_order = 2
+          from ouroboros.escalation_rules where id = 'f0000000-0000-0000-0000-000000000002'),
+  'switching a rule off leaves its sentence and its place, so switching it back on restores it');
+
+update ouroboros.escalation_rules set enabled = true
+ where id = 'f0000000-0000-0000-0000-000000000002';
+
+-- --- the read the card makes ---------------------------------------------------
+--
+-- One workspace's rules in evaluation order, and the `where enabled` variant over the same
+-- rows. Both enter through the leading column of the order key, which is why this migration
+-- adds no index of its own — the fast path is the one a rule already paid for.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select display from ouroboros.escalation_rules
+     where organization_id = 'org-rules' and enabled order by sort_order$$,
+  'escalation_rules_organization_sort_order_key');
+set local enable_seqscan = on;
+
+-- --- the catalogue carries the decision and the grammar ------------------------
+--
+-- The table comment names decision M5, as V016's three name M1, M3 and M4 — so `\d+` and
+-- any tool that reads a description gets the rule with the schema.
+select pg_temp.must_hold(
+  obj_description('ouroboros.escalation_rules'::regclass) like '%M5%',
+  'the rules table names the decision it implements');
+
+-- And the grammar is a domain rather than a column-level CHECK, which is what puts the
+-- refusal before the derivation. A later migration that flattened these back to plain jsonb
+-- would leave every assertion above green except this one.
+select pg_temp.must_hold(
+  (select array_agg(domain_name::text order by column_name)
+          = array['escalation_rule_then', 'escalation_rule_when']
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'escalation_rules'
+      and column_name in ('when', 'then')),
+  'the two predicate columns are the domains, so their grammar is checked before display is derived');
+
+-- --- the workspace cascade -----------------------------------------------------
+--
+-- The rules go with the workspace, and the reference trigger does not stand in the way of
+-- it: the cascades are queued as after-triggers of the same statement, and by the time the
+-- deferred check runs at commit there are no rules of that workspace left to validate.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.escalation_rules where organization_id = 'org-rules'),
+  'the workspace about to be deleted really does have its rules');
+
+delete from ouroboros.organization where "id" = 'org-rules';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.escalation_rules where organization_id = 'org-rules'),
+  'deleting a workspace takes its escalation rules with it, reference check notwithstanding');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
