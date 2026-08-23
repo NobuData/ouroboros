@@ -1,6 +1,8 @@
 import { Test } from "@nestjs/testing";
 
 import { AnthropicAdapter } from "./adapters/anthropic.adapter";
+import { CopilotAdapter } from "./adapters/copilot.adapter";
+import { CursorAdapter } from "./adapters/cursor.adapter";
 import { OllamaAdapter } from "./adapters/ollama.adapter";
 import { OpenAiCompatibleAdapter } from "./adapters/openai-compatible.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
@@ -11,8 +13,9 @@ import { ProvidersModule, REGISTERED_ADAPTERS } from "./providers.module";
 /**
  * The wiring, and the registration seam AC.2–AC.5 each add one line to.
  *
- * The seam is the thing worth asserting. {@link REGISTERED_ADAPTERS} grows with every adapter —
- * AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) put the first entry in it —
+ * The seam is the thing worth asserting. {@link REGISTERED_ADAPTERS} grew with every adapter —
+ * AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) put the first entry in it and
+ * AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) the last two —
  * so what this suite pins is not mainly the contents but the *mechanism*: the list is what the
  * factory injects, the factory's answer is what the registry reads, and the result is frozen.
  * `vault.module.spec.ts` guards `VAULT_SECRET_STORES` the same way — an adapter written, tested
@@ -41,20 +44,48 @@ describe("the providers module", () => {
     await moduleRef.close();
   });
 
-  it("reaches three kinds, leaving AC.5's two a 501", async () => {
+  it("reaches five of V015's six kinds, leaving custom a 501", async () => {
     // Accurate rather than a stub — `provider.registry.ts` argues why, and AD.1's
-    // VAULT_SECRET_STORES is the precedent. This assertion is expected to be *changed* by AC.5
-    // rather than to keep passing, and that is the point: adding an adapter is a visible diff
-    // here.
+    // VAULT_SECRET_STORES is the precedent. AC.5 (#220) is what changed this assertion from
+    // three kinds to five, and that is the point: adding an adapter is a visible diff here.
+    //
+    // `custom` is what is left, and it is honestly unsupported: V015 accepts the row and
+    // nothing in this build knows what a custom provider would be. It is not a gap for a
+    // ticket to close — mockup 07's add-card promises *OpenAI, Google, Bedrock, or any
+    // OpenAI-compatible endpoint*, and the third of those is `openai_compatible`.
     const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
     const registry = moduleRef.get(ModelProviderRegistry);
 
-    expect(REGISTERED_ADAPTERS).toEqual([AnthropicAdapter, OpenAiCompatibleAdapter, OllamaAdapter]);
+    expect(REGISTERED_ADAPTERS).toEqual([
+      AnthropicAdapter,
+      OpenAiCompatibleAdapter,
+      OllamaAdapter,
+      CopilotAdapter,
+      CursorAdapter,
+    ]);
     // V015's declaration order, which is what `kinds()` answers in — deliberately not the order
     // the module registers them, because a catalog's order must not depend on an injector's.
-    expect(registry.kinds()).toEqual(["anthropic", "openai_compatible", "ollama"]);
-    expect(registry.find("copilot")).toBeUndefined();
-    expect(registry.find("cursor")).toBeUndefined();
+    expect(registry.kinds()).toEqual([
+      "anthropic",
+      "openai_compatible",
+      "ollama",
+      "copilot",
+      "cursor",
+    ]);
+    expect(registry.find("custom")).toBeUndefined();
+
+    await moduleRef.close();
+  });
+
+  it("gates pullModel on the flag rather than on the provider", async () => {
+    // Four of the five do not pull, and each of them is a `422` rather than a member that
+    // exists and throws. AC.1's fifth acceptance criterion, from the registry's side.
+    const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
+    const registry = moduleRef.get(ModelProviderRegistry);
+
+    for (const kind of ["anthropic", "openai_compatible", "copilot", "cursor"] as const) {
+      expect(() => registry.pullCapable(kind)).toThrow(/does not pull models/);
+    }
 
     await moduleRef.close();
   });
@@ -81,6 +112,8 @@ describe("the providers module", () => {
     expect(registry.get("anthropic")).toBeInstanceOf(AnthropicAdapter);
     expect(registry.get("openai_compatible")).toBeInstanceOf(OpenAiCompatibleAdapter);
     expect(registry.get("ollama")).toBeInstanceOf(OllamaAdapter);
+    expect(registry.get("copilot")).toBeInstanceOf(CopilotAdapter);
+    expect(registry.get("cursor")).toBeInstanceOf(CursorAdapter);
 
     await moduleRef.close();
   });

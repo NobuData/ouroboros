@@ -7,6 +7,8 @@
  * provider.errors.ts     five error classes → five pills      → the shared vocabulary
  * provider.config.ts     the JSON Schema dialect              → configSchema()'s contract
  * provider.forms.ts      schema → form fields, no kind in it  → AE.5's renderer input
+ * provider.address.ts    the SSRF policy (AC.3)               → for the two that take a URL
+ * provider.entitlements.ts  seats in a detail, written & read → AE.2/AE.6's cap line (AC.5)
  * provider.registry.ts   lookup by kind, and its two refusals → MODEL_PROVIDER_ADAPTERS
  * provider.pulls.ts      server-side pull tracking (AC.4)     → ModelPullTracker
  * adapters/              the implementations                  → nothing else may import these
@@ -15,13 +17,14 @@
  *
  * **It exports two things.** {@link ModelProviderRegistry} is what AD.2's credential lifecycle
  * ([#223](https://github.com/NobuData/ouroboros/issues/223)), Z.3's health service and the
- * discovery scheduler import; {@link REGISTERED_ADAPTERS} is the list AC.2–AC.5 each add one
+ * discovery scheduler import; {@link REGISTERED_ADAPTERS} is the list AC.2–AC.5 each added a
  * line to. `anthropic` is registered as of AC.2
  * ([#217](https://github.com/NobuData/ouroboros/issues/217)), `openai_compatible` as of AC.3
- * ([#218](https://github.com/NobuData/ouroboros/issues/218)) and `ollama` as of AC.4
- * ([#219](https://github.com/NobuData/ouroboros/issues/219)); the other two kinds are still a
- * `501`, which is the accurate answer rather than a stub — see `provider.registry.ts` on why an
- * unregistered kind is a `501` and not a `404`.
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)), `ollama` as of AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)), and `copilot` and `cursor` as of
+ * AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) — which leaves `custom`, and
+ * that is honestly a `501`: V015 accepts the row and nothing here knows what a custom provider
+ * would be. See `provider.registry.ts` on why an unregistered kind is a `501` and not a `404`.
  *
  * {@link ModelPullTracker} is the second export and it arrived with the first pulling adapter.
  * It is a *singleton with state*, which nothing else in this module is: a pull outlives the
@@ -47,6 +50,8 @@
 import { Module } from "@nestjs/common";
 
 import { AnthropicAdapter } from "./adapters/anthropic.adapter";
+import { CopilotAdapter } from "./adapters/copilot.adapter";
+import { CursorAdapter } from "./adapters/cursor.adapter";
 import { OllamaAdapter } from "./adapters/ollama.adapter";
 import { OpenAiCompatibleAdapter } from "./adapters/openai-compatible.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
@@ -62,16 +67,20 @@ import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.regis
  * `vault.module.ts`'s `REGISTERED_SECRET_STORES` is the same shape for the same reason.
  *
  * **AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) is the first entry, AC.3
- * ([#218](https://github.com/NobuData/ouroboros/issues/218)) the second and AC.4
- * ([#219](https://github.com/NobuData/ouroboros/issues/219)) the third** — one line each, and
- * nothing else in the service learned any of those providers' names. AC.5 appends its two the
- * same way. The list is spread into `providers` as well as into `inject`, because a class Nest
- * is asked to inject is a class Nest also has to have been told to construct.
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)) the second, AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)) the third and AC.5
+ * ([#220](https://github.com/NobuData/ouroboros/issues/220)) the last two** — one line each,
+ * and nothing else in the service learned any of those providers' names. Five adapters, five
+ * lines, and the five differences between the cards they draw are all data. The list is spread
+ * into `providers` as well as into `inject`, because a class Nest is asked to inject is a class
+ * Nest also has to have been told to construct.
  */
 export const REGISTERED_ADAPTERS = [
   AnthropicAdapter,
   OpenAiCompatibleAdapter,
   OllamaAdapter,
+  CopilotAdapter,
+  CursorAdapter,
 ] as const;
 
 @Module({

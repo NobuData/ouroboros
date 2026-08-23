@@ -73,7 +73,13 @@
 
 import type { ProviderConnectionKind } from "../db/schema";
 import type { ProviderConfigSchema, ProviderConnectionConfig } from "./provider.config";
-import { pillFor, type ProviderErrorClass, type ProviderStatusPill } from "./provider.errors";
+import {
+  CARD_SEPARATOR,
+  PROVIDER_ERROR_RETRYABLE,
+  pillFor,
+  type ProviderErrorClass,
+  type ProviderStatusPill,
+} from "./provider.errors";
 
 /**
  * What an adapter can do, as four flags.
@@ -221,8 +227,9 @@ export interface ProviderValidationFailure {
   /**
    * The card foot's note after the glyph — `503 upstream`, `key rejected (401)`.
    *
-   * Mockup 07's warn note reads `△ 503 upstream · retrying`; the `· retrying` half is the
-   * card's, from `PROVIDER_ERROR_RETRYABLE`.
+   * Mockup 07's warn note reads `△ 503 upstream · retrying`; the `· retrying` half is
+   * {@link validationNote}'s, from `PROVIDER_ERROR_RETRYABLE`, rather than something an
+   * adapter writes into its own detail.
    *
    * **Must never contain the credential.** The conformance kit asserts it against every
    * recorded failure fixture, because the shortest path to a leaked key is an adapter that
@@ -249,6 +256,41 @@ export type ProviderValidation = ProviderValidationOk | ProviderValidationFailur
  */
 export function validationPill(validation: ProviderValidation): ProviderStatusPill {
   return pillFor(validation.status === "ok" ? null : validation.errorClass);
+}
+
+/**
+ * The text of the card foot's test note — everything after the glyph, before the latency.
+ *
+ * Mockup 07 draws two of these: `✓ 200 · 38ms` on a healthy card and `△ 503 upstream ·
+ * retrying` on the Copilot one. Three things compose them and only one is an adapter's. The
+ * **detail** is the adapter's, from {@link ProviderValidationOk.detail} or
+ * {@link ProviderValidationFailure.detail}. The **`· retrying`** is the taxonomy's, from
+ * `PROVIDER_ERROR_RETRYABLE`, and it is this function. The **glyph**, the tone and the `·
+ * 38ms` are the card's — a latency is rendered where a layout decides how to render one, and
+ * a failure has none at all.
+ *
+ * Added by AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)), whose second
+ * acceptance criterion is that a recorded `503` drives that note *"end to end, through the
+ * taxonomy rather than by special-casing"*. A note composed in a card component from a
+ * provider's name is exactly the special case decision **P1** refuses; composed here it is the
+ * same two lines for every adapter that will ever ship, and the Copilot fixture proves them.
+ *
+ * @param validation - What the check found.
+ * @returns The note's text — `200`, `200 · 4 seats`, `503 upstream · retrying`,
+ *   `key rejected (401)`. Never empty: every `detail` says something, which the conformance
+ *   kit asserts.
+ */
+export function validationNote(validation: ProviderValidation): string {
+  if (validation.status === "ok") {
+    return validation.detail;
+  }
+
+  // The one place the retryable flag becomes words. A refused credential and a wrong address
+  // are the two failures a retry can only waste time on, so they say nothing here — which is
+  // what stops a card promising a person that something is being done about their typo.
+  return PROVIDER_ERROR_RETRYABLE[validation.errorClass]
+    ? `${validation.detail}${CARD_SEPARATOR}retrying`
+    : validation.detail;
 }
 
 /**

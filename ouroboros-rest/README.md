@@ -926,8 +926,8 @@ summary.
 
 ```
 core services ──imports──▶ ModelProviderAdapter ◀──implements── adapters/*
- (AD.2 · Z.3 · discovery)          ▲       anthropic · openai_compatible · ollama · AC.5 next
-                                   └── ModelProviderRegistry.get(kind)
+ (AD.2 · Z.3 · discovery)     ▲   anthropic · openai_compatible · ollama · copilot · cursor
+                              └── ModelProviderRegistry.get(kind)
 ```
 
 Five kinds ship in the MVP and mockup 07's dashed card promises *"OpenAI, Google, Bedrock,
@@ -998,13 +998,14 @@ yarn lint      # eslint, then depcruise src
 configuration reports it — a rule whose pattern has quietly stopped matching looks identical
 to a codebase with no violations.
 
-**`REGISTERED_ADAPTERS` holds three adapters**, so `anthropic`, `openai_compatible` and
-`ollama` resolve and every other kind is a `501 provider_kind_unsupported`. That is the accurate
-thing for this build to say about `copilot` and `cursor`: V015 accepts the row, and nothing here
-knows how to reach one yet. AC.5
-([#220](https://github.com/NobuData/ouroboros/issues/220)) adds the last two lines.
-`adapters/fake.adapter.fixture.ts` is the in-memory adapter that powers core tests without
-touching a network, and it is the worked example the walkthrough reads.
+**`REGISTERED_ADAPTERS` holds five adapters** as of AC.5
+([#220](https://github.com/NobuData/ouroboros/issues/220)), so every kind mockup 07 draws
+resolves and only `custom` is a `501 provider_kind_unsupported` — which is the accurate thing
+for this build to say about it: V015 accepts the row, and nothing here knows what a custom
+provider would be. Each of the five is one line in that list and nothing else in the service
+learned any of their names. `adapters/fake.adapter.fixture.ts` is the in-memory adapter that
+powers core tests without touching a network, and it is the worked example the walkthrough
+reads.
 
 ### The Anthropic adapter
 
@@ -1138,6 +1139,81 @@ minutes**. Records are in memory and last fifteen minutes after they finish; a p
 restart loses them, and the daemon carries on pulling regardless, which the next discovery
 finds. The HTTP route AE.4 polls is AD.2's to add on top: this module still declares no
 controller.
+
+### The Copilot adapter — entitlements, and the degraded state
+
+**The org-billed lane, and the only card mockup 07 draws in a state that is not healthy**
+([#220](https://github.com/NobuData/ouroboros/issues/220)).
+`adapters/copilot.adapter.ts` is the `GH` card: a masked `ghu_…` token row, the capability line
+*billed through GitHub org acme-robotics*, one chip, and the `degraded upstream` pill.
+
+```
+configSchema   ─▶ { token, organization?, capabilityNote? }
+validate       ─▶ GET /user · 200 ─▶ GET /orgs/{org}/copilot/billing  →  "200 · 4 seats"
+                                 │                    no breakdown    →  "200"
+                                 ├▶ 401              →  auth       · key rejected (401)
+                                 ├▶ 503              →  upstream   · △ 503 upstream · retrying
+                                 └▶ answered, slowly →  upstream   · △ slow upstream (6000 ms) …
+discoverModels ─▶ a fixed catalog, no request at all  →  copilot/gpt-5-codex
+```
+
+**A fixed catalog is a real answer, not a stub.** Neither this provider nor Cursor publishes a
+models-list endpoint worth discovering against, so their models are *declared* by the adapter
+— with a source for every field — and upserted into `provider_models` exactly as a discovered
+model is. The table cannot tell the difference, which is what keeps the card, mockup 21's
+registry and Y.1's alias validation reading one table. `capabilities().discovery` is `false`
+because *refreshing* means nothing over a constant, not because the member is missing.
+
+**Seats render from real entitlement data or not at all** — decision **P8**. The count is read
+from `seat_breakdown.total`, and it appears only when an organization is configured, the token
+may read that organization's billing, and the response really carries one. It travels in
+`validate`'s `detail`, which is what `capabilities().entitlements` promises;
+`providers/provider.entitlements.ts` owns the spelling at **both** ends, so AE.6
+([#232](https://github.com/NobuData/ouroboros/issues/232)) reads `4` back with `seatsIn(detail)`
+rather than with a regular expression it invented — it cannot import the adapter, and the lint
+boundary is what says so.
+
+**The entitlement lookup cannot fail a validation.** A `403` is a token without
+`manage_billing:copilot`, a `404` an org it cannot see, a `500` GitHub having a moment: all of
+them mean *no seat count*, and none of them makes a good token bad.
+
+**The degraded state is earned by a response and drawn by the taxonomy.** A `5xx` is `upstream`
+through the same `classifyHttpStatus` every adapter calls, and an answer slower than five
+seconds takes the same road — it arrived, and a token check that slow describes a provider in
+trouble. The `△ 503 upstream · retrying` note is `validationNote()`, which appends the
+`· retrying` from `PROVIDER_ERROR_RETRYABLE`; nothing on that path names this provider.
+
+**The auto-retry is bounded twice, and the bounds interact on purpose.** At most two attempts,
+*and* the whole call must fit a fifteen-second budget. So a failure that came back fast leaves
+room for a second attempt — the transient `503` a load balancer answers while a node rotates,
+which is the case a retry can actually convert — and one that came back slowly has already
+spent it. Unbounded retry against a struggling upstream is how a status indicator becomes a
+denial-of-service contribution.
+
+**The organization is interpolated into a URL, so it is checked before it gets there.** The
+form's pattern admits a login or a blank; the adapter re-tests the strict one, because a schema
+annotation is a rendering hint and this is a path segment. A value that is not a login is a
+`config` failure with an actionable sentence, not a silently-skipped lookup.
+
+### The Cursor adapter
+
+**The plainest of the five, and that is why it is worth having**
+([#220](https://github.com/NobuData/ouroboros/issues/220)).
+`adapters/cursor.adapter.ts` is the `CU` card: a masked key row, one chip, one status check.
+
+```
+configSchema   ─▶ { apiKey, capabilityNote? }
+validate       ─▶ GET https://api.cursor.com/v0/me · 200  →  ✓ 200 · 51ms
+                                                    401   →  auth · key rejected (401)
+discoverModels ─▶ a fixed catalog, no request at all      →  cursor/composer-2
+```
+
+It is the shape the SPI was drawn around: one credential, one check, one answer. Everything the
+other four have that this does not — an address policy, a pull stream, an entitlement lookup, a
+bounded retry — is a *provider's* complexity rather than the framework's. The key goes out as
+HTTP Basic with an empty password, which is what Cursor's Admin API documents (`curl -u KEY:`),
+and `capabilities().entitlements` is `false` because `/v0/me` says nothing about a seat or an
+allowance — which is what keeps the Copilot card's `· 4 seats` worth reading.
 
 ## BetterAuth
 
@@ -2026,6 +2102,7 @@ ouroboros-rest/
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218
 │       │                   #   adapters/ollama.adapter.ts + provider.pulls.ts · #219
+│       │                   #   adapters/{copilot,cursor}.adapter.ts + entitlements · #220
 │       │                   #   adapters/ is the only place a provider SDK may be imported
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
@@ -2143,6 +2220,7 @@ provider adapters [#216](https://github.com/NobuData/ouroboros/issues/216) ·
 the Anthropic adapter [#217](https://github.com/NobuData/ouroboros/issues/217) ·
 the OpenAI-compatible adapter [#218](https://github.com/NobuData/ouroboros/issues/218) ·
 the Ollama adapter and server-side pulls [#219](https://github.com/NobuData/ouroboros/issues/219) ·
+the Copilot & Cursor adapters [#220](https://github.com/NobuData/ouroboros/issues/220) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

@@ -69,6 +69,14 @@
  * runtime's own message is the last of the adapter rules below. A phrase in two copies drifts,
  * and these two are read off a card.
  *
+ * **{@link discardBody} is the one export here that is not policy**, and AC.5
+ * ([#220](https://github.com/NobuData/ouroboros/issues/220)) is where that became worth saying:
+ * the Copilot and Cursor adapters talk to fixed hosts and take no address at all, and they
+ * still import it. Cancelling an unread body is transport hygiene every adapter needs — an
+ * unread one keeps its connection checked out of undici's pool — and a fourth copy of those
+ * eight lines would be a fourth behaviour rather than a fourth adapter. It lives here because
+ * this is where the second copy would otherwise have been written.
+ *
  * Two more rules are the *adapter's*, not this file's, and are named here so the policy reads
  * as one list: **kind scoping** — only these two adapter kinds take an address at all, cloud
  * adapters have fixed hosts — and **response bodies are never echoed**: a test connection

@@ -201,7 +201,15 @@ const OLLAMA: CardShape = {
   ],
 };
 
-/** Mockup 07's Copilot card: a masked token row, and the capability line about seats. */
+/**
+ * Mockup 07's Copilot card: a masked token row, and the capability line about seats.
+ *
+ * The placeholder is `ghu_…` because that is what the mockup's own field holds —
+ * `ghu_••••••••••••7Kd2`, a GitHub App user-to-server token rather than the classic `ghp_`
+ * personal one. AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) corrected it
+ * here rather than diverging in the adapter, so this fixture stays what it claims to be: the
+ * page's shapes, not an approximation of them.
+ */
 const COPILOT: CardShape = {
   kind: "copilot",
   drawn: "a masked token row, org-billed",
@@ -216,7 +224,7 @@ const COPILOT: CardShape = {
         description: "Billed to the organization. Seats are read back when the token is tested.",
         minLength: 1,
         [SECRET_ANNOTATION]: true,
-        [PLACEHOLDER_ANNOTATION]: "ghp_…",
+        [PLACEHOLDER_ANNOTATION]: "ghu_…",
       },
     },
     required: ["token"],
@@ -230,7 +238,7 @@ const COPILOT: CardShape = {
       widget: "secret",
       required: true,
       help: "Billed to the organization. Seats are read back when the token is tested.",
-      placeholder: "ghp_…",
+      placeholder: "ghu_…",
       minLength: 1,
     },
   ],

@@ -622,7 +622,13 @@ What is enforced instead:
   one is `credentials_encrypted`. The supported way to supply a key is the schema's
   `x-ouroboros-secret` field.
 - **Kind scoping.** Only these two adapter kinds accept an operator-supplied address at
-  all. Cloud adapters have fixed hosts and no address field to point anywhere.
+  all. Cloud adapters have fixed hosts and no address field to point anywhere — as of AC.5
+  ([#220](https://github.com/NobuData/ouroboros/issues/220)) that is all three of them:
+  `anthropic` builds every URL from its own constant, and `copilot` and `cursor` do the same
+  against `api.github.com` and `api.cursor.com`. The one operator-supplied value either of
+  those interpolates is Copilot's billing organization, and it is a GitHub login re-checked
+  against a strict pattern server-side — not just in the schema — and URL-encoded on the way
+  into the path.
 - **Role scoping.** Configuring a connection is an owner/admin action, not a member one.
 - **Response bodies are not echoed.** A test connection reports a status code and a
   latency; a discovery call parses a model list into a known shape. Neither returns the

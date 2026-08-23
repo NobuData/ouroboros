@@ -225,7 +225,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | AC.2 | #217 | 🟢 Done | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.3 | #218 | 🟢 Done | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.4 | #219 | 🟢 Done | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
-| AC.5 | #220 | 🟡 Open | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
+| AC.5 | #220 | 🟢 Done | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
 | AC.6 | #221 | 🟢 Done | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
 
 ### Issue AC.1 — ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry
@@ -603,8 +603,87 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 
 ### Issue AC.5 — ouroboros-rest: [AC.5] Copilot & Cursor adapters
 
-> **GitHub issue:** #220 · **Status:** 🟡 Open · **Parent epic:** #212
+> **GitHub issue:** #220 · **Status:** 🟢 Done · **Parent epic:** #212
 
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/providers/adapters/copilot.adapter.ts`](../ouroboros-rest/src/modules/providers/adapters/copilot.adapter.ts),
+> [`cursor.adapter.ts`](../ouroboros-rest/src/modules/providers/adapters/cursor.adapter.ts),
+> the entitlement vocabulary at
+> [`provider.entitlements.ts`](../ouroboros-rest/src/modules/providers/provider.entitlements.ts),
+> and two new sections in [`docs/MODEL_PROVIDERS.md`](MODEL_PROVIDERS.md).
+> `REGISTERED_ADAPTERS` now holds five, so every kind mockup 07 draws resolves and only
+> `custom` is a `501`.
+>
+> **A fixed catalog is a real answer rather than a stub, and the point is that
+> `provider_models` cannot tell.** Neither provider publishes a models list worth discovering
+> against, so both catalogs are declared in the adapter with a source for every field — and
+> they are the same `model_id`, `display` and `meta.context_tokens` that
+> `R__dev_seed_providers.sql` writes for the seeded connections, so a seeded stack and a real
+> one produce one catalog rather than two that look alike. `capabilities().discovery` is
+> `false` because *refreshing* means nothing over a constant, not because the member is
+> missing; AE.4 (#230) hides the affordance on that flag. What the adapters owe the upsert is
+> delivered and asserted: the providers' own ids, unique within an answer and identical across
+> repeated runs.
+>
+> **Seats are the interesting half, and decision P8 is one function.** The count is read from
+> GitHub's `seat_breakdown.total` and travels in `validate`'s `detail`, which is what
+> `ProviderCapabilities.entitlements` promises and the only channel AC.1's SPI has for one. The
+> spelling therefore had to live somewhere a card can reach: `provider.entitlements.ts` holds
+> the writer and the reader together, because AE.6 (#232) cannot import an adapter —
+> `core-imports-the-spi-only` fails the build for exactly that — and the alternative is a
+> regular expression over prose invented at the reading end. `null` appends nothing at all,
+> and `null` and `0` are deliberately different answers: an org can genuinely have zero seats,
+> and the conformance kit runs three times so the org that reports none is not an untested
+> path.
+>
+> **The entitlement lookup cannot fail a validation**, which is the subtlety that would have
+> been easy to get wrong. It is a second request made only after the token was accepted, and a
+> `403` (no `manage_billing:copilot`), a `404` (an org the token cannot see) and a `500` all
+> mean *no seat count* rather than *bad credential*. Reporting a good token as broken because
+> a supplementary endpoint was unavailable would be the adapter's curiosity rendered as an
+> operator's outage.
+>
+> **The degraded state is earned by a response and drawn by the taxonomy.** `△ 503 upstream ·
+> retrying` is now composed by `validationNote()` beside `validationPill()` in the SPI — the
+> detail is the adapter's, the `· retrying` is `PROVIDER_ERROR_RETRYABLE`'s, and the glyph and
+> the latency stay the card's. Nothing on the path from the recorded `503` to that sentence
+> names Copilot, which is the acceptance criterion's *through the taxonomy rather than by
+> special-casing* made mechanical. A **latency outlier** takes the same road, and *outlier*
+> means past a stated threshold rather than unusual for this connection: a rolling baseline
+> would be state, and one instance of the adapter serves every workspace.
+>
+> **The retry is bounded twice, and the two bounds interact on purpose.** At most two
+> attempts, *and* the whole call must fit a fifteen-second budget with the next attempt
+> charged at its full deadline. So a failure that came back fast leaves room for a second —
+> the transient `503` a load balancer answers while a node rotates, which is the case a retry
+> can convert — and one that came back slowly has already spent the budget. Unbounded retry
+> against a struggling upstream is how a status indicator becomes a denial-of-service
+> contribution, and both bounds have their own tests.
+>
+> **The organization is a new field, because a seat count needs one.** It is optional — the
+> seat suffix is what is lost by leaving it blank, never the connection — and it is
+> interpolated into a URL path, so the strict GitHub-login pattern is re-checked server-side
+> rather than trusted from the schema. The form's pattern admits a blank as well, because an
+> untouched optional row submits an empty string and a form that failed on it would be failing
+> on a field nobody filled in.
+>
+> **Cursor is the plainest adapter in the module and that is why it is in this ticket.** One
+> credential, one status check, one chip. Everything the other four have that it does not — an
+> address policy, a pull stream, an entitlement lookup, a retry — is a *provider's* complexity
+> rather than the framework's, and a fifth adapter needing none of it is the evidence for
+> AC.1's claim. Its key goes out as HTTP Basic with an empty password, which is what Cursor's
+> Admin API documents.
+>
+> **The `ghu_…` placeholder in `card.shapes.fixture.ts` was corrected rather than diverged
+> from.** The mockup's own row holds `ghu_••••••••••••7Kd2` — a GitHub App user-to-server
+> token — and the fixture said `ghp_`. A fixture that claims to be the page's shapes has to be
+> them.
+>
+> **What this ticket could not finish, and why.** As with AC.2–AC.4, the acceptance criterion
+> about `provider_models` has two halves and only one is an adapter's: this module holds no
+> database, which is the design AC.1 argues for, so the `insert … on conflict` is AE.4's
+> (#230). The seat count reaching mockup 07's cap line is AE.6's (#232) — what this ticket
+> owed it is `seatsIn(detail)`, which is delivered, exported and round-trip tested.
 
 - **Problem Statement:** The org-billed (Copilot) and key-authed (Cursor)
   lanes: fixed model catalogs, entitlement-aware, degraded-state honest.

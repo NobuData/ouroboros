@@ -107,6 +107,19 @@ export interface ProviderStatusPill {
 }
 
 /**
+ * What separates the parts of one line on mockup 07's card — `✓ 200 · 38ms`,
+ * `△ 503 upstream · retrying`, `$76.00 of $95 cap · 4 seats`.
+ *
+ * A constant rather than three copies of a two-character string, because the three writers are
+ * in three files — {@link import("./provider.adapter").validationNote} composes a card foot,
+ * `provider.entitlements.ts` appends a seat count, and AE.2
+ * ([#228](https://github.com/NobuData/ouroboros/issues/228)) draws the meter line — and a
+ * reader that splits on it has to be reading the same character the writer wrote. Spaced,
+ * exactly as the mockup writes it.
+ */
+export const CARD_SEPARATOR = " · ";
+
+/**
  * The pill a working connection carries — mockup 07's `<span class="pill ok">connected</span>`.
  *
  * Separate from {@link PROVIDER_ERROR_PILLS} because success is not an error class, and a
