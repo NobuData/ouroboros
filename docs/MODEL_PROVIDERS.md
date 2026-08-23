@@ -4,7 +4,9 @@
 > ModelProviderAdapter SPI & registry*, [#217](https://github.com/NobuData/ouroboros/issues/217)
 > — *[AC.2] Anthropic adapter*, [#218](https://github.com/NobuData/ouroboros/issues/218) —
 > *[AC.3] OpenAI-compatible adapter*, [#219](https://github.com/NobuData/ouroboros/issues/219)
-> — *[AC.4] Ollama adapter with model pulls* · **Roadmap:**
+> — *[AC.4] Ollama adapter with model pulls*,
+> [#220](https://github.com/NobuData/ouroboros/issues/220) — *[AC.5] Copilot & Cursor
+> adapters* · **Roadmap:**
 > [`ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`](ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md), decisions
 > **P1** and **P8** · **Written:** 2026-08-23
 
@@ -50,6 +52,7 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `provider.config.ts` | The JSON Schema dialect `configSchema()` answers in, and its gate. |
 | `provider.address.ts` | The **SSRF policy** — what an adapter that takes an operator-supplied URL may do with it. |
 | `provider.forms.ts` | Schema → form fields. Contains no provider kind, by test. |
+| `provider.entitlements.ts` | **Seats in a `detail`** (AC.5, [#220](https://github.com/NobuData/ouroboros/issues/220)) — the one place a seat count is written, and the one place it is read back. |
 | `provider.registry.ts` | Lookup by `kind`, the `MODEL_PROVIDER_ADAPTERS` token, two refusals. |
 | `provider.pulls.ts` | **Server-side pull tracking** (AC.4, [#219](https://github.com/NobuData/ouroboros/issues/219)) — what consumes a `pullModel` stream so a progress bar survives a reload. |
 | `providers.module.ts` | The Nest module. `REGISTERED_ADAPTERS` is the line you add. |
@@ -57,6 +60,8 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `adapters/anthropic.adapter.ts` | The Anthropic adapter (AC.2, [#217](https://github.com/NobuData/ouroboros/issues/217)) — the first real one. |
 | `adapters/openai-compatible.adapter.ts` | The OpenAI-compatible adapter (AC.3, [#218](https://github.com/NobuData/ouroboros/issues/218)) — vLLM, LM Studio, llama.cpp, TGI. |
 | `adapters/ollama.adapter.ts` | The Ollama adapter (AC.4, [#219](https://github.com/NobuData/ouroboros/issues/219)) — the only one that pulls, and the only one with no credential. |
+| `adapters/copilot.adapter.ts` | The Copilot adapter (AC.5, [#220](https://github.com/NobuData/ouroboros/issues/220)) — a fixed catalog, the only entitlement, and the only bounded retry. |
+| `adapters/cursor.adapter.ts` | The Cursor adapter (AC.5, [#220](https://github.com/NobuData/ouroboros/issues/220)) — the plainest of the five: one key, one check, one chip. |
 | `adapters/http.recordings.fixture.ts` | The stand-in `fetch` every adapter's recorded fixtures are served through. |
 | `adapters/fake.adapter.fixture.ts` | The in-memory adapter — this document's worked example. |
 | `card.shapes.fixture.ts` | Mockup 07's five cards, as schemas. |
@@ -295,8 +300,9 @@ interface ProviderCapabilities {
 
 **`discovery: false` does not mean the member is absent.** Copilot and Cursor each show a
 single model chip that this product knows about because somebody wrote it down, and a
-`discoverModels` returning that list is telling the truth. What the flag says is whether
-*refreshing* means anything — AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230))
+`discoverModels` returning that list is telling the truth — see
+[step 5](#5-implement-discovermodels) for what makes a declared catalog honest. What the flag
+says is whether *refreshing* means anything — AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230))
 hides the refresh affordance where it is `false`, because a spinner over a constant is a lie
 about where data comes from.
 
@@ -328,6 +334,72 @@ extending the SPI, narrowing `capabilities()`, declaring `invoke`, with a
 written, in `internal/invoke.contract.ts`. Nothing in the SPI has to move for that to
 happen, which is the point of reserving the flag now: AF.2 *extends* the interface rather
 than reshaping it, and every adapter that already ships keeps compiling.
+
+## Reporting an entitlement
+
+> `provider.entitlements.ts` · AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220))
+> · decision **P8**
+
+`entitlements` is the one capability flag with **no member behind it**. It is a promise about
+`validate`'s `detail`: mockup 07's Copilot meter reads `$76.00 of $95 cap · 4 seats`, and the
+seat count is something only a check against the vendor can know.
+
+The count travels as part of the detail string, which means somebody has to read it back — and
+that somebody is a card, which **cannot import your adapter**: `core-imports-the-spi-only`
+fails the build for exactly that. So the spelling lives in one module, with the writer and the
+reader beside each other:
+
+```ts
+readSeatCount(body.seat_breakdown?.total)  // → 4 | null — the only gate a number gets through
+withSeats("200", 4)                        // → "200 · 4 seats"     what validate() answers
+withSeats("200", null)                     // → "200"               no suffix at all
+seatsIn("200 · 4 seats")                   // → 4                   what AE.6's cap line reads
+```
+
+Three rules, and all three are the same rule:
+
+- **`null` appends nothing.** Not `· seats unknown`, not `· 0 seats`. A hedged suffix is a
+  sentence a person has to learn to distrust, and one untrustworthy suffix makes every other
+  number on the card unreadable.
+- **`null` and `0` are different answers.** `null` is *the API did not say*; `0` is *the API
+  said zero*, which is a real state an organization can be in. That is why the floor here is
+  `0` and `NormalizedModel.contextLength`'s is `1`: a context length of zero is what an
+  unchecked parse looks like, and a seat count of zero is what an organization looks like.
+- **An entitlement lookup must not be able to fail a validation.** It is a supplement, made
+  after the credential has already been accepted. A `403` (no scope), a `404` (no such org) and
+  a `500` (a bad afternoon) all mean *no seat count*, and none of them makes a good token bad.
+
+## Retrying, and how to bound it
+
+Only one adapter retries, and it is worth knowing why before you add a second.
+
+Mockup 07's Copilot card is the one card drawn in a non-healthy state — a `degraded upstream`
+pill and a `△ 503 upstream · retrying` foot note — so AC.5's adapter has to earn that state
+from a real response. A `5xx` is `upstream` through `classifyHttpStatus`, and an answer that
+arrives far too late takes the same road, because a token check that took six seconds
+describes a provider in trouble rather than a healthy one. The retry condition is then simply
+*the taxonomy said `upstream`*, which is what keeps a `401` and a closed socket out of it
+without the adapter keeping a list of statuses of its own.
+
+**Bound it twice.** `copilot.adapter.ts` allows at most two attempts *and* requires the whole
+call to fit a fifteen-second budget, charging the next attempt at its full deadline:
+
+```ts
+hasRetryBudget(spentMs)   // spentMs + backoff + timeout <= budget
+```
+
+The two bounds interact deliberately. A failure that came back **fast** — the transient `503` a
+load balancer answers while a node rotates — leaves room for a second attempt, and that is the
+case a retry can actually convert. A failure that came back **slowly** has already spent the
+budget, and doubling somebody's wait to re-ask a server that is merely slow converts nothing.
+Unbounded retry against a struggling upstream is how a status indicator becomes a
+denial-of-service contribution, which is the whole reason the bound is written down and tested
+rather than assumed.
+
+**The `· retrying` in the note is not yours to write.** `validationNote(validation)` appends it
+from `PROVIDER_ERROR_RETRYABLE`, so it says the same thing for every adapter — and it says it
+about whether the *condition* is worth trying again, not about whether your adapter happened to
+retry inside one call.
 
 ## Write one — the walkthrough
 
@@ -484,6 +556,45 @@ Throw `ProviderAdapterError` if the provider could not be asked. An empty list i
 legitimate answer — a freshly installed Ollama daemon has no models — and must not be
 confused with a failure.
 
+**If your provider publishes no listing worth asking for, declare the catalog instead.** That
+is what the Copilot and Cursor adapters do (AC.5,
+[#220](https://github.com/NobuData/ouroboros/issues/220)), and it is a real answer rather than
+a stub:
+
+```ts
+export const COPILOT_CATALOG: readonly NormalizedModel[] = Object.freeze([
+  Object.freeze({
+    id: "gpt-5-codex",                 // the provider's own spelling — prices join on it
+    display: "copilot/gpt-5-codex",    // mockup 07's chip
+    contextLength: 128_000,            // what the provider publishes
+    sizeBytes: null,                   // a hosted model has no on-disk size
+    tier: null,                        // no per-model entitlement signal — P8
+  }),
+]);
+
+discoverModels(connection): Promise<NormalizedModel[]> {
+  // …the same configuration check every other adapter makes, then:
+  return Promise.resolve(COPILOT_CATALOG.map((model) => ({ ...model })));
+}
+```
+
+Four things make it honest rather than a placeholder:
+
+- **Every field has a source**, written next to it. A declared context length is a fact you
+  looked up; a declared `tier` is decision **P8** being broken, so it stays `null`.
+- **`capabilities().discovery` is `false`.** Not because the member is absent — it is right
+  there — but because *refreshing* means nothing over a constant, and AE.4 hides the refresh
+  affordance on that flag rather than spinning over one.
+- **The rows are what a discovering adapter owes `provider_models`**: the provider's own ids,
+  unique within an answer, identical across repeated runs. That is exactly what makes
+  `(provider_connection_id, model_id)` an upsert rather than a doubled row of chips, and it is
+  why the table cannot tell a declared catalog from a discovered one.
+- **The credential is still checked, and fresh objects are still handed out.** A connection
+  nobody has finished configuring reaches no models; a caller that sorts the answer in place
+  must not be sorting your module's own constant. There is no `async` because there is nothing
+  to await — reject rather than throwing synchronously, which is what `@throws` means on a
+  member that answers a promise.
+
 ### 6. Implement `pullModel`, if your provider pulls
 
 Implement `PullCapableAdapter`, declare `pull: true`, and stream:
@@ -536,6 +647,8 @@ export const REGISTERED_ADAPTERS = [
   AnthropicAdapter,
   OpenAiCompatibleAdapter,
   OllamaAdapter,
+  CopilotAdapter,
+  CursorAdapter,
 ] as const;
 ```
 
@@ -608,6 +721,12 @@ a bare one, an OpenAI-style `…/v1` base URL against a plain host — so the pa
 spellings of the address field and both answers to *did the server say how much context it
 has*.
 
+`adapters/copilot.conformance.spec.ts` runs it **three** times, for the same reason at a
+different seam: the three entitlement states a real connection is in — an organization that
+reports its seats, one whose plan does not, and a connection with no organization at all. A kit
+green against the first alone would prove the adapter handles the case decision **P8** is not
+about.
+
 ## The boundary
 
 `.dependency-cruiser.cjs` at the module root, run by `yarn lint`:
@@ -631,17 +750,17 @@ really fails.
 
 | | |
 |---|---|
-| The Copilot and Cursor adapters — Anthropic shipped with AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)), the OpenAI-compatible one with AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)) and Ollama with AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)) | AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
 | The HTTP surface a page polls for pull progress — `ModelPullTracker` is the service behind it | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)), AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) |
 | The add-form and catalog | AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)) |
 | Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
 
-`REGISTERED_ADAPTERS` holds `AnthropicAdapter`, `OpenAiCompatibleAdapter` and `OllamaAdapter`,
-so those three kinds answer an adapter and `copilot`, `cursor` and `custom` are still
-`501 provider_kind_unsupported`. That is the accurate thing for this build to say about them:
-V015 accepts the row, and nothing here knows how to reach one yet.
+`REGISTERED_ADAPTERS` holds all five adapters mockup 07 draws — `AnthropicAdapter` (AC.2),
+`OpenAiCompatibleAdapter` (AC.3), `OllamaAdapter` (AC.4), `CopilotAdapter` and `CursorAdapter`
+(AC.5) — so only `custom` is still `501 provider_kind_unsupported`. That is the accurate thing
+for this build to say about it: V015 accepts the row, and nothing here knows what a custom
+provider would be.
 
 `ModelProviderRegistry.pullCapable("ollama")` is the first call that answers rather than
 refusing — until AC.4 there was no registered adapter that declared the capability, so AC.1's

@@ -2,11 +2,21 @@ import {
   FakeModelProviderAdapter,
   FakePullingProviderAdapter,
 } from "./adapters/fake.adapter.fixture";
-import { supportsPull, validationPill, type ModelProviderAdapter } from "./provider.adapter";
-import { CONNECTED_PILL, PROVIDER_ERROR_PILLS } from "./provider.errors";
+import {
+  supportsPull,
+  validationNote,
+  validationPill,
+  type ModelProviderAdapter,
+} from "./provider.adapter";
+import {
+  CONNECTED_PILL,
+  PROVIDER_ERROR_CLASSES,
+  PROVIDER_ERROR_PILLS,
+  PROVIDER_ERROR_RETRYABLE,
+} from "./provider.errors";
 
 /**
- * The SPI's two run-time helpers, and AC.1's fifth acceptance criterion.
+ * The SPI's three run-time helpers, and AC.1's fifth acceptance criterion.
  *
  * *"`capabilities()` gates optional members: calling `pullModel` on an adapter that does not
  * declare `pull` is a **type error**, not a runtime one."*
@@ -16,6 +26,11 @@ import { CONNECTED_PILL, PROVIDER_ERROR_PILLS } from "./provider.errors";
  * the line below it compiles. So the day somebody adds an optional `pullModel` to
  * {@link ModelProviderAdapter} — which is the shape this SPI exists to refuse — this suite stops
  * compiling and ts-jest fails it. It is the only kind of test that can hold that criterion.
+ *
+ * {@link validationNote} is the third helper, added by AC.5
+ * ([#220](https://github.com/NobuData/ouroboros/issues/220)) beside {@link validationPill} and
+ * asserted the same way: both turn one validation result into one thing mockup 07 draws, and
+ * neither knows which provider produced it.
  */
 
 describe("the pull capability gate", () => {
@@ -68,6 +83,54 @@ describe("validationPill", () => {
       validationPill({ status: "failed", errorClass: "upstream", detail: "503 upstream" }),
     ).toBe(PROVIDER_ERROR_PILLS.upstream);
   });
+});
+
+describe("validationNote", () => {
+  it("is the adapter's own detail for a success", () => {
+    // The `· 38ms` is the card's — a failure has no latency at all, so appending one here would
+    // be a rendering decision made where half the cases cannot supply it.
+    expect(validationNote({ status: "ok", latencyMs: 38, detail: "200" })).toBe("200");
+  });
+
+  it("carries an entitlement through untouched", () => {
+    // AC.5's Copilot card. The seat suffix is `provider.entitlements.ts`'s and this does not
+    // second-guess it.
+    expect(validationNote({ status: "ok", latencyMs: 51, detail: "200 · 4 seats" })).toBe(
+      "200 · 4 seats",
+    );
+  });
+
+  it("draws mockup 07's Copilot note from the taxonomy", () => {
+    // AC.5's second acceptance criterion, at the layer that owns the sentence: the `503
+    // upstream` is the adapter's detail, the `· retrying` is `PROVIDER_ERROR_RETRYABLE`, and
+    // nothing in either half knows which provider it is describing.
+    expect(
+      validationNote({ status: "failed", errorClass: "upstream", detail: "503 upstream" }),
+    ).toBe("503 upstream · retrying");
+  });
+
+  it("says nothing about retrying for a failure a retry cannot fix", () => {
+    // A refused credential stays refused and a wrong address stays wrong. Promising a person
+    // that something is being done about their typo is worse than saying nothing.
+    expect(
+      validationNote({ status: "failed", errorClass: "auth", detail: "key rejected (401)" }),
+    ).toBe("key rejected (401)");
+    expect(
+      validationNote({ status: "failed", errorClass: "config", detail: "API key required" }),
+    ).toBe("API key required");
+  });
+
+  it.each(PROVIDER_ERROR_CLASSES)(
+    "appends retrying to a %s failure iff it is retryable",
+    (errorClass) => {
+      // Written over the whole taxonomy rather than over the two interesting classes, so a sixth
+      // class added to `ProviderErrorClass` arrives here with a case already waiting for it.
+      const note = validationNote({ status: "failed", errorClass, detail: "detail" });
+
+      expect(note.endsWith(" · retrying")).toBe(PROVIDER_ERROR_RETRYABLE[errorClass]);
+      expect(note.startsWith("detail")).toBe(true);
+    },
+  );
 });
 
 describe("the reserved invocation capability", () => {
