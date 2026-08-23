@@ -234,6 +234,8 @@ service never starts half-configured.
 | `OURO_DASHBOARD_POLL_SECONDS` | Seconds sent as `X-Ouro-Poll-After` on dashboard answers — raise it to slow every poller under load |      no — 15       | a whole number of seconds, 1–3600                                           |
 | `OURO_LISTEN_HOST`          | Bind-interface override — set only by the e2e stack ([#647](https://github.com/NobuData/ouroboros/issues/647)); unset, `NODE_ENV` decides as always |     no — unset     | exactly `127.0.0.1` or `0.0.0.0`                                            |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
+| `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
+| `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -826,6 +828,92 @@ until V015, because no migration declared an encrypted column;
 rather than with the first thing that writes a credential — a sealed column the re-encryption
 sweep cannot see is a rotation that reports success while leaving ciphertext on the key
 version it then retires.
+
+## Provider health
+
+**Real checks where they are cheap, key validation where it is honest, and `unknown` where
+neither is** ([#196](https://github.com/NobuData/ouroboros/issues/196), roadmap decision
+**M8**). `src/modules/provider-health/` is what fills mockup 06's `.phealth` strip, and what
+Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194)) resolves a fallback chain
+against.
+
+```
+GET /api/v1/routing/providers ─▶ Anthropic          ● 42ms
+                                 Cursor             ◌
+                                 GitHub Copilot     ⚠ degraded · elevated latency
+                                 Ollama             ● workstation · 3 models
+                                 OpenAI-compatible  ● vllm-local · 2 models
+```
+
+**No completion request is issued, anywhere, ever.** The tempting implementation of a health
+strip sends a one-token completion to every provider every minute: real end-to-end latency,
+every dot green, and a bill that grows forever to decorate a status bar. That is option
+**2-B** and M8 refuses it. What runs instead is a table of listing routes:
+
+| Kind                | Check                                    | Yields                                    |
+| ------------------- | ---------------------------------------- | ----------------------------------------- |
+| `ollama`            | `GET /api/tags`                          | reachable, and the daemon's model count   |
+| `openai_compatible` | `GET /v1/models`                         | reachable, and the served models          |
+| `anthropic`         | `GET /v1/models?limit=1`, slow, jittered | is the credential still good, and how long it took |
+| `copilot`, `cursor` | —                                        | `unknown`, until traffic exists           |
+| `custom`            | —                                        | `unknown`, always                         |
+
+The non-goal is *tested rather than documented*, and in two halves that cover each other:
+`checks.spec.ts` asserts that no entry in the policy table names a generation route, and
+`probe.client.spec.ts` drives every entry through the client and asserts a `GET` with no body.
+`provider-health.integration-spec.ts` then sweeps all five kinds against real loopback servers
+and reads the record of what they were actually sent.
+
+**This service writes only states it observed.** A check that ran writes `active` or `error`.
+A check that could not run — a kind with nothing cheap to ask, a row with no address, a cloud
+connection whose key has not been entered, a credential this deployment cannot open — writes
+**nothing at all**, and the row keeps whatever it had. That is what makes `unknown` a real
+state instead of a placeholder waiting to be overwritten, and it is why Copilot and Cursor
+stay honest until AB.2 ([#208](https://github.com/NobuData/ouroboros/issues/208)) can derive
+their state from real invocations.
+
+**A latency appears only where a check measured one.** No default, no zero, no interpolation:
+on a strip somebody reads reliability from, `0ms` is not *we do not know*, it is an excellent
+latency for a provider nothing has ever called. V015 says the same thing from the other side
+— `health` content requires a `last_checked_at`, and `latency_ms` must be a non-negative
+number if it is there at all. A local daemon's round trip is measured and deliberately *not*
+stored: it is dominated by the loopback interface, and a chip printing an unvarying `0ms`
+teaches its reader to ignore the one number on the strip that does vary.
+
+**The cadence is jittered, and so is the first cycle.** Ouroboros is self-hosted: a hundred
+installations checking on a whole-minute boundary are a hundred requests arriving at a
+vendor's endpoint in the same second, from addresses that look unrelated to each other and
+coordinated to the vendor. Every delay lands within ±25% of the configured interval, the first
+one included, so a fleet restarted together does not converge. Local kinds are checked on
+`OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`; a cloud row is only revisited once its own last check
+is `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` old.
+
+**`health` is jsonb, and AB.2's fields already have somewhere to go.** The probe owns `check`,
+`latency_ms`, `models` and `detail`; a `traffic` sub-object is reserved for AB.2's error-rate
+and p95 windows, and needs no migration because jsonb has no columns to add. What makes the
+reservation real is that the writer merges rather than replaces — anything this service does
+not own is copied through untouched, so a traffic window written by AB.2 is still there after
+the next sweep sixty seconds later, and `snapshot.spec.ts` and the integration suite both
+assert it.
+
+**This is the first module here to hold a plaintext provider credential**, and it holds one
+for the length of one probe. `RegistryModule` deliberately imports no vault — a resolution
+carries an address and never a key — and this module is the different case: validating a
+credential means presenting it. It is opened for a key-validation check, handed to the
+request's own header builder, and never returned, stored, logged or written to the row. If the
+vault *cannot* open it, that is this deployment's fault rather than Anthropic's: it is logged
+for an operator and the row is left exactly as it was.
+
+**Nothing checks on demand.** The route is a read; the cadence is the scheduler's. A *check
+now* button would let anybody holding a session make this service issue outbound requests at
+whatever rate they can click — a small denial of service against a vendor's rate limit, signed
+with the workspace's own credential.
+
+**It is also the first periodic work in this service**, which is what brought
+`@nestjs/schedule` in. The sweep is a self-rescheduling timeout registered with
+`SchedulerRegistry` rather than an `@Interval`, because a decorator fixes its period when the
+class is defined and this one has to be different on every tick. It never overlaps itself, a
+failed cycle is logged and the loop continues, and `onApplicationShutdown` clears the timer.
 
 ## BetterAuth
 
@@ -1708,6 +1796,8 @@ ouroboros-rest/
 │       ├── pricing/        # what a model costs, with provenance          · #586
 │       ├── registry/       # alias → model on a provider connection       · #189
 │       │                   #   no controller — decision M2 leaves CRUD to 07/21
+│       ├── provider-health/ # passive-first health + the strip payload     · #196
+│       │                   #   scheduled, jittered — and never a completion
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
@@ -1817,6 +1907,8 @@ database-backed sessions & the global guard [#703](https://github.com/NobuData/o
 organization plugin adoption [#704](https://github.com/NobuData/ouroboros/issues/704) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 model pricing [#586](https://github.com/NobuData/ouroboros/issues/586) ·
+the model registry [#189](https://github.com/NobuData/ouroboros/issues/189) ·
+provider health [#196](https://github.com/NobuData/ouroboros/issues/196) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

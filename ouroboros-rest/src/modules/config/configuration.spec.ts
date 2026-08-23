@@ -2,6 +2,8 @@ import {
   ALL_INTERFACES_HOST,
   ConfigurationError,
   DEFAULT_DASHBOARD_POLL_SECONDS,
+  DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
+  DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
   DEFAULT_PORT,
   LOOPBACK_HOST,
   MAX_DASHBOARD_POLL_SECONDS,
@@ -76,6 +78,11 @@ describe("the development defaults", () => {
       // Unset in the template, which is the posture every deployment that runs no local
       // model server is in — see `OURO_LOCAL_PROVIDER_URLS` below.
       localProviderUrls: {},
+      // The template writes both out explicitly (#196) and writes exactly these numbers, so
+      // this fixture — which omits them — and a real checkout produce the same configuration.
+      // A template that drifted from the defaults would be caught here as a difference.
+      providerHealthIntervalSeconds: DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
+      providerHealthKeyCheckSeconds: DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     });
   });
 });

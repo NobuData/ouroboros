@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.25.0"
+  version: "0.25.1"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -334,6 +334,38 @@ tags:
       migrations — no third-party call on the render path, so an air-gapped deployment keeps
       the column — and a workspace that has negotiated its own rates corrects them here. An
       override always wins, and says so.
+
+  - name: routing
+    description: |-
+      **Model routing — which model answers which kind of work, and whether the provider
+      behind it is actually up** ([#186](https://github.com/NobuData/ouroboros/issues/186),
+      mockup 06).
+
+      One operation is published so far: the **provider health strip**
+      ([#196](https://github.com/NobuData/ouroboros/issues/196)) — the row of chips at the top
+      of the routing page, and the same states the route inspector reads per hop.
+
+      **What it reports is passive-first, and that is a decision rather than a limitation**
+      (roadmap decision **M8**). The tempting implementation sends a one-token completion to
+      every provider every minute: real end-to-end latency, every dot green, and a bill that
+      grows forever to decorate a status bar. This service issues **no completion request at
+      all**. What it does instead costs nothing and answers a real question:
+
+      | Provider kind | What is checked | What you get |
+      |---|---|---|
+      | `ollama` | its own tag listing | reachable, and the daemon's model count |
+      | `openai_compatible` | its model listing | reachable, and the served models |
+      | `anthropic` | a models-list key validation, slowly and jittered | whether the credential is still good, and a measured latency |
+      | `copilot`, `cursor`, `custom` | nothing that is both cheap and meaningful | `unknown` |
+
+      **`unknown` is a state and is never rendered as healthy.** It is what a connection is
+      before anything checked it, and what Copilot and Cursor stay until traffic-derived
+      health lands ([#208](https://github.com/NobuData/ouroboros/issues/208)). An `unknown`
+      chip that looks deliberate beats a green one that is guessing.
+
+      **A latency appears only where a check measured one.** There is no default and no zero:
+      on a strip a person reads reliability from, `0ms` is not *we do not know*, it is an
+      excellent latency for a provider nothing has ever called.
 
   - name: tenancy
     description: |-
@@ -2180,6 +2212,142 @@ paths:
           description: |-
             `validation_failed` — `connectionKind` or `modelId` was missing or malformed.
             `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/providers:
+    get:
+      tags: [routing]
+      summary: This workspace's providers, and what is honestly known about each
+      description: |-
+        The chips mockup 06 draws above the routing matrix
+        ([#196](https://github.com/NobuData/ouroboros/issues/196)) — one per provider
+        connection, ordered by name so they do not reshuffle between polls.
+
+        **Every field is what a check found, or `null`.** `latencyMs` is present only where a
+        check measured one, `models` only where a check counted them, and neither has a
+        fallback — see the `routing` tag for why `0ms` is the one answer this endpoint must
+        never invent. `check` says *which* question produced the state, because *the socket
+        answered* and *the credential is valid* are different claims and a hover that explains
+        one should not be able to print the other.
+
+        **`meta` is the chip's line, already composed** — `workstation · 3 models`, `42ms`,
+        `degraded · elevated latency`, or `null` when nothing measured is worth printing. A
+        client is free to render from the fields instead; what it should not have to invent is
+        the composition rule, so that the strip and the route inspector cannot draw two
+        different sentences from one row.
+
+        **Nothing here triggers a check.** The cadence belongs to this service's scheduler and
+        the page polls. A *check now* button would let anybody holding a session make this
+        service issue outbound requests at whatever rate they can click, against a vendor's
+        rate limit and signed with the workspace's own credential.
+
+        **Any member may read it**, viewers included: *is Ollama up* is the kind of thing a
+        viewer exists to be able to look at.
+
+        **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before the operation runs.
+      operationId: listProviderHealth
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The strip. Empty for a workspace that has configured no providers — the page's
+            empty state, not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderHealthStrip"
+              example:
+                providers:
+                  - id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                    kind: anthropic
+                    displayName: Anthropic
+                    status: active
+                    check: key_validation
+                    checkedAt: "2026-08-23T09:58:12.004Z"
+                    host: null
+                    latencyMs: 42
+                    models: null
+                    detail: null
+                    meta: 42ms
+                  - id: 7a2e3d4c-5b6a-4f98-8d21-3e4f5a6b7c81
+                    kind: cursor
+                    displayName: Cursor
+                    status: unknown
+                    check: null
+                    checkedAt: null
+                    host: null
+                    latencyMs: null
+                    models: null
+                    detail: null
+                    meta: null
+                  - id: 8b3f4e5d-6c7b-4a09-9e32-4f5a6b7c8d92
+                    kind: copilot
+                    displayName: GitHub Copilot
+                    status: error
+                    check: null
+                    checkedAt: "2026-08-23T09:41:00.000Z"
+                    host: null
+                    latencyMs: null
+                    models: null
+                    detail: degraded · elevated latency
+                    meta: degraded · elevated latency
+                  - id: 9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e03
+                    kind: ollama
+                    displayName: Ollama
+                    status: active
+                    check: reachability
+                    checkedAt: "2026-08-23T09:59:41.882Z"
+                    host: workstation
+                    latencyMs: null
+                    models: 3
+                    detail: null
+                    meta: workstation · 3 models
+                  - id: 0d5b6a7f-8e9d-4c21-9a54-6b7c8d9e0f14
+                    kind: openai_compatible
+                    displayName: OpenAI-compatible
+                    status: active
+                    check: reachability
+                    checkedAt: "2026-08-23T09:59:41.902Z"
+                    host: vllm-local
+                    latencyMs: null
+                    models: 2
+                    detail: null
+                    meta: vllm-local · 2 models
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
           content:
             application/json:
               schema:
@@ -5611,6 +5779,107 @@ components:
           type: integer
           minimum: 0
           examples: [0]
+
+    ProviderHealth:
+      type: object
+      title: ProviderHealth
+      description: |-
+        One chip on the routing page's provider health strip — a provider connection, and what
+        the last check honestly found. Every optional fact is `null` rather than a stand-in
+        value; see the `routing` tag.
+      additionalProperties: false
+      required:
+        [id, kind, displayName, status, check, checkedAt, host, latencyMs, models, detail, meta]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The connection, as every other surface addresses it.
+          examples: [9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e03]
+        kind:
+          type: string
+          enum: [anthropic, openai_compatible, ollama, copilot, cursor, custom]
+          description: Which adapter reaches this provider.
+          examples: [ollama]
+        displayName:
+          type: string
+          description: |-
+            The chip's name. Free text a workspace chose, and deliberately not unique — two
+            Ollama daemons on two machines are two legitimate connections.
+          examples: [Ollama]
+        status:
+          type: string
+          enum: [active, paused, error, unknown]
+          description: |-
+            Whether the provider is usable, as far as anything knows.
+
+            `unknown` is a state and **must never be rendered as healthy**: it is what a
+            connection is before anything checked it. `paused` is an operator's intent rather
+            than a conclusion from a check, which is why nothing ties it to `checkedAt`.
+          examples: [active]
+        check:
+          type: [string, "null"]
+          enum: [reachability, key_validation, null]
+          description: |-
+            Which question produced this state, or `null` when no check this service performs
+            did — a seeded state, or a provider it has nothing cheap and truthful to ask.
+          examples: [reachability]
+        checkedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the last check finished, or `null` when none has.
+          examples: ["2026-08-23T09:59:41.882Z"]
+        host:
+          type: [string, "null"]
+          description: |-
+            The hostname this connection points at — no scheme, no port — or `null` when it
+            names no address. It is what makes two chips both called `Ollama` tellable apart.
+          examples: [workstation]
+        latencyMs:
+          type: [number, "null"]
+          minimum: 0
+          description: |-
+            Milliseconds the last check measured, or **`null`** when none measured one. There
+            is deliberately no default: `0ms` is an excellent latency, not an absence.
+          examples: [42]
+        models:
+          type: [integer, "null"]
+          minimum: 0
+          description: |-
+            How many models the provider listed, or `null` when nothing counted them. Null and
+            `0` are different facts: one is *we could not read the list*, the other is *the
+            list was empty*.
+          examples: [3]
+        detail:
+          type: [string, "null"]
+          description: |-
+            Why the provider is in this state, in a phrase — `unreachable (ECONNREFUSED)`,
+            `key rejected (401)`, `degraded · elevated latency`. Never a driver's own message,
+            which would carry a host and a port.
+          examples: [key rejected (401)]
+        meta:
+          type: [string, "null"]
+          description: |-
+            The chip's line, already composed from the facts above in the order the design
+            draws them — address, models, latency, detail — or `null` when there is nothing
+            measured worth printing.
+          examples: [workstation · 3 models]
+
+    ProviderHealthStrip:
+      type: object
+      title: ProviderHealthStrip
+      description: |-
+        The routing page's provider health strip. Unpaged: a workspace's strip is a handful of
+        chips, and a page over a list that short would cost a client a second request to
+        discover there was nothing more.
+      additionalProperties: false
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          description: Every connection in the workspace, ordered by display name.
+          items:
+            $ref: "#/components/schemas/ProviderHealth"
 
     EngineStatus:
       type: object

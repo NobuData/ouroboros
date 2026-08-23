@@ -124,6 +124,52 @@ export const DEFAULT_DASHBOARD_POLL_SECONDS = 15;
 export const MAX_DASHBOARD_POLL_SECONDS = 3600;
 
 /**
+ * Seconds between provider health sweeps when `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` is
+ * not set, and the age at which a *local* provider's last check is stale.
+ *
+ * Sixty. Z.3 ([#196](https://github.com/NobuData/ouroboros/issues/196)) promises that a
+ * stopped Ollama shows on the strip *within one check cycle*, which is only a promise worth
+ * making if a cycle is short — and the checks it governs are `GET`s against a daemon on the
+ * operator's own network, so a minute costs a loopback interface nothing. The actual delay
+ * is this value jittered by ±25% (`provider-health/cadence.ts`), so a fleet does not
+ * synchronise.
+ */
+export const DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS = 60;
+
+/**
+ * Shortest sweep interval an operator may ask for — ten seconds.
+ *
+ * Below this the sweep stops being a background job and becomes a load generator against
+ * whatever local daemons a workspace has declared. An operator who wants health *now* has a
+ * page that polls; what this value controls is how often this service knocks.
+ */
+export const MIN_PROVIDER_HEALTH_INTERVAL_SECONDS = 10;
+
+/**
+ * Seconds before a cloud provider's key validation is redone when
+ * `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` is not set — fifteen minutes.
+ *
+ * Deliberately far slower than the local cadence, and the reason is in
+ * `provider-health/cadence.ts`: this one is a request to somebody else's rate-limited
+ * service, made by every self-hosted Ouroboros in the world. What it detects is a rotated or
+ * revoked key, which is a thing that happens on a human timescale — fifteen minutes is well
+ * inside "before anybody files a ticket about it" and well outside "often enough to matter to
+ * the vendor".
+ */
+export const DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS = 900;
+
+/**
+ * Shortest key-validation cadence an operator may ask for — one minute.
+ *
+ * A floor rather than a preference. Anything faster is this deployment behaving badly towards
+ * a provider it does not own, on a schedule nobody watching the page asked for.
+ */
+export const MIN_PROVIDER_HEALTH_KEY_CHECK_SECONDS = 60;
+
+/** Longest either health cadence may be set to — one day. */
+export const MAX_PROVIDER_HEALTH_SECONDS = 86400;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -252,6 +298,29 @@ export interface Configuration {
    */
   readonly listenHostOverride?: ListenHost;
   /**
+   * Seconds between provider health sweeps, and the age at which a local provider's last
+   * check is stale. From `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`,
+   * {@link DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS} when unset.
+   *
+   * The nominal interval rather than the actual one: `src/modules/provider-health/` jitters
+   * every delay by ±25%, so a fleet of self-hosted instances does not arrive at a provider's
+   * endpoint in the same second. Raising it is how an operator makes this service knock less
+   * often; there is no value that turns it off, because a strip that stops updating and a
+   * strip that says `unknown` look different to a person and only one of them is true.
+   */
+  readonly providerHealthIntervalSeconds: number;
+  /**
+   * Seconds before a cloud provider's key validation is redone. From
+   * `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS`,
+   * {@link DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS} when unset.
+   *
+   * Separate from {@link providerHealthIntervalSeconds} because the two cadences are asking
+   * different people: a local daemon is the operator's own machine, and a vendor's
+   * key-validation endpoint is not. The sweep still runs on the shorter interval — this is
+   * how old a *cloud* row's `last_checked_at` has to be before that sweep touches it.
+   */
+  readonly providerHealthKeyCheckSeconds: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -299,6 +368,8 @@ export const VARIABLES = {
   corsOrigins: "OURO_CORS_ORIGINS",
   dashboardPollSeconds: "OURO_DASHBOARD_POLL_SECONDS",
   listenHostOverride: "OURO_LISTEN_HOST",
+  providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
+  providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
 } as const satisfies Record<keyof Configuration, string>;
 
@@ -482,6 +553,29 @@ const secret = z
   .min(MINIMUM_SECRET_LENGTH, `expected at least ${MINIMUM_SECRET_LENGTH} characters`);
 
 /**
+ * One of the two provider-health cadences — a whole number of seconds inside a range.
+ *
+ * A factory rather than two near-identical schemas, because the pair differ only in their
+ * floor and their default and the *rules* are the same ones `PORT` and
+ * `OURO_DASHBOARD_POLL_SECONDS` are read by: anchored digits, then a range. Writing them
+ * twice would be two places for "a cadence is a whole number of seconds" to drift.
+ *
+ * @param minimum - The floor. See `Configuration` for why each has one.
+ * @param fallback - The value when the variable is unset.
+ * @returns The schema.
+ */
+function healthCadence(minimum: number, fallback: number) {
+  const range = `expected between ${minimum} and ${MAX_PROVIDER_HEALTH_SECONDS} seconds`;
+
+  return z
+    .string()
+    .regex(/^\d+$/, range)
+    .transform(Number)
+    .refine((value) => value >= minimum && value <= MAX_PROVIDER_HEALTH_SECONDS, range)
+    .default(fallback);
+}
+
+/**
  * The environment, as this service requires it to be.
  *
  * Unknown variables are ignored rather than rejected — the environment of a container
@@ -583,6 +677,26 @@ const environmentSchema = z.object({
   OURO_LISTEN_HOST: z
     .enum(LISTEN_HOSTS, { error: `expected ${LOOPBACK_HOST} or ${ALL_INTERFACES_HOST}` })
     .optional(),
+
+  // The two provider-health cadences (#196), read by the same rules as PORT and the
+  // dashboard's poll: anchored digits, then a range. Two variables rather than one because
+  // they govern requests to two different people — see `Configuration` for which is which.
+  //
+  // Both have a floor as well as a ceiling, and the floors are the interesting half: a
+  // one-second sweep is a load generator against an operator's own daemons, and a
+  // one-second key check is this deployment behaving badly towards a provider it does not
+  // own. Neither has an off value, deliberately — a strip that has stopped updating and a
+  // strip that honestly says `unknown` look different to a person, and only one of them is
+  // true.
+  OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: healthCadence(
+    MIN_PROVIDER_HEALTH_INTERVAL_SECONDS,
+    DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS,
+  ),
+
+  OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS: healthCadence(
+    MIN_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
+    DEFAULT_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
+  ),
 
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
@@ -693,6 +807,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     corsOrigins: Object.freeze(values.OURO_CORS_ORIGINS),
     dashboardPollSeconds: values.OURO_DASHBOARD_POLL_SECONDS,
     listenHostOverride: values.OURO_LISTEN_HOST,
+    providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
+    providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
   });
 }
