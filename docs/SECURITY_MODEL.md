@@ -581,12 +581,15 @@ true today.
 
 ### 6.1 SSRF: private ranges are deliberately allowed
 
-> **Status: Shipped for AC.3** ([#218](https://github.com/NobuData/ouroboros/issues/218)) —
+> **Status: Shipped** for AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)) and
+> AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)) —
 > `ouroboros-rest/src/modules/providers/provider.address.ts`, tested by
 > `provider.address.spec.ts` and, from the outside, by
-> `adapters/openai-compatible.adapter.spec.ts`. **Specified** for AC.4
-> ([#219](https://github.com/NobuData/ouroboros/issues/219)), which shares the same module. The
-> same policy already governs `OURO_LOCAL_PROVIDER_URLS`, which is **Shipped**.
+> `adapters/openai-compatible.adapter.spec.ts` and `adapters/ollama.adapter.spec.ts`. Both
+> adapters share the one module rather than each holding a copy, and each suite asserts the
+> four rules against its own card's addresses — including the deliberate allow, so a reflexive
+> private-range check added later is a red test rather than a support ticket. The same policy
+> already governs `OURO_LOCAL_PROVIDER_URLS`, which is **Shipped**.
 
 Two provider adapters take an address from the user: the OpenAI-compatible adapter takes a
 `base_url` and the Ollama adapter takes a `host`. The reflexive security rule for

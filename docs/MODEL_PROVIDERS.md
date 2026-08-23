@@ -3,7 +3,8 @@
 > **Issues:** [#216](https://github.com/NobuData/ouroboros/issues/216) — *[AC.1]
 > ModelProviderAdapter SPI & registry*, [#217](https://github.com/NobuData/ouroboros/issues/217)
 > — *[AC.2] Anthropic adapter*, [#218](https://github.com/NobuData/ouroboros/issues/218) —
-> *[AC.3] OpenAI-compatible adapter* · **Roadmap:**
+> *[AC.3] OpenAI-compatible adapter*, [#219](https://github.com/NobuData/ouroboros/issues/219)
+> — *[AC.4] Ollama adapter with model pulls* · **Roadmap:**
 > [`ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`](ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md), decisions
 > **P1** and **P8** · **Written:** 2026-08-23
 
@@ -50,10 +51,12 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `provider.address.ts` | The **SSRF policy** — what an adapter that takes an operator-supplied URL may do with it. |
 | `provider.forms.ts` | Schema → form fields. Contains no provider kind, by test. |
 | `provider.registry.ts` | Lookup by `kind`, the `MODEL_PROVIDER_ADAPTERS` token, two refusals. |
+| `provider.pulls.ts` | **Server-side pull tracking** (AC.4, [#219](https://github.com/NobuData/ouroboros/issues/219)) — what consumes a `pullModel` stream so a progress bar survives a reload. |
 | `providers.module.ts` | The Nest module. `REGISTERED_ADAPTERS` is the line you add. |
 | `conformance.fixture.ts` | The kit. |
 | `adapters/anthropic.adapter.ts` | The Anthropic adapter (AC.2, [#217](https://github.com/NobuData/ouroboros/issues/217)) — the first real one. |
 | `adapters/openai-compatible.adapter.ts` | The OpenAI-compatible adapter (AC.3, [#218](https://github.com/NobuData/ouroboros/issues/218)) — vLLM, LM Studio, llama.cpp, TGI. |
+| `adapters/ollama.adapter.ts` | The Ollama adapter (AC.4, [#219](https://github.com/NobuData/ouroboros/issues/219)) — the only one that pulls, and the only one with no credential. |
 | `adapters/http.recordings.fixture.ts` | The stand-in `fetch` every adapter's recorded fixtures are served through. |
 | `adapters/fake.adapter.fixture.ts` | The in-memory adapter — this document's worked example. |
 | `card.shapes.fixture.ts` | Mockup 07's five cards, as schemas. |
@@ -497,12 +500,43 @@ Exactly one event carries `done: true` and it is the last. Completion is a state
 stream makes, not something inferred from an iterator finishing — a stream that just stops
 is what a pull looks like when the daemon dies half way through.
 
+**Bound the call by silence, not by elapsed time.** Every other member here carries a
+ten-second `AbortSignal.timeout`, which is right for a question somebody is watching a
+spinner for and catastrophic for a transfer that is *supposed* to take twenty minutes. A
+pull of `llama4:scout` moves 63 GB. `ollama.adapter.ts` gives each read of the stream its
+own deadline instead — a provider that is transferring is one that is talking — and puts
+the abort in a `finally`, so a consumer that stops iterating closes the socket rather than
+leaving a 63 GB download running with nobody reading it.
+
+**Do not track progress yourself.** Your job ends at the stream; `ModelPullTracker` in
+`provider.pulls.ts` is what consumes it on the server, writes it to a record, and answers
+*where did it get to* to the next request. That split is what makes a progress bar survive a
+page reload, and it is why the tracker takes a thunk —
+`() => registry.pullCapable(kind).pullModel(connection, modelId)` — rather than an adapter
+and a connection: a pull lives for minutes, and nothing that long-lived should be holding an
+opened credential.
+
+```ts
+const record = tracker.request({ connectionId, modelId, open });
+// → { state: "running", percent: null }  …or "queued", if one is already going
+
+tracker.find(connectionId, modelId);
+// → { state: "running", status: "pulling c6a2f1e3287b", percent: 61 }
+```
+
+One active pull per connection; a second request queues. Ordering, cancellation and disk
+awareness are AF.5 ([#238](https://github.com/NobuData/ouroboros/issues/238)).
+
 ### 7. Register it
 
 One line, in `providers.module.ts`:
 
 ```ts
-export const REGISTERED_ADAPTERS = [AnthropicAdapter, OllamaAdapter] as const;
+export const REGISTERED_ADAPTERS = [
+  AnthropicAdapter,
+  OpenAiCompatibleAdapter,
+  OllamaAdapter,
+] as const;
 ```
 
 The list is spread into the module's `providers` as well as into the factory's `inject`, so
@@ -597,14 +631,18 @@ really fails.
 
 | | |
 |---|---|
-| The other three adapters — Anthropic shipped with AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) and the OpenAI-compatible one with AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)) | AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)), AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
+| The Copilot and Cursor adapters — Anthropic shipped with AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)), the OpenAI-compatible one with AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)) and Ollama with AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)) | AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
+| The HTTP surface a page polls for pull progress — `ModelPullTracker` is the service behind it | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)), AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) |
 | The add-form and catalog | AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)) |
 | Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
 
-`REGISTERED_ADAPTERS` holds `AnthropicAdapter` and `OpenAiCompatibleAdapter`, so
-`ModelProviderRegistry.get("anthropic")` and `get("openai_compatible")` each answer an adapter
-and every other kind is still `501 provider_kind_unsupported`. That is the accurate thing for
-this build to say about `ollama`: V015 accepts the row, and nothing here knows how to reach it
-yet.
+`REGISTERED_ADAPTERS` holds `AnthropicAdapter`, `OpenAiCompatibleAdapter` and `OllamaAdapter`,
+so those three kinds answer an adapter and `copilot`, `cursor` and `custom` are still
+`501 provider_kind_unsupported`. That is the accurate thing for this build to say about them:
+V015 accepts the row, and nothing here knows how to reach one yet.
+
+`ModelProviderRegistry.pullCapable("ollama")` is the first call that answers rather than
+refusing — until AC.4 there was no registered adapter that declared the capability, so AC.1's
+compile-time gate had nothing on the other side of it.

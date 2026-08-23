@@ -224,7 +224,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | AC.1 | #216 | 🟢 Done | ouroboros-rest: [AC.1] ModelProviderAdapter SPI & registry | Interface, capability flags, config schemas, lint boundary | mvp, providers, rest | N (after Y.1) | Y | L | ouroboros-rest |
 | AC.2 | #217 | 🟢 Done | ouroboros-rest: [AC.2] Anthropic adapter | Key auth, models discovery, test, priority-tier detection | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
 | AC.3 | #218 | 🟢 Done | ouroboros-rest: [AC.3] OpenAI-compatible adapter (vLLM et al.) | Base-URL + optional key, `/v1/models` discovery, test | mvp, providers, rest | N (after AC.1, AD.1) | Y | S | ouroboros-rest |
-| AC.4 | #219 | 🟡 Open | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
+| AC.4 | #219 | 🟢 Done | ouroboros-rest: [AC.4] Ollama adapter with model pulls | Host config, `/api/tags` discovery with sizes, `/api/pull` | mvp, providers, rest | N (after AC.1) | Y | M | ouroboros-rest |
 | AC.5 | #220 | 🟡 Open | ouroboros-rest: [AC.5] Copilot & Cursor adapters | Token/key auth, fixed catalogs, entitlement checks | mvp, providers, rest | N (after AC.1, AD.1) | Y | M | ouroboros-rest |
 | AC.6 | #221 | 🟢 Done | ouroboros-db: [AC.6] Schema extensions, discovered-models catalog & seeds | Y.1 extensions (caps, meta), `provider_models`, mockup-parity seeds, CI | mvp, providers, db, ci | N (after Y.1) | Y | M | ouroboros-db, .github |
 
@@ -510,7 +510,72 @@ validate(key) ─▶ GET /v1/models ─▶ {200, 38ms} ─▶ "✓ 200 · 38ms" 
 
 ### Issue AC.4 — ouroboros-rest: [AC.4] Ollama adapter with model pulls
 
-> **GitHub issue:** #219 · **Status:** 🟡 Open · **Parent epic:** #212
+> **GitHub issue:** #219 · **Status:** 🟢 Done · **Parent epic:** #212
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/providers/adapters/ollama.adapter.ts`](../ouroboros-rest/src/modules/providers/adapters/ollama.adapter.ts),
+> the server-side tracker at
+> [`provider.pulls.ts`](../ouroboros-rest/src/modules/providers/provider.pulls.ts), an
+> `--profile ollama` container in [`docker-compose.yml`](../docker-compose.yml), and a new
+> section in [`docs/MODEL_PROVIDERS.md`](MODEL_PROVIDERS.md).
+>
+> **The adapter declares no credential field at all** — not an optional one, which is a shape
+> none of the other four have. A local daemon authenticates nobody, so a blank row somebody has
+> to leave blank is a question the product should not be asking, and `secretFieldName()` answers
+> `null`. The conformance kit checks the agreement in both directions: a harness with a
+> credential against a schema with no secret row fails, and so does the reverse.
+>
+> **It shares AC.3's address policy verbatim rather than restating it.** `provider.address.ts`
+> is the one door — scheme allow-list, `redirect: "manual"`, a response cap, no userinfo — and
+> `http://localhost:11434` passing it is the deliberate allow, not an oversight. `401` and `429`
+> are still classified and still recorded as fixtures, because putting a daemon behind a reverse
+> proxy with basic auth is the ordinary way an operator exposes one and that proxy is what
+> answers them. The kit has no *"this class cannot happen for my provider"* escape hatch, and
+> this is the ticket where that rule earned its keep.
+>
+> **A pull is bounded by silence, not by elapsed time.** Every other call in the module carries
+> a ten-second deadline, which is right for a question somebody is watching a spinner for and
+> catastrophic for a transfer that is *supposed* to take twenty minutes: `llama4:scout` is 63 GB.
+> So each read of the NDJSON stream gets its own deadline, and the abort lives in a `finally` —
+> a consumer that stops iterating closes the socket rather than leaving the transfer running
+> with nobody reading it.
+>
+> **Progress is tracked by the process, and that is the whole of the third criterion.**
+> `ModelPullTracker` consumes the stream server-side, writes it to a record, and answers *where
+> did it get to* to the next request — so a page reload, a browser restart or a second person
+> looking all see the same 61%, because none of them is where the progress lives. One active
+> pull per connection; a second request is **queued** and the daemon has not been asked for it
+> yet, which is the assertion that matters. Ordering, cancellation and disk awareness stay
+> AF.5's (#238).
+>
+> It takes a thunk — `() => registry.pullCapable(kind).pullModel(connection, modelId)` — rather
+> than an adapter and a connection, so **no credential reaches a component that lives for
+> minutes**. Ollama has none to hold today, which is exactly why the constraint was cheap to
+> adopt now and would be expensive to retrofit.
+>
+> **Sizes are the one field no cloud adapter can fill in.** `/api/tags` publishes an on-disk
+> size and it reaches `NormalizedModel.sizeBytes` unchanged, with a floor of one byte because
+> V017's `provider_models_size_bytes_positive` refuses a zero. `19 GB` is a rendering decision
+> and it belongs to AE.4. There is no context length and no tier: `/api/tags` publishes neither,
+> and decision **P8** says report what was said or say nothing.
+>
+> **The `2.1M tokens on-box` line was verified rather than implemented.** It comes from
+> `token_usage` (#66) and the adapter synthesizes nothing — there is no usage in an Ollama
+> response to read, and inventing one would break the same honesty rule that keeps the meter
+> from showing a fabricated `$0.00`.
+>
+> **What this ticket could not finish, and why.** The status endpoint AE.4 polls is a handler
+> over `ModelPullTracker.find` and `list`, and it needs a connection resolved from
+> `/api/v1/providers` — a surface AD.2 (#223) owns and has not shipped. Writing a slice of it
+> here would be something that ticket then had to negotiate with rather than write, which is the
+> same reason `providers/` still declares no controller. The tracker is the half that had to
+> exist first, and it is complete and asserted.
+>
+> The *pull of a small model against the compose Ollama* criterion is a manual check: the
+> container is in `docker-compose.yml` under `--profile ollama`, and no CI job can pull a model.
+> Everything about the stream — chunk boundaries mid-object, a multi-byte character split across
+> two reads, a resumed transfer starting at 61%, a failure announced mid-stream, a daemon that
+> goes quiet — is covered by recorded fixtures that open no socket.
 
 
 - **Problem Statement:** The zero-cost lane is also the most interactive card:

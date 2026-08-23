@@ -90,9 +90,9 @@ import type {
 import {
   PROVIDER_MAX_RESPONSE_BYTES,
   PROVIDER_REDIRECT,
-  describeRedirectRefused,
+  describeRefusal,
+  describeUnreachable,
   discardBody,
-  isRedirect,
   readCappedBody,
   resolveProviderAddress,
 } from "../provider.address";
@@ -106,12 +106,7 @@ import {
   type ProviderConfigSchema,
   type ProviderConnectionConfig,
 } from "../provider.config";
-import {
-  ProviderAdapterError,
-  classifyHttpStatus,
-  describeHttpRefusal,
-  describeTransportFailure,
-} from "../provider.errors";
+import { ProviderAdapterError, classifyHttpStatus } from "../provider.errors";
 
 /**
  * The property the optional API key is submitted under.
@@ -358,20 +353,18 @@ function requestInit(secret: string | null): RequestInit {
 /**
  * How an endpoint that never answered reads on the card foot.
  *
- * AC.3's acceptance criterion: *the host is echoed and no raw socket error is surfaced*. The
- * host matters here in a way it does not for a cloud adapter — this address is one of possibly
- * several an operator runs, and *unreachable* with nothing else on it does not say which. What
- * is deliberately not here is the runtime's own message, which carries a resolved address, a
- * port and sometimes the request headers; {@link describeTransportFailure} answers a symbolic
- * code or nothing.
+ * AC.3's acceptance criterion: *the host is echoed and no raw socket error is surfaced*. Both
+ * halves are `provider.address.ts`'s {@link describeUnreachable}, which AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)) moved there when it became the
+ * second adapter that needed the sentence; all this adds is the deadline it names.
  *
  * @param host - The address's `host:port`.
  * @param error - Whatever was caught.
  * @returns The phrase — `10.0.4.20:8000 unreachable (ECONNREFUSED)`,
  *   `10.0.4.20:8000 timed out after 10000 ms`.
  */
-export function describeUnreachable(host: string, error: unknown): string {
-  return `${host} ${describeTransportFailure(error, OPENAI_COMPATIBLE_TIMEOUT_MS)}`;
+function unreachable(host: string, error: unknown): string {
+  return describeUnreachable(host, error, OPENAI_COMPATIBLE_TIMEOUT_MS);
 }
 
 /**
@@ -523,7 +516,7 @@ export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
       return {
         status: "failed",
         errorClass: "network",
-        detail: describeUnreachable(endpoint.host, error),
+        detail: unreachable(endpoint.host, error),
       };
     }
 
@@ -539,7 +532,7 @@ export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
       return {
         status: "failed",
         errorClass: classifyHttpStatus(response.status),
-        detail: refusalDetail(response.status),
+        detail: describeRefusal(response.status),
       };
     }
 
@@ -573,7 +566,7 @@ export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
     try {
       response = await fetch(endpoint.url, requestInit(connection.secret));
     } catch (error) {
-      throw new ProviderAdapterError("network", describeUnreachable(endpoint.host, error));
+      throw new ProviderAdapterError("network", unreachable(endpoint.host, error));
     }
 
     if (!response.ok) {
@@ -584,29 +577,13 @@ export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
 
       throw new ProviderAdapterError(
         classifyHttpStatus(response.status),
-        refusalDetail(response.status),
+        describeRefusal(response.status),
         response.status,
       );
     }
 
     return normalizeListing(await readListing(response));
   }
-}
-
-/**
- * How a refusal reads, redirects included.
- *
- * The taxonomy is `provider.errors.ts`'s and this does not fork it — a `3xx` is `config` there
- * and stays `config` here. What differs is only the *sentence*, and only for the one status
- * whose outcome this service caused: `responded 302` is true and sends a reader looking for a
- * server that answered oddly, when what happened is that the address points one level above the
- * API and this adapter declined to be redirected off it.
- *
- * @param status - The status the endpoint answered with.
- * @returns The phrase for the card foot.
- */
-function refusalDetail(status: number): string {
-  return isRedirect(status) ? describeRedirectRefused(status) : describeHttpRefusal(status);
 }
 
 /**

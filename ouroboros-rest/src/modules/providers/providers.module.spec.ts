@@ -1,8 +1,10 @@
 import { Test } from "@nestjs/testing";
 
 import { AnthropicAdapter } from "./adapters/anthropic.adapter";
+import { OllamaAdapter } from "./adapters/ollama.adapter";
 import { OpenAiCompatibleAdapter } from "./adapters/openai-compatible.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
+import { ModelPullTracker } from "./provider.pulls";
 import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.registry";
 import { ProvidersModule, REGISTERED_ADAPTERS } from "./providers.module";
 
@@ -39,19 +41,32 @@ describe("the providers module", () => {
     await moduleRef.close();
   });
 
-  it("reaches anthropic and openai_compatible, leaving AC.4–AC.5's kinds a 501", async () => {
+  it("reaches three kinds, leaving AC.5's two a 501", async () => {
     // Accurate rather than a stub — `provider.registry.ts` argues why, and AD.1's
-    // VAULT_SECRET_STORES is the precedent. This assertion is expected to be *changed* by each
-    // of AC.4–AC.5 rather than to keep passing, and that is the point: adding an adapter is a
-    // visible diff here.
+    // VAULT_SECRET_STORES is the precedent. This assertion is expected to be *changed* by AC.5
+    // rather than to keep passing, and that is the point: adding an adapter is a visible diff
+    // here.
     const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
     const registry = moduleRef.get(ModelProviderRegistry);
 
-    expect(REGISTERED_ADAPTERS).toEqual([AnthropicAdapter, OpenAiCompatibleAdapter]);
+    expect(REGISTERED_ADAPTERS).toEqual([AnthropicAdapter, OpenAiCompatibleAdapter, OllamaAdapter]);
     // V015's declaration order, which is what `kinds()` answers in — deliberately not the order
     // the module registers them, because a catalog's order must not depend on an injector's.
-    expect(registry.kinds()).toEqual(["anthropic", "openai_compatible"]);
-    expect(registry.find("ollama")).toBeUndefined();
+    expect(registry.kinds()).toEqual(["anthropic", "openai_compatible", "ollama"]);
+    expect(registry.find("copilot")).toBeUndefined();
+    expect(registry.find("cursor")).toBeUndefined();
+
+    await moduleRef.close();
+  });
+
+  it("reaches pullModel through the registry, and only through it", async () => {
+    // AC.1's fifth acceptance criterion, live for the first time: until AC.4 there was no
+    // registered adapter that declared the capability, so `pullCapable` had nothing to answer.
+    const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
+    const registry = moduleRef.get(ModelProviderRegistry);
+
+    expect(registry.pullCapable("ollama")).toBeInstanceOf(OllamaAdapter);
+    expect(() => registry.pullCapable("anthropic")).toThrow(/does not pull models/);
 
     await moduleRef.close();
   });
@@ -65,6 +80,7 @@ describe("the providers module", () => {
 
     expect(registry.get("anthropic")).toBeInstanceOf(AnthropicAdapter);
     expect(registry.get("openai_compatible")).toBeInstanceOf(OpenAiCompatibleAdapter);
+    expect(registry.get("ollama")).toBeInstanceOf(OllamaAdapter);
 
     await moduleRef.close();
   });
@@ -79,12 +95,24 @@ describe("the providers module", () => {
     await moduleRef.close();
   });
 
-  it("exports the registry, and only the registry", () => {
+  it("exports the registry and the pull tracker, and nothing else", () => {
     // Everything else stays private. A consumer reaching for MODEL_PROVIDER_ADAPTERS would be
-    // iterating adapters, which is the thing the registry exists to stop.
+    // iterating adapters, which is the thing the registry exists to stop. The tracker is the
+    // second export and arrived with AC.4 (#219): a pull outlives the request that started it, so
+    // what remembers one has to be reachable from whatever answers the next request.
     const exports = Reflect.getMetadata("exports", ProvidersModule) as unknown[] | undefined;
 
-    expect(exports).toEqual([ModelProviderRegistry]);
+    expect(exports).toEqual([ModelProviderRegistry, ModelPullTracker]);
+  });
+
+  it("resolves the pull tracker as one shared instance", async () => {
+    // A request-scoped tracker would forget everything the moment a page reloaded, which is the
+    // failure `provider.pulls.ts` exists to prevent.
+    const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
+
+    expect(moduleRef.get(ModelPullTracker)).toBe(moduleRef.get(ModelPullTracker));
+
+    await moduleRef.close();
   });
 
   it("imports nothing — no database, no vault", () => {
@@ -100,7 +128,8 @@ describe("the providers module", () => {
   it("declares no controller", () => {
     // Decision M2's shape, again: AD.2 owns add/reveal/rotate, AE.4 owns test and discovery,
     // AE.5 owns the add-form. A surface written here first is one they would have to negotiate
-    // with rather than write.
+    // with rather than write — which is why AC.4 (#219) shipped `ModelPullTracker` as a service
+    // and left the route AE.4 polls to the ticket that owns `/api/v1/providers`.
     const controllers = Reflect.getMetadata("controllers", ProvidersModule) as
       unknown[] | undefined;
 

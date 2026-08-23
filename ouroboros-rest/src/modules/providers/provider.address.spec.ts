@@ -3,6 +3,8 @@ import {
   PROVIDER_REDIRECT,
   PROVIDER_URL_SCHEMES,
   describeRedirectRefused,
+  describeRefusal,
+  describeUnreachable,
   discardBody,
   isRedirect,
   readCappedBody,
@@ -19,10 +21,14 @@ import {
  * reflexive private-range check months from now and every self-hosted card going dark. A test
  * that asserts `10.0.4.20` is accepted is the thing that stops that being a quiet change.
  *
- * `openai-compatible.adapter.spec.ts` asserts the same policy from the outside — that the
- * adapter really routes through here, that no socket is opened for a refused scheme, and that a
- * `302` costs exactly one request. Both halves are needed: this one says the rules are right,
- * that one says they are reached.
+ * `openai-compatible.adapter.spec.ts` and `ollama.adapter.spec.ts` assert the same policy from
+ * the outside — that each adapter really routes through here, that no socket is opened for a
+ * refused scheme, and that a `302` costs exactly one request. Both halves are needed: this one
+ * says the rules are right, those say they are reached.
+ *
+ * The last two suites below cover the two *sentences* the module owns, moved here by AC.4
+ * ([#219](https://github.com/NobuData/ouroboros/issues/219)) when the second address-taking
+ * adapter would otherwise have written each of them a second time.
  */
 
 describe("the scheme allow-list", () => {
@@ -323,5 +329,81 @@ describe("readCappedBody", () => {
 describe("the cap itself", () => {
   it("is a mebibyte — three orders of magnitude past any real model listing", () => {
     expect(PROVIDER_MAX_RESPONSE_BYTES).toBe(1_048_576);
+  });
+});
+
+describe("describeRefusal", () => {
+  it.each([
+    [401, "key rejected (401)"],
+    [403, "key rejected (403)"],
+    [429, "rate limited (429)"],
+    [500, "500 upstream"],
+    [503, "503 upstream"],
+    [408, "timed out (408)"],
+    [404, "responded 404"],
+    [400, "responded 400"],
+  ])("hands %p to the shared taxonomy unchanged", (status, expected) => {
+    // It does not fork `describeHttpRefusal`. Everything that is not a redirect reads exactly as
+    // it would from an adapter talking to a fixed host.
+    expect(describeRefusal(status)).toBe(expected);
+  });
+
+  it.each([301, 302, 303, 307, 308])(
+    "says a %p was not followed, rather than answered",
+    (status) => {
+      // The one status whose outcome this service caused. `responded 302` is true and sends a
+      // reader looking for a server that answered oddly.
+      expect(describeRefusal(status)).toBe(describeRedirectRefused(status));
+      expect(describeRefusal(status)).toBe(`redirect not followed (${status.toString()})`);
+    },
+  );
+
+  it("refuses a success, because a 200 reaching here is a bug rather than a phrase", () => {
+    expect(() => describeRefusal(200)).toThrow(RangeError);
+  });
+});
+
+describe("describeUnreachable", () => {
+  it("echoes the host, which is the half an operator running several endpoints needs", () => {
+    expect(
+      describeUnreachable(
+        "10.0.4.20:8000",
+        new TypeError("fetch failed", { cause: { code: "ECONNREFUSED" } }),
+        10_000,
+      ),
+    ).toBe("10.0.4.20:8000 unreachable (ECONNREFUSED)");
+  });
+
+  it("names the deadline it was given, rather than one of its own", () => {
+    // A parameter because each adapter sets its own, and a constant here would print the wrong
+    // number for whichever one did not match.
+    const timedOut = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+
+    expect(describeUnreachable("ken-station.local:11434", timedOut, 10_000)).toBe(
+      "ken-station.local:11434 timed out after 10000 ms",
+    );
+    expect(describeUnreachable("ken-station.local:11434", timedOut, 5_000)).toBe(
+      "ken-station.local:11434 timed out after 5000 ms",
+    );
+  });
+
+  it("surfaces no raw socket error, only a symbolic code", () => {
+    // The runtime's own message carries a resolved address, a port and sometimes the request
+    // headers — which is the half that must never reach a card.
+    const message = "connect ECONNREFUSED 10.0.4.20:8000 — no route from pod ouroboros-rest-7f9";
+
+    expect(
+      describeUnreachable(
+        "10.0.4.20:8000",
+        new TypeError(message, { cause: { code: "ECONNREFUSED" } }),
+        10_000,
+      ),
+    ).not.toContain("no route");
+  });
+
+  it("falls back to a bare phrase when the runtime hangs no code on it", () => {
+    expect(describeUnreachable("10.0.4.20:8000", new TypeError("fetch failed"), 10_000)).toBe(
+      "10.0.4.20:8000 unreachable",
+    );
   });
 });

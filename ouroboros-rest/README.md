@@ -926,7 +926,7 @@ summary.
 
 ```
 core services ──imports──▶ ModelProviderAdapter ◀──implements── adapters/*
- (AD.2 · Z.3 · discovery)          ▲            anthropic · openai_compatible · AC.4–AC.5 next
+ (AD.2 · Z.3 · discovery)          ▲       anthropic · openai_compatible · ollama · AC.5 next
                                    └── ModelProviderRegistry.get(kind)
 ```
 
@@ -998,13 +998,13 @@ yarn lint      # eslint, then depcruise src
 configuration reports it — a rule whose pattern has quietly stopped matching looks identical
 to a codebase with no violations.
 
-**`REGISTERED_ADAPTERS` holds two adapters**, so `anthropic` and `openai_compatible` resolve
-and every other kind is a `501 provider_kind_unsupported`. That is the accurate thing for this
-build to say about `ollama`: V015 accepts the row, and nothing here knows how to reach it yet.
-AC.4–AC.5
-([#219](https://github.com/NobuData/ouroboros/issues/219)–[#220](https://github.com/NobuData/ouroboros/issues/220))
-each add one line. `adapters/fake.adapter.fixture.ts` is the in-memory adapter that powers
-core tests without touching a network, and it is the worked example the walkthrough reads.
+**`REGISTERED_ADAPTERS` holds three adapters**, so `anthropic`, `openai_compatible` and
+`ollama` resolve and every other kind is a `501 provider_kind_unsupported`. That is the accurate
+thing for this build to say about `copilot` and `cursor`: V015 accepts the row, and nothing here
+knows how to reach one yet. AC.5
+([#220](https://github.com/NobuData/ouroboros/issues/220)) adds the last two lines.
+`adapters/fake.adapter.fixture.ts` is the in-memory adapter that powers core tests without
+touching a network, and it is the worked example the walkthrough reads.
 
 ### The Anthropic adapter
 
@@ -1065,7 +1065,7 @@ discoverModels ─▶ the same call                       →  local/llama-4-mav
 That is the shape of an SSRF vulnerability, and the reflexive mitigation — blocking private
 ranges — is exactly wrong here, because the legitimate use case *is*
 `http://10.0.4.20:8000/v1`. So the policy is stated rather than inherited. It lives in
-`providers/provider.address.ts`, AC.4's Ollama adapter will share it, and it is four rules:
+`providers/provider.address.ts`, the Ollama adapter below shares it, and it is four rules:
 
 | Rule | What it stops |
 |---|---|
@@ -1085,6 +1085,59 @@ rather than an empty bearer a server would answer `401` to. **The chips carry `l
 ids do not**, because `model_prices.match_model` joins on the server's own spelling. And the
 conformance kit runs **twice**, against a vLLM capture and a bare generic one, because a kit
 green against one vendor proves the claim about one vendor.
+
+### The Ollama adapter, and server-side model pulls
+
+**The zero-cost lane, and the only card that can change what models exist**
+([#219](https://github.com/NobuData/ouroboros/issues/219)).
+`adapters/ollama.adapter.ts` is mockup 07's `OL` card: a **Host**, no credential anywhere,
+and a detected-models list with real sizes and a **Pull latest** on every row.
+
+```
+configSchema   ─▶ { baseUrl, capabilityNote? }        a Host, and no key row at all
+validate       ─▶ GET  {host}/api/version · 200   →  ✓ 200 · 4ms
+                                          socket  →  network · ken-station.local:11434 unreachable
+discoverModels ─▶ GET  {host}/api/tags            →  qwen3-coder:32b · 19 GB
+                                                     llama4:scout    · 63 GB
+                                                     phi4:14b        · 9.1 GB
+pullModel      ─▶ POST {host}/api/pull  (NDJSON)  →  pulling manifest → downloading → success
+```
+
+**It declares no credential field at all** — not an optional one. A local daemon
+authenticates nobody, and a blank row somebody has to leave blank is a question the product
+should not be asking. It shares the address policy above verbatim; `401` and `429` are still
+classified, because putting a daemon behind a reverse proxy with basic auth is the ordinary
+way an operator exposes one, and that proxy is what answers them.
+
+**Sizes are the one field no cloud adapter can fill in.** `/api/tags` publishes an on-disk
+size per model and it reaches `provider_models.size_bytes` in bytes, unchanged — `19 GB` is a
+rendering decision and it belongs to AE.4
+([#230](https://github.com/NobuData/ouroboros/issues/230)). There is no context length and no
+tier: `/api/tags` publishes neither, and decision **P8** says report what was said or say
+nothing.
+
+**A pull is bounded by silence rather than by elapsed time.** Every other call here carries a
+ten-second deadline; a pull of `llama4:scout` moves 63 GB and is *supposed* to take twenty
+minutes, so each read of the stream gets its own deadline instead and the abort lives in a
+`finally` — a consumer that stops iterating closes the socket rather than leaving the transfer
+running with nobody reading it.
+
+**Progress is tracked by the process, not by the browser.** `providers/provider.pulls.ts` is
+`ModelPullTracker`: one shared instance, one active pull per connection, a queued state for the
+second, and a record any later request can read.
+
+```ts
+tracker.request({ connectionId, modelId, open });   // → { state: "running", percent: null }
+tracker.find(connectionId, modelId);                // → { state: "running", percent: 61 }
+```
+
+That split is what makes *reload the page mid-pull and it is still at 61%* a property of the
+design. It takes a thunk — `() => registry.pullCapable(kind).pullModel(connection, modelId)` —
+rather than an adapter and a connection, so **no credential reaches a component that lives for
+minutes**. Records are in memory and last fifteen minutes after they finish; a process
+restart loses them, and the daemon carries on pulling regardless, which the next discovery
+finds. The HTTP route AE.4 polls is AD.2's to add on top: this module still declares no
+controller.
 
 ## BetterAuth
 
@@ -1972,6 +2025,7 @@ ouroboros-rest/
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218
+│       │                   #   adapters/ollama.adapter.ts + provider.pulls.ts · #219
 │       │                   #   adapters/ is the only place a provider SDK may be imported
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
@@ -2088,6 +2142,7 @@ provider health [#196](https://github.com/NobuData/ouroboros/issues/196) ·
 provider adapters [#216](https://github.com/NobuData/ouroboros/issues/216) ·
 the Anthropic adapter [#217](https://github.com/NobuData/ouroboros/issues/217) ·
 the OpenAI-compatible adapter [#218](https://github.com/NobuData/ouroboros/issues/218) ·
+the Ollama adapter and server-side pulls [#219](https://github.com/NobuData/ouroboros/issues/219) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
