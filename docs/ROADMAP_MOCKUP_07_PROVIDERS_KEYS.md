@@ -429,7 +429,7 @@ erDiagram
 | AD.2 | #223 | 🟡 Open | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
 | AD.3 | #224 | 🟢 Done | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
 | AD.4 | #225 | 🟡 Open | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
-| AD.5 | #226 | 🟡 Open | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
+| AD.5 | #226 | 🟢 Done | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
 
 ### Issue AD.1 — ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper)
 
@@ -683,8 +683,58 @@ rotate by Ken ─▶ audit_events {provider.rotated, actor, conn, ip, at}  (no s
 
 ### Issue AD.5 — ouroboros: [AD.5] Security model documentation
 
-> **GitHub issue:** #226 · **Status:** 🟡 Open · **Parent epic:** #213
+> **GitHub issue:** #226 · **Status:** 🟢 Done · **Parent epic:** #213
 
+> **Shipped 2026-08-22.** [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), linked from the
+> README's documentation table. Nine sections, four Mermaid diagrams, and a status mark on
+> every one of them — **Shipped**, **Specified** or **Planned** — because a security document
+> that described the finished system would be the same class of error as the compliance
+> badges it removes.
+>
+> **The traceability is a list, not an assertion.** §1 puts all ten claims the page makes —
+> six in the strip, four in the head subline — in two tables against the section that answers
+> each. Four verdicts: *true* (sealing, envelope encryption, "keys never leave the control
+> plane"), *qualified* ("KMS-backed" — false of the default deployment, and §3.2 says so in
+> the words an operator needs), *corrected* ("15-minute tokens" — AD.3 does something
+> stronger), and *withdrawn* (both badges).
+>
+> **The badge policy is the part that outlives this ticket.** `SOC 2 Type II` and
+> `ISO 27001` come out, and §7.3 writes down the five rules that govern any badge added
+> later — a completed audit by a named auditor, a **date rendered beside the name** because
+> these lapse, removal when it does, never from a configuration flag an operator can set, and
+> **an empty slot until then** rather than a "certification in progress" placeholder, which is
+> a compliance claim wearing a hedge. What replaces them is what the product has earned:
+> *self-hosted — your keys never leave your deployment*.
+>
+> **§7 is the single source AE.6 (#232) and AE.1 (#227) render verbatim**, and it carries the
+> clause-by-clause trace so the review that ticket owes is a check rather than a judgement.
+> It also writes the rule for AF.3 (#236): a deployment with a KMS wrapper may append *"This
+> deployment's keys are held in &lt;KMS name&gt;"*, rendered from the configured wrapper's
+> identity rather than from a setting, and **rendered as nothing at all under the
+> environment-master wrapper** — silence is the honest default and a euphemism is not.
+>
+> **The SSRF section explains a deliberate allow rather than defending an omission.** AC.3 and
+> AC.4 take an address from the user and RFC-1918 is permitted, because the rule and the
+> feature are the same thing: an adapter that refused private ranges could not reach the vLLM
+> or the Ollama it exists to reach. What is enforced instead is enumerated — scheme
+> allow-list, no redirect following, kind scoping, role scoping, no response body echoed —
+> and so is what remains, which is that an admin can learn whether something answers on their
+> own network. That is a capability they already have, and the boundary is *who may configure
+> a connection*.
+>
+> **Two claims are shipped-with-an-interim-sink and neither is rounded up.** Every credential
+> operation is audited (§5.1), but AD.4 (#225) has not landed, so `credential.lease_granted`
+> goes to the service log rather than to `audit_events` — §5.4 says that in those words,
+> because "audited" and "audited into a queryable table" are different claims. And the strip's
+> link target is specified here rather than wired, because the strip itself is AE.6's to build
+> and AE.6 is blocked on this document.
+>
+> **Four filed amendments are listed as Planned rather than written up as true** — the
+> build-farm CA (#250, including the reverse proxy that silently breaks mTLS by not passing
+> the client certificate through), workspace deletion as crypto-shredding (#489), deployment
+> truth in Settings (#483), and analyzer tenant locality (#510, which loses its stronger claim
+> when the v2 synthesis pass is enabled). §9 is the rule that keeps the document honest as
+> they land: **a security claim ships only after it appears here.**
 
 - **Problem Statement:** The strip links "Read the security model ↗" and makes
   compliance-flavored claims (SOC 2, ISO 27001); the document must exist and
