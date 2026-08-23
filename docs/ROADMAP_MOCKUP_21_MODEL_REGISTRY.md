@@ -256,7 +256,7 @@ chips: **XS · S · M · L**.
 | CG.1 | #579 | 🟡 Open | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
 | CG.2 | #580 | 🟢 Done | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
 | CG.3 | #581 | 🟡 Open | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
-| CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds second-opinion + unbound gpt5-experiments), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
+| CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds unbound gpt5-experiments; second-opinion arrives with Y.4), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
 | CG.5 | #583 | 🟡 Open | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue CG.1 — ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions
@@ -435,10 +435,12 @@ delete(coder-max) ─▶ 409 naming the four   ·   delete(gpt5-experiments) ─
   registry state — which is a superset of Y.4's six aliases — plus pricing
   rows and the run #482 resolution snapshot (R9's fixture).
 - **Solution/Scope:** Extend the dev seed (coordinated with Y.4/AC.6, no
-  duplicate rows): **+2 aliases** — `second-opinion` (Cursor connection →
-  `composer-2`, restriction `review_vote_only`, referenced by the Y.4
-  security-label escalation rule so its `1 route` count is real) and
-  `gpt5-experiments` (unbound, `gpt-5.2-preview`, disabled); structured
+  duplicate rows): **+1 alias** — `gpt5-experiments` (unbound,
+  `gpt-5.2-preview`, disabled) — and the registry half of `second-opinion`,
+  which **Y.4 now seeds** (Cursor connection → `composer-2`, restriction
+  `review_vote_only`): its `1 route` count is real because the Y.4
+  security-label escalation rule names it, and V018 (#191) refuses a rule
+  naming an alias the workspace does not have; structured
   params for all eight per the mockup chips (`max thinking`+`400k`, `std
   thinking`, `temp 0`+`8k out`, `ctx 32k`, `batch ok`); pricing: bundled
   snapshot covers the Anthropic trio ($15·$75 / $3·$15 / $1·$5) and
@@ -456,7 +458,7 @@ delete(coder-max) ─▶ 409 naming the four   ·   delete(gpt5-experiments) ─
 - **Epic:** CG
 
 ```
-seeds: 8 aliases (6 from Y.4 + second-opinion + unbound gpt5-experiments)
+seeds: 8 aliases (7 from Y.4, incl. second-opinion + unbound gpt5-experiments)
        params chips · prices {3×token, seat, usage, 2×free, ∅}
        run #482 snapshot: task→route→alias→provider(…Xq4A)→model · 42ms
 ```
@@ -1271,7 +1273,7 @@ Amendments posted at filing:
 | Z.1 (#194) | Resolution gains **disabled/unbound dropped hops with explanations** (CH.6, #589); floor semantics unchanged; simulate surfaces them |
 | WF-P.2 (#133) | **`llm` nodes go alias-only** — raw model strings fail publish validation with a designed error; the side effect is that workflow references become structural, which is what CG.3's (#581) index needs |
 | AC.1 (#216) | The SPI gains **`paramSchema(modelId)`** (CH.2, #585); the inspector renders fields from it with zero UI special-casing; restriction flags stay adapter-independent |
-| Y.4 (#192) | Seeds **extended, not forked** — `second-opinion` and the unbound `gpt5-experiments` join the shared universe, plus params, prices and the run #482 snapshot (CG.4, #582) |
+| Y.4 (#192) | Seeds **extended, not forked** — the unbound `gpt5-experiments` joins the shared universe, plus params, prices and the run #482 snapshot (CG.4, #582); `second-opinion` moves *into* Y.4, because V018 (#191) refuses an escalation rule that names an alias the workspace does not have |
 | AC.6 (#221) | P6's "discovery feeds the registry" is claimed: import (#587), the inspector's live model list (#593), param metadata (#585), and the `model not in discovery` health state (#588) |
 | DASH-J.4 (#92) | **The "provider price tables" are being built here** — consume CG.2 (#580) + CH.3 (#586) rather than re-inventing them |
 | Z.5 (#198) | Spend prices through CH.3 (#586), so route spend, dashboard accounting and the registry column agree — including non-token billing modes |

@@ -202,7 +202,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | Y.1 | #189 | 🟢 Done | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | Y.2 | #190 | 🟢 Done | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
-| Y.3 | #191 | 🟡 Open | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
+| Y.3 | #191 | 🟢 Done | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
 | Y.4 | #192 | 🟡 Open | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 6 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
 | Y.5 | #193 | 🟡 Open | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
 
@@ -405,7 +405,64 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
 
 ### Issue Y.3 — ouroboros-db: [Y.3] Escalation rules schema
 
-> **GitHub issue:** #191 · **Status:** 🟡 Open · **Parent epic:** #185
+> **GitHub issue:** #191 · **Status:** 🟢 Done · **Parent epic:** #185
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-db/migrations/V018__escalation_rules.sql`](../ouroboros-db/migrations/V018__escalation_rules.sql),
+> with its section in
+> [`ouroboros-db/tests/constraints.sql`](../ouroboros-db/tests/constraints.sql).
+>
+> **The sentence is derived from the rule, which is what stops it from lying.** `display` is
+> a **stored generated column** over `"when"` and `"then"`, so PostgreSQL itself refuses a
+> statement that supplies one — *"hand-written display text is rejected on write"* as a
+> property of the column rather than a rule in a service — and it recomputes on every write
+> that touches the structure, so an edited rule cannot keep the sentence it used to have.
+> The derivation is `immutable` and reads no table, which is what makes it deterministic:
+> the same rule renders the same sentence in every workspace and every session. It renders
+> in the *grammar's* key order too, not the document's — jsonb stores `label` before
+> `effort_gte`, and the sentence still leads with the effort.
+>
+> **The grammar is a pair of domains, not a pair of table CHECKs, and the reason is that
+> generated column.** A stored generated column is computed *before* any `CHECK` on the row
+> is evaluated, so a table CHECK would leave the derivation looking at a structure nothing
+> had validated yet — and it would have to carry a second, weaker copy of the grammar to
+> defend itself. A domain moves the check to the value's coercion, before the row exists at
+> all, so `escalation_rule_display()` can be written for structures that are inside the
+> grammar by construction. A domain constraint is still a CHECK constraint: an unknown
+> action key is refused by name, `escalation_rule_then_shape`.
+>
+> **`"when"` reuses WF-P8 rather than paralleling it**, and that is asserted rather than
+> asserted-in-prose: `tests/constraints.sql` reads the five effort sizes out of
+> `queue_items_effort` in the catalogue and requires every one of them to be a size a rule
+> may name, so widening one of the two vocabularies without the other is what goes red. A
+> condition key routing has no context for — WF's own `source`, for instance — is refused
+> rather than stored and never evaluated. `diff_kind`'s vocabulary is one value, `docs_only`,
+> which is honest: a diff classification nothing computes is a rule that can never fire.
+>
+> **The reference this schema cannot declare is held anyway, in both directions.** A rule's
+> task kind and alias are *names inside a jsonb document*, so no foreign key can reach them;
+> `escalation_rule_targets_exist()` is a **deferred** constraint trigger on
+> `escalation_rules`, `task_kinds` and `model_aliases`, so writing a rule that names an
+> unknown kind or alias is refused **at write time**, and so is retiring or renaming the
+> kind or alias a rule already names. Deferral is what keeps the legitimate transactions
+> ordinary: a seed may write rules before the aliases they name, and *"rename this alias and
+> update the rules that use it"* is one transaction with no ceremony in it. The lookup is by
+> `(organization_id, name)`, so a rule can no more reach another workspace's alias than a
+> hop can.
+>
+> **The mockup's `(max thinking)` is `params`, not prose** — the same shape
+> `model_aliases.params` already holds, so Z.1 merges the rule's over the alias's instead of
+> parsing a phrase. All three mockup rules round-trip, and their sentences are asserted
+> character for character.
+>
+> **What Y.4 (#192) inherits:** rule 2 names the alias `second-opinion`, so the seed lands
+> that alias alongside its six — the scope line below now says seven. Mockup 21's CG.4
+> (#582) already *extends* the shared seed rather than owning that row, so it keeps its
+> `gpt5-experiments` addition and loses only the line item it was going to duplicate.
+>
+> **Deliberately not here:** seed rows (Y.4), any write surface (Z.2, #195), the evaluation
+> itself (Z.1, #194), and the `ci/db` probes that drop these rules to watch the assertions go
+> red — Y.5 (#193) names *"rule `then`-shape checks"* in its own scope and owns them.
 
 
 - **Problem Statement:** The three mockup rules must be structured, evaluable
@@ -437,10 +494,11 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
   state — and the stats columns need seeded usage to compute from (M7).
 - **Solution/Scope:** Extend the dev seed: five provider connections (Anthropic,
   GitHub Copilot, Cursor, OpenAI-compatible `vLLM local`, Ollama `workstation`)
-  with honest seeded health snapshots (Copilot degraded); six aliases
+  with honest seeded health snapshots (Copilot degraded); seven aliases
   (`coder-max`→claude-fable-5, `coder-std`→claude-sonnet-5,
   `sizer`→claude-haiku-4-5, `coder-fallback`→gpt-5-codex,
-  `local-docs`→qwen3-coder:32b, `local-free`→llama-4-maverick); eight task
+  `local-docs`→qwen3-coder:32b, `local-free`→llama-4-maverick, and
+  `second-opinion`→composer-2, which the review escalation rule names — Y.3); eight task
   kinds with the mockup's routes/chains (implement: coder-max → coder-fallback
   → local-docs with hop notes) and policies (allow-local on, floor off,
   $2.50 cap); three escalation rules; `token_usage`/run rows shaped so $/run
@@ -458,7 +516,7 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
 - **Epic:** Y
 
 ```
-seeds: 5 providers · 6 aliases · 8 kinds · chains+policies · 3 rules
+seeds: 5 providers · 7 aliases · 8 kinds · chains+policies · 3 rules
        usage rows ⇒ $/run · p50 · spend(30d) · 31% local — all computed, none stored
 ```
 
@@ -1213,5 +1271,13 @@ decision **M1** is now structural: a hop names an alias by foreign key, and no c
 the three routing tables can hold a raw provider model string. Decision **M4**'s ordering
 half is enforced rather than conventional — hop positions unique *and* dense from 1, with
 the reorder transaction written into the migration header so Z.2 inherits it instead of
-inventing one. Next is **#191** ([Y.3] escalation rules), whose predicates modify the routes
-this migration made addressable.
+inventing one.
+
+**#191** ([Y.3] escalation rules) has landed beside it, and decision **M5** is now a schema
+rather than an intention: a rule is a WF-P8 predicate and one of three route modifications,
+and the sentence the card prints is *generated from that pair* by an immutable function —
+so it cannot be hand-written, cannot drift, and renders identically everywhere. The names a
+rule uses are held to the workspace's own task kinds and aliases by a deferred constraint
+trigger, in both directions, because a reference inside a jsonb document is one no foreign
+key can reach. Next is **#192** ([Y.4] the seeds), which fills the matrix, the chains and
+these three rules with the mockup's exact state.

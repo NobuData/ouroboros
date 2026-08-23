@@ -90,6 +90,15 @@
 > inherit rather than reinvent. It is also where decision **M1** stops being a statement and
 > becomes structural: a hop names a `model_aliases` row, and there is no column in any of
 > the three tables a raw provider model string could be put in.
+> `V018` ([#191](https://github.com/NobuData/ouroboros/issues/191)) finishes the routing
+> foundation with `escalation_rules` — mockup 06's *"effort ≥ L → implement uses coder-max
+> (max thinking)"* stored as a **structured predicate**, not as that sentence. `"when"` is
+> the WF-P8 predicate grammar scoped to routing, `"then"` is one of exactly three route
+> modifications, and `display` — the sentence the card prints — is a **stored generated
+> column** derived from the pair, so a hand-written one is refused by PostgreSQL itself and
+> the text can never drift from what the rule does. Both predicate columns are **domains**
+> rather than table CHECKs, which is what puts the grammar's refusal *before* the
+> derivation runs.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -123,7 +132,8 @@ are drawn from** — one row per mirrored GitHub issue, which is a cache and not
 configured and the aliases its routes name** — the foundation mockups 06, 07 and 21 all
 read, and the only place a raw provider model string lives (decision **M1**) — and since
 `V016` the **routing matrix over them**: which kinds of work exist, the one route each has,
-and the ordered chain of aliases that route falls back through.
+and the ordered chain of aliases that route falls back through — with `V018` adding the
+**escalation rules that modify a route** when an issue is large, labelled or docs-only.
 
 Flyway is the **sole owner of DDL**. No application module creates or alters tables;
 `ouroboros-rest` reads and writes through Kysely against a schema this module defines.
@@ -851,8 +861,12 @@ ouroboros-db/
 │   │                                 # provider_connections + model_aliases — the routing foundation — #189
 │   ├── V016__task_kinds_routes_hops.sql
 │   │                                 # task_kinds + routes + ordered route_hops — the routing matrix — #190
+│   ├── V017__provider_extensions_model_catalog.sql
+│   │                                 # the provider cards' columns + provider_models — #221
+│   ├── V018__escalation_rules.sql    # escalation_rules — structured predicates, derived display — #191
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
+│   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -905,6 +919,7 @@ outside this module alters it.
 | `task_kinds` | `V016` | The kinds of work a route can be written for — mockup 06's `8 task kinds`, and the vocabulary the WF stage catalog ([#145](https://github.com/NobuData/ouroboros/issues/145)), the estimator and the DSL's `route.task()` all read rather than each hardcode (decision **M3**) | `name` unique **per workspace** and lower-case kebab, so uniqueness cannot be defeated by capitalisation; `description` is required, because it is the matrix line that tells one row from its neighbour; `sort_order` is unique per workspace and **deferrable**, so a drag-reorder is plain SQL — and deliberately **not** dense, because nothing reads those numbers |
 | `routes` | `V016` | One task kind's route: the owner of the ordered alias chain and of mockup 06's policy triple — **Allow fallback to local models**, the floor, and **Max cost per run** (decision **M4**) | **Exactly one route per task kind**, as a unique key rather than as application code, so resolution's *"the route of this kind"* has one answer; `tag` unique per workspace and its own column rather than derived, because the mockup's tags are not mechanical (`test-gen` → `testgen-primary`); `max_cost_cents_per_run` is **integer cents** — `$2.50` is `250`, never a float; `floor_hop_index` is null-permitting, at least 1 by CHECK and never past the end of the chain, which is `route_chain_intact()`; `updated_by` **sets null** rather than cascading, because deleting the person who last saved a route must not delete the route |
 | `route_hops` | `V016` | The ordered fallback chain — mockup 06's numbered inspector rail, each hop naming a registry alias and carrying the hop-meta line beside it | `position` unique per route and **deferrable**, so a reorder swaps inside a transaction, and **dense from 1** by the `route_chain_intact()` constraint trigger — unlike `queue_items.position`, because these numbers are read: `floor_hop_index` counts them; a route may never be left with an empty chain; the alias is reached through a **composite** foreign key on `(organization_id, model_alias_id)` and it **restricts** on delete, so an alias a chain names cannot be retired out from under it; **there is no raw model id column here, in any of the three tables** — decision **M1** by construction |
+| `escalation_rules` | `V018` | Mockup 06's *ESCALATION RULES* card — the three rules as **structured predicates that modify a route**, not as the sentences they read like (decision **M5**) | `"when"` is the WF-P8 predicate grammar scoped to routing — `effort_gte` (V009's five **F9** sizes, the same vocabulary the queue uses), `label` (GitHub's, as `V014` mirrors them) and `diff_kind` (`docs_only`), at least one, ANDed; `"then"` is **exactly one** of `{use_alias: {task_kind, alias, params?}}` — the mockup's *"(max thinking)"* is `params`, not prose — `{add_vote: {task_kind, alias}}` or `{route_local: {}}`; both are **domains**, so an unknown key is refused at the value rather than at the row; `display` is **`generated always … stored`** from the two, so a hand-written sentence is refused by PostgreSQL and an edited rule cannot keep the sentence it had; the task kind and alias a rule names must exist **in the rule's own workspace**, held by a deferred constraint trigger on all three tables; `sort_order` is unique per workspace and **deferrable**, which is what makes "which rule wins" have one answer and a drag-reorder plain SQL |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in
@@ -941,6 +956,23 @@ rows other than the one being written, and both are **deferred to `commit`** so 
 reorder, a whole-chain rewrite, and an `insert route; insert hops` sequence may each be
 momentarily inconsistent inside their transaction and correct when it ends. It raises class
 23 naming the trigger, so each table reports its own constraint name.
+
+Three more **functions** and a second constraint trigger function, `V018`'s.
+**`ouroboros.escalation_rule_when_valid(when)`** and
+**`ouroboros.escalation_rule_then_valid(then)`** are the grammar behind the two **domains**
+`escalation_rule_when` and `escalation_rule_then` — a domain rather than a table `CHECK`
+because a stored generated column is computed *before* any `CHECK` on the row, so the
+derivation would otherwise have to defend itself against shapes its own table was about to
+reject. **`ouroboros.escalation_rule_display(when, then)`** is that derivation: the card's
+sentence, produced from the structure and from nothing else, `immutable` and table-free,
+which is what lets `escalation_rules.display` be `generated always … stored`. Changing the
+*wording* is therefore a migration that rewrites the column
+(`alter table … alter column display set expression as (…)`), which is the price of a
+sentence that cannot drift. **`ouroboros.escalation_rule_targets_exist()`** is the reference
+this schema cannot declare: the task kind and alias a rule names live inside a jsonb
+document, so a **deferred** constraint trigger on `escalation_rules`, `task_kinds` and
+`model_aliases` holds all three sides — writing a rule that names neither, and retiring the
+kind or alias a rule already names, are both refused.
 
 Two **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
 UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
