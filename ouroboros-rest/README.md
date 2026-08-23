@@ -704,6 +704,62 @@ This module **writes nothing**: every statement it issues is a `select`, includi
 that reads the auto-merge switch. Changing that switch is
 [#74](https://github.com/NobuData/ouroboros/issues/74)'s endpoint.
 
+## Model pricing
+
+**One resolution of *what does this model cost*, with its provenance attached**
+([#586](https://github.com/NobuData/ouroboros/issues/586)). It serves mockup 21's
+`$ per 1M in·out` column and the accounting that DASH-J.4
+([#92](https://github.com/NobuData/ouroboros/issues/92)), Z.5
+([#198](https://github.com/NobuData/ouroboros/issues/198)) and AB.4
+([#210](https://github.com/NobuData/ouroboros/issues/210)) need — one implementation, because
+three would be three sets of numbers that disagree inside one report.
+
+```
+resolve(anthropic, claude-fable-5, org) ─▶ {token, 1000¢, 5000¢, bundled@2026-08-15} ─▶ "$10 · $50"
+resolve(copilot,   gpt-5-codex,    org) ─▶ {seat}                                    ─▶ "seat-based"
+resolve(cursor,    composer-2,     org) ─▶ {usage}                                   ─▶ "usage-based"
+resolve(ollama,    qwen3-coder:32b,org) ─▶ {free}                                    ─▶ "$0"
+resolve(∅,         gpt-5.2-preview,org) ─▶ ∅                                         ─▶ "—"   (never $0)
+
+PUT /api/v1/registry/prices {anthropic, claude-fable-5, 1200¢/6000¢}
+                                        ─▶ override wins · source: override · cache dropped
+```
+
+**`$0` and `—` are different facts, and the types keep them apart.** `$0` is a `free` row: a
+model that genuinely costs nothing per call, because it runs on hardware the workspace already
+pays for. `—` is the *absence* of a row: we have no price for this model. `ResolvedPrice` has
+no member meaning *unknown*, so an uncovered model is `undefined` and cannot reach a formatter
+that would render it as a number — which is the whole point on a page somebody sizes a budget
+from.
+
+**The rendering lives in one place.** `src/modules/pricing/price.ts` is the four shapes and the
+fifth that is an absence, so the UI never re-derives them; every answer also carries `display`,
+already rendered.
+
+**The precedence is the database's** — `ouroboros.model_price()` (V012,
+[#580](https://github.com/NobuData/ouroboros/issues/580)) resolves *override beats bundled,
+exact model beats a family row, exact kind beats `'*'`* in one indexed lookup, and nothing here
+re-derives it. A whole alias list is one statement: `unnest(…) with ordinality` joined
+laterally to that function, so eight rows cost one round trip and an uncovered pair keeps its
+place rather than shortening the answer.
+
+**Prices are cached for thirty seconds, per `(workspace, kind,
+model)`**, misses included — the uncovered row is on the same page as the priced ones. An
+override write drops the **whole workspace**, not the key that was written, because a family
+row such as `('openai_compatible', '*') → free` changes the answer for models it never names.
+The bundled catalog is imported by a repeatable Flyway migration in another container, so
+nothing can tell this process about it: the TTL is the honest bound on that, and
+`PricingService.invalidateCatalog()` is the seam CJ.1
+([#598](https://github.com/NobuData/ouroboros/issues/598)) will call.
+
+**Three routes, and deliberately no fourth.** `GET`, `PUT` and `DELETE
+/api/v1/registry/prices` are a workspace's own **corrections** — the read is every member's,
+both writes are `owner`/`admin`. There is no route that *resolves* a price: CH.5
+([#588](https://github.com/NobuData/ouroboros/issues/588)) publishes it as part of the registry
+table's one payload, and a second endpoint answering the same question would be a second place
+for the answer to come from. `PricingModule` exports `PricingService` for exactly that reason —
+it is the only module here that exports anything.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -1487,6 +1543,8 @@ ouroboros-rest/
 │       ├── engine/         # typed internal client + /engine/status       · #35
 │       ├── preferences/    # the caller's own font scale                  · #649
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
+│       ├── pricing/        # what a model costs, with provenance          · #586
+│       │                   #   the one module that exports its service
 │       └── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │                           #   no controller — nothing here is a route
 ├── Dockerfile              # the production image — built from the *repo root*
@@ -1582,6 +1640,7 @@ GitHub social provider [#702](https://github.com/NobuData/ouroboros/issues/702) 
 database-backed sessions & the global guard [#703](https://github.com/NobuData/ouroboros/issues/703) ·
 organization plugin adoption [#704](https://github.com/NobuData/ouroboros/issues/704) ·
 tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
+model pricing [#586](https://github.com/NobuData/ouroboros/issues/586) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
