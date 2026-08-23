@@ -167,6 +167,44 @@ export function secretFieldName(schema: ProviderConfigSchema): string | null {
 }
 
 /**
+ * The schema a **stored configuration** has to satisfy — the submitted one, minus the
+ * credential.
+ *
+ * The two are not the same schema and it is easy to miss why. `configSchema()` describes the
+ * *form*: every row AE.5 draws, including the key row, and `required` says which of them a
+ * person has to fill in. What ends up in `provider_connections.config` is that submission with
+ * the credential taken out by {@link partitionSubmission} — so a schema whose key row is
+ * required can never be satisfied by a stored config, because the value it is asking for is by
+ * design somewhere else.
+ *
+ * Validating a stored config against the form's own schema therefore fails every provider
+ * whose credential is mandatory, which is most of them. This is the projection to validate it
+ * against instead, and it is derived from the same annotation the renderer masks the input
+ * with — so the two cannot come to disagree about which field went to the vault.
+ *
+ * @param schema - The adapter's config schema.
+ * @returns The schema with the `x-ouroboros-secret` property and its `required` entry removed,
+ *   or the schema unchanged for a provider that declares no credential. Property order among
+ *   the survivors is preserved, because it is the order a form renders in and this value can
+ *   travel to the same places the original does.
+ */
+export function storedConfigSchema(schema: ProviderConfigSchema): ProviderConfigSchema {
+  const secretField = secretFieldName(schema);
+
+  if (secretField === null) {
+    return schema;
+  }
+
+  return {
+    ...schema,
+    properties: Object.fromEntries(
+      Object.entries(schema.properties).filter(([name]) => name !== secretField),
+    ),
+    required: schema.required.filter((name) => name !== secretField),
+  };
+}
+
+/**
  * Split a submitted form into the configuration to store and the credential to seal.
  *
  * @param schema - The adapter's config schema, which is what says where each value goes.

@@ -12,11 +12,13 @@
  * conformance.fixture.ts the kit every adapter must pass
  * ```
  *
- * **It exports one thing and registers no adapters.** {@link ModelProviderRegistry} is what
- * AD.2's credential lifecycle ([#223](https://github.com/NobuData/ouroboros/issues/223)), Z.3's
- * health service and the discovery scheduler import; {@link REGISTERED_ADAPTERS} is the list
- * AC.2–AC.5 each add one line to. Empty today is the accurate answer rather than a stub — see
- * `provider.registry.ts` on why an unregistered kind is a `501` and not a `404`.
+ * **It exports one thing.** {@link ModelProviderRegistry} is what AD.2's credential lifecycle
+ * ([#223](https://github.com/NobuData/ouroboros/issues/223)), Z.3's health service and the
+ * discovery scheduler import; {@link REGISTERED_ADAPTERS} is the list AC.2–AC.5 each add one
+ * line to. `anthropic` is registered as of AC.2
+ * ([#217](https://github.com/NobuData/ouroboros/issues/217)); the other four kinds are still a
+ * `501`, which is the accurate answer rather than a stub — see `provider.registry.ts` on why an
+ * unregistered kind is a `501` and not a `404`.
  *
  * `VaultModule` is deliberately **not** imported, and neither is `DbModule`. Nothing here reads
  * a row or opens a credential: an adapter is handed an already-opened
@@ -35,6 +37,7 @@
 
 import { Module } from "@nestjs/common";
 
+import { AnthropicAdapter } from "./adapters/anthropic.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
 import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.registry";
 
@@ -46,12 +49,16 @@ import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.regis
  * an adapter being written, tested, and then never reachable because nobody added the line.
  * `vault.module.ts`'s `REGISTERED_SECRET_STORES` is the same shape for the same reason.
  *
- * **Empty until AC.2.** Each of AC.2–AC.5 appends its class here and imports nothing else.
+ * **AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) is the first entry.** Each
+ * of AC.3–AC.5 appends its class here and imports nothing else. The list is spread into
+ * `providers` as well as into `inject`, because a class Nest is asked to inject is a class Nest
+ * also has to have been told to construct.
  */
-export const REGISTERED_ADAPTERS = [] as const;
+export const REGISTERED_ADAPTERS = [AnthropicAdapter] as const;
 
 @Module({
   providers: [
+    ...REGISTERED_ADAPTERS,
     {
       provide: MODEL_PROVIDER_ADAPTERS,
       // Frozen because `ModelProviderRegistry` reads this list once at construction and the

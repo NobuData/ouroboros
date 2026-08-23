@@ -130,14 +130,22 @@ export interface ProviderCapabilities {
 /**
  * One model an adapter found, in this product's vocabulary rather than its provider's.
  *
- * Four fields, because four is what mockup 07's two model surfaces need: the **Models
- * available** chips print {@link display}, and the Ollama pull-list prints {@link id} beside
- * {@link sizeBytes} as `qwen3-coder:32b · 19 GB`. {@link contextLength} is what mockup 21's
- * registry and Z.1's floor policy read.
+ * Five fields, because five is what mockup 07's two model surfaces need: the **Models
+ * available** chips print {@link display}, the Ollama pull-list prints {@link id} beside
+ * {@link sizeBytes} as `qwen3-coder:32b · 19 GB`, and the Anthropic card's `priority tier`
+ * pill is {@link tier}. {@link contextLength} is what mockup 21's registry and Z.1's floor
+ * policy read.
  *
- * **`null` means the provider did not say**, never zero and never a guess. A model whose
- * context length is unknown and a model with no context are different facts, and only one of
- * them is possible.
+ * **`null` means the provider did not say**, never zero, never an empty string and never a
+ * guess. A model whose context length is unknown and a model with no context are different
+ * facts, and only one of them is possible. The same rule is decision **P8** where
+ * {@link tier} is concerned, and there it is the whole point: a pill a person cannot tell
+ * *earned* from *assumed* makes every other pill on the card unreadable too.
+ *
+ * The four `NormalizedModel` fields V017 stores are `model_id` ← {@link id},
+ * `display` ← {@link display}, `size_bytes` ← {@link sizeBytes}, and
+ * `meta.context_tokens` ← {@link contextLength}; {@link tier} is `meta.tier`, which is the
+ * key `R__dev_seed_providers.sql` already writes on the four Anthropic rows.
  */
 export interface NormalizedModel {
   /**
@@ -157,6 +165,21 @@ export interface NormalizedModel {
   readonly display: string;
   /** Tokens of context, or null when the provider does not publish it. */
   readonly contextLength: number | null;
+  /**
+   * The service tier this model is reachable at, in the provider's own word — `priority` —
+   * or **null when the provider published no such signal**.
+   *
+   * Mockup 07's Anthropic card draws it as a `priority tier` pill beside the model chips, and
+   * decision **P8** is unambiguous about when that pill is allowed to exist: only on a real
+   * entitlement signal, and simply absent otherwise. An adapter that defaulted this to a
+   * plausible-looking word would be inventing an entitlement, and a reader with no way to
+   * tell an invented pill from an earned one has to distrust all of them.
+   *
+   * Stored as `provider_models.meta.tier` (V017). A `string` rather than a union, because the
+   * word belongs to the provider — this layer's rule is *report what was said or say nothing*,
+   * not *choose from this product's list of tiers*.
+   */
+  readonly tier: string | null;
   /**
    * On-disk size in bytes, or null.
    *

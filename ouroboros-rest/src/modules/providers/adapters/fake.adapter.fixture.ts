@@ -109,19 +109,28 @@ export const FAKE_CONFIG_SCHEMA: ProviderConfigSchema = {
   additionalProperties: false,
 };
 
-/** The models the fake reports, unless it is built with others. */
+/**
+ * The models the fake reports, unless it is built with others.
+ *
+ * Both carry `tier: null`, which is the honest answer for a provider that publishes no
+ * entitlement signal and is what decision **P8** asks every adapter to say by default — the
+ * `priority tier` pill exists only where a provider really reported one, which for a fake is
+ * nowhere. A test that needs the other branch builds the fake with its own `models`.
+ */
 export const FAKE_MODELS: readonly NormalizedModel[] = Object.freeze([
   Object.freeze({
     id: "fake/small",
     display: "Fake Small",
     contextLength: 200_000,
     sizeBytes: null,
+    tier: null,
   }),
   Object.freeze({
     id: "fake/large",
     display: "Fake Large",
     contextLength: 1_000_000,
     sizeBytes: 19_327_352_832,
+    tier: null,
   }),
 ]);
 

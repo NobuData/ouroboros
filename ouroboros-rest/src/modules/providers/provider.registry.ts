@@ -9,14 +9,14 @@
  * build failure rather than a review comment.
  *
  * ---------------------------------------------------------------------------
- * **It is registered with no adapters, and that is accurate rather than a stub.**
+ * **It is registered with one adapter, and the other five kinds are honestly a `501`.**
  *
- * AC.2–AC.5 ([#217](https://github.com/NobuData/ouroboros/issues/217),
- * [#218](https://github.com/NobuData/ouroboros/issues/218),
+ * AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) added `anthropic`; AC.3–AC.5
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218),
  * [#219](https://github.com/NobuData/ouroboros/issues/219),
- * [#220](https://github.com/NobuData/ouroboros/issues/220)) each add one line to
- * `providers.module.ts`. Until they do, {@link ModelProviderRegistry.get} answers `501` for
- * every kind — which is exactly what this build can honestly say about `anthropic`: V015
+ * [#220](https://github.com/NobuData/ouroboros/issues/220)) each add one more line to
+ * `providers.module.ts`. Until they do, {@link ModelProviderRegistry.get} answers `501` for the
+ * kinds they own — which is exactly what this build can honestly say about `ollama`: V015
  * accepts the row, and nothing here knows how to reach it yet. AD.1's
  * ([#222](https://github.com/NobuData/ouroboros/issues/222)) `VAULT_SECRET_STORES` shipped
  * empty for the same reason and grew the same way.

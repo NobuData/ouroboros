@@ -1,9 +1,10 @@
 # Writing a model provider adapter
 
-> **Issue:** [#216](https://github.com/NobuData/ouroboros/issues/216) — *[AC.1]
-> ModelProviderAdapter SPI & registry* · **Roadmap:**
-> [`ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`](ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md), decision
-> **P1** · **Written:** 2026-08-23
+> **Issues:** [#216](https://github.com/NobuData/ouroboros/issues/216) — *[AC.1]
+> ModelProviderAdapter SPI & registry*, [#217](https://github.com/NobuData/ouroboros/issues/217)
+> — *[AC.2] Anthropic adapter* · **Roadmap:**
+> [`ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`](ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md), decisions
+> **P1** and **P8** · **Written:** 2026-08-23
 
 Ouroboros reaches five model providers today and its Providers & keys page promises more:
 the dashed add-card reads *"Connect OpenAI, Google, Bedrock, or any OpenAI-compatible
@@ -49,6 +50,7 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `provider.registry.ts` | Lookup by `kind`, the `MODEL_PROVIDER_ADAPTERS` token, two refusals. |
 | `providers.module.ts` | The Nest module. `REGISTERED_ADAPTERS` is the line you add. |
 | `conformance.fixture.ts` | The kit. |
+| `adapters/anthropic.adapter.ts` | The Anthropic adapter (AC.2, [#217](https://github.com/NobuData/ouroboros/issues/217)) — the first real one. |
 | `adapters/fake.adapter.fixture.ts` | The in-memory adapter — this document's worked example. |
 | `card.shapes.fixture.ts` | Mockup 07's five cards, as schemas. |
 | `.dependency-cruiser.cjs` | The boundary, at the module root. Run by `yarn lint`. |
@@ -182,6 +184,14 @@ Never split it by hand. `partitionSubmission(schema, values)` returns
 A consumer that gets that split wrong once writes a plaintext credential into
 `provider_connections` — and V015's CHECK will not catch it, because that constraint guards
 the *encrypted* column.
+
+**A stored config is validated against a different schema, and it is derived for you.**
+`configSchema()` describes the *form*, key row included, so a schema whose credential is
+required can never be satisfied by what actually reaches `provider_connections.config` — the
+value it is asking for is by design somewhere else. `storedConfigSchema(schema)` is that
+schema minus the credential, and it is what the conformance kit validates your
+`sampleConfig` against. The submission — your `sampleConfig` plus your `secret` — is
+validated against the schema itself, so the key row's own `minLength` is still exercised.
 
 ## Capabilities
 
@@ -358,6 +368,7 @@ async discoverModels(connection): Promise<NormalizedModel[]> {
     display: prettify(model.name) ?? model.name,
     contextLength: model.context_length ?? null,
     sizeBytes: model.size ?? null,
+    tier: null,                         // unless the provider really said — see below
   }));
 }
 ```
@@ -370,6 +381,15 @@ price real.
 **`null` means the provider did not say.** Never zero, never a guess: a model whose context
 length is unknown and a model with no context are different facts, and only one of them is
 possible.
+
+**`tier` is decision P8, and it is the field most worth being strict about.** It is the
+service tier a model is reachable at, in the provider's own word, and it becomes
+`provider_models.meta.tier` — which is what mockup 07's Anthropic card renders as a
+`priority tier` pill beside the chips. Report it only from something the provider really
+said: Anthropic's adapter reads it from the `anthropic-priority-…-limit` response headers,
+which only an organization with that capacity is sent, and answers `null` otherwise. A
+default, a fallback or an inference here makes *every* pill on the card unreadable, because
+a person has no way to tell an invented one from an earned one.
 
 Throw `ProviderAdapterError` if the provider could not be asked. An empty list is a
 legitimate answer — a freshly installed Ollama daemon has no models — and must not be
@@ -396,8 +416,11 @@ is what a pull looks like when the daemon dies half way through.
 One line, in `providers.module.ts`:
 
 ```ts
-export const REGISTERED_ADAPTERS = [OllamaAdapter] as const;
+export const REGISTERED_ADAPTERS = [AnthropicAdapter, OllamaAdapter] as const;
 ```
+
+The list is spread into the module's `providers` as well as into the factory's `inject`, so
+a class Nest is asked to inject is one Nest has also been told to construct.
 
 That is the whole of what adding a provider costs on the wiring side. Nothing else in the
 service learns your provider's name.
@@ -449,6 +472,12 @@ Three things about the harness are deliberate:
 kit *failing*, run against adapters that are wrong on purpose. Both matter — a conformance
 kit nobody has watched fail is a conformance kit that passes everything.
 
+`adapters/anthropic.conformance.spec.ts` is the kit passing for something that really talks
+HTTP, and `adapters/anthropic.recordings.fixture.ts` is what recorded fixtures look like in
+practice: captured bodies as constants, a builder per response because a body may be read
+once, and the vendor's own error envelope — request id and all — so that *the detail never
+quotes the provider's body* is asserted against a body that would really leak something.
+
 ## The boundary
 
 `.dependency-cruiser.cjs` at the module root, run by `yarn lint`:
@@ -472,12 +501,13 @@ really fails.
 
 | | |
 |---|---|
-| The five real adapters | AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)), AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)), AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)), AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
+| The other four adapters — Anthropic shipped with AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) | AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)), AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)), AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
 | The add-form and catalog | AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)) |
 | Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
 
-`REGISTERED_ADAPTERS` is empty, so `ModelProviderRegistry.get` answers `501
-provider_kind_unsupported` for every kind. That is the accurate thing for this build to say
-about `anthropic`: V015 accepts the row, and nothing here knows how to reach it yet.
+`REGISTERED_ADAPTERS` holds `AnthropicAdapter`, so `ModelProviderRegistry.get("anthropic")`
+answers an adapter and every other kind is still `501 provider_kind_unsupported`. That is the
+accurate thing for this build to say about `ollama`: V015 accepts the row, and nothing here
+knows how to reach it yet.
