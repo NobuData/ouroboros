@@ -201,7 +201,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | Y.1 | #189 | 🟢 Done | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
-| Y.2 | #190 | 🟡 Open | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
+| Y.2 | #190 | 🟢 Done | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
 | Y.3 | #191 | 🟡 Open | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
 | Y.4 | #192 | 🟡 Open | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 6 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
 | Y.5 | #193 | 🟡 Open | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
@@ -310,7 +310,71 @@ erDiagram
 
 ### Issue Y.2 — ouroboros-db: [Y.2] Task kinds, routes & fallback chains
 
-> **GitHub issue:** #190 · **Status:** 🟡 Open · **Parent epic:** #185
+> **GitHub issue:** #190 · **Status:** 🟢 Done · **Parent epic:** #185
+
+> **Shipped 2026-08-22.**
+> [`ouroboros-db/migrations/V016__task_kinds_routes_hops.sql`](../ouroboros-db/migrations/V016__task_kinds_routes_hops.sql),
+> with its section in
+> [`ouroboros-db/tests/constraints.sql`](../ouroboros-db/tests/constraints.sql).
+>
+> **Decision M1 stopped being a statement and became structural.** V015 could only *say*
+> that a raw provider model string lives in one column, because the rule is about tables it
+> did not create. A hop names a `model_aliases` row by id, and there is no `model_id`,
+> `model` or `model_name` column anywhere in `task_kinds`, `routes` or `route_hops` — so a
+> raw model cannot enter a route by a migration, a seed or a service that had one in hand
+> and no alias for it. The criterion is asserted from `information_schema` rather than by
+> reading the migration, so a `model` column added later is caught rather than reviewed.
+>
+> **Ordering is enforced, not conventional, and that is the whole of decision M4's second
+> half.** Hop positions are unique *and* dense from 1 — the second by a deferred constraint
+> trigger, because density is a property of a set rather than of any row. V009 declined the
+> same rule for `queue_items.position` and was right to: the queue is rendered `order by
+> position`, so 1, 2, 5 draws exactly like 1, 2, 3 and nothing a reader saw depended on the
+> numbers. Here something does. `floor_hop_index` is a rule about a hop *number*, the
+> inspector prints those numbers in its rail, and *"fail instead of degrading below fallback
+> 2"* is a statement about position 3 — so a chain that numbers itself approximately makes
+> the page's promise never to degrade below the floor unkeepable.
+>
+> **The reorder Z.2 inherits is written into the header rather than left to be invented.**
+> Both ordering rules are `deferrable initially deferred`, so a drag-reorder is plain SQL —
+> a one-statement `case` swap, a two-statement move, or a whole-chain `delete`/`insert`
+> rewrite, none of them needing `set constraints` or a shuffle through a temporary position.
+> `constraints.sql` performs all three and re-asserts uniqueness and density afterwards, and
+> proves deferred is not unenforced by asking for each check early with
+> `set constraints … immediate`.
+>
+> **The floor is held to a hop that exists, from both sides.** Half the rule is a CHECK — the
+> chain starts at hop 1, so a floor below it is not a floor — and half cannot be, because the
+> chain's length lives in another table and changes when a *hop* is written. So the same
+> constraint trigger holds it, attached to `routes` and `route_hops` both: raising a floor
+> past the end is refused, and so is deleting the hop that a valid floor was counting. A
+> route with no chain at all is refused for the same reason, at the end of its own
+> transaction: an empty chain is a matrix row with no primary model, which resolution cannot
+> answer and the inspector cannot draw.
+>
+> **Money is integer cents.** `max_cost_cents_per_run` is an `integer` and `$2.50` is `250`,
+> in the same unit `token_usage.cost_cents` and `model_prices` already keep — a cap compared
+> against a running total to abort a run is arithmetic, and binary floating point is the
+> wrong type to abort on. The column's declared type is asserted from the catalogue, because
+> the failure it guards against is a later `alter … type numeric` no fixture would notice.
+>
+> **`restrict` on the alias, and a refusal that can name the routes it protected.** A cascade
+> would silently *shorten* chains — hop 2 removed from every route that named a retired
+> alias, the rest left at 1 and 3 — and the first anybody would know of it is a run degrading
+> past a floor that no longer counts the hops it was written against. `route_hops_alias_idx`
+> is what makes *"which routes depend on this alias"* one indexed read, which is what a
+> designed refusal has to say out loud; the surface that offers the delete is mockup 21's
+> (decision **M2**), and it inherits the read rather than the endpoint. Deleting a
+> *workspace* still works, asserted rather than argued, for V015's reason.
+>
+> Tenancy is composite foreign keys the whole way down, which required one `alter table` on
+> V015's `model_aliases` to declare the `(organization_id, id)` key a hop's reference points
+> at. It adds no rule — `id` is already the primary key — and it is what keeps *"this hop's
+> alias belongs to this hop's workspace"* referential rather than a trigger.
+>
+> Deliberately **not** here: seed rows (Y.4, #192), the Kysely mirror in `ouroboros-rest`
+> (grown by the ticket that first reads these tables, as `github_issues` was), and any write
+> surface at all — Z.2 (#195) owns the editor.
 
 
 - **Problem Statement:** The matrix's rows — task kind → primary + ordered
@@ -1062,6 +1126,12 @@ amendments.
 table pair everything else in this roadmap resolves through, plus the internal
 accessors Y.2, Z.1, Z.2 and Z.3 consume. Its BA-B.3 dependency was satisfied ahead of
 the BetterAuth roadmap being filed: V005 and V006 already own `organization`, so both
-tables hang off it today. Next is **#190** ([Y.2] task kinds, routes and fallback
-chains), whose alias foreign key is what makes decision **M1** structural rather than
-conventional.
+tables hang off it today.
+
+**#190** ([Y.2] task kinds, routes and fallback chains) has landed on top of it, and
+decision **M1** is now structural: a hop names an alias by foreign key, and no column in
+the three routing tables can hold a raw provider model string. Decision **M4**'s ordering
+half is enforced rather than conventional — hop positions unique *and* dense from 1, with
+the reorder transaction written into the migration header so Z.2 inherits it instead of
+inventing one. Next is **#191** ([Y.3] escalation rules), whose predicates modify the routes
+this migration made addressable.

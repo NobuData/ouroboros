@@ -27,8 +27,9 @@
 -- `user_preferences` (V007, #649), the dashboard read-model — `runs` (V008, #64),
 -- `queue_items` (V009, #65), `token_usage` (V010, #66) and `workspace_settings` (V011,
 -- #67) — `model_prices` (V012, #580), `tenant_keys` (V013, #222), the intake mirror
--- `github_issues` with its sync cursor on `github_repos` (V014, #99), and the routing
--- foundation `provider_connections` and `model_aliases` (V015, #189).
+-- `github_issues` with its sync cursor on `github_repos` (V014, #99), the routing
+-- foundation `provider_connections` and `model_aliases` (V015, #189), and the routing
+-- matrix itself — `task_kinds`, `routes` and ordered `route_hops` (V016, #190).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -3925,6 +3926,698 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.provider_connections where organization_id = 'org-routes')
    and (select count(*) = 0 from ouroboros.model_aliases where organization_id = 'org-routes'),
   'deleting a workspace takes its connections and aliases with it, restrict notwithstanding');
+
+-- ===========================================================================
+-- V016 — task_kinds, routes and route_hops, the routing matrix (#190)
+-- ===========================================================================
+--
+-- The matrix row of mockup 06 as relations: one task kind, exactly one route, an ordered
+-- chain of hops and a policy triple. Nothing writes them yet — Z.2 (#195) is the editor and
+-- Y.4 (#192) is the seed — so, as with every read-model section above, every rule a reader
+-- depends on is a constraint here rather than an application invariant.
+--
+-- Four of this ticket's criteria are what most of this section is about:
+--
+--   * **Ordering is enforceable, not conventional.** Hop positions are unique *and* dense
+--     from 1, and the reorder the mockup's `drag ⠿` hint promises is exercised in both the
+--     forms it really takes — a one-statement swap and a two-statement move — with both
+--     properties re-asserted afterwards. That matters because `floor_hop_index` is a rule
+--     about a hop *number*: a chain that numbers itself 1, 2, 5 makes *"fallback 2"* mean
+--     nothing, and the page's promise never to degrade below the floor unkeepable.
+--   * **Deferred is not unenforced.** Both ordering rules defer to `commit` so a reorder
+--     needs no ceremony, and every probe below asks for the check early with
+--     `set constraints … immediate` rather than trusting that a rule checked later is a
+--     rule checked at all.
+--   * **A raw provider model id cannot reach a route** (decision M1). Asserted from
+--     `information_schema` rather than by reading the migration: the only column in these
+--     three tables with `model` in its name is the uuid foreign key.
+--   * **An alias a hop names cannot be deleted, and the routes in the way are nameable.**
+--     Both halves, because a refusal that cannot say *which* route it protected is not a
+--     designed one.
+--
+-- Its own fixtures again, and two workspaces for the reason every section above needed two:
+-- one to own the matrix, one to own the alias it must not be allowed to reach.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-matrix',    'Matrix Works',    'matrix-works',    now()),
+  ('org-neighbour', 'Neighbour Works', 'neighbour-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values
+  ('user-router', 'Rou Ter', 'rou@matrix-works.dev', true, now(), now());
+
+-- One connection per workspace, and the three aliases the inspector's chain is drawn from.
+insert into ouroboros.provider_connections (id, organization_id, kind, display_name) values
+  ('e6000000-0000-0000-0000-00000000000a', 'org-matrix',    'anthropic', 'Anthropic'),
+  ('e6000000-0000-0000-0000-00000000000e', 'org-neighbour', 'anthropic', 'Anthropic');
+
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id) values
+  ('e7000000-0000-0000-0000-00000000000a', 'org-matrix', 'coder-max',
+   'e6000000-0000-0000-0000-00000000000a', 'claude-fable-5'),
+  ('e7000000-0000-0000-0000-00000000000b', 'org-matrix', 'coder-fallback',
+   'e6000000-0000-0000-0000-00000000000a', 'gpt-5-codex'),
+  ('e7000000-0000-0000-0000-00000000000c', 'org-matrix', 'local-docs',
+   'e6000000-0000-0000-0000-00000000000a', 'qwen3-coder:32b'),
+  ('e7000000-0000-0000-0000-00000000000e', 'org-neighbour', 'coder-max',
+   'e6000000-0000-0000-0000-00000000000e', 'claude-opus-5');
+
+-- Three of the mockup's eight rows, in its order, with the tags it prints — `testgen-primary`
+-- rather than `test-gen-primary`, which is why `tag` is a column and not a derivation.
+insert into ouroboros.task_kinds (id, organization_id, name, description, sort_order) values
+  ('e8000000-0000-0000-0000-000000000004', 'org-matrix', 'implement',
+   'Write the change, run tests, iterate to green', 4),
+  ('e8000000-0000-0000-0000-000000000005', 'org-matrix', 'test-gen',
+   'Generate unit and regression tests for the diff', 5),
+  ('e8000000-0000-0000-0000-000000000007', 'org-matrix', 'docs',
+   'Update READMEs, changelogs, operator manual', 7);
+
+insert into ouroboros.routes
+    (id, organization_id, task_kind_id, tag, allow_local_fallback, floor_hop_index,
+     max_cost_cents_per_run, updated_by) values
+  ('e9000000-0000-0000-0000-000000000004', 'org-matrix', 'e8000000-0000-0000-0000-000000000004',
+   'implement-primary', true, null, 250, 'user-router'),
+  ('e9000000-0000-0000-0000-000000000005', 'org-matrix', 'e8000000-0000-0000-0000-000000000005',
+   'testgen-primary', true, null, null, null),
+  ('e9000000-0000-0000-0000-000000000007', 'org-matrix', 'e8000000-0000-0000-0000-000000000007',
+   'docs-primary', true, null, null, null);
+
+-- The inspector's chain, verbatim: three hops, their aliases and their hop-meta lines.
+insert into ouroboros.route_hops
+    (id, organization_id, route_id, position, model_alias_id, note) values
+  ('ea000000-0000-0000-0000-000000000001', 'org-matrix', 'e9000000-0000-0000-0000-000000000004',
+   1, 'e7000000-0000-0000-0000-00000000000a', 'Primary'),
+  ('ea000000-0000-0000-0000-000000000002', 'org-matrix', 'e9000000-0000-0000-0000-000000000004',
+   2, 'e7000000-0000-0000-0000-00000000000b', 'Fallback on 5xx / timeouts'),
+  ('ea000000-0000-0000-0000-000000000003', 'org-matrix', 'e9000000-0000-0000-0000-000000000004',
+   3, 'e7000000-0000-0000-0000-00000000000c', 'Offline mode — keeps the loop turning without a network'),
+  ('ea000000-0000-0000-0000-000000000005', 'org-matrix', 'e9000000-0000-0000-0000-000000000005',
+   1, 'e7000000-0000-0000-0000-00000000000b', null),
+  ('ea000000-0000-0000-0000-000000000007', 'org-matrix', 'e9000000-0000-0000-0000-000000000007',
+   1, 'e7000000-0000-0000-0000-00000000000c', null);
+
+-- --- a raw provider model id cannot reach a route (decision M1) ----------------
+--
+-- Acceptance criterion: *no column anywhere in these three tables can hold a raw provider
+-- model id*. V015 could only state M1, because the rule is about tables it did not create;
+-- this is where it becomes structural, and the check is a catalogue read rather than a
+-- reading of the migration — a `model` column added by a later migration is caught here
+-- rather than noticed in review.
+select pg_temp.must_hold(
+  (select array_agg(table_name || '.' || column_name order by table_name, column_name)
+          = array['route_hops.model_alias_id']
+     from information_schema.columns
+    where table_schema = 'ouroboros'
+      and table_name in ('task_kinds', 'routes', 'route_hops')
+      and column_name like '%model%'),
+  'the only model-ish column in the routing tables is the alias foreign key');
+
+select pg_temp.must_hold(
+  (select data_type = 'uuid' from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'route_hops'
+      and column_name = 'model_alias_id'),
+  'a hop names an alias by id, so there is nothing for a model string to be stored in');
+
+-- And the same claim carried into the catalogue, where it survives a rewritten file: the
+-- table comments say what these tables are, so `\d+` and any tool that reads a description
+-- gets the rule with the schema.
+select pg_temp.must_hold(
+  (select obj_description('ouroboros.route_hops'::regclass) like '%M1%'
+      and obj_description('ouroboros.task_kinds'::regclass) like '%M3%'
+      and obj_description('ouroboros.routes'::regclass) like '%M4%'),
+  'each routing table names the decision it implements');
+
+-- --- task kinds are registry data, per workspace (decision M3) -----------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+    values ('org-matrix', 'implement', 'A second implement', 20)$$,
+  'a task kind name is unique within a workspace', 'task_kinds_organization_name_key');
+
+insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+  values ('org-neighbour', 'implement', 'Write the change, run tests, iterate to green', 1);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.task_kinds where name = 'implement'),
+  'two workspaces may each have their own implement');
+
+-- The shape is a correctness rule for the reason V015 gave `alias`: uniqueness is enforced
+-- on the stored text, so `Implement` beside `implement` would be one name with two routes.
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+    values ('org-matrix', 'Implement', 'Capitalised', 21)$$,
+  'a task kind is lower-case, so uniqueness cannot be defeated by capitalisation',
+  'task_kinds_name_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+    values ('org-matrix', 'commit msg', 'With a space', 22)$$,
+  'a task kind has no spaces — it is a DSL identifier and a stage-catalog key',
+  'task_kinds_name_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+    values ('org-matrix', 'triage', '   ', 23)$$,
+  'a task kind carries the matrix line that tells it from its neighbour',
+  'task_kinds_description_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+    values ('org-matrix', 'triage', 'Zeroth row', 0)$$,
+  'the top of the matrix is row 1, not row 0', 'task_kinds_sort_order_positive');
+
+-- --- the matrix is reorderable ------------------------------------------------
+--
+-- Acceptance criterion: *task-kind name is unique per organization and sort_order is
+-- reorderable*. Deferred, so the swap is plain SQL — the same arrangement V009 gave
+-- `queue_items.position`, and deliberately without the density rule the hops below carry:
+-- nothing reads these numbers, and the matrix renders 1, 2, 5 exactly as it renders 1, 2, 3.
+update ouroboros.task_kinds
+   set sort_order = case sort_order when 5 then 7 when 7 then 5 end
+ where organization_id = 'org-matrix' and sort_order in (5, 7);
+
+select pg_temp.must_hold(
+  (select array_agg(name order by sort_order) = array['implement', 'docs', 'test-gen']
+     from ouroboros.task_kinds where organization_id = 'org-matrix'),
+  'a one-statement matrix reorder succeeds inside a transaction');
+
+update ouroboros.task_kinds
+   set sort_order = case sort_order when 5 then 7 when 7 then 5 end
+ where organization_id = 'org-matrix' and sort_order in (5, 7);
+
+-- Deferred is not unenforced: asked for early, a duplicate row order does not survive.
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (organization_id, name, description, sort_order)
+    values ('org-matrix', 'triage', 'Two rows in one place', 4);
+    set constraints ouroboros.task_kinds_organization_sort_order_key immediate$$,
+  'two task kinds cannot share a matrix row in one workspace',
+  'task_kinds_organization_sort_order_key');
+
+select pg_temp.must_hold(
+  (select condeferrable and condeferred from pg_constraint
+    where conrelid = 'ouroboros.task_kinds'::regclass
+      and conname = 'task_kinds_organization_sort_order_key'),
+  'the matrix order key is deferrable and initially deferred, which is what makes a drag plain SQL');
+
+-- The natural key is the opposite, deliberately: a duplicate name is a thing a person can
+-- ask for and must be told about at the statement — and Y.4 needs it as an upsert arbiter,
+-- which a deferrable index cannot be.
+select pg_temp.must_hold(
+  (select not condeferrable from pg_constraint
+    where conrelid = 'ouroboros.task_kinds'::regclass
+      and conname = 'task_kinds_organization_name_key'),
+  'the task kind name key is immediate, and therefore usable as an on-conflict arbiter');
+
+-- --- exactly one route per task kind ------------------------------------------
+--
+-- Acceptance criterion: *one active route per task kind is enforced by constraint, not by
+-- application code*. Resolution (Z.1) asks for **the** route of a kind, and a second row
+-- would make that question have two answers, silently and differently per query plan.
+select pg_temp.must_reject(
+  $$insert into ouroboros.routes (organization_id, task_kind_id, tag)
+    values ('org-matrix', 'e8000000-0000-0000-0000-000000000004', 'implement-second')$$,
+  'a task kind has exactly one route', 'routes_task_kind_key');
+
+-- And there is no `is_active` column beside it to make "one active route" a partial rule —
+-- a superseded revision belongs in a history table, where it cannot be mistaken for a route
+-- that is merely switched off.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'routes'
+      and column_name in ('is_active', 'active', 'enabled')),
+  'one route per kind is the constraint, not a flag a writer has to remember to set');
+
+-- A fourth kind, deliberately without a route: the two probes below aim at rules that a
+-- kind which already had one would never reach, because `routes_task_kind_key` would fire
+-- first and the assertion would pass for the wrong reason.
+insert into ouroboros.task_kinds (id, organization_id, name, description, sort_order) values
+  ('e8000000-0000-0000-0000-000000000009', 'org-matrix', 'review',
+   'Self-review the PR against the acceptance criteria', 9);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.routes (organization_id, task_kind_id, tag)
+    values ('org-matrix', 'e8000000-0000-0000-0000-000000000009', 'docs-primary')$$,
+  'a route tag is unique within a workspace, because it is how a person names one',
+  'routes_organization_tag_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.routes set tag = 'Implement Primary'
+     where id = 'e9000000-0000-0000-0000-000000000004'$$,
+  'a route tag is lower-case kebab, like every other name a URL and a log line carry',
+  'routes_tag_shape');
+
+-- --- the route may not reach another workspace's task kind --------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.routes (organization_id, task_kind_id, tag)
+    values ('org-matrix', (select id from ouroboros.task_kinds
+                            where organization_id = 'org-neighbour' and name = 'implement'),
+            'stolen-primary')$$,
+  'a route cannot answer for another workspace''s task kind', 'routes_task_kind_fk');
+
+-- A kind with no route is an ordinary state — the matrix draws the row, and its primary
+-- model column is what has not been chosen yet. It is a route with no *chain* that is
+-- refused, not a kind with no route.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.routes
+    where task_kind_id = 'e8000000-0000-0000-0000-000000000009'),
+  'a task kind may exist before anybody has routed it');
+
+-- --- money is integer cents ---------------------------------------------------
+--
+-- Acceptance criterion: *max_cost_cents_per_run is integer cents; no floating-point currency
+-- anywhere*. Asserted from the catalogue rather than from the migration, because the failure
+-- this prevents is a later `alter … type numeric` that no fixture would notice.
+select pg_temp.must_hold(
+  (select data_type = 'integer' from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'routes'
+      and column_name = 'max_cost_cents_per_run'),
+  'a cost cap is an integer count of cents, never a float');
+
+select pg_temp.must_hold(
+  (select max_cost_cents_per_run = 250 from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-000000000004'),
+  'the inspector''s $2.50 is stored as 250 cents');
+
+select pg_temp.must_reject(
+  $$update ouroboros.routes set max_cost_cents_per_run = 0
+     where id = 'e9000000-0000-0000-0000-000000000004'$$,
+  'a cap of zero is not a cap, it is a route that can never run',
+  'routes_max_cost_positive');
+
+select pg_temp.must_hold(
+  (select max_cost_cents_per_run is null from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-000000000005'),
+  'null is how "no cap" is said, and it is an ordinary state');
+
+-- --- the floor points at a hop that exists ------------------------------------
+--
+-- Acceptance criterion: *floor_hop_index is validated to be ≤ the chain length (and
+-- null-permitting)*. Half of it is a CHECK — the chain starts at hop 1, so a floor below it
+-- is not a floor — and half of it cannot be, because the chain's length lives in another
+-- table and changes when a *hop* is written. That half is the deferred constraint trigger.
+select pg_temp.must_reject(
+  $$update ouroboros.routes set floor_hop_index = 0
+     where id = 'e9000000-0000-0000-0000-000000000004'$$,
+  'there is no hop 0 for a floor to sit on', 'routes_floor_hop_index_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.routes set floor_hop_index = 9
+     where id = 'e9000000-0000-0000-0000-000000000004';
+    set constraints ouroboros.routes_chain_intact immediate$$,
+  'a floor past the end of the chain can never fire, so it is refused rather than stored',
+  'routes_chain_intact');
+
+-- The mockup's own setting: *"fail run instead of degrading below fallback 2"* is hop 3 of a
+-- three-hop chain, which is legal exactly because it is not past the end.
+update ouroboros.routes set floor_hop_index = 3
+ where id = 'e9000000-0000-0000-0000-000000000004';
+
+select pg_temp.must_hold(
+  (select floor_hop_index = 3 from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-000000000004'),
+  'a floor at the last hop of the chain is the mockup''s setting, and it is legal');
+
+-- The other direction, which is the one a chain edit walks into: shortening the chain under
+-- a floor that was valid a moment ago is the same violation seen from the hops.
+select pg_temp.must_reject(
+  $$delete from ouroboros.route_hops
+     where id = 'ea000000-0000-0000-0000-000000000003';
+    set constraints ouroboros.route_hops_chain_intact immediate$$,
+  'a hop cannot be removed out from under a floor that counts it',
+  'route_hops_chain_intact');
+
+update ouroboros.routes set floor_hop_index = null
+ where id = 'e9000000-0000-0000-0000-000000000004';
+
+select pg_temp.must_hold(
+  (select floor_hop_index is null from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-000000000004'),
+  'null is a floor that was never set, and the chain is free to degrade to its end');
+
+-- --- the chain is ordered, and the order is total -----------------------------
+--
+-- Acceptance criterion, first half: *hop positions are unique per route*.
+select pg_temp.must_reject(
+  $$update ouroboros.route_hops set position = 1
+     where id = 'ea000000-0000-0000-0000-000000000002';
+    set constraints ouroboros.route_hops_route_position_key immediate$$,
+  'two hops cannot claim the same place in one chain',
+  'route_hops_route_position_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.route_hops set position = 0
+     where id = 'ea000000-0000-0000-0000-000000000001'$$,
+  'the primary is hop 1, and there is no hop 0 to shuffle through',
+  'route_hops_position_positive');
+
+-- Position uniqueness is per chain and only per chain: every route has a hop 1.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.route_hops
+    where organization_id = 'org-matrix' and position = 1),
+  'position uniqueness is per route, not per workspace');
+
+select pg_temp.must_hold(
+  (select condeferrable and condeferred from pg_constraint
+    where conrelid = 'ouroboros.route_hops'::regclass
+      and conname = 'route_hops_route_position_key'),
+  'the hop position key is deferrable and initially deferred, which is what makes a drag plain SQL');
+
+-- --- the chain is dense, and a reorder keeps it that way -----------------------
+--
+-- Acceptance criterion, and the one the ticket asks to see performed: *a transactional
+-- reorder (swap hops 2 ↔ 3) is verified to preserve both properties*. Both forms a reorder
+-- really takes are exercised, because they fail differently under an immediate constraint:
+-- the one-statement `case` collides mid-statement, and the two-statement move collides
+-- between statements.
+update ouroboros.route_hops
+   set position = case position when 2 then 3 when 3 then 2 end
+ where route_id = 'e9000000-0000-0000-0000-000000000004' and position in (2, 3);
+
+select pg_temp.must_hold(
+  (select array_agg(id order by position)
+          = array['ea000000-0000-0000-0000-000000000001',
+                  'ea000000-0000-0000-0000-000000000003',
+                  'ea000000-0000-0000-0000-000000000002']::uuid[]
+     from ouroboros.route_hops where route_id = 'e9000000-0000-0000-0000-000000000004'),
+  'a one-statement swap of hops 2 and 3 succeeds inside a transaction');
+
+-- The two-statement form, moving one hop at a time — and back to the mockup's order.
+update ouroboros.route_hops set position = 3
+  where id = 'ea000000-0000-0000-0000-000000000003';
+update ouroboros.route_hops set position = 2
+  where id = 'ea000000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select array_agg(position order by position) = array[1, 2, 3]
+     from ouroboros.route_hops where route_id = 'e9000000-0000-0000-0000-000000000004'),
+  'the reorder left the chain unique and dense from 1, which is what the floor rule counts');
+
+select pg_temp.must_hold(
+  (select array_agg(a.alias order by h.position)
+          = array['coder-max', 'coder-fallback', 'local-docs']
+     from ouroboros.route_hops h
+     join ouroboros.model_aliases a
+       on a.organization_id = h.organization_id and a.id = h.model_alias_id
+    where h.route_id = 'e9000000-0000-0000-0000-000000000004'),
+  'and it is the inspector''s chain again, in the mockup''s order');
+
+-- Acceptance criterion, second half: *positions are dense per route*. A gap is what a naive
+-- delete leaves behind, and it is what makes "fallback 2" ambiguous.
+select pg_temp.must_reject(
+  $$delete from ouroboros.route_hops
+     where id = 'ea000000-0000-0000-0000-000000000002';
+    set constraints ouroboros.route_hops_chain_intact immediate$$,
+  'removing a hop from the middle of a chain leaves a gap, and a gap is refused',
+  'route_hops_chain_intact');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id)
+    values ('org-matrix', 'e9000000-0000-0000-0000-000000000004', 5,
+            'e7000000-0000-0000-0000-00000000000a');
+    set constraints ouroboros.route_hops_chain_intact immediate$$,
+  'a hop cannot be appended past the end of the chain', 'route_hops_chain_intact');
+
+-- A route with no chain is a matrix row with no primary model — which resolution cannot
+-- answer and the inspector cannot draw.
+select pg_temp.must_reject(
+  $$delete from ouroboros.route_hops
+     where route_id = 'e9000000-0000-0000-0000-000000000007';
+    set constraints ouroboros.route_hops_chain_intact immediate$$,
+  'a route is its chain, so emptying one is refused', 'route_hops_chain_intact');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.task_kinds (id, organization_id, name, description, sort_order)
+    values ('e8000000-0000-0000-0000-000000000008', 'org-matrix', 'commit-msg',
+            'Conventional-commit message from the staged diff', 8);
+    insert into ouroboros.routes (organization_id, task_kind_id, tag)
+    values ('org-matrix', 'e8000000-0000-0000-0000-000000000008', 'commitmsg-primary');
+    set constraints ouroboros.routes_chain_intact immediate$$,
+  'a route created with no hops is refused at the end of its own transaction',
+  'routes_chain_intact');
+
+-- The legitimate whole-chain rewrite, which is what "save routes" really does: empty the
+-- chain and lay a new one down, all inside one transaction where nothing is checked until
+-- it ends. This is the shape the deferral exists for.
+delete from ouroboros.route_hops
+ where route_id = 'e9000000-0000-0000-0000-000000000005';
+insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id, note) values
+  ('org-matrix', 'e9000000-0000-0000-0000-000000000005', 1,
+   'e7000000-0000-0000-0000-00000000000a', 'Primary'),
+  ('org-matrix', 'e9000000-0000-0000-0000-000000000005', 2,
+   'e7000000-0000-0000-0000-00000000000b', null);
+
+select pg_temp.must_hold(
+  (select array_agg(position order by position) = array[1, 2]
+     from ouroboros.route_hops where route_id = 'e9000000-0000-0000-0000-000000000005'),
+  'a whole chain can be replaced in one transaction, which is what saving a route does');
+
+-- Moving a hop to another chain is checked on **both** sides, which is the case a
+-- forward-looking rule would miss: the chain it left is the one with the gap in it.
+select pg_temp.must_reject(
+  $$update ouroboros.route_hops set route_id = 'e9000000-0000-0000-0000-000000000007'
+     where id = 'ea000000-0000-0000-0000-000000000002';
+    set constraints ouroboros.route_hops_chain_intact immediate$$,
+  'moving a hop out of a chain is refused by the chain it left, not only by the one it joined',
+  'route_hops_chain_intact');
+
+-- --- a hop may not reach another workspace's alias -----------------------------
+--
+-- Not a broken join: a hop resolving onto another workspace's alias resolves onto that
+-- workspace's model *and* the credential behind it. The composite foreign key is what makes
+-- this declarative, and V015's `(organization_id, id)` key — declared by this migration — is
+-- what makes it possible at all.
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id)
+    values ('org-matrix', 'e9000000-0000-0000-0000-000000000007', 2,
+            'e7000000-0000-0000-0000-00000000000e')$$,
+  'a hop cannot name an alias belonging to another workspace', 'route_hops_alias_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id)
+    values ('org-matrix', 'e9000000-0000-0000-0000-000000000007', 2,
+            '00000000-0000-0000-0000-000000000000')$$,
+  'a hop cannot name an alias that does not exist', 'route_hops_alias_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id)
+    values ('org-neighbour', 'e9000000-0000-0000-0000-000000000007', 2,
+            'e7000000-0000-0000-0000-00000000000e')$$,
+  'a hop cannot join a chain belonging to another workspace', 'route_hops_route_fk');
+
+-- --- the hop-meta line ---------------------------------------------------------
+select pg_temp.must_hold(
+  (select note = 'Fallback on 5xx / timeouts' from ouroboros.route_hops
+    where id = 'ea000000-0000-0000-0000-000000000002'),
+  'the inspector''s hop-meta line is stored beside the hop it explains');
+
+select pg_temp.must_reject(
+  $$update ouroboros.route_hops set note = '   '
+     where id = 'ea000000-0000-0000-0000-000000000001'$$,
+  'a blank note is refused rather than rendered as an empty explanation',
+  'route_hops_note_present');
+
+select pg_temp.must_hold(
+  (select note is null from ouroboros.route_hops
+    where id = 'ea000000-0000-0000-0000-000000000007'),
+  'most hops need no explanation, and null is how that is said');
+
+-- --- the routing reads are indexed ---------------------------------------------
+--
+-- Sequential scans are off for the reason every other plan assertion in this file gives — a
+-- handful of fixture rows is genuinely cheaper to scan, and what is asserted is that a
+-- usable index exists at production size. `must_not_scan` covers every relation in a plan,
+-- which is what a join needs: naming one index says nothing about the table it joins to.
+set local enable_seqscan = off;
+
+-- The matrix: a workspace's task kinds in row order, each with its route.
+select pg_temp.must_not_scan(
+  $$select tk.name, tk.description, r.tag, r.max_cost_cents_per_run
+      from ouroboros.task_kinds tk
+      join ouroboros.routes r
+        on r.organization_id = tk.organization_id and r.task_kind_id = tk.id
+     where tk.organization_id = 'org-matrix'
+     order by tk.sort_order$$);
+
+-- The inspector: one route's chain in order, resolved through the registry. Every hop is a
+-- join to `model_aliases`, which is what M1 costs and what its `(organization_id, id)` key
+-- pays for.
+select pg_temp.must_use_index(
+  $$select h.position, a.alias, a.model_id, h.note
+      from ouroboros.route_hops h
+      join ouroboros.model_aliases a
+        on a.organization_id = h.organization_id and a.id = h.model_alias_id
+     where h.route_id = 'e9000000-0000-0000-0000-000000000004'
+     order by h.position$$,
+  'route_hops_route_position_key');
+
+select pg_temp.must_not_scan(
+  $$select h.position, a.alias, a.model_id, h.note
+      from ouroboros.route_hops h
+      join ouroboros.model_aliases a
+        on a.organization_id = h.organization_id and a.id = h.model_alias_id
+     where h.route_id = 'e9000000-0000-0000-0000-000000000004'
+     order by h.position$$);
+
+-- The catalog read WF-R.3 (#145) is served through Z.4: a workspace's task-kind names.
+select pg_temp.must_not_scan(
+  $$select name, description from ouroboros.task_kinds
+     where organization_id = 'org-matrix' order by name$$);
+
+-- And the lookup the DSL's `route.task("implement")` validates through — one kind by the
+-- name somebody wrote down — which is what the natural key is really for.
+select pg_temp.must_use_index(
+  $$select id, description from ouroboros.task_kinds
+     where organization_id = 'org-matrix' and name = 'implement'$$,
+  'task_kinds_organization_name_key');
+
+-- A route by the tag a person quoted.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.routes
+     where organization_id = 'org-matrix' and tag = 'implement-primary'$$,
+  'routes_organization_tag_key');
+
+-- Not a read path: the foreign key's. PostgreSQL indexes the referenced side and never the
+-- referencing one, so without this every alias delete — and every workspace delete, which
+-- cascades into one — would scan the hops.
+select pg_temp.must_use_index(
+  $$select id from ouroboros.route_hops
+     where organization_id = 'org-matrix'
+       and model_alias_id = 'e7000000-0000-0000-0000-00000000000a'$$,
+  'route_hops_alias_idx');
+
+-- The other foreign key's referencing side — which hops does this route have, asked by every
+-- route delete and by every cascade into one. It has no index of its own: the position key
+-- leads on the route and the alias index leads on the workspace, so the pair is covered
+-- whichever the planner reaches for, which is what this asserts rather than naming one.
+select pg_temp.must_not_scan(
+  $$select id from ouroboros.route_hops
+     where organization_id = 'org-matrix'
+       and route_id = 'e9000000-0000-0000-0000-000000000004'$$);
+
+-- And the same index's second job: the list a designed refusal has to name.
+select pg_temp.must_not_scan(
+  $$select distinct r.tag
+      from ouroboros.route_hops h
+      join ouroboros.routes r
+        on r.organization_id = h.organization_id and r.id = h.route_id
+     where h.organization_id = 'org-matrix'
+       and h.model_alias_id = 'e7000000-0000-0000-0000-00000000000a'$$);
+
+set local enable_seqscan = on;
+
+-- --- updated_at is the server's account, not the writer's ----------------------
+update ouroboros.task_kinds set updated_at = timestamptz '2000-01-01 00:00:00Z'
+ where id = 'e8000000-0000-0000-0000-000000000004';
+update ouroboros.routes set updated_at = timestamptz '2000-01-01 00:00:00Z'
+ where id = 'e9000000-0000-0000-0000-000000000004';
+update ouroboros.route_hops set updated_at = timestamptz '2000-01-01 00:00:00Z'
+ where id = 'ea000000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select (select updated_at = now() from ouroboros.task_kinds
+            where id = 'e8000000-0000-0000-0000-000000000004')
+      and (select updated_at = now() from ouroboros.routes
+            where id = 'e9000000-0000-0000-0000-000000000004')
+      and (select updated_at = now() from ouroboros.route_hops
+            where id = 'ea000000-0000-0000-0000-000000000001')),
+  'all three routing tables stamp updated_at from the server clock by their touch triggers');
+
+-- --- who saved the route, and what happens when they leave ---------------------
+--
+-- V011's rule, third table: deleting the person who last saved a route must not delete the
+-- route. What is genuinely lost is the attribution, not the routing.
+select pg_temp.must_hold(
+  (select updated_by = 'user-router' from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-000000000004'),
+  'a saved route records who saved it');
+
+delete from ouroboros."user" where "id" = 'user-router';
+
+select pg_temp.must_hold(
+  (select updated_by is null from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-000000000004'),
+  'deleting the person who last saved a route empties the attribution and keeps the route');
+
+-- --- an alias a hop names cannot be deleted -----------------------------------
+--
+-- Acceptance criterion: *deleting a model_alias referenced by any hop is blocked with a
+-- designed error naming the affected route*. A cascade here would silently *shorten* chains
+-- — hop 2 removed from every route that named the alias, the remaining hops left at 1 and 3
+-- — and the first anybody would know of it is a run that degraded past a floor which no
+-- longer counts the hops it was written against.
+select pg_temp.must_reject(
+  $$delete from ouroboros.model_aliases
+     where id = 'e7000000-0000-0000-0000-00000000000b'$$,
+  'an alias that a chain names cannot be retired out from under it', 'route_hops_alias_fk');
+
+-- The other half of "designed": the refusal can say **which** routes it protected. This is
+-- the read the index above serves, and it is what mockup 21's delete confirmation is built
+-- from.
+select pg_temp.must_hold(
+  (select array_agg(distinct r.tag order by r.tag)
+          = array['implement-primary', 'testgen-primary']
+     from ouroboros.route_hops h
+     join ouroboros.routes r
+       on r.organization_id = h.organization_id and r.id = h.route_id
+    where h.organization_id = 'org-matrix'
+      and h.model_alias_id = 'e7000000-0000-0000-0000-00000000000b'),
+  'the routes blocking an alias delete are nameable, which is what makes the refusal designed');
+
+-- And the way through it: take the alias out of the chains first. The refusal is a
+-- sequencing rule, not a permanent one — and taking a hop out means renumbering what is
+-- left, which is the density rule doing its job rather than obstructing it.
+delete from ouroboros.route_hops
+ where organization_id = 'org-matrix'
+   and model_alias_id = 'e7000000-0000-0000-0000-00000000000b';
+update ouroboros.route_hops set position = 2
+ where id = 'ea000000-0000-0000-0000-000000000003';
+delete from ouroboros.model_aliases where id = 'e7000000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_aliases
+    where id = 'e7000000-0000-0000-0000-00000000000b'),
+  'an alias no chain names deletes normally');
+
+-- --- the workspace cascade, which the restrict must not block ------------------
+--
+-- V015's interaction, asserted again for the wider graph this migration adds: the routing
+-- tables cascade from `organization` and the alias restrict is checked immediately, so the
+-- obvious fear is that a workspace becomes undeletable the moment it drew a route. It does
+-- not, because the cascades are queued as after-triggers of the same statement and run
+-- before the referential check the alias delete appends.
+select pg_temp.must_hold(
+  (select count(*) > 0 from ouroboros.task_kinds  where organization_id = 'org-matrix')
+   and (select count(*) > 0 from ouroboros.routes     where organization_id = 'org-matrix')
+   and (select count(*) > 0 from ouroboros.route_hops where organization_id = 'org-matrix'),
+  'the workspace about to be deleted really does have a matrix, routes and chains');
+
+delete from ouroboros.organization where "id" = 'org-matrix';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.task_kinds  where organization_id = 'org-matrix')
+   and (select count(*) = 0 from ouroboros.routes     where organization_id = 'org-matrix')
+   and (select count(*) = 0 from ouroboros.route_hops where organization_id = 'org-matrix')
+   and (select count(*) = 0 from ouroboros.model_aliases where organization_id = 'org-matrix'),
+  'deleting a workspace takes its matrix, routes, chains and aliases with it, restrict notwithstanding');
+
+-- And the narrower cascade underneath it: retiring a task kind takes its route, and the
+-- route takes its chain. A hop outliving the route it was part of is not a chain.
+insert into ouroboros.task_kinds (id, organization_id, name, description, sort_order) values
+  ('e8000000-0000-0000-0000-00000000000f', 'org-neighbour', 'review',
+   'Self-review the PR against the acceptance criteria', 2);
+insert into ouroboros.routes (id, organization_id, task_kind_id, tag) values
+  ('e9000000-0000-0000-0000-00000000000f', 'org-neighbour',
+   'e8000000-0000-0000-0000-00000000000f', 'review-primary');
+insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id) values
+  ('org-neighbour', 'e9000000-0000-0000-0000-00000000000f', 1,
+   'e7000000-0000-0000-0000-00000000000e');
+
+delete from ouroboros.task_kinds where id = 'e8000000-0000-0000-0000-00000000000f';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.routes
+    where id = 'e9000000-0000-0000-0000-00000000000f')
+   and (select count(*) = 0 from ouroboros.route_hops
+         where route_id = 'e9000000-0000-0000-0000-00000000000f'),
+  'retiring a task kind takes its route, and the route takes its chain');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
