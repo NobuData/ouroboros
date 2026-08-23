@@ -657,7 +657,7 @@ that roadmap's "Existing issues affected" section.
 | 98 | **Y.1** | ✅ [#189](https://github.com/NobuData/ouroboros/issues/189) | Provider connections & model alias foundations | ouroboros-db | M | 3.1, B.3 |
 | 99 | **Y.2** | ✅ [#190](https://github.com/NobuData/ouroboros/issues/190) | Task kinds, routes & fallback chains | ouroboros-db | M | Y.1 |
 | 100 | **Z.3** | ✅ [#196](https://github.com/NobuData/ouroboros/issues/196) | Provider health service (passive-first) | ouroboros-rest | M | Y.1 |
-| 101 | **AC.1** | [#216](https://github.com/NobuData/ouroboros/issues/216) | ModelProviderAdapter SPI & registry | ouroboros-rest | L | Y.1 |
+| 101 | **AC.1** | ✅ [#216](https://github.com/NobuData/ouroboros/issues/216) | ModelProviderAdapter SPI & registry | ouroboros-rest | L | Y.1 |
 | 102 | **AC.6** | [#221](https://github.com/NobuData/ouroboros/issues/221) | Schema extensions, discovered-models catalog & seeds | ouroboros-db, .github | M | Y.1 |
 | 103 | **Y.3** | [#191](https://github.com/NobuData/ouroboros/issues/191) | Escalation rules schema | ouroboros-db | S | Y.2 |
 | 104 | **AC.2** | [#217](https://github.com/NobuData/ouroboros/issues/217) | Anthropic adapter | ouroboros-rest | S | AC.1, AD.1 |

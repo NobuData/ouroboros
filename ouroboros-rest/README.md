@@ -915,6 +915,96 @@ with the workspace's own credential.
 class is defined and this one has to be different on every tick. It never overlaps itself, a
 failed cycle is logged and the loop continues, and `onApplicationShutdown` clears the timer.
 
+## Provider adapters
+
+**Adding a model provider is one directory and one line**
+([#216](https://github.com/NobuData/ouroboros/issues/216), roadmap decision **P1**).
+`src/modules/providers/` holds the `ModelProviderAdapter` SPI, the registry that keys it,
+and the conformance kit a new adapter has to pass.
+[`../docs/MODEL_PROVIDERS.md`](../docs/MODEL_PROVIDERS.md) is the walkthrough; this is the
+summary.
+
+```
+core services ──imports──▶ ModelProviderAdapter ◀──implements── adapters/*
+ (AD.2 · Z.3 · discovery)          ▲                            (none yet — AC.2–AC.5)
+                                   └── ModelProviderRegistry.get(kind)
+```
+
+Five kinds ship in the MVP and mockup 07's dashed card promises *"OpenAI, Google, Bedrock,
+or any OpenAI-compatible endpoint"*. Written as a `switch (kind)` across REST, the add-form
+and the card component, each new provider is a three-file change in three modules. The
+ticket-source SPI ([#139](https://github.com/NobuData/ouroboros/issues/139),
+[#142](https://github.com/NobuData/ouroboros/issues/142)) set the pattern; this applies it
+to providers.
+
+| Member | What it is on the page |
+| ------------------------- | ------------------------------------------------------ |
+| `kind` | the registry key — one of V015's six |
+| `configSchema()` | the add-form, and the card's fields |
+| `capabilities()` | which affordances the card shows at all |
+| `validate(config, secret)` | the **Test connection** button |
+| `discoverModels(conn)` | the **Models available** chips |
+| `pullModel?(conn, id)` | the Ollama pull-list's **Pull latest** |
+
+**Five error classes, five pills, 1:1.** `auth`, `network`, `upstream`, `rate_limit`,
+`config` — every adapter fails in these words and no others, because the card's pill, the
+card foot's test note and Z.3's health snapshots all read them. `provider.errors.spec.ts`
+asserts the mapping is injective rather than trusting the table in
+[`../docs/MODEL_PROVIDERS.md`](../docs/MODEL_PROVIDERS.md#the-error-taxonomy) to stay true.
+Every failure still coarsens to `provider_connections.status = 'error'`, deliberately: V015
+has no status meaning *working, but throttled*, and the alternative would keep routing to a
+provider that is currently refusing.
+
+**`pullModel` is gated by the compiler, not by a check.** `ModelProviderAdapter` has no
+such member; an adapter that pulls implements `PullCapableAdapter`, and the only ways in are
+`supportsPull(adapter)` and `registry.pullCapable(kind)`. So this does not compile:
+
+```ts
+registry.get("copilot").pullModel(conn, id);   // Property 'pullModel' does not exist
+```
+
+`provider.adapter.spec.ts` holds that with a `@ts-expect-error`, which fails the moment the
+interface grows an optional member. `invocation` is declared and reserved for AF.2
+([#235](https://github.com/NobuData/ouroboros/issues/235)), which extends the interface the
+way `PullCapableAdapter` already demonstrates rather than reshaping it.
+
+**Config schemas render mockup 07's five cards with no branch anywhere.** `configSchema()`
+answers a narrow JSON Schema subset — one flat object of string fields — and
+`provider.forms.ts` turns it into form fields. That module contains no provider kind at all,
+which `provider.forms.spec.ts` checks by reading its source with the comments stripped. The
+trick is one reserved name: an address field is always `baseUrl`, and *Host* against *Base
+URL* is its `title`.
+
+**The conformance kit gates every adapter, and it has been watched failing.** Each rule is a
+function returning sentences, so `conformance.fixture.spec.ts` can run it against adapters
+that are wrong on purpose — a mutable schema, a detail that quotes the credential, a
+fabricated latency, a pull stream that just stops. Every adapter must record a fixture for
+**all five** error classes; there is no escape hatch, because all five are arrangeable for
+anything that talks HTTP.
+
+**The boundary is a build failure.** `.dependency-cruiser.cjs`, run by `yarn lint`:
+
+```bash
+yarn lint      # eslint, then depcruise src
+```
+
+| Rule | Refuses |
+| ----------------------------------- | -------------------------------------------------- |
+| `no-provider-sdk-outside-adapters` | a provider SDK imported from anywhere but `adapters/` |
+| `core-imports-the-spi-only` | any file but `providers.module.ts` (and tests) importing an adapter |
+| `no-circular` | a dependency cycle anywhere in `src/` |
+
+`boundary.spec.ts` builds a tree containing each violation and asserts the real
+configuration reports it — a rule whose pattern has quietly stopped matching looks identical
+to a codebase with no violations.
+
+**`REGISTERED_ADAPTERS` is empty**, so every kind is a `501 provider_kind_unsupported`
+today. That is the accurate thing for this build to say about `anthropic`: V015 accepts the
+row, and nothing here knows how to reach it yet. AC.2–AC.5
+([#217](https://github.com/NobuData/ouroboros/issues/217)–[#220](https://github.com/NobuData/ouroboros/issues/220))
+each add one line. `adapters/fake.adapter.fixture.ts` is the in-memory adapter that powers
+core tests without touching a network, and it is the worked example the walkthrough reads.
+
 ## BetterAuth
 
 **The library is installed, configured, mounted, and doing the work.** `/api/auth/*`
@@ -1798,6 +1888,8 @@ ouroboros-rest/
 │       │                   #   no controller — decision M2 leaves CRUD to 07/21
 │       ├── provider-health/ # passive-first health + the strip payload     · #196
 │       │                   #   scheduled, jittered — and never a completion
+│       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
+│       │                   #   adapters/ is the only place a provider SDK may be imported
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
@@ -1809,6 +1901,7 @@ ouroboros-rest/
 ├── openapi.json            # rendered from it; the copy the service loads
 ├── openapi.internal.yaml   # the engine-facing contract — authoritative      · #224
 ├── openapi.internal.json   # rendered from it; read by AF.1/AF.2, served nowhere
+├── .dependency-cruiser.cjs # the provider boundary — `yarn lint` runs it       · #216
 ├── eslint.config.mjs       # flat config; Prettier runs as a lint rule
 ├── jest.config.mjs         # unit suite — src/**/*.spec.ts, starts nothing
 ├── jest.integration.config.mjs  # src/**/*.integration-spec.ts, on a container it starts
@@ -1909,6 +2002,7 @@ tenant context [#32](https://github.com/NobuData/ouroboros/issues/32) ·
 model pricing [#586](https://github.com/NobuData/ouroboros/issues/586) ·
 the model registry [#189](https://github.com/NobuData/ouroboros/issues/189) ·
 provider health [#196](https://github.com/NobuData/ouroboros/issues/196) ·
+provider adapters [#216](https://github.com/NobuData/ouroboros/issues/216) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·
