@@ -16,7 +16,8 @@
  * ([#223](https://github.com/NobuData/ouroboros/issues/223)), Z.3's health service and the
  * discovery scheduler import; {@link REGISTERED_ADAPTERS} is the list AC.2–AC.5 each add one
  * line to. `anthropic` is registered as of AC.2
- * ([#217](https://github.com/NobuData/ouroboros/issues/217)); the other four kinds are still a
+ * ([#217](https://github.com/NobuData/ouroboros/issues/217)) and `openai_compatible` as of AC.3
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)); the other three kinds are still a
  * `501`, which is the accurate answer rather than a stub — see `provider.registry.ts` on why an
  * unregistered kind is a `501` and not a `404`.
  *
@@ -38,6 +39,7 @@
 import { Module } from "@nestjs/common";
 
 import { AnthropicAdapter } from "./adapters/anthropic.adapter";
+import { OpenAiCompatibleAdapter } from "./adapters/openai-compatible.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
 import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.registry";
 
@@ -49,12 +51,13 @@ import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.regis
  * an adapter being written, tested, and then never reachable because nobody added the line.
  * `vault.module.ts`'s `REGISTERED_SECRET_STORES` is the same shape for the same reason.
  *
- * **AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) is the first entry.** Each
- * of AC.3–AC.5 appends its class here and imports nothing else. The list is spread into
- * `providers` as well as into `inject`, because a class Nest is asked to inject is a class Nest
- * also has to have been told to construct.
+ * **AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) is the first entry and AC.3
+ * ([#218](https://github.com/NobuData/ouroboros/issues/218)) the second** — one line each, and
+ * nothing else in the service learned either provider's name. AC.4 and AC.5 append theirs the
+ * same way. The list is spread into `providers` as well as into `inject`, because a class Nest
+ * is asked to inject is a class Nest also has to have been told to construct.
  */
-export const REGISTERED_ADAPTERS = [AnthropicAdapter] as const;
+export const REGISTERED_ADAPTERS = [AnthropicAdapter, OpenAiCompatibleAdapter] as const;
 
 @Module({
   providers: [

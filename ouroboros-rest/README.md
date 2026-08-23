@@ -926,7 +926,7 @@ summary.
 
 ```
 core services ──imports──▶ ModelProviderAdapter ◀──implements── adapters/*
- (AD.2 · Z.3 · discovery)          ▲                        anthropic · AC.3–AC.5 next
+ (AD.2 · Z.3 · discovery)          ▲            anthropic · openai_compatible · AC.4–AC.5 next
                                    └── ModelProviderRegistry.get(kind)
 ```
 
@@ -998,10 +998,11 @@ yarn lint      # eslint, then depcruise src
 configuration reports it — a rule whose pattern has quietly stopped matching looks identical
 to a codebase with no violations.
 
-**`REGISTERED_ADAPTERS` holds one adapter**, so `anthropic` resolves and every other kind is
-a `501 provider_kind_unsupported`. That is the accurate thing for this build to say about
-`ollama`: V015 accepts the row, and nothing here knows how to reach it yet. AC.3–AC.5
-([#218](https://github.com/NobuData/ouroboros/issues/218)–[#220](https://github.com/NobuData/ouroboros/issues/220))
+**`REGISTERED_ADAPTERS` holds two adapters**, so `anthropic` and `openai_compatible` resolve
+and every other kind is a `501 provider_kind_unsupported`. That is the accurate thing for this
+build to say about `ollama`: V015 accepts the row, and nothing here knows how to reach it yet.
+AC.4–AC.5
+([#219](https://github.com/NobuData/ouroboros/issues/219)–[#220](https://github.com/NobuData/ouroboros/issues/220))
 each add one line. `adapters/fake.adapter.fixture.ts` is the in-memory adapter that powers
 core tests without touching a network, and it is the worked example the walkthrough reads.
 
@@ -1038,7 +1039,52 @@ the file's own source and fails if a logger appears in it. Every refusal's body 
 unread, so a vendor error object quoting request headers never reaches a `detail`.
 
 **Its fixtures are recorded** — `adapters/anthropic.recordings.fixture.ts` — so the
-conformance kit and the unit suite both run in `yarn test` without a key or a socket.
+conformance kit and the unit suite both run in `yarn test` without a key or a socket. The
+stand-in `fetch` that serves them is `adapters/http.recordings.fixture.ts`, shared by every
+HTTP adapter.
+
+### The OpenAI-compatible adapter, and the SSRF policy
+
+**The one that makes *"or any OpenAI-compatible endpoint"* true**
+([#218](https://github.com/NobuData/ouroboros/issues/218)) — vLLM, LM Studio, llama.cpp's
+server, TGI, and anything else speaking that wire format.
+`adapters/openai-compatible.adapter.ts` is mockup 07's `VL` card: a **Base URL**, an
+*optional* key row, and the capability line under the card's name.
+
+```
+configSchema   ─▶ { baseUrl, apiKey?, capabilityNote? }   address first, key optional
+validate       ─▶ GET {base}/v1/models · 200          →  ✓ 200 · 12ms
+                                        401           →  auth       · key rejected
+                                        3xx           →  config     · redirect not followed
+                                        5xx           →  upstream   · degraded upstream
+                                        socket        →  network    · 10.0.4.20:8000 unreachable
+discoverModels ─▶ the same call                       →  local/llama-4-maverick · local/deepseek-v3.2
+```
+
+**Every other adapter talks to a fixed host; this one fetches an address somebody typed.**
+That is the shape of an SSRF vulnerability, and the reflexive mitigation — blocking private
+ranges — is exactly wrong here, because the legitimate use case *is*
+`http://10.0.4.20:8000/v1`. So the policy is stated rather than inherited. It lives in
+`providers/provider.address.ts`, AC.4's Ollama adapter will share it, and it is four rules:
+
+| Rule | What it stops |
+|---|---|
+| Scheme allow-list — `http`, `https` | `file:`, `gopher:`, `ftp:`, and the rest |
+| `redirect: "manual"` on every request | An allowed address becoming a disallowed one after the check passed |
+| A one-mebibyte response cap, counted as bytes arrive | A stranger's endpoint streaming this process out of memory |
+| No userinfo in the address | `http://key:secret@host/v1` writing a credential into `provider_connections.config` |
+
+**RFC-1918 and loopback are deliberately allowed**, with no branch anywhere that inspects an
+address range — `provider.address.spec.ts` asserts the allow explicitly, so the way it breaks
+is a red test rather than every self-hosted card quietly going dark.
+[`docs/SECURITY_MODEL.md` §6.1](../docs/SECURITY_MODEL.md#61-ssrf-private-ranges-are-deliberately-allowed)
+says what remains and why the boundary actually defended is *who may configure a connection*.
+
+**The key is genuinely optional** — a keyless endpoint gets no `Authorization` header at all,
+rather than an empty bearer a server would answer `401` to. **The chips carry `local/` and the
+ids do not**, because `model_prices.match_model` joins on the server's own spelling. And the
+conformance kit runs **twice**, against a vLLM capture and a bare generic one, because a kit
+green against one vendor proves the claim about one vendor.
 
 ## BetterAuth
 
@@ -1925,6 +1971,7 @@ ouroboros-rest/
 │       │                   #   scheduled, jittered — and never a completion
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
+│       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218
 │       │                   #   adapters/ is the only place a provider SDK may be imported
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
@@ -2040,6 +2087,7 @@ the model registry [#189](https://github.com/NobuData/ouroboros/issues/189) ·
 provider health [#196](https://github.com/NobuData/ouroboros/issues/196) ·
 provider adapters [#216](https://github.com/NobuData/ouroboros/issues/216) ·
 the Anthropic adapter [#217](https://github.com/NobuData/ouroboros/issues/217) ·
+the OpenAI-compatible adapter [#218](https://github.com/NobuData/ouroboros/issues/218) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

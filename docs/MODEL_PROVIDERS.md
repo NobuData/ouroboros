@@ -2,7 +2,8 @@
 
 > **Issues:** [#216](https://github.com/NobuData/ouroboros/issues/216) — *[AC.1]
 > ModelProviderAdapter SPI & registry*, [#217](https://github.com/NobuData/ouroboros/issues/217)
-> — *[AC.2] Anthropic adapter* · **Roadmap:**
+> — *[AC.2] Anthropic adapter*, [#218](https://github.com/NobuData/ouroboros/issues/218) —
+> *[AC.3] OpenAI-compatible adapter* · **Roadmap:**
 > [`ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md`](ROADMAP_MOCKUP_07_PROVIDERS_KEYS.md), decisions
 > **P1** and **P8** · **Written:** 2026-08-23
 
@@ -46,11 +47,14 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `provider.adapter.ts` | The SPI. `ModelProviderAdapter`, `PullCapableAdapter`, `supportsPull`. |
 | `provider.errors.ts` | The five error classes, the pills they render as, and the HTTP classifier. |
 | `provider.config.ts` | The JSON Schema dialect `configSchema()` answers in, and its gate. |
+| `provider.address.ts` | The **SSRF policy** — what an adapter that takes an operator-supplied URL may do with it. |
 | `provider.forms.ts` | Schema → form fields. Contains no provider kind, by test. |
 | `provider.registry.ts` | Lookup by `kind`, the `MODEL_PROVIDER_ADAPTERS` token, two refusals. |
 | `providers.module.ts` | The Nest module. `REGISTERED_ADAPTERS` is the line you add. |
 | `conformance.fixture.ts` | The kit. |
 | `adapters/anthropic.adapter.ts` | The Anthropic adapter (AC.2, [#217](https://github.com/NobuData/ouroboros/issues/217)) — the first real one. |
+| `adapters/openai-compatible.adapter.ts` | The OpenAI-compatible adapter (AC.3, [#218](https://github.com/NobuData/ouroboros/issues/218)) — vLLM, LM Studio, llama.cpp, TGI. |
+| `adapters/http.recordings.fixture.ts` | The stand-in `fetch` every adapter's recorded fixtures are served through. |
 | `adapters/fake.adapter.fixture.ts` | The in-memory adapter — this document's worked example. |
 | `card.shapes.fixture.ts` | Mockup 07's five cards, as schemas. |
 | `.dependency-cruiser.cjs` | The boundary, at the module root. Run by `yarn lint`. |
@@ -167,7 +171,7 @@ Two annotations exist, both `x-` prefixed so a generic validator ignores them:
 | `x-ouroboros-secret: true` | This field's value goes to the **vault**, never into the config object. At most one per schema. Renders as the masked key row. |
 | `x-ouroboros-placeholder` | The input's placeholder. Prose, not an example — mockup 07's is *"API key — optional, no auth configured"*. |
 
-### The one reserved field name
+### The two reserved field names
 
 **A field that takes an address is called `baseUrl`, whatever your vendor calls it.** Its
 value lands in `provider_connections.base_url`.
@@ -176,6 +180,12 @@ Ollama's card says **Host** and the vLLM card says **Base URL**; they are the sa
 with different `title`s. If two adapters each named the field after their own vendor's word
 for it, the card would need to know which vendor it was rendering in order to find the
 address — which is exactly the `switch (kind)` decision P1 refuses.
+
+**A field that takes the card's second line is called `capabilityNote`**, and its value lands
+in `provider_connections.capability_note` (V017) — mockup 07's *self-hosted · A100 ×2* under
+the vLLM card's name. Declare it optional and bound it at `CAPABILITY_NOTE_MAX_LENGTH`, which
+is what V017's constraint will store; a schema with no `maxLength` renders a form whose
+valid-looking submission fails at the insert.
 
 ### Splitting a submitted form
 
@@ -192,6 +202,82 @@ value it is asking for is by design somewhere else. `storedConfigSchema(schema)`
 schema minus the credential, and it is what the conformance kit validates your
 `sampleConfig` against. The submission — your `sampleConfig` plus your `secret` — is
 validated against the schema itself, so the key row's own `minLength` is still exercised.
+
+## Taking an address from a person — the SSRF policy
+
+> `provider.address.ts` · AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)),
+> shared with AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)) ·
+> [`SECURITY_MODEL.md` §6.1](SECURITY_MODEL.md#61-ssrf-private-ranges-are-deliberately-allowed)
+
+Most adapters talk to a fixed, well-known host. Two do not: the OpenAI-compatible adapter
+takes a **Base URL** and the Ollama adapter takes a **Host**, and both then fetch, from
+inside the control plane, an address somebody typed. That is the textbook shape of an SSRF
+vulnerability.
+
+**The reflexive mitigation is exactly wrong here.** These two adapters exist to reach a model
+server the customer runs themselves — a vLLM on `10.0.4.20:8000`, an Ollama on
+`localhost:11434`. An adapter that rejected RFC-1918 would be an adapter that could not do the
+only job it has. *Self-hosted models* and *no private addresses* cannot both be true, so the
+product states which one it picked rather than leaving an operator to discover it as a
+surprising rejection at connect time.
+
+So **private and loopback addresses are deliberately allowed**, and the risk is closed off
+everywhere else:
+
+| Rule | Where | What it stops |
+|---|---|---|
+| Scheme allow-list — `http`, `https`, nothing else | `resolveProviderAddress` | `file:`, `gopher:`, `ftp:`, and anything else a URL parser accepts |
+| No redirect following | `PROVIDER_REDIRECT` = `manual` | An allowed address becoming a disallowed one *after* the check passed |
+| A response size cap | `readCappedBody` | A stranger's endpoint streaming the control plane out of memory |
+| No userinfo in the URL | `resolveProviderAddress` | `http://key:secret@host/v1` writing a credential into `provider_connections.config` |
+
+Two more rules are the adapter's rather than the module's: **only these kinds take an address
+at all**, and **no response body is ever echoed** — a test connection reports a status and a
+latency, and a discovery parses a listing into `NormalizedModel`s. Neither returns what the
+endpoint said, which is what keeps a reachability probe from being a data-exfiltration
+primitive.
+
+### Using it
+
+```ts
+const address = resolveProviderAddress(config[BASE_URL_FIELD]);
+
+if (!address.ok) {
+  return { status: "failed", errorClass: "config", detail: address.violation };
+}
+
+const response = await fetch(`${address.root}/v1/models`, {
+  method: "GET",
+  headers: authorize(secret),
+  redirect: PROVIDER_REDIRECT,      // ← the whole redirect rule, in one property
+  signal: AbortSignal.timeout(TIMEOUT_MS),
+});
+```
+
+`address.root` is the scheme, host, port and path with trailing slashes, query and fragment
+already taken off — so every adapter joins a path the same way and none of them produces the
+double slash that vLLM answers and a stricter server does not.
+
+**Never `fetch` a configured address you did not get back from `resolveProviderAddress`**, and
+never build a request without `redirect: PROVIDER_REDIRECT`. Those are the two lines that are
+the policy; a second `fetch` reaching for `config[BASE_URL_FIELD]` directly is the whole of it
+quietly skipped. `openai-compatible.adapter.spec.ts` asserts both from the outside: no socket
+is opened for a refused scheme, and a `302` costs exactly one request that is not the one the
+`Location` pointed at.
+
+`manual` rather than `error` is deliberate. Node's `fetch` hands a `3xx` back intact, so it
+arrives as an ordinary refusal that `classifyHttpStatus` reads as `config` — an address one
+level above the API, which is a field somebody can correct. With `error` it would arrive as a
+`TypeError` indistinguishable from a closed socket, and the card would say *unreachable*.
+
+### What remains, said plainly
+
+A workspace administrator can point their own deployment at an internal address and learn
+whether something answers there. That is a capability an administrator of a self-hosted
+service already has by other means, and the boundary this policy defends is *who may configure
+a connection*, not *which addresses exist*. A deployment that needs a harder boundary should
+place `ouroboros-rest` on a network segment that cannot reach what it must not reach — which
+the network can enforce and an application allow-list cannot.
 
 ## Capabilities
 
@@ -476,7 +562,17 @@ kit nobody has watched fail is a conformance kit that passes everything.
 HTTP, and `adapters/anthropic.recordings.fixture.ts` is what recorded fixtures look like in
 practice: captured bodies as constants, a builder per response because a body may be read
 once, and the vendor's own error envelope — request id and all — so that *the detail never
-quotes the provider's body* is asserted against a body that would really leak something.
+quotes the provider's body* is asserted against a body that would really leak something. The
+stand-in `fetch` itself is `adapters/http.recordings.fixture.ts`, shared by every HTTP adapter
+— write your captures, not another harness.
+
+**Run the kit once per endpoint shape your adapter claims to support.**
+`adapters/openai-compatible.conformance.spec.ts` runs it twice, because that adapter's claim is
+*"any OpenAI-compatible endpoint"* and a kit green against one vendor's capture proves it about
+one vendor. Its two captures differ in the ways that actually matter — a rich response against
+a bare one, an OpenAI-style `…/v1` base URL against a plain host — so the pair also covers both
+spellings of the address field and both answers to *did the server say how much context it
+has*.
 
 ## The boundary
 
@@ -501,13 +597,14 @@ really fails.
 
 | | |
 |---|---|
-| The other four adapters — Anthropic shipped with AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) | AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)), AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)), AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
+| The other three adapters — Anthropic shipped with AC.2 ([#217](https://github.com/NobuData/ouroboros/issues/217)) and the OpenAI-compatible one with AC.3 ([#218](https://github.com/NobuData/ouroboros/issues/218)) | AC.4 ([#219](https://github.com/NobuData/ouroboros/issues/219)), AC.5 ([#220](https://github.com/NobuData/ouroboros/issues/220)) |
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
 | The add-form and catalog | AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)) |
 | Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
 
-`REGISTERED_ADAPTERS` holds `AnthropicAdapter`, so `ModelProviderRegistry.get("anthropic")`
-answers an adapter and every other kind is still `501 provider_kind_unsupported`. That is the
-accurate thing for this build to say about `ollama`: V015 accepts the row, and nothing here
-knows how to reach it yet.
+`REGISTERED_ADAPTERS` holds `AnthropicAdapter` and `OpenAiCompatibleAdapter`, so
+`ModelProviderRegistry.get("anthropic")` and `get("openai_compatible")` each answer an adapter
+and every other kind is still `501 provider_kind_unsupported`. That is the accurate thing for
+this build to say about `ollama`: V015 accepts the row, and nothing here knows how to reach it
+yet.

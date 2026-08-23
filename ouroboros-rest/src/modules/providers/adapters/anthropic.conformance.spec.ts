@@ -8,11 +8,10 @@ import {
   ANTHROPIC_EXPECTED_MODELS,
   ANTHROPIC_MODEL_ENTRIES,
   ANTHROPIC_SECRET,
-  recordFailure,
-  recordResponses,
   recordedListing,
   recordedRefusal,
 } from "./anthropic.recordings.fixture";
+import { recordFailure, recordResponses } from "./http.recordings.fixture";
 
 /**
  * AC.2's first acceptance criterion: **the conformance kit is green** for the Anthropic

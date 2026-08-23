@@ -1,6 +1,7 @@
 import { Test } from "@nestjs/testing";
 
 import { AnthropicAdapter } from "./adapters/anthropic.adapter";
+import { OpenAiCompatibleAdapter } from "./adapters/openai-compatible.adapter";
 import type { ModelProviderAdapter } from "./provider.adapter";
 import { MODEL_PROVIDER_ADAPTERS, ModelProviderRegistry } from "./provider.registry";
 import { ProvidersModule, REGISTERED_ADAPTERS } from "./providers.module";
@@ -38,16 +39,18 @@ describe("the providers module", () => {
     await moduleRef.close();
   });
 
-  it("reaches anthropic, and leaves the kinds AC.3–AC.5 own a 501", async () => {
+  it("reaches anthropic and openai_compatible, leaving AC.4–AC.5's kinds a 501", async () => {
     // Accurate rather than a stub — `provider.registry.ts` argues why, and AD.1's
     // VAULT_SECRET_STORES is the precedent. This assertion is expected to be *changed* by each
-    // of AC.3–AC.5 rather than to keep passing, and that is the point: adding an adapter is a
+    // of AC.4–AC.5 rather than to keep passing, and that is the point: adding an adapter is a
     // visible diff here.
     const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
     const registry = moduleRef.get(ModelProviderRegistry);
 
-    expect(REGISTERED_ADAPTERS).toEqual([AnthropicAdapter]);
-    expect(registry.kinds()).toEqual(["anthropic"]);
+    expect(REGISTERED_ADAPTERS).toEqual([AnthropicAdapter, OpenAiCompatibleAdapter]);
+    // V015's declaration order, which is what `kinds()` answers in — deliberately not the order
+    // the module registers them, because a catalog's order must not depend on an injector's.
+    expect(registry.kinds()).toEqual(["anthropic", "openai_compatible"]);
     expect(registry.find("ollama")).toBeUndefined();
 
     await moduleRef.close();
@@ -58,7 +61,10 @@ describe("the providers module", () => {
     // is not also in `providers` fails to resolve, and the failure is at boot rather than here.
     const moduleRef = await Test.createTestingModule({ imports: [ProvidersModule] }).compile();
 
-    expect(moduleRef.get(ModelProviderRegistry).get("anthropic")).toBeInstanceOf(AnthropicAdapter);
+    const registry = moduleRef.get(ModelProviderRegistry);
+
+    expect(registry.get("anthropic")).toBeInstanceOf(AnthropicAdapter);
+    expect(registry.get("openai_compatible")).toBeInstanceOf(OpenAiCompatibleAdapter);
 
     await moduleRef.close();
   });
