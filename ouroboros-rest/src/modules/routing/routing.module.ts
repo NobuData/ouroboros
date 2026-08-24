@@ -44,6 +44,18 @@
  * simulate.controller.ts     POST /routing/simulate — one dependency, and no second answer
  * ```
  *
+ * Z.5 ([#198](https://github.com/NobuData/ouroboros/issues/198)) added the measurements the
+ * matrix's two null columns and the spend card were waiting on — decision **M7**'s half of the
+ * page, and five files because a figure about money earns the separation:
+ *
+ * ```
+ * stats.window.ts            the thirty days, computed once so four figures agree
+ * stats.repository.ts        two aggregates over token_usage, and no write
+ * stats.ts                   rows → the numerics, the meters and the local share
+ * stats.cache.ts             the short TTL that keeps a polling page off the ledger
+ * stats.service.ts           load, compose, remember — GET /routing and GET /routing/spend
+ * ```
+ *
  * **`ResolutionService` is the one export**, unchanged: the editor's service is this module's
  * own controller's dependency and nothing outside reaches it. What changed is that the engine
  * now has a controller of its own — `SimulateController` injects the service and nothing else,
@@ -70,6 +82,9 @@ import { RoutingManagementService } from "./management.service";
 import { ResolutionService } from "./resolution.service";
 import { RoutingController } from "./routing.controller";
 import { RoutingRepository } from "./routing.repository";
+import { RoutingStatsCache } from "./stats.cache";
+import { RoutingStatsRepository } from "./stats.repository";
+import { RoutingStatsService } from "./stats.service";
 import { SimulateController } from "./simulate.controller";
 
 @Module({
@@ -80,12 +95,20 @@ import { SimulateController } from "./simulate.controller";
     RoutingRepository,
     RoutingManagementService,
     RoutingManagementRepository,
+    RoutingStatsService,
+    RoutingStatsRepository,
+    RoutingStatsCache,
   ],
   // The one export, and the internal contract Z.4 (#197), AB.5 (#211) and CH.6 (#589) were
   // all told to consume. Both repositories stay private: a consumer reaching past the service
   // would be a consumer holding rows instead of a resolution, and rows carry no explanations.
   // `RoutingManagementService` stays private for the sharper version of the same reason — it
   // writes, and a module that could inject it could edit another surface's routes.
+  // `RoutingStatsService` stays private too, and that is a decision rather than an oversight:
+  // AB.4 (#210) is a UI surface and reads `GET /routing/spend` over HTTP like any other client,
+  // so exporting it would only create a second way into the same numbers. `RoutingStatsCache`
+  // is a provider rather than a global for the same reason `PricingCache` is — the bound is
+  // one map per process, and a module that could inject it could drop another surface's.
   exports: [ResolutionService],
 })
 export class RoutingModule {}

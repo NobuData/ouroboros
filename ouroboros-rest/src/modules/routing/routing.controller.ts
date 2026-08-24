@@ -31,6 +31,18 @@
  * gets recorded.
  *
  * ---------------------------------------------------------------------------
+ * ---------------------------------------------------------------------------
+ * **Why the spend card is served twice, and why that is one computation.**
+ *
+ * `GET /api/v1/routing` carries it because the matrix, the rules and the card are one screen —
+ * the same argument the rules are in that payload for, with more force, because the matrix's
+ * `$/run avg` and the card's totals are aggregates over the same ledger rows and fetching them
+ * apart would measure them at two instants. `GET /api/v1/routing/spend` serves the same object
+ * for AB.4 ([#210](https://github.com/NobuData/ouroboros/issues/210)), whose report wants the
+ * card without the matrix. Both call one service method over one cache, so there is nowhere for
+ * a second answer about an invoice to live.
+ *
+ * ---------------------------------------------------------------------------
  * **Why `routing/providers` is not here.** Z.3 serves the health strip at
  * `/api/v1/routing/providers` from its own controller, and that separation is deliberate on
  * both sides: health is measured by a scheduler and read by a page that polls, while this is
@@ -64,6 +76,7 @@ import type {
   AliasListResource,
   EscalationRuleResource,
   RoutingMatrixResource,
+  RoutingSpendResource,
   SaveRoutesResource,
 } from "./resources";
 import {
@@ -75,10 +88,22 @@ import {
   UpdateRuleDto,
   type SaveRouteDto,
 } from "./routing.dto";
+import { RoutingStatsService } from "./stats.service";
 
 @Controller("routing")
 export class RoutingController {
-  constructor(private readonly routing: RoutingManagementService) {}
+  /**
+   * @param routing - The editor: the matrix read, **Save routes**, and the rules card's writes.
+   * @param stats - Z.5's ([#198](https://github.com/NobuData/ouroboros/issues/198)) aggregates.
+   *   Injected beside the editor rather than reached through it, because they are not the same
+   *   kind of thing: one is configuration a person edits and the other is a measurement of what
+   *   that configuration has already cost. The matrix read composes them; this controller is
+   *   where the spend card is also served on its own.
+   */
+  constructor(
+    private readonly routing: RoutingManagementService,
+    private readonly stats: RoutingStatsService,
+  ) {}
 
   /**
    * `GET /api/v1/routing` — the whole page: every task kind, its route and chain, and the
@@ -95,6 +120,28 @@ export class RoutingController {
   @Get()
   matrix(@CurrentTenant() tenant: Organization): Promise<RoutingMatrixResource> {
     return this.routing.matrix(tenant.id);
+  }
+
+  /**
+   * `GET /api/v1/routing/spend` — the **Spend by provider · 30d** card on its own.
+   *
+   * The same object `GET /api/v1/routing` carries under `spend`, from the same computation and
+   * the same short-TTL cache. It is published separately because AB.4
+   * ([#210](https://github.com/NobuData/ouroboros/issues/210))'s full spend report is a surface
+   * that wants the card without the matrix, and a report that re-aggregated the ledger for
+   * itself would be a second opinion about one invoice.
+   *
+   * **A read and only a read**, and no `@Roles()`: the money a workspace spends is something
+   * every member of it may look at, which is the same rule the matrix read carries.
+   *
+   * @param tenant - The workspace, established by the tenant guard.
+   * @returns The metered rows, the local-token share, and the window all of it was measured
+   *   over. Zero-states for a workspace that has spent nothing — never `$0.00` for usage nobody
+   *   priced.
+   */
+  @Get("spend")
+  spend(@CurrentTenant() tenant: Organization): Promise<RoutingSpendResource> {
+    return this.stats.spend(tenant.id);
   }
 
   /**

@@ -61,6 +61,7 @@ import {
 } from "./management.rows";
 import { batchProblems } from "./management.validation";
 import {
+  EMPTY_ROUTE_STATS,
   toAliasResource,
   toEscalationRuleResource,
   toRouteResource,
@@ -68,6 +69,7 @@ import {
   type AliasListResource,
   type EscalationRuleResource,
   type RouteResource,
+  type RouteStatsResource,
   type RoutingMatrixResource,
   type SaveRoutesResource,
 } from "./resources";
@@ -80,6 +82,7 @@ import {
   routeSaveInvalid,
 } from "./routing.errors";
 import { RoutingRepository } from "./routing.repository";
+import { RoutingStatsService } from "./stats.service";
 import { targetAlias, targetTaskKind } from "./rules";
 import type { CreateRuleDto, SaveRouteDto, UpdateRuleDto } from "./routing.dto";
 
@@ -118,32 +121,43 @@ export class RoutingManagementService {
    *   list AA.3's swap menus are built from — and re-implementing them here would be a second
    *   answer to *what does this alias resolve to*.
    * @param management - This ticket's own statements: the matrix read, and every write.
+   * @param stats - Z.5's ([#198](https://github.com/NobuData/ouroboros/issues/198)) aggregates
+   *   over `token_usage`. The matrix's two numeric columns and the spend card are measured
+   *   there and only there, so this service composes them rather than computing them: a second
+   *   opinion about what a kind of work costs is a page whose columns disagree with its card.
    */
   constructor(
     private readonly database: DatabaseService,
     private readonly routing: RoutingRepository,
     private readonly management: RoutingManagementRepository,
+    private readonly stats: RoutingStatsService,
   ) {}
 
   /**
-   * The whole page's read — every task kind in order, each with its route and chain, and the
-   * rules card beside them.
+   * The whole page's read — every task kind in order with its route and chain, the rules card
+   * beside them, and the spend card under both.
    *
-   * Three statements in parallel rather than eight sequential ones. They are independent
-   * reads of one workspace, so there is nothing for a transaction to protect that a page which
-   * polls would notice, and the alternative — a route at a time — is the shape that turns a
-   * page load into a waterfall.
+   * Four reads in parallel rather than eight sequential ones. They are independent reads of one
+   * workspace, so there is nothing for a transaction to protect that a page which polls would
+   * notice, and the alternative — a route at a time — is the shape that turns a page load into
+   * a waterfall.
+   *
+   * **The stats are one read, not one per row.** Z.5 measures every kind in a single grouped
+   * aggregate and hands back a map; asking per task kind would be eight statements over the
+   * same ledger window, each of which could see a call the last one did not.
    *
    * @param organizationId - The workspace, from the tenant context.
-   * @returns The matrix and the rules. Empty arrays for a workspace whose foundations have
-   *   not been seeded, which is AA.6's empty state rather than a failure.
+   * @returns The matrix, the rules and the spend card. Empty arrays and a zero-state card for a
+   *   workspace whose foundations have not been seeded, which is AA.6's empty state rather than
+   *   a failure — and, for a workspace that has run nothing, em-dashes rather than `$0.00`.
    */
   async matrix(organizationId: string): Promise<RoutingMatrixResource> {
-    const [kinds, routes, hops, rules] = await Promise.all([
+    const [kinds, routes, hops, rules, stats] = await Promise.all([
       this.management.taskKinds(organizationId),
       this.management.routes(organizationId),
       this.management.chains(organizationId),
       this.management.rules(organizationId),
+      this.stats.read(organizationId),
     ]);
 
     const chains = chainsByRoute(hops);
@@ -151,9 +165,10 @@ export class RoutingManagementService {
 
     return {
       taskKinds: kinds.map((kind) =>
-        toTaskKindResource(kind, this.routeOf(byKind.get(kind.name), chains)),
+        toTaskKindResource(kind, this.routeOf(byKind.get(kind.name), chains, stats.byTaskKind)),
       ),
       rules: rules.map(toEscalationRuleResource),
+      spend: stats.spend,
     };
   }
 
@@ -372,10 +387,14 @@ export class RoutingManagementService {
   /**
    * The routes for a list of task kinds, as the contract publishes them.
    *
-   * Two statements for the whole answer rather than one per kind, and re-read rather than
+   * Three reads for the whole answer rather than one per kind, and re-read rather than
    * assembled from what was just written — which is what makes the ticket's *"round-trip
    * through `PUT` and re-read identically"* a property of the response rather than a second
    * request a client has to make to check.
+   *
+   * The stats are read here too, so a route answered by a save carries the same two numerics
+   * it will carry on the next matrix load. Saving a route does not change what it has already
+   * cost, so this is the cache's ordinary hit rather than a fresh aggregate.
    *
    * @param organizationId - The workspace, from the tenant context.
    * @param taskKinds - The kinds to answer for, in the order they should appear.
@@ -387,16 +406,17 @@ export class RoutingManagementService {
     organizationId: string,
     taskKinds: readonly string[],
   ): Promise<RouteResource[]> {
-    const [routes, hops] = await Promise.all([
+    const [routes, hops, stats] = await Promise.all([
       this.management.routes(organizationId),
       this.management.chains(organizationId),
+      this.stats.read(organizationId),
     ]);
 
     const chains = chainsByRoute(hops);
     const byKind = new Map(routes.map((route) => [route.task_kind, route]));
 
     return taskKinds.flatMap((kind) => {
-      const resource = this.routeOf(byKind.get(kind), chains);
+      const resource = this.routeOf(byKind.get(kind), chains, stats.byTaskKind);
 
       return resource === null ? [] : [resource];
     });
@@ -407,13 +427,23 @@ export class RoutingManagementService {
    *
    * @param route - The route row, or `undefined` for a kind with no route.
    * @param chains - Every chain in the workspace, keyed by route.
+   * @param stats - What the window measured, keyed by task kind. A kind that is **absent** from
+   *   it is one nothing was spent on, and it gets {@link EMPTY_ROUTE_STATS} — two em-dashes and
+   *   three counts of zero — rather than a fabricated figure.
    * @returns The resource, or null.
    */
   private routeOf(
     route: ManagedRouteRow | undefined,
     chains: ReadonlyMap<string, readonly ManagedHopRow[]>,
+    stats: ReadonlyMap<string, RouteStatsResource>,
   ): RouteResource | null {
-    return route === undefined ? null : toRouteResource(route, chains.get(route.route_id) ?? []);
+    return route === undefined
+      ? null
+      : toRouteResource(
+          route,
+          chains.get(route.route_id) ?? [],
+          stats.get(route.task_kind) ?? EMPTY_ROUTE_STATS,
+        );
   }
 
   /**

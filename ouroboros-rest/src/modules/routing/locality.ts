@@ -14,8 +14,9 @@
  * needs — a local hop is one that costs nothing and keeps working with the network down —
  * and a second list here would be a second answer to *is this local* the first time somebody
  * edited one of them. So this module imports the constant and adds only what routing needs
- * on top of it: a predicate over {@link ProviderConnectionKind}, which is six values wide
- * where the lease policy's `ProviderKind` is five.
+ * on top of it: a predicate over a provider kind as V015 and V010 both spell one — six values
+ * wide where the lease policy's `ProviderKind` is five, and wider still since Z.5; see
+ * {@link isLocalProvider}.
  *
  * **`custom` is the sixth, and it is not local.** V015 admits it as a kind, the lease policy
  * has never had to classify it, and this module must: a connection whose adapter is
@@ -35,17 +36,27 @@
  * the fix belongs on the connection, not in a second locality list.
  */
 
-import type { ProviderConnectionKind } from "../db/schema";
 import { LOCAL_PROVIDER_KINDS } from "../internal/providers";
 
 /**
  * Is a hop on this kind of connection a **local** hop?
  *
- * @param kind - The connection's kind, from V015's column.
+ * **The parameter is `string` and not `ProviderConnectionKind`**, which is Z.5
+ * ([#198](https://github.com/NobuData/ouroboros/issues/198)) widening it for its second caller.
+ * The spend card asks this of `token_usage.provider`, which V010 declares as folded text with
+ * no reference to V015's column — deliberately, on decision **F8**'s precedent, so retiring a
+ * connection cannot rewrite the ledger that recorded spending through it. A kind the column no
+ * longer admits is therefore a real value here, and the honest answer for it is the one this
+ * file's header already argues for `custom`: `false`, because *we do not know what this is*
+ * must not promise that the network is unnecessary. Narrowing the parameter would have meant a
+ * cast at that call site, which is the same default reached without saying so.
+ *
+ * @param kind - The connection's kind, from V015's column — or a provider as `token_usage`
+ *   recorded it, which is the same vocabulary and an unconstrained one.
  * @returns `true` for a kind reachable without a credential — `ollama` and
- *   `openai_compatible`. `false` for the cloud kinds and for `custom`, which this file's
- *   header explains.
+ *   `openai_compatible`. `false` for the cloud kinds, for `custom`, and for anything V015 does
+ *   not admit at all.
  */
-export function isLocalProvider(kind: ProviderConnectionKind): boolean {
+export function isLocalProvider(kind: string): boolean {
   return (LOCAL_PROVIDER_KINDS as readonly string[]).includes(kind);
 }

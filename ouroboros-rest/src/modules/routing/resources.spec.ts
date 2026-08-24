@@ -5,12 +5,14 @@ import type {
   TaskKindRow,
 } from "./management.rows";
 import {
+  EMPTY_ROUTE_STATS,
   toAliasResource,
   toEscalationRuleResource,
   toRouteHopResource,
   toRouteProvider,
   toRouteResource,
   toTaskKindResource,
+  type RouteStatsResource,
 } from "./resources";
 import type { AliasRow } from "./routing.rows";
 
@@ -21,15 +23,25 @@ import type { AliasRow } from "./routing.rows";
  * still in the chain — the same rule `routing.rows.ts` keeps for resolution, for the same
  * reason: a three-hop chain that arrived as two is the silence this roadmap exists to remove.
  *
- * **Nothing here invents a number.** `stats` is two nulls until Z.5
- * ([#198](https://github.com/NobuData/ouroboros/issues/198)) computes them from `token_usage`,
- * because decision **M7** is *no data → em-dash, never a fabricated number* — and `0` is not
- * *unknown*, it is a figure.
+ * **Nothing here invents a number.** `stats` is whatever Z.5
+ * ([#198](https://github.com/NobuData/ouroboros/issues/198)) measured from `token_usage`,
+ * carried through untouched — and for a kind nothing has been spent on it is
+ * {@link EMPTY_ROUTE_STATS}, because decision **M7** is *no data → em-dash, never a fabricated
+ * number* and `0` is not *unknown*, it is a figure.
  *
  * **Nothing here composes a sentence.** `display` is the generated column, carried through
  * unchanged (decision **M5**), so the rules card and the resolution explanation cannot print
  * two sentences for one rule.
  */
+
+/** What Z.5 measured for a kind that has been run — carried through, never recomputed here. */
+const MEASURED: RouteStatsResource = {
+  costCentsPerRunAvg: 87,
+  latencyP50Ms: 41_000,
+  pricedCalls: 15,
+  unpricedCalls: 0,
+  timedCalls: 15,
+};
 
 /** A bound alias, joined. */
 const BOUND: AliasRow = {
@@ -121,7 +133,7 @@ describe("a hop", () => {
 
 describe("a route", () => {
   it("publishes the chain, the policy triple and who last saved it", () => {
-    const resource = toRouteResource(ROUTE, [hop(BOUND, 1, "Primary"), hop(UNBOUND, 2)]);
+    const resource = toRouteResource(ROUTE, [hop(BOUND, 1, "Primary"), hop(UNBOUND, 2)], MEASURED);
 
     expect(resource).toMatchObject({
       id: "5eed0011-0000-4000-8000-000000000004",
@@ -136,16 +148,24 @@ describe("a route", () => {
   });
 
   it("stamps in ISO 8601 rather than handing a client a Date", () => {
-    expect(toRouteResource(ROUTE, []).updatedAt).toBe("2026-08-23T09:58:12.004Z");
+    expect(toRouteResource(ROUTE, [], MEASURED).updatedAt).toBe("2026-08-23T09:58:12.004Z");
   });
 
-  it("reports both stats as null, because nothing has measured them", () => {
-    // Decision M7, and the reason there is no `0` anywhere in this file: a workspace that has
-    // run nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
-    // Z.5 (#198) is what fills these; the field exists now so AA.2 can render the em-dash.
-    expect(toRouteResource(ROUTE, []).stats).toEqual({
+  it("publishes the stats it was handed, without recomputing or defaulting them", () => {
+    // Decision M7 lives one layer up: Z.5 measures, and this function reports. What is asserted
+    // here is that nothing between the aggregate and the contract touches the figures.
+    expect(toRouteResource(ROUTE, [], MEASURED).stats).toEqual(MEASURED);
+  });
+
+  it("reports em-dashes for a kind nothing has measured, and never a fabricated zero", () => {
+    // A workspace that has run nothing has not spent `$0.00` per run — it has spent nothing
+    // anybody can average. The three counts are counts of rows, not claims about money.
+    expect(toRouteResource(ROUTE, [], EMPTY_ROUTE_STATS).stats).toEqual({
       costCentsPerRunAvg: null,
       latencyP50Ms: null,
+      pricedCalls: 0,
+      unpricedCalls: 0,
+      timedCalls: 0,
     });
   });
 
@@ -153,7 +173,7 @@ describe("a route", () => {
     // This is the *configured* chain. Whether a hop survives health, the rules and the floor is
     // Z.1's resolution, served by Z.4 — and a second opinion published from the editor would be
     // a second thing to disagree with the first.
-    const [first] = toRouteResource(ROUTE, [hop(BOUND, 1)]).hops;
+    const [first] = toRouteResource(ROUTE, [hop(BOUND, 1)], MEASURED).hops;
 
     expect(Object.keys(first)).toEqual(["position", "alias", "modelId", "note", "provider"]);
   });
@@ -168,7 +188,9 @@ describe("a matrix row", () => {
   };
 
   it("carries the kind and its route", () => {
-    expect(toTaskKindResource(KIND, toRouteResource(ROUTE, [hop(BOUND, 1)]))).toMatchObject({
+    const route = toRouteResource(ROUTE, [hop(BOUND, 1)], MEASURED);
+
+    expect(toTaskKindResource(KIND, route)).toMatchObject({
       name: "implement",
       description: "Write the change, run tests, iterate to green",
       sortOrder: 4,

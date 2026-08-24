@@ -398,9 +398,12 @@ describe("the routing management endpoints", () => {
       expect(matrix.taskKinds.find((row) => row.name === "review")?.route).toBeNull();
     });
 
-    it("reports both stats as null, because nothing has measured them", async () => {
-      // Decision M7. Z.5 (#198) computes them from `token_usage`; until then the honest answer
-      // is the em-dash a null renders as, never a fabricated `$0.00`.
+    it("reports both stats as null for a route whose kind nothing has been spent on", async () => {
+      // Decision M7. Z.5 (#198) computes them from `token_usage`, and this workspace's ledger is
+      // empty — so the honest answer is the em-dash a null renders as, never a fabricated
+      // `$0.00`. The three counts are counts of rows and not claims about money.
+      // `stats.integration-spec.ts` is where the figures a populated ledger produces are
+      // asserted.
       const owner = await api.signIn();
       const workspace = await seeded(owner);
 
@@ -411,6 +414,9 @@ describe("the routing management endpoints", () => {
       expect(matrix.taskKinds.find((row) => row.name === "docs")?.route?.stats).toEqual({
         costCentsPerRunAvg: null,
         latencyP50Ms: null,
+        pricedCalls: 0,
+        unpricedCalls: 0,
+        timedCalls: 0,
       });
     });
 
@@ -422,7 +428,19 @@ describe("the routing management endpoints", () => {
         await api.as(owner)("get", MATRIX).set(TENANT_HEADER, bare.slug).expect(200),
       );
 
-      expect(matrix).toEqual({ taskKinds: [], rules: [] });
+      // The spend card is present and in its zero-state rather than absent: a workspace with no
+      // foundations still has a card to draw, and `localTokenShare: null` is what it says —
+      // *nothing ran*, not *nothing ran locally*.
+      expect(matrix.taskKinds).toEqual([]);
+      expect(matrix.rules).toEqual([]);
+      expect(matrix.spend).toMatchObject({
+        providers: [],
+        totalSpendCents: null,
+        tokens: 0,
+        localTokens: 0,
+        localTokenShare: null,
+        unpricedCalls: 0,
+      });
     });
   });
 
