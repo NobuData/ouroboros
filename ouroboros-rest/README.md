@@ -949,6 +949,93 @@ with the workspace's own credential.
 class is defined and this one has to be different on every tick. It never overlaps itself, a
 failed cycle is logged and the loop continues, and `onApplicationShutdown` clears the timer.
 
+## Route resolution
+
+**One pure, versioned, health-aware function behind simulation today and execution tomorrow**
+([#194](https://github.com/NobuData/ouroboros/issues/194), roadmap decision **M6**).
+`src/modules/routing/` answers *which model runs this*, once, so that the estimator, the DSL's
+`route.task(...)`, the simulate panel and the eventual execution bridge cannot each grow a
+slightly different answer.
+
+```
+resolve("implement", {effort: "l"}) ─▶
+  rules   effort ≥ L → implement uses coder-max (max thinking)   applied
+  1  coder-max      → claude-fable-5 · Anthropic Claude          kept     Primary · healthy · 42ms
+  2  coder-fallback → gpt-5-codex · GitHub Copilot               kept     Fallback 1 · healthy · elevated latency
+  3  local-docs     → qwen3-coder:32b · Ollama                   kept     Fallback 2 · healthy
+  floor  none  ·  max cost  250¢  ·  version  r1
+```
+
+**It is an injectable, not an endpoint.** `ResolutionService` is exported and nothing in this
+module declares a controller: `/routing/simulate` is Z.4's
+([#197](https://github.com/NobuData/ouroboros/issues/197)) and the management API is Z.2's
+([#195](https://github.com/NobuData/ouroboros/issues/195)). What makes **Simulate routing**
+honest is that it will call this and not a copy of it — production behaviour minus the network
+call.
+
+**The engine performs no I/O and reads no clock.** `resolve()` takes six values — a route, its
+hops, the workspace's aliases, its enabled rules, a health snapshot and a context — and returns
+the answer synchronously. Health arrives from `ProviderHealthService.snapshots`, never from a
+check performed here, which is why the whole acceptance matrix (rules × health × floor × local
+policy × cost) is a table of inputs rather than a set of scenarios to stage. The rule is
+asserted rather than promised: `resolve.spec.ts` reads the seven files the pure core is built
+out of and fails on `fetch(`, `node:http`, `Date.now`, `new Date(` or `Math.random`, and on an
+import of anything that could reach a database.
+
+**Nothing is dropped silently.** Mockup 06 promises the loop *"degrades gracefully when a
+provider stumbles — and never silently below the floor you set"*, and the word doing the work
+is *silently*. Every hop is `kept` or `dropped` with a stable `code` and a human `explanation`;
+every escalation rule that matched is listed with what it did **or why it did nothing**; the
+floor records its decision even on the resolutions it never touched. The inspector and the
+simulate panel render those sentences verbatim — there is no story assembly in the client, and
+`explanations.ts` is the one place a sentence is composed.
+
+| Dropped because                    | Code                  |
+| ---------------------------------- | --------------------- |
+| the alias is bound to no provider  | `alias_unbound`       |
+| it sits deeper than the route floor| `below_floor`         |
+| a `route_local` rule fired         | `rule_route_local`    |
+| the route allows no local models   | `local_not_allowed`   |
+| an operator paused the provider    | `provider_paused`     |
+| a check found the provider unusable| `provider_error`      |
+
+Policy is tested before health, deliberately: a hop the route's own configuration excludes is
+not in play whatever a provider is doing, and an operator asking *why is hop 3 not being used*
+should be told about the floor they set rather than about a latency that would not have
+mattered.
+
+**A floor breach is a refusal, never a shorter chain.** *The run may not proceed* and *the run
+proceeds on the third fallback* are different outcomes, and quietly returning the survivors
+would turn the first into the second. When every hop at or above `floor_hop_index` is
+unusable, the resolution is `fail_run` carrying the reason — and the chain still lists every
+hop, so the inspector can draw exactly what went. The floor is measured against the stored
+`route_hops.position`, never against the resolved index, so an escalation rule that prepends a
+primary cannot silently move a policy an operator set against the chain they saw.
+
+**`use_alias` swaps or prepends; it never truncates.** V018 calls the action *"swap the primary
+model for one task kind"*, and there are three cases: the alias is already the primary and only
+its params move (the mockup's `(max thinking)`), the alias is elsewhere in the chain and moves
+to the front, or the alias is not in the chain and is prepended. Substituting hop 1 would
+quietly reduce the number of providers a run can survive the loss of. Rule params are merged
+**over** the alias's own, because the rule is the more specific statement.
+
+**A resolution is deterministic, byte for byte.** The same route, snapshot and context produce
+the same object through `JSON.stringify` — every array is built in a fixed order and every
+params object has sorted keys, which is not cosmetic when a consumer pins a shape.
+`resolution_version` (`r1`) is that pin: adding a drop code is not a bump, because an
+unrecognised code still arrives with a sentence and a `kept`/`dropped` decision; renaming a
+field, removing one, or changing what one means is.
+
+**Only one thing here is an error.** Every provider down, the floor breached, a chain filtered
+to nothing — those are `fail_run` resolutions carrying an explanation, because the caller asked
+a well-formed question about a route that exists. `route_not_found` is the single `404`, for
+the one case with no chain to explain.
+
+**There is no credential anywhere in the answer and nowhere to put one**, which is the
+registry's rule inherited unchanged (decision **P3**): a resolution carries an address and a
+model — everything an executor needs to choose a provider, and nothing it needs to authenticate
+as one.
+
 ## Provider adapters
 
 **Adding a model provider is one directory and one line**

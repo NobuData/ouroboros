@@ -607,7 +607,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| Z.1 | #194 | 🟡 Open | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
+| Z.1 | #194 | 🟢 Done | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
 | Z.2 | #195 | 🟡 Open | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
 | Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
 | Z.4 | #197 | 🟡 Open | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate`; engine estimator + WF catalog amendments | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest, ouroboros-engine |
@@ -616,7 +616,82 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 
 ### Issue Z.1 — ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations)
 
-> **GitHub issue:** #194 · **Status:** 🟡 Open · **Parent epic:** #186
+> **GitHub issue:** #194 · **Status:** 🟢 Done · **Parent epic:** #186
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-rest/src/modules/routing/`](../ouroboros-rest/src/modules/routing/), with V016's
+> and V018's four tables added to
+> [`db/schema.ts`](../ouroboros-rest/src/modules/db/schema.ts). No endpoint, no OpenAPI change:
+> `ResolutionService` is exported for Z.4 (#197) to serve, and the module declares no
+> controller — asserted, so a route added here fails a test rather than a review.
+>
+> **The purity rule is a probe rather than a promise.** `resolve()` takes six values — a route,
+> its hops, the workspace's aliases, its enabled rules, a health snapshot and a context — and
+> answers synchronously. `resolve.spec.ts` reads the seven files the pure core is built out of
+> and fails on `fetch(`, `node:http`, `Date.now`, `new Date(` or `Math.random`, and on an import
+> of `db.service`, `@nestjs/common` or the repository. That is what makes the acceptance matrix
+> a *table of inputs* — rules × health × floor × local policy × cost — rather than a set of
+> scenarios to stage, and it is what will keep **Simulate routing** from becoming a second
+> implementation: it is this function, minus the network call, because the function has no
+> network call to remove.
+>
+> **Three readings the ticket left open, settled here and worth knowing about.**
+>
+> *The floor is measured against `route_hops.position`, never against the resolved index.* An
+> operator sets *"fail instead of degrading below fallback 2"* while looking at the chain the
+> inspector drew, so the number refers to that chain's numbering. A `use_alias` rule that
+> prepends a primary shifts every resolved index by one; if the floor followed the resolved
+> index it would quietly become one hop shallower whenever a rule fired, which is a policy
+> changing itself. A prepended hop therefore carries **no** stored position and sits above the
+> whole configured chain.
+>
+> *`use_alias` swaps or prepends, and never truncates.* V018 calls it *"swap the primary model
+> for one task kind"* and the ticket says *"swaps or prepends"* — three cases of one rule: the
+> alias is already the primary and only its params move (the mockup's own case), the alias is
+> elsewhere in the chain and moves to the front, or it is not in the chain and is prepended.
+> Substituting hop 1 and discarding it would quietly reduce the number of providers a run can
+> survive the loss of, which is the opposite of what a rule asking for a *better primary* means.
+>
+> *`allow_local_fallback` off drops **every** local hop, including a primary.* The switch reads
+> *Allow fallback to local models* and the ticket's step 4 says *local hops*; the two readings
+> differ only on a chain like `docs-primary`, whose hop 1 is Ollama. The ticket's reading ships:
+> the switch is a statement about which providers this route may use at all, the dropped primary
+> carries a sentence saying so, and the policy is echoed on the resolution so a client can render
+> the switch beside the consequence. Z.2 (#195) should keep the label honest when it writes the
+> control.
+>
+> **The failure has two codes, because *the floor stopped this* and *nothing was usable* send an
+> operator to different places.** A breach is *the floor is why nothing is usable* — a hop the
+> run could otherwise have degraded to exists, and the policy forbade it. With no such hop the
+> chain simply has nothing left, and the resolution says `no_eligible_hop` instead. Telling
+> somebody the floor stopped a run when no floor was involved would send them to change a switch
+> that was never the problem.
+>
+> **An unbound alias is a dropped hop, not a missing one — and that is a seam rather than
+> CH.6.** `registry/`'s alias read inner-joins the connection, which is right for a registry and
+> wrong for a chain: a three-hop chain that arrived as two would be exactly the silence this
+> ticket exists to remove. So this module has its own left-joined statement and drops the hop
+> with `alias_unbound` and a sentence. CH.6 (#589) still owns the fuller semantics — the
+> `model_aliases.enabled` switch is deliberately **not** read here — and now has somewhere to
+> put them.
+>
+> **`display` is reported, never recomposed.** Decision **M5** end to end: the sentence in a
+> resolution's rule record is the generated column PostgreSQL derived from `"when"` and
+> `"then"`, so the explanation panel and the rules card cannot print two sentences for one rule.
+> `routing.integration-spec.ts` asserts it by inserting a rule *without* a display and reading
+> the one the database wrote.
+>
+> **Rules that matched and did nothing are listed too.** *My rule matched and nothing happened*
+> is the 3am question, and a `rules` array holding only the applied ones has no answer to it — so
+> a rule for another task kind, or one naming an alias this workspace has not bound, arrives with
+> `applied: false` and a reason.
+>
+> `resolution_version` is `r1`, and what a bump means is written into `resolution.ts`: adding a
+> drop code is not one, because an unrecognised code still arrives with a sentence and a
+> `kept`/`dropped` decision; renaming a field, removing one, or changing what one means is.
+> 172 unit tests across ten suites and 11 integration ones against a real migrated database — the
+> deferred `route_chain_intact()` trigger included, which is why the fixture writes a route and
+> its chain in one transaction.
 
 
 - **Problem Statement:** The product promise — degrade gracefully, never below
@@ -1349,3 +1424,13 @@ need — corrected AC.6's health snapshots to the strip they are rendered by, an
 figures on the spend card that no seed can produce, because a thirty-day window contains the
 calendar month it is asked to be smaller than. See its issue section above. Next is **#193**
 ([Y.5] the `ci/db` probes), and Z.5 (#198) now has the fixture it was waiting on.
+
+**#194** ([Z.1] the resolution engine) has landed, and decision **M6** is now a function rather
+than an intention: one pure, versioned `resolve(taskKind, ctx)` that takes a health snapshot as
+an *input* and answers with an ordered chain in which every hop kept, every hop dropped, every
+rule applied and the floor's own decision carries a code and a sentence. Three readings the
+ticket left open are settled in its issue section above — the floor is measured against stored
+hop positions, `use_alias` never truncates a chain, and `allow_local_fallback` off drops a local
+primary too — and each of them is a sentence Z.2 (#195) and AA.4 (#203) will render rather than
+compose. Next in epic Z is **#197** ([Z.4] simulate), which now has the contract it exposes
+unchanged, and **#195** ([Z.2] the management API), which is the write half of the same tables.
