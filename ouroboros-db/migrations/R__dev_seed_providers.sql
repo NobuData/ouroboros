@@ -26,20 +26,30 @@
 -- **The meters are not this file's rows alone.** A card's *This month* figure is calendar-
 -- month spend over `token_usage`, and R__dev_seed_dashboard.sql already writes twelve
 -- events dated *today* — $11.40 of Anthropic, $5.40 of Copilot, $1.80 of Cursor and three
--- unpriced Ollama events. Those are inside the current month too, so what this file writes
--- is the **remainder**:
+-- unpriced Ollama events. R__dev_seed_routing.sql (#192) then writes the **routed** calls
+-- mockup 06's matrix is computed from. All of those are inside the current month too, so
+-- what this file writes is the **remainder**:
 --
---   | Provider    | #68 today | here      | month total | mockup  |
---   |-------------|----------:|----------:|------------:|--------:|
---   | `anthropic` |    $11.40 |  $401.40  |    $412.80  | $412.80 |
---   | `cursor`    |     $1.80 |   $62.30  |     $64.10  |  $64.10 |
---   | `copilot`   |     $5.40 |   $70.60  |     $76.00  |  $76.00 |
---   | `ollama`    |  unpriced |  unpriced |      $0.00  |   $0.00 |
+--   | Provider    | #68 today | #192 routed |     here | month total | mockup  |
+--   |-------------|----------:|------------:|---------:|------------:|--------:|
+--   | `anthropic` |    $11.40 |      $22.25 |  $379.15 |    $412.80  | $412.80 |
+--   | `cursor`    |     $1.80 |       $0.00 |   $62.30 |     $64.10  |  $64.10 |
+--   | `copilot`   |     $5.40 |       $1.80 |   $68.80 |     $76.00  |  $76.00 |
+--   | `ollama`    |  unpriced |  zero-price | unpriced |      $0.00  |   $0.00 |
 --
--- and the Ollama token count works the same way: 500 000 today plus 1 600 000 here is the
--- card's *2.1M tokens on-box*. The vLLM connection gets **no usage rows at all**, which is
--- what its *no metered spend* line means — a zero written as an absence rather than as a
--- row claiming a call that cost nothing.
+-- Cursor is untouched by that third column because no task kind routes its *primary* hop
+-- to `second-opinion`: the alias is a review vote a rule adds, so #192 seeds no spend on
+-- it and this file still owns the whole of the Cursor meter.
+--
+-- The Ollama token count works the same way: 500 000 today, plus 600 000 of routed `docs`
+-- calls from #192, plus 1 000 000 here is the card's *2.1M tokens on-box*. What changed
+-- with #192 is the **vLLM** card. It used to have no usage rows at all, and its *no
+-- metered spend* line was a zero written as an absence; mockup 06's `commit-msg` row reads
+-- `$0.00`, and decision M7 says that figure may only come from real zero-price rows, so
+-- #192 gives vLLM `cost_cents = 0` events — priced, and priced at nothing. The card still
+-- renders `$0.00 · no metered spend`, and now says so because the calls were metered and
+-- cost nothing rather than because nobody looked. See #192's header on why *unpriced* and
+-- *zero-priced* have to stay tellable apart.
 --
 -- **Nothing here lands on today**, and that is a rule rather than an accident: mockup 02's
 -- *Token spend · today* card is exactly #68's twelve events, and a row of this file inside
@@ -50,11 +60,11 @@
 -- meters read the day's spend alone; on the other twenty-seven to thirty they are the
 -- mockup's figures exactly. Both branches are asserted in tests/seed.sql.
 --
--- Y.4 (#192) is the fourth seed, and it hangs off this one: mockup 06's aliases, routes and
--- chains name these connections. It finds them by natural key — workspace slug and
--- `kind` — so nothing there has to repeat an id from the table below, and its file name has
--- to sort after `dev_seed_providers` for the same reason this one sorts after
--- `dev_seed_dashboard` (see the ordering note in tests/seed.test.sh).
+-- R__dev_seed_routing.sql (#192) is the fourth seed, and it hangs off this one: mockup 06's
+-- aliases, routes and chains name these connections. It finds them by natural key —
+-- workspace slug and `kind` — so nothing there has to repeat an id from the table below,
+-- and its file name sorts after `dev_seed_providers` for the same reason this one sorts
+-- after `dev_seed_dashboard` (see the ordering note in tests/seed.test.sh).
 --
 -- ---------------------------------------------------------------------------
 -- Ids, and the three properties every seed here has.
@@ -113,10 +123,28 @@
 -- which V015 requires it for, and nothing else. The hostnames on the Anthropic and Cursor
 -- cards are part of their capability line, not a proxy somebody configured.
 --
--- `health` carries what the foot of each card prints — the measured latency, and Copilot's
--- upstream detail. V015 requires a `last_checked_at` beside any content, so every row has
--- one: these connections have been checked, minutes ago, which is what a running stack
--- looks like.
+-- `health` carries **what the last check measured**, which is what mockup 06's `.phealth`
+-- strip prints and what V015's own header spells out chip for chip — `Anthropic ● 42ms`,
+-- `GitHub Copilot ⚠ degraded · elevated latency`, `OpenAI-compatible ● vLLM local`,
+-- `Ollama ● workstation · 3 models`. V015 requires a `last_checked_at` beside any content,
+-- so every row has one: these connections have been checked, minutes ago, which is what a
+-- running stack looks like.
+--
+-- **Mockup 07's `✓ 200 · 38ms` is not this column**, which is the correction #192 (Y.4)
+-- makes to the values this file first carried. That note sits beside the *Test connection*
+-- button and is the result of a probe somebody just clicked — a transient reply, not a
+-- stored snapshot — so the two screens read different things and only one of them is a
+-- column. Storing the button's reply here left the strip printing `38ms` where the design
+-- says `42ms`, and left Cursor claiming a latency mockup 06 deliberately shows nothing for.
+--
+-- Two rows therefore say *nothing was measured* in the only way V015 permits. Cursor keeps
+-- an **empty** `health`: its chip is a name and a dot, and the way to say no latency was
+-- taken is to leave the key out rather than to write a zero. The two local rows carry no
+-- `latency_ms` either, for the reason Z.3 (#196) states as `ProviderCheck.reportsLatency`:
+-- a daemon on loopback answers in a time dominated by the interface, and an unvarying
+-- `0ms` printed beside Anthropic's real `42ms` teaches a reader to ignore both. What they
+-- carry instead is what their chips actually print — vLLM's `detail`, and Ollama's model
+-- count beside the machine it runs on.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.provider_connections
     (id, organization_id, kind, display_name, base_url, credentials_encrypted,
@@ -130,23 +158,23 @@ select seed.id::uuid, org."id", seed.kind, seed.display_name, seed.base_url,
   from (values
          ('5eed000c-0000-4000-8000-000000000001', 'anthropic', 'Anthropic Claude',
           null, 'ouro.v1.1.c2VlZC1ub25jZS0x.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1jcmVkZW50aWFsLWFudGhyb3BpYw',
-          'active', '2 minutes', '{"latency_ms": 38}', 60000, '3 minutes',
+          'active', '2 minutes', '{"latency_ms": 42}', 60000, '3 minutes',
           'api.anthropic.com · primary coding lane', '2026-06-12 16:20:00+00'),
          ('5eed000c-0000-4000-8000-000000000002', 'cursor', 'Cursor',
           null, 'ouro.v1.1.c2VlZC1ub25jZS0y.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1jcmVkZW50aWFsLWN1cnNvcg',
-          'active', '4 minutes', '{"latency_ms": 51}', 12000, '26 minutes',
+          'active', '4 minutes', '{}', 12000, '26 minutes',
           'api.cursor.com · used for second-opinion reviews', '2026-07-02 10:05:00+00'),
          ('5eed000c-0000-4000-8000-000000000003', 'copilot', 'GitHub Copilot',
           null, 'ouro.v1.1.c2VlZC1ub25jZS0z.ZGV2LXNlZWQtdmFsdWUtbm90LWEtcmVhbC1jcmVkZW50aWFsLWNvcGlsb3Q',
-          'error', '90 seconds', '{"detail": "503 upstream · retrying"}', 9500, '72 minutes',
+          'error', '90 seconds', '{"detail": "elevated latency"}', 9500, '72 minutes',
           'billed through GitHub org acme-robotics', '2026-06-18 09:40:00+00'),
          ('5eed000c-0000-4000-8000-000000000004', 'openai_compatible',
           'OpenAI-compatible · local vLLM', 'http://10.0.4.20:8000/v1', null,
-          'active', '3 minutes', '{"latency_ms": 12}', null, '9 minutes',
+          'active', '3 minutes', '{"detail": "vLLM local"}', null, '9 minutes',
           'self-hosted · A100 ×2', '2026-05-30 14:12:00+00'),
          ('5eed000c-0000-4000-8000-000000000005', 'ollama', 'Ollama · workstation',
           'http://ken-station.local:11434', null,
-          'active', '1 minute', '{"latency_ms": 4, "models": 3}', null, '41 seconds',
+          'active', '1 minute', '{"models": 3, "detail": "workstation"}', null, '41 seconds',
           'zero-cost lane — used for docs & commit messages', '2026-05-14 08:55:00+00')
        ) as seed (id, kind, display_name, base_url, credentials, status, checked_ago,
                   health, cap_cents, used_ago, capability_note, added_on)
@@ -221,11 +249,18 @@ on conflict do nothing;
 -- Earlier this month — the spend the meters are made of.
 --
 -- Eleven events, and they are the *remainder* the header's table works out: with #68's
--- twelve of today added, the calendar month totals $412.80 of Anthropic, $64.10 of Cursor
--- and $76.00 of Copilot, and 2.1M Ollama tokens that cost nothing because they ran on a
--- workstation. `cost_cents` is null on the two Ollama rows for the reason V010 made the
--- column nullable and #68 used it: *unpriced* is not *free of charge*, and a local model
--- has no price to record.
+-- twelve of today and #192's routed calls added, the calendar month totals $412.80 of
+-- Anthropic, $64.10 of Cursor and $76.00 of Copilot, and 2.1M Ollama tokens that cost
+-- nothing because they ran on a workstation. `cost_cents` is null on the two Ollama rows
+-- for the reason V010 made the column nullable and #68 used it: *unpriced* is not *free of
+-- charge*, and a local model has no price to record. #192's local rows say the other thing
+-- — `cost_cents = 0`, a call that was priced and priced at nothing — and the two are meant
+-- to sit side by side in one workspace, because the honesty rule DASH-J.4 (#92) enforces
+-- is only testable where both states exist.
+--
+-- These are also the three figures **#192 must not disturb**, which is why it takes its
+-- routed spend out of this file's share rather than adding to it. Change an amount here and
+-- the month meters move; the arithmetic that keeps them still is the header's table.
 --
 -- The amounts are recorded facts about demo calls, not arithmetic over
 -- `R__model_price_catalog.sql` — the same choice #68 made, and the reason #92 will find
@@ -254,15 +289,15 @@ select ('5eed000e-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
   from (values
          ( 1, 'anthropic', 'claude-fable-5',  10000000, 18000.0000),
          ( 2, 'anthropic', 'claude-opus-5',    8000000, 14000.0000),
-         ( 3, 'anthropic', 'claude-sonnet-5',  6000000,  8140.0000),
+         ( 3, 'anthropic', 'claude-sonnet-5',  6000000,  5915.0000),
          ( 4, 'cursor',    'composer-2',       2000000,  3200.0000),
          ( 5, 'cursor',    'composer-2',       1500000,  2000.0000),
          ( 6, 'cursor',    'composer-2',        900000,  1030.0000),
          ( 7, 'copilot',   'gpt-5-codex',      2400000,  3500.0000),
          ( 8, 'copilot',   'gpt-5-codex',      1600000,  2400.0000),
-         ( 9, 'copilot',   'gpt-5-codex',      1000000,  1160.0000),
-         (10, 'ollama',    'qwen3-coder:32b',  1000000,  null),
-         (11, 'ollama',    'qwen3-coder:32b',   600000,  null)
+         ( 9, 'copilot',   'gpt-5-codex',      1000000,   980.0000),
+         (10, 'ollama',    'qwen3-coder:32b',   625000,  null),
+         (11, 'ollama',    'qwen3-coder:32b',   375000,  null)
        ) as seed (n, provider, model, tokens_total, cost_cents)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   cross join (select date_trunc('month', now() at time zone 'utc') at time zone 'utc',

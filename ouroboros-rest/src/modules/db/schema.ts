@@ -475,6 +475,28 @@ export interface TokenUsageTable {
   cost_cents: string | null;
   /** When the spend happened — what the day is computed from. Not `created_at`, which is when the row appeared. */
   occurred_at: Generated<Date>;
+  /**
+   * Which routed kind of work this call served — `task_kinds.name` as the router placed it
+   * (V020, [#192](https://github.com/NobuData/ouroboros/issues/192), decision M7).
+   *
+   * Plain text and deliberately **no foreign key**, on V008's decision F8 precedent: a ledger
+   * row records what happened, and retiring or renaming a task kind must not block, delete or
+   * rewrite the history routed under it.
+   *
+   * Null is **not routed work** — provider-level spend, an import, a completion the router did
+   * not place — and is what makes mockup 06's per-kind `$/run avg` an honest em-dash rather
+   * than `$0.00`.
+   */
+  task_kind: string | null;
+  /**
+   * How long this call took, in whole milliseconds — the only source mockup 06's `p50 latency`
+   * column has (V020, decision M7).
+   *
+   * Null means nobody timed it, and a median over no latencies is null, which renders the
+   * em-dash. Never defaulted to `0`: zero is a call that returned inside a millisecond, which
+   * a local daemon on loopback really does, and it must stay tellable apart from *unmeasured*.
+   */
+  latency_ms: number | null;
   created_at: Stamped;
 }
 
@@ -1318,6 +1340,8 @@ export const TABLE_COLUMNS = {
     "tokens_out",
     "cost_cents",
     "occurred_at",
+    "task_kind",
+    "latency_ms",
     "created_at",
   ],
   workspace_settings: [

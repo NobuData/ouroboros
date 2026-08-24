@@ -203,7 +203,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Y.1 | #189 | 🟢 Done | ouroboros-db: [Y.1] Provider connections & model alias foundations | `provider_connections` + `model_aliases` schema (07/21 build UIs later) | mvp, routing, db | N (after #19, BA-B.3) | Y | M | ouroboros-db |
 | Y.2 | #190 | 🟢 Done | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
 | Y.3 | #191 | 🟢 Done | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
-| Y.4 | #192 | 🟡 Open | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 6 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
+| Y.4 | #192 | 🟢 Done | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 7 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
 | Y.5 | #193 | 🟡 Open | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue Y.1 — ouroboros-db: [Y.1] Provider connections & model alias foundations
@@ -487,7 +487,67 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
 
 ### Issue Y.4 — ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity
 
-> **GitHub issue:** #192 · **Status:** 🟡 Open · **Parent epic:** #185
+> **GitHub issue:** #192 · **Status:** 🟢 Done · **Parent epic:** #185
+
+> **What landed, and the three things it had to settle first.**
+>
+> [`migrations/R__dev_seed_routing.sql`](../ouroboros-db/migrations/R__dev_seed_routing.sql)
+> is mockup 06 as rows — seven aliases, eight task kinds in matrix order, their eight routes
+> and seventeen ordered hops, the three escalation rules, and **370 routed calls** every
+> number on the screen is aggregated out of. Every figure the design renders computes:
+> `$0.04 / $0.01 / $0.31 / $0.87 / $0.12 / $0.22 / $0.00 / $0.00` and
+> `3.1s / 1.2s / 9.8s / 41.0s / 17.4s / 12.6s / 6.3s / 0.8s`, Anthropic's `$412.80`, the
+> local `$0.00`, and the *31%* local token share — exactly, with no rounding anywhere. Each
+> kind's calls are spread as a **symmetric arithmetic sequence** around its figure, so the
+> mean is the centre and the median is the row sitting at it.
+>
+> **Decision M7 needed two columns that did not exist, so `V020` adds them.** A
+> `token_usage` row knew which *model* it paid for and never which *kind of work* it was
+> doing, and it recorded a cost without a duration — so a per-kind average had nothing to
+> group by and a per-kind median nothing to take the median of. `task_kind` and `latency_ms`
+> land on the ledger rather than on `runs`, because a run is a **loop** and mockup 02's
+> *Loops live* and *Avg. cycle time* are counts over the fifty-three DASH-F.5 seeded; one
+> run per model call would have moved every figure on the dashboard. Both are nullable and
+> null is the load-bearing state — an aggregate over none is null, which is the em-dash
+> rather than a `$0.00` nobody measured — and `task_kind` is deliberately **text with no
+> foreign key**, on decision **F8**'s precedent, so retiring a kind cannot rewrite the
+> history routed under it.
+>
+> **The health strip was seeded against the wrong screen and is corrected here.** AC.6
+> (#221) landed the five connections with `health` holding mockup 07's *Test connection*
+> replies — `38ms`, `51ms`, `503 upstream · retrying`. That note is a probe somebody just
+> clicked; `health` is the stored snapshot mockup 06's `.phealth` strip prints, which V015's
+> own header spells out chip for chip. The rows now carry `{"latency_ms": 42}`, an **empty**
+> document for Cursor (nothing was measured, said by leaving the key out rather than by a
+> zero — decision **M8**), `elevated latency` for Copilot, and no latency on either local
+> connection, which is Z.3's `reportsLatency` judgement seeded ahead of Z.3.
+>
+> **Two of the spend card's figures are not reachable by any seed, and the design should be
+> amended to the ones that are.** *Spend by provider · 30d* asks for `$96.40` of Copilot and
+> `$54.10` of Cursor; mockup 07's cards pin the same rows' calendar month at `$76.00` and
+> `$64.10`. Thirty days is a **superset** of month-to-date, so a 30-day total can never be
+> less than the month total inside it — Cursor's figure is `$10.00` below one, and no
+> arrangement of rows can produce it. Copilot's would need spend dated before the month
+> began, in a window that is twenty-nine days wide on the 2nd and **empty** on the 31st,
+> which would make a rendered figure depend on the date. Anthropic's `$412.80` and the local
+> `$0.00` land exactly; the other two land on mockup 07's. Z.5 (#198) should be written
+> against `$412.80 / $76.00 / $64.10 / $0.00`.
+>
+> **Zero-priced and unpriced now both exist in one workspace**, which is what makes DASH-J.4
+> (#92)'s rule testable rather than promised: the two local kinds carry `cost_cents = 0` —
+> calls that were priced, at nothing — beside the earlier seeds' `null` Ollama rows, which
+> say *nobody priced this*. A re-pricing pass must fill the nulls and leave the zeros alone.
+> The vLLM card's *no metered spend* is therefore a metered zero now rather than an absence,
+> because mockup 06's `commit-msg` row prints `$0.00` and M7 permits only one source for it.
+>
+> **What this seed does not write:** a `runs` row, a `provider_connections` row (AC.6 owns
+> those five and this ticket only corrected their `health`), and any figure the screen
+> renders — `tests/seed.test.sh` asserts the file carries none of the sixteen as a literal,
+> and `tests/seed.sql` computes all of them back. **The personal workspace stays empty**, which
+> is AA.6's guidance fixture and the only place M7's em-dash can actually be observed.
+>
+> **Deliberately not here:** the `ci/db` probes over the routing invariants — Y.5 (#193) owns
+> them — and the stats service itself (Z.5, #198), which this seed exists to give a fixture.
 
 
 - **Problem Statement:** Design review and e2e need the mockup's exact routing
@@ -1279,5 +1339,13 @@ and the sentence the card prints is *generated from that pair* by an immutable f
 so it cannot be hand-written, cannot drift, and renders identically everywhere. The names a
 rule uses are held to the workspace's own task kinds and aliases by a deferred constraint
 trigger, in both directions, because a reference inside a jsonb document is one no foreign
-key can reach. Next is **#192** ([Y.4] the seeds), which fills the matrix, the chains and
-these three rules with the mockup's exact state.
+key can reach.
+
+**#192** ([Y.4] the seeds) has landed and closes epic Y's data half: the matrix, the chains
+and those three rules now hold the mockup's exact state, and every number on the screen is
+an aggregate over 370 seeded calls rather than a value anybody stored. It carried one
+migration with it — `V020`, the `task_kind` and `latency_ms` decision **M7** turned out to
+need — corrected AC.6's health snapshots to the strip they are rendered by, and found two
+figures on the spend card that no seed can produce, because a thirty-day window contains the
+calendar month it is asked to be smaller than. See its issue section above. Next is **#193**
+([Y.5] the `ci/db` probes), and Z.5 (#198) now has the fixture it was waiting on.

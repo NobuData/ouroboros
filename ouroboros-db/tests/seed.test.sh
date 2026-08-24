@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 #
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
-# migrations/R__dev_seed_dashboard.sql, migrations/R__dev_seed_providers.sql, and the
-# configuration that decides whether they do anything.
+# migrations/R__dev_seed_dashboard.sql, migrations/R__dev_seed_providers.sql,
+# migrations/R__dev_seed_routing.sql, and the configuration that decides whether they do
+# anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -10,10 +11,11 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are three files because they answer different questions — R__dev_seed.sql (#23) is
-# *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*, and
-# R__dev_seed_providers.sql (#221) is *what it is allowed to call* — and the structural
-# rules below are asserted over all of them, in a loop, so that a fourth seed inherits them
+# There are four files because they answer different questions — R__dev_seed.sql (#23) is
+# *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
+# R__dev_seed_providers.sql (#221) is *what it is allowed to call*, and
+# R__dev_seed_routing.sql (#192) is *how it decides which one to call* — and the structural
+# rules below are asserted over all of them, in a loop, so that a fifth seed inherits them
 # by being added to one list.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
@@ -54,6 +56,7 @@ BIN="$base/ouroboros-db/scripts"
 SEED="$MODULE_DIR/migrations/R__dev_seed.sql"
 DASHBOARD_SEED="$MODULE_DIR/migrations/R__dev_seed_dashboard.sql"
 PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
+ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -83,9 +86,11 @@ seed_body() {
 BODY="$work/seed-body.sql"
 DASHBOARD_BODY="$work/seed-body-dashboard.sql"
 PROVIDERS_BODY="$work/seed-body-providers.sql"
+ROUTING_BODY="$work/seed-body-routing.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
+seed_body "$ROUTING_SEED" "$ROUTING_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -105,10 +110,11 @@ printf 'The migrations\n'
 check_exists "$SEED" 'migrations/R__dev_seed.sql exists'
 check_exists "$DASHBOARD_SEED" 'migrations/R__dev_seed_dashboard.sql exists'
 check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
+check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
-for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED"; do
+for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -130,14 +136,17 @@ dashboard_description=$(basename -- "$DASHBOARD_SEED" .sql)
 dashboard_description=${dashboard_description#R__}
 providers_description=$(basename -- "$PROVIDERS_SEED" .sql)
 providers_description=${providers_description#R__}
+routing_description=$(basename -- "$ROUTING_SEED" .sql)
+routing_description=${routing_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
-# by email — so the whole order is asserted rather than the first pair of it, and a
-# rename that reshuffled any of the three fails here.
-check_equals "$(printf '%s %s %s' "$base_description" "$dashboard_description" "$providers_description")" \
-  "$(printf '%s\n%s\n%s\n' "$base_description" "$dashboard_description" "$providers_description" |
+# by email — and the routing seed hangs off the providers one, since every alias binds to a
+# connection by kind and name. So the whole order is asserted rather than the first pair of
+# it, and a rename that reshuffled any of the four fails here.
+check_equals "$(printf '%s %s %s %s' "$base_description" "$dashboard_description" "$providers_description" "$routing_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n' "$base_description" "$dashboard_description" "$providers_description" "$routing_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the three seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the four seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -147,11 +156,12 @@ check_equals "$(printf '%s %s %s' "$base_description" "$dashboard_description" "
 # carries a deferrable unique key, and PostgreSQL refuses a targetless `on conflict` on
 # such a table outright. Naming the primary key is what that statement does instead, and it
 # is still the "applied twice writes nothing" rule this check exists for.
-for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED"; do
+for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$DASHBOARD_SEED" ] && body=$DASHBOARD_BODY
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
+  [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\}$' "$body")
@@ -296,6 +306,60 @@ for shape in 'sk-ant' 'ghu_' 'key_cur'; do
 done
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_routing.sql — mockup 06's routing screen
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_routing.sql — the routing\n'
+
+# Six prefixes, one per table: an alias, a task kind, a route, a hop, a rule and a routed
+# call are told apart on sight. Only the usage ids are computed from an ordinal — there are
+# 370 of them — which is why the prefix is what gets asserted for all six.
+for prefix in '5eed000f' '5eed0010' '5eed0011' '5eed0012' '5eed0013' '5eed0014'; do
+  check_contains "$ROUTING_BODY" "$prefix-0000-4000-8000-" \
+    "the routing seed builds its ids from the $prefix… prefix"
+done
+
+# The six tables mockup 06 is drawn from, and no seventh. `provider_connections` in
+# particular is *not* here: the health strip's five chips are #221's rows, and a second file
+# writing them would give the two seeds a card each to disagree about.
+routing_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$ROUTING_BODY" |
+  sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
+check_equals 'escalation_rules model_aliases route_hops routes task_kinds token_usage ' \
+  "$routing_tables" \
+  'the routing seed writes the aliases, kinds, routes, hops, rules and their usage, and nothing else'
+
+# Parents by natural key, exactly as the other three do — the workspace by slug, Ken by
+# email, a connection by kind and name, a kind by name, an alias by alias.
+for foreign_prefix in '5eed0001-0000-4000-8000' '5eed000b-0000-4000-8000' \
+                      '5eed000c-0000-4000-8000' '5eed000d-0000-4000-8000' \
+                      '5eed000e-0000-4000-8000'; do
+  check_absent "$ROUTING_BODY" "$foreign_prefix" \
+    "the routing seed names no $foreign_prefix… id from another seed — it joins by natural key"
+done
+
+# Every window is relative to `now()`, which is the acceptance criterion "stats recompute
+# stably relative to now() — the seed still reproduces the mockup a month later". A literal
+# timestamp would fall out of the thirty-day window the matrix reads and take every figure
+# on the screen with it.
+check_absent "$ROUTING_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the routing seed carries no literal date — every window is relative to now()'
+
+# **Decision M7, as a property of the file.** None of the figures mockup 06 renders may
+# appear in a statement, because every one of them is an aggregate: `$0.87` is the mean of
+# fifteen costs, `41.0s` the median of fifteen latencies, `$412.80` a sum across three seeds
+# and `31%` a ratio of two sums. A literal here would be a number the product remembered
+# rather than computed, and the stats service would then be untested against it.
+#
+# The costs the file *does* carry are per-call cents — `87.0000` is one call's centre, not
+# `$0.87` — and the latencies are per-call milliseconds. Neither is a figure the screen
+# prints, which is exactly the distinction being asserted.
+for rendered in '412\.80' '96\.40' '54\.10' '0\.87' '0\.31' '0\.22' '0\.12' '0\.04' \
+                '41\.0s' '17\.4s' '12\.6s' '9\.8s' '6\.3s' '3\.1s' '1\.2s' '0\.8s' '31%'; do
+  check_absent "$ROUTING_BODY" "$rendered" \
+    "the routing seed stores no rendered figure — $(printf '%s' "$rendered" | tr -d '\\') is computed"
+done
+
+# ---------------------------------------------------------------------------
 # The guard is off by default
 # ---------------------------------------------------------------------------
 
@@ -374,6 +438,7 @@ README="$MODULE_DIR/README.md"
 check_contains "$README" 'R__dev_seed\.sql' 'README.md documents the seed migration'
 check_contains "$README" 'R__dev_seed_dashboard\.sql' 'README.md documents the dashboard seed'
 check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the providers seed'
+check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
 check_contains "$README" 'acme-robotics' 'README.md names the demo tenant a developer will find'
 check_contains "$README" 'tests/seed\.sql' 'README.md says how to assert the seeded content'
