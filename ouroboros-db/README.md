@@ -115,6 +115,22 @@
 > whether a well-formed param means anything for the bound model: that reads the adapter's
 > schema and `provider_models`, neither of which a CHECK may look at, and it is CH.2's
 > ([#585](https://github.com/NobuData/ouroboros/issues/585)).
+> `V020` ([#192](https://github.com/NobuData/ouroboros/issues/192)) closes the routing
+> foundation with the two facts a spend event had to carry before mockup 06's `$/run avg`
+> and `p50 latency` columns could be *computed* rather than stored: `token_usage.task_kind`
+> and `token_usage.latency_ms`. It is the smallest migration in the schema and the one that
+> makes decision **M7** reachable — a ledger row already knew which *model* it paid for and
+> never which *kind of work* it was doing, so a per-kind average had nothing to group by and
+> a per-kind median had nothing to take the median of. Both columns are nullable and null is
+> the load-bearing state: an aggregate over no rows is null, which renders the em-dash the
+> rule requires rather than a `$0.00` and a `0.0s` nobody measured. `task_kind` is
+> deliberately **text with no foreign key**, on `V008`'s decision **F8** precedent — a ledger
+> records what happened, and retiring a task kind must not block, delete or rewrite the
+> history routed under it. With it in place
+> [`migrations/R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) is **mockup 06
+> as rows** — seven aliases, eight kinds, their chains, three rules and the 370 routed calls
+> every number on the screen is aggregated out of, with not one of those numbers stored
+> anywhere. See [The development seed](#the-development-seed).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -275,7 +291,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **three migrations**, because they answer three questions and change on different
+It is **four migrations**, because they answer four questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -283,14 +299,17 @@ days:
 | [`R__dev_seed.sql`](migrations/R__dev_seed.sql) | *Who exists* — the workspaces, the people, and where the loop may run | [#23](https://github.com/NobuData/ouroboros/issues/23) |
 | [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
 | [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
+| [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from | [#192](https://github.com/NobuData/ouroboros/issues/192) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
-> their *descriptions*, and every row the second and third seeds write finds its parent by
-> natural key — so `dev_seed_dashboard` and `dev_seed_providers` both have to sort after
-> `dev_seed`, and do. `tests/seed.test.sh` asserts the whole order, because the failure
-> mode is silent: applied in the wrong order, every join finds nothing, every insert
-> inserts nothing, and a second `migrate` does not put it right (Flyway re-applies a
-> repeatable migration only when its checksum changes).
+> their *descriptions*, and every row the second, third and fourth seeds write finds its
+> parent by natural key — so `dev_seed_dashboard`, `dev_seed_providers` and
+> `dev_seed_routing` all have to sort after `dev_seed`, and `dev_seed_routing` after
+> `dev_seed_providers` besides, since every alias binds to a connection by kind and name.
+> They do. `tests/seed.test.sh` asserts the whole order, because the failure mode is
+> silent: applied in the wrong order, every join finds nothing, every insert inserts
+> nothing, and a second `migrate` does not put it right (Flyway re-applies a repeatable
+> migration only when its checksum changes).
 
 #### Who exists
 
@@ -340,11 +359,12 @@ it belongs to `acme-robotics`, and it is drawn from three tables:
 | `provider_models` | 11 | The chips — four Anthropic models carrying `"tier": "priority"`, one apiece for Cursor and Copilot, two `local/…` from vLLM — and the workstation's pull-list, `qwen3-coder:32b` `19 GB`, `llama4:scout` `63 GB`, `phi4:14b` `9.1 GB` |
 | `token_usage` | 11 | The month's spend behind the meters, *earlier this month* |
 
-> **The meters are two seeds added together.** A card's *This month* figure is calendar-
-> month spend over `token_usage`, and the dashboard seed already writes twelve events dated
-> *today*. So the providers seed writes the remainder — `$401.40` of Anthropic, `$62.30` of
-> Cursor, `$70.60` of Copilot and 1.6M unpriced Ollama tokens — and the two together are the
-> mockup's `$412.80`, `$64.10`, `$76.00` and *2.1M tokens on-box*. Nothing the providers seed
+> **The meters are three seeds added together.** A card's *This month* figure is calendar-
+> month spend over `token_usage`; the dashboard seed writes twelve events dated *today* and
+> the routing seed writes the month's routed calls. So the providers seed writes the
+> remainder — `$379.15` of Anthropic, `$62.30` of Cursor, `$68.80` of Copilot and 1.0M
+> unpriced Ollama tokens — and the three together are the mockup's `$412.80`, `$64.10`,
+> `$76.00` and *2.1M tokens on-box*. Nothing the providers seed
 > writes lands on *today*, which is what keeps mockup 02's *Token spend · today* card
 > exactly the dashboard seed's twelve events; `tests/seed.sql` asserts both totals and the
 > rule that keeps them apart. On the first of a month there is no *earlier this month*: the
@@ -359,6 +379,51 @@ actually has, and it is **not decryptable** — a real one is AES-256-GCM under 
 DEK bound to the row's id, which no SQL file can produce. *Reveal* against a seeded
 connection therefore fails in the designed way rather than showing a key. The two local
 connections carry none, because a local provider needs none.
+
+#### How it decides which one to call
+
+Mockup 06's routing screen, and everything on it. All of it belongs to `acme-robotics`, and
+it is drawn from six tables plus the connections above:
+
+| Table | Rows | What mockup 06 renders from them |
+|---|---|---|
+| `model_aliases` | 7 | The pills and their grey resolution lines — `coder-max` → *claude-fable-5 · Anthropic*, `coder-fallback` → *gpt-5-codex · GitHub Copilot*, `local-docs`, `local-free`, `coder-std`, `sizer`, and `second-opinion`, which no chain contains and the *security label* rule adds as a vote |
+| `task_kinds` | 8 | The matrix's eight rows, in its order — the mono name and the grey line under it |
+| `routes` | 8 | Each row's tag pill, and the inspector's policy triple: local fallback **on**, no floor, and `$2.50` — a cap only `implement-primary` carries |
+| `route_hops` | 17 | The *Primary model* and *Fallback* columns, and the inspector's numbered rail — `coder-max → coder-fallback → local-docs`, with the mockup's two hop notes |
+| `escalation_rules` | 3 | The card's three sentences, which V018 **generates** from the rules' structure rather than storing |
+| `token_usage` | 370 | The routed calls every number on the screen is aggregated out of |
+
+> **Not one figure on that screen is stored, and that is decision M7.** `$0.87` is the mean
+> of fifteen `implement` costs, `41.0s` the median of fifteen `implement` latencies,
+> `$412.80` a sum across three seeds and *31%* a ratio of two sums — so the seed shapes the
+> *usage* and lets the aggregation land on the mockup. Storing the answers instead would
+> leave the stats service ([#198](https://github.com/NobuData/ouroboros/issues/198))
+> untested and the em-dash rule unverifiable: a number that was never computed cannot be
+> *absent* in the way the rule requires. Each kind's calls are spread symmetrically around
+> its figure, so the mean is exactly the centre and the median is exactly the row at it, with
+> no rounding anywhere. `tests/seed.test.sh` asserts the file carries none of the rendered
+> figures as a literal; `tests/seed.sql` computes all sixteen of them back.
+
+> **`$0.00` is a price, not an absence.** The two local kinds route to vLLM and Ollama, and
+> their rows carry `cost_cents = 0` — calls that were priced, at nothing. The earlier seeds'
+> Ollama rows carry `null`, which says the other thing: *nobody priced this*. Both states now
+> exist in one workspace, which is what makes
+> [#92](https://github.com/NobuData/ouroboros/issues/92)'s honesty rule testable rather than
+> promised — a re-pricing pass must fill the nulls and leave the zeros alone.
+
+> **Two of mockup 06's spend figures cannot be reached by any seed.** *Spend by provider ·
+> 30d* asks for `$96.40` of Copilot and `$54.10` of Cursor, while mockup 07's cards pin the
+> same rows' calendar month at `$76.00` and `$64.10`. Thirty days is a **superset** of
+> month-to-date, so a 30-day total can never be less than the month total inside it, and
+> Cursor's figure is `$10.00` below one. Anthropic's `$412.80` and the local `$0.00` land
+> exactly; the other two land on mockup 07's, which is the reading both screens can hold at
+> once, and [#192](https://github.com/NobuData/ouroboros/issues/192) asks for the design to be
+> amended. The seed's header carries the arithmetic and `tests/seed.sql` asserts all four.
+
+**Nothing the routing seed writes lands on *today*** either, and its priced spend comes *out
+of* the providers seed's remainder rather than on top of it — so mockup 02's *Token spend ·
+today* card and mockup 07's month meters both read exactly what they read without it.
 
 **`kensuenobu` and `acme-labs` get no dashboard rows at all.** That is not an omission: the
 personal workspace is the *empty-state fixture* the zero-state cards
@@ -379,7 +444,10 @@ and the issue number or ordinal of the row, which is as deterministic and rather
 readable than seventy-seven literals. The providers seed takes the three prefixes after
 those — `5eed000c…` connections, `5eed000d…` discovered models, `5eed000e…` its own spend
 events — which is also what keeps its usage rows and the dashboard's apart on sight in a
-table both of them write.
+table both of them write. The routing seed takes the six after *those* — `5eed000f…`
+aliases, `5eed0010…` task kinds, `5eed0011…` routes, `5eed0012…` hops, `5eed0013…` rules and
+`5eed0014…` its own routed calls — so all three of the seeds that write `token_usage` are
+told apart by the first two hex digits of a row's id.
 
 **Neither can run against anything but a development database.** Each statement in either
 seed ends `and ${ouro_dev_seed}`, a Flyway placeholder that is `false` in
@@ -882,9 +950,12 @@ ouroboros-db/
 │   ├── V018__escalation_rules.sql    # escalation_rules — structured predicates, derived display — #191
 │   ├── V019__alias_lifecycle_binding_params.sql
 │   │                                 # the alias switch, the unbound binding, structured params — #579
+│   ├── V020__routing_usage_attribution.sql
+│   │                                 # token_usage.task_kind + .latency_ms — what $/run and p50 compute from — #192
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
+│   ├── R__dev_seed_routing.sql       # mockup 06 as rows, dev only — #192 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -928,7 +999,7 @@ outside this module alters it.
 | `user_preferences` | `V007` | Per-person product preferences — today the font scale | One row per person, absent while every setting is at its default; `font_scale` is one of § 4's five steps; cascades from `"user"` |
 | `runs` | `V008` | One run of the loop against one issue — the dashboard read-model | `status` is one of `coding\|building\|review\|merged\|needs_human\|failed`, and a terminal status carries `finished_at` exactly when it is terminal; the run's repository must belong to the run's organization |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
-| `token_usage` | `V010` | What the loop has spent — one append-only event per provider call, not one total per organization | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization |
+| `token_usage` | `V010`, routing attribution `V020` | What the loop has spent — one append-only event per provider call, not one total per organization. Since `V020` it is also what mockup 06's routing matrix is computed from: `task_kind` says which routed kind of work a call served and `latency_ms` how long it took, so `$/run avg` and `p50 latency` are aggregates here rather than numbers stored on a route (decision **M7**) | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization. `task_kind` is shaped as `task_kinds.name` is but is deliberately **not** a foreign key (decision **F8**, as `runs.workflow_tag`): a ledger row records what happened, and retiring a kind must neither block, delete nor rewrite the history routed under it. `latency_ms` is non-negative, and **both are nullable, which is the point** — null is *not routed* and *not timed*, so an aggregate over none of either is null and the matrix renders the em-dash `M7` requires instead of a fabricated `$0.00` and `0.0s`; zero is permitted on `latency_ms` because a local daemon on loopback really answers inside a millisecond |
 | `workspace_settings` | `V011` | Org-scoped typed product settings — today the auto-merge switch, the dashboard's only write | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
 | `github_issues` | `V014` | The backlog as Ouroboros sees it — one row per mirrored GitHub issue, behind mockup 03's table and detail panel. **A cache, not a fork** (decision **K3**): GitHub owns every column but `sizing_status` | `(github_repo_id, number)` unique, which is also the sync's upsert key; `state` is `open\|closed` and `sizing_status` one of `unsized\|estimating\|sized\|needs_human`, defaulting to `unsized`; `labels` must be a JSON array of at most 100 non-empty **names** — GitHub's, not ours; `gh_url` must be `https` with a host, because it becomes an `href`; `gh_updated_at` cannot precede `gh_created_at`; the issue's repository must belong to the issue's organization |
 | `provider_connections` | `V015`, cards' columns `V017` | Where a workspace's model providers are, and the sealed credential for the ones that need one — mockup 06's `.phealth` strip, and the shared foundation mockup 07 manages (decision **M2**). Since `V017` it also carries what a card *shows*: `monthly_cap_cents`, `added_by`, `last_used_at`, `capability_note` and the `enabled` switch | `kind` is one of `anthropic\|openai_compatible\|ollama\|copilot\|cursor\|custom` and `status` one of `active\|paused\|error\|unknown`, defaulting to `unknown` because a connection nothing has checked is genuinely unknown (decision **M8**); `credentials_encrypted` is **envelope-only** — an `ouro.v1.…` value or null, so a plaintext key cannot be stored by any writer — and null is legitimate, because a local provider needs none; `base_url` is `http`/`https` and required for `ollama` and `openai_compatible`, which have no public endpoint; `health` must be an object, may only carry content once `last_checked_at` exists, and a `latency_ms` must be a non-negative number — there is deliberately no defaulted `0ms`; `monthly_cap_cents` is non-negative and **nullable**, where null is *no cap* (the mockup's em-dash) and zero is the real instruction *spend nothing*; `added_by` references `"user"` and **sets null**, because deleting the person who added a provider must not delete the provider; `enabled` is `not null default true` and is **not** `status` — the switch is what a person decided, the status is what the last check measured, and a card draws both |

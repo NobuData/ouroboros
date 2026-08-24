@@ -695,7 +695,10 @@ select pg_temp.must_hold(
   'the Cursor card is seeded — connected, on, $120 cap');
 
 -- The one card that is not green. `status = 'error'` is what AC.1's taxonomy coarsens an
--- upstream failure to (#216), and the detail is the sentence its foot prints.
+-- upstream failure to (#216), and `health` is what the last check measured — which #192
+-- corrected to the `.phealth` chip mockup 06 draws, *degraded · elevated latency*. Mockup
+-- 07's `△ 503 upstream · retrying` sits beside its *Test connection* button and is the reply
+-- to a probe somebody clicked, not a stored snapshot; see the seed's header.
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.provider_connections conn
     where conn.id = '5eed000c-0000-4000-8000-000000000003'
@@ -704,7 +707,7 @@ select pg_temp.must_hold(
       and conn.status = 'error'
       and conn.enabled
       and conn.monthly_cap_cents = 9500
-      and conn.health ->> 'detail' = '503 upstream · retrying'
+      and conn.health ->> 'detail' = 'elevated latency'
       and conn.capability_note = 'billed through GitHub org acme-robotics'
       and (conn.created_at at time zone 'utc')::date = date '2026-06-18'),
   'the Copilot card is seeded — degraded upstream, still switched on, $95 cap');
@@ -879,10 +882,13 @@ select pg_temp.must_hold(
       and usage.occurred_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'),
   'the Copilot meter reads $76.00 of its $95 cap, which is the 80% the mockup draws as a warning');
 
--- The two zero meters, and they are zero for different reasons. Ollama has spent 2.1M
--- tokens that nobody priced — `$0.00 · 2.1M tokens on-box` — and vLLM has no rows at all,
--- which is what *no metered spend* means: an absence rather than a row claiming a call
--- that cost nothing.
+-- The two zero meters, and they are zero for different reasons — which is the whole of
+-- DASH-J.4's (#92) distinction, seeded in one workspace so it can be tested rather than
+-- promised. Ollama's `$0.00 · 2.1M tokens on-box` is `null` costs: calls **nobody priced**.
+-- vLLM's `$0.00 · no metered spend` is `cost_cents = 0`: calls that were priced, at nothing,
+-- which is the only honest route to the `$0.00` mockup 06's `commit-msg` row prints
+-- (decision M7). Until #192 it had no rows at all and its zero was an absence; a matrix that
+-- has to compute an average cannot be given an absence to average.
 select pg_temp.must_hold(
   (select coalesce(sum(usage.cost_cents), 0) = 0
       and sum(usage.tokens_in + usage.tokens_out)
@@ -897,11 +903,26 @@ select pg_temp.must_hold(
   'the Ollama meter costs nothing and counts 2.1M on-box tokens — unpriced is not free of charge');
 
 select pg_temp.must_hold(
-  (select count(*) = 0 from ouroboros.token_usage usage
+  (select count(*) > 0
+      and count(*) filter (where usage.cost_cents is null) = 0
+      and sum(usage.cost_cents) = 0
+     from ouroboros.token_usage usage
      join ouroboros.organization org on org."id" = usage.organization_id
     where org."slug" = 'acme-robotics'
       and usage.provider = 'openai_compatible'),
-  'the local vLLM connection has no usage rows at all, which is what "no metered spend" means');
+  'the local vLLM meter is zero because every call was priced at nothing, not because none was priced');
+
+-- The other half of the same rule, stated the way a re-pricing pass would ask it: the
+-- workspace holds **both** states, so a service that conflated them fails one assertion or
+-- the other rather than passing both by accident.
+select pg_temp.must_hold(
+  (select count(*) filter (where usage.cost_cents is null) > 0
+      and count(*) filter (where usage.cost_cents = 0)     > 0
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.provider in ('ollama', 'openai_compatible')),
+  'the local providers hold unpriced rows and zero-priced rows at once — the two are not the same state');
 
 -- **Nothing this seed wrote lands on today**, which is what keeps mockup 02's *Token spend
 -- · today* card exactly #68's twelve events. The dashboard section above asserts that
@@ -950,6 +971,433 @@ select pg_temp.must_hold(
      select id from ouroboros.token_usage          where id::text like '5eed000e-0000-4000-8000-%'
    ) as seeded),
   'the providers seed created its twenty-seven prefixed rows and no twenty-eighth');
+
+-- ===========================================================================
+-- R__dev_seed_routing.sql — mockup 06, surface for surface.
+--
+-- The fourth seed's rows: seven `model_aliases` (`5eed000f…`), eight `task_kinds`
+-- (`5eed0010…`), their eight `routes` (`5eed0011…`), seventeen ordered `route_hops`
+-- (`5eed0012…`), three `escalation_rules` (`5eed0013…`) and the 370 routed `token_usage`
+-- calls (`5eed0014…`) every number on the screen is aggregated out of.
+--
+-- **What this section is really testing is decision M7.** Every assertion below that names a
+-- figure computes it — `avg`, `percentile_cont`, `sum` — because that is the only way to
+-- prove the figure was not stored. An assertion that read a `dollars_per_run` column would
+-- pass against a seed that had defeated the point of the ticket.
+--
+-- The counts are exact, so this is the routing seed's idempotency test as well.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- The seven aliases, and what each resolves to.
+--
+-- The matrix's pills and their grey resolution lines — `coder-max` → `claude-fable-5 ·
+-- Anthropic`. Asserted through the join rather than against `model_id` alone, because the
+-- line prints both halves and decision M1's whole point is that the second half lives in
+-- exactly one place.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 7 from (
+     select alias.alias
+       from (values
+              ('coder-max',      'claude-fable-5',   'Anthropic Claude'),
+              ('coder-std',      'claude-sonnet-5',  'Anthropic Claude'),
+              ('sizer',          'claude-haiku-4-5', 'Anthropic Claude'),
+              ('coder-fallback', 'gpt-5-codex',      'GitHub Copilot'),
+              ('local-docs',     'qwen3-coder:32b',  'Ollama · workstation'),
+              ('local-free',     'llama-4-maverick', 'OpenAI-compatible · local vLLM'),
+              ('second-opinion', 'composer-2',       'Cursor')
+            ) as expected (alias, model_id, connection)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.model_aliases alias
+         on alias.organization_id = org."id"
+        and alias.alias = expected.alias
+        and alias.model_id = expected.model_id
+        and alias.enabled
+       join ouroboros.provider_connections conn
+         on conn.id = alias.provider_connection_id
+        and conn.display_name = expected.connection
+   ) as resolved),
+  'the seven aliases resolve to the models and connections the matrix prints under them');
+
+-- `second-opinion` is the one with a restriction, and it is the one the review escalation
+-- rule adds as a vote — which is exactly what `review_vote_only` says this workspace allows
+-- it to be used for (V019, decision R3).
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.model_aliases alias
+     join ouroboros.organization org on org."id" = alias.organization_id
+    where org."slug" = 'acme-robotics'
+      and alias.alias = 'second-opinion'
+      and alias.restrictions = '{"review_vote_only": true}'::jsonb),
+  'second-opinion is restricted to review votes, which is the only thing a rule uses it for');
+
+-- Nothing else is restricted and nothing carries params: the mockup's *"(max thinking)"*
+-- belongs to the rule that applies it, and seeding it onto the alias would make that rule a
+-- no-op that appears to work.
+select pg_temp.must_hold(
+  (select count(*) = 6 from ouroboros.model_aliases alias
+     join ouroboros.organization org on org."id" = alias.organization_id
+    where org."slug" = 'acme-robotics'
+      and alias.params = '{}'::jsonb
+      and alias.restrictions = '{}'::jsonb),
+  'the other six aliases carry no params and no restrictions, which is the ordinary state');
+
+-- ---------------------------------------------------------------------------
+-- The matrix — eight kinds, their descriptions, and the first two hops of each chain.
+--
+-- One assertion for the whole table, because the table is one thing: a row is its mono name,
+-- the grey line under it, its route's tag pill, and the two alias pills to the right. Eight
+-- rows match or this fails.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 8 from (
+     select kind.name
+       from (values
+              (1, 'analyze',    'Read the issue, map the affected code paths',
+                  'analyze-primary',   'coder-std',      'local-docs'),
+              (2, 'estimate',   'Size effort XS–XL before queueing',
+                  'estimate-primary',  'sizer',          'local-free'),
+              (3, 'plan',       'Decompose into steps, pick a workflow',
+                  'plan-primary',      'coder-max',      'coder-std'),
+              (4, 'implement',  'Write the change, run tests, iterate to green',
+                  'implement-primary', 'coder-max',      'coder-fallback'),
+              (5, 'test-gen',   'Generate unit and regression tests for the diff',
+                  'testgen-primary',   'coder-fallback', 'coder-std'),
+              (6, 'review',     'Self-review the PR against the acceptance criteria',
+                  'review-primary',    'coder-max',      'coder-std'),
+              (7, 'docs',       'Update READMEs, changelogs, operator manual',
+                  'docs-primary',      'local-docs',     'sizer'),
+              (8, 'commit-msg', 'Conventional-commit message from the staged diff',
+                  'commitmsg-primary', 'local-free',     'sizer')
+            ) as expected (sort_order, name, description, tag, primary_alias, fallback_alias)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.task_kinds kind
+         on kind.organization_id = org."id"
+        and kind.name = expected.name
+        and kind.description = expected.description
+        and kind.sort_order = expected.sort_order
+       join ouroboros.routes route
+         on route.task_kind_id = kind.id and route.tag = expected.tag
+       join ouroboros.route_hops first_hop
+         on first_hop.route_id = route.id and first_hop.position = 1
+       join ouroboros.model_aliases primary_alias
+         on primary_alias.id = first_hop.model_alias_id
+        and primary_alias.alias = expected.primary_alias
+       join ouroboros.route_hops second_hop
+         on second_hop.route_id = route.id and second_hop.position = 2
+       join ouroboros.model_aliases fallback_alias
+         on fallback_alias.id = second_hop.model_alias_id
+        and fallback_alias.alias = expected.fallback_alias
+   ) as rows_of_the_matrix),
+  'the eight matrix rows are seeded in order, with the task, tag, primary and fallback each renders');
+
+-- Every route has exactly one chain and every chain is dense from 1, which V016 makes a
+-- correctness rule rather than a convention: `floor_hop_index` is a statement about a hop
+-- *number*, and a chain numbered 1, 2, 5 makes "below fallback 2" mean nothing.
+select pg_temp.must_hold(
+  (select count(*) = 8 from (
+     select route.id
+       from ouroboros.routes route
+       join ouroboros.organization org on org."id" = route.organization_id
+       join ouroboros.route_hops hop on hop.route_id = route.id
+      where org."slug" = 'acme-robotics'
+      group by route.id
+     having count(*) = max(hop.position) and min(hop.position) = 1
+   ) as dense_chains),
+  'every seeded chain numbers its hops densely from 1, which is what a floor index can mean');
+
+-- ---------------------------------------------------------------------------
+-- The route inspector — `implement-primary`, its three hops, and its three policies.
+--
+-- The one route the mockup opens. Hop 2 and hop 3 carry the sentences it prints; hop 1
+-- carries **none**, because *"Primary · API key valid, 42ms to us-east"* is composed from
+-- the position, the connection's status and a latency measured minutes ago. A note holding
+-- that sentence would freeze the latency and make the hop disagree with the health chip.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3 from (
+     select hop.position
+       from (values
+              (1, 'coder-max',      null),
+              (2, 'coder-fallback', 'Fallback on 5xx / timeouts'),
+              (3, 'local-docs',     'Offline mode — keeps the loop turning without a network')
+            ) as expected (position, alias, note)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.routes route
+         on route.organization_id = org."id" and route.tag = 'implement-primary'
+       join ouroboros.route_hops hop
+         on hop.route_id = route.id
+        and hop.position = expected.position
+        and hop.note is not distinct from expected.note
+       join ouroboros.model_aliases alias
+         on alias.id = hop.model_alias_id and alias.alias = expected.alias
+   ) as inspector_chain),
+  'the implement chain is coder-max → coder-fallback → local-docs, with the mockup''s two hop notes');
+
+-- Local fallback **on**, the floor switch **off**, and `$2.50` — and the cap is this route's
+-- alone. Null on the other seven is *no cap configured*, which is not the same as a default
+-- of 250 quietly applied everywhere.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.routes route
+     join ouroboros.organization org on org."id" = route.organization_id
+    where org."slug" = 'acme-robotics'
+      and route.tag = 'implement-primary'
+      and route.allow_local_fallback
+      and route.floor_hop_index is null
+      and route.max_cost_cents_per_run = 250),
+  'implement-primary allows local fallback, sets no floor, and caps a run at $2.50');
+
+select pg_temp.must_hold(
+  (select count(*) = 7 from ouroboros.routes route
+     join ouroboros.organization org on org."id" = route.organization_id
+    where org."slug" = 'acme-robotics'
+      and route.tag <> 'implement-primary'
+      and route.allow_local_fallback
+      and route.floor_hop_index is null
+      and route.max_cost_cents_per_run is null),
+  'the other seven routes allow local fallback and set neither a floor nor a cap');
+
+-- ---------------------------------------------------------------------------
+-- The escalation rules — `3 active`, and their sentences character for character.
+--
+-- `display` is generated by V018 from `"when"` and `"then"`, so what this asserts is that the
+-- seeded *structure* renders the card. tests/constraints.sql asserts the same three strings
+-- against hand-made fixtures; this asserts the workspace a developer actually opens has them.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3 from (
+     select rule.sort_order
+       from (values
+              (1, 'effort ≥ L → implement uses coder-max (max thinking)'),
+              (2, 'security label → review adds second-opinion vote'),
+              (3, 'docs-only diff → everything routes local')
+            ) as expected (sort_order, display)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.escalation_rules rule
+         on rule.organization_id = org."id"
+        and rule.sort_order = expected.sort_order
+        and rule.display = expected.display
+        and rule.enabled
+   ) as active_rules),
+  'the three escalation rules are enabled and render the card''s three sentences exactly');
+
+-- The names inside those documents are names this workspace has, which is what V018's
+-- deferred trigger enforces at write time — asserted here as the state it produced, because a
+-- rule naming an alias nobody seeded would be a card pointing at nothing.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.escalation_rules rule
+     join ouroboros.organization org on org."id" = rule.organization_id
+     join ouroboros.task_kinds kind
+       on kind.organization_id = org."id"
+      and kind.name = coalesce(rule."then" #>> '{use_alias,task_kind}',
+                               rule."then" #>> '{add_vote,task_kind}')
+     join ouroboros.model_aliases alias
+       on alias.organization_id = org."id"
+      and alias.alias = coalesce(rule."then" #>> '{use_alias,alias}',
+                                 rule."then" #>> '{add_vote,alias}')
+    where org."slug" = 'acme-robotics'),
+  'both rules that name a kind and an alias name ones this workspace has — the third names neither');
+
+-- ---------------------------------------------------------------------------
+-- `$/run avg` and `p50 latency` — computed, which is the whole of decision M7.
+--
+-- Eight rows, eight pairs, and every one of them an aggregate: `avg(cost_cents)` over the
+-- kind's calls in the trailing thirty days, and `percentile_cont(0.5)` over their latencies.
+-- Nothing on a route, an alias or a connection holds either figure, and this assertion could
+-- not pass if anything did — it never reads such a column.
+--
+-- The `having` is exact equality with no rounding anywhere: the seed spreads each kind's
+-- calls symmetrically around the mockup's figure, so the mean *is* the centre and the median
+-- *is* the row at it.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 8 from (
+     select expected.task_kind
+       from (values
+              ('analyze',     4.0000,  3100.0),
+              ('estimate',    1.0000,  1200.0),
+              ('plan',       31.0000,  9800.0),
+              ('implement',  87.0000, 41000.0),
+              ('test-gen',   12.0000, 17400.0),
+              ('review',     22.0000, 12600.0),
+              ('docs',        0.0000,  6300.0),
+              ('commit-msg',  0.0000,   800.0)
+            ) as expected (task_kind, cost_cents, latency_ms)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.token_usage usage
+         on usage.organization_id = org."id"
+        and usage.task_kind = expected.task_kind
+        and usage.occurred_at >= now() - interval '30 days'
+      group by expected.task_kind, expected.cost_cents, expected.latency_ms
+     having avg(usage.cost_cents) = expected.cost_cents
+        and percentile_cont(0.5) within group (order by usage.latency_ms)
+              = expected.latency_ms
+   ) as computed_rows),
+  'all eight matrix rows compute the mockup''s $/run avg and p50 latency out of usage alone');
+
+-- ---------------------------------------------------------------------------
+-- Spend by provider · 30d, and the local share.
+--
+-- Every seeded row falls inside the trailing thirty days, so this card is the calendar-month
+-- meters mockup 07 draws — on every day of the month, including the first, when the month
+-- window collapses and this one does not.
+--
+-- **Two of the four are not the mockup's**, and cannot be: thirty days is a superset of
+-- month-to-date, so mockup 06's Cursor figure of $54.10 is $10.00 *below* a month total
+-- mockup 07 pins at $64.10 over the same rows, and no seed can make a superset smaller than
+-- what it contains. Copilot's $96.40 would need spend dated before the month began, in a
+-- window that is empty on the last day of a 31-day month. The seed lands on the reading both
+-- screens can hold at once and #192 asks for the design to be amended; what is asserted here
+-- is that the figures are *computed*, and which four they are.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 4 from (
+     select expected.provider
+       from (values
+              ('anthropic',         41280.0000),
+              ('copilot',            7600.0000),
+              ('cursor',             6410.0000),
+              ('openai_compatible',     0.0000)
+            ) as expected (provider, cost_cents)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.token_usage usage
+         on usage.organization_id = org."id"
+        and usage.provider = expected.provider
+        and usage.occurred_at >= now() - interval '30 days'
+      group by expected.provider, expected.cost_cents
+     having sum(usage.cost_cents) = expected.cost_cents
+   ) as metered),
+  'the 30-day spend card computes $412.80 Anthropic, $76.00 Copilot, $64.10 Cursor and $0.00 local');
+
+-- *"Local models served 31% of all tokens."* — `tokens on the two local kinds / all tokens`,
+-- over the same window, and it is exactly 31 rather than 31-ish.
+select pg_temp.must_hold(
+  (select 100 * sum(usage.tokens_in + usage.tokens_out)
+                  filter (where usage.provider in ('ollama', 'openai_compatible'))
+              = 31 * sum(usage.tokens_in + usage.tokens_out)
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.occurred_at >= now() - interval '30 days'),
+  'local models served exactly 31% of the workspace''s tokens over thirty days');
+
+-- ---------------------------------------------------------------------------
+-- The window, and the two figures this seed must not move.
+--
+-- Nothing lands on today, because mockup 02's *Token spend · today* card is #68's twelve
+-- events and nothing else — the dashboard section above pins that number, and this is the
+-- rule that protects it. Everything is inside thirty days, because the card and the matrix
+-- both read that window and a row outside it would be a call the screen cannot see.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 370 from ouroboros.token_usage usage
+    where usage.id::text like '5eed0014%'
+      and usage.occurred_at < date_trunc('day', now() at time zone 'utc') at time zone 'utc'
+      and usage.occurred_at >= now() - interval '30 days'
+      and usage.task_kind is not null
+      and usage.latency_ms is not null
+      and usage.run_id is null),
+  'all 370 routed calls fall before today and inside thirty days, each with a kind and a latency');
+
+-- The rows the other two seeds wrote are the em-dash fixture from the other side: they are
+-- spend, and they are not *routed* spend, so they contribute to the card and to no matrix row.
+select pg_temp.must_hold(
+  (select count(*) = 23 from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.task_kind is null
+      and usage.latency_ms is null),
+  'the twenty-three earlier usage events carry no task kind and no latency, and no matrix row counts them');
+
+-- ---------------------------------------------------------------------------
+-- The empty workspace, again — this time as AA.6's routing-guidance fixture, and as the
+-- only place M7's em-dash can actually be observed.
+--
+-- A workspace with no usage has nothing to average and nothing to take a median of, so both
+-- aggregates are **null** — which is what the screen must render as `—` rather than as
+-- `$0.00` and `0.0s`, both of which are excellent figures for work nobody has done.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from (
+     select 1 from ouroboros.model_aliases a
+       join ouroboros.organization o on o."id" = a.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
+     union all
+     select 1 from ouroboros.task_kinds k
+       join ouroboros.organization o on o."id" = k.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
+     union all
+     select 1 from ouroboros.routes r
+       join ouroboros.organization o on o."id" = r.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
+     union all
+     select 1 from ouroboros.route_hops h
+       join ouroboros.organization o on o."id" = h.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
+     union all
+     select 1 from ouroboros.escalation_rules e
+       join ouroboros.organization o on o."id" = e.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
+   ) as routing_rows),
+  'neither the personal workspace nor acme-labs has an alias, a kind, a route, a hop or a rule');
+
+select pg_temp.must_hold(
+  (select avg(usage.cost_cents) is null
+      and percentile_cont(0.5) within group (order by usage.latency_ms) is null
+     from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'kensuenobu'),
+  'the personal workspace computes neither a $/run nor a p50 — the em-dash M7 requires, not a zero');
+
+-- ---------------------------------------------------------------------------
+-- The health strip — five chips, and two of them measured nothing.
+--
+-- #221 owns these rows; #192 corrected what `health` holds to the snapshot mockup 06's strip
+-- prints, and this is the strip read back. Cursor's empty document is the load-bearing one:
+-- *no latency was taken* is said by leaving the key out, never by a zero (V015, decision M8).
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 5 from (
+     select conn.id
+       from (values
+              ('Anthropic Claude',               'active', '{"latency_ms": 42}'),
+              ('Cursor',                         'active', '{}'),
+              ('GitHub Copilot',                 'error',  '{"detail": "elevated latency"}'),
+              ('OpenAI-compatible · local vLLM', 'active', '{"detail": "vLLM local"}'),
+              ('Ollama · workstation',           'active',
+               '{"detail": "workstation", "models": 3}')
+            ) as expected (display_name, status, health)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.provider_connections conn
+         on conn.organization_id = org."id"
+        and conn.display_name = expected.display_name
+        and conn.status = expected.status
+        and conn.health = expected.health::jsonb
+   ) as chips),
+  'the five health chips are seeded as mockup 06 draws them — 42ms, nothing, elevated latency, vLLM local, workstation · 3 models');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the routing seed's own rows.
+--
+-- 413 rows under six prefixes — an alias, a kind, a route, a hop, a rule and a routed call
+-- are each recognisable on sight in a log or a URL — so a row added later with a generated id
+-- is caught here rather than by nobody.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 413 from (
+     select id from ouroboros.model_aliases    where id::text like '5eed000f-0000-4000-8000-%'
+     union all
+     select id from ouroboros.task_kinds       where id::text like '5eed0010-0000-4000-8000-%'
+     union all
+     select id from ouroboros.routes           where id::text like '5eed0011-0000-4000-8000-%'
+     union all
+     select id from ouroboros.route_hops       where id::text like '5eed0012-0000-4000-8000-%'
+     union all
+     select id from ouroboros.escalation_rules where id::text like '5eed0013-0000-4000-8000-%'
+     union all
+     select id from ouroboros.token_usage      where id::text like '5eed0014-0000-4000-8000-%'
+   ) as seeded),
+  'the routing seed created its 413 prefixed rows and no 414th');
 
 \o
 \echo 'seed.sql: all assertions passed'

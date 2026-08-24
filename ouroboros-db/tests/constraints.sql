@@ -2085,6 +2085,88 @@ select pg_temp.must_reject(
     where id = 'e4000000-0000-0000-0000-00000000000a'$$,
   'token_usage.model is bounded', 'token_usage_model_present');
 
+-- --- V020 — which kind of work, and how long it took (#192) ----------------------------
+--
+-- The two columns mockup 06's `$/run avg` and `p50 latency` are computed from, and the pair
+-- of rules that keep both figures honest. Both are nullable, and **null is the point**: a
+-- call the router did not place has no task kind, a call nobody timed has no latency, and
+-- an aggregate over none of either is null — which is the em-dash decision M7 requires
+-- instead of a fabricated `$0.00` and `0.0s`.
+select pg_temp.must_hold(
+  (select task_kind is null and latency_ms is null
+     from ouroboros.token_usage where id = 'e4000000-0000-0000-0000-00000000000a'),
+  'a usage row carries neither a task kind nor a latency by default — unrouted and untimed');
+
+--
+-- Dated twenty days back, deliberately: the day-scoped assertions further down pin *today's*
+-- totals for this workspace, and a priced row landing on today would move one of them. The
+-- aggregates below are scoped by task kind rather than by day, so the date costs them nothing.
+insert into ouroboros.token_usage
+    (id, organization_id, provider, model, tokens_in, tokens_out, cost_cents,
+     task_kind, latency_ms, occurred_at)
+  values ('e4000000-0000-0000-0000-000000001002', 'org-spend', 'anthropic',
+          'claude-fable-5', 900, 300, 87.0000, 'commit-msg', 0,
+          now() - interval '20 days');
+select pg_temp.must_hold(
+  (select task_kind = 'commit-msg' and latency_ms = 0
+     from ouroboros.token_usage where id = 'e4000000-0000-0000-0000-000000001002'),
+  'a routed call records its kind, and a zero latency is a measurement a local daemon really makes');
+
+-- The shape `task_kinds.name` carries, so this column can only hold names that table could.
+-- Deliberately **not** a foreign key (decision F8, as V008 made `runs.workflow_tag`): a
+-- ledger row records what happened, and retiring the kind must not rewrite the history
+-- routed under it — which is why the shape is all there is to enforce.
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set task_kind = 'Implement'
+    where id = 'e4000000-0000-0000-0000-000000001002'$$,
+  'token_usage.task_kind is shaped as a task kind name is, capitals included',
+  'token_usage_task_kind_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set task_kind = ' '
+    where id = 'e4000000-0000-0000-0000-000000001002'$$,
+  'token_usage.task_kind must not be blank', 'token_usage_task_kind_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set task_kind = repeat('k', 65)
+    where id = 'e4000000-0000-0000-0000-000000001002'$$,
+  'token_usage.task_kind is bounded as task_kinds.name is',
+  'token_usage_task_kind_shape');
+
+-- A kind this workspace has never had still stores, which is the trade F8 buys: the ledger
+-- keeps the name the call was routed under, and a name nothing recognises aggregates to a
+-- visible row of its own rather than being lost at write time.
+insert into ouroboros.token_usage
+    (organization_id, provider, model, tokens_in, tokens_out, task_kind, occurred_at)
+  values ('org-spend', 'anthropic', 'claude-fable-5', 10, 10, 'a-kind-nobody-declared',
+          now() - interval '20 days');
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage
+    where task_kind = 'a-kind-nobody-declared'),
+  'a task kind no table declares still stores — the ledger is a record, not a foreign key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.token_usage set latency_ms = -1
+    where id = 'e4000000-0000-0000-0000-000000001002'$$,
+  'token_usage.latency_ms cannot go negative — a call does not take less than no time',
+  'token_usage_latency_ms_nonnegative');
+
+-- The aggregates the matrix is made of, over the rows above: exact, and null where there is
+-- nothing to compute. The second half is the assertion the whole M7 honesty rule rests on.
+select pg_temp.must_hold(
+  (select avg(cost_cents) = 87.0000
+      and percentile_cont(0.5) within group (order by latency_ms) = 0
+     from ouroboros.token_usage
+    where organization_id = 'org-spend' and task_kind = 'commit-msg'),
+  'a kind''s $/run avg and p50 latency are aggregates over its calls and nothing else');
+
+select pg_temp.must_hold(
+  (select avg(cost_cents) is null
+      and percentile_cont(0.5) within group (order by latency_ms) is null
+     from ouroboros.token_usage
+    where organization_id = 'org-spend' and task_kind = 'a-kind-with-no-calls'),
+  'a kind with no calls computes null for both, which is the em-dash and not a zero');
+
 -- --- the run, and the workspace it must agree with -------------------------------------
 --
 -- The rule V008 and V009 wrote for `github_repo_id`, in the shape this table needs: it
