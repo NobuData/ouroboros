@@ -255,7 +255,7 @@ chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CG.1 | #579 | 🟢 Done | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
 | CG.2 | #580 | 🟢 Done | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
-| CG.3 | #581 | 🟡 Open | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
+| CG.3 | #581 | 🟢 Done | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
 | CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds unbound gpt5-experiments; second-opinion arrives with Y.4), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
 | CG.5 | #583 | 🟡 Open | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
 
@@ -447,7 +447,65 @@ lookup(_, gpt-5.2-preview·unbound) ─▶ ∅ ─▶ renders "—"   (never $0)
 
 ### Issue CG.3 — ouroboros-db: [CG.3] Alias reference index
 
-> **GitHub issue:** #581 · **Status:** 🟡 Open · **Parent epic:** #575
+> **GitHub issue:** #581 · **Status:** 🟢 Done · **Parent epic:** #575
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-db/migrations/V023__alias_reference_index.sql`](../ouroboros-db/migrations/V023__alias_reference_index.sql)
+> — the `alias_references` view, `alias_reference_guard()`, the `alias_reference_kind`
+> domain, two `immutable` accessors and one expression index. Its section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) is every criterion this
+> file could assert in one session; the one it could not is
+> [`tests/verify-alias-reference-guard.sh`](../ouroboros-db/tests/verify-alias-reference-guard.sh),
+> wired into `ci/db` as a step of its own.
+>
+> **No count is stored anywhere, which is decision R5 rather than an implementation
+> preference.** `Used by` is `count(*)` over the view and the mockup's `0 routes` is a **left
+> join** from `model_aliases` — so the table column, the inspector's chips and both guards
+> read one definition and cannot disagree with each other by a release. The seeded
+> `coder-max` reads back the inspector's four chips exactly — `implement-primary`,
+> `plan-primary`, `review-primary`, `escalation:effort≥L` — asserted as the whole ordered
+> list rather than as a count, because a count is satisfied by four of the wrong rows.
+>
+> **Two of the four legs are declared and unbuilt, and that is stated rather than
+> discovered.** `workflow` needs `workflow_versions` (WF-P.1, #132) *and* the WF-P.2 (#133)
+> amendment CH.6 (#589) carries; `chat_pin` needs BZ.3's (#537) route-pin storage. Neither
+> table exists, and a leg written against a table that does not exist is not a graceful
+> degradation — it is a migration that will not apply. So each contributes **zero rows and
+> never errors** by not being in the union, the `alias_reference_kind` domain names all four
+> so the output shape is stable from today, and the migration's header carries the
+> `create or replace view` and the expression index each one lands as. **Two of this issue's
+> acceptance criteria move with them**: *a workflow-version fixture is found via the
+> expression index*, and *draft-only references are distinguishable from published*. The
+> `blocking` column exists so the second is a value rather than a schema change.
+>
+> **The guard is a lock before a count, and `for share` would not have been enough.** Check
+> then delete is two statements, and between them a concurrent route save adds the hop the
+> check did not see; the foreign key does catch that, but it catches it *after* the service
+> has already told the user the delete was allowed, as a referential error where a 409
+> naming the route was owed. `alias_reference_guard()` takes `for update` on the alias —
+> PostgreSQL takes `for key share` on a referenced row when a referencing row is inserted,
+> and `for key share` does not conflict with `for share`, so a share lock would have let the
+> route save sail past and made the answer stale the moment it was given. The referring rows
+> are deliberately **not** locked: locking them could only turn a delete that was about to
+> become legal into one that is refused, which is the safe direction and needs no lock.
+> What the lock does *not* close is named too — a rule naming the alias by name touches no
+> `model_aliases` row, and V018's deferred trigger is what refuses that delete.
+>
+> **The escalation chip is derived from the rule's structure, not from its sentence.** The
+> chip is the predicate half of V018's generated `display` with the comparison closed up, and
+> cutting that half out with string surgery is unsafe: a rule's `label` condition carries a
+> **GitHub label name**, which V018 bounds and does not otherwise constrain, so the sentence
+> has no separator a substring is safe to cut at. That leaves two renderings of one grammar —
+> unavoidable, because `display` backs a stored generated column and cannot be refactored
+> into a shared clause renderer — so the coupling is made testable instead: over a fixture
+> covering every condition key, the chip must equal the sentence's predicate half. A wording
+> change made in one function and not the other goes red.
+>
+> **The concurrency criterion is a script because a race needs two sessions.** Three
+> interleavings, and the second is the probe: the same race read through the bare view
+> instead of the guard, where the route save does *not* wait and the delete fails on the
+> foreign key — the run that must end differently, and the one that would go green if the
+> guard ever stopped locking.
 
 - **Problem Statement:** `Used by` counts, the inspector's chip list, the
   blocked Remove state, and rename safety all need one answer to "what

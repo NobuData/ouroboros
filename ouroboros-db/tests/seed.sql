@@ -1379,6 +1379,53 @@ select pg_temp.must_hold(
   'the five health chips are seeded as mockup 06 draws them — 42ms, nothing, elevated latency, vLLM local, workstation · 3 models');
 
 -- ---------------------------------------------------------------------------
+-- `Used by`, computed out of these rows and stored in none of them (#581).
+--
+-- CG.3's `alias_references` is the one definition mockup 21's count column, chip list and
+-- delete guard all read (decision **R5**), and the seed is where it meets rows somebody
+-- else wrote. `coder-max` is the assertion the ticket names: the inspector draws four chips
+-- beside it, and three of them are routes whose chains this file seeds while the fourth is
+-- the escalation rule that names it. Nothing stores that four.
+--
+-- **The numbers below are Y.4's seven aliases, not mockup 21's eight rows.** The registry
+-- screen is drawn around a superset — it adds the unbound `gpt5-experiments`, and its
+-- drawn counts belong to that state — and reconciling the two is CG.4's (#582), which this
+-- ticket blocks. What is asserted here is that the count is *computed from the seed that
+-- exists*, so the day CG.4 changes the seed these lines move with it rather than agreeing
+-- with a drawing.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(refs.ref_label order by refs.kind, refs.ref_label)
+            = array['escalation:effort≥L', 'implement-primary', 'plan-primary', 'review-primary']
+     from ouroboros.alias_references refs
+     join ouroboros.organization org on org."id" = refs.organization_id
+    where org."slug" = 'acme-robotics' and refs.alias = 'coder-max'),
+  'the seeded coder-max reads back mockup 21''s four inspector chips — three route tags and the rule — and no fifth');
+
+select pg_temp.must_hold(
+  (select array_agg(counted.line order by counted.line) = array[
+            'coder-fallback=2', 'coder-max=4', 'coder-std=4', 'local-docs=3',
+            'local-free=2', 'second-opinion=1', 'sizer=3']
+     from (select alias.alias || '=' || count(refs.ref_id) as line
+             from ouroboros.model_aliases alias
+             join ouroboros.organization org on org."id" = alias.organization_id
+             left join ouroboros.alias_references refs on refs.alias_id = alias.id
+            where org."slug" = 'acme-robotics'
+            group by alias.alias) counted),
+  'every seeded alias has a Used by count computed by a left join over the view, and none of them stores one');
+
+-- The one the routing seed's own header argues about: `second-opinion` is in no chain at
+-- all, and its count is real because the security-label rule names it. A reference index
+-- that only followed foreign keys would report it as unreferenced and offer to delete it —
+-- which V018 would then refuse, from a screen that had just said it was safe.
+select pg_temp.must_hold(
+  (select refs.kind = 'escalation' and refs.ref_label = 'escalation:security label'
+     from ouroboros.alias_references refs
+     join ouroboros.organization org on org."id" = refs.organization_id
+    where org."slug" = 'acme-robotics' and refs.alias = 'second-opinion'),
+  'second-opinion''s single reference is the rule that votes with it, and not a route');
+
+-- ---------------------------------------------------------------------------
 -- The id convention, for the routing seed's own rows.
 --
 -- 413 rows under six prefixes — an alias, a kind, a route, a hop, a rule and a routed call

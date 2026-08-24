@@ -183,6 +183,34 @@
 > action in the vocabulary, including the three a renderer would otherwise meet for the first
 > time in production — a failed rotation, a lease grant with **no actor**, and a worker's
 > cluster address rather than a person's.
+> `V023` ([#581](https://github.com/NobuData/ouroboros/issues/581)) adds
+> [`alias_references`](migrations/V023__alias_reference_index.sql), the schema's third view
+> and the one answer to *"what references this alias?"* that mockup 21 asks four times on one
+> screen — the `USED BY` column, the inspector's chip list, the blocked **Remove** button and
+> the rename beside it. The reference lives in four incompatible shapes: a `route_hops`
+> **foreign key** (`V016`), an escalation rule's target **inside a jsonb document** (`V018`),
+> a workflow `llm` node's alias **by name inside a versioned document**, and a chat route pin
+> that does not exist yet — so decision **R5** refuses a stored counter, because four writers
+> two of which write jsonb is exactly where a trigger-maintained count goes quietly wrong,
+> and a wrong count here is a delete guard that lets a referenced alias vanish. `Used by` is
+> therefore `count(*)` over this view and the mockup's `0 routes` is a **left join**, not a
+> zero anybody stores. Two of the four legs are live and two are **declared and unbuilt**:
+> `workflow` needs WF-P.1 ([#132](https://github.com/NobuData/ouroboros/issues/132)) and the
+> P.2 amendment CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589)) carries, and
+> `chat_pin` needs BZ.3 ([#537](https://github.com/NobuData/ouroboros/issues/537)) — while
+> absent each contributes zero rows and never errors, the `alias_reference_kind` domain names
+> all four so the output shape does not change when they arrive, and the migration's header
+> carries the `create or replace view` that adds each. The other half is
+> `alias_reference_guard()`, and it is a **lock before a count** rather than a count: check
+> then delete is two statements, and between them a concurrent route save adds the hop the
+> check did not see. It takes `for update` on the alias — not `for share`, because a hop
+> insert takes `for key share` to satisfy its own foreign key and `for key share` does not
+> conflict with `for share` — so the referrer list CH.1
+> ([#584](https://github.com/NobuData/ouroboros/issues/584)) renders into a 409 is still true
+> when the statement after it runs. A race needs two sessions, which `constraints.sql` does
+> not have, so that half is proven by
+> [`tests/verify-alias-reference-guard.sh`](tests/verify-alias-reference-guard.sh) — see
+> [Proving the guard is a guard](#proving-the-guard-is-a-guard).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -677,6 +705,10 @@ A passing run prints one line; a failure names the rule and exits non-zero, whic
 makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
 into `ci/db`, below. A migration that adds a rule adds its assertion in the same change.
 
+Both are **one session inside one transaction**, which is what
+[Proving the guard is a guard](#proving-the-guard-is-a-guard) exists for: a rule about what
+two concurrent writers may do to each other cannot be asserted by one of them.
+
 ### Proving the assertions are load-bearing
 
 A green `constraints.sql` does not prove its assertions are doing anything. A file that
@@ -711,6 +743,38 @@ a plan is chosen from catalogue statistics rather than from the schema, so a dat
 suite has already been run against and left dead rows in can plan differently once
 autovacuum has recorded those tables as empty. A copy of a freshly migrated template always
 has the statistics a freshly migrated database has.
+
+### Proving the guard is a guard
+
+`constraints.sql` is one session inside one transaction, and CG.3's delete guard
+([#581](https://github.com/NobuData/ouroboros/issues/581)) is a rule about what a *second*
+session may do while the first is deciding. `alias_reference_guard()` takes a row lock
+before it counts, so what has to be proven is that a concurrent route save waits for it —
+and that a plain `select` from `alias_references` does not make it wait, because a guard
+nothing distinguishes from a bare count is not a guard.
+
+[`tests/verify-alias-reference-guard.sh`](tests/verify-alias-reference-guard.sh) drives two
+long-lived psql sessions through three interleavings against a database of its own:
+
+1. **The guard holds.** A guards an unreferenced alias and is told it is unreferenced; B's
+   route save naming that alias *waits* — asserted from `pg_stat_activity`, not inferred
+   from a statement that has not finished; A deletes and commits; B wakes into a foreign key
+   whose target is gone. No orphan, and the list A acted on was still true when A acted.
+2. **Without the lock, that list goes stale.** The same interleaving through the bare view:
+   B does not wait, B commits, and A's delete is refused by `route_hops_alias_fk` — still no
+   orphan, because the foreign key is not optional, but a referential error where the user
+   was owed a 409 naming the route. This is the probe, and it is what would go green if the
+   guard ever stopped locking.
+3. **The lock is no wider than the alias.** Two guards on two aliases of one workspace do
+   not wait on each other.
+
+```bash
+PGPASSWORD=ouroboros ouroboros-db/tests/verify-alias-reference-guard.sh
+```
+
+Same connection rules as the probes above — `run.sh --print-target`, `PGPASSWORD` from the
+environment — and its own database, dropped on the way out, because two sessions cannot see
+each other's uncommitted rows and this suite therefore has to commit while it runs.
 
 ### The drift check
 
@@ -779,6 +843,7 @@ before a database is waited on.
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
 | `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped | yes (copies of its own) |
+| `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
@@ -1014,6 +1079,7 @@ ouroboros-db/
 │   │                                 # token_usage.task_kind + .latency_ms — what $/run and p50 compute from — #192
 │   ├── V021__route_revisions.sql     # route_revisions — who changed the routing table, and what moved — #195
 │   ├── V022__audit_events.sql        # audit_events — #26's table, landed early; append-only — #225
+│   ├── V023__alias_reference_index.sql  # alias_references — what references an alias, and the delete/rename guard — #581
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -1142,7 +1208,7 @@ document, so a **deferred** constraint trigger on `escalation_rules`, `task_kind
 `model_aliases` holds all three sides — writing a rule that names neither, and retiring the
 kind or alias a rule already names, are both refused.
 
-Two **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
+Three **views**. **`token_usage_daily`** (`V010`) rolls `token_usage` up per organization,
 UTC day and provider — the read behind mockup 02's *Token spend · today*. It is a plain
 view rather than a materialized one on purpose: a stored total drifts the moment an event
 is corrected or back-filled. Its `cost_cents` propagates null rather than coalescing to
@@ -1157,6 +1223,20 @@ reads `auto_merge_on_checks = false` from the database rather than from an appli
 memory of the default. Read settings here; write the table, with an `on conflict
 (organization_id) do update` upsert. `is_explicit` is the one column that still tells a
 written default from no row, for onboarding and audit lines.
+
+**`alias_references`** (`V023`) is what references a model alias, across every storage shape
+one can be referenced from — `(organization_id, alias_id, alias, kind, ref_id, ref_label,
+blocking)`, one row per reference. `route` rows come from `route_hops` and are labelled with
+the route's tag; `escalation` rows come from an `escalation_rules."then"` target, joined by
+**name** within the workspace because that is what the rule stores, and labelled
+`escalation:effort≥L` — mockup 21's chip, derived from the rule's `"when"` rather than cut
+out of `display`, because a rule's `label` condition carries a GitHub label name and the
+sentence therefore has no separator a substring is safe to cut at. `workflow` and `chat_pin`
+are in the vocabulary and contribute no rows until their storage exists. Nothing stores a
+count: the `USED BY` column is `count(*)` over this view and the `0 routes` row is a left
+join from `model_aliases`. Read it through **`alias_reference_guard(organization_id,
+alias_id)`** from inside the transaction that deletes or renames — selecting from the view
+directly takes no lock and its answer can go stale before the next statement runs.
 
 `V001`'s `tenants`, `V002`'s `users`, `user_identities` and `tenant_members` are **gone**:
 `V006` ([#708](https://github.com/NobuData/ouroboros/issues/708)) moved their rows into

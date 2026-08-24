@@ -672,7 +672,7 @@ that roadmap's "Existing issues affected" section.
 | 113 | **Z.2** | [#195](https://github.com/NobuData/ouroboros/issues/195) | Routing management API | ouroboros-rest | M | C.3, Y.3 |
 | 114 | **AA.1** | [#200](https://github.com/NobuData/ouroboros/issues/200) | Models route, subnav & provider health strip | ouroboros-ui | M | 5.3, D.5, Z.3 |
 | 115 | **AD.4** | [#225](https://github.com/NobuData/ouroboros/issues/225) | Credential audit trail & Audit log surface | ouroboros-rest, ouroboros-ui | M | AD.2 |
-| 116 | **CG.3** | [#581](https://github.com/NobuData/ouroboros/issues/581) | Alias reference index | ouroboros-db | M | Y.2, Y.3 |
+| 116 | **CG.3** | ✅ [#581](https://github.com/NobuData/ouroboros/issues/581) | Alias reference index | ouroboros-db | M | Y.2, Y.3 |
 | 117 | **Y.5** | [#193](https://github.com/NobuData/ouroboros/issues/193) | Routing constraints in ci/db | ouroboros-db, .github | XS | 3.6, Y.4 |
 | 118 | **Z.4** | [#197](https://github.com/NobuData/ouroboros/issues/197) | Simulate endpoint & consumer contract | ouroboros-rest, ouroboros-engine | M | Z.1 |
 | 119 | **Z.5** | [#198](https://github.com/NobuData/ouroboros/issues/198) | Route stats & spend aggregation | ouroboros-rest | M | F.3, Y.4 |
