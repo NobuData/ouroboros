@@ -307,6 +307,29 @@ describe("the in-pane chrome", () => {
     expect(CODE).not.toMatch(/\.ou-subnav a\.(?:active|on)\b/);
   });
 
+  it("puts a built tab and a `soon` tab in the same box", () => {
+    // One rule for both, so the row does not change height as surfaces land and a tab that
+    // is not built yet sits on the same baseline as the one beside it. Asserted as a shared
+    // selector rather than as two matching rules, which is the thing that can drift.
+    expect(CODE).toMatch(/\.ou-subnav a,\s*\.ou-subnav__soon\s*\{/);
+  });
+
+  it("leaves the `soon` tab unhoverable, because it is inert", () => {
+    // A hover treatment on something that cannot be pressed is an invitation to press it.
+    expect(rule("\\.ou-subnav__soon")).toMatch(/cursor:\s*default/);
+    expect(CODE).not.toMatch(/\.ou-subnav__soon:hover/);
+  });
+
+  it("gives the `soon` mark the sidebar's own chip, so the two say one thing", () => {
+    // `.shell-nav__soon` is the same mark on the same surfaces: a reader who has learnt one
+    // has learnt the other, and a second design for the same admission would be drift.
+    const mark = rule("\\.ou-subnav__mark");
+
+    expect(mark).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(mark).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(mark).toMatch(/text-transform:\s*uppercase/);
+  });
+
   it("reserves the asking rim for the bar that wants a decision", () => {
     expect(rule("\\.ou-sticky-bar--asking")).toMatch(/border-color:\s*var\(--accent-line\)/);
     expect(rule("\\.ou-sticky-bar--asking")).toMatch(/box-shadow:[^;]*var\(--accent-glow\)/);

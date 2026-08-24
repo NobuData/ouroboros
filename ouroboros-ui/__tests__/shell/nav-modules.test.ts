@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { describe, expect, it } from "vitest";
 
-import { DASHBOARD_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, MODELS_PATH } from "@/app/paths";
 import { navGroup, navStatus, orderNavEntries } from "@/app/shell/nav";
 import { navRegistry } from "@/app/shell/nav-registry";
 import { INBOX_BADGE_SOURCE, SEEDED_NAV_ENTRIES } from "@/app/shell/nav-modules";
@@ -112,16 +112,18 @@ describe("the seeded entries", () => {
     }
   });
 
-  it("has exactly one built destination today: the dashboard", () => {
-    // Until the placeholder routes (#49) land, the dashboard is the only page that exists — a
-    // second live entry without a page behind it would ship a 404 in the navigation. Asserted
-    // against the constant rather than the string, so the entry and every redirect to it are
-    // the same fact (#45 moved it off `/`).
+  it("has exactly two built destinations today: the dashboard and Models", () => {
+    // A live entry is a promise that a page is behind it, so this list may only grow on the
+    // commit that builds one — a live entry without a page would ship a 404 in the product's
+    // primary navigation. Models joined it with #200 (`app/(app)/models/page.tsx`); the other
+    // eight wait for #49 or for their own roadmap issue. Asserted against the constants rather
+    // than the strings, so an entry and every redirect to it stay the same fact (#45 moved the
+    // dashboard off `/`).
     expect(
       SEEDED_NAV_ENTRIES.filter((entry) => navStatus(entry) === "live").map(
         (entry) => entry.route,
       ),
-    ).toEqual([DASHBOARD_PATH]);
+    ).toEqual([DASHBOARD_PATH, MODELS_PATH]);
   });
 
   it("explains every unbuilt entry by naming what it waits for", () => {

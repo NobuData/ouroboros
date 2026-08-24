@@ -38,6 +38,18 @@ import "./ui.css";
  * uses for the same fact — so the state is written where a screen reader finds it and the
  * stylesheet reads the same spelling.
  *
+ * ### The tab that leads nowhere yet
+ *
+ * {@link SubnavSoon} is the exception, and it is here rather than in a page because it is
+ * the *shape* of an unbuilt destination rather than any page's content. Three of mockup 06's
+ * four Models tabs point at surfaces other roadmaps own, and mockups 07, 17 and 21 will each
+ * arrive with the same problem — so a page hand-rolling the treatment would be four pages
+ * hand-rolling four slightly different versions of it, which is exactly the drift this
+ * primitive was extracted to stop. What it draws is the sidebar's own answer to the same
+ * question (`app/shell/sidebar-nav.tsx`): a `<span>` rather than an `<a>`, so the keyboard
+ * never stops on a tab it cannot activate and a screen reader announces *"Model registry,
+ * soon"* rather than offering a link to a `404`.
+ *
  * ### The sticky half
  *
  * The row sticks to the top of the scroll container it lives in and publishes its measured
@@ -92,5 +104,36 @@ export function PageSubnav({ label, tone = "accent", children, className }: Page
     <nav aria-label={label} className={cx("ou-subnav", TONE_CLASS[tone], className)} ref={ref}>
       {children}
     </nav>
+  );
+}
+
+/** What a not-yet-built tab takes. */
+export interface SubnavSoonProps {
+  /** What the tab says — a string rather than a node, because it is also the tooltip's. */
+  readonly label: string;
+  /**
+   * Why it is not reachable — which surface owns it, and when it arrives.
+   *
+   * Required, which is the whole design of this component: there is no way to render an
+   * unreachable tab here without saying what is missing, exactly as `Button`'s `reason` and
+   * `NavEntry.soonNote` are required of the two other places this product admits that
+   * something is not built (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5).
+   */
+  readonly note: string;
+}
+
+/**
+ * A tab whose surface does not exist yet: labelled, marked *soon*, and inert.
+ *
+ * @param props See {@link SubnavSoonProps}.
+ * @returns A `<span>` styled as a tab — out of the tab order, carrying its own explanation
+ *   as a tooltip, and announced with the word *soon* beside its name rather than as a link.
+ */
+export function SubnavSoon({ label, note }: SubnavSoonProps) {
+  return (
+    <span className="ou-subnav__soon" title={`${label} — ${note}`}>
+      {label}
+      <span className="ou-subnav__mark">soon</span>
+    </span>
   );
 }

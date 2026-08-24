@@ -1040,7 +1040,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AA.1 | #200 | 🟡 Open | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
+| AA.1 | #200 | 🟢 Done | ouroboros-ui: [AA.1] Models route, subnav & provider health strip | `/models` head, violet subnav, honest health chips | mvp, routing, ui, design | N (after #41, Z.3, BA-D.5) | Y | M | ouroboros-ui |
 | AA.2 | #201 | 🟡 Open | ouroboros-ui: [AA.2] Routing matrix table | 8-kind matrix: alias cells, escalation summaries, stats, selection | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | L | ouroboros-ui |
 | AA.3 | #202 | 🟡 Open | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
 | AA.4 | #203 | 🟡 Open | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
@@ -1050,7 +1050,89 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue AA.1 — ouroboros-ui: [AA.1] Models route, subnav & provider health strip
 
-> **GitHub issue:** #200 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #200 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-ui/app/models/`](../ouroboros-ui/app/models/) over
+> [`app/(app)/models/page.tsx`](../ouroboros-ui/app/%28app%29/models/page.tsx), reading
+> `GET /api/v1/routing/providers` through
+> [`app/api/routing.ts`](../ouroboros-ui/app/api/routing.ts). The sidebar's **Models** entry
+> stops being a *soon* row on the same commit, which is what actually retires #49's placeholder:
+> a route that exists and a navigation that still refuses to point at it is the same dead end
+> from the other side.
+>
+> **The strip renders four statuses, and `unknown` is separable from healthy without colour
+> vision.** Decision **M8** asks that a state nobody measured never render as green; a hue alone
+> cannot carry that, because the two palettes differ in lightness as much as in hue and a grey
+> dot beside a green one is a grey dot only to some readers. So an unknown chip differs from a
+> healthy one **three times over and not once by hue**: a ring rather than a disc, a dashed
+> boundary rather than a solid one, and the word *unknown* where a healthy chip says nothing
+> visibly. The word is `sr-only` on the healthy chip rather than absent — the mockup draws a
+> bare `Anthropic ●`, and four chips announcing *healthy* would drown the one that is not — so
+> every chip carries its state in words wherever a reader is listening rather than looking.
+>
+> **A failed check is drawn in `--err`, not the mockup's amber, and this is the ticket's one
+> deliberate divergence.** The mockup's Copilot chip reads *degraded · elevated latency* in the
+> warn treatment. `degraded` is a traffic-derived state **AB.2** (#208) introduces and no check
+> this product performs can produce; V015 defines the state the seed actually holds — `error` —
+> as *the last check failed, and `health` says how*. Drawing a failed check in the amber reserved
+> for *needs attention* would under-report every real outage on the strip, and printing the nicer
+> word would name a state the database does not have. The chip keeps the mockup's **shape** — a
+> tinted ground, a coloured boundary, the reason in the meta line — and takes the hue the data
+> earns. `--warn` is left free for AB.2 to spend on the state it introduces.
+>
+> **A latency that was not measured survives as an absence all the way to the DOM.** `latencyMs`
+> and `models` are `null` exactly when no check produced them and nothing supplies a default, so
+> `0ms` — an excellent latency for a provider nothing has ever called — appears nowhere. The
+> chip's meta is the line the **service composed**, rendered rather than re-derived: the contract
+> serves it precisely so the strip and the route inspector cannot draw two different sentences
+> from one row, and a client that recomposed would be the second sentence it exists to prevent.
+>
+> **Two chips therefore do not match the mockup, and the difference is upstream of this
+> ticket.** Mockup 06 draws `Ollama ● workstation · 3 models` and `OpenAI-compatible ● vLLM
+> local`; `chipMeta` (Z.3, `provider-health/resources.ts`) prepends the connection's **host**,
+> and Y.4's seed sets that host to `ken-station.local` and `10.0.4.20`, so the served lines are
+> `ken-station.local · 3 models · workstation` and `10.0.4.20 · vLLM local`. Z.3's own unit specs
+> use a row whose host happens to *be* `workstation`, which is why the gap was invisible until a
+> page rendered the seed. Nothing in the UI can close it honestly — the composition rule is the
+> service's — so it is recorded here for **Y.4/Z.3** to settle before AA.7's parity leg is
+> written, and the seeded display names (`Anthropic Claude`, `Ollama · workstation`) are drawn as
+> the workspace set them rather than shortened to the mockup's, because the name is what makes
+> two Ollama daemons tellable apart.
+>
+> **Save routes is disabled by a rule rather than by an attribute.** `saveRoutesReason(pending)`
+> is the whole of it, and `pending` is carried on the readings as a figure — structurally zero
+> today, because nothing on this page can change a route until AA.2 (#201) and AA.3 (#202) land.
+> A save button that is always enabled teaches nothing about whether there is anything to save;
+> one hard-coded to *disabled* teaches that the page is broken. The screen is driven through both
+> branches in its own suite, so the control enables itself when AA.3 supplies a number and
+> nothing here has to be remembered.
+>
+> **The three sibling tabs are the `PageSubnav` primitive's problem, not this page's.** Mockups
+> 06, 07, 17 and 21 all have tabs pointing at surfaces other roadmaps own, so **`SubnavSoon`**
+> joins CP.4 rather than being hand-rolled here and then hand-rolled three more times. It draws
+> the sidebar's own answer — a `<span>` rather than an `<a>`, out of the tab order, carrying the
+> issue or mockup that owns the surface as its tooltip — and its `note` is *required*, so an
+> unreachable tab cannot exist in this product without saying what is missing.
+>
+> **`Reading<T>` and `attempt()` moved to
+> [`app/api/reading.ts`](../ouroboros-ui/app/api/reading.ts)**, shared with the dashboard. The
+> rule they carry — one failed read is one degraded region, never a blank page, and *only* an
+> `ApiError` is caught so a `401`'s redirect signal keeps travelling — is the rule this page
+> needed second, and two readers deciding separately what counts as a catchable failure is how
+> one of them ends up swallowing a navigation to the login screen.
+>
+> **113 tests across seven suites**, including the seeded strip chip-for-chip, both palettes
+> rendering byte-identical markup (the palette is CSS's business, so nothing on this page picks a
+> hue in JavaScript), and the stylesheet's own agreements — that every hue is a published token,
+> that the unknown treatment's three signals are all non-colour, and that `--warn` appears
+> nowhere in the error tone.
+>
+> Deliberately **not** here: the matrix (AA.2, #201), chain editing (AA.3, #202), the inspector
+> and simulate panel (AA.4, #203), the rules and spend cards (AA.5, #204), and the guidance,
+> skeleton and read-only states (AA.6, #205) — the space they will fill carries an empty state
+> naming them rather than a placeholder table of numbers nobody computed, which would be the one
+> dishonest thing on a page built to be honest.
 
 
 - **Problem Statement:** The page frame: head with the routing promise copy,
@@ -1400,7 +1482,7 @@ Plus **4 amendments** — comments posted and the `routing` label applied on
 
 | Issue | Amendment |
 |---|---|
-| #49 | The `/models` placeholder is superseded and retired by AA.1 (#200) |
+| #49 | The `/models` placeholder is superseded and **retired** by AA.1 (#200) — landed 2026-08-24; #49's own scope note in `ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md` records it |
 | #56 | The e2e suite gains the routing leg AA.7 (#206), including the rule-toggle → simulate assertion and shell checks |
 | #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked* |
 | #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it |
@@ -1538,3 +1620,32 @@ V018's own functions rather than of a TypeScript copy of them, which is what tha
 exposed them for. Next in epic Z are **#197** ([Z.4] simulate) and **#198** ([Z.5] the stats),
 which is what the matrix's two null columns are waiting on — and AA.2 (#201), AA.3 (#202) and
 AA.5 (#204) now have the contract they were blocked by.
+
+**#200** ([AA.1] the Models route, tab set and health strip) has landed, and `/models` is a page
+in the product rather than a promise in the sidebar: the **Models** entry is a link, #49's
+placeholder for it is retired, and the routing frame AA.2–AA.6 build into is mounted in the
+shell's content pane with its tab set sticky inside the pane's own scroll. The one region drawing
+data is the strip, and it is where this ticket's arguments are: `unknown` is separable from
+healthy by a ring, a dashed boundary and a word rather than by a hue; an unmeasured latency
+survives as an absence rather than as `0ms`; and **Save routes** is disabled by a rule over a
+staged-change count rather than by an attribute, so AA.3 (#202) enables it by supplying a number.
+
+Two things it corrects are worth reading before the next AA ticket is written. The mockup's amber
+*degraded* Copilot chip is drawn in `--err` instead, because `degraded` is AB.2 (#208)'s
+traffic-derived state and the seed holds `error`, which V015 defines as *the last check failed* —
+the argument is in the issue section above, and `--warn` is left free for AB.2. And **the seeded
+strip does not match the mockup in two chips, for a reason upstream of the UI**: Z.3's `chipMeta`
+prepends the connection host, which Y.4's seed sets to `ken-station.local` and `10.0.4.20`, so
+the served lines carry an address mockup 06 does not draw. Z.3's unit specs use a row whose host
+is literally `workstation` and therefore never saw it. **Y.4/Z.3 should settle which of the two
+is wrong before AA.7 (#206) writes a parity assertion against either.**
+
+CP.4 gained a primitive on the way through: **`SubnavSoon`**, the tab whose surface is not built
+yet, because mockups 07, 17 and 21 all have the same three-tabs-point-elsewhere problem and four
+hand-rolled versions of it is the drift `PageSubnav` was extracted to stop. `Reading<T>` and
+`attempt()` moved to `app/api/reading.ts` for the same reason, now that two screens are built on
+*one failed read is one degraded region*.
+
+Next in epic AA is **#201** ([AA.2] the routing matrix), which has both the frame it mounts in
+and — since #195 — the contract it reads; its two stats columns stay em-dashes until **#198**
+([Z.5]) lands.

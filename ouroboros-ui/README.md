@@ -15,11 +15,12 @@
 > ([#716](https://github.com/NobuData/ouroboros/issues/716)) and, behind it, the
 > [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)), both
 > built from the [UI primitives](#ui-primitives)
-> ([#46](https://github.com/NobuData/ouroboros/issues/46)) —
+> ([#46](https://github.com/NobuData/ouroboros/issues/46)) and, beside it,
+> [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
-> it is labelled *soon* rather than linked.
+> those two is labelled *soon* rather than linked.
 
 ## Purpose
 
@@ -221,6 +222,8 @@ ouroboros-ui/
 │   │   ├── engine.ts        #   engine.status() — GET /engine/status
 │   │   ├── health.ts        #   readReadiness() — one of two reads not via the client
 │   │   ├── dashboard-summary.ts # …and the other: the aggregate, read conditionally
+│   │   ├── reading.ts       #   Reading<T> + attempt() — a read allowed to fail
+│   │   ├── routing.ts       #   routing.providers() — the model page's health strip
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -232,6 +235,8 @@ ouroboros-ui/
 │   │   ├── field.tsx        #   TextField · SelectField · Toggle
 │   │   ├── empty-state.tsx  #   EmptyState — a surface that is not ready
 │   │   ├── eyebrow.tsx      #   Eyebrow — the caption above a title
+│   │   ├── page-subnav.tsx  #   PageSubnav + SubnavSoon — a section's tab row
+│   │   ├── sticky-bar.tsx   #   StickyBar — the dirty-state bar, under the subnav
 │   │   ├── class-names.ts   #   cx(), the one class-list join
 │   │   └── index.ts         #   the barrel: `import { Button } from "@/app/ui"`
 │   ├── shell/               # the app shell: header, sidebar, pane, overlay layer
@@ -247,6 +252,11 @@ ouroboros-ui/
 │   │   ├── summary-poll.ts  #   the loop: 15s · 304-aware · tab-aware · backoff-aware
 │   │   ├── summary-store.tsx #  the provider at (app), and useDashboardSummary()
 │   │   └── summary-refresh.ts # "ask again now", published by the workspace switch
+│   ├── models/              # model routing's reader, decisions, components, sheet
+│   │   ├── view.ts          #   the chip treatments, the hover line, the two actions
+│   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
+│   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
+│   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
@@ -262,7 +272,8 @@ ouroboros-ui/
 ```
 
 `(app)` and `(auth)` are **route groups**: the parentheses are organisational and
-contribute nothing to the URL, so the dashboard is `/dashboard` and sign-in is `/login`.
+contribute nothing to the URL, so the dashboard is `/dashboard`, model routing is
+`/models` and sign-in is `/login`.
 `/` belongs to no module and is a redirect to the dashboard, kept so that everything
 already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
@@ -1121,6 +1132,78 @@ does not draw — empty, loading and failed — across all of them at once. What
 is [#87](https://github.com/NobuData/ouroboros/issues/87), which keeps the page fresh with the
 `ETag` poll and drives #86's freshness boundary instead of its manual retry.
 
+## Model routing
+
+`/models` ([#200](https://github.com/NobuData/ouroboros/issues/200)) is
+[`docs/mockups/06-model-routing.html`](../docs/mockups/06-model-routing.html)'s **frame**: the
+page head, the Models tab set, and the provider health strip. It renders **inside** the
+[app shell](#app-shell) and is reached from the sidebar's **Models** entry, which stopped being
+a *soon* row on the commit that built this — retiring the `/models` placeholder
+[#49](https://github.com/NobuData/ouroboros/issues/49) held for it.
+
+```
+MODELS
+Route every kind of work to the model that earns it.  [ Simulate routing ] [ Save routes ]
+Each task kind resolves to a primary model with…        ↑ #203 not built    ↑ nothing staged
+────────────────────────────────────────────────────────────────────────────────────────────
+ Routing    Model registry soon   Providers & keys soon   Spend soon      ← sticky in the pane
+ ▔▔▔▔▔▔▔ (the model purple)
+(● Anthropic Claude 42ms) (● Cursor) (● GitHub Copilot error · elevated latency)
+(● OpenAI-compatible · local vLLM  10.0.4.20 · vLLM local) (◌ Fresh connection unknown)
+```
+
+The matrix, the inspector, the rules card and the spend card are #201–#205; the space they will
+fill carries an empty state naming them. A placeholder table of invented rows would be the one
+dishonest thing on a page built to be honest — and indistinguishable, in a screenshot, from the
+real one.
+
+### The strip is the page's one claim about the outside world
+
+It is drawn from `GET /api/v1/routing/providers`
+([#196](https://github.com/NobuData/ouroboros/issues/196)) — stored snapshots a scheduler in
+`ouroboros-rest` writes on a jittered cadence. There is **no refresh control**, and that is a
+decision rather than an omission: a *check now* button would let anybody holding a session make
+the service issue outbound requests at whatever rate they can click, against a vendor's rate
+limit and signed with the workspace's own credential.
+
+Three rules keep it worth trusting, and each is a test rather than a comment:
+
+1. **`unknown` never renders as healthy.** A connection nothing has checked is a real state
+   (decision M8), and it differs from a healthy chip **three times over, none of them a hue**:
+   a ring rather than a disc, a dashed boundary rather than a solid one, and the word *unknown*.
+   Hue alone could not carry it — the palettes differ in lightness as much as in hue, and "a grey
+   dot that reads as green in a hurry" is exactly the failure the state exists to prevent.
+2. **A latency appears only where a check measured one.** `latencyMs` and `models` arrive `null`
+   when nothing produced them and nothing supplies a default, so `0ms` — an excellent latency for
+   a provider nothing has ever called — appears nowhere.
+3. **The chip's line is the service's, rendered rather than re-derived.** The contract composes
+   `meta` so that the strip and the route inspector cannot draw two different sentences from one
+   row; a client that recomposed would *be* that second sentence.
+
+Every chip carries its state in words as well as in hue. On a healthy chip the word is `sr-only`
+— the mockup draws a bare `Anthropic ●`, and four chips announcing *healthy* would drown the one
+that is not — so it is in the accessibility tree either way. Hovering any chip gives the last
+check's UTC time, which question it answered, and the reason.
+
+**A failed check is drawn in the error hue, not the mockup's amber.** The mockup's Copilot chip
+reads *degraded · elevated latency*; `degraded` is a traffic-derived state
+[#208](https://github.com/NobuData/ouroboros/issues/208) introduces and no check this product
+performs can produce. The seeded row holds `error`, which the schema defines as *the last check
+failed* — and drawing a failed check in the amber reserved for *needs attention* would
+under-report every real outage on the strip.
+
+### Save routes is disabled by a rule
+
+`saveRoutesReason(pending)` is the whole of it. A save button that is always enabled teaches
+nothing about whether there is anything to save; one hard-coded to *disabled* teaches that the
+page is broken. `pending` is zero today because nothing here can change a route until
+[#201](https://github.com/NobuData/ouroboros/issues/201) and
+[#202](https://github.com/NobuData/ouroboros/issues/202) land — and when one of them supplies a
+number, the control enables itself.
+
+Both head actions are inert through `Button`'s `reason`, so each says what is missing rather than
+sitting dead; the three sibling tabs are `SubnavSoon`, which does the same for a destination.
+
 ## The polling store
 
 The page's cards and the header's two pills all want the same freshness, and
@@ -1511,7 +1594,11 @@ The shell's own primitives — ShellHeader, SidebarNav, ContentPane, StickyBar, 
 join this set with CP.1/CP.2/CP.4
 ([#646](https://github.com/NobuData/ouroboros/issues/646)), and the isolated playground with
 theme switching is the component workshop
-([#48](https://github.com/NobuData/ouroboros/issues/48)). Chart primitives are their own
+([#48](https://github.com/NobuData/ouroboros/issues/48)). `PageSubnav` gained **`SubnavSoon`**
+with [#200](https://github.com/NobuData/ouroboros/issues/200) — the tab whose surface is not
+built yet, drawn the way the sidebar draws an unbuilt row, because mockups 06, 07, 17 and 21 all
+have tabs pointing at surfaces other roadmaps own and four hand-rolled versions of that treatment
+is the drift the primitive was extracted to stop. Chart primitives are their own
 issue ([#442](https://github.com/NobuData/ouroboros/issues/442)) and build on these.
 
 ## Design tokens
@@ -1755,6 +1842,7 @@ BetterAuth client & session store [#716](https://github.com/NobuData/ouroboros/i
 route guards & session-aware redirects [#720](https://github.com/NobuData/ouroboros/issues/720) ·
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
+model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

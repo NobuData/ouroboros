@@ -806,8 +806,13 @@
  * A tab. Styled as the subnav's descendant rather than by class because the links belong
  * to the page (route links, anchor links — `page-subnav.tsx` says why), and a bare `<a>`
  * is the whole of what the page should have to write.
+ *
+ * The `soon` tab joins the same rule rather than restating it: one box, so a built tab and
+ * an unbuilt one sit on the same baseline and the row does not change height as surfaces
+ * land.
  */
-.ou-subnav a {
+.ou-subnav a,
+.ou-subnav__soon {
   position: relative;
   padding: var(--sp-4) var(--sp-7) var(--sp-5);
   color: var(--ink-mut);
@@ -819,6 +824,34 @@
 
 .ou-subnav a:hover {
   color: var(--ink);
+}
+
+/*
+ * A tab whose surface is not built yet. It recedes — this is the one tab on the row that
+ * cannot be pressed — and it does not respond to a pointer, because a hover treatment on
+ * something inert is an invitation to click it.
+ */
+.ou-subnav__soon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+/*
+ * The mark that makes "not built yet" visible rather than leaving a tab that merely looks
+ * quiet. Deliberately the sidebar's own chip (`.shell-nav__soon`): the two say the same
+ * thing about the same surfaces, and a reader who has learnt one has learnt the other.
+ */
+.ou-subnav__mark {
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
 }
 
 /* The active tab: bright ink, and the underline. aria-current is the state — the same

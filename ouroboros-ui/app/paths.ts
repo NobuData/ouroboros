@@ -33,6 +33,18 @@ export const LOGIN_PATH = "/login";
 export const DASHBOARD_PATH = "/dashboard";
 
 /**
+ * Model routing ([#200](https://github.com/NobuData/ouroboros/issues/200)) — mockup 06.
+ *
+ * Written down here for the reason every other route in this file is: three modules have to
+ * agree about it and none of them can import the others. The sidebar's registry entry
+ * (`app/shell/nav-modules.ts`) names it as the **Models** destination, the page's own tab set
+ * links its active tab back to it (`app/models/models-screen.tsx`), and `isActiveRoute` in
+ * `app/shell/nav.ts` matches the URL against it — including everything beneath it, so the
+ * sub-surfaces the tab set names keep **Models** highlighted when they arrive.
+ */
+export const MODELS_PATH = "/models";
+
+/**
  * The query parameter carrying where a visitor was heading when they were sent to sign in.
  *
  * Added by [#716](https://github.com/NobuData/ouroboros/issues/716): a `401` routes to the

@@ -1,0 +1,96 @@
+import { render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { membership, sessionUser } from "../helpers/login";
+import { readings } from "../helpers/models";
+
+/**
+ * The routing page's route (#200).
+ *
+ * It is three lines, and this suite is about all three: the gate is asked first, what it
+ * returns is what the reader is given, and what the reader returns is what the screen draws.
+ * Everything else the page could be judged on — the chips, the tab set, the two inert
+ * actions — is covered where it is decided, which is why this file is short rather than a
+ * second copy of `models-screen.test.tsx`.
+ *
+ * Both collaborators are replaced: `requireWorkspace()` has its own suite
+ * (`__tests__/api/access.test.ts`) and so does the reader, and driving either through this
+ * route would test them a second time while testing the wiring not at all.
+ */
+
+/** What the gate answers this case with, or the signal it throws instead. */
+const requireWorkspace = vi.fn();
+
+/** What the reader answers with. */
+const readModels = vi.fn();
+
+vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
+vi.mock("@/app/models/data", () => ({ readModels: (access: unknown) => readModels(access) }));
+
+const Page = (await import("@/app/(app)/models/page")).default;
+
+/** What the gate hands back, in the seeded world. */
+const ACCESS = {
+  session: { user: sessionUser(), memberships: [membership()], tenantSuggestion: null },
+  membership: membership(),
+};
+
+beforeEach(() => {
+  requireWorkspace.mockReset().mockResolvedValue(ACCESS);
+  readModels.mockReset().mockResolvedValue(readings());
+});
+
+describe("the routing route", () => {
+  it("asks the gate before it reads anything", async () => {
+    // "Unauthenticated `(app)` routes redirect to the login screen" is true because of this
+    // call, not because of a check in the layout — see `app/(app)/layout.tsx` for why.
+    render(await Page());
+
+    expect(requireWorkspace).toHaveBeenCalledOnce();
+  });
+
+  it("hands the reader exactly what the gate resolved, rather than resolving it again", async () => {
+    // The page's authorization and the page's data are one decision. The reader dereferences
+    // nothing off it, which is the point: taking it is what makes the gate unskippable.
+    await Page();
+
+    expect(readModels).toHaveBeenCalledExactlyOnceWith(ACCESS);
+  });
+
+  it("draws what the reader returned", async () => {
+    render(await Page());
+
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "Route every kind of work",
+    );
+    expect(screen.getByRole("list", { name: "Provider health" })).toBeInTheDocument();
+  });
+
+  it("reads nothing at all when the gate redirects instead of returning", async () => {
+    // `redirect()` signals by throwing, so a request with no session or no chosen workspace
+    // never reaches the read — which is what keeps a signed-out visitor from costing a call
+    // to a service that would refuse it.
+    requireWorkspace.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(Page()).rejects.toThrow("NEXT_REDIRECT /login");
+    expect(readModels).not.toHaveBeenCalled();
+  });
+
+  it("lets a redirect raised during the read through, rather than drawing around it", async () => {
+    // A session that expired between the gate and the call still reaches the login screen.
+    readModels.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(Page()).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+
+  it("renders the frame even when the one read it makes failed", async () => {
+    // The route has no freshness boundary and needs none: the strip degrades in place, and
+    // the page around it is not built from that read.
+    readModels.mockResolvedValue(readings({ providers: { ok: false, reason: "Down." } }));
+
+    render(await Page());
+
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Down.");
+  });
+});

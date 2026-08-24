@@ -52,15 +52,21 @@ import "server-only";
  * `catch` wide enough to hold it would swallow the navigation to the login screen and draw
  * a dashboard captioned with the framework's internal message. Everything that is not the
  * service refusing a request keeps travelling.
+ *
+ * It was this module's own function until
+ * [#200](https://github.com/NobuData/ouroboros/issues/200), which is when a second screen
+ * needed the same rule; it lives in `app/api/reading.ts` now, with the argument above kept
+ * beside it. Two readers deciding separately what counts as a catchable failure is how one
+ * of them ends up swallowing a redirect.
  */
 
 import type { Workspace } from "@/app/api/access";
 import { dashboard } from "@/app/api/dashboard";
 import { engine } from "@/app/api/engine";
-import { isApiError } from "@/app/api/errors";
 import { readReadiness } from "@/app/api/health";
+import { attempt } from "@/app/api/reading";
 
-import type { DashboardReadings, Reading } from "./view";
+import type { DashboardReadings } from "./view";
 
 /**
  * Read the dashboard.
@@ -90,22 +96,4 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
     readiness,
     engine: engineStatus,
   };
-}
-
-/**
- * Run one read, keeping its failure as a value instead of as a throw.
- *
- * @param read The call to make.
- * @returns What it returned, or the message the service gave for refusing. That message is
- *   safe to render: every one in the contract's envelope is written for a person and names
- *   nothing about the service's internals (`app/api/errors.ts`).
- * @throws Anything that is not an `ApiError`, unchanged — see this file's own note.
- */
-async function attempt<T>(read: () => Promise<T>): Promise<Reading<T>> {
-  try {
-    return { ok: true, value: await read() };
-  } catch (error) {
-    if (!isApiError(error)) throw error;
-    return { ok: false, reason: error.message };
-  }
 }

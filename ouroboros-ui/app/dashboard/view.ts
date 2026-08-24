@@ -27,6 +27,7 @@ import type {
 import type { EngineStatus } from "@/app/api/engine";
 import type { DependencyStatus, HealthReport } from "@/app/api/health";
 import type { Membership } from "@/app/api/membership";
+import type { Reading } from "@/app/api/reading";
 import type { SessionUser } from "@/app/api/identity";
 import {
   compactNumber,
@@ -43,12 +44,15 @@ import {
  * the enablement counts beside it. Making that explicit in the type is what stops a card
  * being written to treat *absent* and *zero* as the same thing, which is the specific way
  * this screen could lie.
+ *
+ * **It is `app/api/reading.ts`'s since
+ * [#200](https://github.com/NobuData/ouroboros/issues/200)**, because the routing page is
+ * built on the same rule and a second copy of a type this load-bearing is a second copy that
+ * can drift. It is re-exported here rather than moved out from under its consumers: every
+ * card on this screen already imports it from this module, and the prose above is the
+ * argument for *this* screen having it.
  */
-export type Reading<T> =
-  /** The read succeeded. */
-  | { readonly ok: true; readonly value: T }
-  /** It failed, with the message the service gave for it. */
-  | { readonly ok: false; readonly reason: string };
+export type { Reading } from "@/app/api/reading";
 
 /**
  * Everything the dashboard was able to read, and why it could not read the rest.
