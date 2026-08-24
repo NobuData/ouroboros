@@ -263,6 +263,60 @@ html:not([data-theme="light"]) img.logo-light { display: none; }
 }
 .section-head p { color: var(--mut); margin-top: 16px; font-size: 17px; }
 
+/* ---------- focus band (positioning) ---------- */
+
+/* sits directly under the marquee and shares its ground, so the two
+   read as one slab; the marquee supplies the top rule. */
+.focus {
+  position: relative; overflow: hidden;
+  padding: 84px 0;
+  background: var(--bg0);
+  border-bottom: 1px solid var(--border);
+}
+.focus::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(760px 340px at 14% 0%, var(--glow-soft), transparent 70%);
+}
+.focus-grid {
+  position: relative;
+  display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 56px; align-items: center;
+}
+@media (max-width: 940px) { .focus-grid { grid-template-columns: 1fr; gap: 36px; } }
+
+.focus-copy .eyebrow { display: block; margin-bottom: 14px; }
+.focus-copy h2 {
+  font-family: var(--f-disp), sans-serif; font-weight: 600;
+  font-size: clamp(27px, 3.7vw, 41px); line-height: 1.14; text-wrap: balance;
+  color: var(--mut);
+}
+.focus-copy h2 em { color: var(--ink); font-style: normal; }
+.focus-copy p { color: var(--mut); margin-top: 18px; font-size: 17px; max-width: 58ch; }
+.focus-copy p.focus-kicker {
+  margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--border);
+  color: var(--ink-dim); font-size: 18px;
+}
+.focus-kicker strong { color: var(--accent); font-weight: 600; }
+
+.focus-spec {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 6px 24px;
+}
+.focus-spec > div {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 18px; padding: 16px 0; border-bottom: 1px solid var(--border);
+}
+.focus-spec > div:last-child { border-bottom: none; }
+.focus-spec .k {
+  font-family: var(--f-mono), monospace; font-size: 11.5px; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--faint); flex: none;
+}
+.focus-spec .v {
+  font-family: var(--f-disp), sans-serif; font-size: 17px; font-weight: 600;
+  color: var(--ink); text-align: right;
+}
+.focus-spec > div:last-child .v { color: var(--accent); }
+
 /* ---------- the loop ring ---------- */
 
 .loop-grid {

@@ -184,6 +184,13 @@ const DIVES = [
   },
 ];
 
+const SPEC = [
+  { k: "you configure", v: "nothing" },
+  { k: "you install", v: "one CLI tool" },
+  { k: "you write", v: "the ticket" },
+  { k: "you get", v: "what’s written, done" },
+];
+
 const MARQUEE = "PULL → SIZE → PLAN → CODE → BUILD → TEST → VERIFY → MERGE → ";
 
 const LIGHT_LOGO = {
@@ -270,6 +277,42 @@ export default function Home() {
             {seq}<b>{"↺ "}</b>{seq}<b>{"↺ "}</b>
           </div>
         </div>
+
+        {/* positioning */}
+        <section className="focus" id="focus">
+          <div className="wrap">
+            <div className="focus-grid">
+              <div className="focus-copy reveal">
+                <span className="eyebrow">What Ouroboros is</span>
+                <h2>
+                  Other build systems try to be everything for everyone.{" "}
+                  <em>Ouroboros knows what it is.</em>
+                </h2>
+                <p>
+                  Point it at a unit of work in your ticket management system, and let
+                  Ouroboros do the rest. No guess work: what&rsquo;s written will be done.
+                  All out of the box, zero configuration.
+                </p>
+                <p>
+                  And we provide you tools to improve your tickets, create roadmaps, and
+                  so much more.
+                </p>
+                <p className="focus-kicker">
+                  The only thing you add to your SDLC is one CLI tool.{" "}
+                  <strong>That&rsquo;s all.</strong>
+                </p>
+              </div>
+              <dl className="focus-spec reveal">
+                {SPEC.map((s) => (
+                  <div key={s.k}>
+                    <dt className="k">{s.k}</dt>
+                    <dd className="v">{s.v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        </section>
 
         {/* the loop */}
         <section className="section" id="loop">
