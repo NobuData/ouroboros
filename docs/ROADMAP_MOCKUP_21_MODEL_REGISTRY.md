@@ -256,7 +256,7 @@ chips: **XS · S · M · L**.
 | CG.1 | #579 | 🟢 Done | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
 | CG.2 | #580 | 🟢 Done | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
 | CG.3 | #581 | 🟢 Done | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
-| CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds unbound gpt5-experiments; second-opinion arrives with Y.4), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
+| CG.4 | #582 | 🟢 Done | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds unbound gpt5-experiments; second-opinion arrives with Y.4), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
 | CG.5 | #583 | 🟡 Open | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue CG.1 — ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions
@@ -543,7 +543,68 @@ delete(coder-max) ─▶ 409 naming the four   ·   delete(gpt5-experiments) ─
 
 ### Issue CG.4 — ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity
 
-> **GitHub issue:** #582 · **Status:** 🟡 Open · **Parent epic:** #575
+> **GitHub issue:** #582 · **Status:** 🟢 Done · **Parent epic:** #575
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-db/migrations/V024__resolution_snapshots.sql`](../ouroboros-db/migrations/V024__resolution_snapshots.sql)
+> — the persisted-snapshot table decision R9 needs, its shape CHECKed by three `immutable`
+> validators, append-only, indexed for the chain card's read — and
+> [`R__dev_seed_routing.sql`](../ouroboros-db/migrations/R__dev_seed_routing.sql) extended
+> in place: the eighth alias, `params`/`restrictions` on all eight, the one `model_prices`
+> override, and run #482's snapshot. Asserted in
+> [`tests/seed.sql`](../ouroboros-db/tests/seed.sql) (the content, after two `migrate`
+> passes — which *is* the idempotency criterion), in
+> [`tests/seed.test.sh`](../ouroboros-db/tests/seed.test.sh) (the file: guarded,
+> deterministic, and holding none of mockup 21's rendered strings), and in a `V024` section
+> of [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql).
+>
+> **One seed, not two — and that meant the routing seed's own header changed its mind.** The
+> Y.4 amendment below says the registry's superset lands *in* `R__dev_seed_routing.sql`, and
+> it does: the eight aliases are one insert (the unbound one through a `left join` that also
+> skips a bound row whose connection has gone, rather than inserting it unbound and enabled
+> into a CHECK), the chains are the ones mockup 06 draws, and `Used by` is V023's view over
+> them. Y.4's header had argued `params` must stay `{}` because `thinking: max` on
+> `coder-max` would make the effort ≥ L rule "a no-op that appears to work"; #585's chip
+> derivation makes that wrong in a visible way — the chip is the alias's own claim, the
+> rule's params are *policy* merged over it at resolution — and `tests/seed.sql` now asserts
+> the merge keeps the alias's `token_budget`. The header says so.
+>
+> **The snapshot table is #589's contract, landed here because a fixture needs a table.**
+> `resolution_snapshots` is the V015/V022 move: the schema arrives with the migration that
+> first needs a row in it, and the service ticket inherits it. What #589 finds is its own
+> nouns as columns — the run as a cascading foreign key held to the snapshot's workspace by
+> a trigger on V008's precedent (a transcript can neither outlive its run nor be filed under
+> another workspace; a composite key would have put a second index on `runs`, which
+> `constraints.sql` showed the planner taking over V008's own partial indexes), task kind
+> and route tag *by name*, `outcome` held to the chain, and per hop the provider as the
+> health snapshot then saw it, the masked key suffix, Z.1's code and sentence and a timing,
+> inside a `shape_version`-stamped jsonb whose grammar is a CHECK — and no read path at all.
+> Run #482 is the dashboard seed's run, found by issue number; the stored chain is all three
+> hops of `implement-primary` walked the way `resolve()` walks them, so the card's one hop
+> and the run console's dropped Copilot hop come out of one row. Two literals are the
+> fixture's own and argued in the seed: `42` (a stored measurement, the same one #221 gave
+> the Anthropic connection) and `Xq4A` (a suffix the sealed envelope cannot yield; CHECKed to
+> a shape no key fits, and counted exactly once by `seed.test.sh`).
+>
+> **Three of the issue's figures are layouts, and the seeds do not reproduce them.**
+> *Prices*: the bundled catalog prices `claude-fable-5` at `$10 · $50` and `claude-sonnet-5`
+> at `$2 · $10`, not the `$15 · $75` and `$3 · $15` the issue quotes; CG.2 settled that the
+> catalog is the truth source, and an override to match the drawing would be a fabricated
+> price (M7/P8). *Used by*: the counts are computed from mockup 06's chains — `coder-std` 4,
+> `sizer` 3, `local-docs` 3, `local-free` 2 — where mockup 21 reads 3, 1, 2, 1 (and the
+> issue's own table reads 2, 1, 0 for the last three, disagreeing with the drawing as well);
+> R5 says the column is computed, so the routing matrix is the truth and mockup 21's four
+> figures should be amended to it. The four the ticket names are the drawing's: `coder-max`
+> 4, `coder-fallback` 2, `second-opinion` 1 (its single reference *is* the security-label
+> rule) and `gpt5-experiments` 0. *Health*: `⚠ degraded` is #588's derivation from the
+> Copilot connection #221 already seeds in `error` with `elevated latency`; nothing here
+> stores the word, and `seed.test.sh` asserts the seed does not.
+>
+> **What is deferred, and to whom.** The read endpoint, its OpenAPI shape and the executor's
+> write are #589's and #235's; the chips, the health cell and the price cell on the page are
+> #588's derivations over these rows; the `shape_version` CHECK admits `1` until a migration
+> widens it together with the validators; and CG.5 (#583) inherits the `V024` section's
+> named refusals for its ci/db probe list.
 
 - **Problem Statement:** Design review and e2e need the mockup's exact
   registry state — which is a superset of Y.4's six aliases — plus pricing
