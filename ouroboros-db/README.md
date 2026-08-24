@@ -99,6 +99,22 @@
 > the text can never drift from what the rule does. Both predicate columns are **domains**
 > rather than table CHECKs, which is what puts the grammar's refusal *before* the
 > derivation runs.
+> `V019` ([#579](https://github.com/NobuData/ouroboros/issues/579)) opens the **model
+> registry's management surface** by growing `V015`'s `model_aliases` rather than forking it
+> — the enable switch, the **unbound** binding, and params that cannot lie. Three things
+> arrive together and each is a rule the schema now holds rather than a service promising
+> it: `enabled` is mockup 21's `On` switch and is neither provider health nor a delete;
+> `provider_connection_id` becomes **nullable**, where null is an alias created ahead of its
+> key; and a CHECK makes those two inseparable — `provider_connection_id is not null or
+> enabled = false`, so an unbound alias can never be switched on and no service path can
+> race past it. `params` stops being free-form and becomes a **closed vocabulary**
+> (`thinking`, `token_budget`, `temperature`, `max_output`, `context_clamp`), joined by a
+> `restrictions` document carrying the two registry-policy flags, because mockup 21's chips
+> are *derived from* those documents and a derivation over free-form jsonb either drops what
+> it cannot read or prints it raw. What this layer deliberately does **not** do is decide
+> whether a well-formed param means anything for the bound model: that reads the adapter's
+> schema and `provider_models`, neither of which a CHECK may look at, and it is CH.2's
+> ([#585](https://github.com/NobuData/ouroboros/issues/585)).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -864,6 +880,8 @@ ouroboros-db/
 │   ├── V017__provider_extensions_model_catalog.sql
 │   │                                 # the provider cards' columns + provider_models — #221
 │   ├── V018__escalation_rules.sql    # escalation_rules — structured predicates, derived display — #191
+│   ├── V019__alias_lifecycle_binding_params.sql
+│   │                                 # the alias switch, the unbound binding, structured params — #579
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
@@ -914,7 +932,7 @@ outside this module alters it.
 | `workspace_settings` | `V011` | Org-scoped typed product settings — today the auto-merge switch, the dashboard's only write | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
 | `github_issues` | `V014` | The backlog as Ouroboros sees it — one row per mirrored GitHub issue, behind mockup 03's table and detail panel. **A cache, not a fork** (decision **K3**): GitHub owns every column but `sizing_status` | `(github_repo_id, number)` unique, which is also the sync's upsert key; `state` is `open\|closed` and `sizing_status` one of `unsized\|estimating\|sized\|needs_human`, defaulting to `unsized`; `labels` must be a JSON array of at most 100 non-empty **names** — GitHub's, not ours; `gh_url` must be `https` with a host, because it becomes an `href`; `gh_updated_at` cannot precede `gh_created_at`; the issue's repository must belong to the issue's organization |
 | `provider_connections` | `V015`, cards' columns `V017` | Where a workspace's model providers are, and the sealed credential for the ones that need one — mockup 06's `.phealth` strip, and the shared foundation mockup 07 manages (decision **M2**). Since `V017` it also carries what a card *shows*: `monthly_cap_cents`, `added_by`, `last_used_at`, `capability_note` and the `enabled` switch | `kind` is one of `anthropic\|openai_compatible\|ollama\|copilot\|cursor\|custom` and `status` one of `active\|paused\|error\|unknown`, defaulting to `unknown` because a connection nothing has checked is genuinely unknown (decision **M8**); `credentials_encrypted` is **envelope-only** — an `ouro.v1.…` value or null, so a plaintext key cannot be stored by any writer — and null is legitimate, because a local provider needs none; `base_url` is `http`/`https` and required for `ollama` and `openai_compatible`, which have no public endpoint; `health` must be an object, may only carry content once `last_checked_at` exists, and a `latency_ms` must be a non-negative number — there is deliberately no defaulted `0ms`; `monthly_cap_cents` is non-negative and **nullable**, where null is *no cap* (the mockup's em-dash) and zero is the real instruction *spend nothing*; `added_by` references `"user"` and **sets null**, because deleting the person who added a provider must not delete the provider; `enabled` is `not null default true` and is **not** `status` — the switch is what a person decided, the status is what the last check measured, and a card draws both |
-| `model_aliases` | `V015` | The names a workspace's routes may use, and what each resolves to — the shared foundation mockup 21 will manage | `alias` unique **per organization** and constrained to lower-case kebab, so uniqueness cannot be defeated by capitalisation; `model_id` is the raw provider model string and the **only** place one lives (decision **M1**); `params` must be an object; the connection is reached through a **composite** foreign key on `(organization_id, provider_connection_id)`, which is what holds an alias and its connection to one workspace, and it **restricts** on delete, so a provider aliases depend on cannot be removed out from under the routes that reach it |
+| `model_aliases` | `V015`, registry columns `V019` | The names a workspace's routes may use, and what each resolves to — and, since `V019`, the surface mockup 21 manages: the `enabled` switch, the unbound binding, `params`, `restrictions`, `notes` and `updated_by` | `alias` unique **per organization** and constrained to lower-case kebab, so uniqueness cannot be defeated by capitalisation; `model_id` is the raw provider model string and the **only** place one lives (decision **M1**); the connection is reached through a **composite** foreign key on `(organization_id, provider_connection_id)`, which is what holds an alias and its connection to one workspace, and it **restricts** on delete, so a provider aliases depend on cannot be removed out from under the routes that reach it. Since `V019` that binding is **nullable** — null is *unbound*, an alias created ahead of its key, admitted by the key's `MATCH SIMPLE` rather than by any change to it — and `enabled` is `not null default true` and **not** provider health: an **unbound alias can never be enabled**, by CHECK, so no service path can race past it and creating one without saying `enabled = false` is refused rather than corrected. `params` is a closed vocabulary — `thinking` (`off\|std\|max`), `token_budget`, `max_output` and `context_clamp` (whole tokens, 1 to 10000000) and `temperature` (0 to 2) — and `restrictions` a two-flag one (`review_vote_only`, `batch_ok`, boolean), because the table's chips are derived from both and a key nothing derives is a param that renders nowhere; whether a well-formed param *means* anything for the bound model is CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585)). `notes` is non-blank or absent; `updated_by` references `"user"` and **sets null**, because deleting the person who last edited an alias must not delete the alias |
 | `provider_models` | `V017` | The models a connection has, as discovery reported them — the cards' chips and Ollama pull-list, mockup 21's registry, and what Y.1's aliases are validated against (decision **P6**) | `(provider_connection_id, model_id)` is unique, which is what makes discovery an **upsert** rather than a duplication; `display` is required, because a chip with no text is a chip nobody can click; `size_bytes` is positive or null — only a locally-pulled model has one, and null rather than zero is how *no size* is said; `meta` must be an object, and carries `context_tokens` under the key `model_prices.meta` already uses; cascades from the connection, which is deliberately its **only** tenancy — a discovered model is a fact about a connection, and every read enters through one |
 | `task_kinds` | `V016` | The kinds of work a route can be written for — mockup 06's `8 task kinds`, and the vocabulary the WF stage catalog ([#145](https://github.com/NobuData/ouroboros/issues/145)), the estimator and the DSL's `route.task()` all read rather than each hardcode (decision **M3**) | `name` unique **per workspace** and lower-case kebab, so uniqueness cannot be defeated by capitalisation; `description` is required, because it is the matrix line that tells one row from its neighbour; `sort_order` is unique per workspace and **deferrable**, so a drag-reorder is plain SQL — and deliberately **not** dense, because nothing reads those numbers |
 | `routes` | `V016` | One task kind's route: the owner of the ordered alias chain and of mockup 06's policy triple — **Allow fallback to local models**, the floor, and **Max cost per run** (decision **M4**) | **Exactly one route per task kind**, as a unique key rather than as application code, so resolution's *"the route of this kind"* has one answer; `tag` unique per workspace and its own column rather than derived, because the mockup's tags are not mechanical (`test-gen` → `testgen-primary`); `max_cost_cents_per_run` is **integer cents** — `$2.50` is `250`, never a float; `floor_hop_index` is null-permitting, at least 1 by CHECK and never past the end of the chain, which is `route_chain_intact()`; `updated_by` **sets null** rather than cascading, because deleting the person who last saved a route must not delete the route |
@@ -946,7 +964,21 @@ foreign key would refuse configurations that are valid during that gap. It tells
 models), and becomes enforcement the day discovery covers every adapter, by raising instead
 of warning. `ci/db` greps the `constraints.sql` transcript for both branches, because
 nothing in SQL can catch a warning and a suite that had lost the trigger would be exactly
-as green.
+as green. `V019` amends it in one place: an **unbound** alias returns before either branch,
+because there is no connection to have discovered anything and the gap message would
+otherwise name one that does not exist.
+
+Two more **functions**, `V019`'s, and they are the vocabularies themselves rather than
+anything a caller has to remember.
+**`ouroboros.model_alias_params_valid(params)`** and
+**`ouroboros.model_alias_restrictions_valid(restrictions)`** answer whether a document is
+inside the registry's closed key set with every value in range. `immutable`, table-free and
+**total** — a document that is not an object is answered `false` rather than raised on — so
+each is callable from a CHECK, and so `ouroboros-rest` can validate a payload against the
+same definition the database will enforce instead of restating it. They are *shape* only,
+which is the split decision **R3** draws: whether `{"thinking": "max"}` means anything for
+the model an alias is bound to needs the adapter's schema and `provider_models`, and is
+CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585)).
 
 One **constraint trigger function**, `V016`'s. **`ouroboros.route_chain_intact()`** holds
 the two rules that are properties of a *chain* rather than of a row — a route's hop

@@ -824,11 +824,14 @@ export interface ProviderConnectionsTable {
 
 /**
  * `ouroboros.model_aliases` — the names a workspace's routes may use (V015,
- * [#189](https://github.com/NobuData/ouroboros/issues/189)).
+ * [#189](https://github.com/NobuData/ouroboros/issues/189)), extended into mockup 21's
+ * management surface by V019 ([#579](https://github.com/NobuData/ouroboros/issues/579),
+ * decision **R1** — extended, never forked).
  *
  * The shared foundation mockup 21 (*Model registry*) will build its management UI on —
  * decision **M2** again, and the same division: this service resolves aliases and lists
- * them, and creates none.
+ * them, and creates none. The write surface over the four columns V019 added is CH.1's
+ * ([#584](https://github.com/NobuData/ouroboros/issues/584)).
  *
  * **{@link ModelAliasesTable.model_id} is the only place in this schema a raw provider
  * model string lives** — roadmap decision **M1**. Y.2's routes and hops, Y.3's escalation
@@ -848,25 +851,79 @@ export interface ModelAliasesTable {
    */
   alias: string;
   /**
-   * The connection this alias resolves on.
+   * The connection this alias resolves on, or `null` for the **unbound** state.
    *
    * Held to the *same workspace* as `organization_id` by a composite foreign key rather
    * than by a trigger — V015 creates both tables, so it can declare the unique key that
    * makes the rule referential. An alias reaching another workspace's connection would
    * resolve onto that workspace's credential.
+   *
+   * **Nullable since V019** ([#579](https://github.com/NobuData/ouroboros/issues/579),
+   * decision **R2**): mockup 21's `gpt5-experiments` is a name created ahead of its key,
+   * with a {@link ModelAliasesTable.model_id} and no provider to reach it on. The composite
+   * key is `MATCH SIMPLE`, so a row with a null binding is not checked against it rather
+   * than being a dangling reference — and such a row depends on no connection, so it blocks
+   * no provider deletion.
+   *
+   * Every statement in `registry.repository.ts` reads this through an `innerJoin` or an
+   * equality, both of which drop a null: an unbound alias resolves to nothing, which is
+   * what it is.
    */
-  provider_connection_id: string;
+  provider_connection_id: string | null;
   /** The raw provider model string, and the only one in this schema (decision M1). Unfolded. */
   model_id: string;
+  /**
+   * Mockup 21's `On` switch — may routing use this alias right now (V019,
+   * [#579](https://github.com/NobuData/ouroboros/issues/579)).
+   *
+   * **Not provider health** ({@link ProviderConnectionsTable.status}, decision **M8**) and
+   * **not the provider's own switch** ({@link ProviderConnectionsTable.enabled}): those are
+   * about a connection, this is about one name on it. Switching an alias off leaves every
+   * route and workflow reference intact; deleting it does not, which is why the switch
+   * exists.
+   *
+   * `Generated` because V019 defaults it to `true`. An **unbound** alias must therefore say
+   * `enabled: false` explicitly — `model_aliases_unbound_disabled` refuses the row
+   * otherwise, because enabling one would let resolution select a binding that resolves to
+   * nothing.
+   */
+  enabled: Generated<boolean>;
   /**
    * Per-alias invocation defaults — the inspector's *"(max thinking)"*, a pinned
    * temperature.
    *
-   * `Generated` for its `default '{}'::jsonb`. Opaque here, exactly as
-   * {@link ModelPricesTable.meta} is: giving it a shape is AB.1's, when there is an
-   * invocation path to merge it into.
+   * `Generated` for its `default '{}'::jsonb`. Opaque here even though V019 closed the
+   * vocabulary at the database — `thinking` (`off`/`std`/`max`), `token_budget`,
+   * `max_output`, `context_clamp` and `temperature`, and nothing else — because giving it a
+   * shape here is CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585)), where
+   * the adapter's own param schema decides which of those keys the bound model can honour.
    */
   params: Generated<Record<string, unknown>>;
+  /**
+   * What this workspace allows this alias to be used for — `review_vote_only` and
+   * `batch_ok`, mockup 21's *review vote only* and *batch ok* chips (V019,
+   * [#579](https://github.com/NobuData/ouroboros/issues/579)).
+   *
+   * Registry **policy** rather than provider capability, which is why it is not
+   * {@link ModelAliasesTable.params}: a param is merged into a request body and a
+   * restriction never leaves this product. `Generated` for its `default '{}'::jsonb`.
+   */
+  restrictions: Generated<Record<string, unknown>>;
+  /**
+   * An operator's prose about why this alias exists — *"dev key, do not point routes at
+   * this"*. Null is the ordinary state; a blank string is refused by the schema.
+   */
+  notes: string | null;
+  /**
+   * Who last wrote this row — half of the revision record CH.1
+   * ([#584](https://github.com/NobuData/ouroboros/issues/584)) emits; the other half is
+   * {@link ModelAliasesTable.updated_at}, which V015's touch trigger moves.
+   *
+   * References `"user"."id"` and **sets null** rather than cascading, exactly as
+   * {@link ProviderConnectionsTable.added_by} does: deleting the person who last edited an
+   * alias must not delete the alias.
+   */
+  updated_by: string | null;
   created_at: Stamped;
   updated_at: Stamped;
 }
@@ -1149,7 +1206,11 @@ export const TABLE_COLUMNS = {
     "alias",
     "provider_connection_id",
     "model_id",
+    "enabled",
     "params",
+    "restrictions",
+    "notes",
+    "updated_by",
     "created_at",
     "updated_at",
   ],
