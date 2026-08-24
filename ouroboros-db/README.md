@@ -705,6 +705,21 @@ A passing run prints one line; a failure names the rule and exits non-zero, whic
 makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
 into `ci/db`, below. A migration that adds a rule adds its assertion in the same change.
 
+`constraints.sql`'s last section belongs to no migration. Every assertion above it is
+behavioural — a write the schema must refuse, attempted, and refused — and a behavioural
+probe has one failure mode nothing can see from the outside: it can go **vacuous**, because
+it depends on a fixture, and a fixture is a live thing that a later ticket can rename or
+delete out from under it. So [#193](https://github.com/NobuData/ouroboros/issues/193)
+enumerates the invariants routing resolution ([#194](https://github.com/NobuData/ouroboros/issues/194))
+is *written against* rather than re-checks — hop ordering and density, one route per task
+kind, the two `restrict` foreign keys, the rule `then` and `when` grammars, the provider
+vocabularies, the floor-index bound — and asks the catalogue for each of them by name. It
+asserts the **shape** where the shape is the rule: a foreign key is checked for `restrict`,
+because a relaxation to `cascade` leaves the name exactly where it was. It deliberately does
+not assert any rule's *body* — a CHECK's expression, a trigger function's source — because
+those are legitimately rewritten, and a test that pins the wording of a rule fails on the
+refactor rather than on the regression.
+
 Both are **one session inside one transaction**, which is what
 [Proving the guard is a guard](#proving-the-guard-is-a-guard) exists for: a rule about what
 two concurrent writers may do to each other cannot be asserted by one of them.
@@ -718,16 +733,28 @@ outside. The only way to tell them apart is to break a rule on purpose and check
 right probe goes red for the right reason.
 
 [`tests/verify-constraint-probes.sh`](tests/verify-constraint-probes.sh) is that check for
-the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)) and for
-the provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)). It drops one
-rule at a time — the `runs.status` and `queue_items.effort` vocabularies, the terminal-run
-rule, the queue's position and issue keys, the `workspace_settings` primary key; the
-monthly cap's floor, the discovered catalog's uniqueness, the `enabled` switch's `not null`
-and the health vocabulary beside it, the `added_by` reference — and rewrites the two
-expressions `token_usage_daily` computes its sums from, since that bullet is arithmetic
-rather than a constraint and no drop can falsify it. For each, it requires the suite to
+the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)), the
+provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)) and the routing
+invariants ([#193](https://github.com/NobuData/ouroboros/issues/193)). It drops one rule at
+a time — the `runs.status` and `queue_items.effort` vocabularies, the terminal-run rule, the
+queue's position and issue keys, the `workspace_settings` primary key; the monthly cap's
+floor, the discovered catalog's uniqueness, the `enabled` switch's `not null` and the health
+vocabulary beside it, the `added_by` reference; the hop position key, the
+one-route-per-task-kind key, the rule `then` grammar and the provider `kind` vocabulary —
+and rewrites the expressions a rule lives in where no drop can falsify it: the two
+`token_usage_daily` computes its sums from, and the two tests inside `route_chain_intact()`
+that hold a chain dense from 1 and its floor inside it. For each, it requires the suite to
 fail **and** to name the assertion that caught it: a bare non-zero status would also be
 produced by a mutation that broke on its own statement.
+
+Two of the routing mutations are *relaxations* rather than drops, and they are the ones
+worth understanding. `route_hops_alias_fk` and `model_aliases_provider_fk` are re-added as
+`on delete cascade`, because `restrict` → `cascade` is the refactor that really happens and
+it leaves the constraint's name exactly where it was. Both fail **open**: the delete succeeds
+and takes the dependent rows with it, so a provider removed on *Providers & keys* would empty
+chains drawn on *Model routing*, and an alias retired in the model registry would shorten
+every chain that named it — past the floor those chains were written against. That is the
+class of regression a green suite cannot see, which is why it is probed rather than trusted.
 
 ```bash
 PGPASSWORD=ouroboros ouroboros-db/tests/verify-constraint-probes.sh
@@ -842,7 +869,7 @@ before a database is waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
-| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped | yes (copies of its own) |
+| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing included ([#193](https://github.com/NobuData/ouroboros/issues/193)) | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
@@ -1099,7 +1126,7 @@ ouroboros-db/
     ├── betterauth-schema.test.sh     # the drift check's contract, without a database — #710
     ├── price-catalog.test.sh         # the price transform, its provenance and --check — #580
     ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
-    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69
+    ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69, #221, #193
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```
