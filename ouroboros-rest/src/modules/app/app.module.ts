@@ -17,6 +17,7 @@ import { ProviderHealthModule } from "../provider-health/provider-health.module"
 import { ProviderConnectionsModule } from "../provider-connections/provider-connections.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
+import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
@@ -126,6 +127,13 @@ import { AppService } from "./app.service";
  * [#703](https://github.com/NobuData/ouroboros/issues/703) are what move people over and
  * delete it.
  *
+ * `RoutingModule` ([#194](https://github.com/NobuData/ouroboros/issues/194)) follows them and
+ * is another entry with no controller of its own — it contributes one injectable,
+ * `ResolutionService`, and the HTTP surfaces over it are Z.2's (#195) and Z.4's (#197) to add.
+ * Its position is after `ProviderHealthModule` for a reason that is not about guards: it
+ * imports that module, because decision **M6** says resolution consumes health *snapshots* as
+ * pure inputs rather than checking anything itself, and the import is where that is visible.
+ *
  * `InternalModule` ([#224](https://github.com/NobuData/ouroboros/issues/224)) is last, and
  * its position is the only one it could have. It registers a global guard, and Nest runs
  * global guards in the order their modules are initialised — so being listed after
@@ -189,6 +197,7 @@ export class AppModule {
         ProviderHealthModule,
         ProvidersModule,
         ProviderConnectionsModule,
+        RoutingModule,
         InternalModule,
       ],
     };

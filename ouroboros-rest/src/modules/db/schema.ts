@@ -1112,6 +1112,270 @@ export const MODEL_ALIAS_RESTRICTION_KEYS = [
 ] as const satisfies readonly ModelAliasRestrictionKey[];
 
 /**
+ * `ouroboros.task_kinds` — the eight rows of mockup 06's routing matrix (V016,
+ * [#190](https://github.com/NobuData/ouroboros/issues/190)).
+ *
+ * A workspace's own list rather than a vocabulary: V016 constrains the *shape* of a name and
+ * never the set of them, so a team that never generates tests deletes that row and a team
+ * with a `triage` step adds one. That is why {@link TaskKindsTable.name} is the key
+ * resolution is asked for — `resolve("implement", …)` — and why nothing in this service
+ * carries a closed list of kinds to check it against.
+ *
+ * Mirrored here by Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194)), which is
+ * the first thing in this service to read any of V016's three tables. Decision **M2** again:
+ * the write surface is Z.2's ([#195](https://github.com/NobuData/ouroboros/issues/195)), and
+ * resolution creates nothing.
+ */
+export interface TaskKindsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /** The mono label the matrix row prints — `implement`, `commit-msg`. Unique per workspace. */
+  name: string;
+  /** The grey line under it — *"Write the change, run tests, iterate to green"*. */
+  description: string;
+  /** The order the matrix draws the rows in; 1 is first. Unique per workspace, deferrable. */
+  sort_order: number;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.routes` — one task kind's route: the chain's owner and its policy triple (V016,
+ * [#190](https://github.com/NobuData/ouroboros/issues/190), decision **M4**).
+ *
+ * Exactly one row per task kind *by constraint*, which is what lets
+ * `routing/routing.repository.ts` ask for "the route of this kind" and get one answer rather
+ * than a list it would have to pick from. The three policy columns are mockup 06's three
+ * inspector controls, and all three are read by Z.1
+ * ([#194](https://github.com/NobuData/ouroboros/issues/194)): the local switch, the floor, and
+ * the cost cap that travels with a resolution to whatever executes it.
+ */
+export interface RoutesTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /** The kind this route answers for. Unique, so a kind has exactly one route. */
+  task_kind_id: string;
+  /** The pill the matrix prints and the inspector's title — `implement-primary`. */
+  tag: string;
+  /**
+   * Mockup 06's **Allow fallback to local models** switch. `Generated` — V016 defaults it
+   * to `true`.
+   *
+   * Off is a policy about the *chain*, not about a provider: `routing/resolve.ts` drops the
+   * hops that resolve on a local provider and says so, rather than omitting them.
+   */
+  allow_local_fallback: Generated<boolean>;
+  /**
+   * Mockup 06's **Fail run instead of degrading below fallback N** — the deepest hop this
+   * route may run on, or `null` for the switch being off.
+   *
+   * Null rather than a number is what *off* means here, and V016 says why: a floor is a hop
+   * index, and there is no index that means "no floor". It is measured against
+   * {@link RouteHopsTable.position}, which is dense from 1 by constraint — a chain numbered
+   * 1, 2, 5 would make *below fallback 2* mean nothing.
+   */
+  floor_hop_index: number | null;
+  /**
+   * Mockup 06's **Max cost per run**, in cents — `250` is the inspector's `$2.50`. Null for
+   * a route with no cap configured.
+   *
+   * Cents rather than a float, for the reason {@link ModelPricesTable} gives at length:
+   * money in a float is a rounding error waiting to be discovered by an invoice.
+   */
+  max_cost_cents_per_run: number | null;
+  /** Who last saved this route — `"user"."id"`, `on delete set null`. */
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.route_hops` — the inspector's numbered chain, in `position` order (V016,
+ * [#190](https://github.com/NobuData/ouroboros/issues/190)).
+ *
+ * **There is no `model_id` here and there cannot be** — decision **M1**. A hop names an
+ * alias by foreign key, so the raw provider model string a hop eventually resolves to lives
+ * in {@link ModelAliasesTable.model_id} and nowhere else, and swapping `coder-max` onto
+ * another model stays one edit of one row.
+ */
+export interface RouteHopsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /** The route this hop belongs to. `on delete cascade`. */
+  route_id: string;
+  /**
+   * Where in the chain this hop sits; 1 is the primary.
+   *
+   * Unique per route *and* dense from 1, held by V016's `route_chain_intact()` constraint
+   * trigger — which is what makes {@link RoutesTable.floor_hop_index} a statement anybody
+   * can count.
+   */
+  position: number;
+  /** The alias this hop uses. `on delete restrict` — an alias a route names cannot be deleted. */
+  model_alias_id: string;
+  /**
+   * The operator's sentence for this hop — *"Fallback on 5xx / timeouts"*. Null is ordinary.
+   *
+   * Deliberately not a composed one: the inspector's hop 1 prints *"Primary · API key valid,
+   * 42ms to us-east"*, which is a position, a status and a latency measured minutes ago.
+   * Storing that would freeze a latency into a note. Composing it is `routing/explanations.ts`'s.
+   */
+  note: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `escalation_rules."when".diff_kind` — how a change was classified (V018,
+ * [#191](https://github.com/NobuData/ouroboros/issues/191)).
+ *
+ * One value, and V018 argues that a one-value vocabulary is honest rather than odd: a diff
+ * classification nothing computes is a rule that can never fire, which reads on the card as a
+ * protection the workspace has and does not. Widening it is one line in the migration plus
+ * the classifier that produces the new value.
+ */
+export type DiffKind = "docs_only";
+
+/** The classifications as values, in the order `ouroboros.escalation_rule_when_valid()` declares them. */
+export const DIFF_KINDS = ["docs_only"] as const satisfies readonly DiffKind[];
+
+/**
+ * `escalation_rules."when"` — the WF-P8 predicate grammar as routing scopes it (V018,
+ * [#191](https://github.com/NobuData/ouroboros/issues/191), decision **M5**).
+ *
+ * At least one key, no key outside these three, and every key present is **ANDed** with the
+ * others — so `{effort_gte: "l", label: "security"}` is both. The empty object is refused by
+ * `ouroboros.escalation_rule_when_valid()`: a rule with no condition always fires, which is
+ * not an escalation, it is a route.
+ *
+ * Typed rather than left as an opaque document — the opposite of the choice
+ * {@link ModelAliasesTable.params} makes, and for the symmetric reason. `params` is opaque
+ * here because *which keys a model can honour* is decided elsewhere; this grammar is closed
+ * at the column by a domain, and Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194))
+ * is the thing that evaluates it. A predicate evaluator reading `Record<string, unknown>`
+ * would have to re-discover the vocabulary the database already refuses to store anything
+ * outside of.
+ */
+export interface EscalationWhen {
+  /**
+   * Fires at this size **or larger** — V009's five F9 sizes, not a second effort scale.
+   *
+   * `_gte` rather than the workflow builder's `_lte` because the two ask opposite questions
+   * of the same scale: a trigger gates work *small enough* to run unattended, an escalation
+   * catches work *big enough* to deserve a better model.
+   */
+  effort_gte?: QueueEffort;
+  /** Fires when the issue carries this GitHub label — `security`. GitHub's vocabulary, not ours. */
+  label?: string;
+  /** Fires on this diff classification. One value today, and V018 argues that is honest. */
+  diff_kind?: DiffKind;
+}
+
+/**
+ * `escalation_rules."then"`'s `use_alias` — swap the primary model for one task kind.
+ *
+ * The mockup's *"(max thinking)"* is the rule's `params`, **not
+ * prose**: the same shape {@link ModelAliasesTable.params} holds, so resolution merges the
+ * rule's over the alias's and has nothing to parse.
+ */
+export interface EscalationUseAlias {
+  use_alias: {
+    /** The kind this modification applies to — `task_kinds.name`. */
+    task_kind: string;
+    /** The alias that becomes the primary — `model_aliases.alias`. */
+    alias: string;
+    /** Invocation defaults merged **over** the alias's own. Absent when the rule only swaps. */
+    params?: Record<string, unknown>;
+  };
+}
+
+/** `escalation_rules."then"`'s `add_vote` — a second opinion appended to a kind's resolution. */
+export interface EscalationAddVote {
+  add_vote: {
+    /** The kind this modification applies to — `task_kinds.name`. */
+    task_kind: string;
+    /** The alias that casts the vote — the mockup's `second-opinion`. */
+    alias: string;
+  };
+}
+
+/**
+ * `escalation_rules."then"`'s `route_local` — *everything routes local*.
+ *
+ * The one action with **no task kind**, which is what makes it the mockup's *"everything"*.
+ * Its body is an empty object rather than `null` or a bare string, so the three actions are
+ * one shape and a later option (*"except these kinds"*) is a key rather than a fourth
+ * encoding.
+ */
+export interface EscalationRouteLocal {
+  route_local: Record<string, never>;
+}
+
+/**
+ * `escalation_rules."then"` — exactly one of three route modifications (V018, decision **M5**).
+ *
+ * A union rather than an object of optional keys, because V018 counts the action keys and
+ * refuses a document carrying two: a rule whose effect depends on which action a reader
+ * notices first is a rule nobody can predict.
+ */
+export type EscalationThen = EscalationUseAlias | EscalationAddVote | EscalationRouteLocal;
+
+/**
+ * `ouroboros.escalation_rules` — mockup 06's *ESCALATION RULES* card as structured
+ * predicates rather than as sentences (V018,
+ * [#191](https://github.com/NobuData/ouroboros/issues/191), decision **M5**).
+ *
+ * The three lines on the card read like sentences, so the cheap implementation stores them
+ * *as* sentences — and then nothing can evaluate them. A rule is instead two checked jsonb
+ * documents and a switch, and {@link EscalationRulesTable.display} is **generated from the
+ * pair** by PostgreSQL, so the sentence cannot be hand-written and cannot drift from what
+ * the rule does.
+ *
+ * Evaluated in {@link EscalationRulesTable.sort_order} by Z.1
+ * ([#194](https://github.com/NobuData/ouroboros/issues/194)); written by Z.2
+ * ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+ */
+export interface EscalationRulesTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /**
+   * The card's switch. `Generated` — V018 defaults it to `true`.
+   *
+   * A disabled rule is still a row with its `sort_order` and its `display`, so turning it
+   * back on restores it exactly where it was. *The rules this workspace has* and *the rules
+   * that currently fire* are different questions, and the card asks both.
+   */
+  enabled: Generated<boolean>;
+  /**
+   * Evaluation order; 1 is first, and it is what gives *which rule wins* one answer when two
+   * match the same run.
+   *
+   * Unique per workspace and deliberately **not** dense, unlike {@link RouteHopsTable.position}:
+   * nothing counts these numbers, they are only compared.
+   */
+  sort_order: number;
+  /** The predicate. Quoted in SQL because `when` is reserved; the ticket, the API and the builder all call it that. */
+  when: EscalationWhen;
+  /** The route modification. Quoted in SQL for the same reason. */
+  then: EscalationThen;
+  /**
+   * The sentence the card renders — *"effort ≥ L → implement uses coder-max (max thinking)"*.
+   *
+   * `ColumnType<string, never, never>` because the column is `generated always … stored`:
+   * PostgreSQL refuses a writer that supplies one, and a type that let somebody try would be
+   * promising something the database then rejects. Read by resolution and reported back on
+   * every applied rule, so the explanation and the card print the same string.
+   */
+  display: ColumnType<string, never, never>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -1256,6 +1520,10 @@ export interface Database {
   provider_connections: ProviderConnectionsTable;
   model_aliases: ModelAliasesTable;
   provider_models: ProviderModelsTable;
+  task_kinds: TaskKindsTable;
+  routes: RoutesTable;
+  route_hops: RouteHopsTable;
+  escalation_rules: EscalationRulesTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -1417,6 +1685,48 @@ export const TABLE_COLUMNS = {
     "meta",
     "discovered_at",
   ],
+  task_kinds: [
+    "id",
+    "organization_id",
+    "name",
+    "description",
+    "sort_order",
+    "created_at",
+    "updated_at",
+  ],
+  routes: [
+    "id",
+    "organization_id",
+    "task_kind_id",
+    "tag",
+    "allow_local_fallback",
+    "floor_hop_index",
+    "max_cost_cents_per_run",
+    "updated_by",
+    "created_at",
+    "updated_at",
+  ],
+  route_hops: [
+    "id",
+    "organization_id",
+    "route_id",
+    "position",
+    "model_alias_id",
+    "note",
+    "created_at",
+    "updated_at",
+  ],
+  escalation_rules: [
+    "id",
+    "organization_id",
+    "enabled",
+    "sort_order",
+    "when",
+    "then",
+    "display",
+    "created_at",
+    "updated_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -1553,6 +1863,27 @@ export type NewModelAlias = Insertable<ModelAliasesTable>;
  * insert shape now would be this service claiming a write it does not perform.
  */
 export type ProviderModel = Selectable<ProviderModelsTable>;
+
+/**
+ * A row of `ouroboros.task_kinds`, as a `select` returns it — one row of the routing matrix.
+ *
+ * There is deliberately no `NewTaskKind`, and the same is true of the three types below it.
+ * Decision **M2**: V016's and V018's write surfaces are Z.2's
+ * ([#195](https://github.com/NobuData/ouroboros/issues/195)), and resolution
+ * ([#194](https://github.com/NobuData/ouroboros/issues/194)) reads all four tables and writes
+ * none of them. Declaring the insert shapes now would be this service claiming writes it does
+ * not perform.
+ */
+export type TaskKind = Selectable<TaskKindsTable>;
+
+/** A row of `ouroboros.routes`, as a `select` returns it — a chain's owner and its policy triple. */
+export type Route = Selectable<RoutesTable>;
+
+/** A row of `ouroboros.route_hops`, as a `select` returns it — one numbered hop of a chain. */
+export type RouteHop = Selectable<RouteHopsTable>;
+
+/** A row of `ouroboros.escalation_rules`, as a `select` returns it — one card line, structured. */
+export type EscalationRule = Selectable<EscalationRulesTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.
