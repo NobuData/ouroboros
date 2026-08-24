@@ -85,7 +85,7 @@ the Spend tab.
 | Routing Y.2 (`route_hops` FK → `model_aliases`, alias deletion blocked by FK), Y.3 (escalation rules `use_alias`/`add_vote` targets) | **Consumed** — they are two of the four reference kinds behind `Used by` counts and delete guards (CG.3). |
 | Routing Z.1 resolution (pure `resolve()` + explanations), Z.4 simulate, M1 alias-only rule | **Consumed + amended** — CH.6 adds disabled/unbound-alias semantics to resolution (dropped hops with explanations) and defines the persisted resolution snapshot the chain card and run console share. |
 | Routing Z.2 ("alias list endpoint for swap menus — registry read, foundation scope") | **Superseded** — CH.1's full lifecycle API replaces the minimal read (amendment posted at filing). |
-| Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended** — alias health derives from provider health + binding state (CH.5, no alias-level probes); the Registry tab goes live (CI.1 amendment, mirroring AE.1's). |
+| Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended, and the subnav half is 🟢 delivered** — alias health derives from provider health + binding state (CH.5, no alias-level probes); the Registry tab went live with CI.1 (#591), mirroring AE.1's change. |
 | Providers AC.1 adapter SPI, AC.6 `provider_models` discovered catalog + P6 ("discovery feeds the registry") + soft alias-validation hook | **Consumed + extended, and CH.2 (#585) is 🟢 delivered** — the inspector's live model list and the import wizard read `provider_models`; the SPI now carries `paramSchema(modelId)`, merged with `provider_models.meta` and the catalog's; the AC.6 unknown-model warning gets its UI surface (CI.2/CI.3). |
 | Providers AD.2 (provider delete blocked while aliases depend, 409 naming aliases) | **Mirrored** — the registry enforces the same discipline in the other direction (alias delete blocked while routes/workflows/rules/commands reference it). |
 | Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here, and CG.2 (#580) is 🟢 delivered** — the `$ per 1M in·out` column needs a pricing catalog *now*, so `model_prices` is the shared price-table layer J.4 and Z.5/AB.4 consume rather than re-invent: bundled snapshot plus org overrides, four billing modes, provenance on every row. CH.3 (#586) is the service over it, and is 🟢 delivered. |
@@ -1065,7 +1065,7 @@ dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CI.1 | #591 | 🟡 Open | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
+| CI.1 | #591 | 🟢 Done | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
 | CI.2 | #592 | 🟡 Open | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
 | CI.3 | #593 | 🟡 Open | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
 | CI.4 | #594 | 🟡 Open | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
@@ -1075,7 +1075,81 @@ dark-only).
 
 ### Issue CI.1 — ouroboros-ui: [CI.1] Registry route, subnav & page frame
 
-> **GitHub issue:** #591 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #591 · **Status:** 🟢 Done · **Parent epic:** #577
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-ui/app/(app)/models/registry/page.tsx`](../ouroboros-ui/app/%28app%29/models/registry/page.tsx)
+> over [`app/registry/`](../ouroboros-ui/app/registry/), with `REGISTRY_PATH` joining
+> [`app/paths.ts`](../ouroboros-ui/app/paths.ts) beside the other two Models routes (decision
+> **R10**) — spelled from `MODELS_PATH`, so the sidebar's **Models** entry stays lit here for
+> the ordinary reason rather than a special case. The page reuses AE.1's
+> [`app/models/models-frame.tsx`](../ouroboros-ui/app/models/models-frame.tsx) unchanged: the
+> section now has three pages drawing one head and one tab row, and this one supplies its
+> title, its promise, its two actions and the tab it is.
+>
+> **The AA.1 amendment cost one line, which was the point of the arrangement AE.1 built.**
+> `MODELS_TABS` gained an `href` where it had a `note`, and `ModelsSurface` gained
+> `"registry"` — after which the compiler named every place that had to change. The stub
+> became a link on `/models`, on `/models/providers` and here **at once**, and neither sibling
+> page's source was touched. Three suites now sweep all three surfaces rather than two, and the
+> property they assert is the one every one of these criteria reduces to: the three pages'
+> rows differ in `aria-current` and in **nothing else**, proved by stripping the attribute and
+> comparing the markup. Spend is the last `soon` tab and still names #210.
+>
+> **The head is verbatim, and the test reads the mockup rather than the constant.** *"Every
+> model gets a name. Every route points at the name."* is the product's argument rather than a
+> heading, so `__tests__/registry/view.test.ts` opens
+> [`docs/mockups/21-model-registry.html`](mockups/21-model-registry.html) and looks for the
+> `<h1>` and the BYOK subline as this page renders them — a paraphrase in implementation fails
+> the suite instead of passing review, the same technique AE.1 uses against
+> `docs/SECURITY_MODEL.md`.
+>
+> **`Import from provider ▾` is a real menu, and the state the mockup does not draw is the
+> one that mattered.** The drawing shows a ghost button with a caret and stops; a fresh
+> workspace has connected nothing and meets a control that cannot act. `importState` is that
+> judgement as a pure function, and it keeps **three** blocked reasons apart rather than
+> collapsing them into one *"unavailable"*: a member may not import at all, an admin with no
+> providers can fix it in one link, and a failed read is nobody's to fix but is worth saying.
+> The order is settled deliberately — **role first**, because a member offered *"connect a
+> provider →"* is being pointed at a page that would also refuse them — and the link is
+> rendered for exactly one of the three, asserted as an exclusive property rather than as three
+> separate cases.
+>
+> **The menu is this ticket's; the wizard behind it is CI.4's (#594).** So the list is the
+> workspace's own connections, in the order the health strip on `/models` shows them, and each
+> row is inert with a sentence naming the issue that wires it. That is the honest shape of a
+> frame: the page already answers *which providers could I import from*, and says plainly that
+> the import itself is not built — a row that silently did nothing when pressed would be the
+> one dishonest thing on a page built to be honest. **Health is deliberately not a filter**: a
+> paused connection is still a connection this workspace has, and hiding it would answer
+> *which providers are up right now* instead, leaving a reader wondering where theirs went.
+>
+> **Nothing is switched off with `disabled`.** The blocked trigger and every menu row use
+> `aria-disabled`, because a `disabled` control leaves the tab order and takes its own tooltip
+> with it — the keyboard reader who most needs the explanation is the one who could never
+> reach it. The keyboard itself is
+> [`app/shell/menu.ts`](../ouroboros-ui/app/shell/menu.ts)'s: the ARIA menu pattern already
+> written framework-free for the shell's two menus, so this is the third caller rather than a
+> third copy. Tab dismisses without `preventDefault`, which is the one part of that pattern a
+> hand-rolled menu always gets wrong.
+>
+> **Both head actions are already honest about who may press them**, through
+> `mayAdminister(membership.roles)` resolved at the gate. The full gating pass is CI.6 (#596);
+> what this ticket owed is that the two controls it *builds* do not offer a member a dialog
+> that would refuse them.
+>
+> **95 tests across six suites**, including both palettes rendering byte-identical markup (the
+> palette is CSS's business, so nothing on this page picks a hue in JavaScript) and the
+> stylesheet's own agreements — that it re-declares no part of the section's frame, that the
+> panel draws no shadow the token sheet does not publish, that its stacking sits above the page
+> and below the shell's chrome, and that an inert row is styled through `aria-disabled` rather
+> than `:disabled`.
+>
+> Deliberately **not** here: the allowed-models table (CI.2, #592), the alias inspector (CI.3,
+> #593), the create dialog and import wizard (CI.4, #594), the why-aliases and chain cards
+> (CI.5, #595) and the role gating and page states (CI.6, #596) — the space they will fill
+> carries an empty state naming them rather than a table of invented aliases, which would be
+> indistinguishable in a screenshot from the real one.
 
 - **Problem Statement:** The page frame: the naming-promise head copy, the two
   head actions, and the shared Models subnav with the Registry tab going
@@ -1500,7 +1574,7 @@ Amendments posted at filing:
 
 | Amended | Comment |
 |---|---|
-| AA.1 (#200) | The **Model registry** subnav tab goes live with CI.1 (#591), mirroring AE.1's change; Spend stays an honest stub until AB.4 (#210) |
+| AA.1 (#200) | **Delivered** — the **Model registry** subnav tab went live with CI.1 (#591), mirroring AE.1's change; one edit to `MODELS_TABS` moved it on all three pages at once. Spend stays an honest stub until AB.4 (#210) |
 | AE.1 (#227) | Registry becomes a working cross-link in the shared subnav; the AE.2 (#228) provider monograms are **reused** by the registry table (#592), not re-implemented |
 | Z.2 (#195) | **The minimal alias-list read is superseded by CH.1 (#584)**; routing's swap menus consume CH.5's (#588) composed read model |
 | Z.1 (#194) | Resolution gains **disabled/unbound dropped hops with explanations** (CH.6, #589); floor semantics unchanged; simulate surfaces them |
@@ -1516,7 +1590,7 @@ Amendments posted at filing:
 | AF.2 (#235) | Declared the **writer** of resolution snapshots and the source of per-hop usage attribution (CJ.5); dropped-hop explanations carry into run records |
 | BZ.3 (#537) | `/ouro route` validates aliases through CH.1 (#584); chat route pins are the fourth reference kind in CG.3 (#581), zero rows until that storage exists |
 | AD.2 (#223) | The registry **mirrors** this guard in the other direction; the nullable binding for unbound aliases leaves AD.2 unaffected, regression-verified in CG.1 (#579) |
-| #49 | The `/models/registry` placeholder is retired by CI.1 (#591) |
+| #49 | **Delivered** — the `/models/registry` placeholder was retired by CI.1 (#591): the segment is a real route, and the tab that stood in for it is a link |
 | #56 | Gains the registry e2e leg (CI.7, #597) — the MVP gate |
 
 ## References
@@ -1574,7 +1648,7 @@ Issue-level impact:
 
 | Issue | GitHub | Status | Amendment |
 |---|:---:|:---:|---|
-| CI.1 | #591 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar **Models** entry, not a topbar link; the Models subnav renders as PageSubnav, sticky in-pane |
+| CI.1 | #591 | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar **Models** entry, not a topbar link; the Models subnav renders as PageSubnav, sticky in-pane |
 | CI.2, CI.3, CI.4, CI.5, CI.6 | #592, #593, #594, #595, #596 | 🟡 Open | rem-based type, shell tokens; internal wide/tall regions scroll in their own wrappers |
 | CI.7 | #597 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
@@ -1602,6 +1676,15 @@ and CG.2 (#580) can run beside them. The critical path to the MVP gate is
 #579 → #581 → #584 → #588 → #591 → #592 → #593 → #596 → **#597**, with
 pricing (#580 → #586), capabilities (#585) and governance (#589) joining at
 #588, and the seeds (#582) feeding every parity fixture.
+
+**#591** ([CI.1] the registry route, subnav and page frame) has landed, and epic CI has a
+page to build on: `/models/registry` renders mockup 21's head verbatim inside the shell, the
+**Model registry** tab is live from all three directions (06 ⇄ 21 ⇄ 07) and the `#49`
+placeholder for the route is retired. Both head actions exist as real entry points —
+**Import from provider ▾** is a menu over the workspace's connected providers with the
+empty, unreadable and member states each carrying their own sentence, and **+ New alias**
+names CI.4 — so #592–#596 each arrive as content in a frame rather than as a frame plus
+content. Next is **#592** (the allowed-models table), which needs CH.5 (#588).
 
 The deepest risk here is **CG.3 / CH.1 (#581, #584)**: the reference index is
 what makes `Used by`, the blocked Remove and the rename guard true, and a

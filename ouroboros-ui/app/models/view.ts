@@ -38,7 +38,7 @@
 
 import type { Reading } from "@/app/api/reading";
 import type { ProviderCheck, ProviderHealth, ProviderStatus } from "@/app/api/routing";
-import { MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
+import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
 /* ------------------------------------------------------------------ what the page reads */
 
@@ -294,11 +294,12 @@ export const SIMULATE_REASON =
  *
  * A type rather than a list, so the tab set below cannot link to a surface that does not
  * exist: a live tab's id must be one of these and a *soon* tab's must not, and a page asks for
- * its active tab by one of these names. When the registry (CI.1,
- * [#591](https://github.com/NobuData/ouroboros/issues/591)) lands, `"registry"` joins this
- * union and the compiler names the tab that has to change with it.
+ * its active tab by one of these names. `"registry"` joined the union with CI.1
+ * ([#591](https://github.com/NobuData/ouroboros/issues/591)) — and the compiler named the tab
+ * that had to change with it, which is exactly what the union is for. `"spend"` is the one
+ * left, and AB.4 ([#210](https://github.com/NobuData/ouroboros/issues/210)) is what moves it.
  */
-export type ModelsSurface = "routing" | "providers";
+export type ModelsSurface = "routing" | "registry" | "providers";
 
 /** Every tab's id, built or not. */
 export type ModelsTabId = ModelsSurface | "registry" | "spend";
@@ -351,22 +352,23 @@ export function isLiveTab(tab: ModelsTab): tab is LiveModelsTab {
  * `aria-current`. Two pages each keeping a list of their own would be two lists that drift —
  * one linking a surface the other still calls *soon*.
  *
- * Two of the four are built. Routing is this roadmap's own, and Providers & keys went live
- * with AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)) — the amendment AA.1
- * was filed expecting. The registry is CI.1's
- * ([#591](https://github.com/NobuData/ouroboros/issues/591)) and the spend report AB.4's
- * ([#210](https://github.com/NobuData/ouroboros/issues/210)); each names its owner rather
- * than linking somewhere that would answer a `404`. Rendering them as live links is worse
- * than not rendering them at all; rendering them as honest *soon* targets tells the reader
- * the shape of the product without lying about its state.
+ * **Three of the four are built.** Routing is this roadmap's own; Providers & keys went live
+ * with AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)), the amendment AA.1 was
+ * filed expecting; and Model registry went live with CI.1
+ * ([#591](https://github.com/NobuData/ouroboros/issues/591)), which is the second half of the
+ * same amendment and mirrors AE.1's change in its own direction. Because the list is one list,
+ * the registry becoming a link is one edit here rather than an edit on each of the three pages
+ * that draw the row — which is the property that keeps them from disagreeing about it.
+ *
+ * The spend report is AB.4's ([#210](https://github.com/NobuData/ouroboros/issues/210)) and
+ * stays an honest *soon* tab naming its owner rather than linking somewhere that would answer
+ * a `404`. Rendering it as a live link would be worse than not rendering it at all; rendering
+ * it as a labelled stub tells the reader the shape of the product without lying about its
+ * state.
  */
 export const MODELS_TABS: readonly ModelsTab[] = [
   { id: "routing", label: "Routing", href: MODELS_PATH },
-  {
-    id: "registry",
-    label: "Model registry",
-    note: "The model registry arrives with #591 (mockup 21).",
-  },
+  { id: "registry", label: "Model registry", href: REGISTRY_PATH },
   { id: "providers", label: "Providers & keys", href: PROVIDERS_PATH },
   {
     id: "spend",

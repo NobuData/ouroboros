@@ -64,6 +64,21 @@ export const MODELS_PATH = "/models";
 export const PROVIDERS_PATH = `${MODELS_PATH}/providers`;
 
 /**
+ * The model registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) — mockup 21.
+ *
+ * The third Models surface, and spelled from {@link MODELS_PATH} for the reason
+ * {@link PROVIDERS_PATH} is: the sidebar highlights the entry whose route the URL is under, so
+ * a registry at `/registry` would be a Models surface on which the **Models** entry went dark.
+ * Under `/models` it stays lit on all three pages — the ticket's *all three directions*
+ * criterion (06 ⇄ 21 ⇄ 07) met by the URL rather than by a special case in the sidebar.
+ *
+ * Roadmap decision **R10** names the route, and the Models tab set
+ * (`app/models/models-subnav.tsx`) links here from the same list it links the other two from,
+ * so no two pages of the section can disagree about where the third one is.
+ */
+export const REGISTRY_PATH = `${MODELS_PATH}/registry`;
+
+/**
  * The query parameter carrying where a visitor was heading when they were sent to sign in.
  *
  * Added by [#716](https://github.com/NobuData/ouroboros/issues/716): a `401` routes to the
