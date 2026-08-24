@@ -677,8 +677,8 @@ that roadmap's "Existing issues affected" section.
 | 118 | **Z.4** | ✅ [#197](https://github.com/NobuData/ouroboros/issues/197) | Simulate endpoint & consumer contract | ouroboros-rest, ouroboros-engine | M | Z.1 |
 | 119 | **Z.5** | ✅ [#198](https://github.com/NobuData/ouroboros/issues/198) | Route stats & spend aggregation | ouroboros-rest | M | F.3, Y.4 |
 | 120 | **AE.1** | ✅ [#227](https://github.com/NobuData/ouroboros/issues/227) | Providers route, subnav & page frame | ouroboros-ui | S | D.5, AA.1, AD.4 |
-| 121 | **CG.4** | [#582](https://github.com/NobuData/ouroboros/issues/582) | Registry dev seeds — mockup-21 parity | ouroboros-db | M | Y.4, CG.1, CG.3 |
-| 122 | **CH.1** | [#584](https://github.com/NobuData/ouroboros/issues/584) | Alias lifecycle API | ouroboros-rest | L | C.3, CG.1, CG.3 |
+| 121 | **CG.4** | ✅ [#582](https://github.com/NobuData/ouroboros/issues/582) | Registry dev seeds — mockup-21 parity | ouroboros-db | M | Y.4, CG.1, CG.3 |
+| 122 | **CH.1** | ✅ [#584](https://github.com/NobuData/ouroboros/issues/584) | Alias lifecycle API | ouroboros-rest | L | C.3, CG.1, CG.3 |
 | 123 | **CI.1** | [#591](https://github.com/NobuData/ouroboros/issues/591) | Registry route, subnav & page frame | ouroboros-ui | S | 5.3, D.5, AA.1 |
 | 124 | **Z.6** | [#199](https://github.com/NobuData/ouroboros/issues/199) | Routing integration tests | ouroboros-rest | M | Z.1, Z.5 |
 | 125 | **AA.2** | [#201](https://github.com/NobuData/ouroboros/issues/201) | Routing matrix table | ouroboros-ui | L | Z.2, Z.5, AA.1 |
