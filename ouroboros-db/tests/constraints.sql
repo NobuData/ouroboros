@@ -6482,6 +6482,352 @@ select pg_temp.must_hold(
 
 delete from ouroboros.organization where "id" = 'org-audit-other';
 
+
+-- ===========================================================================
+-- V023 — alias_references, the one answer to "what references this alias?" (#581)
+-- ===========================================================================
+--
+-- Mockup 21 asks that question four times on one screen — the `USED BY` column, the
+-- inspector's chip list, the blocked *Remove* button and the rename the same panel offers —
+-- and decision **R5** makes it one definition rather than four agreeing implementations.
+-- What is asserted here is that the definition answers the mockup, and that the two guards
+-- built on it refuse what they are supposed to refuse:
+--
+--   * **`coder-max` returns the mockup's four chips exactly** — three route tags and one
+--     escalation label — *and nothing else*, which is the half a count would pass without.
+--   * **Counts are computed, not stored**, including the zero: an alias nothing references
+--     is `0` because a left join produced no rows, not because a column says so.
+--   * **The unbuilt legs are zero rows rather than an error.** `workflow` and `chat_pin`
+--     have no storage yet (#132/#133 and #537); the vocabulary declares them anyway, so the
+--     output shape is stable and a fifth kind is a migration rather than a typo.
+--   * **The chip cannot drift from V018's sentence**, which is the one real cost of
+--     rendering the predicate twice and is why it is asserted rather than trusted.
+--   * **Both guards refuse.** A hop's reference is a foreign key and a rule's is a name
+--     inside jsonb; delete is refused by each, and rename by the second — which is the
+--     whole reason rename is guarded at all.
+--
+-- What no assertion in this file can reach is the *lock*: a race needs two sessions and
+-- this is one, inside one transaction. tests/verify-alias-reference-guard.sh is that proof,
+-- and .github/workflows/db.yml runs it.
+--
+-- Its own fixtures again: the V022 section deleted both of its workspaces on the way out.
+
+-- Two workspaces and no person: nothing this section asserts is about authorship, and every
+-- `updated_by` in the routing tables is nullable, so a user fixture here would be a row
+-- nothing reads.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-refs', 'Refs Works', 'refs-works', now()),
+  ('org-refs-other', 'Other Refs Works', 'other-refs-works', now());
+
+insert into ouroboros.provider_connections (id, organization_id, kind, display_name) values
+  ('f4000000-0000-0000-0000-00000000000a', 'org-refs', 'anthropic', 'Anthropic Claude');
+
+-- A connection whose catalogue has been discovered, so the aliases below bind to models
+-- V017's soft validation (#221, decision P6) can see. Nothing in this section is about that
+-- rule; seeding the three models is how it is kept quiet rather than tolerated, and a
+-- fixture where discovery has run is the ordinary state anyway.
+insert into ouroboros.provider_models (id, provider_connection_id, model_id, display) values
+  ('f4000000-0000-0000-0000-0000000000a1', 'f4000000-0000-0000-0000-00000000000a', 'claude-fable-5',   'Claude Fable 5'),
+  ('f4000000-0000-0000-0000-0000000000a2', 'f4000000-0000-0000-0000-00000000000a', 'claude-sonnet-5',  'Claude Sonnet 5'),
+  ('f4000000-0000-0000-0000-0000000000a3', 'f4000000-0000-0000-0000-00000000000a', 'claude-haiku-4-5', 'Claude Haiku 4.5');
+
+-- The workspace's four aliases. `local-free` is the fixture for the mockup's `0 routes`
+-- row: nothing names it, and the point of the assertions below is that it still reads as a
+-- number rather than as a missing row.
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id) values
+  ('f4100000-0000-0000-0000-000000000001', 'org-refs', 'coder-max',
+   'f4000000-0000-0000-0000-00000000000a', 'claude-fable-5'),
+  ('f4100000-0000-0000-0000-000000000002', 'org-refs', 'second-opinion',
+   'f4000000-0000-0000-0000-00000000000a', 'claude-sonnet-5'),
+  ('f4100000-0000-0000-0000-000000000003', 'org-refs', 'local-free',
+   'f4000000-0000-0000-0000-00000000000a', 'claude-haiku-4-5'),
+  ('f4100000-0000-0000-0000-000000000004', 'org-refs', 'coder-std',
+   'f4000000-0000-0000-0000-00000000000a', 'claude-sonnet-5');
+
+-- The other workspace's alias is deliberately **unbound and switched off** (V019): it needs
+-- no connection of its own, and it is also the fixture for *a suspended alias is still a
+-- referenced alias* — `enabled` is how a model is taken out of service, and taking one out
+-- of service must not be a way past the delete guard.
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id, enabled) values
+  ('f410000f-0000-0000-0000-00000000000f', 'org-refs-other', 'coder-max',
+   null, 'claude-fable-5', false);
+
+insert into ouroboros.task_kinds (id, organization_id, name, description, sort_order) values
+  ('f4200000-0000-0000-0000-000000000001', 'org-refs', 'implement', 'Writes the code',  1),
+  ('f4200000-0000-0000-0000-000000000002', 'org-refs', 'plan',      'Attack plan',      2),
+  ('f4200000-0000-0000-0000-000000000003', 'org-refs', 'review',    'Self review',      3),
+  ('f420000f-0000-0000-0000-00000000000f', 'org-refs-other', 'implement', 'Writes the code', 1);
+
+insert into ouroboros.routes (id, organization_id, task_kind_id, tag) values
+  ('f4300000-0000-0000-0000-000000000001', 'org-refs', 'f4200000-0000-0000-0000-000000000001', 'implement-primary'),
+  ('f4300000-0000-0000-0000-000000000002', 'org-refs', 'f4200000-0000-0000-0000-000000000002', 'plan-primary'),
+  ('f4300000-0000-0000-0000-000000000003', 'org-refs', 'f4200000-0000-0000-0000-000000000003', 'review-primary'),
+  ('f430000f-0000-0000-0000-00000000000f', 'org-refs-other', 'f420000f-0000-0000-0000-00000000000f', 'implement-primary');
+
+-- Three chains naming `coder-max` first, and a fallback naming `coder-std` — the mockup's
+-- three route chips, plus a fourth reference that must not appear among them.
+insert into ouroboros.route_hops (id, organization_id, route_id, position, model_alias_id) values
+  ('f4400000-0000-0000-0000-000000000001', 'org-refs', 'f4300000-0000-0000-0000-000000000001', 1, 'f4100000-0000-0000-0000-000000000001'),
+  ('f4400000-0000-0000-0000-000000000002', 'org-refs', 'f4300000-0000-0000-0000-000000000001', 2, 'f4100000-0000-0000-0000-000000000004'),
+  ('f4400000-0000-0000-0000-000000000003', 'org-refs', 'f4300000-0000-0000-0000-000000000002', 1, 'f4100000-0000-0000-0000-000000000001'),
+  ('f4400000-0000-0000-0000-000000000004', 'org-refs', 'f4300000-0000-0000-0000-000000000003', 1, 'f4100000-0000-0000-0000-000000000001'),
+  ('f440000f-0000-0000-0000-00000000000f', 'org-refs-other', 'f430000f-0000-0000-0000-00000000000f', 1, 'f410000f-0000-0000-0000-00000000000f');
+
+-- Four rules, chosen so that every shape the escalation leg has to cope with is present: a
+-- `use_alias` target (the mockup's own rule), an `add_vote` target, a `route_local` that
+-- targets nothing at all, and a **disabled** rule with a two-condition predicate.
+insert into ouroboros.escalation_rules (id, organization_id, enabled, sort_order, "when", "then") values
+  ('f4500000-0000-0000-0000-000000000001', 'org-refs', true, 1,
+   '{"effort_gte": "l"}',
+   '{"use_alias": {"task_kind": "implement", "alias": "coder-max", "params": {"thinking": "max"}}}'),
+  ('f4500000-0000-0000-0000-000000000002', 'org-refs', true, 2,
+   '{"label": "security"}',
+   '{"add_vote": {"task_kind": "review", "alias": "second-opinion"}}'),
+  ('f4500000-0000-0000-0000-000000000003', 'org-refs', true, 3,
+   '{"diff_kind": "docs_only"}',
+   '{"route_local": {}}'),
+  ('f4500000-0000-0000-0000-000000000004', 'org-refs', false, 4,
+   '{"effort_gte": "xl", "label": "urgent"}',
+   '{"use_alias": {"task_kind": "plan", "alias": "coder-std"}}');
+
+set constraints ouroboros.escalation_rules_targets_exist immediate;
+set constraints ouroboros.escalation_rules_targets_exist deferred;
+
+-- --- the mockup's four chips, exactly ------------------------------------------
+--
+-- Acceptance criterion: *`alias_references('coder-max')` returns the mockup's four chips
+-- exactly — three route labels and the escalation label — and nothing else*. Asserted as the
+-- whole ordered list rather than as a count, because a count is satisfied by four of the
+-- wrong rows, and `ref_label` is the chip verbatim rather than something a caller assembles.
+select pg_temp.must_hold(
+  (select array_agg(ref_label order by kind, ref_label)
+            = array['escalation:effort≥L', 'implement-primary', 'plan-primary', 'review-primary']
+     from ouroboros.alias_references
+    where organization_id = 'org-refs' and alias = 'coder-max'),
+  'coder-max reads back the inspector''s four chips, in the mockup''s words and nothing else');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where kind = 'route') = 3
+      and count(*) filter (where kind = 'escalation') = 1
+      and bool_and(blocking)
+     from ouroboros.alias_references
+    where organization_id = 'org-refs' and alias = 'coder-max'),
+  'and they are three routes and one rule, every one of them blocking');
+
+-- `ref_id` is the referring row rather than a label a chip was built from, which is what
+-- makes a chip a destination CH.1 (#584) can link to.
+select pg_temp.must_hold(
+  (select bool_and(exists (select 1 from ouroboros.route_hops h where h.id = r.ref_id))
+     from ouroboros.alias_references r
+    where r.organization_id = 'org-refs' and r.alias = 'coder-max' and r.kind = 'route'),
+  'a route reference names the hop it came from');
+
+select pg_temp.must_hold(
+  (select ref_id = 'f4500000-0000-0000-0000-000000000001'
+     from ouroboros.alias_references
+    where organization_id = 'org-refs' and alias = 'coder-max' and kind = 'escalation'),
+  'and an escalation reference names the rule it came from');
+
+-- --- counts are computed, and the zero is a count rather than an absence --------
+--
+-- Acceptance criterion: *counts match the `Used by` column, including the `0 routes` rows*.
+-- The left join is the whole mechanism — the view has no row for an unreferenced alias, and
+-- an alias with no row must still read `0` rather than drop out of the table.
+select pg_temp.must_hold(
+  (select array_agg(counted.line order by counted.line)
+            = array['coder-max=4', 'coder-std=2', 'local-free=0', 'second-opinion=1']
+     from (select a.alias || '=' || count(r.ref_id) as line
+             from ouroboros.model_aliases a
+             left join ouroboros.alias_references r on r.alias_id = a.id
+            where a.organization_id = 'org-refs'
+            group by a.alias) counted),
+  'every alias in the workspace reads a computed Used by count, the unreferenced one included');
+
+-- --- and it grants no read the tables under it would not ------------------------
+select pg_temp.must_hold(
+  (select reloptions @> array['security_invoker=true'] from pg_class
+    where oid = 'ouroboros.alias_references'::regclass),
+  'alias_references is security_invoker, so publishing the definition grants nobody a read they did not have');
+
+-- --- the two legs that have no storage yet -------------------------------------
+--
+-- Acceptance criterion: *the chat-pin leg yields zero rows (not an error) while BZ.3 storage
+-- is absent*. The same holds for the workflow leg until #132 and #133 land — see the
+-- migration header for the `create or replace view` that adds each.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.alias_references
+    where kind in ('workflow', 'chat_pin')),
+  'the workflow and chat-pin legs contribute zero rows rather than an error while their storage is absent');
+
+select pg_temp.must_hold(
+  (select array['route', 'escalation', 'workflow', 'chat_pin']::ouroboros.alias_reference_kind[]
+            is not null),
+  'and all four kinds are already in the vocabulary, so the output shape does not change when they arrive');
+
+select pg_temp.must_reject(
+  $$select 'chat_ping'::ouroboros.alias_reference_kind$$,
+  'a fifth reference kind is a migration rather than a string somebody typed into the union',
+  'alias_reference_kind_known');
+
+-- --- a rule that targets nothing references nothing ----------------------------
+select pg_temp.must_hold(
+  ouroboros.escalation_rule_alias('{"route_local": {}}'::jsonb) is null,
+  'route_local names no alias, so the expression the index is built on answers null');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.alias_references
+    where organization_id = 'org-refs' and ref_id = 'f4500000-0000-0000-0000-000000000003'),
+  'and the rule that carries it appears in no alias''s references');
+
+-- --- a suspended rule is still a reference -------------------------------------
+--
+-- `enabled` is how a workspace suspends a rule without deleting it (V018). A view that
+-- filtered on it would report a delete as safe that V018's trigger is about to refuse — and
+-- would silently break the rule on the day somebody switched it back on.
+select pg_temp.must_hold(
+  (select array_agg(ref_label order by kind, ref_label)
+            = array['escalation:effort≥XL and urgent label', 'implement-primary']
+     from ouroboros.alias_references
+    where organization_id = 'org-refs' and alias = 'coder-std'),
+  'a disabled escalation rule is still a reference, and its chip renders both its conditions');
+
+-- --- and so is an alias that is switched off -----------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.alias_references
+    where organization_id = 'org-refs-other' and alias = 'coder-max'),
+  'switching an alias off does not unreference it — the switch is not a delete');
+
+-- --- add_vote targets are found as reliably as use_alias ones -------------------
+select pg_temp.must_hold(
+  (select array_agg(ref_label) = array['escalation:security label']
+     from ouroboros.alias_references
+    where organization_id = 'org-refs' and alias = 'second-opinion'),
+  'an alias only an add_vote rule names is referenced by it, with no route among its chips');
+
+-- --- the chip cannot drift from the sentence -----------------------------------
+--
+-- The one real cost of rendering the predicate twice — V018's `display` backs a stored
+-- generated column and cannot be refactored into a shared clause renderer, so the chip is a
+-- second derivation of the same grammar. This is what stops the two diverging: over every
+-- rule above, and therefore over every condition key the grammar has, the chip is the
+-- sentence's predicate half with the comparison closed up. A wording change made in one
+-- function and not the other goes red here.
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.escalation_reference_label("when")
+                     = 'escalation:' || replace(split_part(display, ' → ', 1), ' ≥ ', '≥'))
+     from ouroboros.escalation_rules where organization_id = 'org-refs'),
+  'every rule''s chip is its generated sentence''s predicate half, so the two renderings cannot drift');
+
+-- --- one workspace's references are its own ------------------------------------
+--
+-- Both workspaces have an alias called `coder-max` — aliases are unique *per workspace*, so
+-- this is the ordinary case rather than a contrived one, and it is the case a leg that
+-- joined on name alone would get wrong.
+select pg_temp.must_hold(
+  (select bool_and(r.organization_id = a.organization_id)
+     from ouroboros.alias_references r
+     join ouroboros.model_aliases a on a.id = r.alias_id),
+  'every reference and the alias it is about belong to the same workspace');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.alias_references
+    where organization_id = 'org-refs-other' and alias = 'coder-max'
+      and alias_id = 'f410000f-0000-0000-0000-00000000000f'),
+  'the other workspace''s coder-max carries its own single reference and none of this one''s');
+
+-- --- the guard answers what the view does, under a workspace it is given --------
+select pg_temp.must_hold(
+  (select array_agg(ref_label order by kind, ref_label)
+     from ouroboros.alias_reference_guard('org-refs', 'f4100000-0000-0000-0000-000000000001'))
+  = (select array_agg(ref_label order by kind, ref_label)
+       from ouroboros.alias_references
+      where organization_id = 'org-refs' and alias_id = 'f4100000-0000-0000-0000-000000000001'),
+  'the guard returns exactly what the view does — the lock is all it adds');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.alias_reference_guard('org-refs', 'f410000f-0000-0000-0000-00000000000f')),
+  'an alias belonging to another workspace is not this workspace''s to guard, and is not an error either');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.alias_reference_guard('org-refs', 'f4100000-0000-0000-0000-0000000000ff')),
+  'and an alias that does not exist locks nothing and returns nothing');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.alias_reference_guard('org-refs', 'f4100000-0000-0000-0000-000000000003')),
+  'the unreferenced alias is the one the guard clears — which is what makes a delete possible at all');
+
+-- --- what the guard is for: both refusals, from both reference shapes ----------
+--
+-- The reference the database can declare, and the one it cannot. A hop is a foreign key and
+-- refuses immediately; a rule's target is a name inside jsonb and refuses at V018's deferred
+-- trigger, asked for early here so the refusal is visible inside this transaction.
+select pg_temp.must_reject(
+  $$delete from ouroboros.model_aliases
+     where organization_id = 'org-refs' and alias = 'coder-max'$$,
+  'an alias a route hop names cannot be deleted — the blocked Remove state, at the database',
+  'route_hops_alias_fk');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.model_aliases
+     where organization_id = 'org-refs' and alias = 'second-opinion';
+    set constraints ouroboros.model_aliases_escalation_targets_exist immediate$$,
+  'and an alias only a rule names cannot be deleted either, though no foreign key says so',
+  'model_aliases_escalation_targets_exist');
+
+-- Rename, which is the reason this view has to find name-based references as reliably as
+-- foreign-key ones: a hop follows a rename because it holds an id, and a rule does not
+-- because it holds a name.
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set alias = 'coder-ultra'
+     where organization_id = 'org-refs' and alias = 'coder-max';
+    set constraints ouroboros.model_aliases_escalation_targets_exist immediate$$,
+  'renaming an alias is guarded exactly like deleting one, because the by-name reference does not follow it',
+  'model_aliases_escalation_targets_exist');
+
+-- --- and it is one indexed pass, not a scan of every document ------------------
+--
+-- Acceptance criterion: *`Used by` for eight rows is one indexed pass rather than eight
+-- document scans*. must_not_scan rather than must_use_index alone, because this plan has
+-- five relations in it and naming one index proves nothing about the other four — see the
+-- helper's own comment on why sequential scans are discouraged first.
+set local enable_seqscan = off;
+
+select pg_temp.must_not_scan(
+  $$select * from ouroboros.alias_references
+     where organization_id = 'org-refs' and alias = 'coder-max'$$);
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.alias_references
+     where organization_id = 'org-refs' and alias = 'coder-max'$$,
+  'route_hops_alias_idx');
+
+-- The leg with no column to index. Without this index the escalation half of every `Used by`
+-- cell reads every rule's `then` document; with it, a rule's target is a btree lookup.
+select pg_temp.must_use_index(
+  $$select * from ouroboros.alias_references
+     where organization_id = 'org-refs' and alias = 'coder-max'$$,
+  'escalation_rules_alias_idx');
+
+set local enable_seqscan = on;
+
+-- --- the workspace cascade -----------------------------------------------------
+--
+-- Every leg of the view hangs off tables that cascade with the workspace, so a deleted
+-- workspace takes its references with it — and, worth asserting rather than assuming, the
+-- delete is not refused by the guards above on its way out.
+delete from ouroboros.organization where "id" = 'org-refs';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.alias_references where organization_id = 'org-refs'),
+  'deleting a workspace takes its alias references with it, both guards notwithstanding');
+
+delete from ouroboros.organization where "id" = 'org-refs-other';
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------

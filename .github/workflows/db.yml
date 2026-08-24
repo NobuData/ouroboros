@@ -245,6 +245,18 @@ jobs:
       - name: Assert those assertions are load-bearing
         run: ouroboros-db/tests/verify-constraint-probes.sh --runner docker
 
+      # And the rule neither of the two steps above can reach (#581). Both of them are one
+      # psql session inside one transaction, and a race needs two: CG.3's delete guard is a
+      # row lock taken before a count, so what has to be proven is that a *concurrent* route
+      # save waits for it — and that without the lock the same interleaving leaves the
+      # service holding an answer that has already stopped being true.
+      #
+      # Three interleavings against a database of its own, driven through two long-lived
+      # sessions; the second is the probe, and it is what would go green if the guard ever
+      # stopped locking. Same runner argument as the step above.
+      - name: Assert the alias reference guard holds under concurrency
+        run: ouroboros-db/tests/verify-alias-reference-guard.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes
