@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 #
-# verify-constraint-probes.sh — issue #69's second acceptance criterion, as a script,
-# and issue #221's *"CI probes verified red when a constraint is dropped"* beside it.
+# verify-constraint-probes.sh — issue #69's second acceptance criterion, as a script, with
+# issue #221's *"CI probes verified red when a constraint is dropped"* and issue #193's
+# *"dropping any single routing invariant turns it red"* beside it.
 #
 # tests/constraints.sql asserts what the schema refuses. A green run of it does not prove
 # those assertions are load-bearing: a file that asserted nothing at all would be exactly
@@ -10,8 +11,9 @@
 # them apart is to drop a rule on purpose and check that the right probe goes red for the
 # right reason.
 #
-# So for each row of the tables below this drops one rule — of the dashboard read-model, or
-# of the provider tables mockup 07's cards are drawn from — runs the whole of
+# So for each row of the tables below this breaks one rule — of the dashboard read-model, of
+# the provider tables mockup 07's cards are drawn from, or of the routing invariants mockup
+# 06's resolution is written against — runs the whole of
 # constraints.sql against the mutated schema, requires it to **fail**, and
 # requires the failure to name the assertion that was supposed to catch it — not merely to
 # carry a non-zero status. A probe that goes red for the wrong reason is a probe that is
@@ -53,6 +55,41 @@
 # state is refused. `provider_connections_status` is V015's constraint rather than V017's,
 # probed here because AC.6 is where the two columns became a pair a card has to tell apart —
 # and the assertion that catches it is the one V015's section already carried.
+#
+# #193 (Y.5) adds the routing half, and it is the half with the sharpest argument for being
+# here: Z.1's resolution (#194) does not re-validate any of these — it is written against
+# them — so a rule that quietly stopped existing would be caught by nothing until a route
+# lost its primary hop in production. One mutation per invariant that ticket's scope names:
+#
+#   Y.5 scope bullet                             mutation
+#   ------------------------------------------   ------------------------------------------
+#   hop position uniqueness                      drop route_hops_route_position_key
+#   hop position density                         rewrite route_chain_intact()'s density test
+#   one route per task kind                      drop routes_task_kind_key
+#   FK restrict: an alias a hop names            re-add route_hops_alias_fk as cascade
+#   FK restrict: a provider an alias names       re-add model_aliases_provider_fk as cascade
+#   rule `then`-shape checks                     drop escalation_rule_then_shape
+#   provider kind vocabulary                     drop provider_connections_kind
+#   floor-index bound                            rewrite route_chain_intact()'s floor test
+#
+# The two foreign keys are relaxed rather than dropped, because `restrict` → `cascade` is the
+# refactor that really happens and it leaves the constraint's *name* exactly where it was: a
+# mutation that dropped them outright would be caught by the cross-workspace probes several
+# hundred assertions earlier and would never reach the deletion rule it is aimed at. Both fail
+# open when relaxed — the delete succeeds and takes the dependent rows with it — which is
+# precisely the class of regression a green suite cannot see.
+#
+# The two chain rules are rewritten rather than dropped for the same reason `token_usage_daily`
+# is: one constraint trigger carries three rules — never empty, dense from 1, floor within the
+# chain — so dropping it would falsify all three at once and the first assertion to notice
+# would be whichever came first in the file, not the one whose invariant was removed. Each
+# rewrite swaps a single test in `route_chain_intact()` for `false` and leaves the rest of the
+# function as the migration wrote it, so each probe answers for its own rule. Like the view
+# rewrites, they read the current definition from the catalogue and raise if the expression
+# they aim at is not in it.
+#
+# `provider_connections_status` is not repeated here: #221's row above already drops it, and
+# the assertion that catches it is the same one Y.5's scope names.
 #
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
@@ -210,7 +247,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — issue #69 acceptance criterion 2, and #221 provider rules\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -300,6 +337,33 @@ begin
 end
 \$mutate\$;
 set local search_path = "\$user", public;
+SQL
+}
+
+# rewrite_chain_rule TEST REPLACEMENT — SQL that swaps one test inside
+# ouroboros.route_chain_intact(), leaving the rest of the function exactly as V016 wrote it.
+#
+# The sibling of rewrite_view, and here for the same reason it is: that trigger carries three
+# separate rules, so no `drop` can falsify one of them on its own. Swapping a single condition
+# for `false` leaves the other two enforcing, which is what lets each routing probe below
+# answer for its own invariant rather than for whichever assertion the file reaches first.
+#
+# The definition is read back from the catalogue rather than restated here, so this cannot
+# drift into rewriting a function the schema no longer has; if TEST is not in it, that is
+# raised rather than passed over. TEST is the migration's own text — `\sf` prints it.
+rewrite_chain_rule() {
+  cat <<SQL
+do \$mutate\$
+declare
+  def text;
+begin
+  def := pg_get_functiondef('ouroboros.route_chain_intact()'::regprocedure);
+  if position('$1' in def) = 0 then
+    raise exception 'route_chain_intact() no longer contains [$1]';
+  end if;
+  execute replace(def, '$1', 'false');
+end
+\$mutate\$;
 SQL
 }
 
@@ -421,6 +485,66 @@ expect_red 'a provider may be added by nobody' \
   'a connection cannot be attributed to a person who does not exist' \
   'alter table ouroboros.provider_connections
      drop constraint provider_connections_added_by_fk;'
+
+# ---------------------------------------------------------------------------
+# The routing invariants (#193: hop density and uniqueness, one route per kind, the two FK
+# restricts, the rule `then` shapes, the provider vocabularies, the floor-index bound).
+#
+# Each of these is something `resolve()` assumes rather than checks, and each fails *quietly*
+# rather than loudly if its rule goes: a chain numbered 1, 2, 5 makes "fail instead of
+# degrading below fallback 2" mean nothing, a second route for a kind makes resolution's
+# question have two answers, a relaxed restrict empties chains from a page that never
+# mentions them, and a rule whose action nothing validates is one the engine reads and cannot
+# act on.
+# ---------------------------------------------------------------------------
+
+# Seven of the eight markers below are the whole of the assertion's failure line, constraint
+# name included: #193 carries `must_reject`'s expected name into its *accepted* message, so a
+# rule that stopped existing now reports both the guarantee and the object it lived in — and
+# matching on both is what proves this probe is watching the constraint its label names rather
+# than a rule that happens to read the same way.
+#
+# Dropping the deferred position key means the probe's `set constraints … immediate` can no
+# longer name it, so the suite reports the missing object rather than the accepted duplicate.
+# Both are the probe noticing — the same alternation, for the same reason, as the queue's
+# deferred position key above.
+expect_red 'two hops may share a place in one chain' \
+  'two hops cannot claim the same place in one chain|constraint "route_hops_route_position_key" does not exist' \
+  'alter table ouroboros.route_hops drop constraint route_hops_route_position_key;'
+
+expect_red 'a chain may be numbered 1, 2, 5' \
+  'removing a hop from the middle of a chain leaves a gap, and a gap is refused .*route_hops_chain_intact did not fire' \
+  "$(rewrite_chain_rule 'lowest <> 1 or highest <> hop_count')"
+
+expect_red 'a floor may point past the end of its chain' \
+  'a floor past the end of the chain can never fire, so it is refused rather than stored .*routes_chain_intact did not fire' \
+  "$(rewrite_chain_rule 'floor_at is not null and floor_at > hop_count')"
+
+expect_red 'a task kind may have two routes' \
+  'a task kind has exactly one route .*routes_task_kind_key did not fire' \
+  'alter table ouroboros.routes drop constraint routes_task_kind_key;'
+
+expect_red 'retiring an alias shortens the chains that name it' \
+  'an alias that a chain names cannot be retired out from under it .*route_hops_alias_fk did not fire' \
+  'alter table ouroboros.route_hops drop constraint route_hops_alias_fk;
+   alter table ouroboros.route_hops add constraint route_hops_alias_fk
+     foreign key (organization_id, model_alias_id)
+     references ouroboros.model_aliases (organization_id, id) on delete cascade;'
+
+expect_red 'deleting a provider deletes the aliases that name it' \
+  'a connection with dependent aliases cannot be deleted .*model_aliases_provider_fk did not fire' \
+  'alter table ouroboros.model_aliases drop constraint model_aliases_provider_fk;
+   alter table ouroboros.model_aliases add constraint model_aliases_provider_fk
+     foreign key (organization_id, provider_connection_id)
+     references ouroboros.provider_connections (organization_id, id) on delete cascade;'
+
+expect_red 'a rule may name any action at all' \
+  'an action key outside the three cannot be stored .*escalation_rule_then_shape did not fire' \
+  'alter domain ouroboros.escalation_rule_then drop constraint escalation_rule_then_shape;'
+
+expect_red 'provider_connections.kind accepts anything' \
+  'a provider kind outside the six is refused .*provider_connections_kind did not fire' \
+  'alter table ouroboros.provider_connections drop constraint provider_connections_kind;'
 
 printf '\n'
 if check_summary; then

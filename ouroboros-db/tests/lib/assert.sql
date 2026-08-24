@@ -46,6 +46,11 @@ $$;
 --              incidental: without it a statement rejected by some *other* rule — a
 --              not-null, a check on an unrelated column — reads as a pass, and the rule
 --              actually under test could be missing entirely.
+--
+-- When it is named, it is also carried into the *accepted* message (#193). A rule stops
+-- holding by ceasing to exist far more often than by starting to accept bad rows, and a
+-- reader of that failure wants the object to go looking for: "a task kind has exactly one
+-- route" says which guarantee went, and `routes_task_kind_key` says where it lived.
 create function pg_temp.must_reject(stmt text, what text, expected text default null)
 returns void language plpgsql as $$
 declare
@@ -61,7 +66,8 @@ begin
       end if;
       return;
   end;
-  raise exception 'FAILED: % (statement was accepted)', what;
+  raise exception 'FAILED: % (statement was accepted%)', what,
+    case when expected is null then '' else ' — ' || expected || ' did not fire' end;
 end;
 $$;
 

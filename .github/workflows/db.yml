@@ -223,17 +223,26 @@ jobs:
             exit 1
           done
 
-      # And the half that step cannot answer about itself (#69, and #221's own probe
-      # criterion). A green constraints.sql proves the schema satisfies its assertions; it
+      # And the half that step cannot answer about itself (#69, #221's own probe criterion,
+      # and #193's). A green constraints.sql proves the schema satisfies its assertions; it
       # does not prove the assertions are load-bearing, because a file asserting nothing
       # would be exactly as green. This drops one rule at a time — of the dashboard
       # read-model, the status and effort vocabularies, the terminal-run rule, the queue's
-      # two keys and the settings key; and of the provider cards, the monthly cap's floor,
+      # two keys and the settings key; of the provider cards, the monthly cap's floor,
       # the discovered catalog's uniqueness, the enable switch's two states, the health
-      # vocabulary and the added-by reference — and rewrites the two expressions
-      # `token_usage_daily` computes its sums from, then requires the suite to go red
-      # *naming the assertion that caught it*. A probe that went red for some other reason
-      # would otherwise read as a probe doing its job.
+      # vocabulary and the added-by reference; and of **routing**, the hop position key, the
+      # one-route-per-kind key, the two `restrict` foreign keys an alias and a provider are
+      # held by, the rule `then` grammar and the provider `kind` vocabulary — and rewrites
+      # the two expressions `token_usage_daily` computes its sums from and the two tests
+      # inside `route_chain_intact()` that hold a chain dense and its floor inside it, then
+      # requires the suite to go red *naming the assertion that caught it*. A probe that went
+      # red for some other reason would otherwise read as a probe doing its job.
+      #
+      # The routing rows are #193's whole acceptance criterion — *"dropping any single
+      # routing invariant turns it red"* — and they are here rather than in a step of their
+      # own because they are the same question about the same file, asked eight more times.
+      # They add a few seconds: each mutation is one more copy of the template database and
+      # one more run of a suite that takes under half a second.
       #
       # Each mutation runs against a throwaway copy of a database this step migrates for
       # itself, and is made inside a transaction that is never committed — so it touches

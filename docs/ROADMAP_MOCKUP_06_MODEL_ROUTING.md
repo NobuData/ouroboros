@@ -204,7 +204,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Y.2 | #190 | 🟢 Done | ouroboros-db: [Y.2] Task kinds, routes & fallback chains | `task_kinds`, `routes`, ordered `route_hops`, policy columns | mvp, routing, db | N (after Y.1) | Y | M | ouroboros-db |
 | Y.3 | #191 | 🟢 Done | ouroboros-db: [Y.3] Escalation rules schema | Structured predicate → modification rules (M5), enable flags | mvp, routing, db | N (after Y.2) | Y | S | ouroboros-db |
 | Y.4 | #192 | 🟢 Done | ouroboros-db: [Y.4] Routing dev seeds — mockup-06 parity | 5 providers, 7 aliases, 8 task kinds, routes, 3 rules, usage stats | mvp, routing, db | N (after Y.3) | Y | M | ouroboros-db |
-| Y.5 | #193 | 🟡 Open | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
+| Y.5 | #193 | 🟢 Done | ouroboros-db: [Y.5] Routing constraints in ci/db | Alias-only routes, hop ordering, predicate shapes, vocab checks | mvp, routing, db, ci | N (after Y.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue Y.1 — ouroboros-db: [Y.1] Provider connections & model alias foundations
 
@@ -582,7 +582,81 @@ seeds: 5 providers · 7 aliases · 8 kinds · chains+policies · 3 rules
 
 ### Issue Y.5 — ouroboros-db: [Y.5] Routing constraints in ci/db
 
-> **GitHub issue:** #193 · **Status:** 🟡 Open · **Parent epic:** #185
+> **GitHub issue:** #193 · **Status:** 🟢 Done · **Parent epic:** #185
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-db/tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh),
+> [`ouroboros-db/tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) and
+> [`ouroboros-db/tests/lib/assert.sql`](../ouroboros-db/tests/lib/assert.sql). No new `ci/db`
+> step and no new migration: the ticket's scope is a suite that already runs on every pull
+> request touching this module.
+>
+> **All six scope bullets were already asserted, and that is the finding rather than a
+> shortcut.** `constraints.sql` carries the rule *a migration that adds a rule adds its
+> assertion here in the same change*, and Y.1 (#189), Y.2 (#190) and Y.3 (#191) each kept it:
+> hop position uniqueness and density, one route per task kind, both `restrict` foreign keys,
+> the `then`-shape checks, the provider `kind`/`status` vocabularies and the floor-index bound
+> are all probed by the section belonging to the migration that introduced them. Scattering a
+> second copy of them into a section of this ticket's own would have produced two statements
+> of each rule that can disagree. So the work went where the gap actually was — this ticket's
+> **second** acceptance criterion, which nothing in the repository answered for routing.
+>
+> **Eight mutations, one per invariant, and two of them are relaxations rather than drops.**
+> `verify-constraint-probes.sh` already existed for the dashboard read-model (#69) and the
+> provider cards (#221); it now drops `route_hops_route_position_key`, `routes_task_kind_key`,
+> `escalation_rule_then_shape` and `provider_connections_kind`, and **re-adds**
+> `route_hops_alias_fk` and `model_aliases_provider_fk` as `on delete cascade`. The
+> re-add is the point: `restrict` → `cascade` is the refactor that really happens, it leaves
+> the constraint's name exactly where it was, and both fail **open** — the delete succeeds and
+> takes the dependent rows with it, so a provider removed on mockup 07 empties chains drawn on
+> mockup 06 and an alias retired on mockup 21 shortens every chain that named it, past the
+> floor those chains were written against. A mutation that merely dropped either would have
+> been caught by the cross-workspace probes hundreds of assertions earlier and never reached
+> the deletion rule it was aimed at.
+>
+> **The two chain rules are rewritten rather than dropped, for the reason `token_usage_daily`
+> is.** `route_chain_intact()` carries three rules in one constraint trigger — never empty,
+> dense from 1, floor inside the chain — so a `drop trigger` falsifies all three at once and
+> the assertion that notices is whichever comes first in the file, not the one whose invariant
+> was removed. A new `rewrite_chain_rule` helper, the sibling of the existing `rewrite_view`,
+> swaps a single test in that function for `false` and leaves the rest as V016 wrote it; it
+> reads the definition back from the catalogue and raises if the expression it aims at is not
+> there, so it cannot rot into mutating nothing. Verified: the density rewrite is caught by
+> *"removing a hop from the middle of a chain leaves a gap"* and the floor rewrite by *"a floor
+> past the end of the chain can never fire"* — each probe answering for its own rule.
+>
+> **`must_reject` now names the constraint when a statement is *accepted*, not only when the
+> wrong rule fires.** That is the third acceptance criterion — *"failures name the invariant,
+> not just the SQL error"* — and it was the one line of the suite where the information was
+> already in hand and thrown away: the helper takes the expected constraint name, checked it
+> on the rejection path, and dropped it on the acceptance path. A dropped rule now reports
+> both halves — `a task kind has exactly one route (statement was accepted — routes_task_kind_key
+> did not fire)` — and seven of the eight new probes match on the whole line, constraint name
+> included, which is what proves each is watching the object its label names.
+>
+> **One section was added to `constraints.sql`, and it is a backstop rather than new
+> coverage.** Every invariant above is behavioural, and a behavioural probe has one failure
+> mode invisible from the outside: it can go **vacuous**, because it depends on a fixture, and
+> a fixture is a live thing a later ticket can rename or delete out from under it. The foot of
+> the file now enumerates the invariants Z.1 (#194) is *written against* rather than re-checks
+> and asks the catalogue for each by name — asserting the **shape** where the shape is the
+> rule, so a foreign key is checked for `restrict` rather than for existing. It deliberately
+> asserts no rule *body* — no CHECK expression, no trigger source — because those are
+> legitimately rewritten and a test that pins a rule's wording fails on the refactor rather
+> than on the regression. It reads no rows and costs nothing measurable. One behavioural probe
+> was added beside it: the position key reached by `insert` as well as by `update`, which is
+> the verb a whole-chain rewrite actually uses.
+>
+> **The runtime criterion, measured.** `constraints.sql` goes 437 ms → 441 ms — the new
+> section is catalogue reads — and the probe step 9 s → 13 s locally, which is eight more
+> copies of a template database and eight more runs of a suite that takes under half a second.
+> The whole live pass was rehearsed against the pinned `postgres:17-alpine`: migrate, validate,
+> `constraints.sql` with both alias-warning branches, all 43 probe checks, the alias-reference
+> guard, the seeded database and the V006 rehearsal.
+>
+> **Deliberately not here:** any new rule. This ticket asserts what the schema already
+> enforces and proves those assertions load-bearing; a routing invariant that turns out to be
+> missing belongs to the migration that should have had it, not to a test file.
 
 
 - **Problem Statement:** Alias-only routing, hop ordering, and predicate shapes
@@ -1595,8 +1669,19 @@ an aggregate over 370 seeded calls rather than a value anybody stored. It carrie
 migration with it — `V020`, the `task_kind` and `latency_ms` decision **M7** turned out to
 need — corrected AC.6's health snapshots to the strip they are rendered by, and found two
 figures on the spend card that no seed can produce, because a thirty-day window contains the
-calendar month it is asked to be smaller than. See its issue section above. Next is **#193**
-([Y.5] the `ci/db` probes), and Z.5 (#198) now has the fixture it was waiting on.
+calendar month it is asked to be smaller than. See its issue section above. Z.5 (#198) now
+has the fixture it was waiting on.
+
+**#193** ([Y.5] the `ci/db` probes) has landed and **epic Y is complete**. The finding is worth
+carrying forward: all six of its scope bullets were already asserted in `constraints.sql`,
+because Y.1, Y.2 and Y.3 each kept that file's rule that a migration adds its assertion in the
+same change — so the work went to the criterion nothing answered, which is whether those
+assertions are *load-bearing*. `verify-constraint-probes.sh` now drops or relaxes eight routing
+invariants one at a time and requires the suite to go red naming the guarantee that
+disappeared; the two `restrict` foreign keys are re-added as `cascade` rather than dropped,
+because that is the refactor that really happens and it is the one that fails **open**. See its
+issue section above. Next in epic Z are **#197** ([Z.4] simulate) and **#198** ([Z.5] the
+stats).
 
 **#194** ([Z.1] the resolution engine) has landed, and decision **M6** is now a function rather
 than an intention: one pure, versioned `resolve(taskKind, ctx)` that takes a health snapshot as

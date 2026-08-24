@@ -4,11 +4,11 @@
 #
 # The script itself needs a migrated PostgreSQL, so what it does to a schema is asserted
 # where a database exists: the `ci/db` step that runs it. Its scope is #69's dashboard
-# read-model and #221's provider tables, and every constraint either of them names is
-# checked below against the migrations that create it. What is asserted here is
-# everything it decides *before* it connects — the arguments it accepts, the ones it
-# refuses, and its refusal to reach for a database with no password in the environment —
-# so the module's suite keeps covering it without a daemon or a network.
+# read-model, #221's provider tables and #193's routing invariants, and every constraint
+# any of the three names is checked below against the migrations that create it. What is
+# asserted here is everything it decides *before* it connects — the arguments it accepts,
+# the ones it refuses, and its refusal to reach for a database with no password in the
+# environment — so the module's suite keeps covering it without a daemon or a network.
 #
 # The second half reads the committed script and the workflow that runs it, and asserts the
 # pair agree: a probe added to the script and never wired into CI is a probe nothing runs,
@@ -90,7 +90,13 @@ for probe_constraint in \
   provider_connections_monthly_cap_nonnegative \
   provider_connections_status \
   provider_connections_added_by_fk \
-  provider_models_connection_model_key
+  provider_models_connection_model_key \
+  route_hops_route_position_key \
+  routes_task_kind_key \
+  route_hops_alias_fk \
+  model_aliases_provider_fk \
+  escalation_rule_then_shape \
+  provider_connections_kind
 do
   check_contains "$PROBES" "drop constraint $probe_constraint" \
     "the suite mutates $probe_constraint"
@@ -125,6 +131,66 @@ check_contains "$PROBES" 'rewrite_view' 'the suite rewrites token_usage_daily'
 check_contains "$MODULE_DIR/migrations/V010__dashboard_usage.sql" \
   'create view ouroboros.token_usage_daily' \
   'and V010 is where that view is created'
+
+# The routing chain rules (#193) are the other shape a drop cannot express, for the opposite
+# reason: one constraint trigger carries three rules, so dropping it falsifies all three and
+# no probe can then answer for its own. The rewrites swap one test at a time, which only means
+# anything while the function is still the one V016 wrote and still the one both triggers run.
+check_contains "$PROBES" 'rewrite_chain_rule' 'the suite rewrites route_chain_intact()'
+check_contains "$PROBES" 'lowest <> 1 or highest <> hop_count' \
+  'and aims one rewrite at the density rule'
+check_contains "$PROBES" 'floor_at is not null and floor_at > hop_count' \
+  'and the other at the floor-index bound'
+for chain_rule_test in \
+  'lowest <> 1 or highest <> hop_count' \
+  'floor_at is not null and floor_at > hop_count'
+do
+  check_contains "$MODULE_DIR/migrations/V016__task_kinds_routes_hops.sql" \
+    "$chain_rule_test" "and V016 is where [$chain_rule_test] is written"
+done
+check_contains "$MODULE_DIR/migrations/V016__task_kinds_routes_hops.sql" \
+  'create constraint trigger route_hops_chain_intact' \
+  'and V016 arms it on route_hops'
+check_contains "$MODULE_DIR/migrations/V016__task_kinds_routes_hops.sql" \
+  'create constraint trigger routes_chain_intact' \
+  'and on routes'
+
+# The two routing foreign keys are relaxed rather than dropped — `restrict` → `cascade` is the
+# refactor worth probing for, and a drop would be caught by an unrelated probe hundreds of
+# assertions earlier. So the mutation has to *re-add* each one, and what makes that a mutation
+# at all is that the migration declares the opposite.
+for restrict_fk in route_hops_alias_fk model_aliases_provider_fk
+do
+  if grep -A4 -- "add constraint $restrict_fk" "$PROBES" | grep -q 'on delete cascade'; then
+    pass "the suite re-adds $restrict_fk as a cascade rather than leaving it dropped"
+  else
+    fail "the suite re-adds $restrict_fk as a cascade rather than leaving it dropped (it does not)"
+  fi
+  if grep -rl -- "constraint $restrict_fk" "$MODULE_DIR/migrations" |
+       xargs grep -A4 -- "constraint $restrict_fk" | grep -q 'on delete restrict'; then
+    pass "and the migration that declares it says restrict"
+  else
+    fail "and the migration that declares it says restrict (it does not)"
+  fi
+done
+
+# And the half of #193 that lives in constraints.sql: the invariants named there have to be
+# the invariants the mutations above drop, or the two halves are watching different rules.
+CONSTRAINTS="$TEST_DIR/constraints.sql"
+for named_invariant in \
+  route_hops_route_position_key \
+  route_chain_intact \
+  routes_task_kind_key \
+  routes_floor_hop_index_positive \
+  route_hops_alias_fk \
+  model_aliases_provider_fk \
+  escalation_rule_then_shape \
+  escalation_rule_when_grammar \
+  provider_connections_kind
+do
+  check_contains "$CONSTRAINTS" "$named_invariant" \
+    "constraints.sql names $named_invariant among the routing invariants"
+done
 
 # A probe suite that CI does not run is a probe suite nobody runs.
 check_contains "$WORKFLOW" 'verify-constraint-probes.sh' \

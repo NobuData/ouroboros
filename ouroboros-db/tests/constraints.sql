@@ -35,7 +35,13 @@
 -- binding and structured params mockup 21's registry manages (V019, #579), and
 -- `route_revisions`, the audit trail one press of mockup 06's *Save routes* leaves behind
 -- (V021, #195), and `audit_events`, the append-only credential trail #26 specified and
--- AD.4 landed early (V022, #225).
+-- AD.4 landed early (V022, #225), and `alias_references`, the one answer to *"what
+-- references this alias?"* (V023, #581).
+--
+-- The last section belongs to no migration. Y.5 (#193) names the routing invariants Z.1's
+-- resolution is written against and asks the catalogue for each of them **by name** — a
+-- backstop for the one failure mode a behavioural probe cannot report about itself, which is
+-- that it depends on a fixture and can therefore go quietly vacuous. See its own header.
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -4367,6 +4373,17 @@ select pg_temp.must_reject(
   'two hops cannot claim the same place in one chain',
   'route_hops_route_position_key');
 
+-- The same rule reached by the other verb, which is the one a chain rewrite actually uses
+-- (#193): *Save routes* appends hops rather than renumbering them, so an off-by-one in the
+-- positions it composes arrives as an insert and never as an update.
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id)
+    values ('org-matrix', 'e9000000-0000-0000-0000-000000000004', 2,
+            'e7000000-0000-0000-0000-00000000000c');
+    set constraints ouroboros.route_hops_route_position_key immediate$$,
+  'a hop cannot be inserted onto a place another hop already holds',
+  'route_hops_route_position_key');
+
 select pg_temp.must_reject(
   $$update ouroboros.route_hops set position = 0
      where id = 'ea000000-0000-0000-0000-000000000001'$$,
@@ -6827,6 +6844,136 @@ select pg_temp.must_hold(
   'deleting a workspace takes its alias references with it, both guards notwithstanding');
 
 delete from ouroboros.organization where "id" = 'org-refs-other';
+
+-- ===========================================================================
+-- Y.5 — the routing invariants resolution relies on, named (#193)
+-- ===========================================================================
+--
+-- Z.1's `resolve()` (#194) is written against assumptions rather than re-checks — hop
+-- positions are dense, exactly one route answers for a task kind, an alias a hop names still
+-- exists, a stored `then` is one of three known shapes — because re-validating a database
+-- invariant in application code is how it ends up enforced in neither place. Every one of
+-- those assumptions is already *behaviourally* asserted above, by the section belonging to the
+-- migration that made it: a write the schema must refuse, attempted, and refused.
+--
+-- This section is the same list read the other way round, and it exists because a behavioural
+-- probe has one failure mode that cannot be observed from the outside — it can go **vacuous**.
+-- It depends on a fixture, and a fixture is a live thing: a workspace an earlier section
+-- deletes, a row a later ticket renames, a `must_reject` whose statement starts being refused
+-- a line earlier by some unrelated not-null. Any of those turns a probe into a green
+-- assertion about nothing, and the constraint it was watching can then be dropped in silence.
+-- That is exactly the drift tests/verify-constraint-probes.sh was written to catch, and it can
+-- only catch it one mutation at a time.
+--
+-- So: the invariants routing resolution relies on, enumerated, asked of the catalogue by name.
+-- No fixture can make one of these pass for the wrong reason, because there is no fixture in
+-- them — which also means they read nothing and cost nothing, and they sit at the end where
+-- the sections above have already taken their rows back down.
+--
+-- They assert the **shape** rather than the presence wherever the shape is the rule. A foreign
+-- key is checked for `restrict`, because `cascade` is the relaxation that really happens and it
+-- leaves the constraint's name exactly where it was; a deferred constraint trigger is checked
+-- for being *enabled*, because a disabled trigger is still a trigger to any query that only
+-- counts them. What is deliberately **not** asserted is any of the rule *bodies* — a CHECK's
+-- expression or a trigger function's source — because those are legitimately rewritten, and a
+-- test that pins the wording of a rule fails on the refactor rather than on the regression.
+-- What the rules do is the sections above, and it stays there.
+--
+-- tests/verify-constraint-probes.sh is the other half of #193: it drops each of these in turn
+-- and requires this suite to go red naming the guarantee that disappeared.
+
+-- --- hop ordering: unique, and dense from 1 ------------------------------------
+--
+-- The pair `floor_hop_index` is counted against. Uniqueness is an index and density is a
+-- constraint trigger, and the deferral on both is load-bearing rather than incidental —
+-- Z.2's *Save routes* empties a chain and lays a new one down inside one transaction, which
+-- an immediate rule refuses at the first statement.
+select pg_temp.must_hold(
+  (select condeferrable and condeferred from pg_constraint
+    where conrelid = 'ouroboros.route_hops'::regclass
+      and conname = 'route_hops_route_position_key' and contype = 'u'
+      and conkey = array[
+        (select attnum from pg_attribute
+          where attrelid = 'ouroboros.route_hops'::regclass and attname = 'route_id'),
+        (select attnum from pg_attribute
+          where attrelid = 'ouroboros.route_hops'::regclass and attname = 'position')]::smallint[]),
+  'route_hops_route_position_key: two hops cannot share a place in one chain (deferred)');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from pg_trigger
+    where tgname in ('route_hops_chain_intact', 'routes_chain_intact')
+      and tgrelid in ('ouroboros.route_hops'::regclass, 'ouroboros.routes'::regclass)
+      and tgfoid = 'ouroboros.route_chain_intact()'::regprocedure
+      and tgdeferrable and tginitdeferred and tgenabled = 'O'),
+  'route_chain_intact: hop positions are dense from 1, armed and deferred on both tables');
+
+-- --- one route per task kind ---------------------------------------------------
+--
+-- Resolution asks for **the** route of a kind. A second row makes that question have two
+-- answers, chosen by whichever plan the server happened to pick.
+select pg_temp.must_hold(
+  (select contype = 'u' and not condeferrable from pg_constraint
+    where conrelid = 'ouroboros.routes'::regclass and conname = 'routes_task_kind_key'),
+  'routes_task_kind_key: a task kind has exactly one route');
+
+-- --- the floor points at a hop that exists -------------------------------------
+--
+-- Two halves, and only one of them can be a CHECK: a floor *below* the chain is a property of
+-- the row, and a floor *past the end* of it compares a column here against a count in another
+-- table — which is the constraint trigger asserted above, armed on both tables because either
+-- side can break it.
+select pg_temp.must_hold(
+  (select contype = 'c' from pg_constraint
+    where conrelid = 'ouroboros.routes'::regclass
+      and conname = 'routes_floor_hop_index_positive'),
+  'routes_floor_hop_index_positive: there is no hop 0 for a floor to sit on');
+
+-- --- the two restricts, which are restricts and not cascades -------------------
+--
+-- `confdeltype` is the whole assertion. Both of these fail *open* when relaxed: a cascade
+-- deletes the dependent rows and reports success, so a provider removed in mockup 07 empties
+-- chains drawn in mockup 06, and an alias retired in mockup 21 shortens every chain that
+-- named it — past the floor those chains were written against, silently, in production.
+select pg_temp.must_hold(
+  (select confdeltype = 'r' from pg_constraint
+    where conrelid = 'ouroboros.route_hops'::regclass
+      and conname = 'route_hops_alias_fk' and contype = 'f'),
+  'route_hops_alias_fk: an alias a hop names cannot be deleted (restrict, not cascade)');
+
+select pg_temp.must_hold(
+  (select confdeltype = 'r' from pg_constraint
+    where conrelid = 'ouroboros.model_aliases'::regclass
+      and conname = 'model_aliases_provider_fk' and contype = 'f'),
+  'model_aliases_provider_fk: a connection an alias names cannot be deleted (restrict, not cascade)');
+
+-- --- a rule's `then` is one of three shapes ------------------------------------
+--
+-- On the domain rather than on the table, which is what puts the refusal *before* `display`
+-- is derived from the pair — see V018's section. A rule the grammar no longer refuses is a
+-- rule resolution reads and cannot act on.
+select pg_temp.must_hold(
+  (select contype = 'c' from pg_constraint
+    where contypid = 'ouroboros.escalation_rule_then'::regtype
+      and conname = 'escalation_rule_then_shape'),
+  'escalation_rule_then_shape: a rule''s action is one of use_alias, add_vote, route_local');
+
+select pg_temp.must_hold(
+  (select contype = 'c' from pg_constraint
+    where contypid = 'ouroboros.escalation_rule_when'::regtype
+      and conname = 'escalation_rule_when_grammar'),
+  'escalation_rule_when_grammar: a rule''s predicate is the WF-P8 grammar scoped to routing');
+
+-- --- the provider vocabularies --------------------------------------------------
+--
+-- Both are text with a CHECK rather than an enum, so widening one is an ordinary migration
+-- and dropping one is an ordinary mistake. `kind` decides which adapter a hop is dispatched
+-- through and `status` decides whether resolution may keep the hop at all.
+select pg_temp.must_hold(
+  (select count(*) = 2 from pg_constraint
+    where conrelid = 'ouroboros.provider_connections'::regclass
+      and conname in ('provider_connections_kind', 'provider_connections_status')
+      and contype = 'c'),
+  'provider_connections_kind and _status: both provider vocabularies are still closed');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
