@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.30.9",
+    "version": "0.30.10",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -2145,6 +2145,724 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registry/aliases": {
+      "get": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "The allowed-models table",
+        "description": "Every model alias this workspace has — mockup 21's *ALLOWED MODELS* table and the\ninspector's whole state ([#584](https://github.com/NobuData/ouroboros/issues/584)):\nthe switch, the binding, both documents, the note, and **everything that references\nthe alias**. The `Used by` column is that list counted and the inspector's chips are it\nlisted, read from one definition so the two cannot disagree (decision **R5**) — and a\n`409` on delete names the same rows.\n\n**Unbound aliases are in the list**, with `connection: null` and `enabled: false`. An\nalias created ahead of its key is a row mockup 21 draws (*no key — connect a\nprovider*), not an absence.\n\n**This is the registry's read; routing keeps its own.** `GET /api/v1/routing/aliases`\nanswers the swap menus with each alias's current resolution and stays for that page;\nthis answers the registry page with the row itself.\n\n**Unpaged**, for the same reason as routing's list: a workspace's registry is a handful\nof names, and a page over a list that short would cost a client a second request to\ndiscover there was nothing more.\n\n**Any member may read it.**",
+        "operationId": "listModelAliases",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Every alias, ordered by name. Empty for a workspace with none — the registry's\nempty state, not a failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAliasList"
+                },
+                "example": {
+                  "aliases": [
+                    {
+                      "id": "5eed000f-0000-4000-8000-000000000001",
+                      "alias": "coder-max",
+                      "enabled": true,
+                      "connection": {
+                        "id": "5eed000c-0000-4000-8000-000000000001",
+                        "kind": "anthropic",
+                        "displayName": "Anthropic Claude"
+                      },
+                      "modelId": "claude-fable-5",
+                      "params": {
+                        "thinking": "max",
+                        "token_budget": 400000
+                      },
+                      "restrictions": {},
+                      "notes": null,
+                      "references": [
+                        {
+                          "kind": "route",
+                          "refId": "5eed0012-0000-4000-8000-000000000007",
+                          "label": "implement-primary",
+                          "blocking": true
+                        },
+                        {
+                          "kind": "escalation",
+                          "refId": "5eed0013-0000-4000-8000-000000000001",
+                          "label": "escalation:effort≥L",
+                          "blocking": true
+                        }
+                      ],
+                      "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                      "createdAt": "2026-06-12T16:20:00.000Z",
+                      "updatedAt": "2026-08-23T09:59:41.882Z"
+                    },
+                    {
+                      "id": "5eed000f-0000-4000-8000-000000000008",
+                      "alias": "gpt5-experiments",
+                      "enabled": false,
+                      "connection": null,
+                      "modelId": "gpt-5.2-preview",
+                      "params": {},
+                      "restrictions": {},
+                      "notes": null,
+                      "references": [],
+                      "updatedBy": null,
+                      "createdAt": "2026-08-20T10:00:00.000Z",
+                      "updatedAt": "2026-08-20T10:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "Create an alias — bound, or unbound",
+        "description": "Mockup 21's **+ New alias**, in either of its two modes\n([#584](https://github.com/NobuData/ouroboros/issues/584)).\n\n**Bound** — `connectionId` names a provider connection in this workspace and\n`modelId` a model on it. The model is checked against what discovery (AC.6) has\nreported on the connection; a model it has not reported is **saved anyway**, with a\n`model_not_discovered` warning in the answer rather than a refusal — discovery is not\nyet universal, and a hard reference would refuse configurations that are valid during\nthe gap. `params` and `restrictions` are validated against the bound model's\ncapability schema (CH.2, the same schema `GET /registry/param-schema` renders the\ninspector from) and refused by field. `enabled` defaults to on.\n\n**Unbound** — no `connectionId` (or `null`): a name created ahead of its key, mockup\n21's `gpt5-experiments`. Stored with `enabled: false` **whatever the body said**,\nbecause an unbound alias can never be switched on, and the answer carries an\n`alias_unbound` warning whose `fix` is where to go — Providers & keys. Every param is\nrefused for an unbound alias, since nothing knows what the model supports;\nrestrictions are registry policy and are accepted.\n\n**Names are unique per workspace**, and a taken one is a designed `422` — never a\nunique-violation leak.\n\n**Every write leaves exactly one revision record**, and `revisionId` names it.\n\n**`owner` or `admin`.**",
+        "operationId": "createModelAlias",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelAlias"
+              },
+              "example": {
+                "alias": "coder-max",
+                "connectionId": "5eed000c-0000-4000-8000-000000000001",
+                "modelId": "claude-fable-5",
+                "params": {
+                  "thinking": "max",
+                  "token_budget": 400000
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The alias as stored, re-read after the commit; its revision; and any warnings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAliasChange"
+                },
+                "example": {
+                  "alias": {
+                    "id": "5eed000f-0000-4000-8000-000000000001",
+                    "alias": "coder-max",
+                    "enabled": true,
+                    "connection": {
+                      "id": "5eed000c-0000-4000-8000-000000000001",
+                      "kind": "anthropic",
+                      "displayName": "Anthropic Claude"
+                    },
+                    "modelId": "claude-fable-5",
+                    "params": {
+                      "thinking": "max",
+                      "token_budget": 400000
+                    },
+                    "restrictions": {},
+                    "notes": null,
+                    "references": [],
+                    "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                    "createdAt": "2026-08-24T10:00:00.000Z",
+                    "updatedAt": "2026-08-24T10:00:00.000Z"
+                  },
+                  "revisionId": "a1000000-0000-4000-8000-000000000001",
+                  "warnings": [],
+                  "nextResolution": null,
+                  "droppedHops": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Creating an alias is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.\n\n`provider_connection_not_found` — `connectionId` names no connection in this\nworkspace. The same answer for *no such connection* and *another workspace's*.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is malformed: a name that is not lower-case kebab, a\n`connectionId` that is not a uuid, a `params` that is not an object, a field this\nbody does not declare. `details` names each field.\n\n`model_alias_name_taken` — this workspace already has an alias by that name.\n`details.alias` is the name.\n\n`model_alias_params_invalid` — a param or a restriction the bound model cannot\nhonour, or any param at all on an unbound alias. `details` names each field —\n`params.thinking`, `restrictions.batch_ok` — with the schema's own sentence.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registry/aliases/model-options": {
+      "get": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "The models a connection has, for the inspector's select",
+        "description": "Mockup 21's model select, *listed live from the provider*\n([#584](https://github.com/NobuData/ouroboros/issues/584)): the rows discovery (AC.6)\nhas reported on one connection, each with what it reported — the id an alias's\n`modelId` would be set to, the display name, and the metadata the param schema is\nnarrowed by.\n\n**Empty when discovery has not run**, which is an honest empty select rather than a\nfailure: an alias may still be created on the connection by typing the model, and the\ncreate answers with a `model_not_discovered` warning.\n\n**Any member may read it.**",
+        "operationId": "listModelOptions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "connection",
+            "in": "query",
+            "required": true,
+            "description": "The connection whose models to list — `provider_connections.id`, in this workspace.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The connection, and its models ordered by id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelOptionList"
+                },
+                "example": {
+                  "connection": {
+                    "id": "5eed000c-0000-4000-8000-000000000001",
+                    "kind": "anthropic",
+                    "displayName": "Anthropic Claude"
+                  },
+                  "models": [
+                    {
+                      "modelId": "claude-fable-5",
+                      "display": "claude-fable-5",
+                      "discoveredAt": "2026-08-24T09:56:00.000Z",
+                      "meta": {
+                        "context_tokens": 1000000,
+                        "tier": "priority"
+                      }
+                    },
+                    {
+                      "modelId": "claude-sonnet-5",
+                      "display": "claude-sonnet-5",
+                      "discoveredAt": "2026-08-24T09:56:00.000Z",
+                      "meta": {
+                        "context_tokens": 1000000,
+                        "tier": "priority"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.\n\n`provider_connection_not_found` — `connection` names no connection in this\nworkspace, or another workspace's.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `connection` is missing or is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registry/aliases/{id}": {
+      "patch": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "Save alias — edit, rebind, rename, or switch",
+        "description": "Mockup 21's **Save alias**, its **On** switch, a rename in the name field, and the\nrebind that is the product's central claim\n([#584](https://github.com/NobuData/ouroboros/issues/584)). Only the fields present\nare written; the row after the write is checked whole, diffed against the row before\nit, and written whole.\n\n**Rebind is one row and touches nothing else.** *Point coder-max at Bedrock tomorrow;\nzero workflow or route edits.* A new `connectionId` and/or `modelId` writes the\nbinding and nothing in any route, rule or workflow — those hold the alias by id or by\nname, both of which stand still. The stored params are re-validated against the\n**new** model (CH.2), discovery is asked again, and `nextResolution` states what the\nnext resolution through the alias will now reach.\n\n**Enabling an unbound alias is refused** with `model_alias_unbound` and the pointer to\nProviders & keys — never a raw constraint error. Unbinding an enabled alias\n(`connectionId: null`) switches it off, with an `alias_unbound` warning saying so.\n\n**Switching a referenced alias off succeeds**, and `droppedHops` names every referrer:\nthe hops the next resolution will drop, with a stated reason (CH.6's semantics), so the\nUI can warn before it happens.\n\n**Rename is delete-shaped** (decision **R5**). Workflow documents hold the alias by\nname, so renaming a referenced alias breaks them exactly as deleting it would: refused\nwith `model_alias_rename_blocked` naming every referrer and its kind. An unreferenced\nalias renames freely, to any name that is not taken.\n\n**A body that changes nothing is a `200` with `revisionId: null`** — nothing was\nwritten and nothing was recorded. Otherwise every write leaves exactly one revision.\n\n**`owner` or `admin`.**",
+        "operationId": "updateModelAlias",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The alias — `model_aliases.id`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelAlias"
+              },
+              "example": {
+                "connectionId": "5eed000c-0000-4000-8000-000000000006"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The alias after the change, re-read after the commit; the revision the write left\n(null when it changed nothing); the warnings; and what the write did —\n`nextResolution` after a rebind, `droppedHops` after switching a referenced alias\noff.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAliasChange"
+                },
+                "example": {
+                  "alias": {
+                    "id": "5eed000f-0000-4000-8000-000000000001",
+                    "alias": "coder-max",
+                    "enabled": true,
+                    "connection": {
+                      "id": "5eed000c-0000-4000-8000-000000000006",
+                      "kind": "anthropic",
+                      "displayName": "Anthropic — Bedrock"
+                    },
+                    "modelId": "claude-fable-5",
+                    "params": {
+                      "thinking": "max",
+                      "token_budget": 400000
+                    },
+                    "restrictions": {},
+                    "notes": null,
+                    "references": [
+                      {
+                        "kind": "route",
+                        "refId": "5eed0012-0000-4000-8000-000000000007",
+                        "label": "implement-primary",
+                        "blocking": true
+                      },
+                      {
+                        "kind": "route",
+                        "refId": "5eed0012-0000-4000-8000-000000000005",
+                        "label": "plan-primary",
+                        "blocking": true
+                      },
+                      {
+                        "kind": "route",
+                        "refId": "5eed0012-0000-4000-8000-000000000012",
+                        "label": "review-primary",
+                        "blocking": true
+                      },
+                      {
+                        "kind": "escalation",
+                        "refId": "5eed0013-0000-4000-8000-000000000001",
+                        "label": "escalation:effort≥L",
+                        "blocking": true
+                      }
+                    ],
+                    "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                    "createdAt": "2026-06-12T16:20:00.000Z",
+                    "updatedAt": "2026-08-24T10:05:00.000Z"
+                  },
+                  "revisionId": "a1000000-0000-4000-8000-000000000002",
+                  "warnings": [],
+                  "nextResolution": {
+                    "connection": {
+                      "id": "5eed000c-0000-4000-8000-000000000006",
+                      "kind": "anthropic",
+                      "displayName": "Anthropic — Bedrock"
+                    },
+                    "modelId": "claude-fable-5"
+                  },
+                  "droppedHops": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Editing an alias is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.\n\n`model_alias_not_found` — no alias with that id in this workspace. The same answer\nfor *no such alias* and *another workspace's*.\n\n`provider_connection_not_found` — `connectionId` names no connection in this\nworkspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the body is malformed. `details` names each field.\n\n`model_alias_unbound` — the alias has no provider connection and the body asked to\nenable it. `details.fix` is the path to Providers & keys.\n\n`model_alias_rename_blocked` — the body asked for a new name and routes, rules or\nworkflows reference the alias. `details.references` names each, with its kind.\n\n`model_alias_name_taken` — the new name is taken in this workspace.\n\n`model_alias_params_invalid` — a param or a restriction the bound model — after\nthis write — cannot honour. `details` names each field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "Remove an alias",
+        "description": "Mockup 21's **Remove** ([#584](https://github.com/NobuData/ouroboros/issues/584)) —\nand the caption beside it: *\"Deleting one is blocked while any route or workflow\nreferences it.\"*\n\nThe referrer list is read **inside the delete's own transaction, under a lock** on the\nalias (CG.3's `alias_reference_guard()`), so the list a `409` names is still true when\nthe delete would have run — a route save that would add a reference waits behind this\nrequest rather than slipping in between the check and the delete.\n\n`204`, and no body: there is nothing to say about a row that no longer exists. The\nrevision record survives it, with the alias's name and no longer its id.\n\n**`owner` or `admin`.**",
+        "operationId": "deleteModelAlias",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The alias — `model_aliases.id`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Gone."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Removing an alias is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.\n\n`model_alias_not_found` — no alias with that id in this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`model_alias_referenced` — routes, rules or workflows reference the alias, and\nnothing was deleted. `details.references` names every one with its kind and its\nchip label — the work list. Repoint them, then retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "model_alias_referenced",
+                  "message": "coder-max cannot be removed while 4 references reference it. Repoint them first — see details.references for each one.",
+                  "details": {
+                    "alias": "coder-max",
+                    "references": [
+                      {
+                        "kind": "route",
+                        "refId": "5eed0012-0000-4000-8000-000000000007",
+                        "label": "implement-primary",
+                        "blocking": true
+                      },
+                      {
+                        "kind": "route",
+                        "refId": "5eed0012-0000-4000-8000-000000000005",
+                        "label": "plan-primary",
+                        "blocking": true
+                      },
+                      {
+                        "kind": "route",
+                        "refId": "5eed0012-0000-4000-8000-000000000012",
+                        "label": "review-primary",
+                        "blocking": true
+                      },
+                      {
+                        "kind": "escalation",
+                        "refId": "5eed0013-0000-4000-8000-000000000001",
+                        "label": "escalation:effort≥L",
+                        "blocking": true
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/registry/aliases/{id}/duplicate": {
+      "post": {
+        "tags": [
+          "registry"
+        ],
+        "summary": "Duplicate an alias",
+        "description": "Mockup 21's **Duplicate** ([#584](https://github.com/NobuData/ouroboros/issues/584))\n— the *same model, different keys* story: `coder-max` (prod key, $600 cap) beside\n`coder-max-dev` (dev key, $50 cap) starts as a copy.\n\nThe copy is named `<alias>-copy`, or `<alias>-copy-2`, `-copy-3` … when that is\ntaken. Binding, params, restrictions and notes are copied; **`enabled` is not** — the\ncopy is switched off, so a duplicate never starts taking traffic before it has been\nedited into what it is for. Its revision records the alias it was copied from.\n\n`201`, and the copy is what is answered.\n\n**`owner` or `admin`.**",
+        "operationId": "duplicateModelAlias",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The alias to copy — `model_aliases.id`.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The copy as stored — `<alias>-copy`, switched off — and its revision.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAliasChange"
+                },
+                "example": {
+                  "alias": {
+                    "id": "5eed000f-0000-4000-8000-000000000009",
+                    "alias": "coder-max-copy",
+                    "enabled": false,
+                    "connection": {
+                      "id": "5eed000c-0000-4000-8000-000000000001",
+                      "kind": "anthropic",
+                      "displayName": "Anthropic Claude"
+                    },
+                    "modelId": "claude-fable-5",
+                    "params": {
+                      "thinking": "max",
+                      "token_budget": 400000
+                    },
+                    "restrictions": {},
+                    "notes": null,
+                    "references": [],
+                    "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                    "createdAt": "2026-08-24T10:10:00.000Z",
+                    "updatedAt": "2026-08-24T10:10:00.000Z"
+                  },
+                  "revisionId": "a1000000-0000-4000-8000-000000000003",
+                  "warnings": [],
+                  "nextResolution": null,
+                  "droppedHops": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Duplicating an alias is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.\n\n`model_alias_not_found` — no alias with that id in this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`model_alias_copy_name_too_long` — the suffixed name would exceed the 64\ncharacters an alias may have. Rename the alias to something shorter first;\n`details.proposed` is the name that did not fit.",
             "content": {
               "application/json": {
                 "schema": {
@@ -9784,6 +10502,499 @@
             "description": "Every alias in the workspace, ordered by name, unbound ones included.",
             "items": {
               "$ref": "#/components/schemas/RoutingAlias"
+            }
+          }
+        }
+      },
+      "ModelAliasConnection": {
+        "type": "object",
+        "title": "ModelAliasConnection",
+        "description": "Where an alias resolves — the connection half of a binding.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "displayName"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`provider_connections.id`."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Which adapter reaches it. The table's `AN` / `GH` / `CU` / `OL` / `VL` monogram is derived from this.",
+            "examples": [
+              "anthropic",
+              "copilot",
+              "cursor",
+              "ollama",
+              "openai_compatible"
+            ]
+          },
+          "displayName": {
+            "type": "string",
+            "description": "What mockup 07's card calls it.",
+            "examples": [
+              "Anthropic Claude"
+            ]
+          }
+        }
+      },
+      "ModelAliasReference": {
+        "type": "object",
+        "title": "ModelAliasReference",
+        "description": "One reference to an alias — one `Used by` chip, and one line of a `409`.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "refId",
+          "label",
+          "blocking"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "route",
+              "escalation",
+              "workflow",
+              "chat_pin"
+            ],
+            "description": "Which storage shape the reference lives in. `route` and `escalation` are live;\n`workflow` and `chat_pin` are declared and contribute nothing until their storage\nexists."
+          },
+          "refId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The referring row — `route_hops.id` for a route, `escalation_rules.id` for a rule. Stable enough to link to."
+          },
+          "label": {
+            "type": "string",
+            "description": "Mockup 21's chip, verbatim.",
+            "examples": [
+              "implement-primary",
+              "escalation:effort≥L"
+            ]
+          },
+          "blocking": {
+            "type": "boolean",
+            "description": "Whether this reference refuses a delete rather than warns about one. True for every live kind today."
+          }
+        }
+      },
+      "ModelAlias": {
+        "type": "object",
+        "title": "ModelAlias",
+        "description": "One row of mockup 21's allowed-models table, and the inspector's whole state.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "alias",
+          "enabled",
+          "connection",
+          "modelId",
+          "params",
+          "restrictions",
+          "notes",
+          "references",
+          "updatedBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`model_aliases.id` — what every write addresses."
+          },
+          "alias": {
+            "type": "string",
+            "description": "The name routes use.",
+            "examples": [
+              "coder-max"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The **On** switch. Always false for an unbound alias."
+          },
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelAliasConnection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it resolves, or null for the unbound state — mockup 21's *no key* row."
+          },
+          "modelId": {
+            "type": "string",
+            "description": "The raw model id — the only place one appears (decision **M1**).",
+            "examples": [
+              "claude-fable-5"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "description": "Per-alias invocation defaults — what the table's chips are derived from.",
+            "additionalProperties": true
+          },
+          "restrictions": {
+            "type": "object",
+            "description": "Registry policy flags — `review_vote_only`, `batch_ok`.",
+            "additionalProperties": true
+          },
+          "notes": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An operator's note, or null."
+          },
+          "references": {
+            "type": "array",
+            "description": "Everything that references the alias. The `Used by` column is this list's length; the inspector's chips are its labels.",
+            "items": {
+              "$ref": "#/components/schemas/ModelAliasReference"
+            }
+          },
+          "updatedBy": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who last wrote it — a user id — or null for a seed or an import."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Moved by every write."
+          }
+        }
+      },
+      "ModelAliasList": {
+        "type": "object",
+        "title": "ModelAliasList",
+        "description": "The registry's list. Unpaged — a workspace's registry is a handful of names.",
+        "additionalProperties": false,
+        "required": [
+          "aliases"
+        ],
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "description": "Every alias in the workspace, ordered by name, unbound ones included.",
+            "items": {
+              "$ref": "#/components/schemas/ModelAlias"
+            }
+          }
+        }
+      },
+      "ModelAliasWarning": {
+        "type": "object",
+        "title": "ModelAliasWarning",
+        "description": "Something a write wants the client to know, beside the alias it stored. A warning is not a refusal — the write happened.",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "fix"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "alias_unbound",
+              "model_not_discovered"
+            ],
+            "description": "`alias_unbound` — the alias has no connection: it is stored switched off and\nnothing routes through it. `model_not_discovered` — discovery has not reported the\nmodel on the connection (V017's soft warning, surfaced rather than swallowed)."
+          },
+          "message": {
+            "type": "string",
+            "description": "For a person."
+          },
+          "fix": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where to go to resolve it — `/models/providers` for an unbound alias — or null when it is only information."
+          }
+        }
+      },
+      "ModelAliasResolutionPreview": {
+        "type": "object",
+        "title": "ModelAliasResolutionPreview",
+        "description": "What the next resolution through the alias will reach, after a rebind.",
+        "additionalProperties": false,
+        "required": [
+          "connection",
+          "modelId"
+        ],
+        "properties": {
+          "connection": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelAliasConnection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The connection it will run on, or null when the alias was unbound."
+          },
+          "modelId": {
+            "type": "string",
+            "description": "The model it will name."
+          }
+        }
+      },
+      "ModelAliasChange": {
+        "type": "object",
+        "title": "ModelAliasChange",
+        "description": "What a write answers with — the alias as stored, and what the write did.",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "revisionId",
+          "warnings",
+          "nextResolution",
+          "droppedHops"
+        ],
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/ModelAlias"
+          },
+          "revisionId": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The revision record this write left, or **null** when it changed nothing — a\n`PATCH` whose every field already held that value. Null is not a failure."
+          },
+          "warnings": {
+            "type": "array",
+            "description": "What the client should know. Empty is the ordinary case.",
+            "items": {
+              "$ref": "#/components/schemas/ModelAliasWarning"
+            }
+          },
+          "nextResolution": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ModelAliasResolutionPreview"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the next resolution goes, present when the write rebound the alias and null otherwise."
+          },
+          "droppedHops": {
+            "type": "array",
+            "description": "The references whose hops the next resolution will drop, present when the write switched a referenced alias off and empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/ModelAliasReference"
+            }
+          }
+        }
+      },
+      "CreateModelAlias": {
+        "type": "object",
+        "title": "CreateModelAlias",
+        "description": "`POST /registry/aliases` — the + New alias dialog, in either mode.",
+        "additionalProperties": false,
+        "required": [
+          "alias",
+          "modelId"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 64,
+            "description": "The name routes will use. Unique per workspace; lower-case letters, digits and single hyphens.",
+            "examples": [
+              "coder-max"
+            ]
+          },
+          "connectionId": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The connection to bind to, or absent / null for an unbound alias."
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The provider's model id, in the vendor's own spelling. Not padded.",
+            "examples": [
+              "claude-fable-5",
+              "qwen3-coder:32b"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "description": "Per-alias invocation defaults. Validated against the bound model's schema; absent means `{}`.",
+            "additionalProperties": true
+          },
+          "restrictions": {
+            "type": "object",
+            "description": "Registry policy flags. Absent means `{}`.",
+            "additionalProperties": true
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "An operator's note. Trimmed and non-empty; may span lines."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The **On** switch. Defaults to on for a bound alias; forced off for an unbound one."
+          }
+        }
+      },
+      "UpdateModelAlias": {
+        "type": "object",
+        "title": "UpdateModelAlias",
+        "description": "`PATCH /registry/aliases/{id}` — only the fields present are written.",
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "maxLength": 64,
+            "description": "A new name — a rename, guarded like a delete while the alias is referenced."
+          },
+          "connectionId": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A new connection — a rebind — or null to unbind, which also switches the alias off."
+          },
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "A new model — also a rebind, validated against discovery the same way."
+          },
+          "params": {
+            "type": "object",
+            "description": "The whole params document, replacing the stored one.",
+            "additionalProperties": true
+          },
+          "restrictions": {
+            "type": "object",
+            "description": "The whole restrictions document, replacing the stored one.",
+            "additionalProperties": true
+          },
+          "notes": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A new note, or null to clear it."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The **On** switch. Enabling an unbound alias is refused with `model_alias_unbound`."
+          }
+        }
+      },
+      "ModelOption": {
+        "type": "object",
+        "title": "ModelOption",
+        "description": "One model a connection has, as discovery reported it — an entry of the inspector's model select.",
+        "additionalProperties": false,
+        "required": [
+          "modelId",
+          "display",
+          "discoveredAt",
+          "meta"
+        ],
+        "properties": {
+          "modelId": {
+            "type": "string",
+            "description": "The provider's own identifier — what an alias's `modelId` would be set to."
+          },
+          "display": {
+            "type": "string",
+            "description": "What the select prints."
+          },
+          "discoveredAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When discovery last reported it."
+          },
+          "meta": {
+            "type": "object",
+            "description": "What else discovery reported — `context_tokens`, `tier`.",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ModelOptionList": {
+        "type": "object",
+        "title": "ModelOptionList",
+        "description": "The inspector's model select — *listed live from the provider*.",
+        "additionalProperties": false,
+        "required": [
+          "connection",
+          "models"
+        ],
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/ModelAliasConnection"
+          },
+          "models": {
+            "type": "array",
+            "description": "The connection's models, ordered by id. Empty when discovery has not run.",
+            "items": {
+              "$ref": "#/components/schemas/ModelOption"
             }
           }
         }

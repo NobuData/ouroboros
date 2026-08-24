@@ -37,7 +37,8 @@
 -- (V021, #195), and `audit_events`, the append-only credential trail #26 specified and
 -- AD.4 landed early (V022, #225), and `alias_references`, the one answer to *"what
 -- references this alias?"* (V023, #581), and `resolution_snapshots`, what a run's
--- resolution decided, kept (V024, #582).
+-- resolution decided, kept (V024, #582), and `alias_revisions`, the record every
+-- registry write leaves (V025, #584).
 --
 -- The last section belongs to no migration. Y.5 (#193) names the routing invariants Z.1's
 -- resolution is written against and asks the catalogue for each of them **by name** — a
@@ -7391,6 +7392,159 @@ delete from ouroboros.organization where "id" = 'org-snap';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.resolution_snapshots),
   'the section''s snapshots are gone with its workspace, and no other section left one');
+
+-- ===========================================================================
+-- V025 — alias_revisions, the record every registry write leaves (#584)
+-- ===========================================================================
+--
+-- CH.1's last acceptance criterion is *"every write leaves exactly one revision record"*,
+-- and this is the table that record lands in — V021's table again, for the registry. Three
+-- rules are the point of the migration rather than incidental to it, and each is asserted
+-- with the constraint named:
+--
+--   * **a diff has a shape**, `{<column>: {from, to}}` with at least one entry — so a write
+--     that changed nothing is *unstorable* rather than merely not written, and CJ.2's
+--     promotion into `audit_events` reads one grammar rather than one per writer;
+--   * **the action is one of eight**, because the History tab branches on it;
+--   * **the alias is a name and a reference, and the two survive different things.**
+--     Deleting the alias clears `alias_id` and keeps `alias`, so a `deleted` revision outlives
+--     the row it describes; deleting the actor sets `actor` null and keeps the record.
+--
+-- Its own fixtures: the V024 section deleted its workspace on the way out. The alias is
+-- unbound — V019 lets a disabled row bind to nothing — so no connection is needed.
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values
+  ('user-editor', 'Ed Itor', 'ed@aliases-works.dev', true, now(), now());
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-aliases', 'Aliases Works', 'aliases-works', now());
+
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id, enabled) values
+  ('f6100000-0000-0000-0000-000000000001', 'org-aliases', 'coder-max', null, 'claude-fable-5', false);
+
+-- --- one write, recorded ---------------------------------------------------------
+insert into ouroboros.alias_revisions (id, organization_id, alias_id, alias, actor, action, diff) values
+  ('f6200000-0000-0000-0000-000000000001', 'org-aliases',
+   'f6100000-0000-0000-0000-000000000001', 'coder-max', 'user-editor', 'created',
+   $${"alias": {"from": null, "to": "coder-max"},
+      "provider_connection_id": {"from": null, "to": null},
+      "model_id": {"from": null, "to": "claude-fable-5"},
+      "enabled": {"from": null, "to": false}}$$::jsonb);
+
+select pg_temp.must_hold(
+  (select created_at is not null and action = 'created'
+     from ouroboros.alias_revisions
+    where id = 'f6200000-0000-0000-0000-000000000001'),
+  'a registry write is stored with its actor, its action, its diff and a stamp');
+
+-- A duplicate records what it was copied from under a key that is not a column, in the same
+-- from/to shape — the one key the grammar admits beside the columns.
+insert into ouroboros.alias_revisions (organization_id, alias_id, alias, actor, action, diff) values
+  ('org-aliases', 'f6100000-0000-0000-0000-000000000001', 'coder-max-copy', 'user-editor',
+   'duplicated', $${"alias": {"from": null, "to": "coder-max-copy"},
+                   "duplicate_of": {"from": null, "to": "coder-max"}}$$::jsonb);
+
+-- --- the vocabulary and the name ---------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'touched', '{"notes": {"from": null, "to": "x"}}')$$,
+  'an action outside the eight the History tab branches on is refused',
+  'alias_revisions_action');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'Coder-Max', 'edited', '{"notes": {"from": null, "to": "x"}}')$$,
+  'the alias is shaped as model_aliases.alias is — a name a lookup could match',
+  'alias_revisions_alias_shape');
+
+-- --- the diff's grammar --------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'edited', '[]')$$,
+  'a diff is an object',
+  'alias_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'edited', '{}')$$,
+  'a write that changed nothing is unstorable — the no-op revision cannot exist',
+  'alias_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'edited', '{"notes": "x"}')$$,
+  'every entry is a from/to pair, not a value',
+  'alias_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'edited', '{"notes": {"from": null}}')$$,
+  'and a pair has both halves',
+  'alias_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'edited', '{"notes": {"from": null, "to": "x", "why": 1}}')$$,
+  'and nothing beside them',
+  'alias_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.alias_revisions (organization_id, alias, action, diff)
+    values ('org-aliases', 'coder-max', 'edited', '{"Notes": {"from": null, "to": "x"}}')$$,
+  'a key is a column name — lower snake, as the schema spells them',
+  'alias_revisions_diff_shape');
+
+-- --- what survives what -------------------------------------------------------------
+delete from ouroboros."user" where "id" = 'user-editor';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.alias_revisions where organization_id = 'org-aliases')
+  and (select count(*) = 2 from ouroboros.alias_revisions
+        where organization_id = 'org-aliases' and actor is null),
+  'deleting the person who made a write keeps the record of it, attributed to nobody');
+
+delete from ouroboros.model_aliases where id = 'f6100000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.alias_revisions where organization_id = 'org-aliases')
+  and (select count(*) = 2 from ouroboros.alias_revisions
+        where organization_id = 'org-aliases' and alias_id is null)
+  and (select alias = 'coder-max' from ouroboros.alias_revisions
+        where id = 'f6200000-0000-0000-0000-000000000001'),
+  'deleting the alias clears the reference and keeps the name — a deleted revision outlives its row');
+
+-- --- the two reads --------------------------------------------------------------------
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.alias_revisions
+     where organization_id = 'org-aliases'
+     order by created_at desc, id desc$$,
+  'alias_revisions_organization_created_at_idx');
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.alias_revisions
+     where alias_id = 'f6100000-0000-0000-0000-000000000001'
+     order by created_at desc$$,
+  'alias_revisions_alias_idx');
+
+set local enable_seqscan = on;
+
+-- --- append-only by construction ------------------------------------------------------
+select pg_temp.must_hold(
+  not exists (select 1 from information_schema.columns
+               where table_schema = 'ouroboros'
+                 and table_name = 'alias_revisions'
+                 and column_name = 'updated_at'),
+  'a revision has no updated_at — an event that can be edited is not one');
+
+-- Taken back down, for the section after this one.
+delete from ouroboros.organization where "id" = 'org-aliases';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.alias_revisions),
+  'a workspace''s registry history goes with the workspace');
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

@@ -941,6 +941,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/registry/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The allowed-models table
+         * @description Every model alias this workspace has — mockup 21's *ALLOWED MODELS* table and the
+         *     inspector's whole state ([#584](https://github.com/NobuData/ouroboros/issues/584)):
+         *     the switch, the binding, both documents, the note, and **everything that references
+         *     the alias**. The `Used by` column is that list counted and the inspector's chips are it
+         *     listed, read from one definition so the two cannot disagree (decision **R5**) — and a
+         *     `409` on delete names the same rows.
+         *
+         *     **Unbound aliases are in the list**, with `connection: null` and `enabled: false`. An
+         *     alias created ahead of its key is a row mockup 21 draws (*no key — connect a
+         *     provider*), not an absence.
+         *
+         *     **This is the registry's read; routing keeps its own.** `GET /api/v1/routing/aliases`
+         *     answers the swap menus with each alias's current resolution and stays for that page;
+         *     this answers the registry page with the row itself.
+         *
+         *     **Unpaged**, for the same reason as routing's list: a workspace's registry is a handful
+         *     of names, and a page over a list that short would cost a client a second request to
+         *     discover there was nothing more.
+         *
+         *     **Any member may read it.**
+         */
+        get: operations["listModelAliases"];
+        put?: never;
+        /**
+         * Create an alias — bound, or unbound
+         * @description Mockup 21's **+ New alias**, in either of its two modes
+         *     ([#584](https://github.com/NobuData/ouroboros/issues/584)).
+         *
+         *     **Bound** — `connectionId` names a provider connection in this workspace and
+         *     `modelId` a model on it. The model is checked against what discovery (AC.6) has
+         *     reported on the connection; a model it has not reported is **saved anyway**, with a
+         *     `model_not_discovered` warning in the answer rather than a refusal — discovery is not
+         *     yet universal, and a hard reference would refuse configurations that are valid during
+         *     the gap. `params` and `restrictions` are validated against the bound model's
+         *     capability schema (CH.2, the same schema `GET /registry/param-schema` renders the
+         *     inspector from) and refused by field. `enabled` defaults to on.
+         *
+         *     **Unbound** — no `connectionId` (or `null`): a name created ahead of its key, mockup
+         *     21's `gpt5-experiments`. Stored with `enabled: false` **whatever the body said**,
+         *     because an unbound alias can never be switched on, and the answer carries an
+         *     `alias_unbound` warning whose `fix` is where to go — Providers & keys. Every param is
+         *     refused for an unbound alias, since nothing knows what the model supports;
+         *     restrictions are registry policy and are accepted.
+         *
+         *     **Names are unique per workspace**, and a taken one is a designed `422` — never a
+         *     unique-violation leak.
+         *
+         *     **Every write leaves exactly one revision record**, and `revisionId` names it.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["createModelAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registry/aliases/model-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The models a connection has, for the inspector's select
+         * @description Mockup 21's model select, *listed live from the provider*
+         *     ([#584](https://github.com/NobuData/ouroboros/issues/584)): the rows discovery (AC.6)
+         *     has reported on one connection, each with what it reported — the id an alias's
+         *     `modelId` would be set to, the display name, and the metadata the param schema is
+         *     narrowed by.
+         *
+         *     **Empty when discovery has not run**, which is an honest empty select rather than a
+         *     failure: an alias may still be created on the connection by typing the model, and the
+         *     create answers with a `model_not_discovered` warning.
+         *
+         *     **Any member may read it.**
+         */
+        get: operations["listModelOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/registry/aliases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an alias
+         * @description Mockup 21's **Remove** ([#584](https://github.com/NobuData/ouroboros/issues/584)) —
+         *     and the caption beside it: *"Deleting one is blocked while any route or workflow
+         *     references it."*
+         *
+         *     The referrer list is read **inside the delete's own transaction, under a lock** on the
+         *     alias (CG.3's `alias_reference_guard()`), so the list a `409` names is still true when
+         *     the delete would have run — a route save that would add a reference waits behind this
+         *     request rather than slipping in between the check and the delete.
+         *
+         *     `204`, and no body: there is nothing to say about a row that no longer exists. The
+         *     revision record survives it, with the alias's name and no longer its id.
+         *
+         *     **`owner` or `admin`.**
+         */
+        delete: operations["deleteModelAlias"];
+        options?: never;
+        head?: never;
+        /**
+         * Save alias — edit, rebind, rename, or switch
+         * @description Mockup 21's **Save alias**, its **On** switch, a rename in the name field, and the
+         *     rebind that is the product's central claim
+         *     ([#584](https://github.com/NobuData/ouroboros/issues/584)). Only the fields present
+         *     are written; the row after the write is checked whole, diffed against the row before
+         *     it, and written whole.
+         *
+         *     **Rebind is one row and touches nothing else.** *Point coder-max at Bedrock tomorrow;
+         *     zero workflow or route edits.* A new `connectionId` and/or `modelId` writes the
+         *     binding and nothing in any route, rule or workflow — those hold the alias by id or by
+         *     name, both of which stand still. The stored params are re-validated against the
+         *     **new** model (CH.2), discovery is asked again, and `nextResolution` states what the
+         *     next resolution through the alias will now reach.
+         *
+         *     **Enabling an unbound alias is refused** with `model_alias_unbound` and the pointer to
+         *     Providers & keys — never a raw constraint error. Unbinding an enabled alias
+         *     (`connectionId: null`) switches it off, with an `alias_unbound` warning saying so.
+         *
+         *     **Switching a referenced alias off succeeds**, and `droppedHops` names every referrer:
+         *     the hops the next resolution will drop, with a stated reason (CH.6's semantics), so the
+         *     UI can warn before it happens.
+         *
+         *     **Rename is delete-shaped** (decision **R5**). Workflow documents hold the alias by
+         *     name, so renaming a referenced alias breaks them exactly as deleting it would: refused
+         *     with `model_alias_rename_blocked` naming every referrer and its kind. An unreferenced
+         *     alias renames freely, to any name that is not taken.
+         *
+         *     **A body that changes nothing is a `200` with `revisionId: null`** — nothing was
+         *     written and nothing was recorded. Otherwise every write leaves exactly one revision.
+         *
+         *     **`owner` or `admin`.**
+         */
+        patch: operations["updateModelAlias"];
+        trace?: never;
+    };
+    "/api/v1/registry/aliases/{id}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Duplicate an alias
+         * @description Mockup 21's **Duplicate** ([#584](https://github.com/NobuData/ouroboros/issues/584))
+         *     — the *same model, different keys* story: `coder-max` (prod key, $600 cap) beside
+         *     `coder-max-dev` (dev key, $50 cap) starts as a copy.
+         *
+         *     The copy is named `<alias>-copy`, or `<alias>-copy-2`, `-copy-3` … when that is
+         *     taken. Binding, params, restrictions and notes are copied; **`enabled` is not** — the
+         *     copy is switched off, so a duplicate never starts taking traffic before it has been
+         *     edited into what it is for. Its revision records the alias it was copied from.
+         *
+         *     `201`, and the copy is what is answered.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["duplicateModelAlias"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/routing": {
         parameters: {
             query?: never;
@@ -4324,6 +4517,239 @@ export interface components {
         RoutingAliasList: {
             /** @description Every alias in the workspace, ordered by name, unbound ones included. */
             aliases: components["schemas"]["RoutingAlias"][];
+        };
+        /**
+         * ModelAliasConnection
+         * @description Where an alias resolves — the connection half of a binding.
+         */
+        ModelAliasConnection: {
+            /**
+             * Format: uuid
+             * @description `provider_connections.id`.
+             */
+            id: string;
+            /**
+             * @description Which adapter reaches it. The table's `AN` / `GH` / `CU` / `OL` / `VL` monogram is derived from this.
+             * @example anthropic
+             * @example copilot
+             * @example cursor
+             * @example ollama
+             * @example openai_compatible
+             */
+            kind: string;
+            /**
+             * @description What mockup 07's card calls it.
+             * @example Anthropic Claude
+             */
+            displayName: string;
+        };
+        /**
+         * ModelAliasReference
+         * @description One reference to an alias — one `Used by` chip, and one line of a `409`.
+         */
+        ModelAliasReference: {
+            /**
+             * @description Which storage shape the reference lives in. `route` and `escalation` are live;
+             *     `workflow` and `chat_pin` are declared and contribute nothing until their storage
+             *     exists.
+             * @enum {string}
+             */
+            kind: "route" | "escalation" | "workflow" | "chat_pin";
+            /**
+             * Format: uuid
+             * @description The referring row — `route_hops.id` for a route, `escalation_rules.id` for a rule. Stable enough to link to.
+             */
+            refId: string;
+            /**
+             * @description Mockup 21's chip, verbatim.
+             * @example implement-primary
+             * @example escalation:effort≥L
+             */
+            label: string;
+            /** @description Whether this reference refuses a delete rather than warns about one. True for every live kind today. */
+            blocking: boolean;
+        };
+        /**
+         * ModelAlias
+         * @description One row of mockup 21's allowed-models table, and the inspector's whole state.
+         */
+        ModelAlias: {
+            /**
+             * Format: uuid
+             * @description `model_aliases.id` — what every write addresses.
+             */
+            id: string;
+            /**
+             * @description The name routes use.
+             * @example coder-max
+             */
+            alias: string;
+            /** @description The **On** switch. Always false for an unbound alias. */
+            enabled: boolean;
+            /** @description Where it resolves, or null for the unbound state — mockup 21's *no key* row. */
+            connection: components["schemas"]["ModelAliasConnection"] | null;
+            /**
+             * @description The raw model id — the only place one appears (decision **M1**).
+             * @example claude-fable-5
+             */
+            modelId: string;
+            /** @description Per-alias invocation defaults — what the table's chips are derived from. */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description Registry policy flags — `review_vote_only`, `batch_ok`. */
+            restrictions: {
+                [key: string]: unknown;
+            };
+            /** @description An operator's note, or null. */
+            notes: string | null;
+            /** @description Everything that references the alias. The `Used by` column is this list's length; the inspector's chips are its labels. */
+            references: components["schemas"]["ModelAliasReference"][];
+            /** @description Who last wrote it — a user id — or null for a seed or an import. */
+            updatedBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Moved by every write.
+             */
+            updatedAt: string;
+        };
+        /**
+         * ModelAliasList
+         * @description The registry's list. Unpaged — a workspace's registry is a handful of names.
+         */
+        ModelAliasList: {
+            /** @description Every alias in the workspace, ordered by name, unbound ones included. */
+            aliases: components["schemas"]["ModelAlias"][];
+        };
+        /**
+         * ModelAliasWarning
+         * @description Something a write wants the client to know, beside the alias it stored. A warning is not a refusal — the write happened.
+         */
+        ModelAliasWarning: {
+            /**
+             * @description `alias_unbound` — the alias has no connection: it is stored switched off and
+             *     nothing routes through it. `model_not_discovered` — discovery has not reported the
+             *     model on the connection (V017's soft warning, surfaced rather than swallowed).
+             * @enum {string}
+             */
+            code: "alias_unbound" | "model_not_discovered";
+            /** @description For a person. */
+            message: string;
+            /** @description Where to go to resolve it — `/models/providers` for an unbound alias — or null when it is only information. */
+            fix: string | null;
+        };
+        /**
+         * ModelAliasResolutionPreview
+         * @description What the next resolution through the alias will reach, after a rebind.
+         */
+        ModelAliasResolutionPreview: {
+            /** @description The connection it will run on, or null when the alias was unbound. */
+            connection: components["schemas"]["ModelAliasConnection"] | null;
+            /** @description The model it will name. */
+            modelId: string;
+        };
+        /**
+         * ModelAliasChange
+         * @description What a write answers with — the alias as stored, and what the write did.
+         */
+        ModelAliasChange: {
+            alias: components["schemas"]["ModelAlias"];
+            /**
+             * @description The revision record this write left, or **null** when it changed nothing — a
+             *     `PATCH` whose every field already held that value. Null is not a failure.
+             */
+            revisionId: string | null;
+            /** @description What the client should know. Empty is the ordinary case. */
+            warnings: components["schemas"]["ModelAliasWarning"][];
+            /** @description Where the next resolution goes, present when the write rebound the alias and null otherwise. */
+            nextResolution: components["schemas"]["ModelAliasResolutionPreview"] | null;
+            /** @description The references whose hops the next resolution will drop, present when the write switched a referenced alias off and empty otherwise. */
+            droppedHops: components["schemas"]["ModelAliasReference"][];
+        };
+        /**
+         * CreateModelAlias
+         * @description `POST /registry/aliases` — the + New alias dialog, in either mode.
+         */
+        CreateModelAlias: {
+            /**
+             * @description The name routes will use. Unique per workspace; lower-case letters, digits and single hyphens.
+             * @example coder-max
+             */
+            alias: string;
+            /** @description The connection to bind to, or absent / null for an unbound alias. */
+            connectionId?: string | null;
+            /**
+             * @description The provider's model id, in the vendor's own spelling. Not padded.
+             * @example claude-fable-5
+             * @example qwen3-coder:32b
+             */
+            modelId: string;
+            /** @description Per-alias invocation defaults. Validated against the bound model's schema; absent means `{}`. */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @description Registry policy flags. Absent means `{}`. */
+            restrictions?: {
+                [key: string]: unknown;
+            };
+            /** @description An operator's note. Trimmed and non-empty; may span lines. */
+            notes?: string;
+            /** @description The **On** switch. Defaults to on for a bound alias; forced off for an unbound one. */
+            enabled?: boolean;
+        };
+        /**
+         * UpdateModelAlias
+         * @description `PATCH /registry/aliases/{id}` — only the fields present are written.
+         */
+        UpdateModelAlias: {
+            /** @description A new name — a rename, guarded like a delete while the alias is referenced. */
+            alias?: string;
+            /** @description A new connection — a rebind — or null to unbind, which also switches the alias off. */
+            connectionId?: string | null;
+            /** @description A new model — also a rebind, validated against discovery the same way. */
+            modelId?: string;
+            /** @description The whole params document, replacing the stored one. */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** @description The whole restrictions document, replacing the stored one. */
+            restrictions?: {
+                [key: string]: unknown;
+            };
+            /** @description A new note, or null to clear it. */
+            notes?: string | null;
+            /** @description The **On** switch. Enabling an unbound alias is refused with `model_alias_unbound`. */
+            enabled?: boolean;
+        };
+        /**
+         * ModelOption
+         * @description One model a connection has, as discovery reported it — an entry of the inspector's model select.
+         */
+        ModelOption: {
+            /** @description The provider's own identifier — what an alias's `modelId` would be set to. */
+            modelId: string;
+            /** @description What the select prints. */
+            display: string;
+            /**
+             * Format: date-time
+             * @description When discovery last reported it.
+             */
+            discoveredAt: string;
+            /** @description What else discovery reported — `context_tokens`, `tier`. */
+            meta: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ModelOptionList
+         * @description The inspector's model select — *listed live from the provider*.
+         */
+        ModelOptionList: {
+            connection: components["schemas"]["ModelAliasConnection"];
+            /** @description The connection's models, ordered by id. Empty when discovery has not run. */
+            models: components["schemas"]["ModelOption"][];
         };
         /**
          * RoutingSimulationContext
@@ -7920,6 +8346,984 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listModelAliases: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Every alias, ordered by name. Empty for a workspace with none — the registry's
+             *     empty state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "aliases": [
+                     *         {
+                     *           "id": "5eed000f-0000-4000-8000-000000000001",
+                     *           "alias": "coder-max",
+                     *           "enabled": true,
+                     *           "connection": {
+                     *             "id": "5eed000c-0000-4000-8000-000000000001",
+                     *             "kind": "anthropic",
+                     *             "displayName": "Anthropic Claude"
+                     *           },
+                     *           "modelId": "claude-fable-5",
+                     *           "params": {
+                     *             "thinking": "max",
+                     *             "token_budget": 400000
+                     *           },
+                     *           "restrictions": {},
+                     *           "notes": null,
+                     *           "references": [
+                     *             {
+                     *               "kind": "route",
+                     *               "refId": "5eed0012-0000-4000-8000-000000000007",
+                     *               "label": "implement-primary",
+                     *               "blocking": true
+                     *             },
+                     *             {
+                     *               "kind": "escalation",
+                     *               "refId": "5eed0013-0000-4000-8000-000000000001",
+                     *               "label": "escalation:effort≥L",
+                     *               "blocking": true
+                     *             }
+                     *           ],
+                     *           "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                     *           "createdAt": "2026-06-12T16:20:00.000Z",
+                     *           "updatedAt": "2026-08-23T09:59:41.882Z"
+                     *         },
+                     *         {
+                     *           "id": "5eed000f-0000-4000-8000-000000000008",
+                     *           "alias": "gpt5-experiments",
+                     *           "enabled": false,
+                     *           "connection": null,
+                     *           "modelId": "gpt-5.2-preview",
+                     *           "params": {},
+                     *           "restrictions": {},
+                     *           "notes": null,
+                     *           "references": [],
+                     *           "updatedBy": null,
+                     *           "createdAt": "2026-08-20T10:00:00.000Z",
+                     *           "updatedAt": "2026-08-20T10:00:00.000Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelAliasList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createModelAlias: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "alias": "coder-max",
+                 *       "connectionId": "5eed000c-0000-4000-8000-000000000001",
+                 *       "modelId": "claude-fable-5",
+                 *       "params": {
+                 *         "thinking": "max",
+                 *         "token_budget": 400000
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateModelAlias"];
+            };
+        };
+        responses: {
+            /** @description The alias as stored, re-read after the commit; its revision; and any warnings. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "alias": {
+                     *         "id": "5eed000f-0000-4000-8000-000000000001",
+                     *         "alias": "coder-max",
+                     *         "enabled": true,
+                     *         "connection": {
+                     *           "id": "5eed000c-0000-4000-8000-000000000001",
+                     *           "kind": "anthropic",
+                     *           "displayName": "Anthropic Claude"
+                     *         },
+                     *         "modelId": "claude-fable-5",
+                     *         "params": {
+                     *           "thinking": "max",
+                     *           "token_budget": 400000
+                     *         },
+                     *         "restrictions": {},
+                     *         "notes": null,
+                     *         "references": [],
+                     *         "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                     *         "createdAt": "2026-08-24T10:00:00.000Z",
+                     *         "updatedAt": "2026-08-24T10:00:00.000Z"
+                     *       },
+                     *       "revisionId": "a1000000-0000-4000-8000-000000000001",
+                     *       "warnings": [],
+                     *       "nextResolution": null,
+                     *       "droppedHops": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelAliasChange"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Creating an alias is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `provider_connection_not_found` — `connectionId` names no connection in this
+             *     workspace. The same answer for *no such connection* and *another workspace's*.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed: a name that is not lower-case kebab, a
+             *     `connectionId` that is not a uuid, a `params` that is not an object, a field this
+             *     body does not declare. `details` names each field.
+             *
+             *     `model_alias_name_taken` — this workspace already has an alias by that name.
+             *     `details.alias` is the name.
+             *
+             *     `model_alias_params_invalid` — a param or a restriction the bound model cannot
+             *     honour, or any param at all on an unbound alias. `details` names each field —
+             *     `params.thinking`, `restrictions.batch_ok` — with the schema's own sentence.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listModelOptions: {
+        parameters: {
+            query: {
+                /** @description The connection whose models to list — `provider_connections.id`, in this workspace. */
+                connection: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection, and its models ordered by id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "connection": {
+                     *         "id": "5eed000c-0000-4000-8000-000000000001",
+                     *         "kind": "anthropic",
+                     *         "displayName": "Anthropic Claude"
+                     *       },
+                     *       "models": [
+                     *         {
+                     *           "modelId": "claude-fable-5",
+                     *           "display": "claude-fable-5",
+                     *           "discoveredAt": "2026-08-24T09:56:00.000Z",
+                     *           "meta": {
+                     *             "context_tokens": 1000000,
+                     *             "tier": "priority"
+                     *           }
+                     *         },
+                     *         {
+                     *           "modelId": "claude-sonnet-5",
+                     *           "display": "claude-sonnet-5",
+                     *           "discoveredAt": "2026-08-24T09:56:00.000Z",
+                     *           "meta": {
+                     *             "context_tokens": 1000000,
+                     *             "tier": "priority"
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelOptionList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `provider_connection_not_found` — `connection` names no connection in this
+             *     workspace, or another workspace's.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `connection` is missing or is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteModelAlias: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The alias — `model_aliases.id`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Removing an alias is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `model_alias_not_found` — no alias with that id in this workspace.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `model_alias_referenced` — routes, rules or workflows reference the alias, and
+             *     nothing was deleted. `details.references` names every one with its kind and its
+             *     chip label — the work list. Repoint them, then retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "model_alias_referenced",
+                     *       "message": "coder-max cannot be removed while 4 references reference it. Repoint them first — see details.references for each one.",
+                     *       "details": {
+                     *         "alias": "coder-max",
+                     *         "references": [
+                     *           {
+                     *             "kind": "route",
+                     *             "refId": "5eed0012-0000-4000-8000-000000000007",
+                     *             "label": "implement-primary",
+                     *             "blocking": true
+                     *           },
+                     *           {
+                     *             "kind": "route",
+                     *             "refId": "5eed0012-0000-4000-8000-000000000005",
+                     *             "label": "plan-primary",
+                     *             "blocking": true
+                     *           },
+                     *           {
+                     *             "kind": "route",
+                     *             "refId": "5eed0012-0000-4000-8000-000000000012",
+                     *             "label": "review-primary",
+                     *             "blocking": true
+                     *           },
+                     *           {
+                     *             "kind": "escalation",
+                     *             "refId": "5eed0013-0000-4000-8000-000000000001",
+                     *             "label": "escalation:effort≥L",
+                     *             "blocking": true
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateModelAlias: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The alias — `model_aliases.id`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "connectionId": "5eed000c-0000-4000-8000-000000000006"
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateModelAlias"];
+            };
+        };
+        responses: {
+            /**
+             * @description The alias after the change, re-read after the commit; the revision the write left
+             *     (null when it changed nothing); the warnings; and what the write did —
+             *     `nextResolution` after a rebind, `droppedHops` after switching a referenced alias
+             *     off.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "alias": {
+                     *         "id": "5eed000f-0000-4000-8000-000000000001",
+                     *         "alias": "coder-max",
+                     *         "enabled": true,
+                     *         "connection": {
+                     *           "id": "5eed000c-0000-4000-8000-000000000006",
+                     *           "kind": "anthropic",
+                     *           "displayName": "Anthropic — Bedrock"
+                     *         },
+                     *         "modelId": "claude-fable-5",
+                     *         "params": {
+                     *           "thinking": "max",
+                     *           "token_budget": 400000
+                     *         },
+                     *         "restrictions": {},
+                     *         "notes": null,
+                     *         "references": [
+                     *           {
+                     *             "kind": "route",
+                     *             "refId": "5eed0012-0000-4000-8000-000000000007",
+                     *             "label": "implement-primary",
+                     *             "blocking": true
+                     *           },
+                     *           {
+                     *             "kind": "route",
+                     *             "refId": "5eed0012-0000-4000-8000-000000000005",
+                     *             "label": "plan-primary",
+                     *             "blocking": true
+                     *           },
+                     *           {
+                     *             "kind": "route",
+                     *             "refId": "5eed0012-0000-4000-8000-000000000012",
+                     *             "label": "review-primary",
+                     *             "blocking": true
+                     *           },
+                     *           {
+                     *             "kind": "escalation",
+                     *             "refId": "5eed0013-0000-4000-8000-000000000001",
+                     *             "label": "escalation:effort≥L",
+                     *             "blocking": true
+                     *           }
+                     *         ],
+                     *         "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                     *         "createdAt": "2026-06-12T16:20:00.000Z",
+                     *         "updatedAt": "2026-08-24T10:05:00.000Z"
+                     *       },
+                     *       "revisionId": "a1000000-0000-4000-8000-000000000002",
+                     *       "warnings": [],
+                     *       "nextResolution": {
+                     *         "connection": {
+                     *           "id": "5eed000c-0000-4000-8000-000000000006",
+                     *           "kind": "anthropic",
+                     *           "displayName": "Anthropic — Bedrock"
+                     *         },
+                     *         "modelId": "claude-fable-5"
+                     *       },
+                     *       "droppedHops": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelAliasChange"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing an alias is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `model_alias_not_found` — no alias with that id in this workspace. The same answer
+             *     for *no such alias* and *another workspace's*.
+             *
+             *     `provider_connection_not_found` — `connectionId` names no connection in this
+             *     workspace.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed. `details` names each field.
+             *
+             *     `model_alias_unbound` — the alias has no provider connection and the body asked to
+             *     enable it. `details.fix` is the path to Providers & keys.
+             *
+             *     `model_alias_rename_blocked` — the body asked for a new name and routes, rules or
+             *     workflows reference the alias. `details.references` names each, with its kind.
+             *
+             *     `model_alias_name_taken` — the new name is taken in this workspace.
+             *
+             *     `model_alias_params_invalid` — a param or a restriction the bound model — after
+             *     this write — cannot honour. `details` names each field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    duplicateModelAlias: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The alias to copy — `model_aliases.id`. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The copy as stored — `<alias>-copy`, switched off — and its revision. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "alias": {
+                     *         "id": "5eed000f-0000-4000-8000-000000000009",
+                     *         "alias": "coder-max-copy",
+                     *         "enabled": false,
+                     *         "connection": {
+                     *           "id": "5eed000c-0000-4000-8000-000000000001",
+                     *           "kind": "anthropic",
+                     *           "displayName": "Anthropic Claude"
+                     *         },
+                     *         "modelId": "claude-fable-5",
+                     *         "params": {
+                     *           "thinking": "max",
+                     *           "token_budget": 400000
+                     *         },
+                     *         "restrictions": {},
+                     *         "notes": null,
+                     *         "references": [],
+                     *         "updatedBy": "5eed0002-0000-4000-8000-000000000001",
+                     *         "createdAt": "2026-08-24T10:10:00.000Z",
+                     *         "updatedAt": "2026-08-24T10:10:00.000Z"
+                     *       },
+                     *       "revisionId": "a1000000-0000-4000-8000-000000000003",
+                     *       "warnings": [],
+                     *       "nextResolution": null,
+                     *       "droppedHops": []
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelAliasChange"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Duplicating an alias is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     `model_alias_not_found` — no alias with that id in this workspace.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `model_alias_copy_name_too_long` — the suffixed name would exceed the 64
+             *     characters an alias may have. Rename the alias to something shorter first;
+             *     `details.proposed` is the name that did not fit.
+             */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

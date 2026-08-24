@@ -2,6 +2,9 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
+import { AliasesController } from "./aliases.controller";
+import { AliasesRepository } from "./aliases.repository";
+import { AliasesService } from "./aliases.service";
 import { ParamSchemaController } from "./params.controller";
 import { ParamSchemaService } from "./params.service";
 import { RegistryModule } from "./registry.module";
@@ -40,14 +43,26 @@ describe("the registry module", () => {
     await moduleRef.close();
   });
 
-  it("declares exactly one controller, and it is the param-schema read", () => {
-    // Decision M2 as it now stands. Until CH.2 this module had none at all, and what it has is
-    // a read: `GET /registry/param-schema` creates, updates and deletes nothing. A second entry
-    // in this list is mockup 21's alias CRUD arriving, which is CH.1's (#584) to write here —
-    // and this assertion is where that has to be said out loud rather than noticed in review.
+  it("declares exactly two controllers: the param-schema read and the alias lifecycle", () => {
+    // Decision M2 as it now stands. Until CH.2 this module had no controller at all; CH.2
+    // added a read, and CH.1 (#584) is mockup 21 writing its own API — the alias CRUD M2 left
+    // to that roadmap. A third entry in this list is a new surface arriving, and this
+    // assertion is where that has to be said out loud rather than noticed in review.
     expect(Reflect.getMetadata("controllers", RegistryModule) as unknown[] | undefined).toEqual([
       ParamSchemaController,
+      AliasesController,
     ]);
+  });
+
+  it("resolves the alias lifecycle's two layers", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), RegistryModule],
+    }).compile();
+
+    expect(moduleRef.get(AliasesService)).toBeInstanceOf(AliasesService);
+    expect(moduleRef.get(AliasesRepository)).toBeInstanceOf(AliasesRepository);
+
+    await moduleRef.close();
   });
 
   it("exports the two services and the credential store, and nothing else", () => {

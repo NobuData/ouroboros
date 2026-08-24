@@ -863,6 +863,57 @@ rather than with the first thing that writes a credential — a sealed column th
 sweep cannot see is a rotation that reports success while leaving ciphertext on the key
 version it then retires.
 
+### The alias lifecycle
+
+**Every write mockup 21's registry can make, with the guards that make its caption true**
+(CH.1, [#584](https://github.com/NobuData/ouroboros/issues/584)). Decision **M2** held the
+registry's CRUD back until mockup 21 was written; this is mockup 21 writing it —
+`src/modules/registry/aliases.*.ts`, under tenant context, owner/admin write, member read.
+
+```
+GET    /api/v1/registry/aliases                  the table: switch · binding · params · notes · Used by
+POST   /api/v1/registry/aliases                  + New alias — bound (checked against discovery) or unbound (forced off)
+PATCH  /api/v1/registry/aliases/{id}             Save alias · the On switch · rename · rebind
+POST   /api/v1/registry/aliases/{id}/duplicate   <alias>-copy, -copy-2 … · switched off
+DELETE /api/v1/registry/aliases/{id}             204, or 409 naming every referrer with its kind
+GET    /api/v1/registry/aliases/model-options    the inspector's select, listed live from the provider
+```
+
+**Rebind is one row and touches nothing else** — *"Point coder-max at Bedrock tomorrow; zero
+workflow or route edits."* A `PATCH` with a new `connectionId` writes
+`model_aliases.provider_connection_id` and nothing in any route, rule or workflow; the stored
+params are re-validated against the *new* model through CH.2's schema; and the answer's
+`nextResolution` states where the next resolution now goes. `aliases.integration-spec.ts`
+asserts that the four references survive *and* that `POST /routing/simulate` resolves to the
+new connection — asserted, not assumed.
+
+**Delete is blocked, and says by what.** The referrer list is read inside the delete's own
+transaction through V023's `alias_reference_guard()`, so the `409 model_alias_referenced` a
+client renders is still true when the delete would have run; `details.references` carries
+every referrer with its kind and its chip label — a work list, not *in use*.
+
+**Rename is delete-shaped** (decision **R5**): workflow documents hold the alias by name, so
+renaming a referenced alias is `422 model_alias_rename_blocked` with the same list, and an
+unreferenced alias renames freely.
+
+**An unbound alias is never enabled through this API.** V019's CHECK would refuse it too;
+what the user gets is `422 model_alias_unbound` with `details.fix: /models/providers` —
+mockup 21's *Fix in Providers →* — decided before any statement runs. Creating one stores it
+switched off whatever the body said, with an `alias_unbound` warning; unbinding an enabled one
+switches it off and says so. The AC.6 discovery warning is **surfaced rather than
+swallowed**: a bound alias naming a model discovery has not reported is saved, and the answer
+carries `model_not_discovered` — a trigger's `WARNING` is a notice on the wire nobody would
+render, so the repository asks the trigger's own predicate instead.
+
+**Every write leaves exactly one revision, and a no-op leaves none.**
+[`V025__alias_revisions.sql`](../ouroboros-db/migrations/V025__alias_revisions.sql) is V021's
+table for the registry — who, when, an action from a closed vocabulary (`created`, `renamed`,
+`rebound`, `enabled`, `disabled`, `edited`, `duplicated`, `deleted`) and a
+`{<column>: {from, to}}` diff whose grammar is a CHECK. The row and its record are one
+transaction; a `PATCH` whose every field already held that value answers `revisionId: null`
+and writes nothing. CJ.2 ([#599](https://github.com/NobuData/ouroboros/issues/599)) promotes
+these into `audit_events`, and the columns are that table's nouns so the promotion is a copy.
+
 ## Provider health
 
 **Real checks where they are cheap, key validation where it is honest, and `unknown` where
@@ -1077,6 +1128,12 @@ POST   /api/v1/routing/rules               + Add rule · display is derived, nev
 PATCH  /api/v1/routing/rules/{id}          the switch, the order, or the rule itself
 DELETE /api/v1/routing/rules/{id}          204 · not the same thing as switching it off
 ```
+
+`GET /routing/aliases` stays for the swap menus. The registry page reads
+`GET /api/v1/registry/aliases` instead (CH.1, [#584](https://github.com/NobuData/ouroboros/issues/584)),
+which carries the row itself — the switch, both documents, the note and everything that
+references the alias — and every write to an alias lives there; see
+[The alias lifecycle](#the-alias-lifecycle).
 
 **The editing model is staged, and the API shape follows from it.** The page has a **Save
 routes** button and a hint telling you to drag things around before you press it, so edits
