@@ -165,7 +165,7 @@ export class LeaseService {
     // Audited before it is returned, and synchronously: a grant that reached a worker
     // without leaving a trace is the failure this criterion is about, and an emission
     // scheduled for later is one a crash can lose.
-    this.audit.granted(lease);
+    await this.audit.granted(lease);
 
     return lease;
   }

@@ -1509,13 +1509,59 @@ designed **`501 provider_config_not_storable`** naming the field — the same sh
 fact from *you asked wrongly*. Copilot connects without one, which its own schema calls the
 ordinary case.
 
-**Every operation is audited on AD.3's interim seam.** `connection.audit.ts` emits
-`provider.added|revealed|rotated|updated|deleted` — AD.4's
-([#225](https://github.com/NobuData/ouroboros/issues/225)) own vocabulary, agreed before the
-trail exists — to the service log with every field that issue's row will carry. A reveal
-records *how* the step-up was satisfied, which is the difference between somebody with this
-session and somebody who proved they are this person. When #225 lands, five method bodies
-become an insert and no caller, field or event name changes.
+**Every operation writes exactly one audit event, and a refusal writes one too** — see
+[The credential audit trail](#the-credential-audit-trail). `connection.audit.ts` is where each
+record is assembled, at the one point the operation is known to have happened or to have been
+refused; a reveal records *how* the step-up was satisfied, which is the difference between
+somebody with this session and somebody who proved they are this person.
+
+## The credential audit trail
+
+**Who did what to which credential, from where, and when — append-only**
+([#225](https://github.com/NobuData/ouroboros/issues/225), roadmap decision **P5**).
+`src/modules/audit/` is the one writer of `ouroboros.audit_events` and
+`GET /api/v1/providers/audit` is the one reader.
+
+```
+add · reveal · rotate · enable · disable · cap_changed · updated · delete · test
+                                        └▶ exactly one row, success or refusal
+lease grant (#224)                      └▶ credential.lease_granted, and no actor
+GET /api/v1/providers/audit   org-scoped · filterable · owner/admin · newest first
+```
+
+**The table is #26's, landed early.** Scaffolding
+[#26](https://github.com/NobuData/ouroboros/issues/26) specifies `audit_events` for the
+platform's audit log and is v2; decision **P5** puts credential auditing in v1, because a page
+that reveals and rotates keys while keeping no record of who did it fails its own stated
+security posture. So `ouroboros-db`'s `V022` is that issue's shape column for column, plus the
+`ip` it did not name, and #26 will inherit the table rather than create a second one.
+
+**A refusal is an event, under the same action name.** AD.2 recorded successes only; this
+issue's own criterion covers the failure paths, so `detail.outcome` and `detail.reason` are
+what tell a refused rotation from a completed one. That is the more useful trail — *nobody
+rotated this key* and *three people tried and the provider refused all three* are very
+different facts — and no refusal introduces a name of its own.
+
+**No event ever contains secret material**, and the check is three checks rather than one
+keyword sweep: no value shaped like a credential, no *field* named as a credential field, and
+every payload flat and scalar so the first two are exhaustive. The middle one is over the
+payload's keys rather than its rendered text, which is where `step_up` and `password` stop
+being the same string — a grep that fired on the step-up method would be weakened within a
+week and then be worth nothing. `audit.secrecy.spec.ts` runs all three over the rows a full
+lifecycle actually writes.
+
+**Append-only is enforced twice.** By grant, because `ouroboros_app` holds `select` and
+`insert` and nothing else; and by trigger, because the development stack connects as the
+database's owner and a superuser bypasses every grant in the catalogue. The one update the
+table permits is the actor foreign key's own `on delete set null` — *what happened cannot be
+rewritten; who did it can be forgotten*.
+
+**`ip` is what this service can honestly know**, which is the peer address of the socket it
+was reached on. No forwarded header is trusted: a header a client writes is a header a client
+can choose, and a trail that can be made to lie is worse than one whose address is less
+specific. Behind `ouroboros-ui`'s server-side client that means a browser-driven event carries
+the UI's address; making a forwarded header trustworthy needs a configured trusted-proxy list,
+which belongs to the deployment ticket that adds it. See `audit/audit.context.ts`.
 
 ## BetterAuth
 
@@ -2250,10 +2296,11 @@ today — the operator saying *these kinds are local here, at these addresses* �
 nothing above it moves.
 
 **Every grant writes `credential.lease_granted`**, carrying the lease, the run, the workspace,
-the provider and the address — never secret material, because on this path there is none. The
-sink is the service log until AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225))
-brings `audit_events`; `LeaseAudit` is where that becomes an insert, and every caller stays
-as it is.
+the provider and the address — never secret material, because on this path there is none. It
+is a row in `audit_events` since AD.4
+([#225](https://github.com/NobuData/ouroboros/issues/225)) and has **no actor**: a worker
+authenticates with a service key rather than as a person, so naming a user would be inventing
+one.
 
 **`POST /internal/llm/invoke` is a contract, not an implementation.** It answers `501
 invocation_not_implemented` naming AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)),
@@ -2410,6 +2457,8 @@ ouroboros-rest/
 │       │                   #   adapters/ is the only place a provider SDK may be imported
 │       ├── provider-connections/ # /api/v1/providers — the credential lifecycle · #223
 │       │                   #   masking.ts · step-up.ts · reveal.limiter.ts · connection.audit.ts
+│       ├── audit/          # audit_events — the credential trail            · #225
+│       │                   #   the one writer; GET /api/v1/providers/audit reads it
 │       ├── vault/          # envelope encryption: tenant DEKs, KeyWrapper · #222
 │       │                   #   no controller — nothing here is a route
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
@@ -2528,6 +2577,7 @@ the OpenAI-compatible adapter [#218](https://github.com/NobuData/ouroboros/issue
 the Ollama adapter and server-side pulls [#219](https://github.com/NobuData/ouroboros/issues/219) ·
 the Copilot & Cursor adapters [#220](https://github.com/NobuData/ouroboros/issues/220) ·
 the credential lifecycle [#223](https://github.com/NobuData/ouroboros/issues/223) ·
+the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 engine gateway [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 the contract it mirrors [#52](https://github.com/NobuData/ouroboros/issues/52) ·
 container [#36](https://github.com/NobuData/ouroboros/issues/36) ·

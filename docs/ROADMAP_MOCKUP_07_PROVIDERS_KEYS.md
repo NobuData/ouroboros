@@ -58,7 +58,7 @@ Surveyed 2026-08-08.
 | Routing roadmap AB.1 (invocation-gateway requirements handoff, "the 07 roadmap's ADR") | **Landed here** — AF.1 is that ADR (LiteLLM-under-custom vs pure custom adapters); AF.2 implements the chain executor against it. |
 | Routing roadmap Z.5 (spend aggregation), DASH-F.3 `token_usage`, DASH-J.4 pricing | **Consumed** — the cards' monthly meters aggregate calendar-month spend per provider from the same truth; caps stored here feed enforcement (AF.4). |
 | WF Epic Q ticket-source SPI (pluggability precedent) | **Pattern reused** — the `ModelProviderAdapter` SPI (AC.1) mirrors Q.2's discipline: core code depends on the interface only, conformance kit gates new adapters. The description's pluggable-ticket-sources requirement itself remains satisfied by WF-Q (Jira/Linear/GitLab as WF-T.2–T.4); nothing source-related is duplicated here. |
-| Scaffolding #26 audit log (v2), BA roadmap encryption helper (AES-GCM), #22/BA-B.3 GitHub org data | **Coordinated** — credential operations require an audit trail from day one (AD.4): it early-adopts #26's `audit_events` shape (filing-time coordination). BA's helper is superseded by the AD.1 envelope-encryption service (one migration path for Q.1/K.3 credentials too) — **AD.1 (#222) is 🟢 delivered**, and it ships the migration as a registration seam with **no stores registered**: Q.1 (#138), K.3 (#101) and Y.1 (#189) are all still open, so there is no encrypted column in the schema for a job to convert yet. Each of them registers a `VaultSecretStore` when it lands. |
+| Scaffolding #26 audit log (v2), BA roadmap encryption helper (AES-GCM), #22/BA-B.3 GitHub org data | **Coordinated — and settled.** Credential operations require an audit trail from day one (AD.4), so it early-adopted #26's `audit_events` shape (filing-time coordination) and, since **AD.4 (#225) is 🟢 delivered**, *landed* it: `ouroboros-db`'s `V022` is that table, column for column, plus the `ip` #26 did not name. #26 inherits it and writes `member.added` and `tenant.updated` into it with no migration of its own. BA's helper is superseded by the AD.1 envelope-encryption service (one migration path for Q.1/K.3 credentials too) — **AD.1 (#222) is 🟢 delivered**, and it ships the migration as a registration seam with **no stores registered**: Q.1 (#138), K.3 (#101) and Y.1 (#189) are all still open, so there is no encrypted column in the schema for a job to convert yet. Each of them registers a `VaultSecretStore` when it lands. |
 | Mockup 21 (model registry UI), Spend tab | **Out of scope** — discovery *feeds* the registry data (aliases resolve against discovered models), but the registry management UI stays with mockup 21's roadmap; Spend stays with AB.4. |
 | Scaffolding #49 placeholder, #56 e2e, AA.1 subnav ("Providers & keys · soon") | **Superseded/amended** — the Providers tab goes live (AA.1 amendment); #56 gains a providers leg. |
 
@@ -765,7 +765,7 @@ erDiagram
 | AD.1 | #222 | 🟢 Done | ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper) | AES-256-GCM DEK per tenant, pluggable KEK, migration of existing secrets | mvp, providers, rest, db | N (after #28) | Y | L | ouroboros-rest, ouroboros-db |
 | AD.2 | #223 | 🟢 Done | ouroboros-rest: [AD.2] Credential lifecycle API | Add/reveal/rotate/enable/delete with re-auth, verify-then-retire | mvp, providers, rest | N (after AD.1, AC.1) | Y | M | ouroboros-rest |
 | AD.3 | #224 | 🟢 Done | ouroboros-rest: [AD.3] Worker credential delivery (proxied + scoped lease spec) | P3: proxy contract for AF.2; lease API for local providers | mvp, providers, rest | N (after AD.1) | Y | M | ouroboros-rest, ouroboros-engine |
-| AD.4 | #225 | 🟡 Open | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui |
+| AD.4 | #225 | 🟢 Done | ouroboros-rest: [AD.4] Credential audit trail & Audit log surface | Every operation audited (#26-shaped); head-button trail view | mvp, providers, rest, ui | N (after AD.2) | Y | M | ouroboros-rest, ouroboros-ui, ouroboros-db |
 | AD.5 | #226 | 🟢 Done | ouroboros: [AD.5] Security model documentation | `docs/SECURITY_MODEL.md`: crypto, custody, honest claims; strip copy | mvp, providers, documentation | N (after AD.1–AD.3) | Y | S | docs |
 
 ### Issue AD.1 — ouroboros-rest: [AD.1] Envelope-encryption service (tenant DEKs + KeyWrapper)
@@ -916,12 +916,15 @@ flowchart LR
 > column is the fix**, and whichever ticket adds it deletes `config.mapping.ts`'s
 > `unstorableFields` and that error together.
 >
-> **Every operation is audited on AD.3's interim seam.** `connection.audit.ts` emits
+> **Every operation is audited on AD.3's interim seam.** `connection.audit.ts` emitted
 > `provider.added|revealed|rotated|updated|deleted` — AD.4's (#225) own vocabulary, agreed
-> before the trail exists — to the service log, with every field that issue's row will carry;
+> before the trail existed — to the service log, with every field that issue's row would carry;
 > a reveal records *how* the step-up was satisfied, which is the difference between somebody
-> with this session and somebody who proved they are this person. When #225 lands, five method
-> bodies become an insert and no caller, field or event name changes.
+> with this session and somebody who proved they are this person. **#225 has since landed and
+> those method bodies are inserts**, exactly as this paragraph predicted: every caller, every
+> field and every event name stayed as they were. What did change is one sentence that was
+> written here as a decision and is now the opposite — a refusal is an event too, under the same
+> action name, because AD.4's own criterion covers the failure paths. See its note below.
 
 
 - **Problem Statement:** The key row's affordances — masked display, Reveal,
@@ -1001,9 +1004,11 @@ rotate ─▶ validate new ─▶ atomic swap ─▶ retire old     delete ─�
 > resolved *from* the run rather than named by the caller — a worker naming its own workspace
 > would be a worker choosing which one to be audited against — and a run that does not exist
 > is a `404`. Every grant writes `credential.lease_granted` carrying the lease, the run, the
-> workspace, the provider and the address; the sink is the service log until AD.4 (#225)
-> brings `audit_events`, and `LeaseAudit` is where that becomes an insert with no caller
-> changing.
+> workspace, the provider and the address; the sink was the service log until AD.4 (#225)
+> brought `audit_events`, and `LeaseAudit` is where that became an insert with no caller
+> changing — **which is what happened**. The one thing that row says and a log line could not
+> is that it has **no actor**: a worker authenticates with a service key rather than as a
+> person, and `audit_events.actor_id` is nullable for exactly this.
 >
 > **The internal surface is a second OpenAPI document, not a section of the first.** Folding
 > it into `openapi.yaml` would publish engine-facing operations into the client `ouroboros-ui`
@@ -1063,7 +1068,145 @@ engine ──lease {ollama, run}──▶ {host, ttl 15m} ✓ audited      lease
 
 ### Issue AD.4 — ouroboros-rest: [AD.4] Credential audit trail & Audit log surface
 
-> **GitHub issue:** #225 · **Status:** 🟡 Open · **Parent epic:** #213
+> **GitHub issue:** #225 · **Status:** 🟢 Done · **Parent epic:** #213
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-db/migrations/V022__audit_events.sql`](../ouroboros-db/migrations/V022__audit_events.sql),
+> [`ouroboros-rest/src/modules/audit/`](../ouroboros-rest/src/modules/audit) and
+> [`ouroboros-ui/app/providers/`](../ouroboros-ui/app/providers) — the table, the one writer,
+> and the sheet mockup 07's **Audit log** button opens. Decision **P5**.
+>
+> **The table is #26's, landed early, and that was decided at filing time rather than
+> discovered.** Scaffolding [#26](https://github.com/NobuData/ouroboros/issues/26) specifies
+> `audit_events` for the platform's own audit log and is 🟣 v2; this is 🟢 MVP, because a page
+> that reveals and rotates credentials while keeping no record of who did it fails its own
+> stated security posture. Two tables would have been the cheap way out of that ordering and
+> would have left somebody reconciling `provider_audit` with `audit_events` next year, so V022
+> is #26's shape **column for column** — tenant fk, nullable actor fk, action, subject
+> type/id, jsonb detail, `occurred_at` — with one addition that issue did not name, `ip`, and
+> the coordination recorded in the migration header as this issue asked. When #26 lands it
+> writes `member.added` and `tenant.updated` into this table and migrates nothing.
+>
+> **A refusal is an event, which is where this ticket parts company with AD.2.** That ticket
+> recorded successes only and argued for it; this one's first acceptance criterion says the
+> opposite — *including the failure paths (a failed rotation is still an event)* — so every
+> AD.2 operation writes exactly one row whether it completed or was refused, under **the same
+> action name**, with `detail.outcome` and `detail.reason` saying which. No refusal introduces
+> a name of its own, and the trail is more useful for it: *nobody rotated this key* and *three
+> people tried and the provider refused all three* are very different facts, and only one of
+> them is visible in a trail of successes. `provider-connections.service.ts` makes that a
+> property of the control flow rather than of five call sites that remembered — one wrapper,
+> `recording()`, around each operation.
+>
+> **The three settings names AD.4 asked for are kept, and the rule for choosing one is
+> written down.** AD.5's §5.1 had collapsed `provider.enabled`, `provider.disabled` and
+> `provider.cap_changed` into `provider.updated`, on the grounds that a `PATCH` can change the
+> switch, the cap, the note and the address at once and three names would mean either several
+> events for one operation or an arbitrary rule about which wins. `providerUpdateEvent` is
+> that rule stated instead of avoided: **a specialised name when that was the only thing that
+> changed, and the general name otherwise.** So a trail says *switched the provider off* where
+> somebody saw themselves press a switch, and a request that flipped the switch *and* raised
+> the cap is one `provider.updated` naming both fields — which is a truer record of it than
+> either specialised name would be. §5.1 is corrected in this change.
+>
+> **Append-only is enforced twice, because neither mechanism covers the other's case.** The
+> grant posture is the criterion's own words — `ouroboros_app` holds `select` and `insert` and
+> nothing else — and it is what a deployment connecting as a non-owner role gets. But the
+> compose stack and every developer machine connect as the database's **owner**, and a
+> superuser bypasses every grant in the catalogue, so a rule that only lived there would be
+> true in production and false on the machine the code is written on. `audit_events_no_update`
+> is the other half: it refuses a revision from any role at all.
+>
+> **Both of the table's foreign keys shape that trigger, and neither exception is a
+> softening.** `organization_id` cascades — a workspace's trail goes with the workspace, on
+> the same reasoning `tenant_keys` cascades — which is why the trigger covers `update` and not
+> `delete`: a delete-refusing trigger would not protect the trail, it would make removing a
+> tenant impossible. And `actor_id`'s `on delete set null` **is an UPDATE**, so the trigger
+> permits exactly that one statement and nothing beside it. The guarantee the table actually
+> makes is therefore stated precisely rather than approximately — *what happened cannot be
+> rewritten; who did it can be forgotten* — which is a right-to-erasure request answered by
+> the schema rather than by a script.
+>
+> **The secrecy criterion is three checks, not one keyword sweep**, and that is the finding
+> worth carrying forward. A single grep for `password|token|secret` over a rendered row is the
+> check that looks strictest and is worth least: it fires on `{"step_up": "password"}`, which
+> is the *name of a re-authentication method* and the single most important field an audit of
+> a reveal carries. A check that has to be weakened the first time it is right about nothing
+> gets weakened until it is right about nothing at all. So the three are separated by what
+> they are about — **no value shaped like a credential** (every substring of eight characters
+> or more of the fixture keys, plus the vault's envelope prefix), **no field named as a
+> credential field** (the vault's own `DENIED_WORDS`, over the payload's *keys*, which is
+> where `step_up` and `password` stop being the same string), and **every payload flat and
+> scalar**, which is what makes the first two exhaustive rather than top-level-only. Both
+> `audit.secrecy.spec.ts` and the `audit_events` section of `ouroboros-db/tests/seed.sql`
+> carry all three, over what a full lifecycle actually writes rather than over a payload a
+> test composed to be clean.
+>
+> **`ip` is honest about what it can know, and the limitation is stated rather than hidden.**
+> The column is `inet` — it refuses a string that is not an address, and makes *everything
+> from this subnet* an operator rather than a prefix match — and the service unwraps the
+> `::ffff:` mapping before writing, because PostgreSQL keeps `::ffff:10.0.4.20` distinct from
+> `10.0.4.20` and a dual-stack listener would otherwise split one host across two spellings.
+> What it holds is the **peer address of the socket the API was reached on**, and no forwarded
+> header is trusted: a header a client writes is a header a client can choose, and a trail that
+> can be made to lie is worse than one whose address is less specific. Behind `ouroboros-ui`'s
+> server-side client that means a browser-driven event carries the UI's address rather than
+> the person's. Making the header trustworthy needs a configured trusted-proxy list, which is
+> an operational feature with its own failure modes and belongs to the ticket that adds it.
+>
+> **`"user"` joined the schema mirror**, and it is the first of BetterAuth's tables this
+> service reads for a reason that is not an authorization decision. The trail's one query
+> joins it for a person's `name`, because a trail of ids is a trail nobody can read and the
+> alternative is the browser resolving each distinct actor against the library's own routes —
+> one round trip per person, to render a column. It is in `LIBRARY_OWNED_TABLES`, so mirroring
+> it buys a `select` and no write path. The column selected is the **name and never the
+> email**: a trail that was a list of addresses would be a trail worth exfiltrating.
+>
+> **The UI half ships as a mountable head action, because the page it belongs to is AE.1's.**
+> `/providers` ([#227](https://github.com/NobuData/ouroboros/issues/227)) has not landed, and
+> the acceptance criterion *the sheet renders seeded history in both themes* needs a running
+> surface rather than a snapshot. So `<AuditTrail />` is the button **and** its sheet as one
+> element — AE.1 renders it in its page head beside its own **+ Add provider** and nothing in
+> the file changes — and it is reachable today at `/workshop/providers-audit`, which is the
+> role `chrome-story.tsx` plays for a primitive whose page has not arrived. The sheet's frame
+> is `ShellOverlay`'s, not a new one: § 1.3 names dialogs, sheets and the palette as the three
+> surfaces with one requirement in common, and that component is it.
+>
+> **The sheet reads when it is opened, and again on every open.** A page-load read would make
+> every provider page view pay for an audit query — one a `viewer` or a `member` is not even
+> allowed to make, so most of them would be `403`s discarded before render. And a trail is a
+> moving surface: somebody opening it twice during an incident wants the second read to include
+> what happened in between, so nothing is cached. The refusal is a **sentence**, not a
+> rejection: a sheet opened over a page the reader is still entitled to be on must not replace
+> it with an error screen.
+>
+> **`provider.tested` is defined here and written by AE.4.** That name is in this issue's
+> vocabulary and the test-and-discovery routes are
+> [#230](https://github.com/NobuData/ouroboros/issues/230)'s, so `ProviderAudit.tested` ships
+> with no caller — deliberately, and said so in the file. The alternative was to leave the
+> ninth name unimplemented and let AE.4 invent its own spelling of it, which is exactly the
+> drift a shared vocabulary exists to prevent.
+>
+> **The seed is the sheet's fixture.**
+> [`R__dev_seed_audit.sql`](../ouroboros-db/migrations/R__dev_seed_audit.sql) writes fourteen
+> events covering every action in the vocabulary, and three of them are there because a
+> renderer would otherwise meet the case for the first time in production: a **failed
+> rotation**, a **lease grant with no actor**, and a **worker's cluster address** rather than a
+> person's. It names the five connections by literal uuid rather than by join — the one seed in
+> this repository that does — because `subject_id` is deliberately non-referential and because
+> Flyway orders repeatable migrations by description, so a join would find nothing on the first
+> pass and insert on the second.
+>
+> **The BRIN index #26's sketch names is deliberately not created.** It is the right index for
+> a whole-table sweep by time — a retention job deleting everything older than a year — and
+> nothing sweeps this table yet, because nothing prunes it yet. V021's rule applies: an index
+> nothing reads is still an index every insert maintains, and adding a BRIN later costs one
+> `create index` against a table whose shape does not change.
+>
+> Deliberately **not** here: the full audit surface, which is mockup 17's and stays there —
+> this sheet has no filtering, no paging and no drill-down, and building half of that page here
+> would fork it before it exists. The trail *endpoint* is filterable by connection, actor and
+> action; the sheet simply does not use it yet.
 
 
 - **Problem Statement:** Reveal/rotate/cap changes without an audit trail
@@ -1131,11 +1274,15 @@ rotate by Ken ─▶ audit_events {provider.rotated, actor, conn, ip, at}  (no s
 > a connection*.
 >
 > **Two claims are shipped-with-an-interim-sink and neither is rounded up.** Every credential
-> operation is audited (§5.1), but AD.4 (#225) has not landed, so `credential.lease_granted`
-> goes to the service log rather than to `audit_events` — §5.4 says that in those words,
-> because "audited" and "audited into a queryable table" are different claims. And the strip's
-> link target is specified here rather than wired, because the strip itself is AE.6's to build
-> and AE.6 is blocked on this document.
+> operation is audited (§5.1), but AD.4 (#225) had not landed, so `credential.lease_granted`
+> went to the service log rather than to `audit_events` — §5.4 said that in those words,
+> because "audited" and "audited into a queryable table" are different claims. **AD.4 has since
+> landed and §5 is rewritten** in that change: §5.4 now describes the table rather than the
+> interim sink, §5.3 carries the trigger the grant posture alone could not enforce, and §5.1
+> gains the failure paths and the three settings names it had argued for collapsing — see
+> AD.4's own note above for why that argument no longer holds. And the strip's link target is
+> specified here rather than wired, because the strip itself is AE.6's to build and AE.6 is
+> blocked on this document.
 >
 > **Four filed amendments are listed as Planned rather than written up as true** — the
 > build-farm CA (#250, including the reverse proxy that silently breaks mTLS by not passing
@@ -1573,7 +1720,7 @@ Plus **7 amendments** — comments posted and the `providers` label applied on
 |---|---|
 | #200 | AA.1's **Providers & keys** tab goes live via AE.1 (#227); registry and Spend stay honest stubs |
 | #56 | The e2e suite gains the providers leg AE.7 (#233), composing with the routing leg (#206) |
-| #26 | AD.4 (#225) early-adopts the `audit_events` shape — and lands the table if #26 is still unbuilt. AD.3 (#224) is the first emitter: `credential.lease_granted` is assembled at the one point a grant is known to have happened and written to the service log, and #225 changes that method body to an insert |
+| #26 | AD.4 (#225) early-adopted the `audit_events` shape — and, #26 still being unbuilt, **landed the table**: `ouroboros-db`'s `V022`, column for column plus the `ip` that issue did not name, with the coordination recorded in its header. AD.3 (#224) was the first emitter, and #225 turned that method body into an insert as promised. #26 now inherits a table rather than creating one, and adds its own events to it |
 | #138 | WF-Q.1's ad-hoc AES-GCM helper superseded by the AD.1 (#222) vault service, with a migration |
 | #101 | INTAKE-K.3's GitHub credential encryption likewise moves to AD.1 (#222) |
 | #189 | Routing Y.1's schema is **extended** by AC.6 (#221) — caps, meta, `enabled`, and `provider_models`; aliases gain soft validation against discovered models (P6) |
@@ -1670,3 +1817,22 @@ Once those are in place, begin with **#222** ([AD.1] envelope encryption) and
 else in this roadmap sits on. Then **#235** ([AF.2] chain executor) is the single
 highest-leverage issue in the v2 backlog: it unlocks the LLM estimator (#123),
 workflow execution (#160) and traffic-derived health (#208).
+
+**#225** ([AD.4] the credential audit trail) has landed, and epic AD is complete: AD.1 sealed
+the keys, AD.2 gave them a lifecycle, AD.3 kept them out of workers' hands, AD.4 wrote down
+every time anybody touched one, and AD.5 said all of it out loud. `ouroboros.audit_events`
+exists — [#26](https://github.com/NobuData/ouroboros/issues/26)'s own table, landed here
+because decision **P5** would not wait for v2 — and it is append-only in the database rather
+than by convention. What that unblocks immediately is **AE.1** (#227), whose page head has a
+real destination for its **Audit log** button: the sheet is written, tested against the seeded
+history in both palettes, and reachable at `/workshop/providers-audit` until that page mounts
+it. **AE.4** (#230) inherits `provider.tested`, spelled once so it cannot be spelled twice.
+
+Two things are recorded here for whoever picks them up. The first is a limitation rather than
+a gap: `audit_events.ip` holds the address `ouroboros-rest` was reached on, which behind the
+UI's server-side client is the UI's rather than the person's — no forwarded header is trusted,
+because a header a client writes is one a client can choose, and making one trustworthy needs a
+configured trusted-proxy list that belongs to a deployment ticket rather than to this one. The
+second is an index deliberately not created: #26's sketch names a BRIN on `occurred_at`, which
+is the right index for a retention sweep and useless until something sweeps, so the migration
+argues for its absence rather than shipping an index every insert would maintain for nobody.

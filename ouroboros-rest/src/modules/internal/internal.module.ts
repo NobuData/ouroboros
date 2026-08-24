@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 
+import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { CredentialsController } from "./credentials.controller";
 import { InternalKeyGuard } from "./internal.guard";
@@ -56,7 +57,7 @@ import { LocalProviders } from "./local.providers";
  * route it answers, rather than importing this module from somewhere else.
  */
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, AuditModule],
   controllers: [CredentialsController, LlmController],
   providers: [
     LocalProviders,

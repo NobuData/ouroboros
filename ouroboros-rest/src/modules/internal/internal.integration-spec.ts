@@ -1,8 +1,7 @@
-import { Logger } from "@nestjs/common";
-
 import { workspaceWithRepo, type SeededWorkspace } from "../../testing/dashboard.fixture";
 import { ApiHarness } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { SCHEMA_NAME } from "../db/schema";
 import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { INTERNAL_ERRORS } from "./internal.errors";
@@ -255,56 +254,64 @@ describe("the internal surface", () => {
 
   describe("the audit trail", () => {
     /**
-     * Collect what the audit seam emitted while `work` ran.
+     * Every `credential.lease_granted` row this workspace has, read outside the application.
      *
-     * The emission is intercepted at `Logger`, not at stdout, and that is forced rather than
-     * chosen: the harness builds its application with the framework's logging switched off —
-     * a suite has no use for boot chatter — so nothing reaches a stream to be read. What is
-     * observed instead is the call the seam makes, which is the thing AD.4
-     * ([#225](https://github.com/NobuData/ouroboros/issues/225)) replaces with an insert.
+     * Read from the table rather than from a `Logger` spy since AD.4
+     * ([#225](https://github.com/NobuData/ouroboros/issues/225)) landed `audit_events`: the
+     * seam this suite used to observe emitted a log line because there was no table to write
+     * to, and its own header said the method body would become an insert. It has. What is
+     * asserted is what survived the change of sink — one row per grant, naming the lease, the
+     * run and the workspace it was attributed to.
      *
-     * @param work - What to do while listening.
-     * @returns Every `credential.lease_granted` record written during it.
+     * @param organizationId - The workspace whose trail to read.
+     * @returns Every lease-grant row, oldest first.
      */
-    async function eventsDuring(work: () => Promise<void>): Promise<string[]> {
-      const written: string[] = [];
-      const log = jest.spyOn(Logger.prototype, "log").mockImplementation((message: unknown) => {
-        written.push(String(message));
-      });
+    async function grantsFor(organizationId: string) {
+      const { rows } = await api.sql.query<{
+        actor_id: string | null;
+        subject_type: string;
+        subject_id: string;
+        detail: Record<string, unknown>;
+      }>(
+        `select actor_id, subject_type, subject_id, detail
+           from ${SCHEMA_NAME}.audit_events
+          where organization_id = $1 and action = $2
+          order by occurred_at, id`,
+        [organizationId, LEASE_GRANTED_EVENT],
+      );
 
-      try {
-        await work();
-      } finally {
-        log.mockRestore();
-      }
-
-      return written.filter((record) => record.includes(LEASE_GRANTED_EVENT));
+      return rows;
     }
 
     it("writes one credential.lease_granted event per grant", async () => {
-      // What survives the change of sink: one record per grant, naming the lease, the run and
-      // the workspace it was attributed to.
       const { run, workspace } = await seedRun();
-      let granted: LeaseResource | undefined;
 
-      const events = await eventsDuring(async () => {
-        granted = bodyOf<LeaseResource>(await lease({ provider: "ollama", run }).expect(200));
-      });
+      const granted = bodyOf<LeaseResource>(await lease({ provider: "ollama", run }).expect(200));
+
+      const events = await grantsFor(workspace.id);
 
       expect(events).toHaveLength(1);
-      expect(events[0]).toContain(granted?.id);
-      expect(events[0]).toContain(run);
-      expect(events[0]).toContain(workspace.id);
+      expect(events[0]).toMatchObject({ subject_type: "run", subject_id: run });
+      expect(events[0].detail).toMatchObject({ lease: granted.id, provider: "ollama" });
+    });
+
+    it("attributes it to nobody, because a worker is not a person", async () => {
+      // The one event class in the vocabulary with no actor: this request authenticated with
+      // the internal service key rather than as somebody. `audit_events.actor_id` is nullable
+      // for exactly this, and naming a user here would be inventing one.
+      const { run, workspace } = await seedRun();
+
+      await lease({ provider: "ollama", run }).expect(200);
+
+      expect((await grantsFor(workspace.id))[0].actor_id).toBeNull();
     });
 
     it("writes none for a refused lease", async () => {
-      const { run } = await seedRun();
+      const { run, workspace } = await seedRun();
 
-      const events = await eventsDuring(async () => {
-        await lease({ provider: "anthropic", run }).expect(403);
-      });
+      await lease({ provider: "anthropic", run }).expect(403);
 
-      expect(events).toEqual([]);
+      expect(await grantsFor(workspace.id)).toEqual([]);
     });
   });
 

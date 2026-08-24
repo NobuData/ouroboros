@@ -75,9 +75,20 @@ export type Stamped = ColumnType<Date, Date | undefined, never>;
  * *any* object literal rather than refusing every one — a guarantee that reads as airtight in
  * the schema and holds nothing at the call site. `organization.repository.spec.ts` enforces
  * the rule where it can actually be enforced: it reads this module's own source and fails on
- * a write verb naming either table.
+ * a write verb naming any of them.
+ *
+ * **`"user"` joined the list with AD.4** ([#225](https://github.com/NobuData/ouroboros/issues/225)),
+ * and it is the first of the library's tables here that no *authorization* decision reads.
+ * The audit trail's one query joins it for a person's `name`, because a trail of ids is a
+ * trail nobody can read and the alternative is the browser resolving each distinct actor
+ * against BetterAuth's own routes — one round trip per person, to render a column.
+ *
+ * Mirroring it does not make it writable. The rule above covers all three, and every foreign
+ * key that points at this table from our own schema (`provider_connections.added_by`,
+ * `model_aliases.updated_by`, `route_revisions.actor`, `audit_events.actor_id`) already
+ * treated a person as somebody else's row; this only lets a `select` say their name.
  */
-export const LIBRARY_OWNED_TABLES = ["organization", "member"] as const;
+export const LIBRARY_OWNED_TABLES = ["user", "organization", "member"] as const;
 
 /**
  * `member.role` — what a person may do in one organization (V005).
@@ -95,6 +106,36 @@ export const LIBRARY_OWNED_TABLES = ["organization", "member"] as const;
  * it does not recognise rather than assuming it away. See `organization.repository.ts`.
  */
 export type OrganizationRole = "owner" | "admin" | "member" | "viewer";
+
+/**
+ * `ouroboros."user"` — a person, as BetterAuth's core schema declares them (V004,
+ * [#706](https://github.com/NobuData/ouroboros/issues/706)).
+ *
+ * The successor to V002's `users`, which V006 dropped. Quoted everywhere because `user` is a
+ * reserved word, and named in the library's camelCase for the reason V004's header gives:
+ * these are the names `@better-auth/cli generate` emits, and a mirror that translated them
+ * would make every drift check compare nothing.
+ *
+ * **Read-only here, and read by exactly one query.** It is in
+ * {@link LIBRARY_OWNED_TABLES} — the library mints these rows through its own adapter — and
+ * the only statement in this service that names it is the audit trail's join, for `name`. A
+ * session's user is not read from here: `auth/principal.ts` gets it from BetterAuth, which
+ * has already resolved it.
+ */
+export interface UserTable {
+  /** The person's id. Text, because the library mints its own; V006 preserved uuids. */
+  id: string;
+  /** What a human reads, and the only column anything in this service selects. */
+  name: string;
+  /** Unique across the installation. Deliberately not selected by the trail — see below. */
+  email: string;
+  /** Whether the address has been confirmed. */
+  emailVerified: boolean;
+  /** An avatar URL, or null when none is set. */
+  image: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 /**
  * `ouroboros.tenant_domains` — the email domains that resolve a workspace at sign-in (V001,
@@ -1456,6 +1497,97 @@ export interface RouteRevisionsTable {
 }
 
 /**
+ * `ouroboros.audit_events` — who did what to which subject, from where, and when (V022,
+ * [#225](https://github.com/NobuData/ouroboros/issues/225)).
+ *
+ * The platform audit trail. Specified by scaffolding
+ * [#26](https://github.com/NobuData/ouroboros/issues/26) and landed early by AD.4, because
+ * decision **P5** puts credential auditing in the MVP — so this is one table rather than a
+ * credential-specific one that v2 would have to reconcile.
+ *
+ * **Append-only, and the database says so rather than this service promising it.** There is
+ * no `updated_at`, `audit_events_no_update` refuses a revision from any role including the
+ * owner, and the application role holds `select` and `insert` and nothing else. The one
+ * update the table permits is the actor foreign key's own `on delete set null` — *what
+ * happened cannot be rewritten; who did it can be forgotten* — which is why
+ * {@link AuditEventsTable.actor_id} is `ColumnType<…>` rather than a plain `string | null`:
+ * this service may read it and insert it, and may never write it again.
+ *
+ * **Nothing here is secret material.** {@link AuditEventsTable.detail} is the only free-form
+ * column, and it is built from a closed field set by `src/modules/audit/audit.events.ts`;
+ * `audit.secrecy.spec.ts` greps the rows a full credential lifecycle actually writes against
+ * the vault's own redaction vocabulary, and `ouroboros/no-secret-logging` refuses a field
+ * whose name would make one look at home there.
+ *
+ * **`action` and `subject_type` are `string` here and unions in the audit module.** V022
+ * constrains them to an identifier grammar and deliberately not to a vocabulary — adding an
+ * event has to be an application release rather than a migration — so this mirror declares
+ * what the column holds and `audit.events.ts` declares what this service writes. That split
+ * is the same one {@link ProviderConnectionsTable} does *not* make, and the difference is the
+ * point: V015 CHECKs its `kind` against a list, so the list belongs here.
+ */
+export interface AuditEventsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /**
+   * Who did it — `"user"."id"`, `on delete set null`.
+   *
+   * Null when nobody did: a `credential.lease_granted` is a worker authenticated by a
+   * service key rather than a person, and naming one there would be inventing them. Also
+   * null after the person is deleted, which is the one update the table permits.
+   *
+   * `ColumnType` with `never` in the update position, matching {@link Stamped}'s reasoning:
+   * the set-null is the foreign key's statement and not this service's, and a column this
+   * service could update is one it eventually would.
+   */
+  actor_id: ColumnType<string | null, string | null, never>;
+  /**
+   * What happened — `provider.revealed`, `credential.lease_granted`. `family.event`, lower
+   * snake on both sides, by CHECK.
+   *
+   * `string` rather than a union: see this interface's header, and `audit.events.ts` for the
+   * vocabulary this service writes.
+   */
+  action: string;
+  /** What kind of thing it was about — `provider_connection`, `run`. Lower snake by CHECK. */
+  subject_type: string;
+  /**
+   * The subject's id, as text.
+   *
+   * Deliberately not a foreign key — an event about a connection has to outlive the
+   * connection, and `provider.deleted` is exactly the row an FK would make unwritable. Null
+   * when the event names a kind rather than an instance.
+   */
+  subject_id: string | null;
+  /**
+   * The client address the operation arrived from, as PostgreSQL's `inet`.
+   *
+   * `string` on the way in and on the way out — `pg` parses `inet` as text, and this service
+   * has no arithmetic to do on an address. Null when none is honestly knowable; see
+   * `audit/audit.context.ts` for what "knowable" means behind a proxy.
+   */
+  ip: string | null;
+  /**
+   * The rest of what happened — a flat object of scalars.
+   *
+   * `Generated` because the column defaults to `'{}'::jsonb`, so an event with nothing more
+   * to say inserts nothing here. Flat and scalar by convention rather than by CHECK, which
+   * is what makes enumerating its keys the whole of reading it — the property both secrecy
+   * greps depend on.
+   */
+  detail: Generated<Record<string, string | number | boolean | null>>;
+  /**
+   * When it happened.
+   *
+   * {@link Stamped}, and the `never` in its update position is load-bearing here rather than
+   * conventional: it is the compiler's half of the rule `audit_events_no_update` enforces in
+   * the database.
+   */
+  occurred_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -1583,6 +1715,12 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * it is the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)). Mirrored now
  * because the write is Z.2's, and V021 exists because Z.2 needed somewhere to put it.
  *
+ * **`audit_events` (V022, [#225](https://github.com/NobuData/ouroboros/issues/225)) is the
+ * nineteenth**, and the first table here that is **append-only in the database** rather than
+ * by convention — see {@link AuditEventsTable} for what that costs the two columns whose
+ * `ColumnType` says `never`. It is #26's table, landed early because decision **P5** puts
+ * credential auditing in the MVP, and it is the one #26 will inherit rather than replace.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -1591,6 +1729,7 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * stay gone, so there is no state in which re-adding them here would be right.
  */
 export interface Database {
+  user: UserTable;
   tenant_domains: TenantDomainsTable;
   organization: OrganizationTable;
   member: MemberTable;
@@ -1611,6 +1750,7 @@ export interface Database {
   route_hops: RouteHopsTable;
   escalation_rules: EscalationRulesTable;
   route_revisions: RouteRevisionsTable;
+  audit_events: AuditEventsTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -1627,6 +1767,7 @@ export interface Database {
  * against a migration reads top to bottom.
  */
 export const TABLE_COLUMNS = {
+  user: ["id", "name", "email", "emailVerified", "image", "createdAt", "updatedAt"],
   tenant_domains: ["id", "domain", "is_primary", "created_at", "updated_at", "organization_id"],
   organization: ["id", "name", "slug", "logo", "createdAt", "metadata"],
   member: ["id", "organizationId", "userId", "role", "createdAt"],
@@ -1815,6 +1956,17 @@ export const TABLE_COLUMNS = {
     "updated_at",
   ],
   route_revisions: ["id", "organization_id", "actor", "diff", "created_at"],
+  audit_events: [
+    "id",
+    "organization_id",
+    "actor_id",
+    "action",
+    "subject_type",
+    "subject_id",
+    "ip",
+    "detail",
+    "occurred_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -2003,6 +2155,17 @@ export type RouteRevision = Selectable<RouteRevisionsTable>;
  * V021's own decision: a revision is an event, and nothing in this service updates one.
  */
 export type NewRouteRevision = Insertable<RouteRevisionsTable>;
+
+/** A row of `ouroboros.audit_events`, as a `select` returns it — one thing that happened. */
+export type AuditEvent = Selectable<AuditEventsTable>;
+/**
+ * The columns an `insert` into `ouroboros.audit_events` may carry.
+ *
+ * There is no `Updateable` counterpart, and here that is not merely a convention this
+ * service keeps: `audit_events_no_update` refuses a revision in the database, for every role
+ * including the owner. The absence of the type is the compiler's half of the same rule.
+ */
+export type NewAuditEvent = Insertable<AuditEventsTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

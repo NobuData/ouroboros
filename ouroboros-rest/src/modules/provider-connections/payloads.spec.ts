@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 
+import { recordingAudit } from "../audit/audit.fixture";
 import { COOKIE } from "../auth/http";
 import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
 import { namesResponseSecret } from "../internal/no-secret-responses";
@@ -109,7 +110,7 @@ async function subject() {
     { dependentAliases: jest.fn().mockResolvedValue([]) } as unknown as RegistryService,
     { satisfied: jest.fn().mockResolvedValue("password") } as unknown as StepUpService,
     new RevealLimiter(),
-    new ProviderAudit(),
+    new ProviderAudit(recordingAudit().service),
   );
 
   return { service, connections };

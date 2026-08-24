@@ -34,7 +34,8 @@
 -- `escalation_rules` that modify a route (V018, #191), the alias switch, unbound
 -- binding and structured params mockup 21's registry manages (V019, #579), and
 -- `route_revisions`, the audit trail one press of mockup 06's *Save routes* leaves behind
--- (V021, #195).
+-- (V021, #195), and `audit_events`, the append-only credential trail #26 specified and
+-- AD.4 landed early (V022, #225).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -6236,6 +6237,250 @@ delete from ouroboros.organization where "id" = 'org-revisions';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.route_revisions where organization_id = 'org-revisions'),
   'deleting a workspace takes its routing history with it');
+
+
+-- ===========================================================================
+-- V022 — audit_events, the credential trail (#225)
+-- ===========================================================================
+--
+-- Decision **P5** puts credential auditing in the MVP: a page that reveals and rotates keys
+-- while keeping no record of who did it fails its own stated security posture. This is #26's
+-- `audit_events`, landed early by AD.4 so that there is one audit schema rather than two.
+--
+-- Four rules are the point of the migration rather than incidental to it:
+--
+--   * **append-only, and enforced twice** — by grant for a deployment that connects as
+--     `ouroboros_app`, and by trigger for the development stack that connects as the owner
+--     and would otherwise bypass every grant in the catalogue.
+--   * **the subject is deliberately not referential**, because `provider.deleted` is exactly
+--     the event a foreign key would make unwritable.
+--   * **the actor is a record, not a dependency** — set null, never cascade, on
+--     `route_revisions.actor`'s argument.
+--   * **the workspace cascade is why there is no delete trigger**, and both halves of that
+--     sentence are asserted below.
+--
+-- Its own fixtures again: the V021 section deleted `org-revisions` on its way out.
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values
+  ('user-auditor', 'Aud Itor', 'aud@keys-works.dev', true, now(), now());
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-audit', 'Keys Works', 'keys-works', now()),
+  ('org-audit-other', 'Other Works', 'other-works', now());
+
+-- --- one reveal, recorded whole -------------------------------------------------
+--
+-- Every column the endpoint reads back, written in one insert: who, what, to which subject,
+-- from where, and the detail payload that says how the step-up was satisfied.
+insert into ouroboros.audit_events
+    (id, organization_id, actor_id, action, subject_type, subject_id, ip, detail) values
+  ('b2000000-0000-0000-0000-000000000001', 'org-audit', 'user-auditor',
+   'provider.revealed', 'provider_connection', 'b2000000-0000-0000-0000-0000000000c1',
+   '203.0.113.7', '{"kind": "anthropic", "step_up": "password"}');
+
+select pg_temp.must_hold(
+  (select action = 'provider.revealed'
+      and subject_type = 'provider_connection'
+      and detail ->> 'step_up' = 'password'
+      and ip = '203.0.113.7'::inet
+      and occurred_at is not null
+     from ouroboros.audit_events
+    where id = 'b2000000-0000-0000-0000-000000000001'),
+  'an event round-trips what happened — the action, the subject, the address and the payload');
+
+-- `ip` is an `inet` rather than text, and both halves of that choice are asserted below: a
+-- value in this column is an address rather than something that was once claimed to be one,
+-- and *everything from this subnet* is an operator rather than a prefix match on a string.
+insert into ouroboros.audit_events
+    (id, organization_id, action, subject_type, subject_id, ip) values
+  ('b2000000-0000-0000-0000-000000000002', 'org-audit',
+   'credential.lease_granted', 'run', 'b2000000-0000-0000-0000-0000000000r1', '10.0.4.20');
+
+select pg_temp.must_raise(
+  $$insert into ouroboros.audit_events (organization_id, action, subject_type, ip)
+    values ('org-audit', 'provider.added', 'provider_connection', 'not-an-address')$$,
+  '22P02',
+  'an address column holds addresses, so a forwarded header cannot put arbitrary text into the trail');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events
+    where organization_id = 'org-audit' and ip << '10.0.4.0/24'::inet),
+  'everything from this subnet is one operator, which is the query an investigation actually runs');
+
+-- A lease grant has no person behind it — a worker authenticates with a service key — so the
+-- actor is null rather than invented.
+select pg_temp.must_hold(
+  (select actor_id is null
+     from ouroboros.audit_events
+    where id = 'b2000000-0000-0000-0000-000000000002'),
+  'an event with no person behind it says so, rather than naming one');
+
+-- --- what an event may not be ---------------------------------------------------
+--
+-- The grammar rules exist so that `where action = 'provider.revealed'` finds every reveal.
+-- Each rejection names its constraint, because a row refused by a not-null would read as a
+-- working check while the grammar was missing entirely.
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, action, subject_type)
+    values ('org-audit', 'Provider.Revealed', 'provider_connection')$$,
+  'an action is lower snake on both sides, so one writer cannot spell an event differently from the rest',
+  'audit_events_action_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, action, subject_type)
+    values ('org-audit', 'revealed', 'provider_connection')$$,
+  'an action names its family, so the trail can be filtered by one',
+  'audit_events_action_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, action, subject_type)
+    values ('org-audit', 'provider.revealed', 'ProviderConnection')$$,
+  'a subject type is shaped like the table it names',
+  'audit_events_subject_type_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, action, subject_type, detail)
+    values ('org-audit', 'provider.revealed', 'provider_connection', '"a bare string"')$$,
+  'a detail payload is an object, so the secrecy grep and every reader can enumerate its keys',
+  'audit_events_detail_is_object');
+
+-- --- append-only ----------------------------------------------------------------
+--
+-- The half a grant cannot enforce. `restrict_violation` (23001) rather than a constraint
+-- name, because the refusal is a trigger's and a trigger has none — `must_raise` is the
+-- sibling assertion for exactly that case.
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set action = 'provider.added'
+     where id = 'b2000000-0000-0000-0000-000000000001'$$,
+  '23001',
+  'an audit event cannot be revised, by any role including the owner of this database');
+
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set detail = '{}'::jsonb where organization_id = 'org-audit'$$,
+  '23001',
+  'and not in bulk either — the refusal is per row, so a sweeping update refuses on the first of them');
+
+-- The single exception, and its edges. `actor_id` may be **erased**, because the actor
+-- foreign key's own `on delete set null` is an UPDATE and a trigger that refused it would be
+-- making people undeletable rather than making events immutable. Everything adjacent to that
+-- one statement is still refused, which is what keeps the exception from being a hole:
+-- re-attributing an event, and editing a payload under cover of clearing the actor.
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set actor_id = 'user-auditor'
+     where id = 'b2000000-0000-0000-0000-000000000002'$$,
+  '23001',
+  'an event cannot be attributed to somebody after the fact, which is the direction that would matter');
+
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events
+       set actor_id = null, detail = '{"step_up": "session"}'::jsonb
+     where id = 'b2000000-0000-0000-0000-000000000001'$$,
+  '23001',
+  'a payload cannot be edited under cover of clearing the actor — the exception is the attribution and nothing beside it');
+
+-- The other half. `ouroboros_app` is the role a deployment that separates migrating from
+-- running connects the API as, and what it may do to this table is the whole of AD.4's
+-- append-only criterion.
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.audit_events', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.audit_events', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.audit_events', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.audit_events', 'delete'),
+  'the application role may read and append and may do nothing else — append-only at the grant level');
+
+-- A role that cannot reach the schema cannot reach the table either, whatever the table
+-- grant says. Asserted because the two are separate grants and the second is easy to forget.
+select pg_temp.must_hold(
+  has_schema_privilege('ouroboros_app', 'ouroboros', 'usage'),
+  'the application role can reach the schema its one grant is in');
+
+-- An event is an event, and an event has no updated_at to move.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'audit_events'
+      and column_name = 'updated_at'),
+  'there is no updated_at on an append-only table, so nothing can quietly rewrite an event');
+
+-- --- the subject is deliberately not referential ---------------------------------
+--
+-- `provider.deleted` is the event whose subject no longer exists by the time anybody reads
+-- it. A foreign key would make the most important row in the trail the one row that cannot
+-- be written, so there is none — and its absence is asserted rather than assumed, because an
+-- FK added later by somebody being tidy would break exactly that row.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from information_schema.table_constraints
+    where table_schema = 'ouroboros' and table_name = 'audit_events'
+      and constraint_type = 'FOREIGN KEY'
+      and constraint_name like '%subject%'),
+  'nothing constrains the subject, so an event about a connection outlives the connection');
+
+insert into ouroboros.audit_events
+    (id, organization_id, actor_id, action, subject_type, subject_id, detail) values
+  ('b2000000-0000-0000-0000-000000000003', 'org-audit', 'user-auditor',
+   'provider.deleted', 'provider_connection', 'b2000000-0000-0000-0000-00000000dead',
+   '{"kind": "cursor"}');
+
+select pg_temp.must_hold(
+  (select subject_id = 'b2000000-0000-0000-0000-00000000dead'
+     from ouroboros.audit_events
+    where id = 'b2000000-0000-0000-0000-000000000003'),
+  'a deletion can be recorded against the row it deleted, which is the point of recording it');
+
+-- --- the actor is a record, not a dependency ------------------------------------
+--
+-- Deleting the person must not delete what they did: `on delete set null`, exactly as
+-- `route_revisions.actor` has it and for the same reason. A cascade here would empty the
+-- audit trail of everybody who has ever left — which is the trail an investigation most
+-- often needs.
+delete from ouroboros."user" where "id" = 'user-auditor';
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.audit_events where organization_id = 'org-audit')
+   and (select count(*) = 0 from ouroboros.audit_events
+         where organization_id = 'org-audit' and actor_id is not null)
+   and (select detail ->> 'step_up' = 'password'
+          from ouroboros.audit_events
+         where id = 'b2000000-0000-0000-0000-000000000001'),
+  'deleting the actor empties the attribution, keeps every event they wrote, and changes nothing else about them');
+
+-- --- the one read this table has ------------------------------------------------
+--
+-- A workspace's events, newest first — `GET /api/v1/providers/audit`, and where any "who
+-- touched this key" question starts. The endpoint's filters (connection, actor, action)
+-- narrow a set that has already entered through this index's leading column.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events
+     where organization_id = 'org-audit' order by occurred_at desc, id desc$$,
+  'audit_events_organization_occurred_at_idx');
+select pg_temp.must_use_index(
+  $$select id from ouroboros.audit_events
+     where organization_id = 'org-audit' and action = 'provider.revealed'
+     order by occurred_at desc, id desc$$,
+  'audit_events_organization_occurred_at_idx');
+set local enable_seqscan = on;
+
+-- --- the catalogue carries the decision -----------------------------------------
+select pg_temp.must_hold(
+  (select lower(obj_description('ouroboros.audit_events'::regclass)) like '%append-only%'
+      and lower(obj_description('ouroboros.audit_events'::regclass)) like '%#26%'
+      and lower(obj_description('ouroboros.audit_events'::regclass)) like '%secret material%'),
+  'the audit table says what it is, whose shape it holds and what it must never carry, in the database');
+
+-- --- the workspace cascade, and why there is no delete trigger -------------------
+--
+-- A workspace's trail is that workspace's and goes with it, on the same reasoning
+-- `tenant_keys` cascades. This assertion is also the argument for the asymmetry above: a
+-- `before delete` trigger would make the statement below fail, so it would not be enforcing
+-- append-only — it would be making workspace deletion impossible.
+delete from ouroboros.organization where "id" = 'org-audit';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.audit_events where organization_id = 'org-audit'),
+  'deleting a workspace takes its audit trail with it, which a delete-refusing trigger would have prevented');
+
+delete from ouroboros.organization where "id" = 'org-audit-other';
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

@@ -7,13 +7,14 @@
 -- every e2e test written against it, expects to find — mockup 01 Step 2's three
 -- organizations and mockup 02's dashboard, number for number.
 --
--- Three migrations, one suite, because they describe one database: R__dev_seed.sql (#23)
--- is *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*, and
--- R__dev_seed_providers.sql (#221) is *what it is allowed to call* — and a dashboard
--- assertion that could not name `acme-robotics` would be asserting nothing. The last two
--- share a table: a provider card's monthly meter is the dashboard seed's spend of today
--- plus the providers seed's spend of earlier this month, so the figures below are asserted
--- over the sum rather than over either file's rows.
+-- Five migrations, one suite, because they describe one database: R__dev_seed.sql (#23)
+-- is *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
+-- R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
+-- R__dev_seed_routing.sql (#192) is *where the calls go*, and R__dev_seed_audit.sql (#225)
+-- is *who touched the keys* — and a dashboard assertion that could not name `acme-robotics`
+-- would be asserting nothing. Two of them share a table: a provider card's monthly meter is
+-- the dashboard seed's spend of today plus the providers seed's spend of earlier this month,
+-- so the figures below are asserted over the sum rather than over either file's rows.
 --
 -- Run it against a database migrated **with the seed enabled** — the compose stack, or
 -- `scripts/migrate --config flyway.seed.toml`:
@@ -35,8 +36,9 @@
 --
 -- Filed as issue #23; moved to the BetterAuth shape by #708; grown to the full
 -- auth-aware demo set — three organizations, password sign-in — by #709; extended with
--- the dashboard read-model — mockup 02, number for number — by #68, and with mockup 07's
--- five provider cards by #221.
+-- the dashboard read-model — mockup 02, number for number — by #68, with mockup 07's
+-- five provider cards by #221, and with the credential trail behind that page's **Audit
+-- log** button by #225.
 
 \set ON_ERROR_STOP on
 
@@ -1398,6 +1400,151 @@ select pg_temp.must_hold(
      select id from ouroboros.token_usage      where id::text like '5eed0014-0000-4000-8000-%'
    ) as seeded),
   'the routing seed created its 413 prefixed rows and no 414th');
+
+
+-- ===========================================================================
+-- R__dev_seed_audit.sql — the credential trail the Audit log button opens.
+--
+-- The fifth seed's rows: fourteen `audit_events` (`5eed0015…`), which are what mockup 07's
+-- **Audit log** sheet renders and the only fixture any test of that sheet has.
+--
+-- **The assertions here are about coverage rather than about figures**, which is the
+-- difference between this section and the four above it. A dashboard number is right or
+-- wrong; a trail is *useful or not*, and what makes it useful is that it contains the rows a
+-- renderer would otherwise meet for the first time in production — an event with no actor, an
+-- operation that failed, a payload with no secret in it. Each of those is asserted below
+-- because each is a fixture the UI is entitled to assume exists.
+--
+-- The counts are exact, so this is the audit seed's idempotency test as well.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- Fourteen events, all in the workspace every mockup is drawn in.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 14 from ouroboros.audit_events event
+     join ouroboros.organization org on org."id" = event.organization_id
+    where org."slug" = 'acme-robotics'),
+  'the audit seed put its fourteen events in acme-robotics');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.audit_events event
+     join ouroboros.organization org on org."id" = event.organization_id
+    where org."slug" in ('kensuenobu', 'acme-labs')),
+  'and nowhere else — the trail endpoint is organization-scoped, so a second workspace with events would hide a scoping bug rather than expose it');
+
+-- ---------------------------------------------------------------------------
+-- Every action AD.4 defines appears, which is what makes this the sheet's fixture.
+--
+-- Nine names: eight `provider.*` and AD.3's `credential.lease_granted`. A renderer that
+-- switches on the action has a row for every branch here, so a branch that renders badly is
+-- found by looking rather than by waiting.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(distinct event.action order by event.action) =
+          array['credential.lease_granted', 'provider.added', 'provider.cap_changed',
+                'provider.disabled', 'provider.enabled', 'provider.revealed',
+                'provider.rotated', 'provider.tested']
+     from ouroboros.audit_events event
+     join ouroboros.organization org on org."id" = event.organization_id
+    where org."slug" = 'acme-robotics'),
+  'the seeded trail exercises every action the vocabulary has a renderer for');
+
+-- ---------------------------------------------------------------------------
+-- The three rows a fixture exists to carry.
+-- ---------------------------------------------------------------------------
+
+-- A failed rotation is still an event. AD.4's first criterion covers the failure paths, so a
+-- trail with nothing but successes in it would leave the row that renders a failure untested.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events event
+     join ouroboros.organization org on org."id" = event.organization_id
+    where org."slug" = 'acme-robotics'
+      and event.action = 'provider.rotated'
+      and event.detail ->> 'outcome' = 'failure'),
+  'one rotation in the seeded history failed, so the sheet is drawn against a trail in which something went wrong');
+
+-- A lease grant has no person behind it, and a sheet that assumed one would render nothing
+-- sensible against the one event class that never has an actor.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.audit_events event
+     join ouroboros.organization org on org."id" = event.organization_id
+    where org."slug" = 'acme-robotics'
+      and event.action = 'credential.lease_granted'
+      and event.actor_id is null),
+  'the lease grant has no actor, because a worker authenticates with a service key rather than as a person');
+
+-- Every other event does have one, and it is a real person — so the sheet's join has
+-- something to find and the trail names two different people rather than one.
+select pg_temp.must_hold(
+  (select count(*) = 13 from ouroboros.audit_events event
+     join ouroboros.organization org on org."id" = event.organization_id
+     join ouroboros."user" person on person."id" = event.actor_id
+    where org."slug" = 'acme-robotics')
+   and (select count(distinct event.actor_id) = 2 from ouroboros.audit_events event
+          join ouroboros.organization org on org."id" = event.organization_id
+         where org."slug" = 'acme-robotics' and event.actor_id is not null),
+  'the other thirteen name a seeded person, and two different ones, so an actor column is worth rendering');
+
+-- ---------------------------------------------------------------------------
+-- The invariant, over the rows rather than over the writer.
+--
+-- `ouroboros-rest`'s `audit.secrecy.spec.ts` greps what the service writes. This greps what
+-- the *seed* writes, which is the other place a credential could reach the trail — a fixture
+-- carrying a plausible-looking key would be copied into a test, and from there into an
+-- expectation that a key in a payload is normal.
+--
+-- **Three assertions rather than one keyword sweep**, because a single `~* 'password|token'`
+-- over the rendered document is the check that looks strictest and is worth least: it fires
+-- on `{"step_up": "password"}`, which is the *name of a re-authentication method* and is
+-- exactly the field an audit of a reveal exists to carry. A check that has to be weakened the
+-- first time it is right about nothing gets weakened until it is right about nothing at all.
+--
+-- So the three are separated by what they are actually about:
+--
+--   * **no value that is shaped like a credential** — the vault's own `ouro.v1.` envelope
+--     prefix and the recognisable vendor key forms;
+--   * **no field named as a credential field**, whatever it holds, checked against the *keys*
+--     rather than the rendered text, which is where `step_up` and `password` stop being the
+--     same string;
+--   * **and every payload flat and scalar**, which is what makes the first two exhaustive
+--     rather than top-level-only.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.audit_events event
+    where event.detail::text ~* '(ouro\.v1\.|\msk-[a-z0-9]{8}|\mghp_|\mgho_|\mbearer\M)'),
+  'no seeded audit payload holds anything shaped like a credential — no envelope, and no vendor key form');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.audit_events event,
+          lateral jsonb_object_keys(event.detail) as payload_key
+    where payload_key ~* '(api[-_]?key|secret|password|credential|authorization|\mtoken\M)'),
+  'no seeded audit payload has a field named as a credential field, which is the check that survives step_up meaning password');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.audit_events event,
+          lateral jsonb_each(event.detail) as payload (key, value)
+    where jsonb_typeof(payload.value) in ('object', 'array')),
+  'every seeded payload is flat and scalar, so enumerating its keys is the whole of reading it');
+
+-- The five arrival events agree with the cards about when each provider arrived, which is the
+-- one place this seed and the providers seed have to say the same thing.
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.audit_events event
+     join ouroboros.provider_connections conn on conn.id::text = event.subject_id
+    where event.action = 'provider.added'
+      and conn.created_at = event.occurred_at),
+  'each provider.added is stamped with the moment its card says the connection was created');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the audit seed's own rows.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 14 from ouroboros.audit_events
+    where id::text like '5eed0015-0000-4000-8000-%'),
+  'the audit seed created its fourteen prefixed rows and no fifteenth');
 
 \o
 \echo 'seed.sql: all assertions passed'

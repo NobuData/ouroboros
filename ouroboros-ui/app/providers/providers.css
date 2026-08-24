@@ -1,0 +1,110 @@
+/*
+ * The credential audit trail (#225) — mockup 07's Audit log sheet.
+ *
+ * The mockup is docs/mockups/07-providers.html over docs/mockups/assets/ouroboros.css. What
+ * is taken from it is the head action's treatment, which is the design system's ghost button
+ * and needs nothing here; what this file adds is the *inside* of the sheet the button opens.
+ *
+ * The sheet's frame is not this file's: the panel, the scrim, the scroll lock and the focus
+ * ring belong to .shell-overlay (app/shell/shell.css), which is the one implementation of
+ * § 1.3's dialog contract. These rules style only the listing — the four columns, the refusal
+ * marker, and the line a sheet shows while it has nothing else to show — exactly the division
+ * .shell-shortcuts makes for the keyboard sheet.
+ *
+ * The table itself is the #46 primitive's (app/ui/ui.css). Every rule below is a *placement*
+ * decision this page owns and that primitive deliberately does not: how wide a column is is
+ * something only the page knows, which is why `Column.className` exists.
+ *
+ * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
+ * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length that
+ * should follow the reader's font-size preference is rem — a spacing token, or a rem literal
+ * where the design names a size.
+ */
+
+/* ---------- the sheet's listing ---------- */
+
+/*
+ * The columns.
+ *
+ * Widths rather than content-driven sizing, because the two narrow columns are *scanned*: a
+ * reader looking for the reveal at 14:02 runs their eye down a stamp column that has to start
+ * in the same place on every row, and a `when` column that resized itself around a
+ * one-character difference in a provider name would defeat that.
+ *
+ * The `what` column takes what is left and is deliberately unconstrained: it is the only
+ * column whose content is a sentence.
+ */
+.providers-audit__when {
+  width: 10rem;
+  white-space: nowrap;
+}
+
+.providers-audit__who {
+  width: 9rem;
+}
+
+.providers-audit__kind {
+  width: 8rem;
+  color: var(--ink-mut);
+}
+
+/*
+ * The action cell — a sentence, and the refusal marker after it when there is one.
+ *
+ * `wrap` rather than `nowrap`: a refused row is the longest cell in the table and the one a
+ * reader most needs to read, so it is allowed to take a second line rather than being
+ * truncated into `rotated the credential · refused · provider_va…`.
+ */
+.providers-audit__what {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  align-items: baseline;
+}
+
+/*
+ * *Refused*, and why.
+ *
+ * A **word** in the error hue rather than the hue alone. The health strip's `unknown` chip
+ * makes the same argument (app/models/models.css): a row that reads as a completed reveal to
+ * somebody who cannot distinguish the two colours would be this trail's most consequential
+ * lie, so the distinction is carried by text and the colour only reinforces it.
+ *
+ * The tint and the hairline are what stop it reading as prose in the middle of a sentence —
+ * it is a state, drawn the way every other state in this product is.
+ */
+.providers-audit__refused {
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-pill);
+  background: var(--err-tint);
+  color: var(--err);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  white-space: nowrap;
+}
+
+/*
+ * The table inside the sheet.
+ *
+ * The panel is already a scroll container with its own padding, so the table contributes no
+ * margin of its own — the panel's `gap` is the rhythm between the note above it and this.
+ */
+.providers-audit__table {
+  margin: 0;
+}
+
+/*
+ * The line the sheet shows when it has no rows to show: reading, refused, or unavailable.
+ *
+ * One class for all three because they are the same shape — a sentence in the sheet's own
+ * voice, in the muted ink every secondary line in the product uses. What differs between them
+ * is the words, and the words are app/providers/view.ts's.
+ */
+.providers-audit__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
