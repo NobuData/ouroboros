@@ -684,7 +684,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 | Z.1 | #194 | 🟢 Done | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
 | Z.2 | #195 | 🟢 Done | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
 | Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
-| Z.4 | #197 | 🟡 Open | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate`; engine estimator + WF catalog amendments | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest, ouroboros-engine |
+| Z.4 | #197 | 🟢 Done | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate` shipped; the two consumer amendments wait on #106 and #145 | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest |
 | Z.5 | #198 | 🟡 Open | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
 | Z.6 | #199 | 🟡 Open | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
 
@@ -1030,8 +1030,48 @@ copilot ─▶ ◌ unknown (until traffic — AB.2)     stopped vllm ─▶ ⚠ 
 
 ### Issue Z.4 — ouroboros-rest: [Z.4] Simulate endpoint & consumer contract
 
-> **GitHub issue:** #197 · **Status:** 🟡 Open · **Parent epic:** #186
+> **GitHub issue:** #197 · **Status:** 🟢 Done · **Parent epic:** #186
 
+> **Shipped 2026-08-24 — the endpoint. The two consumer amendments did not land, and could
+> not: neither consumer exists yet.**
+> [`ouroboros-rest/src/modules/routing/simulate.controller.ts`](../ouroboros-rest/src/modules/routing/simulate.controller.ts)
+> and [`simulate.dto.ts`](../ouroboros-rest/src/modules/routing/simulate.dto.ts), with
+> `POST /api/v1/routing/simulate` and nine schemas in
+> [`ouroboros-rest/openapi.yaml`](../ouroboros-rest/openapi.yaml) (0.30.7 → 0.30.8, an
+> addition). No migration, no new dependency, and no change to `resolve()` — which is the
+> point of it.
+>
+> **The honesty criterion is the dependency list, not a comment.** *"Simulation calls the same
+> `ResolutionService` as execution will — verified structurally"* cannot be satisfied by a test
+> that mocks a service and watches it be called; that proves the handler calls *something*.
+> What proves it calls the only thing is that `SimulateController` injects exactly one token,
+> so there is nowhere for a second answer to live, and `simulate.controller.spec.ts` reads
+> `design:paramtypes` and asserts `[ResolutionService]`. A repository added here to make the
+> panel faster fails that test. The `Resolution` is served **unchanged** for the same reason —
+> it is already the versioned published shape, and a resource mapper between the two would be
+> a second description of one contract.
+>
+> **A `fail_run` is a `200`, and the OpenAPI documents both answers.** The keyed `examples` map
+> carries a resolved chain with a rule applied and a floor breach with its reason, because the
+> two are the same status and a document that showed only one would teach a client to treat the
+> other as an error. The suite that holds every example to its schema read only the singular
+> `example` form, so it was widened to read both — an example the harness skips is an example
+> nobody validates, which is the one thing that suite exists to prevent.
+>
+> **A context is closed at V018's three conditions.** `ctx` accepts `effort`, `labels`,
+> `diffKind` and the carried-but-unread `repo`, and a fifth fact is a `422` naming it: a
+> predicate grammar the database closes means an invented condition could never be read by any
+> rule, and being told beats believing it was honoured. `null` is refused everywhere in `ctx`
+> for the sharper version of the same reason — an absent fact is *unknown* and has a documented
+> path through `context.ts`; a `null` is a client saying something a context cannot mean.
+>
+> **What is not here, and why.** The estimator amendment (#106) and the WF catalog and
+> `route.task` validation (#145) are unbuilt because their consumers are unbuilt: there is no
+> estimator in `ouroboros-engine` and no workflow module in `ouroboros-rest`, and each sits
+> behind its own unlanded chain — #105 → #106, and #133 → #145. The Prerequisites note below
+> already said so (*"INTAKE-L.2 (#106) and WF-R.3 (#145) must exist for the Z.4 amendments"*);
+> what this ticket adds is that the thing they were waiting for now exists. The two amendment
+> rows are unchanged and still open against those issues.
 
 - **Problem Statement:** "Simulate routing" must expose the resolution function,
   and the existing consumers of opaque model strings must start asking it.
@@ -1045,6 +1085,8 @@ copilot ─▶ ◌ unknown (until traffic — AB.2)     stopped vllm ─▶ ⚠ 
 - **Acceptance Criteria:** Simulate returns chain+why for all seeded kinds and
   rule-triggering contexts; estimator amendment lands (its trace stays honest
   — resolution used, not invocation); WF catalog lists registry kinds.
+  *Met for the endpoint; the last two travel with #106 and #145 — see the
+  shipped note above.*
 - **Parallelism/Dependencies:** Needs Z.1. Amends INTAKE-L.2, WF-R.3.
 - **Technical Stack:** NestJS, engine client.
 - **Epic:** Z
@@ -1558,8 +1600,8 @@ Plus **4 amendments** — comments posted and the `routing` label applied on
 |---|---|
 | #49 | The `/models` placeholder is superseded and **retired** by AA.1 (#200) — landed 2026-08-24; #49's own scope note in `ROADMAP_OUROBOROS_APPLICATION_SCAFFOLDING.md` records it |
 | #56 | The e2e suite gains the routing leg AA.7 (#206), including the rule-toggle → simulate assertion and shell checks |
-| #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked* |
-| #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it |
+| #106 | INTAKE-L.2's estimator drops its `model_defaults` map and resolves via routing (Z.4, #197) — trace says *resolved*, never *invoked*. **Still open**: Z.4 landed the endpoint on 2026-08-24 and this amendment waits on the estimator itself, which is #105 → #106 |
+| #145 | WF-R.3's stage catalog serves task-kind names from the Y.2 (#190) registry; DSL `route.task` validates against it. **Still open**: waits on the workflow module, which is #133 → #145 |
 
 ## References
 
@@ -1640,7 +1682,8 @@ zero-price rows, never from unpriced usage rounded down (#192/#198).
 **Prerequisites:** scaffolding #19/#28/#41/#46 and DASH-F.1 (#64) / DASH-F.3 (#66)
 are filed; the BetterAuth roadmap (BA-B.3, BA-C.3, BA-D.5) is **not yet filed** and
 gates Y.1, Z.2 and AA.1. INTAKE-L.2 (#106) and WF-R.3 (#145) must exist for the Z.4
-amendments.
+amendments — they still do not, and Z.4 shipped its endpoint without them on
+2026-08-24 rather than waiting behind two other roadmaps.
 
 **#189** ([Y.1] provider connections and model alias foundations) has landed — the
 table pair everything else in this roadmap resolves through, plus the internal
@@ -1734,3 +1777,23 @@ hand-rolled versions of it is the drift `PageSubnav` was extracted to stop. `Rea
 Next in epic AA is **#201** ([AA.2] the routing matrix), which has both the frame it mounts in
 and — since #195 — the contract it reads; its two stats columns stay em-dashes until **#198**
 ([Z.5]) lands.
+
+**#197** ([Z.4] simulate) has landed as an endpoint, and decision **M6** is now reachable over
+HTTP without becoming a second implementation on the way: `POST /api/v1/routing/simulate` calls
+`ResolutionService.resolve` and returns what it answered, unchanged. The structural criterion is
+kept structurally — `SimulateController` injects exactly one token, so there is nowhere for a
+second answer to live, and the spec reads the constructor's parameter types rather than trusting
+a comment. `fail_run` arrives as a `200` with a reason, and the OpenAPI documents both that and a
+resolved chain as keyed examples; the suite that validates every documented example was widened
+to read the plural form, because an example a harness skips is an example nobody checks.
+
+**Its two consumer amendments did not land, and the roadmap already knew why.** The Prerequisites
+note says INTAKE-L.2 (#106) and WF-R.3 (#145) must exist for them, and neither does — there is no
+estimator in `ouroboros-engine` and no workflow module in `ouroboros-rest`, and each sits behind
+its own unlanded chain (#105 → #106, #133 → #145). Shipping the endpoint without them is the
+right half to ship first: the amendments are consumers *of* this contract, so every one of them
+is now unblocked on the routing side and blocked only on its own ticket. The two amendment rows
+stay open and now say what they wait on.
+
+Next in epic Z is **#198** ([Z.5] the stats), and AA.4 (#203) — the inspector and simulate panel —
+now has the endpoint it renders, sentences included, with no story assembly left for the client.

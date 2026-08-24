@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.30.7"
+  version: "0.30.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -3275,6 +3275,278 @@ paths:
         "422":
           description: |-
             `validation_failed` — the path segment is not a uuid, so it could not name a rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/simulate:
+    post:
+      tags: [routing]
+      summary: Simulate routing — resolve a task kind against a context, and say why
+      description: |-
+        Mockup 06's **Simulate routing**
+        ([#197](https://github.com/NobuData/ouroboros/issues/197)) — ask what would run, and be
+        told what would run *and why*.
+
+        **This is the resolution function, not a preview of it.** The endpoint calls the same
+        `ResolutionService` an execution bridge will call, and returns what it answered
+        unchanged. That is the whole point of the operation: a simulator that re-implemented
+        routing would be a second answer to *which model runs this*, and the two would disagree
+        the first time either was edited. What the panel shows is what execution does.
+
+        **`ctx` is what is known about the work, and nothing else can be known.** An escalation
+        rule's predicate is closed over three conditions — `effort_gte`, `label`, `diff_kind` —
+        so a context carrying a fourth fact would be carrying something no rule could ever read,
+        and it is refused rather than ignored. `repo` is accepted and read by nothing yet;
+        per-repository overrides are
+        [#211](https://github.com/NobuData/ouroboros/issues/211).
+
+        **An absent fact is *unknown*, never *small*.** A context with no `effort` has not told
+        this service the work is tiny; it has told it nothing, and a rule reading `effort_gte:
+        "l"` does not fire on it. Simulating with no `ctx` at all is a legitimate question — it
+        is what `route.task("docs")` looks like before anything has been sized — and it means
+        *no escalation rule fires*.
+
+        **`fail_run` is a `200`.** Every provider down, a chain filtered to nothing, the floor
+        breached: those are *answers*, carrying an `outcome`, a `failure.code` and a sentence,
+        because the caller asked a well-formed question about a route that exists and is
+        entitled to know what the route did. The only `4xx` this operation has of its own is
+        `404 route_not_found`, for the one case with no chain to explain.
+
+        **Dropped hops stay in the chain.** The array is every hop in the order the executor
+        would try them, each `kept` or `dropped` with a stable `code` and a sentence — because
+        the inspector draws hop 2 struck through with a reason beside it, and it can only do
+        that if the hop is still there. The chain an executor walks is the `kept` ones, and that
+        filter is deliberately the client's.
+
+        **Sentences are rendered verbatim.** Every `explanation` is composed server-side, once,
+        so the inspector and this panel cannot print two different accounts of one decision.
+        Branch on `code`, which is stable; never on wording, which improves.
+
+        **`POST` for a read.** Nothing is created — hence `200` — but a context is a nested
+        document with an array in it, and `?ctx[labels][]=security` is a shape every client
+        library spells differently.
+
+        **Any member may simulate**, viewers included: looking at which model would answer a
+        piece of work changes nothing. **The workspace is the session's**, as everywhere in
+        `/api/v1` — there is no workspace in this path and none in the body.
+      operationId: simulateRouting
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingSimulationRequest"
+            examples:
+              ruleFiring:
+                summary: A security-labelled review — the context that fires a rule
+                value:
+                  taskKind: review
+                  ctx:
+                    labels: [security]
+              flooredRoute:
+                summary: A kind asked about with nothing known
+                value:
+                  taskKind: implement
+      responses:
+        "200":
+          description: |-
+            The resolution — the chain with a reason on every hop, the rules that matched and
+            what each did, any votes the executor must also obtain, the floor's decision and
+            the cost cap.
+
+            **`outcome: "fail_run"` arrives here**, not in an error status. It is a successful
+            answer to a well-formed question, and `failure` carries the reason.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Resolution"
+              examples:
+                resolved:
+                  summary: A rule fired — the chain runs, with a second opinion attached
+                  value:
+                    resolutionVersion: r1
+                    taskKind: review
+                    routeTag: review-primary
+                    outcome: resolved
+                    chain:
+                      - index: 1
+                        position: 1
+                        alias: coder-max
+                        modelId: claude-fable-5
+                        params: {}
+                        provider:
+                          id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                          kind: anthropic
+                          displayName: Anthropic Claude
+                          baseUrl: null
+                          status: active
+                          latencyMs: 42
+                          detail: null
+                        note: null
+                        decision: kept
+                        code: provider_healthy
+                        explanation: Primary · healthy · 42ms
+                      - index: 2
+                        position: 2
+                        alias: coder-std
+                        modelId: claude-sonnet-5
+                        params: {}
+                        provider:
+                          id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                          kind: anthropic
+                          displayName: Anthropic Claude
+                          baseUrl: null
+                          status: active
+                          latencyMs: 42
+                          detail: null
+                        note: null
+                        decision: kept
+                        code: provider_healthy
+                        explanation: Fallback 1 · healthy · 42ms
+                    rules:
+                      - id: f0000000-0000-4000-8000-000000000002
+                        sortOrder: 2
+                        display: security label → review adds second-opinion vote
+                        applied: true
+                        code: add_vote_added
+                        explanation: Applied — a second-opinion vote was added for the executor to obtain.
+                    votes:
+                      - alias: second-opinion
+                        modelId: claude-opus-5
+                        params: {}
+                        provider:
+                          id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                          kind: anthropic
+                          displayName: Anthropic Claude
+                          baseUrl: null
+                          status: active
+                          latencyMs: 42
+                          detail: null
+                        ruleId: f0000000-0000-4000-8000-000000000002
+                    floor:
+                      hopIndex: null
+                      code: no_floor
+                      explanation: No floor is set — this route may degrade to the end of its chain.
+                    allowLocalFallback: true
+                    maxCostCents: null
+                    failure: null
+                failRun:
+                  summary: The floor was breached — the run is refused rather than degraded
+                  value:
+                    resolutionVersion: r1
+                    taskKind: implement
+                    routeTag: implement-primary
+                    outcome: fail_run
+                    chain:
+                      - index: 1
+                        position: 1
+                        alias: coder-max
+                        modelId: claude-fable-5
+                        params: {}
+                        provider:
+                          id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                          kind: anthropic
+                          displayName: Anthropic Claude
+                          baseUrl: null
+                          status: error
+                          latencyMs: null
+                          detail: 503 upstream
+                        note: null
+                        decision: dropped
+                        code: provider_error
+                        explanation: Primary dropped — Anthropic Claude is unreachable (503 upstream).
+                      - index: 2
+                        position: 2
+                        alias: coder-fallback
+                        modelId: gpt-5-codex
+                        params: {}
+                        provider:
+                          id: 8b3f4e5d-6c7b-4a09-9e32-4f5a6b7c8d92
+                          kind: copilot
+                          displayName: GitHub Copilot
+                          baseUrl: null
+                          status: active
+                          latencyMs: null
+                          detail: null
+                        note: Fallback on 5xx / timeouts
+                        decision: dropped
+                        code: below_floor
+                        explanation: Fallback 1 dropped — this route may not degrade below hop 1.
+                      - index: 3
+                        position: 3
+                        alias: local-docs
+                        modelId: qwen3-coder:32b
+                        params: {}
+                        provider:
+                          id: 1a2b3c4d-5e6f-4a80-9b12-3c4d5e6f7a81
+                          kind: ollama
+                          displayName: Ollama
+                          baseUrl: "http://workstation:11434"
+                          status: active
+                          latencyMs: 8
+                          detail: null
+                        note: Offline mode — keeps the loop turning without a network
+                        decision: dropped
+                        code: below_floor
+                        explanation: Fallback 2 dropped — this route may not degrade below hop 1.
+                    rules: []
+                    votes: []
+                    floor:
+                      hopIndex: 1
+                      code: floor_breached
+                      explanation: The floor is hop 1 — no hop at or above it is usable, so this run fails rather than degrading below it.
+                    allowLocalFallback: true
+                    maxCostCents: 250
+                    failure:
+                      code: floor_breached
+                      explanation: The floor is hop 1 — no hop at or above it is usable, so this run fails rather than degrading below it.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `route_not_found` — this workspace has no route for that task kind. The one failure
+            that is not an answer: there is no chain to explain. Reachable two ways and both are
+            the caller's — a kind the workspace never had, and a kind that exists with no route
+            pointing at it. `details.taskKind` echoes what was asked for.
+
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed: a `taskKind` outside the shape a task
+            kind has, an `effort` that is not one of the five sizes, a `diffKind` nothing
+            classifies, or a `ctx` carrying a condition no escalation rule could read.
           content:
             application/json:
               schema:
@@ -8602,6 +8874,461 @@ components:
           description: Every alias in the workspace, ordered by name, unbound ones included.
           items:
             $ref: "#/components/schemas/RoutingAlias"
+
+    RoutingSimulationContext:
+      type: object
+      title: RoutingSimulationContext
+      description: |-
+        What is known about the work a route is being simulated for — the `ctx` of
+        `resolve(taskKind, ctx)`.
+
+        **Everything an escalation rule can ask about is here, and nothing else is.** The
+        predicate grammar is closed over `effort_gte`, `label` and `diff_kind`, so a fourth fact
+        would be one no rule could ever read; a property this schema does not declare is a `422`
+        rather than a value quietly discarded.
+
+        **Every field is optional, and absence is a real answer.** An unstated fact never
+        satisfies a condition about it: a rule reading `effort_gte: "l"` against a context with
+        no effort has not learned the work is small, it has learned nothing. `null` is refused —
+        it is a client saying something a context cannot mean.
+      additionalProperties: false
+      properties:
+        effort:
+          type: string
+          enum: [xs, s, m, l, xl]
+          description: |-
+            How big the work was sized. Absent for work nothing has estimated, which is the
+            ordinary state of an issue that has not been through the estimator.
+          examples: [l]
+        labels:
+          type: array
+          maxItems: 50
+          description: |-
+            The issue's labels, as GitHub spells them — GitHub's vocabulary, not ours. Compared
+            **whole and case-sensitively**, because GitHub's own labels are: `security` and
+            `Security` are two labels a repository may genuinely have.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          examples: [[security]]
+        diffKind:
+          type: string
+          enum: [docs_only]
+          description: |-
+            How the change was classified, when something classified it. One value today, and
+            honestly so: a classification nothing computes is a rule that can never fire.
+          examples: [docs_only]
+        repo:
+          type: string
+          maxLength: 140
+          description: |-
+            The repository the work belongs to. **Read by nothing today** — per-repository route
+            overrides are [#211](https://github.com/NobuData/ouroboros/issues/211). Accepted now
+            so a consumer holding the repository sends it now rather than being amended later.
+          examples: [acme-robotics/control-plane]
+
+    RoutingSimulationRequest:
+      type: object
+      title: RoutingSimulationRequest
+      description: |-
+        What to simulate: a task kind, and what is known about the work.
+
+        There is no workspace in it. The workspace is the session's, as everywhere in `/api/v1`,
+        and a body that could name one would be a body that could simulate somebody else's
+        routes.
+      additionalProperties: false
+      required: [taskKind]
+      properties:
+        taskKind:
+          type: string
+          maxLength: 64
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          description: |-
+            The kind of work being routed — the matrix row being asked about. Lower-case kebab,
+            which is the shape the column has: a name outside it names something no row could
+            hold.
+          examples: [review]
+        ctx:
+          $ref: "#/components/schemas/RoutingSimulationContext"
+
+    ResolvedProvider:
+      type: object
+      title: ResolvedProvider
+      description: |-
+        Where a resolved hop's model runs, and whether it is usable — `RouteProvider`'s four
+        identifying facts **plus** the health the resolution decided on.
+
+        Health is present here and absent from `RouteProvider`, and the difference is the
+        difference between the two surfaces: the editor publishes the chain an operator
+        configured, and this publishes the chain a run would walk. The status arrives from the
+        health snapshot, so a resolution has exactly one opinion about a provider's state and
+        the hop's sentence can be composed once — a client that had to fetch the health strip to
+        learn why a hop was dropped would be composing the story this endpoint exists to stop it
+        composing.
+
+        **There is no credential here and nowhere to put one.** A resolution carries an address
+        and a model: everything an executor needs to choose a provider, and nothing it needs to
+        authenticate as one.
+      additionalProperties: false
+      required: [id, kind, displayName, baseUrl, status, latencyMs, detail]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The provider connection's id — how mockup 07's surfaces address it.
+        kind:
+          $ref: "#/components/schemas/ProviderConnectionKind"
+        displayName:
+          type: string
+          description: What the hop's sentence prints beside the model.
+          examples: [Anthropic Claude]
+        baseUrl:
+          type: [string, "null"]
+          description: Where it is, or null for a kind reached at its vendor's own endpoint.
+          examples: ["http://workstation:11434"]
+        status:
+          $ref: "#/components/schemas/ProviderConnectionStatus"
+        latencyMs:
+          type: [number, "null"]
+          minimum: 0
+          description: |-
+            Milliseconds the last check measured, or **null** when none measured one. Never `0`
+            as a stand-in for *unmeasured*: `0ms` is an excellent latency, not an absence.
+          examples: [42]
+        detail:
+          type: [string, "null"]
+          description: |-
+            Why the provider is in this state, when there is something to say — `elevated
+            latency`, `503 upstream` — or null.
+          examples: [503 upstream]
+
+    ResolutionHop:
+      type: object
+      title: ResolutionHop
+      description: |-
+        One hop of a **resolved** chain — kept or dropped, and why.
+
+        **Dropped hops stay in the array.** A chain that quietly omitted them would be exactly
+        the silence mockup 06's promise is about: the inspector draws hop 2 struck through with
+        a reason beside it, and it can only do that if the hop is still there. The chain an
+        executor walks is the hops whose `decision` is `kept`, and that filter is the client's.
+      additionalProperties: false
+      required:
+        [index, position, alias, modelId, params, provider, note, decision, code, explanation]
+      properties:
+        index:
+          type: integer
+          minimum: 1
+          description: |-
+            Where this hop sits in the **resolved** chain; 1 is the primary. Dense, and it counts
+            dropped hops — it is the number the inspector's rail prints.
+          examples: [1]
+        position:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            The hop's number in the **stored** chain, or **null** for a hop an escalation rule
+            prepended. The distinction is load-bearing: `floor.hopIndex` is measured against this
+            and never against `index`, so a rule that prepends a primary cannot silently move a
+            floor an operator set against the chain they saw.
+          examples: [1]
+        alias:
+          type: string
+          description: The alias this hop names. Never a raw model id — a route may name nothing else.
+          examples: [coder-max]
+        modelId:
+          type: string
+          description: What that alias means — the raw provider model string, and the only place it appears.
+          examples: [claude-fable-5]
+        params:
+          type: object
+          description: |-
+            The invocation defaults this hop carries: the alias's own, with an applied rule's
+            merged **over** them, because the rule is the more specific statement. Keys are
+            sorted, which is not cosmetic — a resolution is byte-for-byte identical for identical
+            inputs, and key order survives serialisation.
+          additionalProperties: true
+        provider:
+          oneOf:
+            - $ref: "#/components/schemas/ResolvedProvider"
+            - type: "null"
+          description: |-
+            Where it runs, or **null** when the alias is bound to no provider connection. Such a
+            hop is always `dropped`, with a stated reason.
+        note:
+          type: [string, "null"]
+          description: |-
+            The **operator's** own sentence for this hop, unchanged, or null. Separate from
+            `explanation` because the two have different authors: a note says why this hop is in
+            the chain, an explanation says what this resolution concluded about it.
+          examples: ["Fallback on 5xx / timeouts"]
+        decision:
+          type: string
+          enum: [kept, dropped]
+          description: Whether the executor will try this hop.
+          examples: [kept]
+        code:
+          type: string
+          enum:
+            [
+              provider_healthy,
+              provider_unknown,
+              provider_paused,
+              provider_error,
+              alias_unbound,
+              below_floor,
+              rule_route_local,
+              local_not_allowed,
+            ]
+          description: |-
+            Why — **stable**, and what a client branches on. Two of the eight keep a hop:
+            `provider_healthy` and `provider_unknown`. They are separate codes because *usable*
+            and *nothing has checked it* are different claims, and the second must never be
+            rendered as the first. A code this list does not carry still arrives with a sentence
+            and a `decision`, which is why adding one is not a version bump.
+          examples: [provider_healthy]
+        explanation:
+          type: string
+          description: |-
+            Why, as a sentence — **rendered verbatim**. A kept hop reads as the inspector's
+            hop-meta line (`Primary · healthy · 42ms`); anything that removed a hop reads as a
+            sentence saying what and why. Never branch on this wording; branch on `code`.
+          examples: [Primary · healthy · 42ms]
+
+    ResolutionRule:
+      type: object
+      title: ResolutionRule
+      description: |-
+        One escalation rule whose predicate **matched the context**, and what it did about it.
+
+        Matched rather than applied, deliberately. A rule that fired but names another task kind
+        did nothing, and *nothing happened and here is why* is the answer an operator needs when
+        a rule they can see on the card did not change the run they are looking at. Filter on
+        `applied` for the rules that took effect; the rest are the near misses, each with a
+        reason.
+      additionalProperties: false
+      required: [id, sortOrder, display, applied, code, explanation]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The rule's id — what `/api/v1/routing/rules/{id}` addresses it by.
+        sortOrder:
+          type: integer
+          minimum: 1
+          description: Its evaluation order; 1 is first. Rules are listed in this order.
+          examples: [2]
+        display:
+          type: string
+          description: |-
+            The sentence the rules card renders, **reported rather than recomposed**: the
+            database derives it from the rule's structure and refuses a hand-written one, so this
+            panel and the card cannot print two different sentences for one rule.
+          examples: [security label → review adds second-opinion vote]
+        applied:
+          type: boolean
+          description: Whether it changed this resolution.
+          examples: [true]
+        code:
+          type: string
+          enum:
+            [
+              use_alias_params_merged,
+              use_alias_swapped,
+              use_alias_prepended,
+              add_vote_added,
+              route_local_applied,
+              not_this_task_kind,
+              alias_unresolvable,
+              vote_already_added,
+            ]
+          description: |-
+            What it did, or why it did not. The first five mean `applied: true`; the last three
+            are the near misses.
+          examples: [add_vote_added]
+        explanation:
+          type: string
+          description: The same, as a sentence — rendered verbatim.
+          examples: [Applied — a second-opinion vote was added for the executor to obtain.]
+
+    ResolutionVote:
+      type: object
+      title: ResolutionVote
+      description: |-
+        A second opinion an `add_vote` rule attached — the matrix's *"always second vote"*.
+
+        **A requirement, not a hop.** It is not somewhere the run falls back to, it is something
+        the executor must *also* do; dropping it into the chain would make it look like a
+        fallback only reached when everything above it fails.
+      additionalProperties: false
+      required: [alias, modelId, params, provider, ruleId]
+      properties:
+        alias:
+          type: string
+          description: The alias casting the vote.
+          examples: [second-opinion]
+        modelId:
+          type: string
+          description: What it resolves to.
+          examples: [claude-opus-5]
+        params:
+          type: object
+          description: Its invocation defaults. Sorted, for the determinism reason a hop's are.
+          additionalProperties: true
+        provider:
+          $ref: "#/components/schemas/ResolvedProvider"
+        ruleId:
+          type: string
+          format: uuid
+          description: Which rule asked for it, so a client can point at the row that did.
+
+    ResolutionFloor:
+      type: object
+      title: ResolutionFloor
+      description: |-
+        What mockup 06's **Fail run instead of degrading below fallback N** decided — recorded on
+        **every** resolution, including the ones where it did nothing.
+
+        *No floor is set* and *the floor was satisfied* are different facts, and a field that
+        appeared only when a policy fired would leave a reader unable to tell either from a
+        client that forgot to render it.
+      additionalProperties: false
+      required: [hopIndex, code, explanation]
+      properties:
+        hopIndex:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            The deepest **stored** hop position this route may run on, or null for the switch
+            being off. Measured against `chain[].position`, never against `chain[].index`.
+          examples: [1]
+        code:
+          type: string
+          enum: [no_floor, floor_held, floor_breached]
+          description: What it decided.
+          examples: [no_floor]
+        explanation:
+          type: string
+          description: The same, as a sentence — rendered verbatim.
+          examples: [No floor is set — this route may degrade to the end of its chain.]
+
+    ResolutionFailure:
+      type: object
+      title: ResolutionFailure
+      description: |-
+        Why a resolution refuses to produce a chain — present exactly when `outcome` is
+        `fail_run`, and null otherwise.
+
+        **Never a truncated chain instead.** *The run may not proceed* and *the run proceeds on
+        the third fallback* are different outcomes, and this product does not quietly turn the
+        first into the second.
+      additionalProperties: false
+      required: [code, explanation]
+      properties:
+        code:
+          type: string
+          enum: [floor_breached, no_eligible_hop]
+          description: |-
+            Which refusal. `floor_breached` is the same fact `floor.code` states, spelled the
+            same way on purpose so a client does not have to check both for two names.
+          examples: [floor_breached]
+        explanation:
+          type: string
+          description: Why, as a sentence — rendered verbatim.
+          examples: [The floor is hop 1 — no hop at or above it is usable, so this run fails rather than degrading below it.]
+
+    Resolution:
+      type: object
+      title: Resolution
+      description: |-
+        One resolution — what would run for this task kind in this context, and why.
+
+        **Deterministic given its inputs**: the same route, health snapshot and context produce
+        this object byte for byte, which is what makes **Simulate routing** the same code path as
+        execution rather than a parallel mock of it.
+
+        `resolutionVersion` is the pin a consumer holds. Adding a hop code or a rule code is
+        **not** a bump — an unrecognised code still arrives with a sentence and a decision to
+        branch on. Renaming a field, removing one, or changing what an existing one means is.
+      additionalProperties: false
+      required:
+        [
+          resolutionVersion,
+          taskKind,
+          routeTag,
+          outcome,
+          chain,
+          rules,
+          votes,
+          floor,
+          allowLocalFallback,
+          maxCostCents,
+          failure,
+        ]
+      properties:
+        resolutionVersion:
+          type: string
+          enum: [r1]
+          description: |-
+            The shape's version — the string a consumer pins. Deliberately not a semver: a
+            resolution is not a package, and `1.0.0` would invite reasoning about a patch digit
+            that will never move.
+          examples: [r1]
+        taskKind:
+          type: string
+          description: The kind that was asked for.
+          examples: [review]
+        routeTag:
+          type: string
+          description: Its route's tag — the inspector's title.
+          examples: [review-primary]
+        outcome:
+          type: string
+          enum: [resolved, fail_run]
+          description: |-
+            Whether there is a chain to run. `fail_run` arrives with a `200`: it is a successful
+            answer carrying a reason, not an error.
+          examples: [resolved]
+        chain:
+          type: array
+          description: |-
+            Every hop, in the order the executor would try them, **dropped ones included**. The
+            chain actually walked is the hops whose `decision` is `kept`.
+          items:
+            $ref: "#/components/schemas/ResolutionHop"
+        rules:
+          type: array
+          description: Every rule whose predicate matched, in evaluation order, applied or not.
+          items:
+            $ref: "#/components/schemas/ResolutionRule"
+        votes:
+          type: array
+          description: Second opinions the executor must also obtain. Empty is the ordinary case.
+          items:
+            $ref: "#/components/schemas/ResolutionVote"
+        floor:
+          $ref: "#/components/schemas/ResolutionFloor"
+        allowLocalFallback:
+          type: boolean
+          description: |-
+            The route's **Allow fallback to local models** switch, echoed. No sentence of its
+            own: the policy has nothing to say until it drops something, and then the sentence is
+            on the hop it dropped, where the reader is already looking.
+          examples: [true]
+        maxCostCents:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            The cost cap that travels to the executor, in integer cents — `250` is `$2.50` — or
+            null for a route with none. Attached to **every** resolution including a `fail_run`,
+            because it is a property of the route rather than of the outcome.
+          examples: [250]
+        failure:
+          oneOf:
+            - $ref: "#/components/schemas/ResolutionFailure"
+            - type: "null"
+          description: Why there is no chain, or null when there is one.
 
     RouteHopInput:
       type: object
