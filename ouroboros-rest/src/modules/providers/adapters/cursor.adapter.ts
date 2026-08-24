@@ -73,6 +73,7 @@ import {
   type ProviderConfigSchema,
   type ProviderConnectionConfig,
 } from "../provider.config";
+import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
 import {
   ProviderAdapterError,
   classifyHttpStatus,
@@ -257,6 +258,26 @@ export function missingConfiguration(
 }
 
 /**
+ * What a Cursor model can be tuned with: nothing, stated rather than faked.
+ *
+ * The same shape and the same argument as the Copilot adapter's — a fixed catalog of one model,
+ * reached on usage-metered terms rather than through a parameterised API. See
+ * `copilot.adapter.ts`'s constant for the full reasoning; mockup 21's `second-opinion` row
+ * draws one chip, and it is `review vote only`, which is a registry restriction rather than a
+ * param.
+ */
+const CURSOR_PARAM_SCHEMA: ModelParamSchema = {
+  $schema: MODEL_PARAM_DIALECT,
+  type: "object",
+  title: "Cursor model parameters",
+  description:
+    "Cursor is a fixed catalog metered on its own terms, and publishes no per-call parameters " +
+    "this product can set. Restrictions still apply to the alias.",
+  properties: {},
+  additionalProperties: false,
+};
+
+/**
  * The Cursor adapter.
  *
  * `@Injectable()` because `providers.module.ts` registers the class and Nest constructs it. It
@@ -290,6 +311,18 @@ export class CursorAdapter implements ModelProviderAdapter {
    */
   capabilities(): ProviderCapabilities {
     return { discovery: false, pull: false, entitlements: false, invocation: false };
+  }
+
+  /**
+   * What a Cursor model can be tuned with — nothing, and the schema explains why.
+   *
+   * @param _modelId - Unread, and named with an underscore to say so: this adapter's catalog is
+   *   one model and it has no tunable.
+   * @returns A fresh empty schema every call, carrying the sentence the inspector renders in
+   *   place of fields. See {@link CURSOR_PARAM_SCHEMA}.
+   */
+  paramSchema(_modelId: string): ModelParamSchema {
+    return copyParamSchema(CURSOR_PARAM_SCHEMA);
   }
 
   /**

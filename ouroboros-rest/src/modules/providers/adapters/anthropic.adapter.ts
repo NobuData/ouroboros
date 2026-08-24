@@ -71,6 +71,11 @@
 
 import { Injectable } from "@nestjs/common";
 
+import {
+  MODEL_ALIAS_TEMPERATURE_MIN,
+  MODEL_ALIAS_TOKENS_MIN,
+  THINKING_LEVELS,
+} from "../../db/schema";
 import { ANTHROPIC_DEFAULT_BASE_URL, ANTHROPIC_VERSION } from "../../provider-health/checks";
 import type {
   ModelProviderAdapter,
@@ -86,6 +91,7 @@ import {
   type ProviderConfigSchema,
   type ProviderConnectionConfig,
 } from "../provider.config";
+import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
 import {
   ProviderAdapterError,
   classifyHttpStatus,
@@ -181,6 +187,127 @@ const ANTHROPIC_CONFIG_SCHEMA: ProviderConfigSchema = {
   required: [ANTHROPIC_API_KEY_FIELD],
   additionalProperties: false,
 };
+
+/**
+ * The generations with no extended thinking — the one piece of per-model knowledge this
+ * adapter's param schema carries.
+ *
+ * Extended thinking arrived with Claude 3.7 and is a feature of every generation since; the
+ * families below predate it, so offering a `thinking` field on one would be offering a control
+ * with nothing behind it. Written as **prefixes of the vendor's own identifiers** rather than
+ * parsed out of a version number, because `claude-3-5-sonnet-20241022`,
+ * `claude-3-7-sonnet-20250219` and `claude-opus-4-1` do not agree about where the version goes
+ * — a regular expression over them would be a guess that reads like a rule.
+ *
+ * The list is checked against the bundled price catalog's own `capabilities.reasoning` flags in
+ * `anthropic.adapter.spec.ts`: every Anthropic model that catalog knows about is asked, and the
+ * two answers have to agree. That is what keeps this from being one person's recollection.
+ *
+ * A model this build has never heard of is **not** on the list and therefore gets the field.
+ * That direction is deliberate: a new Claude arriving between releases should render the
+ * control its whole generation has, and a param the model turns out to ignore is a smaller
+ * failure than a control missing from the one model somebody bought the key for.
+ */
+export const ANTHROPIC_PRE_THINKING_MODELS: readonly string[] = Object.freeze([
+  "claude-instant-",
+  "claude-1",
+  "claude-2",
+  "claude-3-opus",
+  "claude-3-sonnet",
+  "claude-3-haiku",
+  "claude-3-5-",
+]);
+
+/**
+ * The largest thinking budget this adapter offers — one million tokens.
+ *
+ * The widest context any Claude publishes, so a budget above it could not be spent whatever the
+ * model. The real ceiling is smaller and is the *model's own* context length, which this adapter
+ * cannot know offline; `registry/params.merge.ts` narrows this bound to what discovery reported
+ * for the model and labels the result as coming from there.
+ */
+export const ANTHROPIC_MAX_THINKING_BUDGET = 1_000_000;
+
+/**
+ * The highest temperature the Messages API accepts — one, not two.
+ *
+ * V019's column allows two because that is the widest any provider this product reaches
+ * publishes; Anthropic's own range is `0`–`1`, and a form offering `1.5` would be a form whose
+ * valid-looking submission the provider refuses. The narrower of the two is what a write is
+ * checked against, which is this.
+ */
+export const ANTHROPIC_MAX_TEMPERATURE = 1;
+
+/**
+ * Whether a model has extended thinking, as far as this adapter knows.
+ *
+ * @param modelId - The model's own identifier. Not checked against a catalog — see
+ *   {@link ModelProviderAdapter.paramSchema} on why an id it has never seen is answered rather
+ *   than refused.
+ * @returns Whether to offer the thinking controls.
+ */
+export function anthropicSupportsThinking(modelId: string): boolean {
+  return !ANTHROPIC_PRE_THINKING_MODELS.some((prefix) => modelId.startsWith(prefix));
+}
+
+/**
+ * The three tunables every Claude has, and the two more a thinking model adds.
+ *
+ * Built per call rather than held as a constant, because the answer differs by model — see
+ * {@link anthropicSupportsThinking}. The thinking pair is inserted **first**, which is the order
+ * mockup 21's inspector draws them in: *Thinking*, *Token budget*, then the temperature row.
+ *
+ * **`max_output` deliberately declares no ceiling.** Anthropic's maximum output differs per
+ * model — 64k on one Claude, 128k on another — and this adapter cannot ask without a network.
+ * Leaving the bound absent is what lets `registry/params.merge.ts` fill it from the bundled
+ * catalog's `max_output_tokens` and *label it* as catalogued rather than live, which is the
+ * ticket's option 2-B: enrichment where the adapter is silent, never a value that overrides it.
+ *
+ * @param modelId - The model the schema is for.
+ * @returns The schema, freshly built.
+ */
+function anthropicParamSchema(modelId: string): ModelParamSchema {
+  const thinking: ModelParamSchema["properties"] = anthropicSupportsThinking(modelId)
+    ? {
+        thinking: {
+          type: "string",
+          title: "Thinking",
+          description: "How much reasoning effort to ask for before the answer starts.",
+          enum: THINKING_LEVELS,
+        },
+        token_budget: {
+          type: "integer",
+          title: "Token budget",
+          description: "The ceiling on thinking tokens, inside the model's context window.",
+          minimum: MODEL_ALIAS_TOKENS_MIN,
+          maximum: ANTHROPIC_MAX_THINKING_BUDGET,
+        },
+      }
+    : {};
+
+  return {
+    $schema: MODEL_PARAM_DIALECT,
+    type: "object",
+    title: "Anthropic model parameters",
+    properties: {
+      ...thinking,
+      max_output: {
+        type: "integer",
+        title: "Max output",
+        description: "The most tokens one answer may run to.",
+        minimum: MODEL_ALIAS_TOKENS_MIN,
+      },
+      temperature: {
+        type: "number",
+        title: "Temperature",
+        description: "Zero is deterministic; one is as varied as this API goes.",
+        minimum: MODEL_ALIAS_TEMPERATURE_MIN,
+        maximum: ANTHROPIC_MAX_TEMPERATURE,
+      },
+    },
+    additionalProperties: false,
+  };
+}
 
 /** What one page of `/v1/models` told us, in this file's terms. */
 interface ModelListingPage {
@@ -413,6 +540,24 @@ export class AnthropicAdapter implements ModelProviderAdapter {
    */
   capabilities(): ProviderCapabilities {
     return { discovery: true, pull: false, entitlements: false, invocation: false };
+  }
+
+  /**
+   * What one Claude can be tuned with — thinking and its budget where the model has them, a
+   * maximum output and a temperature everywhere.
+   *
+   * The inspector's field stack for mockup 21's `coder-max`, and the schema every write to that
+   * alias's `params` is checked against. Local: no network, no credential, no connection — see
+   * `provider.adapter.ts` on why a form field may not wait on a provider.
+   *
+   * @param modelId - The model's own identifier. An id this adapter has never seen is answered
+   *   rather than refused, and gets the thinking controls — see
+   *   {@link ANTHROPIC_PRE_THINKING_MODELS} for which way that error leans and why.
+   * @returns A fresh schema every call, equal for equal ids. `claude-fable-5` offers thinking
+   *   and a budget; `claude-3-haiku-20240307` offers neither.
+   */
+  paramSchema(modelId: string): ModelParamSchema {
+    return copyParamSchema(anthropicParamSchema(modelId));
   }
 
   /**

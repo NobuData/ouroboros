@@ -52,6 +52,7 @@ import {
   recordedRefusal,
   recordedStreamedOversize,
 } from "./openai-compatible.recordings.fixture";
+import { paramSchemaViolations, storageViolations } from "../provider.params";
 
 /**
  * The OpenAI-compatible adapter, against recorded responses.
@@ -838,5 +839,54 @@ describe("the adapter's credential discipline", () => {
     await new OpenAiCompatibleAdapter().validate(VLLM_CONFIG, null);
 
     expect(refusal.bodyUsed || refusal.body?.locked).toBeTruthy();
+  });
+});
+
+/**
+ * `paramSchema` — what a model behind an OpenAI-compatible endpoint can be tuned with
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)).
+ */
+describe("the OpenAI-compatible param schema", () => {
+  const adapter = new OpenAiCompatibleAdapter();
+
+  it("offers the three every implementation of the wire format honours", () => {
+    expect(Object.keys(adapter.paramSchema("llama-4-maverick").properties)).toEqual([
+      "max_output",
+      "context_clamp",
+      "temperature",
+    ]);
+  });
+
+  it("offers no thinking control, because this format cannot say which models reason", () => {
+    // Some models served this way reason and some do not, and there is no field in the
+    // protocol that says which. A control offered on every one of them would be a control that
+    // silently does nothing on most — decision R3's option 2-A is exactly this refusal.
+    expect(adapter.paramSchema("llama-4-maverick").properties.thinking).toBeUndefined();
+  });
+
+  it("allows the full temperature range this format publishes", () => {
+    // Two, unlike Anthropic's one. The difference between two adapters' ceilings is the reason
+    // a range belongs in an adapter rather than in a shared constant.
+    expect(adapter.paramSchema("llama-4-maverick").properties.temperature.maximum).toBe(2);
+  });
+
+  it("answers the same schema for every model, because the deployment is what differs", () => {
+    expect(adapter.paramSchema("llama-4-maverick")).toEqual(
+      adapter.paramSchema("openai/gpt-oss-120b"),
+    );
+  });
+
+  it("answers a schema in the dialect that the column can store", () => {
+    expect(paramSchemaViolations(adapter.paramSchema("llama-4-maverick"))).toEqual([]);
+    expect(storageViolations(adapter.paramSchema("llama-4-maverick"))).toEqual([]);
+  });
+
+  it("hands out a fresh value every call", () => {
+    const first = adapter.paramSchema("llama-4-maverick") as { title: string };
+    first.title = "tampered";
+
+    expect(adapter.paramSchema("llama-4-maverick").title).toBe(
+      "OpenAI-compatible model parameters",
+    );
   });
 });

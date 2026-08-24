@@ -39,7 +39,13 @@
  * that true.
  */
 
-import type { ProviderConnectionKind } from "../../db/schema";
+import {
+  MODEL_ALIAS_TEMPERATURE_MAX,
+  MODEL_ALIAS_TEMPERATURE_MIN,
+  MODEL_ALIAS_TOKENS_MIN,
+  THINKING_LEVELS,
+  type ProviderConnectionKind,
+} from "../../db/schema";
 import {
   type ModelPullProgress,
   type ModelProviderAdapter,
@@ -58,6 +64,7 @@ import {
   type ProviderConfigSchema,
   type ProviderConnectionConfig,
 } from "../provider.config";
+import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
 import { ProviderAdapterError, type ProviderErrorClass } from "../provider.errors";
 
 /**
@@ -108,6 +115,82 @@ export const FAKE_CONFIG_SCHEMA: ProviderConfigSchema = {
   required: [BASE_URL_FIELD],
   additionalProperties: false,
 };
+
+/**
+ * The fake's param schema — one of each of the dialect's four shapes, all of them storable.
+ *
+ * Deliberately the *widest* conforming answer rather than the simplest: a select, an integer
+ * with both bounds, an integer with only a floor and a free number. That exercises every widget
+ * `param.forms.ts` produces and every keyword the merge has to narrow, so a core suite built on
+ * the fake covers the cases the five real adapters cover between them.
+ *
+ * Every key is one `model_aliases.params` stores and every bound is inside V019's — which is
+ * what the conformance kit's storage check requires of a *registered* adapter, and what makes
+ * this the right default. A test that wants the other side of that line builds the fake with
+ * {@link FAKE_NOVEL_PARAM_SCHEMA}.
+ */
+export const FAKE_PARAM_SCHEMA: ModelParamSchema = Object.freeze({
+  $schema: MODEL_PARAM_DIALECT,
+  type: "object",
+  title: "Test provider model parameters",
+  properties: Object.freeze({
+    thinking: {
+      type: "string",
+      title: "Thinking",
+      description: "How much reasoning effort to ask for.",
+      enum: THINKING_LEVELS,
+    },
+    token_budget: {
+      type: "integer",
+      title: "Token budget",
+      minimum: MODEL_ALIAS_TOKENS_MIN,
+      maximum: 400_000,
+    },
+    max_output: {
+      type: "integer",
+      title: "Max output",
+      minimum: MODEL_ALIAS_TOKENS_MIN,
+    },
+    temperature: {
+      type: "number",
+      title: "Temperature",
+      minimum: MODEL_ALIAS_TEMPERATURE_MIN,
+      maximum: MODEL_ALIAS_TEMPERATURE_MAX,
+    },
+  }) satisfies ModelParamSchema["properties"],
+  additionalProperties: false,
+});
+
+/**
+ * A param schema offering something nothing in this build has ever seen.
+ *
+ * CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585)) *"a fake adapter declaring a
+ * novel param renders its field in the inspector with **no UI change** — fixture-proved"*, and
+ * it is used for two proofs that pull in opposite directions, which is why it is a separate
+ * constant rather than the fake's default:
+ *
+ *   * `param.shapes.fixture.ts` runs it through `toParamFields` and gets a field — the renderer
+ *     has no list of param names in it, so a name it has never seen renders like any other.
+ *   * `conformance.fixture.spec.ts` runs it through the kit's storage check and gets a
+ *     violation — a *registered* adapter offering a key `model_aliases.params` cannot hold would
+ *     be rendering a control whose save is refused, and the kit is where that is caught.
+ *
+ * Both are true at once and neither weakens the other: the dialect is about shape, and what the
+ * database will store is a separate question with a separate answer. See `provider.params.ts`.
+ */
+export const FAKE_NOVEL_PARAM_SCHEMA: ModelParamSchema = Object.freeze({
+  $schema: MODEL_PARAM_DIALECT,
+  type: "object",
+  title: "A provider with a parameter this build has never seen",
+  properties: Object.freeze({
+    speculative_decoding: {
+      type: "boolean",
+      title: "Speculative decoding",
+      description: "Draft with a smaller model and verify with this one.",
+    },
+  }) satisfies ModelParamSchema["properties"],
+  additionalProperties: false,
+});
 
 /**
  * The models the fake reports, unless it is built with others.
@@ -169,6 +252,14 @@ export interface FakeAdapterOptions {
   readonly kind?: ProviderConnectionKind;
   /** The schema to answer. Defaults to {@link FAKE_CONFIG_SCHEMA}. */
   readonly schema?: ProviderConfigSchema;
+  /**
+   * The param schema to answer, for every model. Defaults to {@link FAKE_PARAM_SCHEMA}.
+   *
+   * A whole schema rather than a per-model function, because every test that has wanted one has
+   * wanted the same answer for every model — and a test that needs the other shape is testing a
+   * real adapter, where the per-model branch actually lives.
+   */
+  readonly paramSchema?: ModelParamSchema;
   /** The models to report. Defaults to {@link FAKE_MODELS}. */
   readonly models?: readonly NormalizedModel[];
   /** Whether `discovery` is declared. Defaults to `true`. */
@@ -193,6 +284,7 @@ export class FakeModelProviderAdapter implements ModelProviderAdapter {
   readonly calls = { validate: 0, discoverModels: 0, pullModel: 0 };
 
   private readonly schema: ProviderConfigSchema;
+  private readonly params: ModelParamSchema;
   private readonly models: readonly NormalizedModel[];
   private readonly discovery: boolean;
   private readonly entitlements: boolean;
@@ -210,6 +302,7 @@ export class FakeModelProviderAdapter implements ModelProviderAdapter {
   constructor(options: FakeAdapterOptions = {}) {
     this.kind = options.kind ?? "custom";
     this.schema = options.schema ?? FAKE_CONFIG_SCHEMA;
+    this.params = options.paramSchema ?? FAKE_PARAM_SCHEMA;
     this.models = options.models ?? FAKE_MODELS;
     this.discovery = options.discovery ?? true;
     this.entitlements = options.entitlements ?? false;
@@ -271,6 +364,17 @@ export class FakeModelProviderAdapter implements ModelProviderAdapter {
       entitlements: this.entitlements,
       invocation: false,
     };
+  }
+
+  /**
+   * The fake's param schema.
+   *
+   * @param _modelId - Unread, and named with an underscore to say so: the fake answers one
+   *   schema for every model — see {@link FakeAdapterOptions.paramSchema}.
+   * @returns A fresh deep copy every call, for {@link configSchema}'s reason.
+   */
+  paramSchema(_modelId: string): ModelParamSchema {
+    return copyParamSchema(this.params);
   }
 
   /**

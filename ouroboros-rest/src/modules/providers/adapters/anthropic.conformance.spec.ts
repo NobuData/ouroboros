@@ -98,6 +98,10 @@ function anthropicHarness(): AdapterConformance {
       return adapter.discoverModels(conformanceContext(harness));
     },
     expectedModels: ANTHROPIC_EXPECTED_MODELS,
+    // The other branch of `paramSchema`. The recording lists thinking-capable Claudes, so
+    // without this the pre-thinking shape — no `thinking`, no `token_budget` — would never
+    // be checked against the dialect or against what V019 stores.
+    paramModels: ["claude-3-haiku-20240307"],
     // Nothing pulls a hosted model onto a machine. The kit's complementary leg asserts the
     // member is unreachable rather than that the case does not apply.
     pull: null,

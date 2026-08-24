@@ -59,6 +59,9 @@ function harnessFor(options: FakeAdapterOptions, pulling: boolean): AdapterConfo
     },
     discover: () => adapter.discoverModels(conformanceContext(harness)),
     expectedModels: FAKE_MODELS,
+    // Nothing extra: the fake answers one schema for every model, so the recorded listing
+    // already exercises the only branch there is.
+    paramModels: [],
     pull: pulling
       ? () =>
           (adapter as FakePullingProviderAdapter).pullModel(

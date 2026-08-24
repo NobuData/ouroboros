@@ -143,6 +143,9 @@ function harnessFor(flavour: PullFlavour): AdapterConformance {
       return adapter.discoverModels(conformanceContext(harness));
     },
     expectedModels: OLLAMA_EXPECTED_MODELS,
+    // Nothing extra: the daemon's models differ in how they were loaded rather than in what
+    // may be set on them, so there is one schema and the recording exercises it.
+    paramModels: [],
     pull: () => {
       recordResponses(recordedPull(flavour.lines, { chunkBytes: flavour.chunkBytes }));
 

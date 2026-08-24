@@ -37,6 +37,7 @@ import {
   recordedTimeout,
   recordedTransportFailure,
 } from "./http.recordings.fixture";
+import { paramSchemaViolations, storageViolations } from "../provider.params";
 
 /**
  * The Cursor adapter, against recorded responses.
@@ -386,5 +387,34 @@ describe("what the Cursor adapter's source may not contain", () => {
     // response body reaches a detail*.
     expect(code).not.toContain("response.json()");
     expect(code).not.toContain("response.text()");
+  });
+});
+
+/**
+ * `paramSchema` — the second fixed catalog, and the same honest answer
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)).
+ */
+describe("the Cursor param schema", () => {
+  const adapter = new CursorAdapter();
+
+  it("offers nothing, and says why", () => {
+    // Mockup 21's `second-opinion` row draws one chip and it is `review vote only` — a registry
+    // restriction, not a param. There is nothing on this provider to tune.
+    const schema = adapter.paramSchema("composer-2");
+
+    expect(Object.keys(schema.properties)).toEqual([]);
+    expect(schema.description).toContain("fixed catalog");
+  });
+
+  it("answers a schema in the dialect that the column can store", () => {
+    expect(paramSchemaViolations(adapter.paramSchema("composer-2"))).toEqual([]);
+    expect(storageViolations(adapter.paramSchema("composer-2"))).toEqual([]);
+  });
+
+  it("hands out a fresh value every call", () => {
+    const first = adapter.paramSchema("composer-2") as { title: string };
+    first.title = "tampered";
+
+    expect(adapter.paramSchema("composer-2").title).toBe("Cursor model parameters");
   });
 });

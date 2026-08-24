@@ -8,12 +8,19 @@ import {
 
 import {
   ACTIVE_RUN_STATUSES,
+  MODEL_ALIAS_PARAM_KEYS,
+  MODEL_ALIAS_RESTRICTION_KEYS,
+  MODEL_ALIAS_TEMPERATURE_MAX,
+  MODEL_ALIAS_TEMPERATURE_MIN,
+  MODEL_ALIAS_TOKENS_MAX,
+  MODEL_ALIAS_TOKENS_MIN,
   QUEUE_EFFORTS,
   READ_ONLY_VIEWS,
   SCHEMA_NAME,
   TABLE_COLUMNS,
   TABLE_NAMES,
   TERMINAL_RUN_STATUSES,
+  THINKING_LEVELS,
   LIBRARY_OWNED_TABLES,
   type Database,
   type NewGithubOrg,
@@ -239,7 +246,36 @@ describe("TABLE_COLUMNS", () => {
     // The fifteenth and sixteenth are V015's `provider_connections` and `model_aliases`
     // (#189) — the routing foundation, read by `src/modules/registry/` and written by
     // mockups 07 and 21 when they land.
-    expect(TABLE_NAMES).toHaveLength(16);
+    //
+    // The seventeenth is V017's `provider_models` (#221), mirrored by CH.2 (#585): the
+    // discovered catalog whose `meta` bounds a param schema by the context length a provider
+    // actually published. This service reads it and never writes it.
+    expect(TABLE_NAMES).toHaveLength(17);
+  });
+
+  it("mirrors the discovered model catalog V017 created", () => {
+    // Named as well as counted, for the same reason as the tables below it: without this
+    // mirror the param schema CH.2 serves would have no live context length to clamp to, and
+    // the failure would read as an off-by-one in a total rather than as a missing table.
+    expect(TABLE_NAMES).toContain("provider_models");
+    expect(TABLE_COLUMNS.provider_models).toEqual([
+      "id",
+      "provider_connection_id",
+      "model_id",
+      "display",
+      "size_bytes",
+      "meta",
+      "discovered_at",
+    ]);
+  });
+
+  it("gives the discovered catalog no organization column of its own", () => {
+    // V017's decision, restated where a reader of the mirror meets it: a discovered model is a
+    // fact about a connection, so its tenancy is the foreign key and every read enters through
+    // a join that carries the workspace predicate. A column added here would invite a
+    // statement that filtered on it instead of joining, which is the one way to read another
+    // workspace's catalog.
+    expect(TABLE_COLUMNS.provider_models).not.toContain("organization_id");
   });
 
   it("mirrors the routing foundation V015 created", () => {
@@ -432,6 +468,55 @@ describe("the dashboard read-model's vocabularies", () => {
       'select "auto_merge_on_checks" from "workspace_settings_effective" ' +
         'where "organization_id" = $1',
     );
+  });
+});
+
+describe("the alias param vocabulary V019 closed", () => {
+  it("names the five keys the column accepts, in the order the function declares them", () => {
+    // Written out rather than derived, because this list *is* the mirror: a key added here
+    // that `ouroboros.model_alias_params_valid()` does not accept is a field CH.2 would offer
+    // and a write the database would refuse.
+    expect(MODEL_ALIAS_PARAM_KEYS).toEqual([
+      "thinking",
+      "token_budget",
+      "max_output",
+      "context_clamp",
+      "temperature",
+    ]);
+  });
+
+  it("names the three thinking levels, off included", () => {
+    // `off` is a real instruction rather than the absence of the key — see the type's own
+    // documentation for why an alias that says nothing and an alias that says `off` are two
+    // different requests.
+    expect(THINKING_LEVELS).toEqual(["off", "std", "max"]);
+  });
+
+  it("bounds a token count where V019 bounds it", () => {
+    expect(MODEL_ALIAS_TOKENS_MIN).toBe(1);
+    expect(MODEL_ALIAS_TOKENS_MAX).toBe(10_000_000);
+  });
+
+  it("starts a token count at one rather than zero", () => {
+    // The bound worth stating on its own: zero is not a small budget, it is an instruction to
+    // produce nothing, and *no budget* is said by leaving the key out.
+    expect(MODEL_ALIAS_TOKENS_MIN).toBeGreaterThan(0);
+  });
+
+  it("bounds a temperature where V019 bounds it", () => {
+    expect(MODEL_ALIAS_TEMPERATURE_MIN).toBe(0);
+    expect(MODEL_ALIAS_TEMPERATURE_MAX).toBe(2);
+  });
+
+  it("keeps the two restriction flags out of the param vocabulary", () => {
+    // Decision R3, as a property rather than as prose: a restriction is policy about the
+    // alias and a param is merged into a request body, so a key that appeared in both lists
+    // would be one this product could not say which of the two it meant.
+    expect(MODEL_ALIAS_RESTRICTION_KEYS).toEqual(["review_vote_only", "batch_ok"]);
+
+    for (const flag of MODEL_ALIAS_RESTRICTION_KEYS) {
+      expect(MODEL_ALIAS_PARAM_KEYS).not.toContain(flag);
+    }
   });
 });
 

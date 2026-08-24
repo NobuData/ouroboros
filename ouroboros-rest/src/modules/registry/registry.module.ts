@@ -19,7 +19,13 @@
  * ([#195](https://github.com/NobuData/ouroboros/issues/195)) is what puts the alias list on
  * a route, and it imports this module rather than reaching past it.
  *
- * **It exports two providers with very different audiences.** {@link RegistryService} is for
+ * **It imports `ProvidersModule`, and only for `ModelProviderRegistry`.** A param schema is
+ * whatever the bound adapter says it is, and decision **P1** is that core code reaches an
+ * adapter through the registry and never by importing one — `.dependency-cruiser.cjs` is what
+ * makes that a build failure rather than a review comment. `provider-connections/` imports this
+ * module for the same one binding and for the same reason.
+ *
+ * **It exports three providers with very different audiences.** {@link RegistryService} is for
  * Y.2's routes, Z.1's resolution, Z.2's swap menu and the engine's estimator — everything
  * that has to turn a name into a model. {@link ProviderCredentialStore} is for exactly one
  * consumer, `VaultModule`, which is where `VAULT_SECRET_STORES` is bound; see
@@ -29,6 +35,11 @@
  * `DbModule` is imported for the reason every module with a repository imports it — the
  * import is the answer to "who can reach V015's tables", and `DbModule` is deliberately
  * non-global so the question has one.
+ *
+ * {@link ParamSchemaService} is the third, and it is exported for CH.1's sake rather than for a
+ * route's: every alias write has to be checked against the schema its inspector was rendered
+ * from, and the alternative to exporting this is that ticket re-implementing a precedence rule
+ * about capabilities. The export *is* the internal contract, exactly as `PricingModule`'s is.
  *
  * **`VaultModule` is deliberately *not* imported.** Nothing here decrypts anything: a
  * resolution carries an address and a model, never a credential (`resolution.ts` argues
@@ -41,13 +52,17 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { ProvidersModule } from "../providers/providers.module";
+import { ParamSchemaController } from "./params.controller";
+import { ParamSchemaService } from "./params.service";
 import { RegistryRepository } from "./registry.repository";
 import { RegistryService } from "./registry.service";
 import { ProviderCredentialStore } from "./registry.secrets";
 
 @Module({
-  imports: [DbModule],
-  providers: [RegistryRepository, RegistryService, ProviderCredentialStore],
-  exports: [RegistryService, ProviderCredentialStore],
+  imports: [DbModule, ProvidersModule],
+  controllers: [ParamSchemaController],
+  providers: [RegistryRepository, RegistryService, ProviderCredentialStore, ParamSchemaService],
+  exports: [RegistryService, ProviderCredentialStore, ParamSchemaService],
 })
 export class RegistryModule {}

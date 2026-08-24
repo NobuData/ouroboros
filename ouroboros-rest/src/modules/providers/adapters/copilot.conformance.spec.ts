@@ -156,6 +156,9 @@ function harnessFor(flavour: EntitlementFlavour): AdapterConformance {
     // model checks apply to a fixed catalog exactly as they do to a discovered listing.
     discover: () => adapter.discoverModels(conformanceContext(harness)),
     expectedModels: COPILOT_EXPECTED_MODELS,
+    // Nothing extra: a fixed catalog with nothing to tune has one schema, and the kit's
+    // storage and dialect checks are what prove the empty answer explains itself.
+    paramModels: [],
     // Nothing pulls a hosted model onto a machine. The kit's complementary leg asserts the
     // member is unreachable rather than that the case does not apply.
     pull: null,

@@ -1,16 +1,26 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { Logger } from "@nestjs/common";
 
 import { ApiHarness } from "../../testing/harness.fixture";
+import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME } from "../db/schema";
+import type { ErrorEnvelope } from "../errors/error.envelope";
+import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { VaultRotation } from "../vault/vault.rotation";
 import { VaultService } from "../vault/vault.service";
+import { paramChips } from "./params.chips";
+import { ParamSchemaService } from "./params.service";
 import {
   isProviderConnectionInUse,
   providerConnectionInUse,
   REGISTRY_ERRORS,
 } from "./registry.errors";
+import { REGISTRY_ROWS } from "./registry.rows.fixture";
 import { ProviderCredentialStore } from "./registry.secrets";
 import { RegistryService } from "./registry.service";
+import type { ParamSchemaResource } from "./resources";
 
 /**
  * The registry against a migrated database — V015's two tables, their constraints and the
@@ -34,12 +44,25 @@ import { RegistryService } from "./registry.service";
  *   * **The vault's sweep re-seals this column**, which is the reason the store lands with
  *     the migration rather than with the first thing that writes a credential.
  *
+ * CH.2 ([#585](https://github.com/NobuData/ouroboros/issues/585)) adds three more, and each is
+ * also a criterion:
+ *
+ *   * **The param schema is served over a socket**, bound and unbound, with a bound really
+ *     narrowed by a row in V017's `provider_models` and labelled as coming from there.
+ *   * **All eight mockup rows' chips reproduce from rows the database accepted.** Each row's
+ *     `params` and `restrictions` are inserted through V019's own CHECKs — so a document this
+ *     product could not store fails here rather than in the unit suite, where the constraint is
+ *     not present.
+ *   * **A write the model does not support is a `422` naming the field**, resolved through the
+ *     real adapter registry rather than a hand-written schema.
+ *
  * ---------------------------------------------------------------------------
  * **This suite reaches into the injector**, which integration suites are warned off doing,
- * and for `vault.integration-spec.ts`'s reason: `RegistryModule` declares no controller and
- * deliberately never will — decision **M2** leaves every route over these tables to mockups
- * 07 and 21, and Z.2 (#195). There is therefore no request that exercises this, and the
- * injector is the only door.
+ * and for `vault.integration-spec.ts`'s reason: most of `RegistryModule` has no route.
+ * Decision **M2** left every *write* over these tables to mockups 07 and 21, and CH.2's one
+ * controller is a read — so resolution, the credential store and the write-validation seam
+ * have no request that exercises them, and the injector is the only door. The param-schema
+ * read itself is exercised over a socket, as everything with a route is.
  *
  * Rows are inserted with SQL rather than through a service, for the same reason: this module
  * has no writer, and giving it one for a test would be the pre-emption M2 exists to prevent.
@@ -55,12 +78,44 @@ const API_KEY = "sk-ant-api03-registry-integration-000000000000000";
 /** The record the envelope is bound to — the connection's own id, as V015 intends. */
 const CONNECTION_ID = "e0000000-0000-0000-0000-0000000000aa";
 
+/** The surface under test, for the half of it that has one. */
+const PARAM_SCHEMA = "/api/v1/registry/param-schema";
+
+/**
+ * The connection the param-schema cases address, as a **v4** uuid.
+ *
+ * {@link CONNECTION_ID} predates them and is not one — `…-0000-0000-…` has no version nibble —
+ * and it reaches those cases through a query string, where `@IsUUID()` checks it. That check is
+ * right and this fixture is the odd one: `gen_random_uuid()` produces v4, so a connection a
+ * workspace really has is one, and a hand-written id that is not says more about the fixture
+ * than about the rule.
+ */
+const PARAM_CONNECTION_ID = "e0000000-0000-4000-8000-0000000000a1";
+
+/** The repository root, from which `ouroboros-db` is a sibling of this module. */
+const REPOSITORY_ROOT = join(__dirname, "..", "..", "..", "..");
+
+/**
+ * The committed catalog import, read once.
+ *
+ * `ApiHarness.truncate()` empties every table the migrations created, `model_prices` included,
+ * so the enrichment cases below would otherwise be about an empty catalog. Re-running the
+ * committed repeatable migration verbatim — rather than inserting a fixture — is what makes
+ * *the shipped snapshot enriches a real schema* the thing being asserted;
+ * `pricing.integration-spec.ts` does the same and says why at greater length.
+ */
+const CATALOG_SQL = readFileSync(
+  join(REPOSITORY_ROOT, "ouroboros-db", "migrations", "R__model_price_catalog.sql"),
+  "utf8",
+);
+
 describe("the model registry, against a migrated database", () => {
   let api: ApiHarness;
   let registry: RegistryService;
   let vault: VaultService;
   let rotation: VaultRotation;
   let store: ProviderCredentialStore;
+  let params: ParamSchemaService;
 
   beforeAll(async () => {
     api = await ApiHarness.start();
@@ -68,10 +123,16 @@ describe("the model registry, against a migrated database", () => {
     vault = api.nest.get(VaultService);
     rotation = api.nest.get(VaultRotation);
     store = api.nest.get(ProviderCredentialStore);
+    params = api.nest.get(ParamSchemaService);
   });
 
   afterAll(() => api.close());
-  afterEach(() => api.truncate());
+  afterEach(async () => {
+    await api.truncate();
+    // The truncation empties `model_prices` too, so the enrichment cases would otherwise be
+    // about an empty catalog. Re-applied rather than fixtured — see `CATALOG_SQL`.
+    await importCatalog();
+  });
 
   /**
    * A workspace with an owner.
@@ -133,16 +194,69 @@ describe("the model registry, against a migrated database", () => {
   async function alias(
     organizationId: string,
     alias: string,
-    connectionId: string,
+    connectionId: string | null,
     modelId: string,
     params: Record<string, unknown> = {},
+    restrictions: Record<string, unknown> = {},
   ): Promise<void> {
     await api.sql.query(
       `insert into ${SCHEMA_NAME}.model_aliases
-         (organization_id, alias, provider_connection_id, model_id, params)
-       values ($1, $2, $3, $4, $5)`,
-      [organizationId, alias, connectionId, modelId, JSON.stringify(params)],
+         (organization_id, alias, provider_connection_id, model_id, enabled, params, restrictions)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        organizationId,
+        alias,
+        connectionId,
+        modelId,
+        // V019's `model_aliases_unbound_disabled` refuses an enabled row with no binding, so
+        // the fixture says `false` for one rather than papering over the CHECK.
+        connectionId !== null,
+        JSON.stringify(params),
+        JSON.stringify(restrictions),
+      ],
     );
+  }
+
+  /** Record one discovered model against a connection, as AE.4's sweep will. */
+  async function discovered(
+    connectionId: string,
+    modelId: string,
+    meta: Record<string, unknown>,
+  ): Promise<void> {
+    await api.sql.query(
+      `insert into ${SCHEMA_NAME}.provider_models
+         (provider_connection_id, model_id, display, meta)
+       values ($1, $2, $3, $4)`,
+      [connectionId, modelId, modelId, JSON.stringify(meta)],
+    );
+  }
+
+  /** Re-apply the committed bundled catalog after a truncation. */
+  async function importCatalog(): Promise<void> {
+    await api.sql.query(CATALOG_SQL);
+  }
+
+  /**
+   * The refusal a call is expected to raise.
+   *
+   * A helper rather than `rejects.toMatchObject`, because what these cases assert is the
+   * envelope's *contents* — the code, the status and which fields `details` names — and a
+   * matcher over a rejected promise would only say that something was thrown.
+   *
+   * @param call - The call that must be refused.
+   * @returns The error it raised.
+   * @throws {Error} When the call succeeded, which would otherwise pass silently.
+   */
+  async function refused(
+    call: () => Promise<unknown>,
+  ): Promise<{ getStatus(): number; code: string; details: object }> {
+    try {
+      await call();
+    } catch (error) {
+      return error as { getStatus(): number; code: string; details: object };
+    }
+
+    throw new Error("expected the write to be refused, and it was not");
   }
 
   /**
@@ -483,6 +597,289 @@ describe("the model registry, against a migrated database", () => {
       await store.store({ recordId: connectionId, secret: stale, sealed: true }, stale);
 
       expect(await sealedOn(connectionId)).toBe(replacement);
+    });
+  });
+
+  describe("the param schema, over a socket", () => {
+    it("offers thinking and a budget on a thinking model", async () => {
+      // CH.2's first acceptance criterion, end to end: the real Anthropic adapter, through the
+      // real registry, over the real route.
+      const person = await api.signIn();
+      const space = await api.workspace(person);
+      const connectionId = await connection(space.id, { id: PARAM_CONNECTION_ID });
+
+      const response = await api
+        .as(person)("get", `${PARAM_SCHEMA}?connection=${connectionId}&model=claude-fable-5`)
+        .set(TENANT_HEADER, space.slug)
+        .expect(200);
+
+      const body = bodyOf<ParamSchemaResource>(response);
+
+      expect(body.params.fields.map((field) => field.name)).toEqual([
+        "thinking",
+        "token_budget",
+        "max_output",
+        "temperature",
+      ]);
+      expect(body.reason).toBeNull();
+    });
+
+    it("does not offer thinking on the model the ticket names", async () => {
+      const person = await api.signIn();
+      const space = await api.workspace(person);
+      const connectionId = await connection(space.id, {
+        id: PARAM_CONNECTION_ID,
+        kind: "ollama",
+        displayName: "Ollama",
+        baseUrl: "http://workstation.local:11434",
+      });
+
+      const response = await api
+        .as(person)("get", `${PARAM_SCHEMA}?connection=${connectionId}&model=qwen3-coder:32b`)
+        .set(TENANT_HEADER, space.slug)
+        .expect(200);
+
+      const body = bodyOf<ParamSchemaResource>(response);
+
+      expect(body.params.fields.map((field) => field.name)).not.toContain("thinking");
+      expect(body.params.fields.map((field) => field.name)).toContain("context_clamp");
+    });
+
+    it("narrows a bound to what discovery reported, and says where it came from", async () => {
+      // The metadata merge against a real `provider_models` row — the table V017 created and
+      // AE.4's sweep will fill.
+      const person = await api.signIn();
+      const space = await api.workspace(person);
+      const connectionId = await connection(space.id, {
+        id: PARAM_CONNECTION_ID,
+        kind: "ollama",
+        displayName: "Ollama",
+        baseUrl: "http://workstation.local:11434",
+      });
+      await discovered(connectionId, "qwen3-coder:32b", { context_tokens: 32_768 });
+
+      const response = await api
+        .as(person)("get", `${PARAM_SCHEMA}?connection=${connectionId}&model=qwen3-coder:32b`)
+        .set(TENANT_HEADER, space.slug)
+        .expect(200);
+
+      const clamp = bodyOf<ParamSchemaResource>(response).params.fields.find(
+        (field) => field.name === "context_clamp",
+      );
+
+      expect(clamp?.maximum).toBe(32_768);
+      expect(clamp?.sources).toEqual(["adapter", "discovery"]);
+    });
+
+    it("fills an absent bound from the shipped catalog, labelled as catalogued", async () => {
+      // The enrichment doing real work against the snapshot that actually ships: no adapter
+      // can answer Anthropic's maximum output offline, and `claude-fable-5`'s is in
+      // `model_prices.meta`. A catalog bump that moved it fails here rather than in production.
+      const person = await api.signIn();
+      const space = await api.workspace(person);
+      const connectionId = await connection(space.id, { id: PARAM_CONNECTION_ID });
+
+      const response = await api
+        .as(person)("get", `${PARAM_SCHEMA}?connection=${connectionId}&model=claude-fable-5`)
+        .set(TENANT_HEADER, space.slug)
+        .expect(200);
+
+      const output = bodyOf<ParamSchemaResource>(response).params.fields.find(
+        (field) => field.name === "max_output",
+      );
+
+      expect(output?.maximum).toBe(128_000);
+      expect(output?.sources).toEqual(["adapter", "catalog"]);
+    });
+
+    it("answers an unbound alias with the generic schema and its reason", async () => {
+      // Mockup 21's `gpt5-experiments`. No connection means no adapter, no discovery row and —
+      // since the catalog is keyed by provider kind — no catalog row either.
+      const person = await api.signIn();
+      const space = await api.workspace(person);
+
+      const response = await api
+        .as(person)("get", `${PARAM_SCHEMA}?model=gpt-5.2-preview`)
+        .set(TENANT_HEADER, space.slug)
+        .expect(200);
+
+      const body = bodyOf<ParamSchemaResource>(response);
+
+      expect(body.reason).toBe("alias_unbound");
+      expect(body.params.fields).toEqual([]);
+      expect(body.connectionId).toBeNull();
+      // The restrictions are still offered: policy about the alias is not a claim about a
+      // model, and an alias with no key can still be restricted.
+      expect(body.restrictions.fields.map((field) => field.name)).toEqual([
+        "review_vote_only",
+        "batch_ok",
+      ]);
+    });
+
+    it("refuses a connection from another workspace as though it did not exist", async () => {
+      // The two are deliberately one answer: a caller who could tell them apart could
+      // enumerate another workspace's connections by watching which ids answer differently.
+      const owner = await api.signIn();
+      const theirs = await api.workspace(owner);
+      const stranger = await api.signIn({ email: "stranger@example.test" });
+      const ours = await api.workspace(stranger);
+      const connectionId = await connection(theirs.id, { id: PARAM_CONNECTION_ID });
+
+      const response = await api
+        .as(stranger)("get", `${PARAM_SCHEMA}?connection=${connectionId}&model=claude-fable-5`)
+        .set(TENANT_HEADER, ours.slug)
+        .expect(404);
+
+      expect(bodyOf<ErrorEnvelope>(response).code).toBe(REGISTRY_ERRORS.connectionNotFound);
+    });
+
+    it("refuses a query with no model at all", async () => {
+      const person = await api.signIn();
+      const space = await api.workspace(person);
+
+      const response = await api
+        .as(person)("get", PARAM_SCHEMA)
+        .set(TENANT_HEADER, space.slug)
+        .expect(422);
+
+      expect(Object.keys(bodyOf<ErrorEnvelope>(response).details)).toEqual(["model"]);
+    });
+
+    it("is readable by a viewer, because it describes a model rather than a workspace", async () => {
+      const owner = await api.signIn();
+      const space = await api.workspace(owner);
+      const viewer = await api.signIn({ email: "viewer@example.test" });
+      await api.join(space.id, viewer, "viewer");
+      const connectionId = await connection(space.id, { id: PARAM_CONNECTION_ID });
+
+      await api
+        .as(viewer)("get", `${PARAM_SCHEMA}?connection=${connectionId}&model=claude-fable-5`)
+        .set(TENANT_HEADER, space.slug)
+        .expect(200);
+    });
+  });
+
+  describe("mockup 21's eight rows, as the database really stores them", () => {
+    it("accepts every row's params and restrictions, and derives the chips the mockup draws", async () => {
+      // The fifth acceptance criterion where V019's CHECKs are present. The unit suite proves
+      // the derivation; this proves the *documents* are ones this product can store — a
+      // vocabulary the constraint refuses would fail on the insert rather than in a spec.
+      const organizationId = await workspace();
+      const byKind = new Map<string, string>();
+
+      for (const row of REGISTRY_ROWS) {
+        if (row.kind === null) {
+          await alias(organizationId, row.alias, null, row.modelId, row.params, row.restrictions);
+
+          continue;
+        }
+
+        let connectionId = byKind.get(row.kind);
+
+        if (connectionId === undefined) {
+          connectionId = await connection(organizationId, {
+            // One connection per kind, each with an id of its own: five of the eight rows share
+            // three connections, exactly as mockup 21's table does.
+            id: `e0000000-0000-4000-8000-00000000000${byKind.size + 1}`,
+            kind: row.kind,
+            displayName: row.kind,
+            baseUrl:
+              row.kind === "ollama" || row.kind === "openai_compatible"
+                ? "http://box.local:8000"
+                : null,
+          });
+          byKind.set(row.kind, connectionId);
+        }
+
+        await alias(
+          organizationId,
+          row.alias,
+          connectionId,
+          row.modelId,
+          row.params,
+          row.restrictions,
+        );
+      }
+
+      const { rows } = await api.sql.query<{
+        alias: string;
+        params: Record<string, unknown>;
+        restrictions: Record<string, unknown>;
+      }>(
+        `select alias, params, restrictions from ${SCHEMA_NAME}.model_aliases
+          where organization_id = $1`,
+        [organizationId],
+      );
+
+      expect(rows).toHaveLength(REGISTRY_ROWS.length);
+
+      for (const row of rows) {
+        const expected = REGISTRY_ROWS.find((candidate) => candidate.alias === row.alias)!;
+
+        expect(paramChips(row.params, row.restrictions)).toEqual(expected.chips);
+      }
+    });
+  });
+
+  describe("validating a write", () => {
+    it("refuses a thinking budget on a model with no thinking, naming the field", async () => {
+      // The ticket's second acceptance criterion, through the real adapter registry: this is
+      // the check CH.1 (#584) will call before every create and every update.
+      const organizationId = await workspace();
+      const connectionId = await connection(organizationId, {
+        kind: "ollama",
+        displayName: "Ollama",
+        baseUrl: "http://workstation.local:11434",
+      });
+
+      const error = await refused(() =>
+        params.assertWriteValid(organizationId, connectionId, "qwen3-coder:32b", {
+          params: { thinking: "max" },
+        }),
+      );
+
+      expect(error.getStatus()).toBe(422);
+      expect(error.code).toBe(REGISTRY_ERRORS.aliasParamsInvalid);
+      expect(Object.keys(error.details)).toEqual(["params.thinking"]);
+    });
+
+    it("refuses a temperature outside what the provider publishes", async () => {
+      const organizationId = await workspace();
+      const connectionId = await connection(organizationId);
+
+      const error = await refused(() =>
+        params.assertWriteValid(organizationId, connectionId, "claude-fable-5", {
+          params: { temperature: 3 },
+        }),
+      );
+
+      expect((error.details as Record<string, string[]>)["params.temperature"][0]).toContain(
+        "between 0 and 1",
+      );
+    });
+
+    it("accepts a write the model really supports, and the database then stores it", async () => {
+      // The two halves agreeing is the point: a schema that accepted something V019 refuses
+      // would move the failure from a designed `422` to a constraint violation.
+      const organizationId = await workspace();
+      const connectionId = await connection(organizationId);
+      const written = { thinking: "max", token_budget: 400_000 };
+
+      await expect(
+        params.assertWriteValid(organizationId, connectionId, "claude-fable-5", {
+          params: written,
+        }),
+      ).resolves.toBeUndefined();
+
+      await alias(organizationId, "coder-max", connectionId, "claude-fable-5", written);
+
+      const { rows } = await api.sql.query<{ params: Record<string, unknown> }>(
+        `select params from ${SCHEMA_NAME}.model_aliases where organization_id = $1`,
+        [organizationId],
+      );
+
+      expect(rows[0].params).toEqual(written);
+      expect(paramChips(rows[0].params, {})).toEqual(["max thinking", "400k budget"]);
     });
   });
 });
