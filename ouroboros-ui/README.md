@@ -16,7 +16,8 @@
 > [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)), both
 > built from the [UI primitives](#ui-primitives)
 > ([#46](https://github.com/NobuData/ouroboros/issues/46)) and, beside it,
-> [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200))
+> [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200)),
+> [providers & keys](#providers--keys) ([#227](https://github.com/NobuData/ouroboros/issues/227))
 > and the [credential audit trail](#the-credential-audit-trail)
 > ([#225](https://github.com/NobuData/ouroboros/issues/225)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
@@ -1154,8 +1155,8 @@ MODELS
 Route every kind of work to the model that earns it.  [ Simulate routing ] [ Save routes ]
 Each task kind resolves to a primary model with…        ↑ #203 not built    ↑ nothing staged
 ────────────────────────────────────────────────────────────────────────────────────────────
- Routing    Model registry soon   Providers & keys soon   Spend soon      ← sticky in the pane
- ▔▔▔▔▔▔▔ (the model purple)
+ Routing    Model registry soon   Providers & keys   Spend soon      ← sticky in the pane
+ ▔▔▔▔▔▔▔ (the model purple)      ↑ a link since #227
 (● Anthropic Claude 42ms) (● Cursor) (● GitHub Copilot error · elevated latency)
 (● OpenAI-compatible · local vLLM  10.0.4.20 · vLLM local) (◌ Fresh connection unknown)
 ```
@@ -1210,7 +1211,69 @@ page is broken. `pending` is zero today because nothing here can change a route 
 number, the control enables itself.
 
 Both head actions are inert through `Button`'s `reason`, so each says what is missing rather than
-sitting dead; the three sibling tabs are `SubnavSoon`, which does the same for a destination.
+sitting dead; the two unbuilt sibling tabs are `SubnavSoon`, which does the same for a
+destination. The head and the tab set themselves are the **section's** since
+[#227](https://github.com/NobuData/ouroboros/issues/227) — see the next section.
+
+## Providers & keys
+
+`/models/providers` ([#227](https://github.com/NobuData/ouroboros/issues/227)) is
+[`docs/mockups/07-providers.html`](../docs/mockups/07-providers.html)'s **frame**: the page
+head with the security model's sentence in it, the two head actions, and the Models tab set
+with **Providers & keys** live. It is the section's second page, and the first thing it proves
+is that the section *has* pages: the head and the tab row are
+[`app/models/models-frame.tsx`](app/models/models-frame.tsx)'s now, drawn once for both, so
+`/models` and `/models/providers` differ in exactly what mockups 06 and 07 differ in.
+
+```
+MODELS
+Providers & keys                                        [ Audit log ] [ + Add provider ]
+Credentials live in Acme Robotics's encrypted vault,      ↑ AD.4's sheet   ↑ #231 not built
+scoped to this workspace. Keys never leave the control
+plane — workers never receive them at all.
+────────────────────────────────────────────────────────────────────────────────────────────
+ Routing → /models   Model registry soon   Providers & keys   Spend soon   ← sticky in the pane
+                                           ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
+┌ The provider cards arrive next — #228 … #232 ┐
+```
+
+### The subline is not this module's to write
+
+It is the sentence that makes the security claim, and the mockup's version — *"workers only
+ever see short-lived tokens"* — describes a system this is not. AD.5
+([#226](https://github.com/NobuData/ouroboros/issues/226)) owns the wording:
+[`../docs/SECURITY_MODEL.md` § 7.2](../docs/SECURITY_MODEL.md#72-the-page-head-subline) is
+rendered **verbatim**, with `{workspace}` filled from the active membership's display name and
+nothing else touched. `__tests__/providers/view.test.ts` reads the document and compares, so a
+change to either that is not a change to both fails the suite — which is the document's own
+rule: a change there is a change to the product's claims.
+
+Two consequences are worth knowing. The possessive is the template's (`{workspace}'s`) and is
+applied as written, so the seeded workspace reads *Acme Robotics's* — an apostrophe rule would
+be an adjustment to copy that is not the UI's to adjust, and belongs in § 7.2 if it is wanted.
+And the name is substituted literally rather than through `String.replace`'s pattern syntax,
+because a name is data and `$&` in one must not read the placeholder back into the sentence.
+
+### Both directions, from one list
+
+The Models tab set is one list (`MODELS_TABS`, [`app/models/view.ts`](app/models/view.ts))
+drawn by one component ([`app/models/models-subnav.tsx`](app/models/models-subnav.tsx)), and
+each page says only which tab it *is*. That is what makes the ticket's criterion — tab states
+correct navigating 06 → 07 and 07 → 06 — a property rather than a coincidence: the two pages'
+rows differ in `aria-current` and in nothing else, and a built surface's id is a type
+(`ModelsSurface`), so neither page can claim a tab that leads nowhere. The sidebar's
+**Models** entry stays lit on both because the route is *under* `/models`
+([`app/paths.ts`](app/paths.ts)), which is the sidebar's ordinary section rule and not a
+special case.
+
+The registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) and the spend report
+([#210](https://github.com/NobuData/ouroboros/issues/210)) stay honest `soon` tabs naming
+their issues; **+ Add provider** is inert through `Button`'s `reason` until AE.5
+([#231](https://github.com/NobuData/ouroboros/issues/231)) builds the catalog it opens; and
+the space below the tab set names the cards
+([#228](https://github.com/NobuData/ouroboros/issues/228)) rather than mocking them up.
+**Audit log** is the one thing on the page that acts — it is
+[the trail](#the-credential-audit-trail), mounted where it was built to be.
 
 ## The credential audit trail
 
@@ -1234,13 +1297,14 @@ into the visible end of a trail that starts at every key operation.
 
 ### It ships as a head action, because the page is somebody else's
 
-`/providers` is AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)) and has not
-landed. Rather than invent a page frame this ticket would then hand over, `<AuditTrail />` is
-**the button and its sheet as one element**: AE.1 renders it in its own page head and nothing
-in [`app/providers/audit-trail.tsx`](app/providers/audit-trail.tsx) changes. Until then it is
-mounted at `/workshop/providers-audit`, which is the role
-[`app/workshop/chrome-story.tsx`](app/workshop/chrome-story.tsx) plays for a primitive whose
-page has not arrived.
+`/models/providers` is AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)), and
+it had not landed when the trail did. Rather than invent a page frame that ticket would then
+hand over, `<AuditTrail />` is **the button and its sheet as one element**: AE.1 now renders
+it in its own page head ([`app/providers/providers-screen.tsx`](app/providers/providers-screen.tsx))
+and nothing in [`app/providers/audit-trail.tsx`](app/providers/audit-trail.tsx) changed when
+it did. It stays mounted at `/workshop/providers-audit` as well, which is the role
+[`app/workshop/chrome-story.tsx`](app/workshop/chrome-story.tsx) plays for a primitive: the
+element on its own, without the page around it.
 
 The sheet's frame is [`ShellOverlay`](#app-shell)'s rather than a new one — the portal above
 the pane, the scroll lock, the focus trap, Escape and focus restoration are one implementation
@@ -1912,6 +1976,7 @@ route guards & session-aware redirects [#720](https://github.com/NobuData/ourobo
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
+providers & keys [#227](https://github.com/NobuData/ouroboros/issues/227) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 

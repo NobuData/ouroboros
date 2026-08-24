@@ -8,10 +8,12 @@
  * shell (#41) and starts at its page head — nor the `.subnav` rules, which are the CP.4
  * primitive's now (app/ui/ui.css) and are shared with every other section that has tabs.
  *
- * What is left here is what belongs to *this page and no other*: the gutter rhythm, the page
- * head, and the `.phealth` strip, which is a composition rather than a primitive because it
- * names a domain concept — a provider connection and its measured health (app/ui/index.ts
- * § What belongs here).
+ * What is left here is what belongs to the **Models section**: the gutter rhythm, the page
+ * head and the tab set's placement — which every page under /models shares through
+ * app/models/models-frame.tsx, the providers page (#227) being the second of them — and the
+ * `.phealth` strip, which is /models's own and is a composition rather than a primitive
+ * because it names a domain concept: a provider connection and its measured health
+ * (app/ui/index.ts § What belongs here).
  *
  * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
  * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length that
@@ -268,12 +270,13 @@
   color: var(--err);
 }
 
-/* ---------- the surface the matrix will fill ---------- */
+/* ---------- the surface the page's content will fill ---------- */
 
 /*
- * A card the height of what it stands in for, so the page has a foot rather than ending
- * abruptly under the strip. `fill` on the card is what lets the empty state inside it take
- * the height rather than sit as a short box at the top of a tall one.
+ * A card the height of what it stands in for — the routing matrix on /models, the provider
+ * card grid on /models/providers — so the page has a foot rather than ending abruptly under
+ * the tab set. `fill` on the card is what lets the empty state inside it take the height
+ * rather than sit as a short box at the top of a tall one.
  */
 .models__next {
   min-height: 18rem;

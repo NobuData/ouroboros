@@ -37,12 +37,31 @@ export const DASHBOARD_PATH = "/dashboard";
  *
  * Written down here for the reason every other route in this file is: three modules have to
  * agree about it and none of them can import the others. The sidebar's registry entry
- * (`app/shell/nav-modules.ts`) names it as the **Models** destination, the page's own tab set
- * links its active tab back to it (`app/models/models-screen.tsx`), and `isActiveRoute` in
+ * (`app/shell/nav-modules.ts`) names it as the **Models** destination, the section's tab set
+ * links its Routing tab to it (`app/models/models-subnav.tsx`), and `isActiveRoute` in
  * `app/shell/nav.ts` matches the URL against it — including everything beneath it, so the
- * sub-surfaces the tab set names keep **Models** highlighted when they arrive.
+ * sub-surfaces the tab set names keep **Models** highlighted. {@link PROVIDERS_PATH} is the
+ * first of them to arrive.
  */
 export const MODELS_PATH = "/models";
+
+/**
+ * Providers & keys ([#227](https://github.com/NobuData/ouroboros/issues/227)) — mockup 07.
+ *
+ * **Spelled from {@link MODELS_PATH} rather than beside it, and that is the point.** The
+ * sidebar highlights the entry whose route the URL is under, so a providers page at
+ * `/providers` would be a Models surface on which the **Models** entry went dark. Under
+ * `/models` it stays lit on both pages, which is the ticket's *both directions* criterion met
+ * by the URL rather than by a special case in the sidebar.
+ *
+ * The Models tab set (`app/models/models-subnav.tsx`) links here and links back to
+ * `MODELS_PATH` from the same list, so the two pages cannot disagree about where the other
+ * one is. The Workspace Settings roadmap (decision S2,
+ * [#491](https://github.com/NobuData/ouroboros/issues/491)) relocates this surface's
+ * *navigation entry* under `/settings` when that section arrives; the route is written down
+ * once so that move is one edit.
+ */
+export const PROVIDERS_PATH = `${MODELS_PATH}/providers`;
 
 /**
  * The query parameter carrying where a visitor was heading when they were sent to sign in.

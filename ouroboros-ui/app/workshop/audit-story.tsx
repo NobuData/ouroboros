@@ -1,6 +1,7 @@
 import { Button, Eyebrow } from "@/app/ui";
 
 import { AuditTrail } from "@/app/providers/audit-trail";
+import { ADD_PROVIDER_LABEL } from "@/app/providers/view";
 
 import "./workshop.css";
 
@@ -10,12 +11,13 @@ import "./workshop.css";
  * ([#48](https://github.com/NobuData/ouroboros/issues/48)).
  *
  * AD.4 requires that the **Audit log** sheet renders seeded history in both themes, and the
- * page it belongs to does not exist yet: `/providers` is AE.1's
+ * page it belongs to did not exist when it shipped: `/models/providers` is AE.1's
  * ([#227](https://github.com/NobuData/ouroboros/issues/227)). A criterion with nowhere to be
- * observed is a criterion nobody can check, so the trail ships as a mountable head action
- * (`app/providers/audit-trail.tsx`) and this is where it is mounted until that page arrives —
- * the same role `chrome-story.tsx` plays for contracts every subnav-owning roadmap builds
- * against.
+ * observed is a criterion nobody can check, so the trail shipped as a mountable head action
+ * (`app/providers/audit-trail.tsx`) and this is where it was mounted until that page arrived.
+ * The page now mounts it (`app/providers/providers-screen.tsx`); this story stays as the
+ * element on its own, without the page around it — the same role `chrome-story.tsx` plays for
+ * contracts every subnav-owning roadmap builds against.
  *
  * ### It draws mockup 07's page head, and only that
  *
@@ -72,7 +74,7 @@ export function AuditStory() {
         <div className="wk-bar-actions">
           <AuditTrail />
           <Button reason={ADD_PROVIDER_REASON} tone="primary">
-            + Add provider
+            {ADD_PROVIDER_LABEL}
           </Button>
         </div>
       </section>

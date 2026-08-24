@@ -13,10 +13,11 @@ import { AuditStory } from "@/app/workshop/audit-story";
  * it (`app/providers/audit-actions.ts` says why it reads then rather than on page load).
  *
  * It lives under `(app)` beside the chrome story and for the same reason: mockup 07's page is
- * AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)) and has not landed, and
- * AD.4's *the sheet renders seeded history in both themes* is a criterion that needs a running
- * surface rather than a snapshot. When that page arrives it renders `<AuditTrail />` in its
- * own head and this route can go.
+ * AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)), it had not landed when
+ * this was written, and AD.4's *the sheet renders seeded history in both themes* is a
+ * criterion that needs a running surface rather than a snapshot. That page has since arrived
+ * and renders `<AuditTrail />` in its own head (`/models/providers`); this route stays as the
+ * workshop's isolated mount of the element, the way the chrome story is for the primitives.
  *
  * It is not registered in the sidebar: the sidebar is the module registry (CP.2), and a
  * workshop is not a module.

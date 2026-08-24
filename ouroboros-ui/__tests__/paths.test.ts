@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   DASHBOARD_PATH,
   LOGIN_PATH,
+  MODELS_PATH,
+  PROVIDERS_PATH,
   RETURN_TO_PARAM,
   loginPath,
   safeReturnTo,
@@ -24,6 +26,14 @@ describe("the paths themselves", () => {
   it("are the two segments the application redirects between", () => {
     expect(LOGIN_PATH).toBe("/login");
     expect(DASHBOARD_PATH).toBe("/dashboard");
+  });
+
+  it("put the providers page under the Models section", () => {
+    // #227: the sidebar highlights the entry whose route the URL is under, so this is what
+    // keeps **Models** lit on both pages of the section rather than a special case in the
+    // sidebar. Spelled from `MODELS_PATH` so renaming the section moves both.
+    expect(PROVIDERS_PATH).toBe("/models/providers");
+    expect(PROVIDERS_PATH.startsWith(`${MODELS_PATH}/`)).toBe(true);
   });
 });
 

@@ -1324,7 +1324,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AE.1 | #227 | 🟡 Open | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
+| AE.1 | #227 | 🟢 Done | ouroboros-ui: [AE.1] Providers route, subnav & page frame | `/models/providers`, head + Audit log sheet, subnav live | mvp, providers, ui, design | N (after AA.1, AD.4, BA-D.5) | Y | S | ouroboros-ui |
 | AE.2 | #228 | 🟡 Open | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui |
 | AE.3 | #229 | 🟡 Open | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
 | AE.4 | #230 | 🟡 Open | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
@@ -1334,7 +1334,74 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue AE.1 — ouroboros-ui: [AE.1] Providers route, subnav & page frame
 
-> **GitHub issue:** #227 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #227 · **Status:** 🟢 Done · **Parent epic:** #214
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-ui/app/(app)/models/providers/page.tsx`](../ouroboros-ui/app/%28app%29/models/providers/page.tsx)
+> over [`app/providers/providers-screen.tsx`](../ouroboros-ui/app/providers/providers-screen.tsx),
+> with the Models section's head and tab set extracted into
+> [`app/models/models-frame.tsx`](../ouroboros-ui/app/models/models-frame.tsx) and
+> [`app/models/models-subnav.tsx`](../ouroboros-ui/app/models/models-subnav.tsx) so that
+> `/models` and `/models/providers` draw one frame and differ in exactly what mockups 06 and
+> 07 differ in. The route is `PROVIDERS_PATH` in
+> [`app/paths.ts`](../ouroboros-ui/app/paths.ts), spelled from `MODELS_PATH`.
+>
+> **The subline is § 7.2 of the security model, and the test reads the document.** *Verbatim*
+> is a claim about two texts, so `__tests__/providers/view.test.ts` opens
+> [`docs/SECURITY_MODEL.md`](SECURITY_MODEL.md), takes the fenced block under § 7.2 with its
+> line breaks joined — the document's own rule about its blocks — and compares it to the
+> constant the page renders. A change to either that is not a change to both fails the suite,
+> which is § 7's own rule stated as a test. Two consequences follow and neither is glossed.
+> The possessive is the template's (`{workspace}'s`) applied as written, so the seeded
+> workspace reads **Acme Robotics's encrypted vault**; an apostrophe rule for names ending in
+> *s* would be an adjustment to copy that is not the UI's to adjust, and if AD.5 wants one it
+> belongs in § 7.2, where a reviewer of the claim would look for it. And `{workspace}` is
+> filled from the active membership's **display name**, as § 7.2 specifies, rather than the
+> slug the mockup drew (`acme-robotics'`); it is substituted literally, because a name is data
+> and `$&` in one must not read the placeholder back into the sentence.
+>
+> **The tab set is one list drawn by one component, which is what "correct from both
+> directions" reduces to.** AA.1 (#200) rendered its four tabs from `MODELS_TABS` inside its
+> own screen; this issue moves the drawing into `ModelsSubnav`, gives every built surface an
+> `href` from `app/paths.ts`, and types the built ones: `ModelsSurface` is
+> `"routing" | "providers"`, a live tab's id must be one of them and a page asks for its active
+> tab by one of them, so neither page can claim a tab that leads nowhere and the compiler names
+> the tab that changes when CI.1 (#591) adds `"registry"`. The two pages' rows differ in
+> `aria-current` and in nothing else, and a test asserts exactly that by stripping the
+> attribute and comparing the markup. The sidebar's **Models** entry stays lit on both because
+> `/models/providers` is *under* `/models` — `isActiveRoute`'s ordinary section rule, not a
+> special case — and the route is spelled from `MODELS_PATH` so that stays true if the section
+> is renamed. The registry tab's note names #591 now that mockup 21's roadmap is filed; Spend
+> still names #210. The underline is the accent here and the model purple on `/models`, which
+> is the one divergence between the mockups the CP.4 primitive keeps as a tone.
+>
+> **Both actions are wired, and one of them is wired to a reason.** **Audit log** mounts AD.4's
+> `<AuditTrail />` unchanged — the element was built to sit exactly here — and the sheet opens
+> over the pane and reads the seeded trail; the workshop story at `/workshop/providers-audit`
+> stays as the element's isolated mount, the way the chrome story is for the primitives.
+> **+ Add provider** leads to AE.5's catalog (#231), which does not exist, so it is inert
+> through `Button`'s `reason` and names the issue — § 3.5's honesty rule, and the same
+> treatment `/models` gives *Simulate routing* for #203. The space below the tab set is an
+> empty state naming #228–#232 rather than five invented cards, which would be
+> indistinguishable in a screenshot from the real ones.
+>
+> **BA-D.5's session context arrived through the gate that already existed.** The one input
+> the page needs — the workspace's display name for the subline — is what `requireWorkspace()`
+> returns to every signed-in screen, resolved against the memberships the service reported
+> rather than trusted from a cookie. Nothing new was built for it, and the route has no
+> reader: the trail is read when its sheet is opened, and the cards are #228's.
+>
+> **Amendment #491 (S2) is noted and not acted on.** The Workspace Settings roadmap relocates
+> this surface's *navigation entry* under `/settings` when BS.1 lands; the route, the frame
+> and the cards are unaffected, and today the entry is the Models tab set rather than a
+> sidebar row, so there is nothing yet to move.
+>
+> The AA.1 (#200) amendment comment is posted. **70 new tests across nine suites**: the subnav
+> from both directions, the frame's anatomy, the screen's composition with the sheet opening
+> onto the seeded trail, the route handing the gate's workspace to the subline, the copy held
+> to the document, and `PROVIDERS_PATH` under `/models` for `isActiveRoute`. Both palettes
+> render byte-identical markup; the page adds no stylesheet, so the rem-only and token-only
+> rules already covering `models.css` cover it at every font-scale step.
 
 
 - **Problem Statement:** The page frame: head with the vault subline (AD.5
@@ -1827,6 +1894,19 @@ than by convention. What that unblocks immediately is **AE.1** (#227), whose pag
 real destination for its **Audit log** button: the sheet is written, tested against the seeded
 history in both palettes, and reachable at `/workshop/providers-audit` until that page mounts
 it. **AE.4** (#230) inherits `provider.tested`, spelled once so it cannot be spelled twice.
+
+**#227** ([AE.1] the providers route, subnav and page frame) has landed, and epic AE has its
+page: `/models/providers` renders § 7.2's sentence for the workspace, mounts the trail beside a
+**+ Add provider** that names #231, and flips the Models tab set's **Providers & keys** tab live
+from both directions — the amendment #200 was filed expecting, now posted there. The section's
+head and tab row are one frame (`app/models/models-frame.tsx`), so CI.1 (#591) adds the
+registry by adding `"registry"` to `ModelsSurface` and a page that says which tab it is. What
+this unblocks is the rest of the epic in its planned order: **AE.2** (#228) fills the empty
+state below the tab set with the five cards, then AE.3 ⊕ AE.4 ⊕ AE.5 in parallel, then AE.6
+and AE.7. One question is left for AD.5's owner rather than answered here: § 7.2's
+`{workspace}'s` is applied as written, so the seeded workspace reads *Acme Robotics's* — if an
+apostrophe rule is wanted for names ending in *s*, it is a one-line change to the document and
+the test that holds the page to it will say so.
 
 Two things are recorded here for whoever picks them up. The first is a limitation rather than
 a gap: `audit_events.ip` holds the address `ouroboros-rest` was reached on, which behind the
