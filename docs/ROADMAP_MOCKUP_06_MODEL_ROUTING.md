@@ -501,6 +501,19 @@ routes ─1:N─ route_hops(position↑) ──FK──▶ model_aliases   (raw 
 > kind's calls are spread as a **symmetric arithmetic sequence** around its figure, so the
 > mean is the centre and the median is the row sitting at it.
 >
+> **Extended, not forked, by CG.4 (#582, 2026-08-24).** Mockup 21's registry is drawn over
+> these rows, and its superset lives in this same file rather than beside it: an eighth
+> alias — the unbound `gpt5-experiments`, disabled as `V019` requires — `params` and
+> `restrictions` on all eight (the "seven aliases, `params` `{}` throughout" above is now
+> history), the one `model_prices` override `V012`'s header left to a seed, and run #482's
+> `resolution_snapshots` row (`V024`), derived hop by hop from the chain, aliases and
+> connections seeded here. The header's argument that `params` had to stay `{}` for the
+> effort ≥ L rule's sake was withdrawn there: the rule's params are policy merged *over* the
+> alias's at resolution, and `tests/seed.sql` asserts the merge keeps the alias's budget.
+> Nothing mockup 06 renders moved; `Used by` on mockup 21 is computed from these chains, and
+> where the two drawings disagree the matrix wins — see CG.4's note in
+> [`ROADMAP_MOCKUP_21_MODEL_REGISTRY.md`](ROADMAP_MOCKUP_21_MODEL_REGISTRY.md).
+>
 > **Decision M7 needed two columns that did not exist, so `V020` adds them.** A
 > `token_usage` row knew which *model* it paid for and never which *kind of work* it was
 > doing, and it recorded a cost without a duration — so a per-kind average had nothing to

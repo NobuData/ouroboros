@@ -37,8 +37,10 @@
 -- Filed as issue #23; moved to the BetterAuth shape by #708; grown to the full
 -- auth-aware demo set — three organizations, password sign-in — by #709; extended with
 -- the dashboard read-model — mockup 02, number for number — by #68, with mockup 07's
--- five provider cards by #221, and with the credential trail behind that page's **Audit
--- log** button by #225.
+-- five provider cards by #221, with the credential trail behind that page's **Audit
+-- log** button by #225, and with mockup 21's registry over the routing rows — eight
+-- aliases with their params, a price override and run #482's resolution snapshot — by
+-- #582.
 
 \set ON_ERROR_STOP on
 
@@ -991,12 +993,13 @@ select pg_temp.must_hold(
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
--- The seven aliases, and what each resolves to.
+-- The eight aliases — seven bound, and what each resolves to; one unbound.
 --
 -- The matrix's pills and their grey resolution lines — `coder-max` → `claude-fable-5 ·
 -- Anthropic`. Asserted through the join rather than against `model_id` alone, because the
 -- line prints both halves and decision M1's whole point is that the second half lives in
--- exactly one place.
+-- exactly one place. The eighth row cannot join: it is mockup 21's `gpt5-experiments`, and
+-- the assertions after this one are about it.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select count(*) = 7 from (
@@ -1020,29 +1023,72 @@ select pg_temp.must_hold(
          on conn.id = alias.provider_connection_id
         and conn.display_name = expected.connection
    ) as resolved),
-  'the seven aliases resolve to the models and connections the matrix prints under them');
+  'the seven bound aliases resolve to the models and connections the matrix prints under them');
 
--- `second-opinion` is the one with a restriction, and it is the one the review escalation
--- rule adds as a vote — which is exactly what `review_vote_only` says this workspace allows
--- it to be used for (V019, decision R3).
+-- The eighth is unbound — no connection, `enabled = false` as V019 requires of it, naming a
+-- model no provider here serves. It is the registry's `✗ no key — connect a provider` row
+-- (CG.4, #582; decision R2), and the one alias the matrix never draws.
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.model_aliases alias
      join ouroboros.organization org on org."id" = alias.organization_id
     where org."slug" = 'acme-robotics'
-      and alias.alias = 'second-opinion'
-      and alias.restrictions = '{"review_vote_only": true}'::jsonb),
-  'second-opinion is restricted to review votes, which is the only thing a rule uses it for');
+      and alias.alias = 'gpt5-experiments'
+      and alias.provider_connection_id is null
+      and alias.model_id = 'gpt-5.2-preview'
+      and not alias.enabled),
+  'gpt5-experiments is seeded unbound, disabled, and naming gpt-5.2-preview — the registry''s no-key row');
 
--- Nothing else is restricted and nothing carries params: the mockup's *"(max thinking)"*
--- belongs to the rule that applies it, and seeding it onto the alias would make that rule a
--- no-op that appears to work.
 select pg_temp.must_hold(
-  (select count(*) = 6 from ouroboros.model_aliases alias
+  (select count(*) = 8 from ouroboros.model_aliases alias
      join ouroboros.organization org on org."id" = alias.organization_id
-    where org."slug" = 'acme-robotics'
-      and alias.params = '{}'::jsonb
-      and alias.restrictions = '{}'::jsonb),
-  'the other six aliases carry no params and no restrictions, which is the ordinary state');
+    where org."slug" = 'acme-robotics'),
+  'acme-robotics has exactly eight aliases — mockup 21''s ALLOWED MODELS · 8 ALIASES — and no ninth');
+
+-- ---------------------------------------------------------------------------
+-- Params and restrictions — mockup 21's chips, as the structure CH.2 (#585) derives them from.
+--
+-- Eight documents, asserted exactly, because the chips are a *derivation* and a derivation is
+-- only tested if its inputs are known: `(max thinking)(400k budget)` is `{"thinking": "max",
+-- "token_budget": 400000}`, `(8k out)` is `8192` and `(ctx 32k)` is `32768` — the powers of
+-- two the chips abbreviate — and the two `—` cells are two empty documents. No display
+-- string is stored anywhere, which tests/seed.test.sh asserts over the file itself.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 8 from (
+     select alias.alias
+       from (values
+              ('coder-max',        '{"thinking": "max", "token_budget": 400000}', '{}'),
+              ('coder-std',        '{"thinking": "std"}',                         '{}'),
+              ('sizer',            '{"temperature": 0, "max_output": 8192}',      '{}'),
+              ('coder-fallback',   '{}',                                          '{}'),
+              ('second-opinion',   '{}',                   '{"review_vote_only": true}'),
+              ('local-docs',       '{"context_clamp": 32768}',                    '{}'),
+              ('local-free',       '{}',                          '{"batch_ok": true}'),
+              ('gpt5-experiments', '{}',                                          '{}')
+            ) as expected (alias, params, restrictions)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.model_aliases alias
+         on alias.organization_id = org."id"
+        and alias.alias = expected.alias
+        and alias.params = expected.params::jsonb
+        and alias.restrictions = expected.restrictions::jsonb
+   ) as chipped),
+  'all eight aliases carry exactly the params and restrictions mockup 21''s chips derive from, and the two dash cells carry nothing');
+
+-- `second-opinion`'s restriction is the one a rule relies on: the review escalation adds it
+-- as a vote, which is exactly what `review_vote_only` says this workspace allows (V019, R3).
+-- And the effort ≥ L rule's `thinking: max` now sits on `coder-max` too — a *merge* at
+-- resolution rather than a no-op, because the rule's document names `thinking` alone and
+-- the merged result still carries the alias's budget.
+select pg_temp.must_hold(
+  (select (alias.params || (rule."then" #> '{use_alias,params}'))
+            = '{"thinking": "max", "token_budget": 400000}'::jsonb
+     from ouroboros.model_aliases alias
+     join ouroboros.organization org on org."id" = alias.organization_id
+     join ouroboros.escalation_rules rule
+       on rule.organization_id = org."id" and rule.sort_order = 1
+    where org."slug" = 'acme-robotics' and alias.alias = 'coder-max'),
+  'the effort ≥ L rule merged over coder-max keeps the alias''s token budget — a merge, not a swap');
 
 -- ---------------------------------------------------------------------------
 -- The matrix — eight kinds, their descriptions, and the first two hops of each chain.
@@ -1340,8 +1386,16 @@ select pg_temp.must_hold(
      select 1 from ouroboros.escalation_rules e
        join ouroboros.organization o on o."id" = e.organization_id
       where o."slug" in ('kensuenobu', 'acme-labs')
+     union all
+     select 1 from ouroboros.model_prices p
+       join ouroboros.organization o on o."id" = p.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
+     union all
+     select 1 from ouroboros.resolution_snapshots s
+       join ouroboros.organization o on o."id" = s.organization_id
+      where o."slug" in ('kensuenobu', 'acme-labs')
    ) as routing_rows),
-  'neither the personal workspace nor acme-labs has an alias, a kind, a route, a hop or a rule');
+  'neither the personal workspace nor acme-labs has an alias, a kind, a route, a hop, a rule, a price override or a resolution — the empty registry CI.6 renders its guidance against');
 
 select pg_temp.must_hold(
   (select avg(usage.cost_cents) is null
@@ -1378,6 +1432,83 @@ select pg_temp.must_hold(
    ) as chips),
   'the five health chips are seeded as mockup 06 draws them — 42ms, nothing, elevated latency, vLLM local, workstation · 3 models');
 
+-- The registry's `⚠ degraded` cell is a provider fact, not a stored word: `coder-fallback`
+-- binds to the one connection in `error`, with the detail the chip prints beside it, and
+-- the word CH.5 (#588) derives from that appears in no row (tests/seed.test.sh holds the
+-- file to it too). Decision R8 — alias health is derived, never probed and never typed.
+select pg_temp.must_hold(
+  (select conn.status = 'error' and conn.health ->> 'detail' = 'elevated latency'
+     from ouroboros.model_aliases alias
+     join ouroboros.organization org on org."id" = alias.organization_id
+     join ouroboros.provider_connections conn on conn.id = alias.provider_connection_id
+    where org."slug" = 'acme-robotics' and alias.alias = 'coder-fallback'),
+  'coder-fallback binds to the Copilot connection in error with its note — what the registry derives ⚠ degraded from');
+
+-- ---------------------------------------------------------------------------
+-- `$ per 1M in·out` — four shapes and an absence, read through V012's lookup (#582).
+--
+-- The column is `ouroboros.model_price(workspace, kind, model)` per row, and six of the eight
+-- answers come out of the bundled catalog without the seed's help: three `token` rows for
+-- the Anthropic trio, `seat` for the Copilot kind, `usage` for the Cursor kind and `free`
+-- for the Ollama kind. The seventh priced cell is the one override the routing seed writes —
+-- `openai_compatible` is deliberately not free by kind (V012's header) — and the eighth is
+-- **no row at all**: `gpt5-experiments` has no provider to look up by, `gpt-5.2-preview` is
+-- in no catalog, and the cell renders `—` because R4 forbids inventing the number.
+--
+-- **The Anthropic figures are the catalog's, not the drawing's.** Mockup 21 reads `$15 · $75`
+-- and `$3 · $15`; the vendored snapshot prices claude-fable-5 at $10 · $50 and claude-sonnet-5
+-- at $2 · $10, and CG.2 (#580) settled that the catalog is the truth source. What is asserted
+-- is that the seven priced cells are *computed* through the lookup, and which shape each is.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 7 from (
+     select alias.alias
+       from (values
+              ('coder-max',      'token', 'bundled',  1000.0000, 5000.0000),
+              ('coder-std',      'token', 'bundled',   200.0000, 1000.0000),
+              ('sizer',          'token', 'bundled',   100.0000,  500.0000),
+              ('coder-fallback', 'seat',  'bundled',  null,      null),
+              ('second-opinion', 'usage', 'bundled',  null,      null),
+              ('local-docs',     'free',  'bundled',  null,      null),
+              ('local-free',     'free',  'override', null,      null)
+            ) as expected (alias, billing_mode, source, input_cents, output_cents)
+       join ouroboros.organization org on org."slug" = 'acme-robotics'
+       join ouroboros.model_aliases alias
+         on alias.organization_id = org."id" and alias.alias = expected.alias
+       join ouroboros.provider_connections conn
+         on conn.id = alias.provider_connection_id
+       cross join lateral ouroboros.model_price(org."id", conn.kind, alias.model_id) as price
+      where price.billing_mode = expected.billing_mode
+        and price.source = expected.source
+        and price.input_cents_per_1m is not distinct from expected.input_cents
+        and price.output_cents_per_1m is not distinct from expected.output_cents
+   ) as priced),
+  'the seven bound aliases price through model_price() as three token rows, a seat, a usage and two free — one of them the seeded override');
+
+-- The override is one row, in one workspace, for the model `local-free` binds — both halves
+-- of its match are read from the alias and the connection rather than typed, so it cannot
+-- drift from the row it prices.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.model_prices price
+     join ouroboros.organization org on org."id" = price.organization_id
+     join ouroboros.model_aliases alias
+       on alias.organization_id = org."id" and alias.alias = 'local-free'
+     join ouroboros.provider_connections conn on conn.id = alias.provider_connection_id
+    where org."slug" = 'acme-robotics'
+      and price.source = 'override'
+      and price.match_provider_kind = conn.kind
+      and price.match_model = alias.model_id
+      and price.billing_mode = 'free'
+      and price.id::text like '5eed0016-0000-4000-8000-%')
+   and (select count(*) = 1 from ouroboros.model_prices where source = 'override'),
+  'exactly one price override exists, and it is acme-robotics'' free vLLM row for the model local-free binds');
+
+-- The absence, asserted: no row anywhere prices the unbound alias's model, so its cell is an
+-- honest em-dash and not a zero.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_prices where match_model = 'gpt-5.2-preview'),
+  'gpt-5.2-preview has no price row, bundled or override — the registry''s dash is unpriced, not free');
+
 -- ---------------------------------------------------------------------------
 -- `Used by`, computed out of these rows and stored in none of them (#581).
 --
@@ -1387,12 +1518,14 @@ select pg_temp.must_hold(
 -- beside it, and three of them are routes whose chains this file seeds while the fourth is
 -- the escalation rule that names it. Nothing stores that four.
 --
--- **The numbers below are Y.4's seven aliases, not mockup 21's eight rows.** The registry
--- screen is drawn around a superset — it adds the unbound `gpt5-experiments`, and its
--- drawn counts belong to that state — and reconciling the two is CG.4's (#582), which this
--- ticket blocks. What is asserted here is that the count is *computed from the seed that
--- exists*, so the day CG.4 changes the seed these lines move with it rather than agreeing
--- with a drawing.
+-- **Eight aliases, and four of the counts are not the drawing's.** Mockup 21 reads
+-- `3 routes` beside `coder-std`, `1 route` beside `sizer`, `2 routes` beside `local-docs`
+-- and `1 route` beside `local-free`; the chains mockup 06 draws — and #192 seeds, hop for
+-- hop — reference them 4, 3, 3 and 2 times. Both drawings cannot be right about the same
+-- rows, and R5 settles which one moves: the column is *computed*, so the routing matrix is
+-- the truth and the registry's four figures are a layout. #582's PR asks for the design to
+-- be amended to these; what is asserted is that every count, the unbound row's zero
+-- included, falls out of the view and is stored nowhere.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(refs.ref_label order by refs.kind, refs.ref_label)
@@ -1404,8 +1537,8 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(counted.line order by counted.line) = array[
-            'coder-fallback=2', 'coder-max=4', 'coder-std=4', 'local-docs=3',
-            'local-free=2', 'second-opinion=1', 'sizer=3']
+            'coder-fallback=2', 'coder-max=4', 'coder-std=4', 'gpt5-experiments=0',
+            'local-docs=3', 'local-free=2', 'second-opinion=1', 'sizer=3']
      from (select alias.alias || '=' || count(refs.ref_id) as line
              from ouroboros.model_aliases alias
              join ouroboros.organization org on org."id" = alias.organization_id
@@ -1426,14 +1559,108 @@ select pg_temp.must_hold(
   'second-opinion''s single reference is the rule that votes with it, and not a route');
 
 -- ---------------------------------------------------------------------------
--- The id convention, for the routing seed's own rows.
+-- Run #482's resolution — the chain card as a stored row (#582, V024, decision R9).
 --
--- 413 rows under six prefixes — an alias, a kind, a route, a hop, a rule and a routed call
--- are each recognisable on sight in a log or a URL — so a row added later with a generated id
--- is caught here rather than by nobody.
+-- One snapshot, for the run the dashboard seed already has, in the shape CH.6 (#589) reads
+-- back: `implement` → `implement-primary` → `coder-max` → Anthropic (…Xq4A) →
+-- `claude-fable-5`, resolved, 42ms. The card's nouns are asserted through the row's columns
+-- and its first hop; the run number through the foreign key, because "run #482" is
+-- `runs.issue_number` and not a label anybody typed.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 413 from (
+  (select count(*) = 1 from ouroboros.resolution_snapshots snap
+     join ouroboros.organization org on org."id" = snap.organization_id
+     join ouroboros.runs run on run.id = snap.run_id and run.organization_id = org."id"
+    where org."slug" = 'acme-robotics'
+      and run.issue_number = 482
+      and snap.shape_version = 1
+      and snap.task_kind = 'implement'
+      and snap.route_tag = 'implement-primary'
+      and snap.outcome = 'resolved'
+      and snap.duration_ms = 42
+      and snap.rules = '[]'::jsonb
+      and snap.chain -> 0 ->> 'alias' = 'coder-max'
+      and snap.chain -> 0 ->> 'model_id' = 'claude-fable-5'
+      and snap.chain -> 0 -> 'provider' ->> 'kind' = 'anthropic'
+      and snap.chain -> 0 -> 'provider' ->> 'key_suffix' = 'Xq4A'
+      and snap.chain -> 0 -> 'provider' ->> 'status' = 'active'
+      and (snap.chain -> 0 -> 'provider' ->> 'latency_ms')::int = 42
+      and snap.chain -> 0 ->> 'decision' = 'kept'
+      and snap.chain -> 0 ->> 'code' = 'provider_healthy'
+      and snap.chain -> 0 ->> 'explanation' = 'Primary · healthy · 42ms'
+      and (snap.chain -> 0 ->> 'duration_ms')::int = 42),
+  'run #482''s snapshot reads back the chain card verbatim — implement → implement-primary → coder-max → Anthropic (…Xq4A) → claude-fable-5, resolved in 42ms');
+
+-- The chain is the whole of `implement-primary` as Z.1 would have walked it, not the card's
+-- one hop: the Copilot fallback is *dropped* because that connection is seeded in `error`,
+-- with the sentence resolve() writes for it and no timing, and the local hop is kept in
+-- reserve. That is the run console's transcript, and the caption's promise.
+select pg_temp.must_hold(
+  (select jsonb_array_length(snap.chain) = 3
+      and snap.chain -> 1 ->> 'alias' = 'coder-fallback'
+      and snap.chain -> 1 ->> 'decision' = 'dropped'
+      and snap.chain -> 1 ->> 'code' = 'provider_error'
+      and snap.chain -> 1 ->> 'explanation'
+            = 'Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency).'
+      and snap.chain -> 1 -> 'provider' -> 'key_suffix' = 'null'::jsonb
+      and snap.chain -> 1 -> 'duration_ms' = 'null'::jsonb
+      and snap.chain -> 1 ->> 'note' = 'Fallback on 5xx / timeouts'
+      and snap.chain -> 2 ->> 'alias' = 'local-docs'
+      and snap.chain -> 2 ->> 'decision' = 'kept'
+      and snap.chain -> 2 ->> 'code' = 'provider_healthy'
+      and snap.chain -> 2 ->> 'explanation' = 'Fallback 2 · healthy · workstation'
+      and snap.chain -> 2 ->> 'note' = 'Offline mode — keeps the loop turning without a network'
+     from ouroboros.resolution_snapshots snap
+    where snap.id::text like '5eed0017-0000-4000-8000-%'),
+  'the stored chain is all three hops of implement-primary, with the Copilot fallback dropped for the error its connection is seeded in');
+
+-- Every hop copies what its rows say rather than restating it: the chain's params are the
+-- aliases' params, its provider names and states are the connections', and the first hop's
+-- latency is the Anthropic connection's measured 42ms — the number the inspector prints.
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.resolution_snapshots snap
+     cross join lateral jsonb_array_elements(snap.chain) as hop
+     join ouroboros.model_aliases alias
+       on alias.organization_id = snap.organization_id
+      and alias.alias = hop ->> 'alias'
+      and alias.model_id = hop ->> 'model_id'
+      and alias.params = hop -> 'params'
+     join ouroboros.provider_connections conn
+       on conn.id = alias.provider_connection_id
+      and conn.kind = hop -> 'provider' ->> 'kind'
+      and conn.display_name = hop -> 'provider' ->> 'display_name'
+      and conn.status = hop -> 'provider' ->> 'status'
+      and conn.health -> 'latency_ms'
+            is not distinct from nullif(hop -> 'provider' -> 'latency_ms', 'null'::jsonb)
+    where snap.id::text like '5eed0017-0000-4000-8000-%'),
+  'every stored hop agrees with the alias and connection rows it was copied from');
+
+-- The read the chain card makes — the latest snapshot touching an alias — finds it by
+-- containment, and the unbound alias, which no chain can contain, is found by nothing.
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.resolution_snapshots
+    where chain @> '[{"alias": "coder-max"}]'::jsonb)
+   and (select count(*) = 0 from ouroboros.resolution_snapshots
+         where chain @> '[{"alias": "gpt5-experiments"}]'::jsonb),
+  'the chain card''s containment read finds run #482 by coder-max and finds nothing for the unbound alias');
+
+-- It happened inside the run: after the run started, and before now.
+select pg_temp.must_hold(
+  (select snap.resolved_at > run.started_at and snap.resolved_at < now()
+     from ouroboros.resolution_snapshots snap
+     join ouroboros.runs run on run.id = snap.run_id
+    where snap.id::text like '5eed0017-0000-4000-8000-%'),
+  'the snapshot is stamped inside the run it belongs to, and moves with now() as the run does');
+
+-- ---------------------------------------------------------------------------
+-- The id convention, for the routing seed's own rows.
+--
+-- 416 rows under eight prefixes — an alias, a kind, a route, a hop, a rule, a routed call, a
+-- price override and a resolution are each recognisable on sight in a log or a URL — so a
+-- row added later with a generated id is caught here rather than by nobody.
+-- ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 416 from (
      select id from ouroboros.model_aliases    where id::text like '5eed000f-0000-4000-8000-%'
      union all
      select id from ouroboros.task_kinds       where id::text like '5eed0010-0000-4000-8000-%'
@@ -1445,8 +1672,13 @@ select pg_temp.must_hold(
      select id from ouroboros.escalation_rules where id::text like '5eed0013-0000-4000-8000-%'
      union all
      select id from ouroboros.token_usage      where id::text like '5eed0014-0000-4000-8000-%'
+     union all
+     select id from ouroboros.model_prices     where id::text like '5eed0016-0000-4000-8000-%'
+     union all
+     select id from ouroboros.resolution_snapshots
+                                               where id::text like '5eed0017-0000-4000-8000-%'
    ) as seeded),
-  'the routing seed created its 413 prefixed rows and no 414th');
+  'the routing seed created its 416 prefixed rows and no 417th');
 
 
 -- ===========================================================================

@@ -325,28 +325,33 @@ done
 
 printf '\nR__dev_seed_routing.sql — the routing\n'
 
-# Six prefixes, one per table: an alias, a task kind, a route, a hop, a rule and a routed
-# call are told apart on sight. Only the usage ids are computed from an ordinal — there are
-# 370 of them — which is why the prefix is what gets asserted for all six.
-for prefix in '5eed000f' '5eed0010' '5eed0011' '5eed0012' '5eed0013' '5eed0014'; do
+# Eight prefixes, one per table: an alias, a task kind, a route, a hop, a rule, a routed
+# call, a price override and a resolution snapshot are told apart on sight. Only the usage
+# ids are computed from an ordinal — there are 370 of them — which is why the prefix is what
+# gets asserted for all eight.
+for prefix in '5eed000f' '5eed0010' '5eed0011' '5eed0012' '5eed0013' '5eed0014' \
+              '5eed0016' '5eed0017'; do
   check_contains "$ROUTING_BODY" "$prefix-0000-4000-8000-" \
     "the routing seed builds its ids from the $prefix… prefix"
 done
 
-# The six tables mockup 06 is drawn from, and no seventh. `provider_connections` in
-# particular is *not* here: the health strip's five chips are #221's rows, and a second file
-# writing them would give the two seeds a card each to disagree about.
+# The six tables mockup 06 is drawn from plus the two mockup 21 adds over them (#582), and no
+# ninth. `provider_connections` in particular is *not* here: the health strip's five chips
+# are #221's rows, and a second file writing them would give the two seeds a card each to
+# disagree about — which is also why the registry's aliases are *this* file's rows rather
+# than a sixth seed's.
 routing_tables=$(grep -Eo '^insert into ouroboros\.[a-z_]+' "$ROUTING_BODY" |
   sed 's/^insert into ouroboros\.//' | sort -u | tr '\n' ' ')
-check_equals 'escalation_rules model_aliases route_hops routes task_kinds token_usage ' \
+check_equals 'escalation_rules model_aliases model_prices resolution_snapshots route_hops routes task_kinds token_usage ' \
   "$routing_tables" \
-  'the routing seed writes the aliases, kinds, routes, hops, rules and their usage, and nothing else'
+  'the routing seed writes the aliases, kinds, routes, hops, rules, their usage, the one price override and the one snapshot, and nothing else'
 
 # Parents by natural key, exactly as the other three do — the workspace by slug, Ken by
-# email, a connection by kind and name, a kind by name, an alias by alias.
-for foreign_prefix in '5eed0001-0000-4000-8000' '5eed000b-0000-4000-8000' \
-                      '5eed000c-0000-4000-8000' '5eed000d-0000-4000-8000' \
-                      '5eed000e-0000-4000-8000'; do
+# email, a connection by kind and name, a kind by name, an alias by alias, and run #482 by
+# its issue number.
+for foreign_prefix in '5eed0001-0000-4000-8000' '5eed0009-0000-4000-8000' \
+                      '5eed000b-0000-4000-8000' '5eed000c-0000-4000-8000' \
+                      '5eed000d-0000-4000-8000' '5eed000e-0000-4000-8000'; do
   check_absent "$ROUTING_BODY" "$foreign_prefix" \
     "the routing seed names no $foreign_prefix… id from another seed — it joins by natural key"
 done
@@ -371,6 +376,28 @@ for rendered in '412\.80' '96\.40' '54\.10' '0\.87' '0\.31' '0\.22' '0\.12' '0\.
                 '41\.0s' '17\.4s' '12\.6s' '9\.8s' '6\.3s' '3\.1s' '1\.2s' '0\.8s' '31%'; do
   check_absent "$ROUTING_BODY" "$rendered" \
     "the routing seed stores no rendered figure — $(printf '%s' "$rendered" | tr -d '\\') is computed"
+done
+
+# **Mockup 21's cells are derived, and the file proves it by not containing them (#582).**
+# The chips, the health word, the price cells and the counts are each a derivation over rows
+# this file writes — CH.2 over `params`, CH.5 over the connection's status, CH.3 over the
+# catalog, V023's view over the hops — and a seed that stored the rendered text beside the
+# structure would let the registry pass its parity test while the derivation was broken.
+for rendered in 'max thinking' '400k' 'std thinking' 'temp 0' '8k out' 'ctx 32k' \
+                'review vote only' 'batch ok' 'degraded' 'no key' 'seat-based' \
+                'usage-based' '15 · 75' '4 routes' '0 routes'; do
+  check_absent "$ROUTING_BODY" "$rendered" \
+    "the routing seed stores no registry cell — $rendered is derived"
+done
+
+# The one credential-adjacent literal, and it is a suffix: run #482's snapshot carries the
+# masked tail mockup 21 prints, exactly once, and nothing shaped like the key it is the tail
+# of — the same three shapes the providers seed is held to.
+check_equals 1 "$(grep -c "'Xq4A'" "$ROUTING_BODY" | tr -d ' ')" \
+  'the routing seed carries the masked key suffix once, for the snapshot, and no second time'
+for shape in 'sk-ant' 'ghu_' 'key_cur'; do
+  check_absent "$ROUTING_BODY" "$shape" \
+    "the routing seed carries nothing shaped like a $shape… credential"
 done
 
 # ---------------------------------------------------------------------------
@@ -454,6 +481,8 @@ check_contains "$README" 'R__dev_seed_dashboard\.sql' 'README.md documents the d
 check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the providers seed'
 check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
 check_contains "$README" 'R__dev_seed_audit\.sql' 'README.md documents the audit seed'
+check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
+check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
 check_contains "$README" 'acme-robotics' 'README.md names the demo tenant a developer will find'
 check_contains "$README" 'tests/seed\.sql' 'README.md says how to assert the seeded content'

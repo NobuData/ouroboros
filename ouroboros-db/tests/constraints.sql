@@ -36,7 +36,8 @@
 -- `route_revisions`, the audit trail one press of mockup 06's *Save routes* leaves behind
 -- (V021, #195), and `audit_events`, the append-only credential trail #26 specified and
 -- AD.4 landed early (V022, #225), and `alias_references`, the one answer to *"what
--- references this alias?"* (V023, #581).
+-- references this alias?"* (V023, #581), and `resolution_snapshots`, what a run's
+-- resolution decided, kept (V024, #582).
 --
 -- The last section belongs to no migration. Y.5 (#193) names the routing invariants Z.1's
 -- resolution is written against and asks the catalogue for each of them **by name** — a
@@ -6844,6 +6845,552 @@ select pg_temp.must_hold(
   'deleting a workspace takes its alias references with it, both guards notwithstanding');
 
 delete from ouroboros.organization where "id" = 'org-refs-other';
+
+-- ===========================================================================
+-- V024 — resolution_snapshots, what a run's resolution decided, kept (#582)
+-- ===========================================================================
+--
+-- Mockup 21's RESOLUTION CHAIN card renders a stored row rather than a re-computation
+-- (decision **R9**), and this is the table it renders. CH.6 (#589) owns the contract and the
+-- read path; what is asserted here is what the schema refuses on that contract's behalf:
+--
+--   * **The shape is a rule, clause by clause.** Every clause of the three validators is a
+--     statement refused *by name* — a hop without an alias, a decision outside kept/dropped,
+--     a provider status outside V015's four, a chain numbered 1, 3, a rule with no sentence.
+--   * **Three coherence rules that are not shape.** A kept hop has a provider; only a kept
+--     hop carries a timing; and `outcome` agrees with the chain — resolved exactly when a hop
+--     was kept, which is the rule `resolve()` decides it by. The outcome rule is guarded on
+--     the chain being well-formed, so a malformed document is refused by the shape rule
+--     alone and never by whichever CHECK PostgreSQL evaluated first.
+--   * **The key suffix cannot hold a key.** Sixteen alphanumerics is the ceiling, and a
+--     credential-shaped string is refused.
+--   * **A snapshot is filed under its run's workspace and goes with its run.** The tenancy
+--     trigger refuses another workspace's run, the foreign key a run that does not exist,
+--     and both cascades take the row.
+--   * **Append-only**, for any column and any role, as V022's trail is — and without V022's
+--     one exception, because nothing here sets null.
+--   * **The three reads are indexed**, including the containment read the chain card makes.
+--
+-- Its own fixtures: the V023 section deleted its workspaces on the way out. A snapshot needs
+-- a run, a run needs a repository, and a repository needs a GitHub org — V008's chain.
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-snap',       'Snapshot Works',       'snapshot-works',       now()),
+  ('org-snap-other', 'Other Snapshot Works', 'other-snapshot-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('f5000000-0000-0000-0000-00000000000a', 'org-snap',       'snapshot-works',       true),
+  ('f5000000-0000-0000-0000-00000000000b', 'org-snap-other', 'other-snapshot-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('f5000000-0000-0000-0000-0000000000a1', 'f5000000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('f5000000-0000-0000-0000-0000000000b1', 'f5000000-0000-0000-0000-00000000000b',
+   'other-firmware',  true, 'main');
+
+-- Three runs: the one the card is about, one whose deletion is what the cascade assertion
+-- observes, and one in the other workspace for the tenancy probe.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('f5100000-0000-0000-0000-000000000482', 'org-snap',
+          'f5000000-0000-0000-0000-0000000000a1', 482,
+          'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implementing', 4, 6, now() - interval '12 minutes'),
+         ('f5100000-0000-0000-0000-000000000483', 'org-snap',
+          'f5000000-0000-0000-0000-0000000000a1', 483,
+          'A run whose transcript goes with it', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implementing', 1, 6, now() - interval '2 minutes'),
+         ('f5100000-0000-0000-0000-000000000999', 'org-snap-other',
+          'f5000000-0000-0000-0000-0000000000b1', 999,
+          'Somebody else''s run', 'standard-fix', 'claude-fable-5',
+          'coding', 'Implementing', 1, 6, now() - interval '1 minute');
+
+-- The migration adds nothing to runs — no composite key, and therefore no second index the
+-- planner could take over V008's own. The tenancy rule is a trigger instead, asserted below.
+select pg_temp.must_hold(
+  (select count(*) = 0 from pg_constraint
+    where conrelid = 'ouroboros.runs'::regclass
+      and conname = 'runs_organization_id_key'),
+  'runs carries no composite (organization_id, id) key for snapshots — the tenancy rule is a trigger, and V008''s plan assertions keep their index');
+
+-- --- the documents, and a way to vary them --------------------------------------
+--
+-- One well-formed kept hop and one well-formed dropped hop — mockup 21's `coder-max` and
+-- the Copilot fallback behind it — and every refusal below is one of them with one thing
+-- wrong. Building the variants out of the good documents is what keeps each probe about
+-- exactly the clause its description names.
+create function pg_temp.kept_hop() returns jsonb language sql immutable as $$
+  select '{"index": 1, "position": 1, "alias": "coder-max", "model_id": "claude-fable-5",
+           "params": {"thinking": "max", "token_budget": 400000},
+           "provider": {"kind": "anthropic", "display_name": "Anthropic Claude",
+                        "key_suffix": "Xq4A", "status": "active", "latency_ms": 42,
+                        "detail": null},
+           "note": null, "decision": "kept", "code": "provider_healthy",
+           "explanation": "Primary · healthy · 42ms", "duration_ms": 42}'::jsonb
+$$;
+
+create function pg_temp.dropped_hop() returns jsonb language sql immutable as $$
+  select '{"index": 2, "position": 2, "alias": "coder-fallback", "model_id": "gpt-5-codex",
+           "params": {},
+           "provider": {"kind": "copilot", "display_name": "GitHub Copilot",
+                        "key_suffix": null, "status": "error", "latency_ms": null,
+                        "detail": "elevated latency"},
+           "note": "Fallback on 5xx / timeouts", "decision": "dropped",
+           "code": "provider_error",
+           "explanation": "Fallback 1 dropped — GitHub Copilot is unreachable (elevated latency)."}'::jsonb
+$$;
+
+-- A hop with one of its top-level keys replaced.
+create function pg_temp.hop_with(hop jsonb, key text, value jsonb) returns jsonb
+language sql immutable as $$
+  select jsonb_set(hop, array[key], value)
+$$;
+
+-- The same, one level down, for the provider document.
+create function pg_temp.provider_with(hop jsonb, key text, value jsonb) returns jsonb
+language sql immutable as $$
+  select jsonb_set(hop, array['provider', key], value)
+$$;
+
+-- The insert every refusal is a variant of. Everything defaults to the card's row; a probe
+-- overrides the one argument it is about.
+create function pg_temp.snapshot_stmt(
+  chain     jsonb,
+  outcome   text    default 'resolved',
+  rules     jsonb   default '[]'::jsonb,
+  run       uuid    default 'f5100000-0000-0000-0000-000000000482',
+  org       text    default 'org-snap',
+  version   integer default 1,
+  task_kind text    default 'implement',
+  route_tag text    default 'implement-primary',
+  duration  integer default 42
+) returns text language sql immutable as $$
+  select format(
+    $f$insert into ouroboros.resolution_snapshots
+         (organization_id, run_id, shape_version, task_kind, route_tag, outcome,
+          duration_ms, chain, rules)
+       values (%L, %L, %s, %L, %L, %L, %s, %L::jsonb, %L::jsonb)$f$,
+    org, run, version, task_kind, route_tag, outcome,
+    coalesce(duration::text, 'null'), chain::text, rules::text)
+$$;
+
+-- --- the card's row is accepted, and reads back ---------------------------------
+insert into ouroboros.resolution_snapshots
+    (id, organization_id, run_id, task_kind, route_tag, outcome, duration_ms, chain)
+  values ('f5200000-0000-0000-0000-000000000001', 'org-snap',
+          'f5100000-0000-0000-0000-000000000482', 'implement', 'implement-primary',
+          'resolved', 42, jsonb_build_array(pg_temp.kept_hop(), pg_temp.dropped_hop()));
+
+select pg_temp.must_hold(
+  (select shape_version = 1 and rules = '[]'::jsonb and resolved_at is not null
+     from ouroboros.resolution_snapshots
+    where id = 'f5200000-0000-0000-0000-000000000001'),
+  'a snapshot in the card''s shape is accepted, at shape version 1, with no rules and a stamp by default');
+
+-- The two things a resolution may honestly not know: how long it took — null, never 0 —
+-- and, when every hop was dropped, any hop to have kept. Both are rows, and both are
+-- accepted.
+insert into ouroboros.resolution_snapshots
+    (id, organization_id, run_id, task_kind, route_tag, outcome, duration_ms, chain)
+  values ('f5200000-0000-0000-0000-000000000002', 'org-snap',
+          'f5100000-0000-0000-0000-000000000482', 'implement', 'implement-primary',
+          'fail_run', null,
+          jsonb_build_array(pg_temp.hop_with(pg_temp.dropped_hop(), 'index', '1'::jsonb)));
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.resolution_snapshots
+    where id = 'f5200000-0000-0000-0000-000000000002'
+      and outcome = 'fail_run' and duration_ms is null
+      and ouroboros.resolution_snapshot_kept_hops(chain) = 0),
+  'a resolution that kept nothing is stored as fail_run, and an untimed one carries null rather than 0ms');
+
+select pg_temp.must_hold(
+  ouroboros.resolution_snapshot_kept_hops(jsonb_build_array(pg_temp.kept_hop(), pg_temp.dropped_hop())) = 1
+  and ouroboros.resolution_snapshot_kept_hops('{}'::jsonb) = 0,
+  'resolution_snapshot_kept_hops() counts kept hops, and answers 0 rather than raising for a document that is not a chain');
+
+-- --- the row's own columns --------------------------------------------------------
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), version => 2),
+  'a shape version this schema cannot read is refused rather than stored unreadably',
+  'resolution_snapshots_shape_version_known');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), task_kind => 'Implement'),
+  'task_kind is shaped as task_kinds.name is, so a typo cannot be mistaken for a kind',
+  'resolution_snapshots_task_kind_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), route_tag => 'implement primary'),
+  'route_tag is shaped as routes.tag is',
+  'resolution_snapshots_route_tag_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), outcome => 'maybe'),
+  'outcome is one of Z.1''s two',
+  'resolution_snapshots_outcome');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), duration => -1),
+  'a duration is not negative — null is the value for unmeasured',
+  'resolution_snapshots_duration_nonnegative');
+
+-- --- the chain's grammar ------------------------------------------------------------
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt('{}'::jsonb),
+  'a chain is an array',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt('[]'::jsonb),
+  'and not an empty one — a route is its chain, and a resolution over no hops decided nothing',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt('[1]'::jsonb),
+  'every hop is an object',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop() - 'alias')),
+  'a hop names its alias',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop() - 'provider')),
+  'a hop says where it ran, even when the answer is null',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop() || '{"latency": 1}'::jsonb)),
+  'a key the shape does not name is refused, so a writer cannot grow a second shape by accident',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'index', '2'::jsonb))),
+  'the chain is numbered from 1',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(
+    pg_temp.kept_hop(), pg_temp.hop_with(pg_temp.dropped_hop(), 'index', '3'::jsonb))),
+  'and densely — a chain numbered 1, 3 is one "Fallback 2" cannot count',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'index', '1.5'::jsonb))),
+  'an index is a whole number',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'position', '0'::jsonb))),
+  'a stored position is 1 or more, or null for a hop a rule prepended',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'alias', '"Coder-Max"'::jsonb))),
+  'an alias is shaped as model_aliases.alias is',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'model_id', '""'::jsonb))),
+  'a model id is present',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'params', '1'::jsonb))),
+  'params are an object',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'note', '""'::jsonb))),
+  'a note is either absent or a sentence',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'decision', '"skipped"'::jsonb))),
+  'a decision is kept or dropped — Z.1''s two, and the two the card branches on',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'code', '"Provider-Healthy"'::jsonb))),
+  'a code is an identifier',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'explanation', '""'::jsonb))),
+  'a hop carries its sentence',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'provider', 'null'::jsonb))),
+  'a kept hop has somewhere to run — an unbound alias is dropped by construction',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(
+    pg_temp.kept_hop(), pg_temp.hop_with(pg_temp.dropped_hop(), 'duration_ms', '5'::jsonb))),
+  'a dropped hop was not tried and carries no timing',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'duration_ms', '-1'::jsonb))),
+  'a hop''s timing is not negative',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.kept_hop(), 'duration_ms', '4.2'::jsonb))),
+  'and is whole milliseconds',
+  'resolution_snapshots_chain_shape');
+
+-- --- the provider inside a hop ------------------------------------------------------
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(pg_temp.kept_hop(), 'status', '"great"'::jsonb))),
+  'a provider''s status is one of V015''s four, copied at the time',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(pg_temp.kept_hop(), 'latency_ms', '-1'::jsonb))),
+  'a provider''s latency is not negative',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(pg_temp.kept_hop(), 'kind', '"Anthropic"'::jsonb))),
+  'a provider''s kind is shaped as the catalog spells it',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(pg_temp.kept_hop(), 'display_name', '""'::jsonb))),
+  'a provider has a name',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(
+    pg_temp.hop_with(pg_temp.kept_hop(), 'provider', (pg_temp.kept_hop() -> 'provider') - 'kind'))),
+  'a provider says which adapter reached it',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(
+    pg_temp.hop_with(pg_temp.kept_hop(), 'provider',
+                     (pg_temp.kept_hop() -> 'provider') || '{"credential": "x"}'::jsonb))),
+  'a provider document carries no key the shape does not name',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(
+    pg_temp.kept_hop(), 'key_suffix', '"sk-ant-api03-000000000000000000000000000000217Xq4A"'::jsonb))),
+  'a key suffix is a suffix — a credential-shaped value does not fit the column',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(pg_temp.kept_hop(), 'key_suffix', '""'::jsonb))),
+  'and is either absent or at least one character',
+  'resolution_snapshots_chain_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.provider_with(pg_temp.kept_hop(), 'detail', '""'::jsonb))),
+  'a detail is either absent or a phrase',
+  'resolution_snapshots_chain_shape');
+
+-- --- the rules list -------------------------------------------------------------------
+--
+-- A well-formed entry is accepted — Z.1's AppliedRule, in the database's spellings.
+insert into ouroboros.resolution_snapshots
+    (id, organization_id, run_id, task_kind, route_tag, outcome, duration_ms, chain, rules)
+  values ('f5200000-0000-0000-0000-000000000003', 'org-snap',
+          'f5100000-0000-0000-0000-000000000482', 'implement', 'implement-primary',
+          'resolved', 40, jsonb_build_array(pg_temp.kept_hop()),
+          '[{"id": "5eed0013-0000-4000-8000-000000000001", "sort_order": 1,
+             "display": "effort ≥ L → implement uses coder-max (max thinking)",
+             "applied": true, "code": "use_alias_params_merged",
+             "explanation": "Applied — merged thinking: max over coder-max."}]'::jsonb);
+
+select pg_temp.must_hold(
+  (select (rules -> 0 ->> 'applied')::boolean and rules -> 0 ->> 'code' = 'use_alias_params_merged'
+     from ouroboros.resolution_snapshots
+    where id = 'f5200000-0000-0000-0000-000000000003'),
+  'a rule the resolution applied is stored with its sentence, its code and its verdict');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), rules => '{}'::jsonb),
+  'rules are an array',
+  'resolution_snapshots_rules_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), rules => '[1]'::jsonb),
+  'every rule is an object',
+  'resolution_snapshots_rules_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+    rules => '[{"id": "5eed0013-0000-4000-8000-000000000001", "applied": false, "code": "not_this_task_kind"}]'::jsonb),
+  'a rule carries the sentence the card showed for it',
+  'resolution_snapshots_rules_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+    rules => '[{"id": "rule-1", "display": "x", "applied": false, "code": "not_this_task_kind"}]'::jsonb),
+  'a rule''s id is a uuid written as text — a name, not a reference',
+  'resolution_snapshots_rules_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+    rules => '[{"id": "5eed0013-0000-4000-8000-000000000001", "display": "x", "applied": "yes", "code": "not_this_task_kind"}]'::jsonb),
+  'applied is a boolean',
+  'resolution_snapshots_rules_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+    rules => '[{"id": "5eed0013-0000-4000-8000-000000000001", "display": "x", "applied": false, "code": "not_this_task_kind", "fired_at": 1}]'::jsonb),
+  'a key the shape does not name is refused here too',
+  'resolution_snapshots_rules_shape');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+    rules => '[{"id": "5eed0013-0000-4000-8000-000000000001", "display": "x", "applied": false, "code": "not_this_task_kind", "sort_order": 0}]'::jsonb),
+  'a rule''s sort order is 1 or more',
+  'resolution_snapshots_rules_shape');
+
+-- --- outcome agrees with the chain ----------------------------------------------------
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.hop_with(pg_temp.dropped_hop(), 'index', '1'::jsonb)),
+                        outcome => 'resolved'),
+  'resolved with no kept hop is refused — resolve() decides the outcome by exactly that',
+  'resolution_snapshots_outcome_coherent');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), outcome => 'fail_run'),
+  'and fail_run with a kept hop is refused',
+  'resolution_snapshots_outcome_coherent');
+
+-- The guard, observed: a malformed chain under the wrong outcome is refused by the shape rule
+-- and only the shape rule, whatever order the two CHECKs are evaluated in.
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt('[]'::jsonb, outcome => 'resolved'),
+  'a malformed chain is refused by the shape rule, never by the outcome rule — the guard is what makes the name deterministic',
+  'resolution_snapshots_chain_shape');
+
+-- --- tenancy ---------------------------------------------------------------------------
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+                        run => 'f5100000-0000-0000-0000-000000000999'),
+  'a snapshot cannot be filed under one workspace about another workspace''s run',
+  'resolution_snapshots_run_in_organization');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()),
+                        run => 'f5100000-0000-0000-0000-000000000000'),
+  'nor about a run that does not exist',
+  'resolution_snapshots_run_fk');
+
+select pg_temp.must_reject(
+  pg_temp.snapshot_stmt(jsonb_build_array(pg_temp.kept_hop()), org => 'org-nobody'),
+  'nor under a workspace that does not exist');
+
+-- --- cascades --------------------------------------------------------------------------
+insert into ouroboros.resolution_snapshots
+    (id, organization_id, run_id, task_kind, route_tag, outcome, chain)
+  values ('f5200000-0000-0000-0000-000000000004', 'org-snap',
+          'f5100000-0000-0000-0000-000000000483', 'implement', 'implement-primary',
+          'resolved', jsonb_build_array(pg_temp.kept_hop())),
+         ('f5200000-0000-0000-0000-000000000005', 'org-snap-other',
+          'f5100000-0000-0000-0000-000000000999', 'implement', 'implement-primary',
+          'resolved', jsonb_build_array(pg_temp.kept_hop()));
+
+delete from ouroboros.runs where id = 'f5100000-0000-0000-0000-000000000483';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.resolution_snapshots
+    where id = 'f5200000-0000-0000-0000-000000000004'),
+  'a deleted run takes its transcript with it — a transcript of nothing is nothing');
+
+delete from ouroboros.organization where "id" = 'org-snap-other';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.resolution_snapshots
+    where id = 'f5200000-0000-0000-0000-000000000005'),
+  'and so does a deleted workspace');
+
+-- --- append-only -----------------------------------------------------------------------
+--
+-- `restrict_violation` (23001) rather than a constraint name, for V022's reason: the refusal
+-- is a trigger's and a trigger has none.
+select pg_temp.must_raise(
+  $$update ouroboros.resolution_snapshots set outcome = 'fail_run'
+     where id = 'f5200000-0000-0000-0000-000000000001'$$,
+  '23001',
+  'a snapshot cannot be revised, by any role including the owner of this database');
+
+select pg_temp.must_raise(
+  $$update ouroboros.resolution_snapshots set chain = '[]'::jsonb
+     where organization_id = 'org-snap'$$,
+  '23001',
+  'and not in bulk either — the refusal is per row, so a sweeping update refuses on the first of them');
+
+select pg_temp.must_raise(
+  $$update ouroboros.resolution_snapshots set resolved_at = now()
+     where id = 'f5200000-0000-0000-0000-000000000001'$$,
+  '23001',
+  'not even its stamp — an event that can be moved is not one');
+
+-- Two triggers — the update refusal and the tenancy rule — both enabled, and no delete
+-- counterpart to either, because both foreign keys cascade and a delete-refusing trigger
+-- would make removing a run impossible rather than protecting anything.
+select pg_temp.must_hold(
+  (select array_agg(tgname::text order by tgname) =
+            array['resolution_snapshots_no_update', 'resolution_snapshots_run_in_organization']
+     from pg_trigger
+    where tgrelid = 'ouroboros.resolution_snapshots'::regclass
+      and not tgisinternal
+      and tgenabled <> 'D')
+  and (select count(*) = 0 from pg_trigger
+        where tgrelid = 'ouroboros.resolution_snapshots'::regclass
+          and not tgisinternal
+          and tgtype & 8 = 8),
+  'resolution_snapshots carries the update refusal and the tenancy trigger, both enabled, and nothing that refuses a delete');
+
+-- --- the three reads -------------------------------------------------------------------
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.resolution_snapshots
+     where organization_id = 'org-snap'
+     order by resolved_at desc, id desc
+     limit 1$$,
+  'resolution_snapshots_organization_resolved_at_idx');
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.resolution_snapshots
+     where run_id = 'f5100000-0000-0000-0000-000000000482'
+     order by resolved_at desc$$,
+  'resolution_snapshots_run_idx');
+
+select pg_temp.must_use_index(
+  $$select * from ouroboros.resolution_snapshots
+     where chain @> '[{"alias": "coder-max"}]'::jsonb$$,
+  'resolution_snapshots_chain_idx');
+
+set local enable_seqscan = on;
+
+-- The containment read answers the chain card's question — which snapshots touch this alias
+-- — for a kept alias, a dropped one, and one no chain names.
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.resolution_snapshots
+    where organization_id = 'org-snap' and chain @> '[{"alias": "coder-max"}]'::jsonb)
+  and (select count(*) = 2 from ouroboros.resolution_snapshots
+        where organization_id = 'org-snap' and chain @> '[{"alias": "coder-fallback"}]'::jsonb)
+  and (select count(*) = 0 from ouroboros.resolution_snapshots
+        where organization_id = 'org-snap' and chain @> '[{"alias": "gpt5-experiments"}]'::jsonb),
+  'the chain card''s read finds a snapshot by any alias in its chain, kept or dropped, and nothing for an alias no chain names');
+
+-- Taken back down, for the section after this one.
+delete from ouroboros.organization where "id" = 'org-snap';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.resolution_snapshots),
+  'the section''s snapshots are gone with its workspace, and no other section left one');
 
 -- ===========================================================================
 -- Y.5 — the routing invariants resolution relies on, named (#193)

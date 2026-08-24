@@ -1,11 +1,13 @@
 -- R__dev_seed_routing.sql — mockup 06's routing screen, as rows, in a development database
--- and nowhere else.
+-- and nowhere else — and, since #582, the registry half of mockup 21 drawn over the same rows.
 --
 -- The fourth development seed, and it answers the fourth question. R__dev_seed.sql (#23) is
 -- *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
 -- R__dev_seed_providers.sql (#221) is *what it is allowed to call*, and this is **how it
--- decides which one to call**. All of it belongs to `acme-robotics`, the workspace every
--- mockup is drawn in.
+-- decides which one to call** — and, since CG.4 (#582), **what the registry says about the
+-- same names**: the eight aliases' params and restrictions, what each costs, and the one
+-- stored resolution mockup 21's chain card renders. All of it belongs to `acme-robotics`, the
+-- workspace every mockup is drawn in.
 --
 -- docs/mockups/06-model-routing.html draws five surfaces and two numeric columns, and this
 -- file is every one of them but the first:
@@ -22,6 +24,35 @@
 -- Filed as issue #192 (Y.4). The schema it fills is V015/V017 (aliases), V016 (kinds,
 -- routes, hops), V018 (rules) and V010 as extended by V020 (the usage the stats are
 -- computed from). Read by Z.5 (#198), Z.6 (#199), AA.2 (#201), AA.5 (#204) and AA.7 (#206).
+--
+-- ---------------------------------------------------------------------------
+-- Extended, not forked, by issue #582 (CG.4) — mockup 21 over the same rows.
+-- ---------------------------------------------------------------------------
+--
+-- docs/mockups/21-model-registry.html is drawn over a **superset** of this file's rows: the
+-- same aliases with their params and their prices, plus one unbound name and one stored
+-- resolution. The roadmap's amendment to Y.4 (docs/ROADMAP_MOCKUP_21_MODEL_REGISTRY.md) puts
+-- that superset *in this file* rather than beside it, because a second seed writing
+-- `model_aliases` would give the routing page and the registry page a universe each to
+-- disagree about. So three things below are #582's — the eighth alias and every `params`
+-- document, the one `model_prices` override, and the run #482 `resolution_snapshots` row —
+-- and mockup 21's surfaces read:
+--
+--   | Surface (mockup 21)          | Rows                                                  |
+--   |------------------------------|-------------------------------------------------------|
+--   | Allowed models (8 rows)      | `model_aliases`, incl. the unbound `gpt5-experiments` |
+--   | Params chips                 | `model_aliases.params` / `.restrictions` — CH.2 derives|
+--   | `$ per 1M in·out`            | `model_prices` — the bundled catalog + one override    |
+--   | Health                       | `provider_connections.status` — #221's; CH.5 derives  |
+--   | Used by                      | `alias_references` (V023) — computed, never stored    |
+--   | Resolution chain (run #482)  | `resolution_snapshots` (V024) — one row               |
+--
+-- Nothing the registry *renders* is stored where it could be typed instead. No chip string,
+-- no `degraded`, no `$15 · $75`, no `4 routes`: the chips are derived from `params` by CH.2
+-- (#585), the health cell from the connection's status by CH.5 (#588), the price from the
+-- catalog by CH.3 (#586), and the count from V023's view. tests/seed.test.sh asserts each of
+-- those strings is absent from this file, and tests/seed.sql asserts what the derivations
+-- have to work from.
 --
 -- ---------------------------------------------------------------------------
 -- Decision M7, which is the whole reason this file is as long as it is.
@@ -154,17 +185,21 @@
 -- Ids, and the three properties every seed here has.
 -- ---------------------------------------------------------------------------
 --
--- Six prefixes, on the convention R__dev_seed.sql set — an id beginning `5eed` came from a
+-- Eight prefixes, on the convention R__dev_seed.sql set — an id beginning `5eed` came from a
 -- seed, and the two hex digits after it say which table:
 --
---   | Rows                     | Id                                                  |
---   |--------------------------|-----------------------------------------------------|
---   | `model_aliases` (7)      | `5eed000f-0000-4000-8000-` + ordinal 1–7            |
---   | `task_kinds` (8)         | `5eed0010-0000-4000-8000-` + matrix position 1–8    |
---   | `routes` (8)             | `5eed0011-0000-4000-8000-` + its kind's position    |
---   | `route_hops` (17)        | `5eed0012-0000-4000-8000-` + ordinal 1–17           |
---   | `escalation_rules` (3)   | `5eed0013-0000-4000-8000-` + card position 1–3      |
---   | `token_usage` (370)      | `5eed0014-0000-4000-8000-` + ordinal 1–370          |
+--   | Rows                        | Id                                                  |
+--   |-----------------------------|-----------------------------------------------------|
+--   | `model_aliases` (8)         | `5eed000f-0000-4000-8000-` + ordinal 1–8            |
+--   | `task_kinds` (8)            | `5eed0010-0000-4000-8000-` + matrix position 1–8    |
+--   | `routes` (8)                | `5eed0011-0000-4000-8000-` + its kind's position    |
+--   | `route_hops` (17)           | `5eed0012-0000-4000-8000-` + ordinal 1–17           |
+--   | `escalation_rules` (3)      | `5eed0013-0000-4000-8000-` + card position 1–3      |
+--   | `token_usage` (370)         | `5eed0014-0000-4000-8000-` + ordinal 1–370          |
+--   | `model_prices` (1)          | `5eed0016-0000-4000-8000-` + 1                      |
+--   | `resolution_snapshots` (1)  | `5eed0017-0000-4000-8000-` + 1                      |
+--
+-- (`5eed0015` is R__dev_seed_audit.sql's, which sorts before this file and took it first.)
 --
 -- The usage ids are computed from a per-kind base and the call's number rather than written
 -- out, for the reason #68 computes its seventy-seven: a list of 370 literals is a list nobody
@@ -185,60 +220,86 @@
 -- no route and no usage row, exactly as it gets no run and no provider — which is what makes
 -- it the fixture AA.6 (#205) renders *"set up your first route"* against, and the one M7's
 -- em-dashes can be observed in: a workspace with no usage has no `$/run` to average and no
--- latency to take a median of, and both must render `—` rather than `$0.00` and `0.0s`.
+-- latency to take a median of, and both must render `—` rather than `$0.00` and `0.0s`. It
+-- gets no price override and no resolution snapshot either, so it is also the empty registry
+-- CI.6 (#596) renders its guidance against.
 --
 -- ---------------------------------------------------------------------------
--- The seven aliases — the only place a raw model string is allowed to live.
+-- The eight aliases — the only place a raw model string is allowed to live.
 --
 -- Decision M1: routes name aliases, aliases name models, and `model_aliases.model_id` is the
 -- one column in this schema where `claude-fable-5` may appear. Every hop below therefore
--- points at one of these seven rows, and swapping `coder-max` onto another model stays one
--- edit of one row.
+-- points at one of these rows, and swapping `coder-max` onto another model stays one edit of
+-- one row.
 --
--- Six are the matrix's; the seventh is `second-opinion`, which no route's chain contains and
--- the *security label* escalation rule names — Y.3 (#191) put that rule in the schema, so
--- the alias it adds a vote from has to exist here or the rule cannot be written at all.
--- It is the one row with a `restrictions` document: `review_vote_only`, because a vote is
--- exactly what this workspace allows it to be used for (V019, decision R3).
+-- Six are the matrix's. The seventh is `second-opinion`, which no route's chain contains and
+-- the *security label* escalation rule names — Y.3 (#191) put that rule in the schema, so the
+-- alias it adds a vote from has to exist here or the rule cannot be written at all. The
+-- eighth is `gpt5-experiments`, mockup 21's **unbound** row (CG.4, #582; V019, decision R2):
+-- a name created ahead of its key, bound to no connection, naming `gpt-5.2-preview`, and
+-- `enabled = false` — which V019 requires of an unbound row rather than defaults, so the seed
+-- says it. It is the registry's `✗ no key — connect a provider` fixture, and nothing routes
+-- through it: its `0 routes` is a left join over `alias_references` that finds nothing.
 --
--- Each is bound by natural key to the connection that serves it — the kind and display name
--- #221 seeded — so no id from that file is repeated here. `enabled` is true on all seven:
--- V019's unbound state is mockup 21's fixture (CG.4, #582) and not this screen's.
+-- **`params` and `restrictions` are mockup 21's chips, as structure** (V019, decision R3).
+-- The registry draws `(max thinking)(400k budget)` beside `coder-max`, `(std thinking)`
+-- beside `coder-std`, `(temp 0)(8k out)` beside `sizer`, `(ctx 32k)` beside `local-docs`,
+-- `(batch ok)` beside `local-free` and `(review vote only)` beside `second-opinion`; none of
+-- those strings is in this file. What is here is `{"thinking": "max", "token_budget":
+-- 400000}` and its siblings, and CH.2 (#585) derives the chips — so the registry's parity
+-- test passes only if the derivation works, which is the point of seeding structure rather
+-- than text. `8192` and `32768` are stored as the powers of two the chips abbreviate, and
+-- `400000` as the round thousand it is; CH.2 prints each in the unit it is a whole multiple
+-- of. `coder-fallback` and `gpt5-experiments` carry nothing, which is the `—` cell: a
+-- fixed-catalog model with nothing to tune, and a name with no provider to tune it for.
 --
--- `params` is `{}` throughout, which is the ordinary state. The mockup's one *"(max
--- thinking)"* belongs to the escalation rule that applies it, not to the alias — a rule's
--- params are merged over an alias's at resolution (Z.1), and seeding `thinking: max` onto
--- `coder-max` itself would make the rule a no-op that appears to work.
+-- **`coder-max` carrying `thinking: max` does not make the effort ≥ L rule a no-op**, though
+-- an earlier version of this header said it would. The rule's `params` are *policy* — Z.1
+-- (#194) merges them over whatever the alias carries at resolution time, so the rule pins max
+-- thinking for large work even after somebody edits the alias down to `std` — while the
+-- alias's `params` are the registry's claim about how this name is called by default. In the
+-- seeded workspace the two agree, and the merge is observably a merge rather than a swap: the
+-- rule's document names `thinking` alone, and the resolved params still carry the alias's
+-- `token_budget`.
+--
+-- Each bound alias finds its connection by natural key — the kind and display name #221
+-- seeded — so no id from that file is repeated here. The unbound one has no connection to
+-- find, and the `left join` plus the last `and` keep the two cases apart: a bound row whose
+-- connection somebody has deleted is *skipped* rather than inserted as unbound, because V019
+-- would refuse it enabled and take the whole migration down with it.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.model_aliases
     (id, organization_id, alias, provider_connection_id, model_id, params,
      enabled, restrictions, updated_by)
 select ('5eed000f-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
-       org."id", seed.alias, conn.id, seed.model_id, '{}'::jsonb,
-       true, seed.restrictions::jsonb, person."id"
+       org."id", seed.alias, conn.id, seed.model_id, seed.params::jsonb,
+       seed.enabled, seed.restrictions::jsonb, person."id"
   from (values
-         (1, 'coder-max',      'anthropic',         'Anthropic Claude',
-          'claude-fable-5',   '{}'),
-         (2, 'coder-std',      'anthropic',         'Anthropic Claude',
-          'claude-sonnet-5',  '{}'),
-         (3, 'sizer',          'anthropic',         'Anthropic Claude',
-          'claude-haiku-4-5', '{}'),
-         (4, 'coder-fallback', 'copilot',           'GitHub Copilot',
-          'gpt-5-codex',      '{}'),
-         (5, 'local-docs',     'ollama',            'Ollama · workstation',
-          'qwen3-coder:32b',  '{}'),
-         (6, 'local-free',     'openai_compatible', 'OpenAI-compatible · local vLLM',
-          'llama-4-maverick', '{}'),
-         (7, 'second-opinion', 'cursor',            'Cursor',
-          'composer-2',       '{"review_vote_only": true}')
-       ) as seed (n, alias, kind, display_name, model_id, restrictions)
+         (1, 'coder-max',        'anthropic',         'Anthropic Claude',
+          'claude-fable-5',   '{"thinking": "max", "token_budget": 400000}', '{}', true),
+         (2, 'coder-std',        'anthropic',         'Anthropic Claude',
+          'claude-sonnet-5',  '{"thinking": "std"}',                         '{}', true),
+         (3, 'sizer',            'anthropic',         'Anthropic Claude',
+          'claude-haiku-4-5', '{"temperature": 0, "max_output": 8192}',      '{}', true),
+         (4, 'coder-fallback',   'copilot',           'GitHub Copilot',
+          'gpt-5-codex',      '{}',                                          '{}', true),
+         (5, 'local-docs',       'ollama',            'Ollama · workstation',
+          'qwen3-coder:32b',  '{"context_clamp": 32768}',                    '{}', true),
+         (6, 'local-free',       'openai_compatible', 'OpenAI-compatible · local vLLM',
+          'llama-4-maverick', '{}',                          '{"batch_ok": true}', true),
+         (7, 'second-opinion',   'cursor',            'Cursor',
+          'composer-2',       '{}',                   '{"review_vote_only": true}', true),
+         (8, 'gpt5-experiments', null,                null,
+          'gpt-5.2-preview',  '{}',                                          '{}', false)
+       ) as seed (n, alias, kind, display_name, model_id, params, restrictions, enabled)
   join ouroboros.organization org on org."slug" = 'acme-robotics'
   join ouroboros."user" person on person."email" = 'ken@acme-robotics.dev'
-  join ouroboros.provider_connections conn
+  left join ouroboros.provider_connections conn
     on conn.organization_id = org."id"
    and conn.kind = seed.kind
    and conn.display_name = seed.display_name
  where ${ouro_dev_seed}
+   and (seed.kind is null) = (conn.id is null)
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
@@ -502,4 +563,171 @@ select ('5eed0014-0000-4000-8000-'
                             end)
           as month_window (start_at)
  where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The one price override — `llama-4-maverick` is free *here*, not everywhere (#582).
+--
+-- Mockup 21's `$ per 1M in·out` column is `model_prices` (V012) read through
+-- `ouroboros.model_price()`, and seven of its eight cells come out of the **bundled** catalog
+-- without this file's help: the Anthropic trio are token rows, `copilot/*` is `seat`,
+-- `cursor/*` is `usage` and `ollama/*` is `free`. The eighth priced cell is the one the
+-- catalog deliberately does not carry. `openai_compatible` fronts a self-hosted vLLM *and*
+-- `api.openai.com`, so a bundled `free` row for that kind would price every uncovered OpenAI
+-- model at `$0` — and local-ness is a property of a **connection**, not of an adapter kind.
+-- V012's header argues that; this row is its consequence: an `override` scoped to
+-- `acme-robotics`, for the model `local-free` binds on the vLLM connection, at no charge,
+-- because the A100s in the capability note are already paid for.
+--
+-- Both halves of the match are read from the rows they price rather than typed, so the
+-- override cannot drift from the alias it is for. `gpt-5.2-preview` gets **no row**, in the
+-- catalog or here: the registry's `—` is *unpriced*, and R4 forbids inventing the number.
+--
+-- Three of the mockup's figures do not match the catalog, and the catalog wins: it prices
+-- `claude-fable-5` at `$10 · $50` and `claude-sonnet-5` at `$2 · $10` where the drawing reads
+-- `$15 · $75` and `$3 · $15`. CG.2's (#580) shipped note settled that — the vendored snapshot
+-- is the truth source and a figure in a design drawing is a layout — and an override here
+-- that made the column read the drawing would be a fabricated price, which is exactly what
+-- the honesty rules M7/P8 forbid. #582's PR asks for the design to be amended instead.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.model_prices
+    (id, organization_id, match_provider_kind, match_model, billing_mode,
+     input_cents_per_1m, output_cents_per_1m, source, catalog_version, meta)
+select '5eed0016-0000-4000-8000-000000000001'::uuid,
+       org."id", conn.kind, alias.model_id, 'free', null, null, 'override', null,
+       jsonb_build_object(
+         'note', 'served by the workspace''s own vLLM — the hardware is already paid for')
+  from ouroboros.organization org
+  join ouroboros.provider_connections conn
+    on conn.organization_id = org."id"
+   and conn.kind = 'openai_compatible'
+   and conn.display_name = 'OpenAI-compatible · local vLLM'
+  join ouroboros.model_aliases alias
+    on alias.organization_id = org."id"
+   and alias.provider_connection_id = conn.id
+   and alias.alias = 'local-free'
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Run #482's resolution — the chain card, as a stored row (#582, decision R9).
+--
+-- Mockup 21's RESOLUTION CHAIN card reads
+--
+--   route.task("implement") → route implement-primary → alias coder-max
+--     → provider Anthropic (key …Xq4A) → model claude-fable-5    ● resolved · 42ms
+--
+-- under the tag `run #482`, and its caption promises that every hop is inspectable in the run
+-- console. A card composed at render time from today's rows could not keep that promise —
+-- see V024's header — so the card renders `resolution_snapshots`, and until AF.2 (#235)
+-- writes one at execution time this is the one it renders: a fixture, in the executor's own
+-- shape, for the run the dashboard seed already has.
+--
+-- **Almost nothing in it is typed.** The run is #68's `#482` — *Fix flaky CAN-bus telemetry
+-- test*, `claude-fable-5`, at its *Implementing* stage — found by issue number. The task kind,
+-- the route and the chain are this file's own `implement-primary` rows, walked hop by hop the
+-- way Z.1 (#194) walks them: each hop copies its alias, model and params from `model_aliases`
+-- and its provider's kind, name, status and measured latency from `provider_connections` —
+-- the health snapshot *as it was*, which is what a snapshot is for — and decides `kept` or
+-- `dropped` by the same rule `resolve()` applies to a status, with the sentence Z.1 would
+-- have written. So the stored chain is three hops rather than the card's one: `coder-max`
+-- kept and tried (`Primary · healthy · 42ms`), `coder-fallback` **dropped** because Copilot's
+-- connection is in `error` (`Fallback 1 dropped — GitHub Copilot is unreachable (elevated
+-- latency).`), and `local-docs` kept in reserve. The card draws the hop that resolved; the
+-- run console can draw all three, which is the caption's promise.
+--
+-- Two values are the fixture's own. `42` is the resolution's duration and the one hop's, and
+-- it is stored because a snapshot *is* the record of a measurement — the same `42` #221
+-- stored as the Anthropic connection's measured latency, which is where the card's inspector
+-- line gets it too. `Xq4A` is the masked tail of the key the hop resolved with: the
+-- connection's credential is a sealed envelope (V015, AD.1), so its suffix is not derivable
+-- from any row, and the snapshot carries it the way the executor will — copied at the moment
+-- of resolution, four characters, never the key. It is the only credential-adjacent literal
+-- in this file, and tests/seed.test.sh counts it.
+--
+-- `rules` is empty: the three seeded rules were evaluated for #482 and none matched — no
+-- effort ≥ L on a *standard-fix*, no security label, not a docs-only diff — and an empty
+-- list is what a run nothing modified stores. `resolved_at` is eight minutes into a run the
+-- dashboard seed started 12m 40s ago, which is inside its *Implementing* stage and moves with
+-- `now()` exactly as the run does.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.resolution_snapshots
+    (id, organization_id, run_id, shape_version, task_kind, route_tag, outcome,
+     duration_ms, chain, rules, resolved_at)
+select '5eed0017-0000-4000-8000-000000000001'::uuid,
+       org."id", run.id, 1, kind.name, route.tag, 'resolved', 42,
+       (select jsonb_agg(jsonb_build_object(
+                 'index',       hop.position,
+                 'position',    hop.position,
+                 'alias',       alias.alias,
+                 'model_id',    alias.model_id,
+                 'params',      alias.params,
+                 'provider',    jsonb_build_object(
+                                  'kind',         conn.kind,
+                                  'display_name', conn.display_name,
+                                  'key_suffix',   case when hop.position = 1 then 'Xq4A' end,
+                                  'status',       conn.status,
+                                  'latency_ms',   conn.health -> 'latency_ms',
+                                  'detail',       conn.health -> 'detail'),
+                 'note',        hop.note,
+                 'decision',    seen.decision,
+                 'code',        seen.code,
+                 'explanation', seen.explanation,
+                 'duration_ms', case when hop.position = 1 then 42 end)
+               order by hop.position)
+          from ouroboros.route_hops hop
+          join ouroboros.model_aliases alias
+            on alias.id = hop.model_alias_id
+          join ouroboros.provider_connections conn
+            on conn.id = alias.provider_connection_id
+          cross join lateral (
+            select case when hop.position <= 1 then 'Primary'
+                        else 'Fallback ' || (hop.position - 1)::text
+                   end as role
+          ) as hop_role
+          cross join lateral (
+            select case conn.status
+                     when 'active'  then 'kept'
+                     when 'unknown' then 'kept'
+                     else 'dropped'
+                   end as decision,
+                   case conn.status
+                     when 'active'  then 'provider_healthy'
+                     when 'unknown' then 'provider_unknown'
+                     when 'paused'  then 'provider_paused'
+                     else 'provider_error'
+                   end as code,
+                   case conn.status
+                     when 'active' then
+                       hop_role.role || ' · '
+                         || concat_ws(' · ', 'healthy',
+                                      case when conn.health ? 'latency_ms'
+                                           then (conn.health ->> 'latency_ms') || 'ms' end,
+                                      conn.health ->> 'detail')
+                     when 'unknown' then
+                       hop_role.role || ' · '
+                         || concat_ws(' · ', 'not checked yet', conn.health ->> 'detail')
+                     when 'paused' then
+                       hop_role.role || ' dropped — ' || conn.display_name
+                         || ' is paused by an operator'
+                         || coalesce(' (' || (conn.health ->> 'detail') || ')', '') || '.'
+                     else
+                       hop_role.role || ' dropped — ' || conn.display_name
+                         || ' is unreachable'
+                         || coalesce(' (' || (conn.health ->> 'detail') || ')', '') || '.'
+                   end as explanation
+          ) as seen
+         where hop.route_id = route.id),
+       '[]'::jsonb,
+       run.started_at + interval '8 minutes'
+  from ouroboros.organization org
+  join ouroboros.runs run
+    on run.organization_id = org."id" and run.issue_number = 482
+  join ouroboros.task_kinds kind
+    on kind.organization_id = org."id" and kind.name = 'implement'
+  join ouroboros.routes route
+    on route.organization_id = org."id" and route.task_kind_id = kind.id
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
 on conflict do nothing;

@@ -128,9 +128,10 @@
 > records what happened, and retiring a task kind must not block, delete or rewrite the
 > history routed under it. With it in place
 > [`migrations/R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) is **mockup 06
-> as rows** — seven aliases, eight kinds, their chains, three rules and the 370 routed calls
-> every number on the screen is aggregated out of, with not one of those numbers stored
-> anywhere. See [The development seed](#the-development-seed).
+> as rows** — seven aliases (eight since `V024`'s #582 drew mockup 21 over the same rows),
+> eight kinds, their chains, three rules and the 370 routed calls every number on the screen
+> is aggregated out of, with not one of those numbers stored anywhere. See
+> [The development seed](#the-development-seed).
 > `V021` ([#195](https://github.com/NobuData/ouroboros/issues/195)) adds the table `V016`
 > anticipated in as many words — *"when versioned route configuration arrives it is history in
 > a table of its own"*. Mockup 06's editing model is **staged**: edits accumulate in the
@@ -211,6 +212,42 @@
 > not have, so that half is proven by
 > [`tests/verify-alias-reference-guard.sh`](tests/verify-alias-reference-guard.sh) — see
 > [Proving the guard is a guard](#proving-the-guard-is-a-guard).
+> `V024` ([#582](https://github.com/NobuData/ouroboros/issues/582)) adds
+> [`resolution_snapshots`](migrations/V024__resolution_snapshots.sql) — what a run's routing
+> resolution decided, **kept**. Mockup 21's *RESOLUTION CHAIN* card promises that every hop
+> is inspectable in the run console, and decision **R9** says that promise is only honest
+> over stored truth: a card that re-resolved on every render would show today's health beside
+> last week's run number. So the card renders persisted snapshots, and until execution
+> exists it renders one seeded run — #482 — as fixture data. It is the second migration here
+> that **lands somebody else's table**, on `V022`'s reasoning: CH.6
+> ([#589](https://github.com/NobuData/ouroboros/issues/589)) owns the snapshot contract, the
+> executor that writes it (AF.2, [#235](https://github.com/NobuData/ouroboros/issues/235))
+> and the endpoint that reads it, but a fixture needs a table to be persisted in, so the
+> schema arrives with the migration that first needs a row and #589 inherits it — columns
+> that are its own contract's nouns, a `shape_version` it may bump, and **no read path**.
+> The chain names its alias, route, task kind and provider **by name**, never by id
+> (`V021`'s argument: a transcript is read after the alias has been repointed), and the run
+> is the one foreign key — **cascading**, because a transcript of a deleted run is a
+> transcript of nothing, and held to the snapshot's own workspace by a trigger on `V008`'s
+> precedent rather than by a composite key, because the composite key would be a second
+> index on `runs` and `tests/constraints.sql` showed the planner taking it over `V008`'s
+> own the moment it existed. Three
+> `immutable` validators CHECK the jsonb clause by clause: every hop with its alias, model,
+> params, the provider *as the health snapshot then saw it*, the masked `key_suffix` — at
+> most sixteen alphanumerics, a shape no credential fits — `kept`/`dropped`, Z.1's `code`
+> and sentence, and a timing only on a hop that was tried; `outcome` is held to the chain
+> (resolved exactly when a hop was kept, which is the rule `resolve()` decides it by). It is
+> **append-only** like `audit_events`, and simpler about it: both foreign keys cascade, so
+> the refusing trigger has no exception to carve out. With it,
+> [`migrations/R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) is **extended,
+> not forked**, into mockup 21's registry over the same rows: an eighth alias — the unbound
+> `gpt5-experiments`, disabled as `V019` requires — `params` and `restrictions` on all eight
+> as the *structure* CH.2 derives the chips from, the one `model_prices` override `V012`'s
+> header left to this seed (the local vLLM's `llama-4-maverick` at `$0`), and run #482's
+> snapshot, derived hop by hop from the seeded route, aliases and connections rather than
+> typed. `Used by` is computed by `V023`'s view over mockup 06's chains, and four of mockup
+> 21's drawn counts are not what those chains yield — the seed's header and
+> [`tests/seed.sql`](tests/seed.sql) say which, and why the routing matrix wins.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -379,7 +416,7 @@ days:
 | [`R__dev_seed.sql`](migrations/R__dev_seed.sql) | *Who exists* — the workspaces, the people, and where the loop may run | [#23](https://github.com/NobuData/ouroboros/issues/23) |
 | [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
 | [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
-| [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from | [#192](https://github.com/NobuData/ouroboros/issues/192) |
+| [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from — and, since [#582](https://github.com/NobuData/ouroboros/issues/582), *what the registry says about the same names*: mockup 21's eighth (unbound) alias, the params behind every chip, the one price override, and run #482's resolution snapshot | [#192](https://github.com/NobuData/ouroboros/issues/192), [#582](https://github.com/NobuData/ouroboros/issues/582) |
 | [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
@@ -1107,11 +1144,12 @@ ouroboros-db/
 │   ├── V021__route_revisions.sql     # route_revisions — who changed the routing table, and what moved — #195
 │   ├── V022__audit_events.sql        # audit_events — #26's table, landed early; append-only — #225
 │   ├── V023__alias_reference_index.sql  # alias_references — what references an alias, and the delete/rename guard — #581
+│   ├── V024__resolution_snapshots.sql   # resolution_snapshots — what a run's resolution decided, kept; append-only — #582
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
-│   ├── R__dev_seed_routing.sql       # mockup 06 as rows, dev only — #192 (sorts after the above)
+│   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -1167,6 +1205,7 @@ outside this module alters it.
 | `escalation_rules` | `V018` | Mockup 06's *ESCALATION RULES* card — the three rules as **structured predicates that modify a route**, not as the sentences they read like (decision **M5**) | `"when"` is the WF-P8 predicate grammar scoped to routing — `effort_gte` (V009's five **F9** sizes, the same vocabulary the queue uses), `label` (GitHub's, as `V014` mirrors them) and `diff_kind` (`docs_only`), at least one, ANDed; `"then"` is **exactly one** of `{use_alias: {task_kind, alias, params?}}` — the mockup's *"(max thinking)"* is `params`, not prose — `{add_vote: {task_kind, alias}}` or `{route_local: {}}`; both are **domains**, so an unknown key is refused at the value rather than at the row; `display` is **`generated always … stored`** from the two, so a hand-written sentence is refused by PostgreSQL and an edited rule cannot keep the sentence it had; the task kind and alias a rule names must exist **in the rule's own workspace**, held by a deferred constraint trigger on all three tables; `sort_order` is unique per workspace and **deferrable**, which is what makes "which rule wins" have one answer and a drag-reorder plain SQL |
 | `route_revisions` | `V021` | One row per press of mockup 06's **Save routes** — who changed the routing table, when, and exactly what moved ([#195](https://github.com/NobuData/ouroboros/issues/195)); the feed the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)) reads | `actor` references `"user"` and **sets null**, because deleting a person must not delete the record of what they changed; `diff` is CHECKed by `ouroboros.route_revision_diff_valid()` to `{routes: [{task_kind, changes: {<column>: {from, to}}}]}` — at least one route, at least one change each, every change a `{from, to}` pair — so a save that changed **nothing** is unstorable rather than merely not written; task kinds inside the document are *shaped* as `task_kinds.name` is but are deliberately **not** foreign keys, and hops are named by `model_aliases.alias`, because a revision is history a person reads months later and an id is a lookup into a row that may since have been repointed; there is **no `updated_at`** and no touch trigger, because an event that can be edited is not one; one index — `(organization_id, created_at desc, id desc)` — which is the only read this table has |
 | `audit_events` | `V022` | Who did what to which credential, from where, and when — the platform audit trail ([#225](https://github.com/NobuData/ouroboros/issues/225)), in the shape [#26](https://github.com/NobuData/ouroboros/issues/26) specified and landed early because decision **P5** puts credential auditing in the MVP. `ouroboros-rest`'s audit module is the only writer; `GET /api/v1/providers/audit` is the only reader, and mockup 07's **Audit log** sheet is what it draws | **Append-only, enforced twice**: `ouroboros_app` — a role this migration creates `nologin` — holds `select` and `insert` and nothing else, and `audit_events_no_update` refuses a revision from *any* role including the owner, because a superuser bypasses every grant and a rule that is true only in production is a rule nobody can test. Both foreign keys shape that trigger: `organization_id` **cascades**, which is why the trigger covers `update` and not `delete` — a delete-refusing trigger would make removing a workspace impossible rather than protecting the trail — and `actor_id`'s `on delete set null` **is** an update, so exactly that one statement is permitted and nothing beside it (*what happened cannot be rewritten; who did it can be forgotten*). `actor_id` is nullable because a `credential.lease_granted` has no person behind it; the **subject** is `subject_type` + `subject_id` with deliberately **no** foreign key, because `provider.deleted` is exactly the row one would make unwritable; `action` and `subject_type` are CHECKed to an identifier *grammar* and not to a vocabulary, so adding an event is an application release while a misspelled one is still refused; `ip` is `inet`, which refuses a string that is not an address; `detail` must be an **object** so the secrecy grep can enumerate its keys — that it holds no secret material is enforced by the writer and by that grep, because a CHECK could only match the credential shapes somebody thought of. There is **no `updated_at`**, and one index — `(organization_id, occurred_at desc, id desc)` — which is the only read this table has; #26's BRIN is deliberately not created until something sweeps by time |
+| `resolution_snapshots` | `V024` | What a run's routing resolution decided, **kept** — the stored truth behind mockup 21's *RESOLUTION CHAIN* card and the run console's transcript ([#582](https://github.com/NobuData/ouroboros/issues/582), decision **R9**), in the versioned shape CH.6 ([#589](https://github.com/NobuData/ouroboros/issues/589)) contracts and AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) writes at execution time; until invocation exists, `R__dev_seed_routing.sql` writes run #482's. Landed here because a fixture needs a table, on `V022`'s reasoning; #589 inherits it and adds the read path | One row per resolution. The **run** is the one foreign key — **cascading**, because a transcript of a deleted run is a transcript of nothing, and held to the snapshot's workspace by `resolution_snapshots_run_in_organization`, a trigger on `V008`'s precedent rather than a composite key, so `runs` gains no second index for it; `task_kind` and `route_tag` are **names** with no foreign key (`V020`'s decision **F8** — a transcript survives a rename); `outcome` is `resolved\|fail_run`, held to the chain by `resolution_snapshots_outcome_coherent` (resolved exactly when a hop was kept); `duration_ms` is nullable and never defaulted (null is *nobody timed it*, `0` is a measurement — decision **M8**); `chain` and `rules` are jsonb whose grammar three `immutable` validators CHECK clause by clause — every hop with its `index` (dense from 1), alias, model, params, the provider *as the health snapshot then saw it*, the masked `key_suffix` (at most sixteen alphanumerics, a shape no credential fits), `kept`/`dropped`, Z.1's `code` and sentence, and a timing only on a hop that was tried; `shape_version` is CHECKed to exactly the versions the validators can read, so a writer ahead of the schema is refused rather than stored unreadably. **Append-only**: no `updated_at`, and `resolution_snapshots_no_update` refuses a revision from any role, with no exception because both foreign keys cascade. Three indexes — latest-first per workspace, per run, and a `jsonb_path_ops` GIN on `chain` for the card's `chain @> '[{"alias": …}]'` read. No read path: the endpoint is #589's |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in
