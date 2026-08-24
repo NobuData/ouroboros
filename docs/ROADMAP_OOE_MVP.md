@@ -666,9 +666,9 @@ that roadmap's "Existing issues affected" section.
 | 107 | **AC.5** | ✅ [#220](https://github.com/NobuData/ouroboros/issues/220) | Copilot & Cursor adapters | ouroboros-rest | M | AC.1, AD.1 |
 | 108 | **AD.2** | ✅ [#223](https://github.com/NobuData/ouroboros/issues/223) | Credential lifecycle API | ouroboros-rest | M | AC.1, AD.1 |
 | 109 | **CG.1** | ✅ [#579](https://github.com/NobuData/ouroboros/issues/579) | Alias lifecycle, binding & params extensions | ouroboros-db | M | Y.1, AC.6 |
-| 110 | **CH.2** | [#585](https://github.com/NobuData/ouroboros/issues/585) | Param & capability service | ouroboros-rest | M | AC.1, AC.6 |
+| 110 | **CH.2** | ✅ [#585](https://github.com/NobuData/ouroboros/issues/585) | Param & capability service | ouroboros-rest | M | AC.1, AC.6 |
 | 111 | **Y.4** | ✅ [#192](https://github.com/NobuData/ouroboros/issues/192) | Routing dev seeds — mockup-06 parity | ouroboros-db | M | Y.3 |
-| 112 | **Z.1** | [#194](https://github.com/NobuData/ouroboros/issues/194) | Resolution engine (`resolve` + explanations) | ouroboros-rest | L | Y.3, Z.3 |
+| 112 | **Z.1** | ✅ [#194](https://github.com/NobuData/ouroboros/issues/194) | Resolution engine (`resolve` + explanations) | ouroboros-rest | L | Y.3, Z.3 |
 | 113 | **Z.2** | [#195](https://github.com/NobuData/ouroboros/issues/195) | Routing management API | ouroboros-rest | M | C.3, Y.3 |
 | 114 | **AA.1** | [#200](https://github.com/NobuData/ouroboros/issues/200) | Models route, subnav & provider health strip | ouroboros-ui | M | 5.3, D.5, Z.3 |
 | 115 | **AD.4** | [#225](https://github.com/NobuData/ouroboros/issues/225) | Credential audit trail & Audit log surface | ouroboros-rest, ouroboros-ui | M | AD.2 |
