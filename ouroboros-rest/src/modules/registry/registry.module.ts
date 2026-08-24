@@ -8,16 +8,23 @@
  * registry.repository.ts the three statements against V015's tables
  * registry.service.ts    resolve / list / dependentAliases
  * registry.secrets.ts    the vault's re-encryption store for the credential column
+ * params.*.ts            CH.2 — the param schema, its merge, its validation, the chips
+ * aliases.*.ts           CH.1 — the alias lifecycle: create, edit, rebind, duplicate, delete
  * ```
  *
- * **It declares no controller, and that is the whole of decision M2 in one line.**
- * `provider_connections` and `model_aliases` are the data mockup 07 (*Providers & keys*) and
- * mockup 21 (*Model registry*) will build their management UIs on. Routing cannot be built
- * without them, so the schema and the reads land here — and every create, update and delete
- * stays with those roadmaps, because a CRUD surface written here first is one they would
- * have to negotiate with rather than write. Z.2
- * ([#195](https://github.com/NobuData/ouroboros/issues/195)) is what puts the alias list on
- * a route, and it imports this module rather than reaching past it.
+ * **It declared no controller until mockup 21 was written, and that was the whole of decision
+ * M2 in one line.** `provider_connections` and `model_aliases` are the data mockup 07
+ * (*Providers & keys*) and mockup 21 (*Model registry*) build their management UIs on.
+ * Routing could not be built without them, so the schema and the reads landed here first —
+ * and every create, update and delete stayed with those roadmaps, because a CRUD surface
+ * written here ahead of them is one they would have had to negotiate with rather than write.
+ * Z.2 ([#195](https://github.com/NobuData/ouroboros/issues/195)) put the alias *list* on a
+ * routing route by importing this module; CH.2
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)) added the first controller
+ * here, a read; CH.1 ([#584](https://github.com/NobuData/ouroboros/issues/584)) is mockup
+ * 21 writing its own API, which is what M2 was waiting for — `/api/v1/registry/aliases`,
+ * with the guards that make the page's caption true. `registry.module.spec.ts` asserts the
+ * controller list, so a third entry has to be stated out loud rather than noticed in review.
  *
  * **It imports `ProvidersModule`, and only for `ModelProviderRegistry`.** A param schema is
  * whatever the bound adapter says it is, and decision **P1** is that core code reaches an
@@ -53,6 +60,9 @@ import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
 import { ProvidersModule } from "../providers/providers.module";
+import { AliasesController } from "./aliases.controller";
+import { AliasesRepository } from "./aliases.repository";
+import { AliasesService } from "./aliases.service";
 import { ParamSchemaController } from "./params.controller";
 import { ParamSchemaService } from "./params.service";
 import { RegistryRepository } from "./registry.repository";
@@ -61,8 +71,15 @@ import { ProviderCredentialStore } from "./registry.secrets";
 
 @Module({
   imports: [DbModule, ProvidersModule],
-  controllers: [ParamSchemaController],
-  providers: [RegistryRepository, RegistryService, ProviderCredentialStore, ParamSchemaService],
+  controllers: [ParamSchemaController, AliasesController],
+  providers: [
+    RegistryRepository,
+    RegistryService,
+    ProviderCredentialStore,
+    ParamSchemaService,
+    AliasesRepository,
+    AliasesService,
+  ],
   exports: [RegistryService, ProviderCredentialStore, ParamSchemaService],
 })
 export class RegistryModule {}

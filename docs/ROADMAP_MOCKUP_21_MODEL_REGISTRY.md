@@ -665,7 +665,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CH.1 | #584 | 🟡 Open | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
+| CH.1 | #584 | 🟢 Done | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
 | CH.2 | #585 | 🟢 Done | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
 | CH.3 | #586 | 🟢 Done | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
 | CH.4 | #587 | 🟡 Open | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
@@ -675,7 +675,65 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 
 ### Issue CH.1 — ouroboros-rest: [CH.1] Alias lifecycle API
 
-> **GitHub issue:** #584 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #584 · **Status:** 🟢 Done · **Parent epic:** #576
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-rest/src/modules/registry/aliases.*.ts`](../ouroboros-rest/src/modules/registry)
+> — `/api/v1/registry/aliases`: the list, create (bound or unbound), `PATCH` (edit, rebind,
+> rename, the switch), duplicate, delete, and `model-options`; owner/admin write, member read,
+> org-scoped throughout; every route and every designed error documented in `openapi.yaml`
+> (0.30.10) and mirrored into the UI's generated types. Plus
+> [`V025__alias_revisions.sql`](../ouroboros-db/migrations/V025__alias_revisions.sql), the
+> revision record every write leaves. Proven by unit specs per file and by
+> [`aliases.integration-spec.ts`](../ouroboros-rest/src/modules/registry/aliases.integration-spec.ts)
+> — the full lifecycle over a socket against a migrated PostgreSQL 17, the role gates, the
+> cross-workspace 404s, and the rebind story asserted through `POST /routing/simulate`.
+>
+> **Rebind is one row, and the answer says what it changed.** A `PATCH` with a new
+> `connectionId` writes `model_aliases.provider_connection_id` and nothing in any route, rule
+> or workflow; the stored params are re-validated against the *new* model through CH.2's
+> schema; discovery is asked again; and `nextResolution` states where the next resolution now
+> goes. The integration spec seeds `coder-max` with mockup 21's four references, rebinds it to
+> a second connection, reads the four back unchanged, and asks the simulate endpoint — which
+> resolves `implement` to the new connection. Disabling a referenced alias answers
+> `droppedHops`, the referrer list #589's dropped-hop semantics will act on.
+>
+> **The guards, and their shapes.** Delete reads the referrer list through V023's
+> `alias_reference_guard()` *inside the delete's transaction*, so the `409
+> model_alias_referenced` a client renders — `details.references`, each with kind and chip
+> label — is still true when the delete would have run. Rename is the same list as a `422
+> model_alias_rename_blocked`, because the refused thing is a field (R5). Enabling an unbound
+> alias is `422 model_alias_unbound` with `details.fix: /models/providers`, decided before any
+> statement runs; creating one stores it switched off whatever the body said, with an
+> `alias_unbound` warning; unbinding an enabled one switches it off and says so. A taken name
+> is `422 model_alias_name_taken` — pre-checked, and the race two creates can lose is mapped
+> from the unique violation to the same code. The AC.6 discovery warning is surfaced as
+> `model_not_discovered` on the write that touched the binding: a trigger's `WARNING` is a
+> notice on the wire nobody would render, so the repository asks the trigger's own predicate.
+>
+> **Revisions are a table of their own, shaped for CJ.2 to copy.** `alias_revisions` is
+> V021's table for the registry — `actor` and `alias_id` set null, the name kept as text so a
+> `deleted` revision outlives its row, an `action` from a closed vocabulary of eight, and a
+> `{<column>: {from, to}}` diff CHECKed by `alias_revision_diff_valid()` so a no-op is
+> unstorable. One write, one record: a `PATCH` that renamed, rebound and edited at once records
+> the most consequential of them (`renamed` > `rebound` > `enabled`/`disabled` > `edited`) and
+> its diff carries the rest; a `PATCH` that changed nothing answers `revisionId: null` and
+> writes nothing. Not `audit_events`, deliberately: promotion into that table, with CJ.2's
+> `alias.*` vocabulary and the History tab, is #599's — and the columns are that table's
+> nouns so the promotion is a copy rather than a rewrite.
+>
+> **Two things the issue said that landed differently.** The list is served by this ticket
+> rather than by #588's composed read model, which is still open: it carries the row and its
+> references, and #588 composes chips, health and price on top of it. And Z.2's
+> `GET /routing/aliases` is **not removed** — the routing page still consumes it for the swap
+> menus, and a removed route is a breaking change for no gain; the amendment on Z.2 records
+> which surface reads which. `BA-C.3` was named as unfiled; the tenant context it describes
+> is what every controller under `/api/v1` already runs under, and this one does too.
+>
+> **Deferred, and to whom.** The composed read model (#588); the import wizard (#587); the
+> inspector and dialogs (#593, #594); the History tab and `audit_events` promotion (#599); the
+> `workflow` and `chat_pin` reference kinds, which the guards already honour the day CG.3's
+> view yields rows for them.
 
 - **Problem Statement:** The inspector's whole surface — create, edit, rebind,
   duplicate, enable/disable, remove — plus the guards that make the caption

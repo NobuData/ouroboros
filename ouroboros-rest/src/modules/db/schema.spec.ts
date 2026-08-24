@@ -270,7 +270,12 @@ describe("TABLE_COLUMNS", () => {
     // trail's one query can join a person's name onto their id. It is the third
     // library-owned table and the first this service reads for a reason that is not an
     // authorization decision.
-    expect(TABLE_NAMES).toHaveLength(24);
+    //
+    // Two more are CH.1's (#584): V025's `alias_revisions` — V021's table for the registry,
+    // and like it written here and read by the audit surface — and V023's `alias_references`
+    // (#581), a view, mirrored so the lifecycle's `Used by`, its `409` and its rename guard
+    // all read CG.3's one definition through the query builder rather than through raw SQL.
+    expect(TABLE_NAMES).toHaveLength(26);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

@@ -1497,6 +1497,120 @@ export interface RouteRevisionsTable {
 }
 
 /**
+ * `ouroboros.alias_revisions.action` — what one registry write was (V025,
+ * [#584](https://github.com/NobuData/ouroboros/issues/584)).
+ *
+ * One per write, from a closed vocabulary the inspector's History tab (CJ.2,
+ * [#599](https://github.com/NobuData/ouroboros/issues/599)) branches on. A `PATCH` that
+ * renamed, rebound and edited params at once records the most consequential of them —
+ * `registry/aliases.changes.ts` ranks them in this order — and its diff carries the rest.
+ */
+export const ALIAS_REVISION_ACTIONS = [
+  "created",
+  "renamed",
+  "rebound",
+  "enabled",
+  "disabled",
+  "edited",
+  "duplicated",
+  "deleted",
+] as const;
+
+/** One of {@link ALIAS_REVISION_ACTIONS}. */
+export type AliasRevisionAction = (typeof ALIAS_REVISION_ACTIONS)[number];
+
+/** One entry of an alias revision's diff — a column's value before the write, and after it. */
+export interface AliasRevisionChange {
+  from: unknown;
+  to: unknown;
+}
+
+/**
+ * `alias_revisions.diff` — the columns one registry write moved, keyed by column name (V025,
+ * [#584](https://github.com/NobuData/ouroboros/issues/584)).
+ *
+ * `duplicate_of` is the one key that is not a column: a duplicate records the alias it was
+ * copied from under it, in the same `{from, to}` shape. Typed rather than left opaque for
+ * {@link RouteRevisionDiff}'s reason: V025 closes the shape at the column with
+ * `ouroboros.alias_revision_diff_valid()`.
+ */
+export type AliasRevisionDiff = Record<string, AliasRevisionChange>;
+
+/**
+ * `ouroboros.alias_revisions` — one row per registry write (V025,
+ * [#584](https://github.com/NobuData/ouroboros/issues/584)).
+ *
+ * V021's table again, for the registry: {@link ModelAliasesTable.updated_by} and `updated_at`
+ * say who wrote the state an alias is *in*, both are overwritten by the next edit, and the
+ * transitions between them live here — which is what turns *who rebound `coder-max` to what,
+ * when* into a row. **Append-only by construction**, as `route_revisions` is: no `updated_at`,
+ * no touch trigger, and nothing in this service updates it.
+ *
+ * The columns are `audit_events`' nouns on purpose — `actor`, an `action` from a vocabulary,
+ * the alias as a subject, a before/after document — so CJ.2's promotion into that table is a
+ * copy rather than a rewrite.
+ */
+export interface AliasRevisionsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /**
+   * The alias this revision was about — `model_aliases.id`, `on delete set null`.
+   *
+   * Null after the alias is deleted, which is what lets a `deleted` revision survive the row
+   * it describes; the name lives in {@link AliasRevisionsTable.alias} for exactly that case.
+   */
+  alias_id: string | null;
+  /** The alias's name as it read after the write — `coder-max`, or `coder-max-copy`. */
+  alias: string;
+  /** Who made the write — `"user"."id"`, `on delete set null`. Null for a seed or an import. */
+  actor: string | null;
+  /** What the write was. See {@link ALIAS_REVISION_ACTIONS}. */
+  action: AliasRevisionAction;
+  /** What moved. See {@link AliasRevisionDiff}. */
+  diff: AliasRevisionDiff;
+  created_at: Stamped;
+}
+
+/**
+ * The four storage shapes a model alias can be referenced from — V023's
+ * `alias_reference_kind` domain ([#581](https://github.com/NobuData/ouroboros/issues/581),
+ * decision **R5**). Two are live (`route`, `escalation`); `workflow` and `chat_pin` are in
+ * the vocabulary and contribute no rows until their storage exists.
+ */
+export const ALIAS_REFERENCE_KINDS = ["route", "escalation", "workflow", "chat_pin"] as const;
+
+/** One of {@link ALIAS_REFERENCE_KINDS}. */
+export type AliasReferenceKind = (typeof ALIAS_REFERENCE_KINDS)[number];
+
+/**
+ * `ouroboros.alias_references` — what references a model alias, one row per reference (V023,
+ * [#581](https://github.com/NobuData/ouroboros/issues/581)).
+ *
+ * A **view**, and read-only: mockup 21's `USED BY` column, the inspector's chip list, the
+ * blocked **Remove** and the rename guard all read this one definition (decision **R5**), and
+ * no count is stored anywhere — the column is `count(*)` over it. Read it through
+ * `alias_reference_guard()` from inside a delete or rename transaction; selecting from the
+ * view directly takes no lock and its answer can go stale before the next statement runs.
+ */
+export interface AliasReferencesView {
+  /** The workspace, carried from the referring row. */
+  organization_id: string;
+  /** `model_aliases.id` — what a delete or rename is about. */
+  alias_id: string;
+  /** `model_aliases.alias` — the name, so the view can be entered by it. */
+  alias: string;
+  /** Which storage shape the reference lives in. */
+  kind: AliasReferenceKind;
+  /** The referring row — `route_hops.id` for a route, `escalation_rules.id` for a rule. */
+  ref_id: string;
+  /** Mockup 21's chip, verbatim — a route's tag, or `escalation:effort≥L`. */
+  ref_label: string;
+  /** Whether this reference refuses a delete (409) rather than warns about one (422). */
+  blocking: boolean;
+}
+
+/**
  * `ouroboros.audit_events` — who did what to which subject, from where, and when (V022,
  * [#225](https://github.com/NobuData/ouroboros/issues/225)).
  *
@@ -1750,9 +1864,11 @@ export interface Database {
   route_hops: RouteHopsTable;
   escalation_rules: EscalationRulesTable;
   route_revisions: RouteRevisionsTable;
+  alias_revisions: AliasRevisionsTable;
   audit_events: AuditEventsTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
+  alias_references: AliasReferencesView;
 }
 
 /**
@@ -1956,6 +2072,16 @@ export const TABLE_COLUMNS = {
     "updated_at",
   ],
   route_revisions: ["id", "organization_id", "actor", "diff", "created_at"],
+  alias_revisions: [
+    "id",
+    "organization_id",
+    "alias_id",
+    "alias",
+    "actor",
+    "action",
+    "diff",
+    "created_at",
+  ],
   audit_events: [
     "id",
     "organization_id",
@@ -1984,6 +2110,15 @@ export const TABLE_COLUMNS = {
     "is_explicit",
     "updated_at",
     "updated_by",
+  ],
+  alias_references: [
+    "organization_id",
+    "alias_id",
+    "alias",
+    "kind",
+    "ref_id",
+    "ref_label",
+    "blocking",
   ],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
@@ -2155,6 +2290,20 @@ export type RouteRevision = Selectable<RouteRevisionsTable>;
  * V021's own decision: a revision is an event, and nothing in this service updates one.
  */
 export type NewRouteRevision = Insertable<RouteRevisionsTable>;
+
+/** A row of `ouroboros.alias_revisions`, as a `select` returns it — one registry write. */
+export type AliasRevision = Selectable<AliasRevisionsTable>;
+
+/**
+ * The columns an `insert` into `ouroboros.alias_revisions` may carry.
+ *
+ * No `Updateable` counterpart, for {@link NewRouteRevision}'s reason: a revision is an event,
+ * and nothing in this service updates one.
+ */
+export type NewAliasRevision = Insertable<AliasRevisionsTable>;
+
+/** A row of `ouroboros.alias_references`, as a `select` returns it — one reference to an alias. */
+export type AliasReference = Selectable<AliasReferencesView>;
 
 /** A row of `ouroboros.audit_events`, as a `select` returns it — one thing that happened. */
 export type AuditEvent = Selectable<AuditEventsTable>;

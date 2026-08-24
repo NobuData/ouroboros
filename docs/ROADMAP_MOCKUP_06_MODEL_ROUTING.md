@@ -894,7 +894,10 @@ resolve("implement", {effort:"l"}) ─▶
 > with no contract change; `0` appears nowhere as a stand-in for *unmeasured*.
 >
 > **Deliberately not here:** `/routing/simulate` (Z.4, #197), the stats themselves (Z.5, #198),
-> alias CRUD (CH.1, #584 — this ticket serves the *list*, which is M2's foundation scope), and
+> alias CRUD (CH.1, #584 — this ticket serves the *list*, which is M2's foundation scope; CH.1
+> landed 2026-08-24 at `/api/v1/registry/aliases`, and the amendment stands as: the swap menus
+> keep `GET /routing/aliases`, the registry page reads CH.1's list, which carries the row
+> itself and what references it), and
 > any surface that reads `route_revisions` back — #26 owns that, and this ticket's job was to
 > give it something to read.
 >
