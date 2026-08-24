@@ -1684,9 +1684,10 @@ tokens.css (2.3) ─▶ globals.css ─▶ components use var(--surface|--ink|--
 > header carrying the brand and the session controls and **no navigation links**, a left
 > sidebar of eleven icon-and-name entries that collapses to an icon rail below 1024px,
 > and a content pane that is the only scrolling element in the product. The mock-note
-> footer is dropped, as that addendum directs. Every destination except the dashboard is
-> a screen nobody has built yet, so those entries render labelled *soon* rather than as
-> links to a 404 — #49 and each screen's own roadmap issue turn them into links. The
+> footer is dropped, as that addendum directs. Every destination except the dashboard was
+> a screen nobody had built yet, so those entries render labelled *soon* rather than as
+> links to a 404 — #49 and each screen's own roadmap issue turn them into links, and
+> **Models** is the first one that has (AA.1, #200, 2026-08-24). The
 > slots left for other issues are the theme toggle (5.4), the tenant chip (#77), the
 > search pill (#79), the real needs-you count (#78), and the profile menu's contents
 > (CP.3, #645); the registry behind the sidebar, its persisted collapse control and the
@@ -2060,13 +2061,27 @@ tokens ─▶ [Button] [Chip] [Card] [Table] [Field] [Pill] [EmptyState] ─▶ 
 
 > **GitHub issue:** #49 · **Status:** 🟡 Open · **Parent epic:** #5
 
+> **Amended 2026-08-24 — `/models` is out of scope, retired by AA.1
+> ([#200](https://github.com/NobuData/ouroboros/issues/200)).** The amendment was recorded when
+> the model-routing roadmap was filed
+> ([`ROADMAP_MOCKUP_06_MODEL_ROUTING.md`](ROADMAP_MOCKUP_06_MODEL_ROUTING.md)); this is the
+> commit that acts on it. `/models` is a real screen now, and the sidebar's **Models** entry is a
+> link rather than a *soon* row — which is the shape of every remaining retirement here: a
+> placeholder is not deleted and replaced, it is *never built*, because the screen's own roadmap
+> issue arrives first and the registry entry flips on that commit.
+>
+> Eight destinations still wait: `/issues`, `/workflows`, `/build-farm`, `/knowledge`,
+> `/planning`, `/research`, `/insights`, `/inbox` and `/settings`. This issue stays open for
+> whichever of them has no roadmap issue landing sooner.
+
 - **Problem Statement:** The nav promises 21 screens; dead links undermine the tour.
   Placeholders make the information architecture real without faking features.
 - **Solution/Scope:** Routes for screens 03–21 (`/issues`, `/workflows`, `/routing`,
   `/providers`, `/build-farm`, `/planning`, `/runs`, `/tests`, `/verification`,
   `/knowledge`, `/insights`, `/inbox`, `/settings`, …) rendering a shared
   ComingSoon component (mockup thumbnail + one-line description from mockups README);
-  nav "soon" markers removed as each activates.
+  nav "soon" markers removed as each activates. **`/models` is no longer among them** —
+  AA.1 (#200) built the screen itself on 2026-08-24.
 - **Acceptance Criteria:** No dead nav links; every route renders shell + placeholder
   in both themes.
 - **Parallelism/Dependencies:** Needs 5.3. v2 (nice-to-have polish).

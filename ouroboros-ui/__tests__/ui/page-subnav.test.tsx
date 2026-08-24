@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { CHROME_SUBNAV_PROPERTY, PageSubnav } from "@/app/ui";
+import { CHROME_SUBNAV_PROPERTY, PageSubnav, SubnavSoon } from "@/app/ui";
 
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
@@ -78,6 +78,68 @@ describe("the tones", () => {
     );
 
     expect(screen.getByRole("navigation")).toHaveClass("ou-subnav", "wk-placed");
+  });
+});
+
+describe("a tab whose surface is not built yet", () => {
+  it("is a span rather than a link, so the keyboard never stops on it", () => {
+    // The sidebar's rule for the same reason (`app/shell/sidebar-nav.tsx`): a row that
+    // cannot be activated should not be a stop on the way to one that can.
+    render(
+      <PageSubnav label="Models">
+        <SubnavSoon label="Model registry" note="Arrives with mockup 21." />
+      </PageSubnav>,
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+
+    const tab = screen.getByText("Model registry", { selector: ".ou-subnav__soon" });
+
+    expect(tab.tagName).toBe("SPAN");
+    expect(tab.hasAttribute("tabindex")).toBe(false);
+  });
+
+  it("carries the word `soon` in the text, not only in a tooltip", () => {
+    // What a sighted reader sees and a screen reader announces. A tab that were merely
+    // quieter than its neighbours would read as a style choice rather than as a state.
+    render(
+      <PageSubnav label="Models">
+        <SubnavSoon label="Spend" note="Arrives with #210." />
+      </PageSubnav>,
+    );
+
+    const tab = screen.getByText("Spend", { selector: ".ou-subnav__soon" });
+
+    expect(tab).toHaveTextContent("soon");
+    expect(tab.querySelector(".ou-subnav__mark")).toHaveTextContent("soon");
+  });
+
+  it("says which surface owns it, because `soon` on its own answers nothing", () => {
+    render(
+      <PageSubnav label="Models">
+        <SubnavSoon label="Providers & keys" note="Arrives with its own roadmap (mockup 07)." />
+      </PageSubnav>,
+    );
+
+    expect(
+      screen.getByText("Providers & keys", { selector: ".ou-subnav__soon" }),
+    ).toHaveAttribute("title", "Providers & keys — Arrives with its own roadmap (mockup 07).");
+  });
+
+  it("sits in the row beside the tabs that do work", () => {
+    render(
+      <PageSubnav label="Models">
+        <a aria-current="page" href="/models">
+          Routing
+        </a>
+        <SubnavSoon label="Spend" note="Arrives with #210." />
+      </PageSubnav>,
+    );
+
+    const tabs = screen.getByRole("navigation", { name: "Models" });
+
+    expect(tabs.children).toHaveLength(2);
+    expect(tabs.firstElementChild).toHaveAttribute("aria-current", "page");
   });
 });
 

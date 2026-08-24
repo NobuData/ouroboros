@@ -46,7 +46,13 @@ export {
 export { EmptyState, type EmptyStateProps } from "./empty-state";
 export { Eyebrow, type EyebrowTone } from "./eyebrow";
 export { Meter, type MeterProps, type MeterTone } from "./meter";
-export { PageSubnav, type PageSubnavProps, type SubnavTone } from "./page-subnav";
+export {
+  PageSubnav,
+  SubnavSoon,
+  type PageSubnavProps,
+  type SubnavSoonProps,
+  type SubnavTone,
+} from "./page-subnav";
 export {
   SelectField,
   TextField,

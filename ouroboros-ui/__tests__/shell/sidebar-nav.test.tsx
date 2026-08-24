@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DASHBOARD_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, MODELS_PATH } from "@/app/paths";
 import { focusStops } from "@/app/shell/focus-trap";
 import type { NavEntry } from "@/app/shell/nav";
 import { INBOX_BADGE_SOURCE, SEEDED_NAV_ENTRIES } from "@/app/shell/nav-modules";
@@ -182,18 +182,25 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // Every other entry is a screen nobody has built: a link to it would be a 404 in the
-    // product's primary navigation.
+    // The two screens that are built: the dashboard (#45) and Models (#200). Every other
+    // entry is a screen nobody has built, and a link to one would be a 404 in the product's
+    // primary navigation. The count is asserted too, so a third link cannot appear without
+    // somebody deciding it should.
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(1);
-    expect(links[0]).toHaveAttribute("href", DASHBOARD_PATH);
+
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      DASHBOARD_PATH,
+      MODELS_PATH,
+    ]);
   });
 
   it("labels an unbuilt entry rather than leaving it dead", () => {
     const { container } = render(<SidebarNav />);
     const soon = container.querySelectorAll(".shell-nav__item--soon");
 
-    expect(soon).toHaveLength(SEEDED_NAV_ENTRIES.length - 1);
+    const built = SEEDED_NAV_ENTRIES.filter((entry) => entry.status !== "soon").length;
+
+    expect(soon).toHaveLength(SEEDED_NAV_ENTRIES.length - built);
     for (const row of soon) {
       // The chip is what a sighted reader sees and a screen reader announces; the tooltip
       // carries the reason.

@@ -174,11 +174,14 @@ describe("the keyboard", () => {
   });
 
   it("moves down", () => {
+    // The second runnable row, which is a second *navigation* row since #200 built
+    // `/models`: an entry going live joins the palette because the palette is built from the
+    // registry rather than from a list of its own (`app/shell/command-sources.ts`).
     const box = open();
 
     fireEvent.keyDown(box, { key: "ArrowDown" });
 
-    expect(highlighted()).toHaveTextContent("Toggle theme");
+    expect(highlighted()).toHaveTextContent("Go to Models");
   });
 
   it("wraps at the ends, which is what a short list wants", () => {
@@ -206,7 +209,7 @@ describe("the keyboard", () => {
 
     fireEvent.keyDown(box, { key: "Home" });
 
-    expect(highlighted()).toHaveTextContent("Toggle theme");
+    expect(highlighted()).toHaveTextContent("Go to Models");
   });
 });
 

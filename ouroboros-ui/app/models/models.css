@@ -1,0 +1,280 @@
+/*
+ * The routing page (#200) — mockup 06's page frame and provider health strip.
+ *
+ * The mockup is docs/mockups/06-model-routing.html over docs/mockups/assets/ouroboros.css.
+ * What is taken from it is the *anatomy* the design system requires of every module page
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 2): page head, subnav, then the page's content. What is
+ * not taken from it is the topbar and sidebar markup — this page renders inside the app
+ * shell (#41) and starts at its page head — nor the `.subnav` rules, which are the CP.4
+ * primitive's now (app/ui/ui.css) and are shared with every other section that has tabs.
+ *
+ * What is left here is what belongs to *this page and no other*: the gutter rhythm, the page
+ * head, and the `.phealth` strip, which is a composition rather than a primitive because it
+ * names a domain concept — a provider connection and its measured health (app/ui/index.ts
+ * § What belongs here).
+ *
+ * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
+ * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length that
+ * should follow the reader's font-size preference is rem — a spacing or radius token, or a
+ * rem literal where the design names a pixel size.
+ *
+ * The mockup's token names are its own; each maps onto the #16 sheet's: --border → --line,
+ * --border-strong → --line-strong, --mut → --ink-mut, --faint → --ink-faint, --ink-dim
+ * stays, and --warn/--err are the palette's own status hues.
+ */
+
+/* ---------- the page frame ---------- */
+
+/*
+ * The pane is the scroll container and already centres the 1440px measure
+ * (app/shell/shell.css), so this contributes the gutter rhythm and nothing else. The
+ * measurements are the dashboard's, so two module pages in the same product start their
+ * content on the same line.
+ */
+.models {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.models__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-9);
+}
+
+/*
+ * The floor is what keeps the promise sentence from wrapping to one word a line beside two
+ * buttons at the narrow end of the pane; the buttons drop under it instead.
+ */
+.models__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.models__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+/*
+ * The measure is wider than the dashboard's 64ch because this subline is three sentences
+ * rather than one — at 64ch it becomes a five-line paragraph that pushes the tab set below
+ * the fold on a laptop.
+ */
+.models__sub {
+  max-width: 88ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.models__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+/*
+ * The tab set's placement, and only its placement — the row itself is the CP.4 primitive's.
+ * The negative block-start pulls it up against the head the way the mockup's `margin: -6px 0
+ * 20px` does; the inline margins are `.models`'s own padding, undone and re-applied as
+ * padding so the sticky row spans the pane's full width while its tabs still line up with
+ * the heading above them. A sticky element inset from the pane's edges leaves two gutters
+ * that scrolled content shows through.
+ */
+.models__subnav {
+  margin: calc(var(--sp-4) * -1) calc(var(--sp-10) * -1) var(--sp-9);
+  padding: 0 var(--sp-10);
+}
+
+/* ---------- the provider health strip ---------- */
+
+/*
+ * The mockup's `.phealth`: one chip per connection, wrapping rather than scrolling, because
+ * the number of providers a workspace has is small and knowable and a strip that scrolled
+ * sideways would hide the very chip somebody is looking for.
+ *
+ * A `ul`, so `margin`, `padding` and `list-style` are the user-agent defaults this has to
+ * undo — the 40px inline padding is also the one length here that would not follow the
+ * reader's font-size preference.
+ */
+.models-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+  margin: 0 0 var(--sp-9);
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * One chip. The mockup's `.prov`: a hairline box on the raised plane, dense, with the whole
+ * chip as the hover target for the last-checked detail.
+ */
+.models-health__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.models-health__chip:hover {
+  border-color: var(--line-strong);
+}
+
+/*
+ * The dot. It inherits `currentColor` from the tone modifier below, which is what keeps a
+ * state's hue in one declaration per tone rather than in two that can disagree.
+ */
+.models-health__dot {
+  width: var(--sp-4);
+  height: var(--sp-4);
+  flex: none;
+  border-radius: var(--r-round);
+  background: currentColor;
+}
+
+/*
+ * The second shape, and the reason an `unknown` chip is legible with no colour vision at
+ * all: a ring is a state nobody reported, a disc is a state something did. The same
+ * distinction `.ou-chip__dot--ring` draws for the primitive.
+ */
+.models-health__dot--ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.models-health__name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The state, in a word. Drawn in the tone's own colour, so the chip reads as one phrase. */
+.models-health__state {
+  color: currentColor;
+  font-weight: 500;
+}
+
+/* Decoration between the state and what the check measured. */
+.models-health__sep {
+  color: var(--ink-faint);
+}
+
+/*
+ * What the last check measured, in mono because every part of it is a value — `42ms`,
+ * `3 models`, a hostname.
+ */
+.models-health__meta {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * ---------- the four tones ----------
+ *
+ * Each status the contract publishes gets a rule of its own, so a state can never fall back
+ * to another's colour. `color` is set on the chip rather than on the dot because the dot,
+ * the state word and (for the two states that are not neutral) the meta all take it from
+ * `currentColor` — one declaration per tone, and no way for the dot and the word to disagree
+ * about what the chip is reporting.
+ */
+
+/* Healthy: only the dot is hued. A chip whose every part was green would shout. */
+.models-health__chip--ok {
+  color: var(--ok);
+}
+
+.models-health__chip--ok .models-health__name {
+  color: var(--ink);
+}
+
+/*
+ * An operator switched it off. It recedes rather than alarms — this is intent, not a
+ * failure — and it is told apart from `unknown` by its dot, which is a disc: somebody
+ * reported this state.
+ */
+.models-health__chip--paused {
+  color: var(--ink-mut);
+  background: var(--raised);
+}
+
+/*
+ * The last check failed, and the meta says how. The mockup draws its Copilot chip in the
+ * warn hue under the word *degraded*; the seeded row is `error`, which V015 defines as *the
+ * last check failed*, and drawing a failed check in the amber reserved for *needs attention*
+ * would under-report every real outage on this strip. The traffic-derived `degraded` state
+ * the mockup imagined arrives with AB.2 (#208) and takes --warn when it does.
+ */
+.models-health__chip--err {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.models-health__chip--err .models-health__meta {
+  color: var(--err);
+}
+
+/*
+ * Nothing has checked it (decision M8). It is distinguishable from a healthy chip **three
+ * times over, and none of them is hue**: the dot is a ring rather than a disc, the border is
+ * dashed rather than solid, and the chip says the word *unknown* where a healthy one says
+ * nothing. That is what "not a grey dot that reads as green in a hurry" has to mean on a
+ * strip somebody reads reliability from, and it holds in both palettes because none of the
+ * three signals is a colour.
+ */
+.models-health__chip--unknown {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--inset);
+  color: var(--ink-faint);
+}
+
+/*
+ * ---------- what the strip says when it has no chips ----------
+ *
+ * An empty strip and a strip nobody could read are different facts and get different lines;
+ * neither is a blank region (§ 3.3). Both sit where the chips would have been, so the page
+ * below them does not move.
+ */
+.models-health__note {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.models-health__note-head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/*
+ * A read that failed carries the service's own sentence, and must not look like a workspace
+ * that has connected nothing — the same distinction the dashboard's failed subline draws.
+ */
+.models-health__note--failed,
+.models-health__note--failed .models-health__note-head {
+  color: var(--err);
+}
+
+/* ---------- the surface the matrix will fill ---------- */
+
+/*
+ * A card the height of what it stands in for, so the page has a foot rather than ending
+ * abruptly under the strip. `fill` on the card is what lets the empty state inside it take
+ * the height rather than sit as a short box at the top of a tall one.
+ */
+.models__next {
+  min-height: 18rem;
+}
