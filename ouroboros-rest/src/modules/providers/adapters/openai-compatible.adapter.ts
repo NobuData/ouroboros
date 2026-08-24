@@ -80,6 +80,11 @@
 
 import { Injectable } from "@nestjs/common";
 
+import {
+  MODEL_ALIAS_TEMPERATURE_MAX,
+  MODEL_ALIAS_TEMPERATURE_MIN,
+  MODEL_ALIAS_TOKENS_MIN,
+} from "../../db/schema";
 import type {
   ModelProviderAdapter,
   NormalizedModel,
@@ -107,6 +112,7 @@ import {
   type ProviderConnectionConfig,
 } from "../provider.config";
 import { ProviderAdapterError, classifyHttpStatus } from "../provider.errors";
+import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
 
 /**
  * The property the optional API key is submitted under.
@@ -442,6 +448,54 @@ export function normalizeModel(entry: unknown): NormalizedModel | null {
 }
 
 /**
+ * What an OpenAI-compatible endpoint can be tuned with — the three every implementation of the
+ * wire format honours, and nothing beyond them.
+ *
+ * A module constant rather than a value built per model: this adapter serves vLLM, llama.cpp,
+ * LM Studio and anything else speaking `/v1/chat/completions`, and what distinguishes two models
+ * behind one of those is a *deployment* fact — how the server was started, what context it was
+ * given — rather than something the wire format publishes. So the schema is the same for every
+ * model, and the per-model narrowing is `provider_models.meta` merged over it by
+ * `registry/params.merge.ts`.
+ *
+ * **There is no `thinking` field, and its absence is the point.** Some models served this way
+ * reason and some do not, and this format has no way to ask which; a control offered on every
+ * one of them would be a control that silently does nothing on most. Decision **R3**'s option
+ * 2-A is exactly this refusal.
+ *
+ * **`context_clamp` and `max_output` declare no ceiling.** The real limits are the deployment's,
+ * which arrive through discovery — see {@link ANTHROPIC_MAX_THINKING_BUDGET}'s neighbour in the
+ * Anthropic adapter for the same argument stated once.
+ */
+const OPENAI_COMPATIBLE_PARAM_SCHEMA: ModelParamSchema = {
+  $schema: MODEL_PARAM_DIALECT,
+  type: "object",
+  title: "OpenAI-compatible model parameters",
+  properties: {
+    max_output: {
+      type: "integer",
+      title: "Max output",
+      description: "`max_tokens` — the most tokens one answer may run to.",
+      minimum: MODEL_ALIAS_TOKENS_MIN,
+    },
+    context_clamp: {
+      type: "integer",
+      title: "Context clamp",
+      description: "Hold this model to a smaller context than the server was started with.",
+      minimum: MODEL_ALIAS_TOKENS_MIN,
+    },
+    temperature: {
+      type: "number",
+      title: "Temperature",
+      description: "Zero is deterministic; two is as varied as this wire format goes.",
+      minimum: MODEL_ALIAS_TEMPERATURE_MIN,
+      maximum: MODEL_ALIAS_TEMPERATURE_MAX,
+    },
+  },
+  additionalProperties: false,
+};
+
+/**
  * The OpenAI-compatible adapter.
  *
  * `@Injectable()` because `providers.module.ts` registers the class and Nest constructs it. It
@@ -479,6 +533,23 @@ export class OpenAiCompatibleAdapter implements ModelProviderAdapter {
    */
   capabilities(): ProviderCapabilities {
     return { discovery: true, pull: false, entitlements: false, invocation: false };
+  }
+
+  /**
+   * What a model behind this endpoint can be tuned with — an output ceiling, a context clamp
+   * and a temperature.
+   *
+   * The same three for every model, because the wire format publishes nothing that would
+   * distinguish them; what does distinguish them is the deployment, and that reaches the schema
+   * through discovery. See {@link OPENAI_COMPATIBLE_PARAM_SCHEMA} on why there is no thinking
+   * field here.
+   *
+   * @param _modelId - Unread, and named with an underscore to say so: nothing this adapter can
+   *   answer offline varies by model.
+   * @returns A fresh schema every call, equal on every call.
+   */
+  paramSchema(_modelId: string): ModelParamSchema {
+    return copyParamSchema(OPENAI_COMPATIBLE_PARAM_SCHEMA);
   }
 
   /**

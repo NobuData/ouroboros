@@ -6,10 +6,11 @@ import {
   aliasNotFound,
   isProviderConnectionInUse,
   providerConnectionInUse,
+  registryConnectionNotFound,
 } from "./registry.errors";
 
 /**
- * The two refusals, and the recogniser for the one PostgreSQL raises.
+ * The four refusals, and the recogniser for the one PostgreSQL raises.
  *
  * `provider_connection_in_use` is the ticket's fourth acceptance criterion — *blocked with a
  * clear, designed error message* — so most of this suite is about the message rather than
@@ -145,5 +146,46 @@ describe("isProviderConnectionInUse", () => {
     ["an object with no code", { constraint: PROVIDER_DEPENDENCY_CONSTRAINT }],
   ])("does not recognise %s", (_name, value) => {
     expect(isProviderConnectionInUse(value)).toBe(false);
+  });
+});
+
+describe("registryConnectionNotFound", () => {
+  it("is a 404 carrying the published code", () => {
+    const error = registryConnectionNotFound(CONNECTION);
+
+    expect(error).toBeInstanceOf(NotFoundError);
+    expect(error.getStatus()).toBe(404);
+    expect(error.code).toBe(REGISTRY_ERRORS.connectionNotFound);
+  });
+
+  it("carries the id in details rather than in the sentence", () => {
+    // It is a uuid and nobody reads one — the same choice `providerConnectionInUse` makes.
+    expect(registryConnectionNotFound(CONNECTION).details).toEqual({ connectionId: CONNECTION });
+    expect(registryConnectionNotFound(CONNECTION).envelope().message).not.toContain(CONNECTION);
+  });
+
+  it("uses the code `provider-connections/` already publishes for the same fact", () => {
+    // One code for one situation, whichever surface produced it: a client that recognises the
+    // credential lifecycle's `404` recognises this one without learning a second spelling.
+    expect(REGISTRY_ERRORS.connectionNotFound).toBe("provider_connection_not_found");
+  });
+
+  it("says nothing about which connections the workspace does have", () => {
+    // A `404` that enumerated neighbours would let a caller walk one workspace's providers out
+    // of it one guess at a time — and the same answer for *absent* and *somebody else's* is
+    // what keeps the two indistinguishable from outside.
+    expect(registryConnectionNotFound(CONNECTION).envelope().message).toBe(
+      "This workspace has no provider connection by that id.",
+    );
+  });
+});
+
+describe("the param-write refusal", () => {
+  it("has a code of its own rather than reusing the DTO pipe's", () => {
+    // Both are `422`s with the same `details` shape and they mean different things: one is *the
+    // body is malformed* and this is *the body is fine and the model refuses it*. The error
+    // itself is raised in `params.validation.ts`, which is where its messages are proved.
+    expect(REGISTRY_ERRORS.aliasParamsInvalid).toBe("model_alias_params_invalid");
+    expect(REGISTRY_ERRORS.aliasParamsInvalid).not.toBe("validation_failed");
   });
 });

@@ -86,7 +86,7 @@ the Spend tab.
 | Routing Z.1 resolution (pure `resolve()` + explanations), Z.4 simulate, M1 alias-only rule | **Consumed + amended** — CH.6 adds disabled/unbound-alias semantics to resolution (dropped hops with explanations) and defines the persisted resolution snapshot the chain card and run console share. |
 | Routing Z.2 ("alias list endpoint for swap menus — registry read, foundation scope") | **Superseded** — CH.1's full lifecycle API replaces the minimal read (amendment posted at filing). |
 | Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended** — alias health derives from provider health + binding state (CH.5, no alias-level probes); the Registry tab goes live (CI.1 amendment, mirroring AE.1's). |
-| Providers AC.1 adapter SPI, AC.6 `provider_models` discovered catalog + P6 ("discovery feeds the registry") + soft alias-validation hook | **Consumed + extended** — the inspector's live model list and the import wizard read `provider_models`; CH.2 extends the SPI with per-model param/capability schemas; the AC.6 unknown-model warning gets its UI surface (CI.2/CI.3). |
+| Providers AC.1 adapter SPI, AC.6 `provider_models` discovered catalog + P6 ("discovery feeds the registry") + soft alias-validation hook | **Consumed + extended, and CH.2 (#585) is 🟢 delivered** — the inspector's live model list and the import wizard read `provider_models`; the SPI now carries `paramSchema(modelId)`, merged with `provider_models.meta` and the catalog's; the AC.6 unknown-model warning gets its UI surface (CI.2/CI.3). |
 | Providers AD.2 (provider delete blocked while aliases depend, 409 naming aliases) | **Mirrored** — the registry enforces the same discipline in the other direction (alias delete blocked while routes/workflows/rules/commands reference it). |
 | Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here, and CG.2 (#580) is 🟢 delivered** — the `$ per 1M in·out` column needs a pricing catalog *now*, so `model_prices` is the shared price-table layer J.4 and Z.5/AB.4 consume rather than re-invent: bundled snapshot plus org overrides, four billing modes, provenance on every row. CH.3 (#586) is the service over it, and is 🟢 delivered. |
 | Workflow-builder P.2 (DSL JSON Schema, zod+pydantic parity, publish validation) | **Amended** — the governance card's "raw model strings are rejected at publish time" lands as a P.2 schema amendment: `llm` nodes reference registry aliases structurally (CH.6), which also makes workflow references queryable for CG.3. |
@@ -547,7 +547,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | CH.1 | #584 | 🟡 Open | ouroboros-rest: [CH.1] Alias lifecycle API | CRUD, rebind, duplicate, enable/disable, guarded rename/delete; supersedes Z.2's alias list | mvp, registry, rest | N (after CG.1, CG.3, BA-C.3) | Y | L | ouroboros-rest |
-| CH.2 | #585 | 🟡 Open | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
+| CH.2 | #585 | 🟢 Done | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
 | CH.3 | #586 | 🟢 Done | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
 | CH.4 | #587 | 🟡 Open | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
 | CH.5 | #588 | 🟡 Open | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
@@ -603,7 +603,7 @@ POST /aliases/coder-max/duplicate ─▶ coder-max-copy (off)
 
 ### Issue CH.2 — ouroboros-rest: [CH.2] Param & capability service
 
-> **GitHub issue:** #585 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #585 · **Status:** 🟢 Done · **Parent epic:** #576
 
 - **Problem Statement:** The inspector must offer only tunables the bound
   model actually supports, and the table's chips must derive from validated
@@ -1328,7 +1328,7 @@ Amendments posted at filing:
 | Z.2 (#195) | **The minimal alias-list read is superseded by CH.1 (#584)**; routing's swap menus consume CH.5's (#588) composed read model |
 | Z.1 (#194) | Resolution gains **disabled/unbound dropped hops with explanations** (CH.6, #589); floor semantics unchanged; simulate surfaces them |
 | WF-P.2 (#133) | **`llm` nodes go alias-only** — raw model strings fail publish validation with a designed error; the side effect is that workflow references become structural, which is what CG.3's (#581) index needs |
-| AC.1 (#216) | The SPI gains **`paramSchema(modelId)`** (CH.2, #585); the inspector renders fields from it with zero UI special-casing; restriction flags stay adapter-independent |
+| AC.1 (#216) | **Amended and 🟢 delivered.** The SPI gained **`paramSchema(modelId)`** (CH.2, #585); the inspector renders fields from it with zero UI special-casing — `param.forms.ts` names no param and no kind, proven by reading its own source — and restriction flags stay adapter-independent |
 | Y.4 (#192) | Seeds **extended, not forked** — the unbound `gpt5-experiments` joins the shared universe, plus params, prices and the run #482 snapshot (CG.4, #582); `second-opinion` moves *into* Y.4, because V018 (#191) refuses an escalation rule that names an alias the workspace does not have |
 | AC.6 (#221) | P6's "discovery feeds the registry" is claimed: import (#587), the inspector's live model list (#593), param metadata (#585), and the `model not in discovery` health state (#588) |
 | DASH-J.4 (#92) | **The "provider price tables" are being built here** — consume CG.2 (#580) + CH.3 (#586) rather than re-inventing them |

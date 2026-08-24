@@ -52,6 +52,8 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `provider.config.ts` | The JSON Schema dialect `configSchema()` answers in, and its gate. |
 | `provider.address.ts` | The **SSRF policy** — what an adapter that takes an operator-supplied URL may do with it. |
 | `provider.forms.ts` | Schema → form fields. Contains no provider kind, by test. |
+| `provider.params.ts` | The JSON Schema dialect `paramSchema()` answers in (CH.2, [#585](https://github.com/NobuData/ouroboros/issues/585)), its gate, and the domain `model_aliases.params` will store. |
+| `param.forms.ts` | Param schema → form fields. Contains no param name and no provider kind, by test. |
 | `provider.entitlements.ts` | **Seats in a `detail`** (AC.5, [#220](https://github.com/NobuData/ouroboros/issues/220)) — the one place a seat count is written, and the one place it is read back. |
 | `provider.registry.ts` | Lookup by `kind`, the `MODEL_PROVIDER_ADAPTERS` token, two refusals. |
 | `provider.pulls.ts` | **Server-side pull tracking** (AC.4, [#219](https://github.com/NobuData/ouroboros/issues/219)) — what consumes a `pullModel` stream so a progress bar survives a reload. |
@@ -65,6 +67,7 @@ Everything lives in `ouroboros-rest/src/modules/providers/`:
 | `adapters/http.recordings.fixture.ts` | The stand-in `fetch` every adapter's recorded fixtures are served through. |
 | `adapters/fake.adapter.fixture.ts` | The in-memory adapter — this document's worked example. |
 | `card.shapes.fixture.ts` | Mockup 07's five cards, as schemas. |
+| `param.shapes.fixture.ts` | Mockup 21's inspector shapes, as param schemas — including one carrying a parameter this build has never seen. |
 | `.dependency-cruiser.cjs` | The boundary, at the module root. Run by `yarn lint`. |
 
 ```
@@ -82,6 +85,7 @@ interface ModelProviderAdapter {
   capabilities(): ProviderCapabilities;
   validate(config, secret): Promise<ProviderValidation>;
   discoverModels(connection): Promise<NormalizedModel[]>;
+  paramSchema(modelId): ModelParamSchema;
 }
 
 interface PullCapableAdapter extends ModelProviderAdapter {
@@ -90,12 +94,20 @@ interface PullCapableAdapter extends ModelProviderAdapter {
 }
 ```
 
-Five members, and every one of them is something the page does: the add-form is
-`configSchema()`, the **Test connection** button is `validate()`, the **Models available**
+Six members, and every one of them is something a page does: mockup 07's add-form is
+`configSchema()`, its **Test connection** button is `validate()`, its **Models available**
 chips are `discoverModels()`, and which affordances a card shows at all is
-`capabilities()`.
+`capabilities()`. The sixth is mockup 21's — the alias inspector's parameter fields are
+`paramSchema()`, added by CH.2 ([#585](https://github.com/NobuData/ouroboros/issues/585)).
 
-Two details are worth reading twice.
+Three details are worth reading twice.
+
+**`paramSchema` takes a model id and nothing else.** `configSchema()` answers what a
+*connection* needs and is constant per adapter; `paramSchema()` answers what one *model* can be
+tuned with, and two models on one connection genuinely differ — the inspector offers a thinking
+budget on `claude-fable-5` and must not offer one on `qwen3-coder:32b`. It is also a **local**
+answer: no network, no connection, no credential, because a form field that waited on a provider
+round trip is a form field that sometimes does not arrive. See *The param schema*, below.
 
 **`validate` takes loose parts; `discoverModels` takes a connection.** That asymmetry is
 the lifecycle. `validate` is called from the add-form *before a row exists* — there is no
@@ -210,6 +222,60 @@ value it is asking for is by design somewhere else. `storedConfigSchema(schema)`
 schema minus the credential, and it is what the conformance kit validates your
 `sampleConfig` against. The submission — your `sampleConfig` plus your `secret` — is
 validated against the schema itself, so the key row's own `minLength` is still exercised.
+
+## The param schema
+
+`paramSchema(modelId)` answers a **second** narrow subset of JSON Schema — one flat object of
+*scalar*-valued fields, `additionalProperties: false`, and nothing else. It is
+`provider.params.ts`, and it exists because mockup 21's alias inspector has to offer only the
+tunables the bound model actually has.
+
+```ts
+paramSchema(modelId: string): ModelParamSchema {
+  return copyParamSchema({
+    $schema: MODEL_PARAM_DIALECT,
+    type: "object",
+    title: "Your provider model parameters",
+    properties: {
+      max_output: { type: "integer", title: "Max output", minimum: 1 },
+      temperature: { type: "number", title: "Temperature", minimum: 0, maximum: 2 },
+    },
+    additionalProperties: false,
+  });
+}
+```
+
+Four types rather than the config dialect's single `string` — `string`, `integer`, `number`,
+`boolean` — because a temperature typed as a string is a range check written in a regular
+expression. `paramSchemaViolations()` is the gate and `toParamFields()` is a total function over
+what survives, exactly as `configSchemaViolations()` and `toFormFields()` are for the other
+dialect.
+
+**Offer only keys `model_aliases.params` can store.** V019 closed that vocabulary
+([#579](https://github.com/NobuData/ouroboros/issues/579), decision **R3**): `thinking`
+(`off`/`std`/`max`), `token_budget`, `max_output`, `context_clamp` and `temperature`, with real
+bounds. An adapter offering a sixth key — or a temperature ceiling of five — would render a
+control somebody fills in correctly and cannot save, so `storageViolations()` refuses it and the
+conformance kit runs that check on every model your harness names. You may **narrow** freely and
+that is most of the job: Anthropic's temperature ceiling is one, not two.
+
+**Leave a bound off when you do not know it.** An absent `maximum` is not a gap — it is what
+lets `registry/params.merge.ts` fill the bound from the discovered catalog or the bundled price
+catalog and *label* where it came from. A bound you state is one the merge may only tighten.
+
+**An empty schema is a real answer, and it must explain itself.** A fixed catalog with no
+per-call tunables — Copilot, Cursor — answers `properties: {}` and a `description` saying why.
+The dialect requires the sentence, because an empty form that cannot explain itself is
+indistinguishable from one that failed to load.
+
+**Answer a fresh value every call, and the same value for the same id.** The inspector holds the
+schema while somebody fills in a form; `copyParamSchema()` is the one-liner for it, and the
+conformance kit tries to mutate what you hand back.
+
+**Say nothing about the model's existence.** An alias may name a model your provider has
+retired; answer the schema its shape implies rather than refusing. Whether the model is still
+listed is a health question, answered from the discovered catalog by CH.5
+([#588](https://github.com/NobuData/ouroboros/issues/588)).
 
 ## Taking an address from a person — the SSRF policy
 
@@ -459,6 +525,21 @@ capabilities(): ProviderCapabilities {
 All four, every time. `false` is an answer; an absent flag is four consumers each deciding
 what `undefined` means.
 
+### 3b. Answer a param schema
+
+```ts
+paramSchema(modelId: string): ModelParamSchema {
+  return copyParamSchema(
+    supportsThinking(modelId) ? THINKING_PARAMS : PLAIN_PARAMS,
+  );
+}
+```
+
+Only keys `model_aliases.params` stores, narrowed to what *your* provider really accepts, and a
+bound left off wherever you do not know it. A fixed catalog answers `properties: {}` plus a
+`description` saying why. See *The param schema* above for each of those rules and why it is
+one; the conformance kit checks all of them, on every model your harness names.
+
 ### 4. Implement `validate`
 
 **Check the configuration before you open anything.** A missing address is something you
@@ -680,6 +761,7 @@ describeAdapterConformance("OllamaAdapter", () => {
     },
     discover: () => withRecorded("tags-200", () => adapter.discoverModels(CONNECTION)),
     expectedModels: EXPECTED,
+    paramModels: [],
     pull: () => withRecorded("pull-stream", () => adapter.pullModel(CONNECTION, "phi4:14b")),
   };
 });
@@ -687,10 +769,11 @@ describeAdapterConformance("OllamaAdapter", () => {
 
 You get roughly thirty assertions about things that are otherwise discovered by a person in
 a browser: that failures are values, that a detail never quotes the credential, that the
-schema is one AE.5 can render and one Ajv accepts, that the `pull` flag and the `pullModel`
-member agree, that ids are unique and measures are never fabricated.
+schema is one AE.5 can render and one Ajv accepts, that a param schema offers only tunables
+`model_aliases.params` can store, that the `pull` flag and the `pullModel` member agree, that
+ids are unique and measures are never fabricated.
 
-Three things about the harness are deliberate:
+Four things about the harness are deliberate:
 
 - **It is a function.** It is called once per case, so no test can be affected by a previous
   one's recording.
@@ -700,6 +783,11 @@ Three things about the harness are deliberate:
 - **The fixtures are recorded, not live.** Arrange a stand-in `fetch` over a captured
   response. The kit never opens a socket, which is what lets it run in `yarn test` rather
   than in the integration suite where a slow provider would make it flaky.
+- **`paramModels` names the models your recording does not cover.** The kit already asks for a
+  param schema for every id in `expectedModels`. Leave it empty when your schema is the same for
+  every model; name the ids that take another branch when it is not —
+  `adapters/anthropic.conformance.spec.ts` lists a pre-thinking Claude, so both shapes are
+  checked rather than only the one its capture happened to contain.
 
 `adapters/fake.conformance.spec.ts` is the kit passing; `conformance.fixture.spec.ts` is the
 kit *failing*, run against adapters that are wrong on purpose. Both matter — a conformance

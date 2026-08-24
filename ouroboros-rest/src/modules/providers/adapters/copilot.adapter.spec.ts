@@ -58,6 +58,7 @@ import {
   recordedTimeout,
   recordedTransportFailure,
 } from "./http.recordings.fixture";
+import { paramSchemaViolations, storageViolations } from "../provider.params";
 
 /**
  * The Copilot adapter, against recorded responses.
@@ -794,5 +795,43 @@ describe("what the Copilot adapter's source may not contain", () => {
     // The token check reads none — the question was the status — and every refusal is
     // discarded. A second `response.json()` appearing in this file is a review conversation.
     expect(code.match(/response\.json\(\)/g)).toHaveLength(1);
+  });
+});
+
+/**
+ * `paramSchema` — CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585))
+ * fixed-catalog case: *"minimal or empty tunables, stated as such rather than faked"*.
+ */
+describe("the Copilot param schema", () => {
+  const adapter = new CopilotAdapter();
+
+  it("offers nothing at all", () => {
+    // Mockup 21's `coder-fallback` row draws `—` in its Params column, and this is why: Copilot
+    // is a fixed catalog reached through a seat licence rather than a parameterised API.
+    expect(Object.keys(adapter.paramSchema("gpt-5-codex").properties)).toEqual([]);
+  });
+
+  it("says why, rather than leaving an empty box", () => {
+    // The rule the dialect enforces: an empty form that cannot explain itself is
+    // indistinguishable from one that failed to load.
+    expect(adapter.paramSchema("gpt-5-codex").description).toContain("fixed catalog");
+  });
+
+  it("mentions that the alias's restrictions still apply", () => {
+    // The other half of the honest answer: a restriction is what this workspace allows the
+    // alias to be used for, and it is offered on every alias whatever the provider publishes.
+    expect(adapter.paramSchema("gpt-5-codex").description).toContain("Restrictions");
+  });
+
+  it("answers a schema in the dialect that the column can store", () => {
+    expect(paramSchemaViolations(adapter.paramSchema("gpt-5-codex"))).toEqual([]);
+    expect(storageViolations(adapter.paramSchema("gpt-5-codex"))).toEqual([]);
+  });
+
+  it("hands out a fresh value every call", () => {
+    const first = adapter.paramSchema("gpt-5-codex") as { title: string };
+    first.title = "tampered";
+
+    expect(adapter.paramSchema("gpt-5-codex").title).toBe("GitHub Copilot model parameters");
   });
 });

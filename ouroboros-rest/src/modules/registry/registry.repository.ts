@@ -1,6 +1,11 @@
 /**
- * Every statement this module issues against V015's two tables — three of them, all reads,
- * all scoped to one workspace.
+ * Every statement this module issues — six of them, all reads, all scoped to one workspace.
+ *
+ * Three are V015's routing foundation. The three CH.2
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)) added are what a param schema is
+ * built from: a connection's kind, so the right adapter is asked; V017's `provider_models`
+ * for what the provider reported about the model; and V012's `model_price()` for what the
+ * bundled catalog knows about it.
  *
  * ## Resolution is one query, and the indexes it uses exist for other reasons
  *
@@ -42,8 +47,10 @@
  */
 
 import { Injectable } from "@nestjs/common";
+import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
+import { SCHEMA_NAME, type ProviderConnectionKind } from "../db/schema";
 import type { AliasResolutionRow } from "./resolution";
 
 @Injectable()
@@ -131,6 +138,114 @@ export class RegistryRepository {
       .where("a.organization_id", "=", organizationId)
       .orderBy("a.alias")
       .execute();
+  }
+
+  /**
+   * One connection's kind, for a caller that has an id and needs an adapter.
+   *
+   * The param-schema read's first step ([#585](https://github.com/NobuData/ouroboros/issues/585)):
+   * a client names a connection, and what decides which adapter answers is its `kind`. Only the
+   * two columns that question needs are selected — nothing here reads a credential, a health
+   * blob or a display name, and `registry.repository.spec.ts` compiles this statement and
+   * asserts it does not name `credentials_encrypted`.
+   *
+   * @param organizationId - The workspace, from the tenant context. Carried even though the id
+   *   is globally unique: a caller who could ask this about another workspace's connection
+   *   could learn which of its ids exist.
+   * @param connectionId - The connection.
+   * @returns The id and kind, or `undefined` when this workspace has no such connection.
+   *   Absence is the ordinary answer for an id a caller supplied; turning it into a `404` is
+   *   {@link RegistryService}'s job, one layer up.
+   */
+  async findConnection(
+    organizationId: string,
+    connectionId: string,
+  ): Promise<{ id: string; kind: ProviderConnectionKind } | undefined> {
+    return this.database.db
+      .selectFrom("provider_connections")
+      .select(["id", "kind"])
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", connectionId)
+      .executeTakeFirst();
+  }
+
+  /**
+   * What discovery reported about one model on one connection.
+   *
+   * V017's `provider_models`, joined back to `provider_connections` for the workspace predicate
+   * — the table carries no `organization_id` of its own, and V017's argument for that is that
+   * its tenancy is the foreign key and every read should enter through one. This is that read,
+   * written as the join rather than as a filter so the predicate is visible in the statement.
+   *
+   * It is two index lookups and no scan: `provider_connections_pkey` finds the connection and
+   * `provider_models_connection_model_key` — the unique key discovery's upsert needs anyway —
+   * finds the model.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param connectionId - The connection the model was discovered on.
+   * @param modelId - The provider's own identifier, unfolded. Not normalised here: V017 stores
+   *   it exactly as the provider spelled it, and a caller that sent a different case asked
+   *   about a model this connection does not list.
+   * @returns The row's `meta`, or `undefined` when discovery has not run, has not listed this
+   *   model, or the connection is another workspace's. **All three are one answer**, and that
+   *   is right for this caller: each of them means *nothing was discovered about this model*,
+   *   and the param schema is built from what the adapter says either way.
+   */
+  async discoveredModelMeta(
+    organizationId: string,
+    connectionId: string,
+    modelId: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    const row = await this.database.db
+      .selectFrom("provider_models as m")
+      .innerJoin("provider_connections as c", "c.id", "m.provider_connection_id")
+      .select("m.meta")
+      .where("c.organization_id", "=", organizationId)
+      .where("m.provider_connection_id", "=", connectionId)
+      .where("m.model_id", "=", modelId)
+      .executeTakeFirst();
+
+    return row?.meta;
+  }
+
+  /**
+   * What the bundled price catalog knows about one model, beyond its price.
+   *
+   * `model_prices.meta` carries the context window, the maximum output and the capability flags
+   * the transform kept for exactly this ticket
+   * ([#580](https://github.com/NobuData/ouroboros/issues/580)) — and the merge treats them as
+   * *fallback enrichment* only, which `params.merge.ts` argues at length.
+   *
+   * **Read through `ouroboros.model_price()`**, never by re-deriving the precedence: the
+   * function is the one place override-beats-bundled and exact-beats-family live, it is
+   * `language sql stable` so PostgreSQL inlines it, and `pricing/pricing.repository.ts` reads
+   * it the same way for the price itself. Asking it here for `meta` rather than asking
+   * `PricingService` is not a second lookup path — it is the same function — and it keeps this
+   * module from importing a pricing service to get at a column that is not a price.
+   *
+   * @param organizationId - The workspace, from the tenant context. An override's `meta` is
+   *   whatever a workspace's own row carries, which is the column's default: this service
+   *   writes no `meta` when it records a correction, so a workspace that has overridden a price
+   *   gets an empty enrichment rather than the catalog's. That is the honest reading — an
+   *   override is a statement about money and not about a context window.
+   * @param connectionKind - The provider kind, folded, or null for an unbound alias. A null
+   *   matches nothing by construction, which is what makes an unbound alias's enrichment empty
+   *   without a branch here.
+   * @param modelId - The model identifier, unfolded.
+   * @returns The winning row's `meta`, or `undefined` when the catalog covers nothing for the
+   *   pair.
+   */
+  async catalogModelMeta(
+    organizationId: string,
+    connectionKind: string | null,
+    modelId: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    const { rows } = await sql<{ meta: Record<string, unknown> }>`
+      select meta
+        from ${sql.id(SCHEMA_NAME)}.model_price(${organizationId}, ${connectionKind}, ${modelId})
+    `.execute(this.database.db);
+
+    return rows[0]?.meta;
   }
 
   /**

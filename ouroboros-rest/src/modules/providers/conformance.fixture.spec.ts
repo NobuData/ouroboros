@@ -1,5 +1,7 @@
 import {
   FAKE_CONFIG,
+  FAKE_NOVEL_PARAM_SCHEMA,
+  FAKE_PARAM_SCHEMA,
   FAKE_SECRET,
   FakeModelProviderAdapter,
   FakePullingProviderAdapter,
@@ -8,6 +10,7 @@ import {
   capabilityViolations,
   conformanceContext,
   normalizedModelViolations,
+  paramViolations,
   pullStreamViolations,
   schemaViolations,
   validationViolations,
@@ -15,6 +18,7 @@ import {
 } from "./conformance.fixture";
 import type { ModelProviderAdapter, NormalizedModel } from "./provider.adapter";
 import { PROVIDER_CONFIG_DIALECT } from "./provider.config";
+import { MODEL_PARAM_DIALECT, type ModelParamSchema } from "./provider.params";
 
 /**
  * The kit, tested against adapters that are wrong on purpose.
@@ -254,6 +258,140 @@ describe("schemaViolations", () => {
     });
 
     expect(schemaViolations(adapter, null, {})[0]).toMatch(/^schema is not valid JSON Schema: /);
+  });
+});
+
+describe("paramViolations", () => {
+  /** The model every case below asks about, unless it is asking about several. */
+  const MODEL = "fake/small";
+
+  /**
+   * An adapter whose `paramSchema` answers a fresh copy of whatever a case supplies.
+   *
+   * Fresh, because the kit's isolation check is one of the things under test here and every
+   * *other* case would otherwise trip it — see the sharing case, which is the one that hands
+   * the same object back deliberately.
+   */
+  function answering(schema: unknown): ModelProviderAdapter {
+    return brokenAdapter({
+      paramSchema: () => JSON.parse(JSON.stringify(schema)) as unknown,
+    });
+  }
+
+  it("passes the fake, whose schema is storable throughout", () => {
+    expect(paramViolations(new FakeModelProviderAdapter(), [MODEL])).toEqual([]);
+  });
+
+  it("refuses an adapter asked about no model at all", () => {
+    // Not a pass. An adapter whose recorded listing is empty and which names no extra models
+    // has had its param schema checked against nothing, and a leg that silently covers zero
+    // cases is worse than one that fails.
+    expect(paramViolations(new FakeModelProviderAdapter(), [])).toEqual([
+      "no model to ask for a param schema — record a listing or name one in paramModels",
+    ]);
+  });
+
+  it("catches a schema outside the dialect, and stops there", () => {
+    // Everything after the dialect check reads the schema's own structure, and a schema that
+    // failed it has none worth reading — so the answer is the dialect's violations alone
+    // rather than those plus a cascade.
+    const violations = paramViolations(answering({ type: "array" }), [MODEL]);
+
+    expect(violations).toEqual([
+      `paramSchema("${MODEL}"): $schema must be "${MODEL_PARAM_DIALECT}"`,
+      `paramSchema("${MODEL}"): type must be "object"`,
+      `paramSchema("${MODEL}"): title must be a non-empty string`,
+      `paramSchema("${MODEL}"): additionalProperties must be false`,
+      `paramSchema("${MODEL}"): properties must be an object`,
+    ]);
+  });
+
+  it("catches a registered adapter offering a param the database cannot store", () => {
+    // The rule CH.2 exists for, from the adapter's side. The very same schema renders a field
+    // in `param.shapes.fixture.ts` — the dialect is about shape, and what a column will hold is
+    // a separate question — and here it is refused, because a *shipped* adapter offering it
+    // would be rendering a control whose save the insert refuses.
+    expect(paramViolations(answering(FAKE_NOVEL_PARAM_SCHEMA), [MODEL])).toEqual([
+      `paramSchema("${MODEL}"): param "speculative_decoding" is not one of the keys ` +
+        "model_aliases.params stores (thinking, token_budget, max_output, context_clamp, " +
+        "temperature) — see V019, decision R3",
+    ]);
+  });
+
+  it("catches a schema that changes between two calls", () => {
+    // The inspector may render it, store what somebody typed, and render it again. A schema
+    // that moved in between would present a form whose fields had changed under the person
+    // filling it in.
+    let calls = 0;
+    const adapter = brokenAdapter({
+      paramSchema: (): ModelParamSchema => ({
+        ...FAKE_PARAM_SCHEMA,
+        title: `Answer ${(calls += 1)}`,
+      }),
+    });
+
+    expect(paramViolations(adapter, [MODEL])).toContain(
+      `paramSchema("${MODEL}") must answer the same schema every call`,
+    );
+  });
+
+  it("catches an adapter handing out a value the caller can mutate back in", () => {
+    // A form holds this while somebody fills it in, and an adapter is a singleton across every
+    // workspace — so a shared object would have one person's edits land in everybody's form.
+    const shared: ModelParamSchema = { ...FAKE_PARAM_SCHEMA };
+    const adapter = brokenAdapter({ paramSchema: () => shared });
+
+    expect(paramViolations(adapter, [MODEL])).toEqual([
+      `paramSchema("${MODEL}") must not hand out a value the caller can mutate back in`,
+    ]);
+  });
+
+  it("catches a schema that refuses an alias with no parameters set", () => {
+    // Seven of mockup 21's eight rows are in exactly that state, and a newly created alias
+    // always is. A schema that rejected `{}` would refuse every alias nobody has tuned.
+    const impossible = {
+      ...FAKE_PARAM_SCHEMA,
+      properties: { thinking: { type: "string", title: "Thinking", enum: ["off"] } },
+      // Not part of the dialect, which is why this reaches Ajv rather than being caught above:
+      // `paramSchemaViolations` refuses `required`, so the case builds the document past it.
+      required: ["thinking"],
+    };
+
+    // `required` is refused by the dialect first, which is the honest ordering — so the check
+    // that Ajv would also have complained is made by asking Ajv directly, below.
+    expect(paramViolations(answering(impossible), [MODEL])).toEqual([
+      `paramSchema("${MODEL}"): the dialect has no required — every param is optional by construction`,
+    ]);
+  });
+
+  it("asks about every model it is given, and names the one each violation is about", () => {
+    // The reason the harness may name extra models: an adapter whose schema varies by model
+    // has a branch per model, and a recording that only exercised one would leave the other
+    // unchecked.
+    const violations = paramViolations(answering(FAKE_NOVEL_PARAM_SCHEMA), [
+      "fake/small",
+      "fake/large",
+    ]);
+
+    expect(violations).toHaveLength(2);
+    expect(violations[0]).toContain('paramSchema("fake/small")');
+    expect(violations[1]).toContain('paramSchema("fake/large")');
+  });
+
+  it("accepts an empty schema that explains itself — a fixed catalog has nothing to tune", () => {
+    expect(
+      paramViolations(
+        answering({
+          $schema: MODEL_PARAM_DIALECT,
+          type: "object",
+          title: "Nothing to tune",
+          description: "This provider publishes no per-call parameters this product can set.",
+          properties: {},
+          additionalProperties: false,
+        }),
+        [MODEL],
+      ),
+    ).toEqual([]);
   });
 });
 

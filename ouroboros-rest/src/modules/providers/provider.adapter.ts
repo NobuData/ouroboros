@@ -5,7 +5,7 @@
  *
  * ```
  * interface ModelProviderAdapter
- *   kind · configSchema() · capabilities()
+ *   kind · configSchema() · capabilities() · paramSchema(modelId)
  *   validate(config, secret) → {status, latencyMs, detail}
  *   discoverModels(connection) → NormalizedModel[]
  *   pullModel?() — gated by capabilities().pull   ·   invoke?() — reserved for AF.2
@@ -53,6 +53,27 @@
  * carries the same five-word taxonomy a validation failure would have.
  *
  * ---------------------------------------------------------------------------
+ * **`paramSchema` is per *model*, and that is why it takes an id rather than nothing.**
+ *
+ * CH.2 ([#585](https://github.com/NobuData/ouroboros/issues/585)) amends this interface with a
+ * sixth member. {@link ModelProviderAdapter.configSchema} answers what a *connection* needs and
+ * is therefore constant per adapter; {@link ModelProviderAdapter.paramSchema} answers what one
+ * *model* can be tuned with, and two models on one connection genuinely differ — mockup 21's
+ * inspector offers a thinking budget on `claude-fable-5` and must not offer one on
+ * `qwen3-coder:32b`. An adapter for which nothing varies by model is free to ignore the
+ * argument and answer the same schema every time; several do.
+ *
+ * It is a **local** answer, deliberately: no network, no connection, no credential. The
+ * inspector renders a form while somebody is typing, and a form field that waited on a provider
+ * round trip would be a form field that sometimes does not arrive. What an adapter cannot know
+ * offline — the context length a particular deployment was started with — is merged in from
+ * `provider_models` (V017) by `registry/params.merge.ts`, which is where a live fact belongs.
+ *
+ * **An empty schema is a real answer.** Mockup 07's Copilot and Cursor cards are fixed catalogs
+ * with nothing this product can honestly tune, and `provider.params.ts` requires such a schema
+ * to say why rather than leaving the inspector to draw an empty box.
+ *
+ * ---------------------------------------------------------------------------
  * **Capabilities gate members at compile time, and `pull` is the worked example.**
  *
  * {@link ModelProviderAdapter} has no `pullModel` at all. An adapter that pulls implements
@@ -73,6 +94,7 @@
 
 import type { ProviderConnectionKind } from "../db/schema";
 import type { ProviderConfigSchema, ProviderConnectionConfig } from "./provider.config";
+import type { ModelParamSchema } from "./provider.params";
 import {
   CARD_SEPARATOR,
   PROVIDER_ERROR_RETRYABLE,
@@ -321,10 +343,12 @@ export interface ProviderConnectionContext {
 /**
  * The SPI. Everything core code is allowed to know about a provider.
  *
- * Five members, and every one of them is something mockup 07's page does: the add-form is
- * {@link configSchema}, the **Test connection** button is {@link validate}, the **Models
+ * Six members, and every one of them is something a page does: mockup 07's add-form is
+ * {@link configSchema}, its **Test connection** button is {@link validate}, its **Models
  * available** chips are {@link discoverModels}, and which affordances a card shows at all is
- * {@link capabilities}.
+ * {@link capabilities}. The sixth is mockup 21's, added by CH.2
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)): the alias inspector's param
+ * fields are {@link paramSchema}.
  */
 export interface ModelProviderAdapter {
   /**
@@ -383,6 +407,29 @@ export interface ModelProviderAdapter {
    *   same five-word taxonomy a validation failure would; see this file's header.
    */
   discoverModels(connection: ProviderConnectionContext): Promise<NormalizedModel[]>;
+
+  /**
+   * What one model on this provider can be tuned with.
+   *
+   * The inspector's field stack, and the schema every write to `model_aliases.params` is
+   * validated against — one artefact, so the form a person fills in and the check the server
+   * applies cannot drift. See this file's header for why it takes a model id and why it may
+   * not go near a network.
+   *
+   * @param modelId - The model's own identifier, as {@link NormalizedModel.id} gave it and as
+   *   `model_aliases.model_id` stores it. **Never trusted to exist**: an alias may name a model
+   *   this provider has retired or never had, and the honest answer for one is the same schema
+   *   as for any other model of its shape rather than a refusal — whether the model is still
+   *   listed is a health question, answered from `provider_models` by CH.5
+   *   ([#588](https://github.com/NobuData/ouroboros/issues/588)).
+   * @returns A schema in `provider.params.ts`'s dialect, offering only keys
+   *   `model_aliases.params` can store. Must be **stable** — two calls with the same id answer
+   *   equal values — because the inspector may render it, store what somebody typed, and render
+   *   it again. Must be a **fresh** value, for {@link configSchema}'s reason: the caller holds
+   *   it while a form is filled in. Both are asserted by the conformance kit, along with the
+   *   dialect and the storage domain.
+   */
+  paramSchema(modelId: string): ModelParamSchema;
 }
 
 /**

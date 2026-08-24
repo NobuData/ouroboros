@@ -114,6 +114,10 @@ function harnessFor(flavour: OpenAiCompatibleFlavour): AdapterConformance {
       return adapter.discoverModels(conformanceContext(harness));
     },
     expectedModels: flavour.expected,
+    // Nothing extra: this adapter answers one schema for every model — see
+    // `openai-compatible.adapter.ts` on why the wire format publishes nothing that would
+    // distinguish two of them.
+    paramModels: [],
     // A served model is already loaded, and this wire format has no route to ask for another.
     // The kit's complementary leg asserts the member is unreachable rather than inapplicable.
     pull: null,

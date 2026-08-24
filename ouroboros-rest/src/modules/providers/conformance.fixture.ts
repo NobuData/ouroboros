@@ -12,8 +12,10 @@
  *
  * …and gets roughly thirty assertions about things that are otherwise discovered by AE.2 in a
  * browser: that failures are values and not exceptions, that a detail never quotes the
- * credential, that a config schema is one AE.5 can actually render, that the `pull` flag and
- * the `pullModel` member agree.
+ * credential, that a config schema is one AE.5 can actually render, that a param schema offers
+ * only tunables `model_aliases.params` can store (CH.2,
+ * [#585](https://github.com/NobuData/ouroboros/issues/585)), and that the `pull` flag and the
+ * `pullModel` member agree.
  *
  * ---------------------------------------------------------------------------
  * **Why the checks are functions returning lists of sentences.**
@@ -66,12 +68,14 @@ import {
   type ProviderConfigSchema,
   type ProviderConnectionConfig,
 } from "./provider.config";
+import { paramSchemaViolations, storageViolations, type ModelParamSchema } from "./provider.params";
 import {
   CONNECTED_PILL,
   PROVIDER_ERROR_CLASSES,
   PROVIDER_ERROR_PILLS,
   type ProviderErrorClass,
 } from "./provider.errors";
+import { toParamFields } from "./param.forms";
 import { secretFieldName, storedConfigSchema, toFormFields } from "./provider.forms";
 
 /**
@@ -125,6 +129,17 @@ export interface AdapterConformance {
    * state the answer.
    */
   readonly expectedModels: readonly NormalizedModel[];
+  /**
+   * The models whose param schemas the kit checks, beyond the ones discovery reported.
+   *
+   * Empty is the ordinary answer: the kit already asks for a schema for every id in
+   * {@link expectedModels}, which is what a real connection would be offering fields for. An
+   * adapter whose schema *varies* by model names the ids that take the other branch here — the
+   * Anthropic adapter lists a pre-thinking Claude — so that both branches are checked against
+   * the dialect and against what the database will store, rather than only the one its
+   * recording happened to contain.
+   */
+  readonly paramModels: readonly string[];
   /**
    * A `pullModel` call, arranged. Required exactly when `capabilities().pull` is true, and the
    * kit fails on either mismatch.
@@ -351,6 +366,139 @@ function ajvViolations(
   }
 
   return violations;
+}
+
+/**
+ * Everything wrong with an adapter's param schemas, across every model the harness names.
+ *
+ * CH.2 ([#585](https://github.com/NobuData/ouroboros/issues/585)) added this leg, and it checks
+ * four things per model. Three are {@link schemaViolations}' checks in the other dialect —
+ * the dialect itself, stability, and that the value cannot be mutated back into the adapter —
+ * and the fourth is the one this ticket exists for:
+ *
+ * **Every param offered must be one `model_aliases.params` can store.** A schema offering a
+ * sixth key, or a temperature ceiling above V019's, renders a control somebody fills in
+ * correctly and cannot save. `storageViolations` is that rule and this is where an adapter
+ * author meets it — in their own test run, rather than at somebody's **Save alias**.
+ *
+ * Ajv compiles each schema too, for `ajvViolations`' reason: the same document is what CH.1's
+ * writes are validated with, so a schema a generic validator will not compile is a schema that
+ * would take the save path down rather than refuse a field.
+ *
+ * @param adapter - The adapter.
+ * @param modelIds - The models to ask about. At least one; the suite passes the recorded
+ *   listing's ids plus {@link AdapterConformance.paramModels}.
+ * @returns The violations, each naming the model it is about.
+ */
+export function paramViolations(
+  adapter: ModelProviderAdapter,
+  modelIds: readonly string[],
+): string[] {
+  if (modelIds.length === 0) {
+    // Not a pass. An adapter whose recorded listing is empty and which names no extra models
+    // has had its param schema checked against nothing at all, and a leg of the kit that
+    // silently covers zero cases is worse than one that fails.
+    return ["no model to ask for a param schema — record a listing or name one in paramModels"];
+  }
+
+  const violations: string[] = [];
+
+  for (const modelId of modelIds) {
+    const at = `paramSchema("${modelId}")`;
+    const schema = adapter.paramSchema(modelId);
+    const dialect = paramSchemaViolations(schema);
+
+    if (dialect.length > 0) {
+      // Everything below reads the schema's own structure, and a schema that failed the
+      // dialect has none worth reading — `schemaViolations` stops for the same reason.
+      violations.push(...dialect.map((violation) => `${at}: ${violation}`));
+
+      continue;
+    }
+
+    violations.push(...storageViolations(schema).map((violation) => `${at}: ${violation}`));
+
+    if (JSON.stringify(adapter.paramSchema(modelId)) !== JSON.stringify(schema)) {
+      violations.push(`${at} must answer the same schema every call`);
+    }
+
+    // The caller is the alias inspector, holding this while somebody fills in a form.
+    const tampered = adapter.paramSchema(modelId) as { title: string };
+    tampered.title = `${tampered.title} (tampered)`;
+
+    if (adapter.paramSchema(modelId).title === tampered.title) {
+      violations.push(`${at} must not hand out a value the caller can mutate back in`);
+    }
+
+    violations.push(...paramAjvViolations(at, adapter.kind, modelId, schema));
+
+    // The renderer has to be total over it, which is the other half of "no UI special-casing":
+    // one field per property, in order, each with something a `<label>` can say.
+    const fields = toParamFields(schema);
+    const names = Object.keys(schema.properties);
+
+    if (fields.map((field) => field.name).join() !== names.join()) {
+      violations.push(`${at}: toParamFields must answer one field per param, in schema order`);
+    }
+
+    for (const field of fields) {
+      if (field.label.length === 0) {
+        violations.push(`${at}: param "${field.name}" renders with an empty label`);
+      }
+    }
+
+    // Field order is a contract for `provider.config.ts`'s reason, and the way it breaks is a
+    // schema that has travelled through something which does not preserve key order.
+    const roundTripped = JSON.parse(JSON.stringify(schema)) as ModelParamSchema;
+
+    if (Object.keys(roundTripped.properties).join() !== names.join()) {
+      violations.push(`${at}: param order must survive a JSON round trip`);
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * What Ajv says about one param schema.
+ *
+ * Separate from `ajvViolations` because there is nothing to submit through it: a param document
+ * is optional throughout, so the value worth checking is the empty object — the state seven of
+ * mockup 21's eight rows are in, and the one a newly created alias starts in. A schema that
+ * rejected `{}` would refuse every alias nobody has tuned.
+ *
+ * @param at - The sentence prefix naming the model.
+ * @param kind - The adapter's kind, used only as the compiled schema's `$id` so two in one run
+ *   cannot collide.
+ * @param modelId - The model, likewise part of the `$id`.
+ * @param schema - The schema.
+ * @returns The violations.
+ */
+function paramAjvViolations(
+  at: string,
+  kind: string,
+  modelId: string,
+  schema: ModelParamSchema,
+): string[] {
+  // `strict: false` for `ajvViolations`' reason: the schema carries `x-ouroboros-…`
+  // annotations, which strict mode reports as unknown keywords.
+  const ajv = new Ajv2020({ strict: false, allErrors: true });
+  addFormats(ajv);
+
+  let validate;
+
+  try {
+    validate = ajv.compile({
+      ...schema,
+      $id: `urn:ouroboros:model-params:${kind}:${encodeURIComponent(modelId)}`,
+    });
+  } catch (error) {
+    return [`${at} is not valid JSON Schema: ${describeThrown(error)}`];
+  }
+
+  return validate({})
+    ? []
+    : [`${at} rejects an empty params document: ${ajv.errorsText(validate.errors)}`];
 }
 
 /**
@@ -627,6 +775,18 @@ export function describeAdapterConformance(name: string, build: () => AdapterCon
 
       expect(normalizedModelViolations(models)).toEqual([]);
       expect(models).toEqual(harness.expectedModels);
+    });
+
+    it("answers a param schema the inspector can render and the database can store", async () => {
+      const harness = build();
+      const discovered = harness.expectedModels.map((model) => model.id);
+
+      expect(paramViolations(harness.adapter, [...discovered, ...harness.paramModels])).toEqual([]);
+
+      // Awaited so the discovery recording is really consumed by this case rather than left
+      // pending: the ids above come from `expectedModels`, and a harness whose recording and
+      // whose expectation had diverged would otherwise be checked here against the wrong list.
+      await expect(harness.discover()).resolves.toEqual(harness.expectedModels);
     });
 
     it("supplies a pull fixture exactly when it declares the capability", () => {

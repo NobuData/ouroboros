@@ -90,6 +90,8 @@ function cursorHarness(): AdapterConformance {
     // normalized model checks apply to a fixed catalog exactly as they do to a listing.
     discover: () => adapter.discoverModels(conformanceContext(harness)),
     expectedModels: CURSOR_EXPECTED_MODELS,
+    // Nothing extra, for the Copilot adapter's reason: one fixed model, no tunables.
+    paramModels: [],
     // Nothing pulls a hosted model onto a machine. The kit's complementary leg asserts the
     // member is unreachable rather than that the case does not apply.
     pull: null,

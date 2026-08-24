@@ -801,10 +801,44 @@ consumer: it hands back the model, its parameters, and enough about the connecti
 **There is no CRUD here, and that is decision M2.** Mockup 07 (*Providers & keys*) owns
 provider management and mockup 21 (*Model registry*) owns alias management. Routing is
 unbuildable without the rows underneath both, so the schema and these accessors land first and
-every create, update and delete stays with those roadmaps. `RegistryModule` therefore declares
-**no controller**; Z.2 ([#195](https://github.com/NobuData/ouroboros/issues/195)) is what puts
-the alias list on a route, and `registry.module.spec.ts` fails if a controller appears here
-first.
+every create, update and delete stays with those roadmaps. `RegistryModule` declared **no
+controller at all** until mockup 21 arrived, and what it declares now is a *read*; CH.1
+([#584](https://github.com/NobuData/ouroboros/issues/584)) is the alias CRUD, and
+`registry.module.spec.ts` asserts the controller list so a second entry has to be stated out
+loud rather than noticed in review.
+
+### The param & capability service
+
+**The inspector offers only the tunables the bound model actually has, and the table's chips
+are derived rather than stored** (CH.2,
+[#585](https://github.com/NobuData/ouroboros/issues/585)). Two ways for mockup 21's densest
+cell to become a lie, closed:
+
+```
+GET /api/v1/registry/param-schema?connection=…&model=claude-fable-5
+  ─▶ thinking [off|std|max] · token budget ≤1M · max output ≤128k (catalog) · temp 0–1
+GET /api/v1/registry/param-schema?model=gpt-5.2-preview
+  ─▶ {} · reason: alias_unbound · restrictions still offered
+{thinking: max} on qwen3-coder:32b ─▶ 422 params.thinking "…does not support thinking"
+{thinking: max, token_budget: 400000} ─▶ chips (max thinking)(400k budget)
+```
+
+**The form is generated from what the adapter says.** `ModelProviderAdapter.paramSchema(model)`
+is CH.2's amendment to AC.1's SPI, and the schema it answers is merged with four sources in one
+precedence: the adapter, then what the provider reported into `provider_models` (V017), then —
+**filling absent bounds only, never overriding** — the bundled price catalog's metadata (V012),
+then what `model_aliases.params` will store at all. Every field says which of them shaped it, so
+a reader can tell a live bound from a catalogued one instead of distrusting both.
+
+**The schema that renders the form is the schema that validates the write.** `ajv` compiles the
+same document, so a `422` names `params.thinking` or `restrictions.batch_ok` and quotes the range
+the form was drawn with. `ParamSchemaService` is exported for exactly that: CH.1 calls
+`assertWriteValid` before every create and update rather than re-implementing a rule about
+capabilities.
+
+**The chips are a pure function of the two stored documents.** There is no display column to
+drift from the structure on the first edit that misses it — `paramChips(params, restrictions)`
+is the one derivation, and all eight of mockup 21's rows reproduce from it exactly, twice.
 
 **A resolution cannot carry a credential.** `ResolvedConnection` has no field for one, the
 statements name explicit columns and never `credentials_encrypted`, and both are *probes*
@@ -944,6 +978,7 @@ to providers.
 | `capabilities()` | which affordances the card shows at all |
 | `validate(config, secret)` | the **Test connection** button |
 | `discoverModels(conn)` | the **Models available** chips |
+| `paramSchema(modelId)` | mockup 21's alias-inspector fields |
 | `pullModel?(conn, id)` | the Ollama pull-list's **Pull latest** |
 
 **Five error classes, five pills, 1:1.** `auth`, `network`, `upstream`, `rate_limit`,

@@ -823,6 +823,72 @@ export interface ProviderConnectionsTable {
 }
 
 /**
+ * `ouroboros.provider_models` — the models a connection has, as discovery reported them
+ * (V017, [#221](https://github.com/NobuData/ouroboros/issues/221), decision **P6**).
+ *
+ * Written by `ModelProviderAdapter.discoverModels()` as an upsert on
+ * `(provider_connection_id, model_id)`, so re-running discovery refreshes rather than
+ * duplicates. Read here by `src/modules/registry/` — CH.2
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)) merges
+ * {@link ProviderModelsTable.meta} into the param schema an alias's inspector renders, which
+ * is what lets a context clamp be bounded by the context the provider actually published.
+ *
+ * **It carries no `organization_id`, and that is not an omission.** A discovered model is a
+ * fact about a connection, and a connection belongs to exactly one workspace — so the tenancy
+ * is the foreign key, and every read in this service enters through a join onto
+ * `provider_connections` that carries the workspace predicate. V017 argues the same from the
+ * other side.
+ */
+export interface ProviderModelsTable {
+  id: Generated<string>;
+  /**
+   * The connection this model was discovered on, and this row's only tenancy.
+   *
+   * `on delete cascade` — a catalog outliving the connection it describes would be a list of
+   * models nothing can reach.
+   */
+  provider_connection_id: string;
+  /**
+   * The provider's own identifier, unfolded — `claude-fable-5`, `qwen3-coder:32b`.
+   *
+   * The same spelling {@link ModelAliasesTable.model_id} carries, which is what makes *is this
+   * alias's model one the provider still lists* a join rather than a normalisation exercise.
+   * Not a second home for decision **M1**'s raw model id: M1 governs what may name a model in
+   * a route, and a route still reaches one only through an alias.
+   */
+  model_id: string;
+  /** What a chip prints — `local/llama-4-maverick` beside a `model_id` of `llama-4-maverick`. */
+  display: string;
+  /**
+   * On-disk size in bytes for a locally-hosted model, null for a cloud one.
+   *
+   * A `bigint`, and therefore a **string** — `pg` will not narrow one to a `number`, and it is
+   * right not to: a 63 GB model is 6.3e10. Null rather than zero, for
+   * {@link ModelPricesTable}'s reason: a zero would be a tag claiming a model that takes no
+   * space.
+   */
+  size_bytes: string | null;
+  /**
+   * What else discovery reported — `{"context_tokens": 200000}`, `{"tier": "priority"}`.
+   *
+   * `context_tokens` is the key {@link ModelPricesTable.meta} already uses, so CH.2 merging a
+   * discovered model with a catalog entry is not made to translate — which is the whole reason
+   * V017 chose the spelling. `Generated` for its `default '{}'::jsonb`; nothing in this service
+   * writes it today, and the discovery sweep that will is AE.4's
+   * ([#230](https://github.com/NobuData/ouroboros/issues/230)).
+   */
+  meta: Generated<Record<string, unknown>>;
+  /**
+   * When discovery last reported this model; moved by every upsert.
+   *
+   * This table has no `updated_at` because that is what this column is — a cache of what a
+   * provider said, stamped with when it said it. It is what mockup 21's *listed live from the
+   * provider* is true of, and what tells a stale catalog from a fresh one.
+   */
+  discovered_at: Stamped;
+}
+
+/**
  * `ouroboros.model_aliases` — the names a workspace's routes may use (V015,
  * [#189](https://github.com/NobuData/ouroboros/issues/189)), extended into mockup 21's
  * management surface by V019 ([#579](https://github.com/NobuData/ouroboros/issues/579),
@@ -927,6 +993,101 @@ export interface ModelAliasesTable {
   created_at: Stamped;
   updated_at: Stamped;
 }
+
+/**
+ * `ouroboros.model_aliases.params`' closed vocabulary — the five keys V019 will store, and
+ * nothing else ([#579](https://github.com/NobuData/ouroboros/issues/579), decision **R3**).
+ *
+ * `ouroboros.model_alias_params_valid()` is the authority and `model_aliases_params_known` is
+ * what applies it; these constants are the mirror, and they exist for the reason
+ * {@link PROVIDER_CONNECTION_KINDS} does — a vocabulary a service has to agree with is one it
+ * should be unable to misspell.
+ *
+ * **They are read by two very different callers, which is why they live here rather than in
+ * either.** CH.2 ([#585](https://github.com/NobuData/ouroboros/issues/585)) is both: a provider
+ * adapter's `paramSchema()` may offer only these keys — an adapter offering a sixth would be
+ * rendering a field whose valid-looking value the database refuses — and the registry's chip
+ * derivation reads the stored document by them. A copy in `providers/` and a copy in
+ * `registry/` would be two vocabularies that agree until somebody edits one.
+ *
+ * A key here is **shape**, never meaning: that `thinking` is a word this column accepts is
+ * V019's rule, and whether the *bound model* can honour it is CH.2's, decided from the
+ * adapter's own schema. See `registry/params.merge.ts`.
+ */
+export type ModelAliasParamKey =
+  "thinking" | "token_budget" | "max_output" | "context_clamp" | "temperature";
+
+/**
+ * The five keys as values, in the order `ouroboros.model_alias_params_valid()` declares them.
+ *
+ * The order is also the order mockup 21's inspector draws the fields in and the order its param
+ * chips are derived in, so a table cell and a form read top to bottom the same way.
+ */
+export const MODEL_ALIAS_PARAM_KEYS = [
+  "thinking",
+  "token_budget",
+  "max_output",
+  "context_clamp",
+  "temperature",
+] as const satisfies readonly ModelAliasParamKey[];
+
+/**
+ * `params.thinking` — how much reasoning effort an alias asks for (V019).
+ *
+ * Three words rather than a boolean, because mockup 21 draws three chips: *max thinking*, *std
+ * thinking*, and a model told explicitly not to think. `off` is a real instruction and not the
+ * absence of the key — an alias that says nothing about thinking leaves it to the provider's
+ * own default, which is a different request from one that turns it off.
+ */
+export type ThinkingLevel = "off" | "std" | "max";
+
+/** The three levels as values, in the order V019's function declares them. */
+export const THINKING_LEVELS = ["off", "std", "max"] as const satisfies readonly ThinkingLevel[];
+
+/**
+ * The smallest token count `token_budget`, `max_output` and `context_clamp` may carry.
+ *
+ * One rather than zero, and V019 means it: a budget of zero is not a small budget, it is an
+ * instruction to produce nothing, and the honest way to say *no budget* is to leave the key out.
+ */
+export const MODEL_ALIAS_TOKENS_MIN = 1;
+
+/**
+ * The largest token count those three may carry — ten million.
+ *
+ * A sanity bound rather than a model's context window: what any particular model will accept is
+ * smaller and is CH.2's to say, from the adapter's schema and `provider_models.meta`. This is
+ * only the width past which a number is a typo.
+ */
+export const MODEL_ALIAS_TOKENS_MAX = 10_000_000;
+
+/** The lowest `temperature` V019 accepts. */
+export const MODEL_ALIAS_TEMPERATURE_MIN = 0;
+
+/**
+ * The highest `temperature` V019 accepts.
+ *
+ * Two, which is the widest range any provider this product reaches publishes. A model whose own
+ * ceiling is one — Anthropic's is — narrows it in its adapter's `paramSchema()`, and the
+ * narrower of the two is what a write is checked against.
+ */
+export const MODEL_ALIAS_TEMPERATURE_MAX = 2;
+
+/**
+ * `ouroboros.model_aliases.restrictions`' two flags (V019, decision **R3**).
+ *
+ * Registry **policy**, not provider capability — which is why they are not
+ * {@link ModelAliasParamKey}s: a param is merged into a request body and a restriction never
+ * leaves this product. CH.2 appends them to every param schema it serves, bound or unbound,
+ * because they are true of the alias regardless of what is on the other end of it.
+ */
+export type ModelAliasRestrictionKey = "review_vote_only" | "batch_ok";
+
+/** The two flags as values, in the order `ouroboros.model_alias_restrictions_valid()` declares them. */
+export const MODEL_ALIAS_RESTRICTION_KEYS = [
+  "review_vote_only",
+  "batch_ok",
+] as const satisfies readonly ModelAliasRestrictionKey[];
 
 /**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
@@ -1042,6 +1203,14 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * service writes exactly one of them: `credentials_encrypted`, and only when the vault's
  * re-encryption sweep re-seals a value it already held.
  *
+ * **`provider_models` (V017, [#221](https://github.com/NobuData/ouroboros/issues/221)) is the
+ * seventeenth**, and the first table here that this service only ever *reads* and has no writer
+ * for at all: discovery fills it, and the sweep that runs discovery is AE.4's
+ * ([#230](https://github.com/NobuData/ouroboros/issues/230)). It is mirrored now because CH.2
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)) reads `meta` to bound a param
+ * schema by the context length the provider actually published — a bound taken from a live
+ * catalog rather than from a number written down here.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -1064,6 +1233,7 @@ export interface Database {
   model_prices: ModelPricesTable;
   provider_connections: ProviderConnectionsTable;
   model_aliases: ModelAliasesTable;
+  provider_models: ProviderModelsTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -1214,6 +1384,15 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  provider_models: [
+    "id",
+    "provider_connection_id",
+    "model_id",
+    "display",
+    "size_bytes",
+    "meta",
+    "discovered_at",
+  ],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -1341,6 +1520,15 @@ export type ModelAlias = Selectable<ModelAliasesTable>;
  * 21's surface, not this service's.
  */
 export type NewModelAlias = Insertable<ModelAliasesTable>;
+
+/**
+ * A row of `ouroboros.provider_models`, as a `select` returns it — one model a connection has.
+ *
+ * There is deliberately no `NewProviderModel`. Discovery is the only writer and it does not run
+ * here yet (AE.4, [#230](https://github.com/NobuData/ouroboros/issues/230)); declaring the
+ * insert shape now would be this service claiming a write it does not perform.
+ */
+export type ProviderModel = Selectable<ProviderModelsTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

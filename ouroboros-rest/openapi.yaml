@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.30.2"
+  version: "0.30.3"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -2249,6 +2249,213 @@ paths:
           description: |-
             `validation_failed` — `connectionKind` or `modelId` was missing or malformed.
             `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/registry/param-schema:
+    get:
+      tags: [registry]
+      summary: What one model can be tuned with
+      description: |-
+        The schema mockup 21's alias inspector renders its parameter fields from
+        ([#585](https://github.com/NobuData/ouroboros/issues/585)), and the same schema every
+        write to that alias's parameters is validated against.
+
+        **The fields are generated from what the bound model actually supports, and that is the
+        point of the endpoint.** A thinking budget on `qwen3-coder:32b` is a control somebody
+        fills in, a value the server stores and a chip the table renders — and nothing at all at
+        the other end. So the provider adapter says which tunables a model has, and this is
+        where it says it. A client renders `params.fields` in order and needs no knowledge of
+        any provider: a new adapter brings its own parameters without a change here or in the
+        UI.
+
+        **Four sources shape the answer, in this precedence:**
+
+        | Source | What it is | May it override? |
+        |---|---|---|
+        | `adapter` | what this build's provider adapter says about the model | — |
+        | `discovery` | what the provider reported into its discovered catalog | tightens a bound |
+        | `catalog` | the bundled price catalog's metadata ([#580](https://github.com/NobuData/ouroboros/issues/580)) | **fills an absent bound only** |
+        | `registry` | what this workspace's own columns will store | clamps, last |
+
+        Every field carries `x-ouroboros-sources` naming the ones that shaped it, and the
+        response repeats the union in `sources`. The catalog is a vendored snapshot of an
+        upstream file and can go stale, so it may fill a bound nothing else knows and may never
+        contradict one — which is why a reader can tell a live bound from a catalogued one
+        rather than having to distrust both.
+
+        **`connection` is optional, and omitting it is a question rather than a mistake.** An
+        alias created ahead of its key — mockup 21's `gpt5-experiments` — has a model and no
+        provider, so there is no adapter to ask. The answer is then an empty `params` schema
+        whose `description` says why, `reason: alias_unbound`, and the registry restrictions in
+        full: those are what *this workspace* allows the alias to be used for, which is true
+        whether or not anything is on the other end of it. Nothing is invented for such an
+        alias — no capability is guessed from a catalog.
+
+        `reason` is also non-null in two other honest cases: `provider_has_no_parameters` for a
+        fixed catalog such as Copilot or Cursor, which publish no per-call parameters this
+        product can set; and `provider_unsupported` for a connection whose kind this build has
+        no adapter for. Neither is an error — each is a form that explains itself.
+
+        **Any member may read it**, viewers included: a parameter schema describes a model
+        rather than a workspace's data, and names no credential, no spend and no alias. What it
+        *validates* is role-gated where that happens, on the alias writes.
+
+        **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before the operation runs.
+      operationId: getModelParamSchema
+      parameters:
+        - name: connection
+          in: query
+          required: false
+          description: |-
+            The provider connection the alias is bound to. Omit it to ask about an unbound
+            alias — see the description.
+          schema:
+            type: string
+            format: uuid
+          examples:
+            bound:
+              summary: An alias bound to a connection
+              value: 9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e01
+        - name: model
+          in: query
+          required: true
+          description: |-
+            The model's own identifier, exactly as the provider spells it and as the alias
+            stores it. Unfolded — `claude-fable-5` and `qwen3-coder:32b` are two vendors'
+            conventions and neither is normalised.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          examples:
+            anthropic:
+              summary: A thinking model
+              value: claude-fable-5
+            ollama:
+              summary: A local model with no thinking
+              value: qwen3-coder:32b
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The two schemas, the fields they render as, and where each bound came from.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelParamSchemaResponse"
+              example:
+                modelId: qwen3-coder:32b
+                connectionId: 9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e01
+                params:
+                  schema:
+                    $schema: https://json-schema.org/draft/2020-12/schema
+                    type: object
+                    title: Ollama model parameters
+                    properties:
+                      context_clamp:
+                        type: integer
+                        title: Context clamp
+                        description: "`num_ctx` — hold this model to a smaller context than it was loaded with."
+                        minimum: 1
+                        maximum: 32768
+                        x-ouroboros-sources: [adapter, discovery]
+                    additionalProperties: false
+                  fields:
+                    - name: context_clamp
+                      label: Context clamp
+                      widget: integer
+                      help: "`num_ctx` — hold this model to a smaller context than it was loaded with."
+                      defaultValue: null
+                      choices: null
+                      minimum: 1
+                      maximum: 32768
+                      sources: [adapter, discovery]
+                restrictions:
+                  schema:
+                    $schema: https://json-schema.org/draft/2020-12/schema
+                    type: object
+                    title: Registry restrictions
+                    description: >-
+                      What this workspace allows this alias to be used for. Registry policy
+                      rather than provider capability, so it is offered on every alias —
+                      including one with no provider bound yet.
+                    properties:
+                      review_vote_only:
+                        type: boolean
+                        title: Review vote only
+                        description: This alias may cast a review vote and may not be routed work of its own.
+                        x-ouroboros-sources: [registry]
+                      batch_ok:
+                        type: boolean
+                        title: Batch ok
+                        description: Work routed to this alias may be batched rather than sent one call at a time.
+                        x-ouroboros-sources: [registry]
+                    additionalProperties: false
+                  fields:
+                    - name: review_vote_only
+                      label: Review vote only
+                      widget: switch
+                      help: This alias may cast a review vote and may not be routed work of its own.
+                      defaultValue: null
+                      choices: null
+                      minimum: null
+                      maximum: null
+                      sources: [registry]
+                    - name: batch_ok
+                      label: Batch ok
+                      widget: switch
+                      help: Work routed to this alias may be batched rather than sent one call at a time.
+                      defaultValue: null
+                      choices: null
+                      minimum: null
+                      maximum: null
+                      sources: [registry]
+                reason: null
+                sources: [adapter, discovery, registry]
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `provider_connection_not_found` — `connection` names no connection in this
+            workspace, or `tenant_not_found` when `X-Ouro-Tenant` names no workspace you are a
+            member of. A connection that is absent and one that is somebody else's are
+            deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `model` was missing or malformed, or `connection` was not a
+            uuid. `details` carries the entry keyed by the field.
           content:
             application/json:
               schema:
@@ -6630,6 +6837,245 @@ components:
           type: integer
           minimum: 0
           examples: [0]
+
+    ParamSource:
+      type: string
+      title: ParamSource
+      enum: [adapter, discovery, catalog, registry]
+      description: |-
+        Where a parameter field, or one of its bounds, came from — in precedence order.
+
+        `adapter` is what this build's provider adapter says about the model. `discovery` is
+        what the provider itself reported about it into the discovered catalog. `catalog` is the
+        bundled price catalog's metadata, a vendored snapshot of an upstream file, which may
+        fill a bound nothing else knows and may **never** override the two above it. `registry`
+        is what this workspace's own columns will store, applied last so a schema cannot offer a
+        value a save would refuse.
+
+        A page that cannot tell a live bound from a catalogued one is a page whose bounds all
+        have to be distrusted, which is why every field says.
+
+    ModelParamField:
+      type: object
+      title: ModelParamField
+      description: |-
+        One tunable, as JSON Schema plus one annotation. The keywords are JSON Schema's and mean
+        what JSON Schema says they mean; the dialect is deliberately narrow — one flat object of
+        scalar-valued fields, no `$ref`, no composition, no nesting — so a renderer can be total
+        over it rather than growing a case per keyword.
+      additionalProperties: false
+      required: [type, title]
+      properties:
+        type:
+          type: string
+          enum: [string, integer, number, boolean]
+          description: |-
+            Which of the four shapes this parameter is. `integer` is separate from `number`
+            because a token budget of `4096.5` is a value no provider accepts.
+          examples: [integer]
+        title:
+          type: string
+          description: The form's label. Never empty — a field name is not a label.
+          examples: [Token budget]
+        description:
+          type: string
+          description: The help line under the input, when the label is not enough on its own.
+        enum:
+          type: array
+          items:
+            type: string
+          description: The permitted values, for a `string` field. Drives a select.
+          examples: [[off, std, max]]
+        minimum:
+          type: number
+          description: The lowest acceptable value, for a `number` or an `integer`.
+          examples: [1]
+        maximum:
+          type: number
+          description: The highest acceptable value, for a `number` or an `integer`.
+          examples: [400000]
+        default:
+          type: [string, number, boolean]
+          description: |-
+            What the input starts at when the alias has no value of its own. **Not a value this
+            product sends** — an alias whose parameters omit a key says nothing about it, and
+            what the provider then does is the provider's own default.
+        x-ouroboros-sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ParamSource"
+          description: Every source that shaped this field, highest precedence first.
+          examples: [[adapter, discovery]]
+
+    ModelParamDocument:
+      type: object
+      title: ModelParamDocument
+      description: |-
+        A parameter schema, as JSON Schema — published unchanged rather than translated into a
+        vocabulary of this product's own, so a client may hand it to a generic validator and get
+        the same answer the server will give it.
+
+        **There is no `required`.** Every parameter is optional by construction: an alias that
+        names none of them takes the provider's defaults, which is the ordinary state.
+
+        `properties` may be **empty**, and then `description` says why — a fixed-catalog
+        provider with nothing to tune, or an alias with no provider bound. An empty form that
+        cannot explain itself is indistinguishable from one that failed to load, so the
+        explanation is required rather than hoped for.
+      additionalProperties: false
+      required: [$schema, type, title, properties, additionalProperties]
+      properties:
+        $schema:
+          type: string
+          enum: ["https://json-schema.org/draft/2020-12/schema"]
+          description: The dialect. Stated so a generic validator knows the rules.
+        type:
+          type: string
+          enum: [object]
+        title:
+          type: string
+          description: What the inspector's parameter section is headed.
+          examples: [Anthropic model parameters]
+        description:
+          type: string
+          description: |-
+            Why there is nothing to tune, when there is nothing. Present and non-empty whenever
+            `properties` is empty; allowed, and useful, alongside fields.
+        properties:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ModelParamField"
+          description: |-
+            The tunables, keyed by the name a stored parameter document carries. **Key order is
+            the order the inspector renders them in**, and it is preserved end to end.
+        additionalProperties:
+          type: boolean
+          enum: [false]
+          description: |-
+            Always `false` — the keyword that makes *this model does not support thinking* a
+            validation failure rather than a stored key nothing reads.
+
+    ModelParamFormField:
+      type: object
+      title: ModelParamFormField
+      description: |-
+        One parameter, already derived into what a form draws. Served beside the schema because
+        which widget a field gets and what its bounds are is a decision this service should make
+        once — a client that wants the schema has it, a client that wants a form has one, and
+        the two cannot disagree because the second is computed from the first.
+
+        Every optional schema keyword is an explicit `null` here: absence is fine in a schema an
+        author is writing and unhelpful in a value a renderer is consuming.
+      additionalProperties: false
+      required: [name, label, widget, help, defaultValue, choices, minimum, maximum, sources]
+      properties:
+        name:
+          type: string
+          description: The key a submitted value is carried under. Never shown to a person.
+          examples: [context_clamp]
+        label:
+          type: string
+          description: What the `<label>` says.
+          examples: [Context clamp]
+        widget:
+          type: string
+          enum: [select, text, integer, number, switch]
+          description: |-
+            How to draw it, derived from the field's own description rather than declared — a
+            `string` with an `enum` is a select, one without is free text, and the other three
+            types name themselves.
+          examples: [integer]
+        help:
+          type: [string, "null"]
+          description: The help line under the input, or null.
+        defaultValue:
+          type: [string, number, boolean, "null"]
+          description: What the input starts at, or null.
+        choices:
+          type: [array, "null"]
+          items:
+            type: string
+          description: The options for a select, or null for every other widget.
+        minimum:
+          type: [number, "null"]
+          description: The lowest acceptable value, or null.
+          examples: [1]
+        maximum:
+          type: [number, "null"]
+          description: The highest acceptable value, or null.
+          examples: [32768]
+        sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ParamSource"
+          description: Every source that shaped this field, highest precedence first.
+
+    ModelParamSection:
+      type: object
+      title: ModelParamSection
+      description: One half of a parameter answer — a schema, and the fields it renders as.
+      additionalProperties: false
+      required: [schema, fields]
+      properties:
+        schema:
+          $ref: "#/components/schemas/ModelParamDocument"
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelParamFormField"
+          description: |-
+            The schema as an ordered field list. Empty exactly when the schema declares no
+            properties, which is where a client renders the schema's `description` instead.
+
+    ModelParamSchemaResponse:
+      type: object
+      title: ModelParamSchemaResponse
+      description: |-
+        What a model can be tuned with, and what this workspace allows the alias to be used for.
+
+        **Two sections rather than one**, mirroring the two documents an alias write carries: a
+        `422` from a write names `params.thinking` or `restrictions.batch_ok`, and a client maps
+        either back to a field of the section it came from without a lookup table. Both sections
+        are in the same dialect, so one renderer draws both.
+      additionalProperties: false
+      required: [modelId, connectionId, params, restrictions, reason, sources]
+      properties:
+        modelId:
+          type: string
+          description: The model this answer is about, echoed so a stale response is recognisable.
+          examples: [qwen3-coder:32b]
+        connectionId:
+          type: [string, "null"]
+          format: uuid
+          description: |-
+            The connection it was asked on, or null when the question was about an unbound
+            alias.
+        params:
+          $ref: "#/components/schemas/ModelParamSection"
+        restrictions:
+          $ref: "#/components/schemas/ModelParamSection"
+        reason:
+          type: [string, "null"]
+          enum: [alias_unbound, provider_unsupported, provider_has_no_parameters, null]
+          description: |-
+            Why `params` offers nothing, or null when it offers something.
+
+            A code and never a sentence: the prose belongs to whatever is rendering, and the
+            schema's own `description` carries the one this service would write. `alias_unbound`
+            is an alias with no provider yet; `provider_has_no_parameters` is a fixed catalog
+            that publishes nothing to set; `provider_unsupported` is a connection whose kind
+            this build has no adapter for. None of the three is an error.
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ParamSource"
+          description: |-
+            Every source that shaped any field, in precedence order — the union of the per-field
+            annotations, so a client can say *some of these bounds are catalogued* once above a
+            form.
+          examples: [[adapter, discovery, registry]]
 
     ProviderHealth:
       type: object

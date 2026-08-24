@@ -133,6 +133,7 @@ import {
   type ProviderConnectionConfig,
 } from "../provider.config";
 import { readSeatCount, withSeats } from "../provider.entitlements";
+import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
 import {
   ProviderAdapterError,
   classifyHttpStatus,
@@ -597,6 +598,32 @@ async function readSeats(token: string, login: string): Promise<number | null> {
 }
 
 /**
+ * What a Copilot model can be tuned with: nothing, and the schema says so out loud.
+ *
+ * Mockup 07's Copilot card is a **fixed catalog** — one model chip this product knows about
+ * because somebody wrote it down — reached through a seat licence rather than through an API
+ * this service parameterises. There is no temperature to set and no budget to cap, so the
+ * honest answer is an empty field list with a sentence explaining it, which is exactly what
+ * CH.2 asks for: *minimal or empty tunables, stated as such rather than faked*.
+ *
+ * `provider.params.ts` **requires** the description on a schema with no properties, so the
+ * alternative — an empty box the inspector cannot explain — is not a shape an adapter can
+ * ship. The registry restrictions are still offered on every alias bound here, because those
+ * are this workspace's policy rather than a claim about the provider; mockup 21's
+ * `coder-fallback` row draws no param chips for exactly this reason.
+ */
+const COPILOT_PARAM_SCHEMA: ModelParamSchema = {
+  $schema: MODEL_PARAM_DIALECT,
+  type: "object",
+  title: "GitHub Copilot model parameters",
+  description:
+    "Copilot is a fixed catalog reached through a seat licence, and publishes no per-call " +
+    "parameters this product can set. Restrictions still apply to the alias.",
+  properties: {},
+  additionalProperties: false,
+};
+
+/**
  * The GitHub Copilot adapter.
  *
  * `@Injectable()` because `providers.module.ts` registers the class and Nest constructs it. It
@@ -634,6 +661,18 @@ export class CopilotAdapter implements ModelProviderAdapter {
    */
   capabilities(): ProviderCapabilities {
     return { discovery: false, pull: false, entitlements: true, invocation: false };
+  }
+
+  /**
+   * What a Copilot model can be tuned with — nothing, and the schema explains why.
+   *
+   * @param _modelId - Unread, and named with an underscore to say so: this adapter's catalog is
+   *   one model and none of them has a tunable.
+   * @returns A fresh empty schema every call, carrying the sentence the inspector renders in
+   *   place of fields. See {@link COPILOT_PARAM_SCHEMA}.
+   */
+  paramSchema(_modelId: string): ModelParamSchema {
+    return copyParamSchema(COPILOT_PARAM_SCHEMA);
   }
 
   /**

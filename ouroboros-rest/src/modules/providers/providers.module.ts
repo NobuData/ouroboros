@@ -7,6 +7,8 @@
  * provider.errors.ts     five error classes → five pills      → the shared vocabulary
  * provider.config.ts     the JSON Schema dialect              → configSchema()'s contract
  * provider.forms.ts      schema → form fields, no kind in it  → AE.5's renderer input
+ * provider.params.ts     the param dialect (CH.2)             → paramSchema()'s contract
+ * param.forms.ts         schema → param fields, no name in it → CI.3's renderer input
  * provider.address.ts    the SSRF policy (AC.3)               → for the two that take a URL
  * provider.entitlements.ts  seats in a detail, written & read → AE.2/AE.6's cap line (AC.5)
  * provider.registry.ts   lookup by kind, and its two refusals → MODEL_PROVIDER_ADAPTERS
@@ -14,6 +16,13 @@
  * adapters/              the implementations                  → nothing else may import these
  * conformance.fixture.ts the kit every adapter must pass
  * ```
+ *
+ * **The SPI gained a sixth member in CH.2** ([#585](https://github.com/NobuData/ouroboros/issues/585)):
+ * `paramSchema(modelId)`, which is what mockup 21's alias inspector renders its param fields
+ * from. Every adapter below answers one, the conformance kit checks it against the dialect and
+ * against what `model_aliases.params` will store, and `src/modules/registry/` is what merges it
+ * with discovery and the price catalog. Nothing in this module reads a row to do it — the merge
+ * lives with the tables it reads.
  *
  * **It exports two things.** {@link ModelProviderRegistry} is what AD.2's credential lifecycle
  * ([#223](https://github.com/NobuData/ouroboros/issues/223)), Z.3's health service and the

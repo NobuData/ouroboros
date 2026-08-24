@@ -62,6 +62,7 @@ import {
   recordedTags,
   recordedVersion,
 } from "./ollama.recordings.fixture";
+import { paramSchemaViolations, storageViolations } from "../provider.params";
 
 /**
  * The Ollama adapter, against recorded responses.
@@ -1212,5 +1213,73 @@ describe("the address policy cannot be routed around", () => {
   it("holds nothing about a connection between calls", () => {
     // One instance serves every workspace.
     expect(Object.keys(new OllamaAdapter())).toEqual(["kind"]);
+  });
+});
+
+/**
+ * `paramSchema` — CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585)) first
+ * acceptance criterion, the half this adapter owns.
+ *
+ * > *"`paramSchema(ollama, qwen3-coder:32b)` does not offer thinking."*
+ *
+ * `qwen3-coder:32b` is mockup 21's `local-docs`, and it is the model the ticket names as the one
+ * a thinking budget must not be offered for. The refusal is structural rather than a special
+ * case: this adapter has no thinking field for *any* model, because `/api/tags` does not say
+ * which models in a local library reason and a control offered on all of them would be a
+ * control that silently does nothing on most.
+ */
+describe("the Ollama param schema", () => {
+  const adapter = new OllamaAdapter();
+
+  it("does not offer thinking on the model the ticket names", () => {
+    expect(adapter.paramSchema("qwen3-coder:32b").properties.thinking).toBeUndefined();
+  });
+
+  it("does not offer a thinking budget either", () => {
+    // The pair goes together: a budget with no thinking is a number nothing spends.
+    expect(adapter.paramSchema("qwen3-coder:32b").properties.token_budget).toBeUndefined();
+  });
+
+  it("offers the three the daemon really honours", () => {
+    expect(Object.keys(adapter.paramSchema("qwen3-coder:32b").properties)).toEqual([
+      "max_output",
+      "context_clamp",
+      "temperature",
+    ]);
+  });
+
+  it("names the daemon's own options in the help rather than in the field names", () => {
+    // `num_ctx` and `num_predict` are Ollama's spelling; the *names* are this product's, so a
+    // form looking for the context control never has to ask which provider it is drawing. The
+    // daemon's spelling belongs in the invocation path, where a request body is built.
+    const schema = adapter.paramSchema("qwen3-coder:32b");
+
+    expect(schema.properties.context_clamp.description).toContain("num_ctx");
+    expect(schema.properties.max_output.description).toContain("num_predict");
+  });
+
+  it("declares no ceiling on either token count, leaving discovery to clamp them", () => {
+    const schema = adapter.paramSchema("qwen3-coder:32b");
+
+    expect(schema.properties.context_clamp.maximum).toBeUndefined();
+    expect(schema.properties.max_output.maximum).toBeUndefined();
+  });
+
+  it("answers the same schema for every model in the library", () => {
+    // What differs between two local models is how the daemon loaded each one, which is a
+    // deployment fact discovery reports — not something the tags endpoint publishes per model.
+    expect(adapter.paramSchema("qwen3-coder:32b")).toEqual(adapter.paramSchema("llama-4:70b"));
+  });
+
+  it("answers a schema in the dialect that the column can store", () => {
+    expect(paramSchemaViolations(adapter.paramSchema("qwen3-coder:32b"))).toEqual([]);
+    expect(storageViolations(adapter.paramSchema("qwen3-coder:32b"))).toEqual([]);
+  });
+
+  it("hands out a fresh value every call", () => {
+    const first = adapter.paramSchema("qwen3-coder:32b") as { title: string };
+    first.title = "tampered";
+
+    expect(adapter.paramSchema("qwen3-coder:32b").title).toBe("Ollama model parameters");
   });
 });

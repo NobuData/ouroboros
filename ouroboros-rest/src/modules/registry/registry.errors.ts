@@ -6,7 +6,10 @@
  * published together, and this file exists so the string in the specification and the string
  * in the answer come from one constant.
  *
- * There are two, and the second is the interesting one.
+ * There were two, and the second is the interesting one; CH.2
+ * ([#585](https://github.com/NobuData/ouroboros/issues/585)) added two more — a `422` for
+ * parameters a model does not accept, and the `404` its schema read answers for a connection
+ * this workspace does not have.
  *
  * ---------------------------------------------------------------------------
  * **`provider_connection_in_use` is a designed message for a rule the database enforces.**
@@ -64,6 +67,31 @@ export const REGISTRY_ERRORS = {
    * is the *state* — repoint or remove the aliases first.
    */
   providerConnectionInUse: "provider_connection_in_use",
+
+  /**
+   * The parameters written against an alias are not ones its model accepts.
+   *
+   * A `422` and not a `400`: the request is well formed and the alias exists — what is wrong is
+   * that a thinking budget was set on a model with no thinking, or a temperature outside the
+   * range this provider publishes. `details` carries one entry per field, keyed
+   * `params.<name>` and `restrictions.<name>` so a form maps each back to the input it came
+   * from. See `params.validation.ts`, which is the only thing that raises it.
+   *
+   * Distinct from `validation_failed` deliberately, even though both are `422`s with the same
+   * `details` shape. That code means *the body is malformed*; this one means *the body is fine
+   * and the model refuses it*, and a client that wanted to say so — the inspector does — could
+   * not tell them apart from the status alone.
+   */
+  aliasParamsInvalid: "model_alias_params_invalid",
+
+  /**
+   * The connection a param schema was asked for does not exist in this workspace.
+   *
+   * A `404`, and the same answer for *no such connection* and *not yours*: telling the two
+   * apart would let somebody enumerate another workspace's connections by watching which ids
+   * answer differently. `provider-connections/` makes the same choice with the same code.
+   */
+  connectionNotFound: "provider_connection_not_found",
 } as const;
 
 /** One of {@link REGISTRY_ERRORS}' values. */
@@ -163,6 +191,26 @@ export function isProviderConnectionInUse(error: unknown): boolean {
   return (
     candidate.code === FOREIGN_KEY_VIOLATION &&
     candidate.constraint === PROVIDER_DEPENDENCY_CONSTRAINT
+  );
+}
+
+/**
+ * `404` — this workspace has no provider connection by that id.
+ *
+ * Raised by the param-schema read, which is the first thing in this module to address a
+ * connection by id rather than through an alias. It carries the same code
+ * `provider-connections/` uses for the same fact, so a client that already recognises one
+ * recognises both — one code for one situation, whichever surface produced it.
+ *
+ * @param connectionId - The id that was asked for, echoed in `details` rather than in the
+ *   sentence, because it is a uuid and nobody reads one.
+ * @returns The error to throw.
+ */
+export function registryConnectionNotFound(connectionId: string): NotFoundError {
+  return new NotFoundError(
+    REGISTRY_ERRORS.connectionNotFound,
+    "This workspace has no provider connection by that id.",
+    { connectionId },
   );
 }
 

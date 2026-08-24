@@ -6,7 +6,7 @@ import { RegistryRepository } from "./registry.repository";
 import type { AliasResolutionRow } from "./resolution";
 
 /**
- * The three statements, and the two properties a resolution rests on.
+ * The six statements, and the two properties a resolution rests on.
  *
  * This layer holds no rules — it holds statements — which is why mocking a *method* would
  * prove nothing here. `expect(repository.resolveAlias).toHaveBeenCalled()` says nothing about
@@ -23,6 +23,7 @@ import type { AliasResolutionRow } from "./resolution";
 
 const WORKSPACE = "9f1c0a5e-0f6d-4a1b-9d5e-2b8f3c7a4e10";
 const CONNECTION = "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c";
+const MODEL = "claude-fable-5";
 
 /** One row, as the resolution join hands it back. */
 const ROW = {
@@ -60,6 +61,15 @@ describe("the registry repository", () => {
         "aliasesForConnection",
         (repository) => repository.aliasesForConnection(WORKSPACE, CONNECTION),
       ],
+      ["findConnection", (repository) => repository.findConnection(WORKSPACE, CONNECTION)],
+      [
+        "discoveredModelMeta",
+        (repository) => repository.discoveredModelMeta(WORKSPACE, CONNECTION, MODEL),
+      ],
+      [
+        "catalogModelMeta",
+        (repository) => repository.catalogModelMeta(WORKSPACE, "anthropic", MODEL),
+      ],
     ];
 
   describe("scoping", () => {
@@ -69,12 +79,35 @@ describe("the registry repository", () => {
       await issue(registry);
 
       const [statement] = database.statements;
-      expect(statement.sql).toContain("organization_id");
       expect(statement.parameters).toContain(WORKSPACE);
       // Not interpolated. Every value this repository sends is a placeholder, which is what
       // makes an alias supplied by a DSL expression or a query string harmless.
       expect(statement.sql).not.toContain(WORKSPACE);
     });
+
+    it.each(everyStatement)(
+      "names the workspace column in %s, where there is one",
+      async (name, issue) => {
+        database.answers({ rows: [ROW] });
+
+        await issue(registry);
+
+        const [statement] = database.statements;
+
+        // `catalogModelMeta` is the exception and is not a hole: it reads through
+        // `ouroboros.model_price()`, whose *first argument* is the workspace and which owns the
+        // precedence rule — so the scoping is in the call rather than in a `where`, and the
+        // parameter assertion above is what covers it. Re-deriving that predicate here would be
+        // the second implementation V012 exists to prevent.
+        if (name === "catalogModelMeta") {
+          expect(statement.sql).toContain("model_price(");
+
+          return;
+        }
+
+        expect(statement.sql).toContain("organization_id");
+      },
+    );
   });
 
   describe("what the statements never ask for", () => {
@@ -224,5 +257,125 @@ describe("the registry repository", () => {
     it("answers with nothing when no alias depends on the connection", async () => {
       await expect(registry.aliasesForConnection(WORKSPACE, CONNECTION)).resolves.toEqual([]);
     });
+  });
+});
+
+describe("findConnection", () => {
+  let database: RecordingDatabase;
+  let registry: RegistryRepository;
+
+  beforeEach(() => {
+    database = recordingDatabase();
+    registry = new RegistryRepository(database.service);
+  });
+
+  it("asks for the two columns the question needs and nothing else", async () => {
+    // Which adapter answers a param schema is decided by `kind`, and nothing else about the
+    // connection is any of this read's business — not a display name, not a health blob, and
+    // certainly not the sealed credential.
+    database.answers({ rows: [{ id: CONNECTION, kind: "anthropic" }] });
+
+    await expect(registry.findConnection(WORKSPACE, CONNECTION)).resolves.toEqual({
+      id: CONNECTION,
+      kind: "anthropic",
+    });
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('select "id", "kind"');
+    expect(statement.parameters).toEqual([WORKSPACE, CONNECTION]);
+  });
+
+  it("answers undefined for a connection this workspace does not have", async () => {
+    // Absence is the ordinary answer for an id a caller supplied; turning it into a 404 is the
+    // service's job, one layer up, where the id is known to have come from a request.
+    await expect(registry.findConnection(WORKSPACE, CONNECTION)).resolves.toBeUndefined();
+  });
+});
+
+describe("discoveredModelMeta", () => {
+  let database: RecordingDatabase;
+  let registry: RegistryRepository;
+
+  beforeEach(() => {
+    database = recordingDatabase();
+    registry = new RegistryRepository(database.service);
+  });
+
+  it("enters V017's catalog through the connection, which is its only tenancy", async () => {
+    // `provider_models` carries no `organization_id` of its own — V017's decision — so the
+    // workspace predicate has to arrive through the join. Written as a join rather than as a
+    // filter so it is visible in the statement.
+    database.answers({ rows: [{ meta: { context_tokens: 32_768 } }] });
+
+    await registry.discoveredModelMeta(WORKSPACE, CONNECTION, MODEL);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('"ouroboros"."provider_models"');
+    expect(statement.sql).toContain('inner join "ouroboros"."provider_connections"');
+    expect(statement.sql).toContain('"c"."organization_id" = $1');
+    expect(statement.parameters).toEqual([WORKSPACE, CONNECTION, MODEL]);
+  });
+
+  it("hands back the meta the row carried", async () => {
+    database.answers({ rows: [{ meta: { context_tokens: 32_768, tier: "priority" } }] });
+
+    await expect(registry.discoveredModelMeta(WORKSPACE, CONNECTION, MODEL)).resolves.toEqual({
+      context_tokens: 32_768,
+      tier: "priority",
+    });
+  });
+
+  it("answers undefined when discovery has not listed the model", async () => {
+    // One answer for three states — discovery has not run, does not list this model, or the
+    // connection is another workspace's — and that is right for this caller: each of them means
+    // *nothing was discovered*, and the schema is built from the adapter either way.
+    await expect(
+      registry.discoveredModelMeta(WORKSPACE, CONNECTION, MODEL),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not fold the model identifier", async () => {
+    // V017 stores it exactly as the provider spelled it, so a caller that sent a different case
+    // asked about a model this connection does not list.
+    await registry.discoveredModelMeta(WORKSPACE, CONNECTION, "Claude-Fable-5");
+
+    expect(database.statements[0].parameters).toContain("Claude-Fable-5");
+  });
+});
+
+describe("catalogModelMeta", () => {
+  let database: RecordingDatabase;
+  let registry: RegistryRepository;
+
+  beforeEach(() => {
+    database = recordingDatabase();
+    registry = new RegistryRepository(database.service);
+  });
+
+  it("reads through the function that owns the precedence rather than re-deriving it", async () => {
+    // Override beats bundled, exact model beats family, exact kind beats `*` — implemented once
+    // in `ouroboros.model_price()`, which `pricing/pricing.repository.ts` reads the same way for
+    // the price itself.
+    database.answers({ rows: [{ meta: { max_output_tokens: 64_000 } }] });
+
+    await registry.catalogModelMeta(WORKSPACE, "anthropic", MODEL);
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('"ouroboros".model_price(');
+    expect(statement.sql).toContain("select meta");
+    expect(statement.parameters).toEqual([WORKSPACE, "anthropic", MODEL]);
+  });
+
+  it("answers undefined when the catalog covers nothing for the pair", async () => {
+    await expect(registry.catalogModelMeta(WORKSPACE, "anthropic", MODEL)).resolves.toBeUndefined();
+  });
+
+  it("passes a null kind straight through for an unbound alias", async () => {
+    // `null = any (array[null, '*'])` is null in SQL, so a null kind matches nothing by
+    // construction — which is what makes an unbound alias's enrichment empty without a branch
+    // in the repository.
+    await registry.catalogModelMeta(WORKSPACE, null, MODEL);
+
+    expect(database.statements[0].parameters).toEqual([WORKSPACE, null, MODEL]);
   });
 });

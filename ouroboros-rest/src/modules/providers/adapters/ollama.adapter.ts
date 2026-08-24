@@ -93,6 +93,11 @@
 
 import { Injectable } from "@nestjs/common";
 
+import {
+  MODEL_ALIAS_TEMPERATURE_MAX,
+  MODEL_ALIAS_TEMPERATURE_MIN,
+  MODEL_ALIAS_TOKENS_MIN,
+} from "../../db/schema";
 import type {
   ModelPullProgress,
   NormalizedModel,
@@ -120,6 +125,7 @@ import {
   type ProviderConnectionConfig,
 } from "../provider.config";
 import { ProviderAdapterError, classifyHttpStatus } from "../provider.errors";
+import { MODEL_PARAM_DIALECT, copyParamSchema, type ModelParamSchema } from "../provider.params";
 
 /** What the address row's `<label>` says — mockup 07's **Host**, not *Base URL*. */
 export const OLLAMA_HOST_TITLE = "Host";
@@ -745,6 +751,55 @@ function overlongLine(): ProviderAdapterError {
 }
 
 /**
+ * What a model on an Ollama daemon can be tuned with — the three options that reach
+ * `/api/generate`'s `options` object and mean something for every model in a library.
+ *
+ * `context_clamp` is Ollama's `num_ctx` and `max_output` is its `num_predict`; both are named
+ * in this product's vocabulary rather than the daemon's, for the reason
+ * {@link import("../provider.config").BASE_URL_FIELD} is: a form that had to know which
+ * provider it was drawing in order to find the context control is the `switch (kind)` decision
+ * **P1** refuses. The daemon's own spelling belongs in the invocation path (AF.2,
+ * [#235](https://github.com/NobuData/ouroboros/issues/235)), where a request body is built.
+ *
+ * **No `thinking` field.** A local library holds reasoning and non-reasoning models side by
+ * side and the tags endpoint does not say which is which, so offering the control on all of
+ * them would offer it on the ones that ignore it — mockup 21's `local-docs` is
+ * `qwen3-coder:32b`, and the ticket names it as the model a thinking budget must not be
+ * offered for.
+ *
+ * **No ceiling on either token count.** A local model's context is whatever the daemon loaded
+ * it with, which discovery reports into `provider_models.meta` and `registry/params.merge.ts`
+ * clamps this bound to.
+ */
+const OLLAMA_PARAM_SCHEMA: ModelParamSchema = {
+  $schema: MODEL_PARAM_DIALECT,
+  type: "object",
+  title: "Ollama model parameters",
+  properties: {
+    max_output: {
+      type: "integer",
+      title: "Max output",
+      description: "`num_predict` — the most tokens one answer may run to.",
+      minimum: MODEL_ALIAS_TOKENS_MIN,
+    },
+    context_clamp: {
+      type: "integer",
+      title: "Context clamp",
+      description: "`num_ctx` — hold this model to a smaller context than it was loaded with.",
+      minimum: MODEL_ALIAS_TOKENS_MIN,
+    },
+    temperature: {
+      type: "number",
+      title: "Temperature",
+      description: "Zero is deterministic; two is as varied as the daemon goes.",
+      minimum: MODEL_ALIAS_TEMPERATURE_MIN,
+      maximum: MODEL_ALIAS_TEMPERATURE_MAX,
+    },
+  },
+  additionalProperties: false,
+};
+
+/**
  * The Ollama adapter.
  *
  * `@Injectable()` because `providers.module.ts` registers the class and Nest constructs it. It
@@ -785,6 +840,23 @@ export class OllamaAdapter implements PullCapableAdapter {
    */
   capabilities(): ProviderCapabilities & { readonly pull: true } {
     return { discovery: true, pull: true, entitlements: false, invocation: false };
+  }
+
+  /**
+   * What a model on this daemon can be tuned with — `num_predict`, `num_ctx` and a temperature,
+   * in this product's vocabulary.
+   *
+   * The same three for every model in the library: what differs between them is how the daemon
+   * loaded each one, which discovery reports and the merge applies. See
+   * {@link OLLAMA_PARAM_SCHEMA} on why there is no thinking field — `qwen3-coder:32b` is the
+   * model CH.2 names as the one that must not be offered a budget.
+   *
+   * @param _modelId - Unread, and named with an underscore to say so: nothing this adapter can
+   *   answer offline varies by model.
+   * @returns A fresh schema every call, equal on every call.
+   */
+  paramSchema(_modelId: string): ModelParamSchema {
+    return copyParamSchema(OLLAMA_PARAM_SCHEMA);
   }
 
   /**

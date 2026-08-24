@@ -3,17 +3,23 @@ import { join } from "node:path";
 
 import { ANTHROPIC_DEFAULT_BASE_URL, ANTHROPIC_VERSION } from "../../provider-health/checks";
 import { CARD_SHAPES } from "../card.shapes.fixture";
+import { PARAM_SHAPES } from "../param.shapes.fixture";
+import { toParamFields, type ParamFormField } from "../param.forms";
+import { paramSchemaViolations, storageViolations } from "../provider.params";
 import { SECRET_ANNOTATION } from "../provider.config";
 import { ProviderAdapterError } from "../provider.errors";
 import { toFormFields } from "../provider.forms";
 import type { ProviderConnectionContext } from "../provider.adapter";
 import {
   ANTHROPIC_API_KEY_FIELD,
+  ANTHROPIC_MAX_TEMPERATURE,
+  ANTHROPIC_MAX_THINKING_BUDGET,
   ANTHROPIC_PAGE_LIMIT,
   ANTHROPIC_PAGE_SIZE,
   ANTHROPIC_TIMEOUT_MS,
   AnthropicAdapter,
   PRIORITY_TIER,
+  anthropicSupportsThinking,
   missingConfiguration,
   normalizeModel,
   priorityTierOf,
@@ -646,5 +652,133 @@ describe("the adapter's credential discipline", () => {
     // which is asserted behaviourally above and pinned here as a property of the source: a
     // second `response.json()` appearing in this file is a review conversation.
     expect(code.match(/response\.json\(\)/g)).toHaveLength(1);
+  });
+});
+
+/**
+ * `paramSchema` — CH.2's ([#585](https://github.com/NobuData/ouroboros/issues/585)) first
+ * acceptance criterion, from the Anthropic side.
+ *
+ * > *"`paramSchema(anthropic, claude-fable-5)` offers thinking levels and a budget bound."*
+ *
+ * The other half of that sentence — that Ollama's does not — is `ollama.adapter.spec.ts`'s.
+ */
+describe("the Anthropic param schema", () => {
+  const adapter = new AnthropicAdapter();
+
+  /**
+   * Which Anthropic models the bundled price catalog records as reasoning models, and which it
+   * does not — read off `ouroboros-db/catalog/litellm-model-prices.json` at
+   * `2026-08-15+litellm.70d51a1` and written out here.
+   *
+   * Copied rather than imported: `ouroboros-rest` does not read `ouroboros-db`'s files, and a
+   * suite that did would be a module boundary crossed for a convenience. What the table buys is
+   * the thing that matters — `anthropicSupportsThinking` is a claim about Anthropic's product
+   * line, and this is that claim checked against an independent source rather than against
+   * itself.
+   */
+  const CATALOG_REASONING: readonly (readonly [string, boolean])[] = [
+    ["claude-3-haiku-20240307", false],
+    ["claude-3-opus-20240229", false],
+    ["claude-3-7-sonnet-20250219", true],
+    ["claude-4-opus-20250514", true],
+    ["claude-4-sonnet-20250514", true],
+    ["claude-fable-5", true],
+    ["claude-haiku-4-5", true],
+    ["claude-haiku-4-5-20251001", true],
+    ["claude-mythos-5", true],
+    ["claude-opus-4-1", true],
+    ["claude-opus-4-5", true],
+    ["claude-opus-5", true],
+    ["claude-sonnet-4-5", true],
+    ["claude-sonnet-5", true],
+  ];
+
+  it("offers thinking and a budget on a thinking model", () => {
+    const schema = adapter.paramSchema("claude-fable-5");
+
+    expect(Object.keys(schema.properties)).toEqual([
+      "thinking",
+      "token_budget",
+      "max_output",
+      "temperature",
+    ]);
+    expect(schema.properties.thinking.enum).toEqual(["off", "std", "max"]);
+    expect(schema.properties.token_budget.maximum).toBe(ANTHROPIC_MAX_THINKING_BUDGET);
+  });
+
+  it("offers neither on a model from before extended thinking existed", () => {
+    const schema = adapter.paramSchema("claude-3-haiku-20240307");
+
+    expect(Object.keys(schema.properties)).toEqual(["max_output", "temperature"]);
+  });
+
+  it.each(CATALOG_REASONING.map(([model, reasoning]) => [model, reasoning] as const))(
+    "agrees with the bundled catalog about whether %s reasons",
+    (model, reasoning) => {
+      expect(anthropicSupportsThinking(model)).toBe(reasoning);
+    },
+  );
+
+  it("gives a model it has never heard of the controls its generation has", () => {
+    // The direction the error leans, stated: a new Claude arriving between releases should
+    // render the control its whole generation has, and a param the model turns out to ignore is
+    // a smaller failure than a control missing from the one model somebody bought the key for.
+    expect(anthropicSupportsThinking("claude-something-6")).toBe(true);
+  });
+
+  it("caps temperature at Anthropic's own ceiling rather than the column's", () => {
+    // V019 allows two because that is the widest any provider publishes; this API's range is
+    // 0–1, and a form offering 1.5 would be a form whose valid-looking submission is refused by
+    // the provider. The narrower of the two is what a write is checked against.
+    expect(adapter.paramSchema("claude-fable-5").properties.temperature.maximum).toBe(
+      ANTHROPIC_MAX_TEMPERATURE,
+    );
+    expect(ANTHROPIC_MAX_TEMPERATURE).toBeLessThan(2);
+  });
+
+  it("declares no ceiling on max output, leaving the catalog to fill it", () => {
+    // Anthropic's maximum output differs per model — 64k on one Claude, 128k on another — and
+    // this adapter cannot ask without a network. An absent bound is what lets the merge fill it
+    // from the bundled catalog and *label* it as catalogued rather than live, which is the
+    // ticket's option 2-B.
+    expect(adapter.paramSchema("claude-fable-5").properties.max_output.maximum).toBeUndefined();
+  });
+
+  it("offers no context clamp, because the Messages API has none", () => {
+    // Not an omission: a control this API cannot honour would be exactly the lie CH.2 exists to
+    // prevent, arriving from the adapter rather than from a hand-written chip.
+    expect(adapter.paramSchema("claude-fable-5").properties.context_clamp).toBeUndefined();
+  });
+
+  it("answers a schema in the dialect that the column can store", () => {
+    for (const model of ["claude-fable-5", "claude-3-haiku-20240307"]) {
+      expect(paramSchemaViolations(adapter.paramSchema(model))).toEqual([]);
+      expect(storageViolations(adapter.paramSchema(model))).toEqual([]);
+    }
+  });
+
+  it("renders mockup 21's inspector, field for field", () => {
+    // The fixture's job after CH.2: this adapter's *own* schema has to still render the shape
+    // recorded in `param.shapes.fixture.ts`, so the fixture cannot rot into a copy of something
+    // that has moved on. `help` is left out of the comparison and nothing else is — the fixture
+    // fixes the *minimum*, and an adapter is free to explain a control the mockup only names.
+    const withoutHelp = (fields: readonly ParamFormField[]) =>
+      fields.map(({ help: _help, ...rest }) => rest);
+    const [thinking, legacy] = PARAM_SHAPES;
+
+    expect(withoutHelp(toParamFields(adapter.paramSchema("claude-fable-5")))).toEqual(
+      withoutHelp(thinking.fields),
+    );
+    expect(withoutHelp(toParamFields(adapter.paramSchema("claude-3-opus-20240229")))).toEqual(
+      withoutHelp(legacy.fields),
+    );
+  });
+
+  it("hands out a fresh value every call", () => {
+    const first = adapter.paramSchema("claude-fable-5") as { title: string };
+    first.title = "tampered";
+
+    expect(adapter.paramSchema("claude-fable-5").title).toBe("Anthropic model parameters");
   });
 });
