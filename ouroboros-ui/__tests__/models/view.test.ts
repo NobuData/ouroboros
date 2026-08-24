@@ -11,7 +11,7 @@ import {
   saveRoutesReason,
   utcStamp,
 } from "@/app/models/view";
-import { MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
+import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
 import { CHECKED_AT, CHECKED_STAMP, provider, seededProviders, unknownProvider } from "../helpers/models";
 
@@ -234,13 +234,14 @@ describe("the tab set", () => {
     ]);
   });
 
-  it("links exactly the two built surfaces", () => {
-    // Routing is this roadmap's own; Providers & keys went live with AE.1 (#227), which is
-    // the amendment AA.1 was filed expecting. A tab becomes a link on the commit that builds
-    // its page and on no other — a link without a page behind it is a 404 in the section's
-    // own navigation.
+  it("links exactly the three built surfaces", () => {
+    // Routing is this roadmap's own; Providers & keys went live with AE.1 (#227) and Model
+    // registry with CI.1 (#591), which are the two halves of the amendment AA.1 was filed
+    // expecting. A tab becomes a link on the commit that builds its page and on no other — a
+    // link without a page behind it is a 404 in the section's own navigation.
     expect(MODELS_TABS.filter(isLiveTab).map((tab) => tab.id)).toEqual([
       "routing",
+      "registry",
       "providers",
     ]);
   });
@@ -253,24 +254,33 @@ describe("the tab set", () => {
       MODELS_TABS.filter(isLiveTab).map((tab) => [tab.id, tab.href]),
     );
 
-    expect(hrefs).toEqual({ routing: MODELS_PATH, providers: PROVIDERS_PATH });
+    expect(hrefs).toEqual({
+      routing: MODELS_PATH,
+      registry: REGISTRY_PATH,
+      providers: PROVIDERS_PATH,
+    });
   });
 
-  it("keeps the providers surface under the Models section", () => {
-    // What keeps the sidebar's **Models** entry lit on both pages: `isActiveRoute` matches a
-    // URL under an entry's route, so the tab's destination has to be under `/models`.
-    const providers = MODELS_TABS.filter(isLiveTab).find((tab) => tab.id === "providers");
+  it("keeps every sub-surface under the Models section", () => {
+    // What keeps the sidebar's **Models** entry lit on all three pages: `isActiveRoute`
+    // matches a URL under an entry's route, so each tab's destination has to be under
+    // `/models`. Swept rather than sampled — a fourth surface added outside the section would
+    // put the sidebar's highlight out on the page that needed it most.
+    for (const tab of MODELS_TABS.filter(isLiveTab)) {
+      if (tab.id === "routing") continue;
 
-    expect(providers?.href.startsWith(`${MODELS_PATH}/`)).toBe(true);
+      expect(tab.href.startsWith(`${MODELS_PATH}/`), tab.id).toBe(true);
+    }
   });
 
-  it("makes every other tab name the surface that owns it", () => {
-    // Rendering the two as live links that go nowhere is worse than not rendering them;
-    // rendering them as honest "soon" targets tells the reader the shape of the product
-    // without lying about its state.
+  it("makes the one unbuilt tab name the surface that owns it", () => {
+    // Rendering it as a live link that goes nowhere is worse than not rendering it;
+    // rendering it as an honest "soon" target tells the reader the shape of the product
+    // without lying about its state. Spend is the last of the four, and AB.4 (#210) is what
+    // moves it.
     const soon = MODELS_TABS.filter((tab) => !isLiveTab(tab));
 
-    expect(soon.map((tab) => tab.id)).toEqual(["registry", "spend"]);
+    expect(soon.map((tab) => tab.id)).toEqual(["spend"]);
 
     for (const tab of soon) {
       expect(tab.note, tab.id).toMatch(/arrives with/);
@@ -278,12 +288,15 @@ describe("the tab set", () => {
     }
   });
 
-  it("names the registry's own issue now that its roadmap is filed", () => {
-    // The amendment on #227: the registry tab goes live with CI.1 (#591). Until it does, the
-    // tab says so by number — a usable answer to "when?" rather than a mockup's name alone.
+  it("has stopped saying the registry is coming, because it is here", () => {
+    // The amendment on #200 and #227, from the other side: the tab said `soon` and named
+    // #591 until #591 built the page. A note left behind on a live tab is impossible — the
+    // two shapes are exclusive — and this is what fails if the tab is ever reverted to one
+    // without its page being removed with it.
     const registry = MODELS_TABS.find((tab) => tab.id === "registry");
 
-    expect(registry && !isLiveTab(registry) ? registry.note : "").toMatch(/#591/);
+    expect(registry).toBeDefined();
+    expect(registry && isLiveTab(registry)).toBe(true);
   });
 
   it("gives every tab a distinct id, because the ids are the React keys", () => {

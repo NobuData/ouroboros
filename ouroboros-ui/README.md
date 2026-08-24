@@ -1232,8 +1232,8 @@ Credentials live in Acme Robotics's encrypted vault,      ↑ AD.4's sheet   ↑
 scoped to this workspace. Keys never leave the control
 plane — workers never receive them at all.
 ────────────────────────────────────────────────────────────────────────────────────────────
- Routing → /models   Model registry soon   Providers & keys   Spend soon   ← sticky in the pane
-                                           ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
+ Routing → /models   Model registry → /models/registry   Providers & keys   Spend soon
+                                                            ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
 ┌ The provider cards arrive next — #228 … #232 ┐
 ```
 
@@ -1259,16 +1259,17 @@ because a name is data and `$&` in one must not read the placeholder back into t
 The Models tab set is one list (`MODELS_TABS`, [`app/models/view.ts`](app/models/view.ts))
 drawn by one component ([`app/models/models-subnav.tsx`](app/models/models-subnav.tsx)), and
 each page says only which tab it *is*. That is what makes the ticket's criterion — tab states
-correct navigating 06 → 07 and 07 → 06 — a property rather than a coincidence: the two pages'
-rows differ in `aria-current` and in nothing else, and a built surface's id is a type
-(`ModelsSurface`), so neither page can claim a tab that leads nowhere. The sidebar's
-**Models** entry stays lit on both because the route is *under* `/models`
+correct navigating 06 → 07 and 07 → 06, and 06 ⇄ 21 ⇄ 07 once the registry landed — a property
+rather than a coincidence: the pages' rows differ in `aria-current` and in nothing else, and a
+built surface's id is a type (`ModelsSurface`), so no page can claim a tab that leads nowhere.
+The sidebar's **Models** entry stays lit on all three because the route is *under* `/models`
 ([`app/paths.ts`](app/paths.ts)), which is the sidebar's ordinary section rule and not a
 special case.
 
-The registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) and the spend report
-([#210](https://github.com/NobuData/ouroboros/issues/210)) stay honest `soon` tabs naming
-their issues; **+ Add provider** is inert through `Button`'s `reason` until AE.5
+The registry tab went live with CI.1 ([#591](https://github.com/NobuData/ouroboros/issues/591))
+and this file did not change for it — one list, so all three pages learned it at once. The
+spend report ([#210](https://github.com/NobuData/ouroboros/issues/210)) is the last honest
+`soon` tab; **+ Add provider** is inert through `Button`'s `reason` until AE.5
 ([#231](https://github.com/NobuData/ouroboros/issues/231)) builds the catalog it opens; and
 the space below the tab set names the cards
 ([#228](https://github.com/NobuData/ouroboros/issues/228)) rather than mocking them up.
@@ -1336,6 +1337,80 @@ is organised around them:
 | rendering an unknown action | `SENTENCES` is `Record<AuditAction, string>` over the contract's own union, so an eleventh action is a **build error** rather than a row printing `provider.cap_changed` at somebody |
 | drawing a refusal as an act | `outcomeOf` reads `detail.outcome`, and the marker is a **word** in the error hue rather than the hue alone |
 | printing a time in a zone nobody named | `stampOf` formats in UTC, and the column heading says so once rather than every row saying it fifty times |
+
+## Model registry
+
+`/models/registry` ([#591](https://github.com/NobuData/ouroboros/issues/591)) is
+[`docs/mockups/21-model-registry.html`](../docs/mockups/21-model-registry.html)'s **frame**:
+the naming promise in the head, the two actions that create aliases, and the Models tab set
+with **Model registry** finally live. It is the section's third page, and it retires the `#49`
+placeholder this route was.
+
+```
+MODELS
+Every model gets a name. Every route points at the name.  [ Import from provider ▾ ] [ + New alias ]
+Registry aliases bind a provider key to a model id.         ↑ the workspace's providers  ↑ #594
+Workflows and routing only ever see the alias — swap the
+provider behind it and nothing else changes. That's the
+point of bring-your-own-key.
+──────────────────────────────────────────────────────────────────────────────────────────────────
+ Routing → /models   Model registry   Providers & keys → /models/providers   Spend soon
+                     ▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
+┌ The allowed-models table arrives next — #592 … #596 ┐
+```
+
+### The head is the product's argument, and it is verbatim
+
+*"Every model gets a name. Every route points at the name."* is not a heading, it is the
+sentence the rest of the page defends — and the subline under it is why anyone should care: an
+alias is an **indirection**, so the provider behind a name can be replaced without touching a
+route or a workflow. Both are constants in [`app/registry/view.ts`](app/registry/view.ts) and
+`__tests__/registry/view.test.ts` reads the mockup and compares, so a paraphrase in
+implementation fails the suite rather than passing review.
+
+### Import from provider is a real menu, over a state the mockup does not draw
+
+The drawing shows a ghost button with a caret and stops there. What a fresh workspace meets is
+the state it leaves out — nothing connected at all — so the control has two shapes and
+[`app/registry/import-menu.tsx`](app/registry/import-menu.tsx) draws both:
+
+| The reader | What they get |
+| --- | --- |
+| an owner or admin, with providers connected | the menu, one row per connection, in the order the strip on `/models` shows them |
+| an owner or admin, with none connected | inert, *"No provider is connected yet"*, and the one link that fixes it |
+| an owner or admin, when the read failed | inert, *"could not be read just now"*, and **no** link — nothing here fixes that |
+| a member or a viewer | inert, *"Creating and importing aliases is for workspace owners and admins"* |
+
+Those three blocked reasons are deliberately three sentences and not one *"unavailable"*:
+collapsing them would send an admin looking for a permission they already have, or a member to
+a page that would also refuse them. `importState` is what keeps them apart, and it settles the
+order — **role first**, because the link is only offered to somebody who could use it.
+
+The **menu** is this ticket's; the wizard behind it is CI.4's
+([#594](https://github.com/NobuData/ouroboros/issues/594)). So the list is real and each row is
+inert with a sentence naming the issue that wires it — the page already answers *which
+providers could I import from*, and says plainly that the import itself is not built. Both the
+rows and the blocked trigger use `aria-disabled` rather than `disabled`, so the reader who most
+needs the tooltip is not the one who cannot reach it. The keyboard is
+[`app/shell/menu.ts`](app/shell/menu.ts)'s — the same ARIA menu pattern the shell's two menus
+use, and a third copy of it would be a third copy to keep correct.
+
+**+ New alias** is the primary action and is inert until CI.4 builds its dialog. Both actions
+are also inert for a member or a viewer; the full gating pass is CI.6
+([#596](https://github.com/NobuData/ouroboros/issues/596)).
+
+### The tab, from the same list as the other two
+
+`MODELS_TABS` gained a route where it had a note, and that one edit turned the stub into a link
+on `/models`, on `/models/providers` and here — which is the whole reason the section keeps one
+list. The registry's `href` joined `app/paths.ts` beside the other two (decision **R10**), so
+the sidebar's **Models** entry stays lit here for the ordinary reason: the URL is under
+`/models`. **Spend** is the last honest `soon` tab and waits for AB.4
+([#210](https://github.com/NobuData/ouroboros/issues/210)).
+
+Below the tab set is where CI.2's eight-column table goes; the space names the issues that fill
+it rather than mocking a table of invented aliases, which would be indistinguishable in a
+screenshot from the real one.
 
 ## The polling store
 

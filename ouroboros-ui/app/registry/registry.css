@@ -1,0 +1,135 @@
+/*
+ * The model registry page (#591) — mockup 21's head actions.
+ *
+ * The mockup is docs/mockups/21-model-registry.html over docs/mockups/assets/ouroboros.css.
+ * Almost nothing of its page frame is this sheet's: the anatomy — gutter rhythm, page head,
+ * tab-set placement — belongs to the **Models section** and is app/models/models.css, drawn
+ * through app/models/models-frame.tsx, because /models, /models/providers and this page share
+ * it. What is left here is what only this page has: the dropdown behind **Import from
+ * provider ▾**, and the one line of hint under the actions when there is nothing to import
+ * from.
+ *
+ * The mockup draws neither. It shows a ghost button with a caret and stops there, so the
+ * panel below is drawn to the shell's own menu (app/shell/shell.css .shell-menu__panel) —
+ * same hairline, same raised surface, same absence of a drop shadow, because the token sheet
+ * publishes no shadow and a shadow drawn from an opaque surface token is a block rather than
+ * a shadow. Two menus in one product that look different are two menus a reader has to learn.
+ *
+ * The classes are not shared with the shell's, deliberately: .shell-menu is the header's
+ * chrome and this is a page composition (app/ui/index.ts § What belongs here). Promoting a
+ * dropdown to a #46 primitive is worth doing when a second page needs one; today one does.
+ *
+ * Two rules this file is held to, both checked by __tests__/styles.test.ts and stated in
+ * docs/CONVENTIONS.md § 6: every colour is a token from app/tokens.css, and every length that
+ * should follow the reader's font-size preference is rem — a spacing or radius token, or a
+ * rem literal where the design names a pixel size.
+ */
+
+/* ---------- the import dropdown ---------- */
+
+/*
+ * The positioning context for the panel, and nothing else: the button inside it is the #46
+ * primitive and is styled by app/ui/ui.css. `inline-flex` rather than `block` so the wrapper
+ * hugs the trigger — a block would take the whole action column and put the panel's left edge
+ * somewhere the button is not.
+ */
+.registry-import {
+  position: relative;
+  display: inline-flex;
+}
+
+/*
+ * The mockup's `▾`. Decoration — it is aria-hidden in the markup — so it is drawn quieter
+ * than the label it follows, which is what keeps the button reading as a sentence with a mark
+ * after it rather than as two words.
+ */
+.registry-import__caret {
+  margin-left: var(--sp-3);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The panel. Anchored to the trigger's start edge rather than its end: this control sits in a
+ * left-aligned action column, and a menu that opened rightwards from it would hang off the
+ * pane at the narrow end.
+ *
+ * The z-index is above the page and below the shell's own chrome, which owns the values in
+ * app/ui/chrome.ts — a page menu that covered the sticky subnav would be a page menu covering
+ * navigation.
+ */
+.registry-import__panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + var(--sp-4));
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 14rem;
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+/*
+ * One provider. A `button` rather than a link — choosing one opens a wizard rather than
+ * navigating — and reset to the row it should be, because a browser's own button styling is
+ * nothing like a menu item.
+ */
+.registry-import__item {
+  padding: var(--sp-4) var(--sp-5);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+}
+
+/*
+ * The rows are inert until CI.4 (#594) wires them, and they say so through `title` — so the
+ * treatment has to be legible as *not yet* rather than as *broken*: quieter ink, and a cursor
+ * that says the press will not land. `aria-disabled` rather than `disabled` is the house rule
+ * (app/ui/button.tsx), which is why this is an attribute selector rather than `:disabled` —
+ * the row stays in the tab order so the reader who needs the tooltip can reach it.
+ */
+.registry-import__item[aria-disabled="true"] {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+.registry-import__item:hover:not([aria-disabled="true"]) {
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+/* ---------- the hint under the actions ---------- */
+
+/*
+ * Shown for exactly one blocked state: no provider connected, read by somebody who may
+ * connect one. It is a flex item of .models__actions, and the full basis is what puts it on
+ * its own line under the two buttons rather than beside them.
+ */
+.registry__hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The one thing on this page that fixes the state it explains, so it is drawn as the link it
+ * is rather than as more prose.
+ */
+.registry__hint-link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.registry__hint-link:hover {
+  text-decoration: underline;
+}

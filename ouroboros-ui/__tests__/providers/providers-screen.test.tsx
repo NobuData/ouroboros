@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
+import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 import {
   ADD_PROVIDER_LABEL,
   AUDIT_LOADING,
@@ -196,21 +196,31 @@ describe("the tab set", () => {
     expect(routing).not.toHaveAttribute("aria-current");
   });
 
-  it("renders Model registry and Spend as honest `soon` targets, not dead routes", () => {
-    // The ticket's fourth acceptance criterion.
+  it("links Model registry back — the 07 → 21 direction CI.1 (#591) added", () => {
+    // The tab was an honest `soon` stub when this page shipped and is a link now that #591
+    // has built its page, without this file changing: the row is drawn from the section's one
+    // list, so all three pages learned it at once.
     seeded();
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
+    const registry = within(tabs).getByRole("link", { name: "Model registry" });
 
-    for (const label of ["Model registry", "Spend"]) {
-      const tab = within(tabs).getByText(label, { selector: ".ou-subnav__soon" });
+    expect(registry).toHaveAttribute("href", REGISTRY_PATH);
+    expect(registry).not.toHaveAttribute("aria-current");
+  });
 
-      expect(tab.tagName, label).toBe("SPAN");
-      expect(tab, label).toHaveTextContent("soon");
-      expect(tab.hasAttribute("href"), label).toBe(false);
-    }
+  it("renders Spend as an honest `soon` target, not a dead route", () => {
+    // The ticket's fourth acceptance criterion, less the tab CI.1 has since built.
+    seeded();
 
-    expect(within(tabs).getAllByRole("link")).toHaveLength(2);
+    const tabs = screen.getByRole("navigation", { name: "Models" });
+    const tab = within(tabs).getByText("Spend", { selector: ".ou-subnav__soon" });
+
+    expect(tab.tagName).toBe("SPAN");
+    expect(tab).toHaveTextContent("soon");
+    expect(tab.hasAttribute("href")).toBe(false);
+
+    expect(within(tabs).getAllByRole("link")).toHaveLength(3);
   });
 });
 

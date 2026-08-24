@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ModelsScreen } from "@/app/models/models-screen";
-import { MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
+import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 
 import { readings } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
@@ -113,24 +113,34 @@ describe("the tab set", () => {
 
     expect(providers).toHaveAttribute("href", PROVIDERS_PATH);
     expect(providers).not.toHaveAttribute("aria-current");
-    expect(within(tabs).getAllByRole("link")).toHaveLength(2);
+    expect(within(tabs).getAllByRole("link")).toHaveLength(3);
   });
 
-  it("renders the two unbuilt sibling surfaces as honest `soon` targets, not dead routes", () => {
-    // The ticket's fifth acceptance criterion, less the tab AE.1 has since built. The
-    // registry and the spend report are other roadmaps' surfaces; rendering them as live
-    // links that go nowhere would be worse than not rendering them at all.
+  it("links Model registry to its page — the 06 → 21 direction CI.1 (#591) added", () => {
+    // The second half of the same amendment against #200, and the reason both halves cost one
+    // edit each: the tab set is one list, so a page built elsewhere turns its stub into a link
+    // here without this file being touched.
     render(<ModelsScreen readings={readings()} />);
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
+    const registry = within(tabs).getByRole("link", { name: "Model registry" });
 
-    for (const label of ["Model registry", "Spend"]) {
-      const tab = within(tabs).getByText(label, { selector: ".ou-subnav__soon" });
+    expect(registry).toHaveAttribute("href", REGISTRY_PATH);
+    expect(registry).not.toHaveAttribute("aria-current");
+  });
 
-      expect(tab.tagName, label).toBe("SPAN");
-      expect(tab, label).toHaveTextContent("soon");
-      expect(tab.getAttribute("title"), label).toMatch(/arrives with/);
-    }
+  it("renders the one unbuilt sibling surface as an honest `soon` target, not a dead route", () => {
+    // The ticket's fifth acceptance criterion, less the two tabs AE.1 and CI.1 have since
+    // built. The spend report is another roadmap's surface; rendering it as a live link that
+    // goes nowhere would be worse than not rendering it at all.
+    render(<ModelsScreen readings={readings()} />);
+
+    const tabs = screen.getByRole("navigation", { name: "Models" });
+    const tab = within(tabs).getByText("Spend", { selector: ".ou-subnav__soon" });
+
+    expect(tab.tagName).toBe("SPAN");
+    expect(tab).toHaveTextContent("soon");
+    expect(tab.getAttribute("title")).toMatch(/arrives with/);
   });
 
   it("keeps the unbuilt tabs out of the tab order", () => {

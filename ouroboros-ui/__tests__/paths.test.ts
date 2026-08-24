@@ -5,6 +5,7 @@ import {
   LOGIN_PATH,
   MODELS_PATH,
   PROVIDERS_PATH,
+  REGISTRY_PATH,
   RETURN_TO_PARAM,
   loginPath,
   safeReturnTo,
@@ -34,6 +35,19 @@ describe("the paths themselves", () => {
     // sidebar. Spelled from `MODELS_PATH` so renaming the section moves both.
     expect(PROVIDERS_PATH).toBe("/models/providers");
     expect(PROVIDERS_PATH.startsWith(`${MODELS_PATH}/`)).toBe(true);
+  });
+
+  it("put the registry under it too, which is decision R10's route", () => {
+    // #591, and the same reason: `/models/registry` rather than `/registry` is what keeps
+    // **Models** lit on the third page of the section as well.
+    expect(REGISTRY_PATH).toBe("/models/registry");
+    expect(REGISTRY_PATH.startsWith(`${MODELS_PATH}/`)).toBe(true);
+  });
+
+  it("give each Models surface a segment of its own", () => {
+    // Three routes, three destinations. Two that collided would be two tabs leading to one
+    // page, with the section's underline unable to say which one a reader is on.
+    expect(new Set([MODELS_PATH, REGISTRY_PATH, PROVIDERS_PATH]).size).toBe(3);
   });
 });
 
