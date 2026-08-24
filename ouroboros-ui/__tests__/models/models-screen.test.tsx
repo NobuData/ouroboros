@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { ModelsScreen } from "@/app/models/models-screen";
-import { MODELS_PATH } from "@/app/paths";
+import { MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
 
 import { readings } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
@@ -10,10 +10,11 @@ import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/pale
 /**
  * The `/models` frame (#200) — mockup 06's page head, tab set and health strip, composed.
  *
- * The strip's own behaviour is `provider-strip.test.tsx`'s and the rules behind every label
- * are `view.test.ts`'s. What is left here is the composition: that the head is the mockup's,
- * that the tab set is honest about three of its four tabs, and that the page admits what it
- * is not rather than mocking it up.
+ * The strip's own behaviour is `provider-strip.test.tsx`'s, the rules behind every label are
+ * `view.test.ts`'s, and the tab set — the section's since AE.1 (#227) — is
+ * `models-subnav.test.tsx`'s. What is left here is the composition: that the head is the
+ * mockup's, that this page is the tab set's Routing tab and the providers page is one link
+ * away, and that the page admits what it is not rather than mocking it up.
  */
 
 describe("the page head", () => {
@@ -90,27 +91,40 @@ describe("the tab set", () => {
     );
   });
 
-  it("links only the tab this page is, and marks it as the current page", () => {
+  it("marks Routing as the current page, and only Routing", () => {
     render(<ModelsScreen readings={readings()} />);
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
-    const links = within(tabs).getAllByRole("link");
+    const routing = within(tabs).getByRole("link", { name: "Routing" });
 
-    expect(links).toHaveLength(1);
-    expect(links[0]).toHaveTextContent("Routing");
-    expect(links[0]).toHaveAttribute("href", MODELS_PATH);
-    expect(links[0]).toHaveAttribute("aria-current", "page");
+    expect(routing).toHaveAttribute("href", MODELS_PATH);
+    expect(routing).toHaveAttribute("aria-current", "page");
+    expect(tabs.querySelectorAll("[aria-current]")).toHaveLength(1);
   });
 
-  it("renders the three sibling surfaces as honest `soon` targets, not dead routes", () => {
-    // The ticket's fifth acceptance criterion. Three of the four tabs point at surfaces
-    // other roadmaps own; rendering them as live links that go nowhere would be worse than
-    // not rendering them at all.
+  it("links Providers & keys to its page — the 06 → 07 direction AE.1 (#227) added", () => {
+    // The amendment this roadmap filed against #200: the tab that was an honest `soon` stub
+    // is a link the moment its page exists, and it points at the route the sidebar and the
+    // providers page itself know it by.
+    render(<ModelsScreen readings={readings()} />);
+
+    const tabs = screen.getByRole("navigation", { name: "Models" });
+    const providers = within(tabs).getByRole("link", { name: "Providers & keys" });
+
+    expect(providers).toHaveAttribute("href", PROVIDERS_PATH);
+    expect(providers).not.toHaveAttribute("aria-current");
+    expect(within(tabs).getAllByRole("link")).toHaveLength(2);
+  });
+
+  it("renders the two unbuilt sibling surfaces as honest `soon` targets, not dead routes", () => {
+    // The ticket's fifth acceptance criterion, less the tab AE.1 has since built. The
+    // registry and the spend report are other roadmaps' surfaces; rendering them as live
+    // links that go nowhere would be worse than not rendering them at all.
     render(<ModelsScreen readings={readings()} />);
 
     const tabs = screen.getByRole("navigation", { name: "Models" });
 
-    for (const label of ["Model registry", "Providers & keys", "Spend"]) {
+    for (const label of ["Model registry", "Spend"]) {
       const tab = within(tabs).getByText(label, { selector: ".ou-subnav__soon" });
 
       expect(tab.tagName, label).toBe("SPAN");

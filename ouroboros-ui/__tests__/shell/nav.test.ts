@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DASHBOARD_PATH } from "@/app/paths";
+import { DASHBOARD_PATH, MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
 import {
   isActiveRoute,
   navGroup,
@@ -153,6 +153,13 @@ describe("isActiveRoute", () => {
     // The specification's example: /models/* keeps Models highlighted.
     expect(isActiveRoute("/models/routing", "/models")).toBe(true);
     expect(isActiveRoute("/models/registry/gpt", "/models")).toBe(true);
+  });
+
+  it("keeps Models active on the providers page, which is the first real sub-route", () => {
+    // #227's criterion that the sidebar's **Models** entry stays active on both `/models` and
+    // `/models/providers`, asserted against the constants the sidebar and the page use.
+    expect(isActiveRoute(PROVIDERS_PATH, MODELS_PATH)).toBe(true);
+    expect(isActiveRoute(MODELS_PATH, MODELS_PATH)).toBe(true);
   });
 
   it("does not match a route that merely starts with the same letters", () => {

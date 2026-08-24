@@ -9,7 +9,14 @@
  *
  * **Framework-free and pure.** Nothing here imports React, `next/*` or the server-only
  * client, the same way `app/dashboard/view.ts` and `app/login/view.ts` are pure. The reads
- * are `app/models/data.ts`'s and the drawing is the screen's.
+ * are `app/models/data.ts`'s and the drawing is the screen's. The one import beyond the
+ * contract's types is `app/paths.ts`, which is value-only for exactly this reason: the tab
+ * set names routes, and a route typed out here as a string would be a second spelling of one.
+ *
+ * Since AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)) the tab set at the
+ * foot of this file is the **section's** rather than this page's — `/models/providers` draws
+ * the same list through `app/models/models-subnav.tsx` — which is why it holds a route for
+ * every built surface rather than a marker for the one surface that happened to be this page.
  *
  * ### The rule this module exists to keep
  *
@@ -31,6 +38,7 @@
 
 import type { Reading } from "@/app/api/reading";
 import type { ProviderCheck, ProviderHealth, ProviderStatus } from "@/app/api/routing";
+import { MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
 
 /* ------------------------------------------------------------------ what the page reads */
 
@@ -281,44 +289,85 @@ export const SIMULATE_REASON =
 
 /* ------------------------------------------------------------------ the tab set */
 
-/** One tab of the Models tab set: the built one, and the three that name their owner. */
-export interface ModelsTab {
-  /** Stable identifier, and the React key. */
-  readonly id: string;
-  /** What the tab says. */
+/**
+ * The Models surfaces that are built — the ids a page may claim as the tab it *is*.
+ *
+ * A type rather than a list, so the tab set below cannot link to a surface that does not
+ * exist: a live tab's id must be one of these and a *soon* tab's must not, and a page asks for
+ * its active tab by one of these names. When the registry (CI.1,
+ * [#591](https://github.com/NobuData/ouroboros/issues/591)) lands, `"registry"` joins this
+ * union and the compiler names the tab that has to change with it.
+ */
+export type ModelsSurface = "routing" | "providers";
+
+/** Every tab's id, built or not. */
+export type ModelsTabId = ModelsSurface | "registry" | "spend";
+
+/** What every tab carries: a stable id, which is also the React key, and what it says. */
+interface ModelsTabBase {
+  readonly id: ModelsTabId;
   readonly label: string;
-  /**
-   * Why it is not reachable, or `null` for the tab this page *is*.
-   *
-   * Required on every unbuilt tab and refused on the built one, which is the honesty pair
-   * `NavEntry` already uses for the sidebar's rows: a surface that is not ready is
-   * **labelled**, never dead and never a link to a `404`.
-   */
-  readonly note: string | null;
+}
+
+/** A tab whose surface exists. It links there. */
+export interface LiveModelsTab extends ModelsTabBase {
+  readonly id: ModelsSurface;
+  /** Where it goes — one of `app/paths.ts`'s, so the tab and the route are one fact. */
+  readonly href: string;
+}
+
+/**
+ * A tab whose surface does not exist yet. It names its owner instead of linking.
+ *
+ * `note` is required here and impossible on a live tab, which is the honesty pair `NavEntry`
+ * already uses for the sidebar's rows: a surface that is not ready is **labelled**, never dead
+ * and never a link to a `404`.
+ */
+export interface SoonModelsTab extends ModelsTabBase {
+  readonly id: Exclude<ModelsTabId, ModelsSurface>;
+  /** Why it is not reachable — which surface owns it, and when it arrives. */
+  readonly note: string;
+}
+
+/** One tab of the Models tab set: built and linking, or unbuilt and saying so. */
+export type ModelsTab = LiveModelsTab | SoonModelsTab;
+
+/**
+ * Whether a tab leads somewhere.
+ *
+ * @param tab The tab.
+ * @returns `true` for a built surface, narrowing the type to the one that carries an `href`.
+ */
+export function isLiveTab(tab: ModelsTab): tab is LiveModelsTab {
+  return "href" in tab;
 }
 
 /**
  * The Models tab set, in the order mockup 06 draws it.
  *
- * Three of the four point at surfaces this roadmap does not build — the registry is mockup
- * 21's, providers and keys are mockup 07's, and the spend report is AB.4
- * ([#210](https://github.com/NobuData/ouroboros/issues/210)) — so each names its owner
- * rather than linking somewhere that would answer a `404`. Rendering them as live links is
- * worse than not rendering them at all; rendering them as honest *soon* targets tells the
- * reader the shape of the product without lying about its state.
+ * **One list for every page in the section**, rendered by `app/models/models-subnav.tsx`.
+ * That is what makes the tab states correct from both directions: `/models` and
+ * `/models/providers` draw the same four tabs and differ only in which one carries
+ * `aria-current`. Two pages each keeping a list of their own would be two lists that drift —
+ * one linking a surface the other still calls *soon*.
+ *
+ * Two of the four are built. Routing is this roadmap's own, and Providers & keys went live
+ * with AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)) — the amendment AA.1
+ * was filed expecting. The registry is CI.1's
+ * ([#591](https://github.com/NobuData/ouroboros/issues/591)) and the spend report AB.4's
+ * ([#210](https://github.com/NobuData/ouroboros/issues/210)); each names its owner rather
+ * than linking somewhere that would answer a `404`. Rendering them as live links is worse
+ * than not rendering them at all; rendering them as honest *soon* targets tells the reader
+ * the shape of the product without lying about its state.
  */
 export const MODELS_TABS: readonly ModelsTab[] = [
-  { id: "routing", label: "Routing", note: null },
+  { id: "routing", label: "Routing", href: MODELS_PATH },
   {
     id: "registry",
     label: "Model registry",
-    note: "The model registry arrives with its own roadmap (mockup 21).",
+    note: "The model registry arrives with #591 (mockup 21).",
   },
-  {
-    id: "providers",
-    label: "Providers & keys",
-    note: "Providers & keys arrives with its own roadmap (mockup 07).",
-  },
+  { id: "providers", label: "Providers & keys", href: PROVIDERS_PATH },
   {
     id: "spend",
     label: "Spend",

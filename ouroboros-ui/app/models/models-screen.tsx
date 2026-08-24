@@ -1,10 +1,8 @@
-import Link from "next/link";
+import { Button, Card, EmptyState } from "@/app/ui";
 
-import { MODELS_PATH } from "@/app/paths";
-import { Button, Card, EmptyState, Eyebrow, PageSubnav, SubnavSoon } from "@/app/ui";
-
+import { ModelsFrame } from "./models-frame";
 import { ProviderStrip } from "./provider-strip";
-import { MODELS_TABS, type ModelsReadings, SIMULATE_REASON, saveRoutesReason } from "./view";
+import { type ModelsReadings, SIMULATE_REASON, saveRoutesReason } from "./view";
 
 import "./models.css";
 
@@ -19,6 +17,12 @@ import "./models.css";
  * tab set that would have been a second row of top-bar links is the CP.4 `PageSubnav`
  * primitive, sticky inside the pane's own scroll.
  *
+ * The head and the tab set are the section's rather than this page's since AE.1
+ * ([#227](https://github.com/NobuData/ouroboros/issues/227)) gave the section a second page:
+ * `app/models/models-frame.tsx` draws both, and this page supplies its title, its promise,
+ * its two actions and the tab it is. What it keeps for itself is what is only true here — the
+ * violet underline, the health strip, and the space the routing matrix will fill.
+ *
  * It is a component rather than markup written in the route, for the reason the dashboard
  * and login screens are: everything it draws can then be rendered and asserted on without
  * Next.js's routing around it. The route reads (`app/models/data.ts`), a pure module decides
@@ -26,12 +30,12 @@ import "./models.css";
  *
  * ### What this page does not pretend
  *
- * The frame is honest about being a frame. Three of its four tabs point at surfaces other
- * roadmaps own and are labelled *soon* rather than linked to a `404`; both head actions are
- * inert and say why; and the space the routing matrix will occupy carries an empty state
- * naming the issues that fill it, rather than a placeholder table of numbers nobody
- * computed. That is § 3.5 applied to a page that is mostly not built yet: a surface that is
- * not ready is **labelled**, never dead, and never a mock-up of itself.
+ * The frame is honest about being a frame. Two of its four tabs point at surfaces other
+ * roadmaps have not built and are labelled *soon* rather than linked to a `404`; both head
+ * actions are inert and say why; and the space the routing matrix will occupy carries an
+ * empty state naming the issues that fill it, rather than a placeholder table of numbers
+ * nobody computed. That is § 3.5 applied to a page that is mostly not built yet: a surface
+ * that is not ready is **labelled**, never dead, and never a mock-up of itself.
  *
  * The one region drawing real data is the health strip, and it is the one region on the page
  * where being wrong would matter — which is why `view.ts` carries the argument for every
@@ -60,16 +64,16 @@ const SUBLINE =
  */
 export function ModelsScreen({ readings }: Readonly<{ readings: ModelsReadings }>) {
   return (
-    <main className="models">
-      <div className="models__head">
-        <div className="models__headings">
-          <Eyebrow>Models</Eyebrow>
-          <h1 className="models__title">
-            Route every kind of work to the model that earns it.
-          </h1>
-          <p className="models__sub">{SUBLINE}</p>
-        </div>
-        <div className="models__actions">
+    <ModelsFrame
+      active="routing"
+      // Mockup 06's violet `--model` underline, preserved as a tone rather than normalised
+      // to the accent — the divergence from 07/21 is deliberate and `page-subnav.tsx` says
+      // why.
+      tone="model"
+      title="Route every kind of work to the model that earns it."
+      subline={SUBLINE}
+      actions={
+        <>
           <Button reason={SIMULATE_REASON} tone="ghost">
             Simulate routing
           </Button>
@@ -82,27 +86,9 @@ export function ModelsScreen({ readings }: Readonly<{ readings: ModelsReadings }
           <Button reason={saveRoutesReason(readings.pending)} tone="primary">
             Save routes
           </Button>
-        </div>
-      </div>
-
-      {/*
-        Mockup 06's violet `--model` underline, preserved as a tone rather than normalised
-        to the accent — the divergence from 07/21 is deliberate and `page-subnav.tsx` says
-        why. `aria-current="page"` is what marks the active tab, in the same spelling the
-        sidebar uses and the stylesheet reads.
-      */}
-      <PageSubnav className="models__subnav" label="Models" tone="model">
-        {MODELS_TABS.map((tab) =>
-          tab.note === null ? (
-            <Link aria-current="page" href={MODELS_PATH} key={tab.id}>
-              {tab.label}
-            </Link>
-          ) : (
-            <SubnavSoon key={tab.id} label={tab.label} note={tab.note} />
-          ),
-        )}
-      </PageSubnav>
-
+        </>
+      }
+    >
       <ProviderStrip providers={readings.providers} />
 
       {/*
@@ -117,6 +103,6 @@ export function ModelsScreen({ readings }: Readonly<{ readings: ModelsReadings }
           title="The routing matrix arrives next"
         />
       </Card>
-    </main>
+    </ModelsFrame>
   );
 }

@@ -38,15 +38,16 @@ import "./providers.css";
  *
  * ### It is a component, not a page, because AE.1 owns the page
  *
- * `/providers` is AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)) and has
- * not landed. Rather than invent a page frame this ticket would then have to hand over — or
- * leave the acceptance criterion *the sheet renders seeded history* with nowhere to be
- * observed — the trail ships as **the head action and its sheet, mountable as one element**.
- * AE.1 renders `<AuditTrail />` in its page head beside its own **+ Add provider**, and
- * nothing about this file changes when it does. It is reachable today at
- * `/workshop/providers-audit`, which is the same thing the chrome story
- * ([#646](https://github.com/NobuData/ouroboros/issues/646)) is for a primitive whose page has
- * not arrived.
+ * `/models/providers` is AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)),
+ * and it had not landed when this was written. Rather than invent a page frame this ticket
+ * would then have to hand over — or leave the acceptance criterion *the sheet renders seeded
+ * history* with nowhere to be observed — the trail shipped as **the head action and its
+ * sheet, mountable as one element**. AE.1 now renders `<AuditTrail />` in its page head
+ * beside its own **+ Add provider** (`app/providers/providers-screen.tsx`), and nothing about
+ * this file changed when it did. It stays reachable at `/workshop/providers-audit` as well,
+ * which is the same thing the chrome story
+ * ([#646](https://github.com/NobuData/ouroboros/issues/646)) is for a primitive: the element on
+ * its own, without the page around it.
  *
  * ### Everything the sheet owes the keyboard is `ShellOverlay`'s
  *

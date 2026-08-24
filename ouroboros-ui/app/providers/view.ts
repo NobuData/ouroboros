@@ -13,6 +13,12 @@
  * **Framework-free and pure.** Nothing here imports React, `next/*` or the server-only
  * client, the same way `app/models/view.ts` and `app/dashboard/view.ts` are pure.
  *
+ * Since AE.1 ([#227](https://github.com/NobuData/ouroboros/issues/227)) the foot of this file
+ * also holds the **page's** copy — the title, the subline the security model approved, and
+ * what the head's other action says while it cannot act — for the reason the sheet's copy is
+ * here: a sentence that lives in one named place is a sentence a reviewer can be pointed at,
+ * and the subline in particular is one that is *not the UI's to choose*.
+ *
  * ---------------------------------------------------------------------------
  * ### The rule this module exists to keep
  *
@@ -230,3 +236,84 @@ export type AuditReading =
   | { readonly ok: true; readonly events: readonly AuditEvent[]; readonly total: number }
   /** Why not — a sentence already written for a reader. */
   | { readonly ok: false; readonly reason: string };
+
+/* --------------------------------------------------------------------------- the page */
+
+/**
+ * The page's title — mockup 07's `<h1>`, and the name of the tab that leads here.
+ */
+export const PROVIDERS_TITLE = "Providers & keys";
+
+/**
+ * The placeholder the approved subline carries for the workspace's display name.
+ *
+ * Exported so the test that holds {@link PROVIDERS_SUBLINE_TEMPLATE} to the document can
+ * name the one thing it expects to find substituted.
+ */
+export const WORKSPACE_SLOT = "{workspace}";
+
+/**
+ * The page-head subline, **verbatim from `docs/SECURITY_MODEL.md` § 7.2**.
+ *
+ * This is the sentence that makes the security claim, and its wording is not this module's
+ * to choose: AD.5 ([#226](https://github.com/NobuData/ouroboros/issues/226)) owns it, because
+ * the mockup's version — *"workers only ever see short-lived tokens"* — is not what the
+ * system does (AD.3 does something stronger, and § 4.1 of the document says what). So this
+ * constant is a copy of § 7.2's block with its line breaks joined, and nothing else: no
+ * paraphrase, no rewording of *workspace* back to the mockup's *tenant*, and the `{workspace}`
+ * slot left exactly where the document puts it for {@link providersSubline} to fill.
+ *
+ * `__tests__/providers/view.test.ts` reads the document and compares, so a change to either
+ * that is not a change to both fails the suite — which is the document's own rule: *a change
+ * here is a change to the product's claims and is reviewed as one.*
+ */
+export const PROVIDERS_SUBLINE_TEMPLATE =
+  "Credentials live in {workspace}'s encrypted vault, scoped to this workspace. " +
+  "Keys never leave the control plane — workers never receive them at all.";
+
+/**
+ * The subline for one workspace.
+ *
+ * The possessive is the template's — `{workspace}'s` — and it is applied as written, with no
+ * rule of this module's own about names that already end in *s*. The copy is not the UI's to
+ * adjust, and an apostrophe rule would be an adjustment; if the document wants one it belongs
+ * in § 7.2, where a reviewer of the claim would look for it.
+ *
+ * @param workspace The workspace's display name, as the service reports it (`Membership.name`).
+ *   Substituted **literally**: a name is data, so a `$` in it must not reach
+ *   `String.replace`'s pattern syntax — a workspace called `A$&B` would otherwise read back the
+ *   placeholder into its own sentence.
+ * @returns The approved sentence with the name in it.
+ */
+export function providersSubline(workspace: string): string {
+  return PROVIDERS_SUBLINE_TEMPLATE.replace(WORKSPACE_SLOT, () => workspace);
+}
+
+/** The head's primary action, as the mockup labels it. */
+export const ADD_PROVIDER_LABEL = "+ Add provider";
+
+/**
+ * Why **+ Add provider** cannot act yet.
+ *
+ * A constant rather than a rule: the catalog and form it opens are AE.5's
+ * ([#231](https://github.com/NobuData/ouroboros/issues/231)) and do not exist, so there is no
+ * state in which this control acts today. `Button`'s `reason` is how a control is switched
+ * off in this product — it sets `aria-disabled`, becomes the tooltip, and cannot be omitted —
+ * and naming the issue is what makes that tooltip a usable answer to *when?* rather than the
+ * word *soon* on its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5).
+ */
+export const ADD_PROVIDER_REASON =
+  "The add-provider flow is not built yet — it arrives with #231.";
+
+/** What the space below the tab set says it is waiting for. */
+export const PROVIDERS_NEXT_TITLE = "The provider cards arrive next";
+
+/**
+ * …and which issues fill it. Named rather than mocked: a grid of invented cards would be the
+ * one dishonest thing on a page built to be honest, and indistinguishable in a screenshot
+ * from the real one AE.2 ships.
+ */
+export const PROVIDERS_NEXT_NOTE =
+  "The five provider cards arrive with #228; key management with #229, test and discovery " +
+  "with #230, the add-provider catalog with #231, and caps, the security strip and the " +
+  "page's states with #232. The Audit log above is live.";
