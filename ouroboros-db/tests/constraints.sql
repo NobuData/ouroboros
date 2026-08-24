@@ -30,8 +30,9 @@
 -- `github_issues` with its sync cursor on `github_repos` (V014, #99), the routing
 -- foundation `provider_connections` and `model_aliases` (V015, #189), the routing matrix
 -- itself — `task_kinds`, `routes` and ordered `route_hops` (V016, #190) — what mockup
--- 07's provider cards show and the discovered catalog beneath them (V017, #221), and the
--- `escalation_rules` that modify a route (V018, #191).
+-- 07's provider cards show and the discovered catalog beneath them (V017, #221), the
+-- `escalation_rules` that modify a route (V018, #191), and the alias switch, unbound
+-- binding and structured params mockup 21's registry manages (V019, #579).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -3816,6 +3817,23 @@ select pg_temp.must_reject(
 -- own uniqueness index; `must_not_scan` covers the *other* relation in the same plan,
 -- because naming one index says nothing about the table it joins to — and a resolution
 -- that scans `provider_connections` is not one query, it is one query and a scan.
+--
+-- **`analyze` first, and it is load-bearing rather than tidy.** Rows inserted inside this
+-- transaction leave the planner with no statistics for them, and on a table of that size
+-- the entry point through `(organization_id, alias)` and the one through
+-- `(organization_id, provider_connection_id)` cost *exactly the same* — so which one it
+-- picks is a tie-break, and a tie-break moves when something unrelated moves. V019 (#579)
+-- is what proved that: adding four columns to `model_aliases` flipped this assertion to the
+-- foreign key's index — a scan of the workspace's aliases with `alias` as a filter — while
+-- changing nothing about either index. With statistics, the difference between one row and
+-- N is visible and the unique index wins for the reason it should, which is what makes
+-- this an assertion about a plan rather than about an arbitrary choice between two of them.
+--
+-- It is an `analyze` inside the transaction this file rolls back, so the statistics go with
+-- everything else on the way out.
+analyze ouroboros.model_aliases;
+analyze ouroboros.provider_connections;
+
 set local enable_seqscan = off;
 
 select pg_temp.must_use_index(
@@ -5527,10 +5545,495 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.escalation_rules where organization_id = 'org-rules'),
   'deleting a workspace takes its escalation rules with it, reference check notwithstanding');
 
+-- ===========================================================================
+-- V019 — the alias switch, the unbound binding and the structured params (#579)
+-- ===========================================================================
+--
+-- Y.1's `model_aliases` grown into mockup 21's management surface (decision **R1**), and
+-- three of this ticket's criteria are rules that would be invisible if they were merely
+-- intended:
+--
+--   * **The mockup's `gpt5-experiments` row is representable, and can never be switched
+--     on.** A model id, no connection, `enabled = false` — and `enabled = true` on it is a
+--     CHECK violation rather than a service's promise. Binding it and then enabling it is
+--     the other half, because a rule that refused both would be indistinguishable here.
+--   * **Params and restrictions are closed vocabularies.** An unknown key and an
+--     out-of-range temperature are refused, which is what makes the chips derived from them
+--     able to be true.
+--   * **Nothing else changed.** Y.2's `route_hops` FK (#190) and AD.2's provider-delete
+--     guard (#223) are asserted against the widened column rather than assumed to be
+--     unaffected — a nullable foreign key column is exactly the change that quietly
+--     loosens a reference somewhere else.
+--
+-- Its own fixtures again: the V018 section deleted `org-rules`, and no workspace above
+-- survives with a connection to bind to. Two are created — one to own the aliases, one to
+-- prove the workspace cascade still reaches them.
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values
+  ('user-registrar', 'Reg Istrar', 'reg@registry-works.dev', true, now(), now());
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-registry', 'Registry Works', 'registry-works', now()),
+  ('org-onlooker', 'Onlooker Works', 'onlooker-works', now());
+
+insert into ouroboros.provider_connections (id, organization_id, kind, display_name) values
+  ('f0000000-0000-0000-0000-00000000000a', 'org-registry', 'anthropic', 'Anthropic'),
+  ('f0000000-0000-0000-0000-00000000000b', 'org-registry', 'cursor',    'Cursor'),
+  ('f0000000-0000-0000-0000-00000000000e', 'org-onlooker', 'anthropic', 'Anthropic');
+
+-- --- the mockup's last row, exactly ---------------------------------------------
+--
+-- Acceptance criterion: *the `gpt5-experiments` row is representable exactly — model id
+-- present, no connection, `enabled = false`*. It is the one row V015 could not hold at all,
+-- so this insert is the criterion rather than a fixture for one.
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id, enabled) values
+  ('f1000000-0000-0000-0000-00000000000a', 'org-registry', 'gpt5-experiments',
+   null, 'gpt-5.2-preview', false);
+
+select pg_temp.must_hold(
+  (select provider_connection_id is null and model_id = 'gpt-5.2-preview' and not enabled
+     from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000a'),
+  'an alias created ahead of its key is a row: a model id, no connection, switch off');
+
+-- --- and it can never be switched on --------------------------------------------
+--
+-- Acceptance criterion: *`UPDATE … SET enabled = true` on an unbound alias fails at the
+-- CHECK constraint* (decision R2). Named, because a statement rejected by some other rule
+-- would read as a pass and this is the rule the ticket is about.
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set enabled = true
+     where id = 'f1000000-0000-0000-0000-00000000000a'$$,
+  'an unbound alias can never be switched on', 'model_aliases_unbound_disabled');
+
+-- The same refusal from the other direction: clearing the binding of an alias that is on.
+-- Without this the CHECK could be satisfied by an INSERT-only rule and every UPDATE that
+-- unbinds a live alias would pass.
+insert into ouroboros.model_aliases
+    (id, organization_id, alias, provider_connection_id, model_id) values
+  ('f1000000-0000-0000-0000-00000000000b', 'org-registry', 'coder-max',
+   'f0000000-0000-0000-0000-00000000000a', 'claude-fable-5');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set provider_connection_id = null
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'unbinding an alias that is switched on is the same refusal, seen from the other side',
+  'model_aliases_unbound_disabled');
+
+-- And the default is deliberately not weakened to make the unbound insert convenient: an
+-- alias created with no connection and no explicit switch takes `enabled` true from the
+-- default and is refused. *This alias has no key yet and is off* is a statement the writer
+-- makes.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases (organization_id, alias, model_id)
+    values ('org-registry', 'silent-orphan', 'gpt-5.2-preview')$$,
+  'an unbound alias that does not say it is off is refused rather than quietly corrected',
+  'model_aliases_unbound_disabled');
+
+-- --- binding it, and then enabling it, works ------------------------------------
+--
+-- Acceptance criterion: *binding an unbound alias to a connection and then enabling it
+-- succeeds*. Two statements rather than one, because that is the order CH.1's rebind runs
+-- them in and the order in which an intermediate state exists at all.
+update ouroboros.model_aliases
+   set provider_connection_id = 'f0000000-0000-0000-0000-00000000000b'
+ where id = 'f1000000-0000-0000-0000-00000000000a';
+
+update ouroboros.model_aliases set enabled = true
+ where id = 'f1000000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select enabled and provider_connection_id = 'f0000000-0000-0000-0000-00000000000b'
+     from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000a'),
+  'binding an unbound alias and then switching it on is the fix, and it is allowed');
+
+-- Back to unbound, in the one order that is legal — switch off first — because the rest of
+-- this section is about the state the migration exists for.
+update ouroboros.model_aliases set enabled = false
+ where id = 'f1000000-0000-0000-0000-00000000000a';
+update ouroboros.model_aliases set provider_connection_id = null
+ where id = 'f1000000-0000-0000-0000-00000000000a';
+
+-- --- the composite foreign key is MATCH SIMPLE, which is why null is admitted ----
+--
+-- The property the unbound row rests on, asserted rather than inherited from a default
+-- nobody looked at: under `MATCH SIMPLE` a reference with any null column is satisfied
+-- without being checked, so `(org, null)` is not a dangling reference. Written `MATCH FULL`
+-- the same foreign key would refuse every row above.
+select pg_temp.must_hold(
+  (select confmatchtype = 's' from pg_constraint
+    where conname = 'model_aliases_provider_fk'
+      and conrelid = 'ouroboros.model_aliases'::regclass),
+  'the alias-to-connection key is MATCH SIMPLE, which is what lets a null binding exist beside a not-null organization');
+
+-- The tenancy rule it exists for is unchanged for a bound alias: another workspace's
+-- connection is still refused, and null is not a hole in that.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases (organization_id, alias, provider_connection_id, model_id)
+    values ('org-registry', 'trespasser', 'f0000000-0000-0000-0000-00000000000e', 'claude-opus-5')$$,
+  'a bound alias still cannot name another workspace''s connection', 'model_aliases_provider_fk');
+
+-- --- the params vocabulary ------------------------------------------------------
+--
+-- Acceptance criterion: *`params` rejects an unknown key and an out-of-range temperature*.
+-- Every probe below writes a well-formed object, so `model_aliases_params_object` (V015)
+-- cannot be the rule that fires and the constraint name is the assertion.
+update ouroboros.model_aliases
+   set params = '{"thinking": "max", "token_budget": 400000}'
+ where id = 'f1000000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select params = '{"thinking": "max", "token_budget": 400000}'::jsonb
+     from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000b'),
+  'the mockup''s (max thinking)(400k budget) chips are one params document');
+
+-- The whole vocabulary is storable — the CHECK is a vocabulary, not a subset of one — and
+-- each of the mockup's other chips is one of these.
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.model_alias_params_valid(document))
+     from (values ('{"thinking": "off"}'::jsonb),
+                  ('{"thinking": "std"}'::jsonb),
+                  ('{"thinking": "max"}'::jsonb),
+                  ('{"temperature": 0}'::jsonb),
+                  ('{"temperature": 2}'::jsonb),
+                  ('{"temperature": 0.2}'::jsonb),
+                  ('{"max_output": 8000}'::jsonb),
+                  ('{"context_clamp": 32000}'::jsonb),
+                  ('{"token_budget": 10000000}'::jsonb),
+                  ('{}'::jsonb)) as documents (document)),
+  'every key and bound the vocabulary names is storable, including the empty document');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"top_p": 0.9}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'an unknown params key is refused, because a chip is derived from this document and nothing derives that one',
+  'model_aliases_params_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"temperature": 3.0}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a temperature no vendor accepts is refused at the shape', 'model_aliases_params_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"temperature": -0.1}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'and so is a negative one', 'model_aliases_params_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"thinking": "maximum"}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a fourth thinking level is refused here exactly as a sixth provider kind is on a connection',
+  'model_aliases_params_known');
+
+-- Zero is refused for all three token counts: a budget of zero tokens is not a small
+-- budget, and every place it could be typed meant to clear the field instead — which is
+-- removing the key.
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"token_budget": 0}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a token budget of zero is a param meaning "do not answer", not an unset one',
+  'model_aliases_params_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"max_output": 1.5}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a token count is whole', 'model_aliases_params_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"context_clamp": 10000001}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'and bounded, so a unit mistake is caught rather than stored', 'model_aliases_params_known');
+
+-- The types are checked, not coerced. `"400000"` is what a form submits when nothing parsed
+-- it, and a reader that only asked whether the key was there would carry it to a provider.
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"token_budget": "400000"}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a token budget is a number, not the string a form submits when nothing parsed it',
+  'model_aliases_params_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"thinking": null}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a JSON null is not how a param is cleared; removing the key is', 'model_aliases_params_known');
+
+-- The two constraints on this column own one rule each, and the V015 section above is what
+-- would go red if that stopped being true: *params is an object* is
+-- `model_aliases_params_object` and stays its refusal, while this one is about keys and
+-- values. The validator is nonetheless total — false rather than an error for a document it
+-- is not asked about — which is what lets the guard in the constraint expression be correct
+-- whichever side PostgreSQL evaluates first.
+select pg_temp.must_hold(
+  (select not ouroboros.model_alias_params_valid('[]'::jsonb)
+      and not ouroboros.model_alias_params_valid('"max"'::jsonb)
+      and not ouroboros.model_alias_restrictions_valid('[]'::jsonb)),
+  'both validators answer false for a document that is not an object, rather than raising');
+
+-- --- the restrictions vocabulary ------------------------------------------------
+--
+-- Acceptance criterion: *`restrictions` rejects an unknown flag*. Two flags, boolean, and
+-- the reason they are not params is in the migration header: a restriction never leaves
+-- this product.
+update ouroboros.model_aliases
+   set restrictions = '{"review_vote_only": true}'
+ where id = 'f1000000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select ouroboros.model_alias_restrictions_valid('{"review_vote_only": true, "batch_ok": false}')
+      and ouroboros.model_alias_restrictions_valid('{}')),
+  'both flags are storable together, in either position, and the empty document is the ordinary one');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set restrictions = '{"batch_okay": true}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'an unknown restriction flag is refused', 'model_aliases_restrictions_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set restrictions = '{"batch_ok": "true"}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a flag is a boolean, not the string a form submits', 'model_aliases_restrictions_known');
+
+-- A param key is not a restriction key and a restriction key is not a param key. The two
+-- documents are separate because the two concepts are, and a validator that shared a
+-- vocabulary would make that separation a convention.
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set restrictions = '{"thinking": "max"}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a param is not a restriction', 'model_aliases_restrictions_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set params = '{"batch_ok": true}'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'and a restriction is not a param', 'model_aliases_params_known');
+
+-- --- notes and authorship -------------------------------------------------------
+update ouroboros.model_aliases
+   set notes = 'Dev key. Do not point production routes at this.',
+       updated_by = 'user-registrar'
+ where id = 'f1000000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select notes like 'Dev key.%' and updated_by = 'user-registrar'
+     from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000b'),
+  'an alias carries an operator''s note and who last wrote it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set notes = '   '
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'a blank note renders as an empty note rather than as no note, so it is refused',
+  'model_aliases_notes_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.model_aliases set updated_by = 'nobody-at-all'
+     where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'an alias cannot be attributed to a person who does not exist', 'model_aliases_updated_by_fk');
+
+-- Sets null rather than cascading: deleting the person who last edited an alias must not
+-- delete the alias, exactly as V011, V016 and V017 decided for their own authorship columns.
+delete from ouroboros."user" where "id" = 'user-registrar';
+
+select pg_temp.must_hold(
+  (select updated_by is null and alias = 'coder-max'
+     from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000b'),
+  'deleting the person who last edited an alias loses the attribution and keeps the alias');
+
+-- --- V017's soft validation has nothing to say about an unbound alias -----------
+--
+-- The warning (#221, decision P6) tells a *gap* from a *mismatch*, and an unbound alias is
+-- neither: there is no connection to have discovered anything. Left unamended it would take
+-- the gap branch and report *nothing has been discovered on it yet* about a connection that
+-- does not exist — a warning nobody can act on, raised on the one write this migration
+-- exists to make possible. A warning cannot be caught in SQL, so what is asserted is the
+-- half that can be: the predicate the function guards on, and that the trigger still
+-- watches the same two columns V017 gave it.
+select pg_temp.must_hold(
+  not ouroboros.provider_model_discovered(null, 'gpt-5.2-preview'),
+  'nothing is discovered on a connection that is not there, which is the branch the amendment skips');
+
+select pg_temp.must_hold(
+  (select array_agg(att.attname::text order by att.attname) = array['model_id', 'provider_connection_id']
+     from pg_trigger trg
+     cross join lateral unnest(trg.tgattr) as columns (attnum)
+     join pg_attribute att
+       on att.attrelid = trg.tgrelid and att.attnum = columns.attnum
+    where trg.tgrelid = 'ouroboros.model_aliases'::regclass
+      and trg.tgname = 'model_aliases_warn_undiscovered_model'),
+  'replacing the function left V017''s trigger and its column list exactly as they were');
+
+-- --- Y.2's hop reference is unaffected by the widened column ---------------------
+--
+-- Acceptance criterion: *`route_hops`'s FK (#190) behaves exactly as before —
+-- regression-verified, not assumed*. A hop names an alias by id; whether that alias has a
+-- provider binding is not a referential question, and the `restrict` that stops an alias
+-- being retired out from under a chain still fires — including for an alias that is
+-- unbound and switched off, which is the row that did not exist when the rule was written.
+insert into ouroboros.task_kinds (organization_id, name, description, sort_order) values
+  ('org-registry', 'implement', 'Write the change, run tests, iterate to green', 4);
+
+insert into ouroboros.routes (id, organization_id, task_kind_id, tag)
+select 'f2000000-0000-0000-0000-00000000000a', 'org-registry', id, 'implement-primary'
+  from ouroboros.task_kinds where organization_id = 'org-registry' and name = 'implement';
+
+insert into ouroboros.route_hops (organization_id, route_id, position, model_alias_id) values
+  ('org-registry', 'f2000000-0000-0000-0000-00000000000a', 1,
+   'f1000000-0000-0000-0000-00000000000b'),
+  ('org-registry', 'f2000000-0000-0000-0000-00000000000a', 2,
+   'f1000000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.route_hops
+    where route_id = 'f2000000-0000-0000-0000-00000000000a'),
+  'a chain may name an unbound, switched-off alias — resolution drops the hop with an explanation, the schema does not refuse it');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000b'$$,
+  'an alias a chain names still cannot be retired out from under it', 'route_hops_alias_fk');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.model_aliases where id = 'f1000000-0000-0000-0000-00000000000a'$$,
+  'and the unbound one is protected by exactly the same key', 'route_hops_alias_fk');
+
+-- --- AD.2's provider-delete guard is unaffected, in both of its directions --------
+--
+-- Acceptance criterion: *AD.2's provider-delete guard (#223) behaves exactly as before*.
+-- It is `model_aliases_provider_fk`'s `restrict`, plus the read that lets the refusal name
+-- the aliases responsible. Both are asserted against the widened column, because the
+-- failure mode a nullable foreign key introduces is silent: an unbound alias counting as a
+-- dependant would block a deletion nothing depends on.
+select pg_temp.must_reject(
+  $$delete from ouroboros.provider_connections
+     where id = 'f0000000-0000-0000-0000-00000000000a'$$,
+  'a connection with dependent aliases still cannot be deleted', 'model_aliases_provider_fk');
+
+-- The pre-flight AD.2 builds its message from — `where provider_connection_id = $1` — never
+-- matches null, so the unbound alias is not in the list and does not stand in the way of a
+-- connection it has nothing to do with.
+select pg_temp.must_hold(
+  (select array_agg(alias order by alias) = array['coder-max']
+     from ouroboros.model_aliases
+    where organization_id = 'org-registry'
+      and provider_connection_id = 'f0000000-0000-0000-0000-00000000000a'),
+  'the aliases-for-a-connection read names the bound alias and not the unbound one');
+
+delete from ouroboros.provider_connections
+ where id = 'f0000000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_aliases
+    where organization_id = 'org-registry'
+      and provider_connection_id = 'f0000000-0000-0000-0000-00000000000b'),
+  'and a connection no alias depends on is still deletable, with the unbound alias sitting beside it');
+
+-- --- uniqueness per workspace still holds ---------------------------------------
+--
+-- Acceptance criterion: *alias uniqueness per organization still holds*. V015's key is
+-- untouched by four new columns and a widened one, and the unbound row is inside it rather
+-- than beside it — a second `gpt5-experiments`, bound or not, is the same name twice.
+select pg_temp.must_reject(
+  $$insert into ouroboros.model_aliases (organization_id, alias, model_id, enabled)
+    values ('org-registry', 'gpt5-experiments', 'gpt-5.3-preview', false)$$,
+  'an unbound alias is inside the per-workspace uniqueness rule, not an exception to it',
+  'model_aliases_organization_alias_key');
+
+insert into ouroboros.model_aliases (organization_id, alias, model_id, enabled) values
+  ('org-onlooker', 'gpt5-experiments', 'gpt-5.2-preview', false);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.model_aliases where alias = 'gpt5-experiments'),
+  'and it is scoped per workspace, exactly as a bound one is');
+
+-- --- the reads ------------------------------------------------------------------
+--
+-- The registry's table read (CI.1, #588) is one statement over two indexes and no sort —
+-- which is why this migration adds none for it. `must_not_scan` rather than naming one
+-- index: naming one proves that one relation was entered through it and says nothing about
+-- the other, and the criterion is about the whole query.
+--
+-- `analyze` first, for the reason the V015 section gives at length: without statistics the
+-- candidate entry points cost the same and the assertion measures a tie-break rather than a
+-- plan. The rows these two statements are about were written by this section, long after
+-- that one ran.
+analyze ouroboros.model_aliases;
+analyze ouroboros.provider_connections;
+
+set local enable_seqscan = off;
+select pg_temp.must_not_scan(
+  $$select a.alias, a.model_id, a.enabled, a.params, a.restrictions,
+           c.kind, c.display_name, c.status
+      from ouroboros.model_aliases a
+      left join ouroboros.provider_connections c
+        on c.organization_id = a.organization_id and c.id = a.provider_connection_id
+     where a.organization_id = 'org-registry'
+     order by a.alias$$);
+
+select pg_temp.must_use_index(
+  $$select a.alias from ouroboros.model_aliases a
+     where a.organization_id = 'org-registry' order by a.alias$$,
+  'model_aliases_organization_alias_key');
+
+-- The one index this migration does add, and the read it was added for: the workspace's
+-- unbound aliases, which is the set mockup 21 dims and offers `Fix in Providers →` on.
+select pg_temp.must_use_index(
+  $$select alias from ouroboros.model_aliases
+     where organization_id = 'org-registry' and provider_connection_id is null
+     order by alias$$,
+  'model_aliases_unbound_idx');
+set local enable_seqscan = on;
+
+-- Partial, and that is the claim rather than an implementation detail: a full index on the
+-- same columns would carry every alias in the workspace to answer a question about the few
+-- that have no binding.
+select pg_temp.must_hold(
+  (select indpred is not null
+      and pg_get_expr(indpred, indrelid) = '(provider_connection_id IS NULL)'
+     from pg_index where indexrelid = 'ouroboros.model_aliases_unbound_idx'::regclass),
+  'the unbound index is partial, so it holds nothing at all in a workspace where every alias has a key');
+
+-- --- the catalogue carries the decision -----------------------------------------
+--
+-- V015's table comment named mockup 21 as what it was a foundation *for*; it now has to say
+-- that the surface arrived, because `\d+` is where a reader meets this table without the
+-- migration beside it.
+select pg_temp.must_hold(
+  (select obj_description('ouroboros.model_aliases'::regclass) like '%unbound%'
+      and obj_description('ouroboros.model_aliases'::regclass) like '%On switch%'),
+  'model_aliases says it holds the switch and the unbound state, in the database');
+
+-- --- the workspace cascade still reaches every one of them ----------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.model_aliases where organization_id = 'org-registry'),
+  'the workspace about to be deleted really does still have its aliases');
+
+delete from ouroboros.organization where "id" = 'org-registry';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.model_aliases where organization_id = 'org-registry')
+   and (select count(*) = 0 from ouroboros.provider_connections where organization_id = 'org-registry')
+   and (select count(*) = 0 from ouroboros.route_hops where organization_id = 'org-registry'),
+  'deleting a workspace still takes its aliases, its connections and its chains — the unbound alias included');
+
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.
 -- ---------------------------------------------------------------------------
 rollback;
+
+-- Except one thing, which is why it is put back here rather than trusted to the rollback.
+--
+-- The plan assertions above `analyze` two tables so the planner has statistics to choose
+-- between two otherwise identically-priced index paths — see the V015 section for why that
+-- is load-bearing. `ANALYZE` writes `pg_statistic` transactionally, and that much did go out
+-- with the rollback; but it also writes `pg_class.reltuples` and `relpages` **in place**,
+-- and an in-place update is not part of any transaction. Left alone it would leave both
+-- tables claiming the row count they had *inside* the transaction, which is a count of
+-- fixtures that no longer exist — so a second run of this file would plan differently from
+-- the first, and a developer running it against a database they are using would leave it
+-- describing itself wrongly until the next autovacuum.
+--
+-- Measuring them again now is the repair: the rollback has restored whatever those tables
+-- really hold, and this records that. Empty in a CI database, and the truth in anybody
+-- else's.
+analyze ouroboros.model_aliases;
+analyze ouroboros.provider_connections;
 
 \o
 \echo 'constraints.sql: all assertions passed'

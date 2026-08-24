@@ -253,7 +253,7 @@ chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| CG.1 | #579 | 🟡 Open | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
+| CG.1 | #579 | 🟢 Done | ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions | `enabled`, nullable binding (unbound state), structured params/restrictions over Y.1 | mvp, registry, db | N (after Y.1, AC.6) | Y | M | ouroboros-db |
 | CG.2 | #580 | 🟢 Done | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
 | CG.3 | #581 | 🟡 Open | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
 | CG.4 | #582 | 🟡 Open | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds unbound gpt5-experiments; second-opinion arrives with Y.4), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
@@ -261,7 +261,63 @@ chips: **XS · S · M · L**.
 
 ### Issue CG.1 — ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions
 
-> **GitHub issue:** #579 · **Status:** 🟡 Open · **Parent epic:** #575
+> **GitHub issue:** #579 · **Status:** 🟢 Done · **Parent epic:** #575
+
+> **Shipped 2026-08-23.**
+> [`ouroboros-db/migrations/V019__alias_lifecycle_binding_params.sql`](../ouroboros-db/migrations/V019__alias_lifecycle_binding_params.sql)
+> — Y.1's `model_aliases` grown into this roadmap's management surface, extended and never
+> forked (decision **R1**). Four columns, one widened, four constraints, two validator
+> functions and one partial index; its section in
+> [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql) is every acceptance
+> criterion as an assertion.
+>
+> **The unbound rule is a CHECK, and that is the point rather than an implementation
+> detail.** `provider_connection_id` is nullable — null is `gpt5-experiments`, a name
+> created ahead of its key — and `provider_connection_id is not null or enabled = false`
+> makes *an unbound alias can never be switched on* (decision **R2**) a property of the row
+> rather than of a service. The window a service-level guard leaves open is small and real:
+> read the alias, see a binding, enable it, while a concurrent statement clears the binding —
+> two statements that are each correct leaving a row that is not. The default is deliberately
+> **not** weakened to make the unbound insert convenient either: creating one without saying
+> `enabled = false` is refused rather than quietly corrected, so *this alias has no key yet
+> and is off* is a statement the writer makes.
+>
+> **The composite foreign key needed no change, which is asserted rather than assumed.** It
+> is `MATCH SIMPLE`, under which a reference with any null column is satisfied without being
+> checked — so `(org, null)` is not a dangling reference, and written `MATCH FULL` the same
+> key would have refused every unbound row. The match type is now an assertion, beside the
+> two regressions the ticket asked for by name: Y.2's `route_hops` FK still restricts (for
+> the unbound alias too — a chain may name one, and resolution drops the hop with an
+> explanation), and AD.2's provider-delete guard is unmoved in both directions, because
+> `where provider_connection_id = $1` never matches null and an unbound alias therefore
+> blocks no deletion.
+>
+> **Params became a closed vocabulary because the chips are derived from them** (decision
+> **R3**): `thinking` (`off`/`std`/`max`), `token_budget`, `max_output` and `context_clamp`
+> (whole tokens, 1 … 10 000 000) and `temperature` (0 … 2), with `restrictions` carrying the
+> two registry-policy flags beside them — separate from params because a restriction never
+> leaves this product while a param is merged into a request body. Both are `plpgsql`
+> `immutable` validators callable from a CHECK *and* from a service, so
+> `ouroboros-rest` can validate a payload against the same definition rather than restating
+> it. The split with **CH.2 (#585)** is stated rather than left to be discovered: this layer
+> stops the *shape* from being wrong; a thinking budget against a model with no thinking is a
+> perfectly well-formed document, and refusing it needs the adapter schema and
+> `provider_models` that no CHECK may look at.
+>
+> **One index, and a refusal to add a second.** The single-query table read CI.1 (#588) is
+> built on is already two index lookups and no sort — `model_aliases_organization_alias_key`
+> is both the range scan and the ordering — so a third index for it would be a duplicate
+> every write then maintains, and the plan is asserted instead. What *is* added is the read
+> this migration creates: a **partial** index over the unbound aliases, which holds nothing
+> at all in a workspace where every alias has a key.
+>
+> **Two things outside the migration.** V017's soft alias validation is amended so an unbound
+> alias returns before either warning branch — left alone it reported *nothing has been
+> discovered on it yet* about a connection that does not exist, on the one write this ticket
+> exists to enable. And V015's own `EXPLAIN` assertion gained an `analyze`: on an unanalyzed
+> fixture the two candidate entry points cost *exactly* the same, so it had been asserting a
+> tie-break, and adding four columns to the table flipped it. With statistics the unique
+> index wins for the reason it should.
 
 - **Problem Statement:** Y.1's `model_aliases` was a foundation: alias, FK to a
   provider connection, raw `model_id`, loose `params` jsonb. The mockup needs
