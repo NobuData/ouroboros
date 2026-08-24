@@ -1376,6 +1376,86 @@ export interface EscalationRulesTable {
 }
 
 /**
+ * One side of one change a revision recorded — a value before, and the value after.
+ *
+ * `unknown` on both sides deliberately: what a column holds is that column's business, and
+ * V021's CHECK constrains only that a change *has two sides*. A reader that knows which
+ * column it is looking at narrows; a reader paging the audit log (#26) does not have to.
+ */
+export interface RouteRevisionChange {
+  /** What the column held before the save. */
+  from: unknown;
+  /** What it holds now. */
+  to: unknown;
+}
+
+/** One hop as a revision records it — the alias's **name**, never its id. See {@link RouteRevisionsTable.diff}. */
+export interface RouteRevisionHop {
+  /** `model_aliases.alias` — `coder-max`. */
+  alias: string;
+  /** The operator's sentence for the hop, or null. */
+  note: string | null;
+}
+
+/** Everything one route changed in one save, keyed by the column that changed. */
+export interface RouteRevisionEntry {
+  /** `task_kinds.name` — the matrix row this entry is about. */
+  task_kind: string;
+  /**
+   * The columns that moved, and nothing else.
+   *
+   * Non-empty by CHECK: a route that changed nothing contributes no entry, which is what
+   * makes a revision a record of a decision rather than a record of a button press.
+   */
+  changes: Record<string, RouteRevisionChange>;
+}
+
+/**
+ * `route_revisions.diff` — what one press of **Save routes** moved (V021,
+ * [#195](https://github.com/NobuData/ouroboros/issues/195)).
+ *
+ * Typed rather than left opaque, for {@link EscalationWhen}'s reason: V021 closes the shape
+ * at the column with `ouroboros.route_revision_diff_valid()`, so a reader that had to
+ * re-discover the grammar would be re-discovering something the database already refuses to
+ * store anything outside of.
+ */
+export interface RouteRevisionDiff {
+  /** One entry per route that changed. Non-empty by CHECK — a no-op save is unstorable. */
+  routes: RouteRevisionEntry[];
+}
+
+/**
+ * `ouroboros.route_revisions` — one row per **Save routes** batch commit (V021,
+ * [#195](https://github.com/NobuData/ouroboros/issues/195)).
+ *
+ * The audit trail behind mockup 06's staged editing model. {@link RoutesTable.updated_by} and
+ * `updated_at` say who wrote the state a route is *in*; both are overwritten by the next
+ * save, so the transitions between them live here — which is what turns *"why did last
+ * Tuesday's runs go to the fallback provider"* from a shrug into a row.
+ *
+ * **Append-only, and there is nowhere to put an edit.** No `updated_at`, no touch trigger,
+ * and nothing in this service updates it: an event that can be revised is not one. Read
+ * later by the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)), which is
+ * why V021 checks the diff's shape rather than trusting whoever writes it.
+ */
+export interface RouteRevisionsTable {
+  id: Generated<string>;
+  /** The workspace — `organization."id"`, as text. `on delete cascade`. */
+  organization_id: string;
+  /**
+   * Who pressed **Save routes** — `"user"."id"`, `on delete set null`.
+   *
+   * Nullable for both of {@link RoutesTable.updated_by}'s reasons: a route can be written by
+   * something that is not a person, and deleting the person must not delete the record of
+   * what they changed.
+   */
+  actor: string | null;
+  /** What moved. See {@link RouteRevisionDiff}. */
+  diff: RouteRevisionDiff;
+  created_at: Stamped;
+}
+
+/**
  * `ouroboros.token_usage_daily` — per-workspace, per-day, per-provider rollup of
  * {@link TokenUsageTable} (V010).
  *
@@ -1497,6 +1577,12 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * schema by the context length the provider actually published — a bound taken from a live
  * catalog rather than from a number written down here.
  *
+ * **`route_revisions` (V021, [#195](https://github.com/NobuData/ouroboros/issues/195)) is the
+ * eighteenth**, and the first table this service *only ever writes*. Nothing here reads it:
+ * it is the audit trail one press of **Save routes** leaves behind, and the surface that pages
+ * it is the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)). Mirrored now
+ * because the write is Z.2's, and V021 exists because Z.2 needed somewhere to put it.
+ *
  * **Four tables are deliberately absent.** `tenants`, `tenant_members`, `users` and
  * `user_identities` were dropped by V006 and are gone from here with it
  * ([#714](https://github.com/NobuData/ouroboros/issues/714)) — a mirror that still declared
@@ -1524,6 +1610,7 @@ export interface Database {
   routes: RoutesTable;
   route_hops: RouteHopsTable;
   escalation_rules: EscalationRulesTable;
+  route_revisions: RouteRevisionsTable;
   token_usage_daily: TokenUsageDailyView;
   workspace_settings_effective: WorkspaceSettingsEffectiveView;
 }
@@ -1727,6 +1814,7 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  route_revisions: ["id", "organization_id", "actor", "diff", "created_at"],
   token_usage_daily: [
     "organization_id",
     "day",
@@ -1867,23 +1955,54 @@ export type ProviderModel = Selectable<ProviderModelsTable>;
 /**
  * A row of `ouroboros.task_kinds`, as a `select` returns it — one row of the routing matrix.
  *
- * There is deliberately no `NewTaskKind`, and the same is true of the three types below it.
- * Decision **M2**: V016's and V018's write surfaces are Z.2's
- * ([#195](https://github.com/NobuData/ouroboros/issues/195)), and resolution
- * ([#194](https://github.com/NobuData/ouroboros/issues/194)) reads all four tables and writes
- * none of them. Declaring the insert shapes now would be this service claiming writes it does
- * not perform.
+ * There is deliberately no `NewTaskKind`, and it is the one of the four that still has none.
+ * Z.2 ([#195](https://github.com/NobuData/ouroboros/issues/195)) is the write surface decision
+ * **M2** was holding V016's and V018's tables for, and it writes routes, hops and rules — so
+ * those three have their insert shapes below. It does **not** create task kinds: the matrix's
+ * eight rows are seeded (Y.4, [#192](https://github.com/NobuData/ouroboros/issues/192)) and
+ * adding a ninth is a surface nobody has asked for yet. Declaring the shape now would be this
+ * service claiming a write it does not perform.
  */
 export type TaskKind = Selectable<TaskKindsTable>;
 
 /** A row of `ouroboros.routes`, as a `select` returns it — a chain's owner and its policy triple. */
 export type Route = Selectable<RoutesTable>;
+/** The columns an `insert` into `ouroboros.routes` may carry. */
+export type NewRoute = Insertable<RoutesTable>;
 
 /** A row of `ouroboros.route_hops`, as a `select` returns it — one numbered hop of a chain. */
 export type RouteHop = Selectable<RouteHopsTable>;
+/**
+ * The columns an `insert` into `ouroboros.route_hops` may carry.
+ *
+ * A chain is rewritten rather than patched — the hops are deleted and re-inserted inside one
+ * transaction — so this is the shape the *whole* new chain is written in. V016's deferred
+ * `route_chain_intact()` is what makes that legal; see `routing/management.repository.ts`.
+ */
+export type NewRouteHop = Insertable<RouteHopsTable>;
 
 /** A row of `ouroboros.escalation_rules`, as a `select` returns it — one card line, structured. */
 export type EscalationRule = Selectable<EscalationRulesTable>;
+/**
+ * The columns an `insert` into `ouroboros.escalation_rules` may carry.
+ *
+ * `display` is absent from it without anything here saying so: the column is
+ * `generated always … stored`, so {@link EscalationRulesTable.display}'s `ColumnType<string,
+ * never, never>` makes supplying one a compile error — which is decision **M5**'s
+ * *"hand-written display text is rejected on write"* arriving one layer earlier than
+ * PostgreSQL's own refusal.
+ */
+export type NewEscalationRule = Insertable<EscalationRulesTable>;
+
+/** A row of `ouroboros.route_revisions`, as a `select` returns it — one press of **Save routes**. */
+export type RouteRevision = Selectable<RouteRevisionsTable>;
+/**
+ * The columns an `insert` into `ouroboros.route_revisions` may carry.
+ *
+ * There is no `Updateable` counterpart anywhere for this table, and that is the mirror of
+ * V021's own decision: a revision is an event, and nothing in this service updates one.
+ */
+export type NewRouteRevision = Insertable<RouteRevisionsTable>;
 
 /**
  * A row of `ouroboros.token_usage_daily`, as a `select` returns it.

@@ -966,12 +966,12 @@ resolve("implement", {effort: "l"}) ─▶
   floor  none  ·  max cost  250¢  ·  version  r1
 ```
 
-**It is an injectable, not an endpoint.** `ResolutionService` is exported and nothing in this
-module declares a controller: `/routing/simulate` is Z.4's
-([#197](https://github.com/NobuData/ouroboros/issues/197)) and the management API is Z.2's
-([#195](https://github.com/NobuData/ouroboros/issues/195)). What makes **Simulate routing**
+**The engine is an injectable, not an endpoint.** `ResolutionService` is this module's one
+export and no route serves it: `/routing/simulate` is Z.4's
+([#197](https://github.com/NobuData/ouroboros/issues/197)). What makes **Simulate routing**
 honest is that it will call this and not a copy of it — production behaviour minus the network
-call.
+call. The management API beside it is Z.2's
+([#195](https://github.com/NobuData/ouroboros/issues/195)) and is the next section.
 
 **The engine performs no I/O and reads no clock.** `resolve()` takes six values — a route, its
 hops, the workspace's aliases, its enabled rules, a health snapshot and a context — and returns
@@ -1035,6 +1035,96 @@ the one case with no chain to explain.
 registry's rule inherited unchanged (decision **P3**): a resolution carries an address and a
 model — everything an executor needs to choose a provider, and nothing it needs to authenticate
 as one.
+
+## Routing management
+
+**The read/write surface behind mockup 06's matrix, inspector and rules card**
+([#195](https://github.com/NobuData/ouroboros/issues/195)). The same module as the resolution
+engine and a separate service, because both read V016's and V018's four tables and two mirrors
+of one chain is two opinions about what an unbound alias is.
+
+```
+GET    /api/v1/routing                     8 kinds · chains · policies · rules · stats
+GET    /api/v1/routing/aliases             the swap menu's list, unbound aliases included
+PUT    /api/v1/routing/routes              Save routes — one batch, one revision
+PUT    /api/v1/routing/routes/{taskKind}   a batch of one, same implementation
+POST   /api/v1/routing/rules               + Add rule · display is derived, never sent
+PATCH  /api/v1/routing/rules/{id}          the switch, the order, or the rule itself
+DELETE /api/v1/routing/rules/{id}          204 · not the same thing as switching it off
+```
+
+**The editing model is staged, and the API shape follows from it.** The page has a **Save
+routes** button and a hint telling you to drag things around before you press it, so edits
+accumulate client-side and commit as a batch. `PUT /routing/routes` is that press. The
+single-route `PUT` is a batch of one — built in the controller and handed to the same service
+method — so the two cannot come to disagree about validation, atomicity, or what gets recorded.
+
+**Validate, then diff, then write — and the order is the atomicity criterion.** Everything that
+can refuse a batch is decided *before the transaction opens*, so *a failure in one route does
+not partially commit another* is not a rollback that has to work: it is a write that never
+started. What the transaction then holds is only the chain rewrites, the policy updates, and
+the revision row that must commit with them or not at all.
+
+**The diff drives the write rather than describing it afterwards.** `management.diff.ts`
+compares each route's stored state against the body once; a route with no entry has no
+statement run against it, and a route with an entry is written *and* recorded from the same
+object. That is what makes *"a `route_revisions` row whose diff reflects exactly what changed"*
+structural instead of a second computation that could disagree with the first — and it settles
+the no-op save: nothing changed, nothing written, `revisionId: null`.
+
+```
+V021  route_revisions {actor, created_at, diff}
+      diff = {routes: [{task_kind, changes: {<column>: {from, to}}}]}
+      CHECKed: ≥1 route, ≥1 change each, every change a from/to pair
+```
+
+Keys inside `changes` are **column names** and hops are named by **alias**, because a revision
+is read by a person reconstructing a decision months later — a uuid is a lookup into a row that
+may since have been repointed, which is exactly the interval they are asking about.
+`routes.updated_by` says who wrote the state a route is *in*; this says how it got there, and
+it is the feed the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)) reads.
+
+**A chain is rewritten, not patched, and V016 wrote the transaction down for us.** Both rules
+that hold a chain's numbering are `deferrable initially deferred`, so *delete the hops, insert
+the new order* is legal inside one transaction with no `set constraints` ceremony. Positions
+come from the array index, which is why the request carries no positions at all: a dense array
+cannot produce a sparse chain.
+
+**Two layers refuse a save, and neither is redundant.** The DTO refuses what is wrong with the
+*request* — an empty chain, a blank note, a cap of zero, a floor below 1 — and answers
+`validation_failed` keyed by field path. The service refuses what is wrong with the request *in
+this workspace* — an unknown task kind, a kind with no route, the same kind twice, an alias
+this workspace has never bound, a floor deeper than the chain that arrived with it — and
+answers `route_save_invalid` keyed by **task kind**, so the UI marks exactly the rows that
+failed.
+
+**A rule's grammar is asked of the database, not reimplemented.** V018 exposed
+`escalation_rule_when_valid()` and `escalation_rule_then_valid()` for exactly this, and said
+so; a TypeScript copy would agree on the day it was written and drift the first time either was
+widened. The names a rule carries are then pre-flighted against this workspace's kinds and
+aliases — a pre-flight over the deferred trigger V018 attaches to three tables — and the
+trigger's own refusal is recognised, so the race the pre-flight cannot close answers the same
+`422` rather than a `500`.
+
+**`display` cannot be written, in three places, and none of them is redundant.** The DTO
+declares no such property and the pipe is `forbidNonWhitelisted`; the insert type is
+`ColumnType<string, never, never>`, so naming it does not compile; and the column is `generated
+always … stored`, so PostgreSQL would refuse it anyway. Decision **M5** end to end: the
+sentence the card renders cannot drift from what the rule does, because there is only one of
+them.
+
+**Owners and admins write; every member reads.** The two `GET`s carry no `@Roles()` — a viewer
+is a role that exists to be able to look at which model answers which kind of work — and every
+write carries `@Roles(...ADMINISTRATORS)`. The button being hidden is the least reliable part
+of any authorization scheme; this is the part that is not, and the controller spec counts the
+handlers rather than listing them, so a write added later without a gate fails a test.
+
+**`stats` is present and null.** The matrix's `$/run avg` and `p50 latency` are Z.5's
+([#198](https://github.com/NobuData/ouroboros/issues/198)) to compute from `token_usage`, which
+V020 gave a `task_kind` and a `latency_ms` for. Publishing the field as null now is decision
+**M7** rather than a placeholder: a workspace that has run nothing has not spent `$0.00` per
+run, it has spent nothing anybody can average — so AA.2 renders the em-dash today and the real
+figure later, with no contract change.
 
 ## Provider adapters
 
@@ -2310,6 +2400,8 @@ ouroboros-rest/
 │       │                   #   no controller — decision M2 leaves CRUD to 07/21
 │       ├── provider-health/ # passive-first health + the strip payload     · #196
 │       │                   #   scheduled, jittered — and never a completion
+│       ├── routing/        # resolve() — pure, versioned, health-aware      · #194
+│       │                   #   management.* — GET /routing, Save routes, the rules · #195
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218

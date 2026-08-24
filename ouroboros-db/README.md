@@ -131,6 +131,27 @@
 > as rows** — seven aliases, eight kinds, their chains, three rules and the 370 routed calls
 > every number on the screen is aggregated out of, with not one of those numbers stored
 > anywhere. See [The development seed](#the-development-seed).
+> `V021` ([#195](https://github.com/NobuData/ouroboros/issues/195)) adds the table `V016`
+> anticipated in as many words — *"when versioned route configuration arrives it is history in
+> a table of its own"*. Mockup 06's editing model is **staged**: edits accumulate in the
+> browser and commit when somebody presses **Save routes**, and that press deserves a record,
+> because *"somebody saved the routes at some point"* is not an answer to *"why did last
+> Tuesday's runs go to the fallback provider"* — and it is the only answer `routes.updated_by`
+> and `updated_at` can give, since both are overwritten by the next save. `route_revisions` is
+> three facts and no more: an **actor** (`on delete set null`, so deleting the person does not
+> delete the record of what they changed), a **stamp**, and a **diff** —
+> `{routes: [{task_kind, changes: {<column>: {from, to}}}]}`, whose shape is CHECKed by
+> `ouroboros.route_revision_diff_valid()` so that the audit log
+> ([#26](https://github.com/NobuData/ouroboros/issues/26)) is not left reading a union of
+> whatever four services happened to write. It is **history, not versions**: a revision records
+> what changed rather than a copy of the route as it then stood, which is smaller, is the
+> question anybody actually asks, and is why it names its routes by `task_kinds.name` and its
+> hops by `model_aliases.alias` rather than by ids that may since have been repointed. Two
+> consequences are structural rather than conventional: there is **no `updated_at`** and no
+> touch trigger, because an event that can be edited is not one; and a save that changed
+> nothing is **unstorable**, because `routes` and every `changes` must be non-empty — an audit
+> trail whose rows mostly say *somebody pressed Save and nothing moved* is one nobody reads to
+> the end.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -952,6 +973,7 @@ ouroboros-db/
 │   │                                 # the alias switch, the unbound binding, structured params — #579
 │   ├── V020__routing_usage_attribution.sql
 │   │                                 # token_usage.task_kind + .latency_ms — what $/run and p50 compute from — #192
+│   ├── V021__route_revisions.sql     # route_revisions — who changed the routing table, and what moved — #195
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
@@ -1009,6 +1031,7 @@ outside this module alters it.
 | `routes` | `V016` | One task kind's route: the owner of the ordered alias chain and of mockup 06's policy triple — **Allow fallback to local models**, the floor, and **Max cost per run** (decision **M4**) | **Exactly one route per task kind**, as a unique key rather than as application code, so resolution's *"the route of this kind"* has one answer; `tag` unique per workspace and its own column rather than derived, because the mockup's tags are not mechanical (`test-gen` → `testgen-primary`); `max_cost_cents_per_run` is **integer cents** — `$2.50` is `250`, never a float; `floor_hop_index` is null-permitting, at least 1 by CHECK and never past the end of the chain, which is `route_chain_intact()`; `updated_by` **sets null** rather than cascading, because deleting the person who last saved a route must not delete the route |
 | `route_hops` | `V016` | The ordered fallback chain — mockup 06's numbered inspector rail, each hop naming a registry alias and carrying the hop-meta line beside it | `position` unique per route and **deferrable**, so a reorder swaps inside a transaction, and **dense from 1** by the `route_chain_intact()` constraint trigger — unlike `queue_items.position`, because these numbers are read: `floor_hop_index` counts them; a route may never be left with an empty chain; the alias is reached through a **composite** foreign key on `(organization_id, model_alias_id)` and it **restricts** on delete, so an alias a chain names cannot be retired out from under it; **there is no raw model id column here, in any of the three tables** — decision **M1** by construction |
 | `escalation_rules` | `V018` | Mockup 06's *ESCALATION RULES* card — the three rules as **structured predicates that modify a route**, not as the sentences they read like (decision **M5**) | `"when"` is the WF-P8 predicate grammar scoped to routing — `effort_gte` (V009's five **F9** sizes, the same vocabulary the queue uses), `label` (GitHub's, as `V014` mirrors them) and `diff_kind` (`docs_only`), at least one, ANDed; `"then"` is **exactly one** of `{use_alias: {task_kind, alias, params?}}` — the mockup's *"(max thinking)"* is `params`, not prose — `{add_vote: {task_kind, alias}}` or `{route_local: {}}`; both are **domains**, so an unknown key is refused at the value rather than at the row; `display` is **`generated always … stored`** from the two, so a hand-written sentence is refused by PostgreSQL and an edited rule cannot keep the sentence it had; the task kind and alias a rule names must exist **in the rule's own workspace**, held by a deferred constraint trigger on all three tables; `sort_order` is unique per workspace and **deferrable**, which is what makes "which rule wins" have one answer and a drag-reorder plain SQL |
+| `route_revisions` | `V021` | One row per press of mockup 06's **Save routes** — who changed the routing table, when, and exactly what moved ([#195](https://github.com/NobuData/ouroboros/issues/195)); the feed the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)) reads | `actor` references `"user"` and **sets null**, because deleting a person must not delete the record of what they changed; `diff` is CHECKed by `ouroboros.route_revision_diff_valid()` to `{routes: [{task_kind, changes: {<column>: {from, to}}}]}` — at least one route, at least one change each, every change a `{from, to}` pair — so a save that changed **nothing** is unstorable rather than merely not written; task kinds inside the document are *shaped* as `task_kinds.name` is but are deliberately **not** foreign keys, and hops are named by `model_aliases.alias`, because a revision is history a person reads months later and an id is a lookup into a row that may since have been repointed; there is **no `updated_at`** and no touch trigger, because an event that can be edited is not one; one index — `(organization_id, created_at desc, id desc)` — which is the only read this table has |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in

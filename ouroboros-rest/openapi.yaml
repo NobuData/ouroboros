@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.30.5"
+  version: "0.30.6"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -2456,6 +2456,825 @@ paths:
           description: |-
             `validation_failed` — `model` was missing or malformed, or `connection` was not a
             uuid. `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing:
+    get:
+      tags: [routing]
+      summary: The routing matrix, the chains behind it, and the escalation rules
+      description: |-
+        Everything mockup 06 draws below the health strip
+        ([#195](https://github.com/NobuData/ouroboros/issues/195)) — the eight-row matrix, each
+        row's route and ordered chain with every hop resolved to an alias, a model and a
+        provider, the inspector's policy triple, and the **escalation rules** card beside it.
+
+        **One request rather than one per card**, because they are one screen: the matrix's
+        escalation column and the rules card render the same rows, and two requests would let
+        them disagree for as long as one of them was in flight.
+
+        **A task kind may have no route**, and it arrives as a row with `route: null`. That is a
+        state the schema permits on purpose — a matrix row with an empty cell — and hiding it
+        would hide a kind the workspace has.
+
+        **A hop whose alias is unbound keeps its place**, with `provider: null`. An alias created
+        ahead of its key is a first-class row in the model registry, and a chain that lost a hop
+        that way would arrive shorter than the operator configured it.
+
+        **`stats` is two nulls until spend attribution lands**
+        ([#198](https://github.com/NobuData/ouroboros/issues/198)). Roadmap decision **M7**: a
+        figure the product cannot compute is a figure it does not print, and `0` is not
+        *unknown* — it is a number. Render the em-dash.
+
+        **Any member may read it**, viewers included.
+
+        **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before the operation runs.
+      operationId: readRoutingMatrix
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The matrix and the rules. Both arrays are empty for a workspace whose routing
+            foundations have not been seeded — the page's empty state, not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingMatrix"
+              example:
+                taskKinds:
+                  - name: implement
+                    description: Write the change, run tests, iterate to green
+                    sortOrder: 4
+                    route:
+                      id: 5eed0011-0000-4000-8000-000000000004
+                      taskKind: implement
+                      tag: implement-primary
+                      allowLocalFallback: true
+                      floorHopIndex: null
+                      maxCostCentsPerRun: 250
+                      hops:
+                        - position: 1
+                          alias: coder-max
+                          modelId: claude-fable-5
+                          note: Primary
+                          provider:
+                            id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                            kind: anthropic
+                            displayName: Anthropic
+                            baseUrl: null
+                        - position: 2
+                          alias: coder-fallback
+                          modelId: gpt-5-codex
+                          note: Fallback on 5xx / timeouts
+                          provider:
+                            id: 8b3f4e5d-6c7b-4a09-9e32-4f5a6b7c8d92
+                            kind: copilot
+                            displayName: GitHub Copilot
+                            baseUrl: null
+                      stats:
+                        costCentsPerRunAvg: null
+                        latencyP50Ms: null
+                      updatedAt: "2026-08-23T09:58:12.004Z"
+                      updatedBy: 5eed0003-0000-4000-8000-000000000001
+                  - name: docs
+                    description: Draft and revise the written record
+                    sortOrder: 7
+                    route: null
+                rules:
+                  - id: f0000000-0000-4000-8000-000000000001
+                    enabled: true
+                    sortOrder: 1
+                    when:
+                      effort_gte: l
+                    then:
+                      use_alias:
+                        task_kind: implement
+                        alias: coder-max
+                        params:
+                          thinking: max
+                    display: effort ≥ L → implement uses coder-max (max thinking)
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/aliases:
+    get:
+      tags: [routing]
+      summary: The model aliases a route may name
+      description: |-
+        The registry list the matrix's swap menus are built from
+        ([#195](https://github.com/NobuData/ouroboros/issues/195)) — every alias this workspace
+        has, with the model and provider it currently resolves to, so a menu can preview what a
+        swap would mean before anybody presses **Save routes**.
+
+        **A read, and only a read.** Creating, editing and retiring an alias is the model
+        registry's surface (mockup 21); routing needs the names it is allowed to point at.
+
+        **Unbound aliases are in the list**, with `provider: null`. An alias created ahead of its
+        key is a real row, and hiding it would make it unreachable from the surface that would
+        bind a route to it — the hop it produces is dropped at resolution time, with a stated
+        reason, which is a different and more honest failure than a name that cannot be chosen.
+
+        **Unpaged.** A workspace's registry is the handful of aliases its routes name, and a page
+        over a list that short would cost a client a second request to discover there was
+        nothing more.
+
+        **Any member may read it.**
+      operationId: listRoutingAliases
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            Every alias, ordered by name. Empty for a workspace with none — the routing page's
+            empty state, not a failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingAliasList"
+              example:
+                aliases:
+                  - alias: coder-max
+                    modelId: claude-fable-5
+                    params:
+                      thinking: max
+                    provider:
+                      id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                      kind: anthropic
+                      displayName: Anthropic
+                      baseUrl: null
+                  - alias: gpt5-experiments
+                    modelId: gpt-5-preview
+                    params: {}
+                    provider: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/routes:
+    put:
+      tags: [routing]
+      summary: Save routes — commit a batch of edits
+      description: |-
+        One press of mockup 06's **Save routes**
+        ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+
+        The page's editing model is **staged, not live**: drag a chain into order, swap an alias,
+        set a floor and a cap — all client-side — then commit the whole matrix in one request.
+        `200` rather than `201`, because nothing is created; routes exist, and this is what they
+        now say.
+
+        **The batch is atomic, and every refusal is decided before anything is written.** A body
+        naming an alias this workspace does not have, or a floor deeper than the chain sent with
+        it, is a `422` — and the other routes in the same batch are untouched, so a corrected
+        batch can simply be re-sent rather than reconciled.
+
+        **Errors map back to their route.** `details.routes` is keyed by task kind, so a client
+        that sent eight routes and got one wrong knows which row of the matrix to mark:
+        `{"docs": {"floorHopIndex": ["…"]}}`.
+
+        **The chain is the array you send.** There are no positions in the request: hop order is
+        array order, and the server numbers them densely from 1. A hop names an **alias** and
+        never a raw model id.
+
+        **`null` means off.** The three policy fields are required, and `floorHopIndex: null` is
+        *no floor* while `maxCostCentsPerRun: null` is *no cap*. A `PUT` has no
+        leave-this-alone case, so omitting a policy is a malformed body rather than a way to
+        keep the value it had.
+
+        **Each save that changes something writes a revision** — who, when, and a diff of
+        exactly what moved — and answers with its id. A save that changes nothing writes none
+        and answers `revisionId: null`; an audit trail of button presses that moved nothing is
+        one nobody reads to the end.
+
+        **`owner` or `admin`.** A member reads the matrix and cannot write it, refused by the
+        server rather than by a hidden control.
+      operationId: saveRoutes
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveRoutesRequest"
+            example:
+              routes:
+                - taskKind: implement
+                  hops:
+                    - alias: coder-max
+                      note: Primary
+                    - alias: coder-fallback
+                      note: Fallback on 5xx / timeouts
+                    - alias: local-docs
+                      note: null
+                  allowLocalFallback: true
+                  floorHopIndex: 2
+                  maxCostCentsPerRun: 250
+      responses:
+        "200":
+          description: |-
+            The revision this save wrote — `null` when it changed nothing — and the routes as
+            they now stand, re-read after the commit rather than echoed from the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveRoutesResult"
+              example:
+                revisionId: a1000000-0000-4000-8000-000000000001
+                routes:
+                  - id: 5eed0011-0000-4000-8000-000000000004
+                    taskKind: implement
+                    tag: implement-primary
+                    allowLocalFallback: true
+                    floorHopIndex: 2
+                    maxCostCentsPerRun: 250
+                    hops:
+                      - position: 1
+                        alias: coder-max
+                        modelId: claude-fable-5
+                        note: Primary
+                        provider:
+                          id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                          kind: anthropic
+                          displayName: Anthropic
+                          baseUrl: null
+                    stats:
+                      costCentsPerRunAvg: null
+                      latencyP50Ms: null
+                    updatedAt: "2026-08-23T09:58:12.004Z"
+                    updatedBy: 5eed0003-0000-4000-8000-000000000001
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Editing routes is `owner` or `admin`; `member` and `viewer` may read them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            Two codes, and the difference is which layer refused the request. **Nothing was
+            saved** in either case.
+
+            `validation_failed` — the body is malformed: an empty chain, a note that is blank or
+            padded, a cap of zero, a floor below 1, an alias that is not lower-case kebab.
+            `details` is keyed by field path, `routes.0.hops` and the like.
+
+            `route_save_invalid` — the body is well formed and this workspace cannot honour it:
+            a task kind it does not have, a task kind with no route to save onto, the same kind
+            twice in one batch, an alias it has never bound, or a floor deeper than the chain
+            sent with it. `details.routes` is keyed by **task kind**, so each complaint maps
+            back to the row of the matrix that produced it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/routes/{taskKind}:
+    put:
+      tags: [routing]
+      summary: Save one route
+      description: |-
+        The same operation as **Save routes**, addressed at one row of the matrix
+        ([#195](https://github.com/NobuData/ouroboros/issues/195)) — a batch of one, with the
+        same validation, the same atomicity, and the same revision.
+
+        The body is a route without its task kind, which comes from the path. A body that also
+        carried one is refused rather than resolved in the path's favour: addressing one route
+        and editing another is not a request this API guesses at.
+
+        Everything the batch operation's description says applies here — the array *is* the
+        chain, `null` means off, and the answer carries the revision and the route as re-read.
+
+        **`owner` or `admin`.**
+      operationId: saveRoute
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: taskKind
+          in: path
+          required: true
+          description: |-
+            The task kind whose route this is — the mono label the matrix row prints,
+            `implement` or `commit-msg`. Lower-case letters, digits and single hyphens: the
+            shape the column itself is constrained to, so a path that could not name a kind is
+            refused before a statement is issued.
+          schema:
+            type: string
+            pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+            maxLength: 64
+          example: implement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutePolicy"
+            example:
+              hops:
+                - alias: coder-max
+                  note: Primary
+                - alias: local-docs
+                  note: null
+              allowLocalFallback: true
+              floorHopIndex: null
+              maxCostCentsPerRun: 250
+      responses:
+        "200":
+          description: |-
+            The same envelope the batch answers with, so a client has one shape to read: the
+            revision, and the route as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveRoutesResult"
+              example:
+                revisionId: null
+                routes:
+                  - id: 5eed0011-0000-4000-8000-000000000004
+                    taskKind: implement
+                    tag: implement-primary
+                    allowLocalFallback: true
+                    floorHopIndex: null
+                    maxCostCentsPerRun: 250
+                    hops:
+                      - position: 1
+                        alias: coder-max
+                        modelId: claude-fable-5
+                        note: Primary
+                        provider:
+                          id: 6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70
+                          kind: anthropic
+                          displayName: Anthropic
+                          baseUrl: null
+                    stats:
+                      costCentsPerRunAvg: null
+                      latencyP50Ms: null
+                    updatedAt: "2026-08-23T09:58:12.004Z"
+                    updatedBy: 5eed0003-0000-4000-8000-000000000001
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Editing routes is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+
+            A task kind this workspace does not have is **not** a `404` here: it is a
+            `422 route_save_invalid` naming the kind, because the batch operation this shares
+            an implementation with names its kinds in a body and both must answer alike.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` or `route_save_invalid`, exactly as the batch operation
+            documents them — including for a task kind this workspace does not have, or has no
+            route for. Nothing was saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/rules:
+    post:
+      tags: [routing]
+      summary: Add an escalation rule
+      description: |-
+        The **+ Add rule** control on mockup 06's escalation-rules card
+        ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+
+        **A rule is structure, not a sentence.** `when` is a predicate — at least one of
+        `effort_gte`, `label` and `diff_kind`, ANDed — and `then` is exactly one of three route
+        modifications: `use_alias`, `add_vote`, `route_local`. Free text would be unenforceable;
+        the switch would toggle, the line would grey out, and routing would behave identically.
+
+        **`display` is derived and cannot be sent.** The sentence the card renders is generated
+        from the structure by the database, so it can never drift from what the rule does. A
+        body carrying one is a `422 validation_failed` naming the field, not a value this
+        service quietly discards.
+
+        **`sortOrder` is where it evaluates**, 1 first. Omit it and the rule is **appended** —
+        one past the highest this workspace holds — because a new rule that silently claimed the
+        first position would change what every existing rule does. A position another rule
+        already holds is a `409`.
+
+        **`enabled` defaults to on**: the only reason to write a rule is to have it apply, and
+        the switch exists to suspend one without deleting it.
+
+        **`owner` or `admin`.**
+      operationId: addEscalationRule
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEscalationRule"
+            example:
+              when:
+                label: security
+              then:
+                add_vote:
+                  task_kind: review
+                  alias: second-opinion
+      responses:
+        "201":
+          description: The rule as stored, with the sentence the database derived from it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationRule"
+              example:
+                id: f0000000-0000-4000-8000-000000000002
+                enabled: true
+                sortOrder: 2
+                when:
+                  label: security
+                then:
+                  add_vote:
+                    task_kind: review
+                    alias: second-opinion
+                display: security label → review adds second-opinion vote
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Editing escalation rules is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `escalation_rule_sort_order_taken` — another rule already evaluates at that
+            position. Nothing about the request is malformed and a retry of it unchanged
+            answers the same thing: move the other rule, or leave `sortOrder` out to be
+            appended. `details.sortOrder` is the position that is taken.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed: `when` or `then` is not an object, or
+            it carries a `display` this API does not accept from a client.
+
+            `escalation_rule_invalid` — the body is well formed and the routing domain refuses
+            it: a predicate with no condition or an unknown one, an action that is not exactly
+            one of the three, or a rule naming a task kind or model alias this workspace does
+            not have. `details.fields` is keyed `when` and `then`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/rules/{id}:
+    patch:
+      tags: [routing]
+      summary: Change an escalation rule
+      description: |-
+        The switch on a rule row, its place in the evaluation order, or the rule itself
+        ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+
+        A `PATCH` rather than a `PUT` because the card's affordance is a **switch**: turning one
+        off should not require resending a predicate and an action the client has no intention
+        of changing, nor risk rewriting them from a stale copy. An empty body changes nothing
+        and answers the rule as it stands.
+
+        **`when` and `then` are replaced whole.** There is no patching *inside* a predicate — a
+        condition removed and a condition never sent would be the same request — and neither
+        admits `null`, because a rule has no clearable parts.
+
+        **The sentence regenerates.** Change either half and `display` is re-derived, so an
+        edited rule cannot keep the sentence it used to have. It still cannot be sent.
+
+        **Switching off is not deleting.** A disabled rule keeps its `sortOrder` and its
+        sentence, so switching it back on restores it exactly where it was.
+
+        **`owner` or `admin`.**
+      operationId: changeEscalationRule
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/EscalationRuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEscalationRule"
+            example:
+              enabled: false
+      responses:
+        "200":
+          description: The rule as it now stands, its sentence regenerated from whatever changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationRule"
+              example:
+                id: f0000000-0000-4000-8000-000000000002
+                enabled: false
+                sortOrder: 2
+                when:
+                  label: security
+                then:
+                  add_vote:
+                    task_kind: review
+                    alias: second-opinion
+                display: security label → review adds second-opinion vote
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Editing escalation rules is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `escalation_rule_not_found` — this workspace has no rule by that id. The same
+            answer for *no such rule* and *another workspace's rule*, deliberately: telling
+            the two apart would let somebody enumerate another workspace's rules by watching
+            which ids answer differently.
+
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `escalation_rule_sort_order_taken` — another rule already evaluates at the position
+            this request asked for.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` or `escalation_rule_invalid`, exactly as adding a rule documents
+            them — including the refusal of a client-supplied `display`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [routing]
+      summary: Remove an escalation rule
+      description: |-
+        Delete a rule outright ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+
+        `204`, and no body: there is nothing to say about a row that no longer exists, and a
+        `200` carrying the deleted resource invites a client to keep using it.
+
+        **This is not the switch.** `PATCH {"enabled": false}` suspends a rule and keeps its
+        place in the order and the sentence the card greys out; this is for a rule that was a
+        mistake.
+
+        **`owner` or `admin`.**
+      operationId: removeEscalationRule
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/EscalationRuleId"
+      responses:
+        "204":
+          description: Gone. No body.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — you are a member of this workspace and your role does not permit
+            this. Editing escalation rules is `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `escalation_rule_not_found` — this workspace has no rule by that id, which is also
+            the answer for another workspace's.
+
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the path segment is not a uuid, so it could not name a rule.
           content:
             application/json:
               schema:
@@ -4957,6 +5776,18 @@ components:
         format: uuid
       example: 5eed000c-0000-4000-8000-000000000001
 
+    EscalationRuleId:
+      name: id
+      in: path
+      required: true
+      description: |-
+        The escalation rule's id. It must belong to the workspace the session is acting in;
+        another workspace's answers `404`, exactly as an id that names nothing does.
+      schema:
+        type: string
+        format: uuid
+      example: f0000000-0000-4000-8000-000000000002
+
   schemas:
     Error:
       type: object
@@ -7177,6 +8008,605 @@ components:
           description: Every connection in the workspace, ordered by display name.
           items:
             $ref: "#/components/schemas/ProviderHealth"
+
+    RouteProvider:
+      type: object
+      title: RouteProvider
+      description: |-
+        Where a hop's model runs — the four identifying facts, and **no health**.
+
+        The status a provider is in comes from `GET /api/v1/routing/providers` and from
+        nowhere else. The strip and the matrix are drawn from the same page load, and a status
+        published twice is a status that can be shown two ways at once.
+      additionalProperties: false
+      required: [id, kind, displayName, baseUrl]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The provider connection's id — how mockup 07's surfaces address it.
+        kind:
+          $ref: "#/components/schemas/ProviderConnectionKind"
+        displayName:
+          type: string
+          description: What the resolution line prints beside the model — `Anthropic`, `Ollama`.
+          examples: [Anthropic]
+        baseUrl:
+          type: [string, "null"]
+          description: Where it is, or null for a kind reached at its vendor's own endpoint.
+          examples: ["http://workstation:11434"]
+
+    RouteHop:
+      type: object
+      title: RouteHop
+      description: |-
+        One numbered hop of a **configured** chain — the inspector's rail.
+
+        Nothing here says whether the hop would be *used*. Health, escalation rules and the
+        floor decide that at resolution time, and a second opinion published from the editor
+        would be a second thing to disagree with the first.
+      additionalProperties: false
+      required: [position, alias, modelId, note, provider]
+      properties:
+        position:
+          type: integer
+          minimum: 1
+          description: |-
+            Where in the chain this hop sits; 1 is the primary. Dense from 1 by constraint,
+            which is what makes `floorHopIndex` a number anybody can count.
+          examples: [1]
+        alias:
+          type: string
+          description: |-
+            The alias this hop names — `coder-max`. The only thing a route may name: raw
+            provider model ids are unreachable from a route by construction.
+          examples: [coder-max]
+        modelId:
+          type: string
+          description: What the alias resolves to — the resolution line's first half.
+          examples: [claude-fable-5]
+        note:
+          type: [string, "null"]
+          description: The operator's sentence for this hop, or null. Most hops have none.
+          examples: ["Fallback on 5xx / timeouts"]
+        provider:
+          oneOf:
+            - $ref: "#/components/schemas/RouteProvider"
+            - type: "null"
+          description: |-
+            Where it runs, or **null** for an alias with no provider bound yet. The hop keeps
+            its place either way — a chain that lost a hop would arrive shorter than the
+            operator configured it.
+
+    RouteStats:
+      type: object
+      title: RouteStats
+      description: |-
+        The matrix's two numeric columns, or nulls where nothing has been measured.
+
+        Both are computed from the token-spend ledger by
+        [#198](https://github.com/NobuData/ouroboros/issues/198). Until that lands they are
+        null — and null is the answer roadmap decision **M7** requires: a workspace that has
+        run nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
+        Render the em-dash.
+      additionalProperties: false
+      required: [costCentsPerRunAvg, latencyP50Ms]
+      properties:
+        costCentsPerRunAvg:
+          type: [number, "null"]
+          description: The row's `$/run avg`, in cents, or null when nothing priced has been attributed to this kind.
+          examples: [null]
+        latencyP50Ms:
+          type: [number, "null"]
+          description: The row's `p50 latency`, in milliseconds, or null when nothing timed a call for this kind.
+          examples: [null]
+
+    Route:
+      type: object
+      title: Route
+      description: |-
+        One task kind's route: the inspector's numbered chain, its policy triple, and who last
+        saved it.
+      additionalProperties: false
+      required:
+        [
+          id,
+          taskKind,
+          tag,
+          allowLocalFallback,
+          floorHopIndex,
+          maxCostCentsPerRun,
+          hops,
+          stats,
+          updatedAt,
+          updatedBy,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The route's id.
+        taskKind:
+          type: string
+          description: The kind this route answers for.
+          examples: [implement]
+        tag:
+          type: string
+          description: |-
+            The pill the matrix prints and the inspector's title. Its own value rather than
+            something derived from the kind: `test-gen` tags `testgen-primary`.
+          examples: [implement-primary]
+        allowLocalFallback:
+          type: boolean
+          description: |-
+            Mockup 06's **Allow fallback to local models**. Off is a statement about which
+            providers this route may use at all — every local hop is dropped, primary
+            included, with a stated reason.
+        floorHopIndex:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            Mockup 06's **Fail run instead of degrading below fallback N**, as the hop number
+            it is really about — so *below fallback 2* is `3`, the chain's third hop. Null is
+            the switch being off: degrade as far as the chain goes.
+          examples: [3]
+        maxCostCentsPerRun:
+          type: [integer, "null"]
+          minimum: 1
+          description: |-
+            Mockup 06's **Max cost per run**, in **integer cents** — `250` is `$2.50`. Null
+            for no cap. Never a float and never dollars: it is compared against a running
+            total, in the unit the spend ledger already keeps.
+          examples: [250]
+        hops:
+          type: array
+          minItems: 1
+          description: The chain, primary first. Never empty for a route that exists.
+          items:
+            $ref: "#/components/schemas/RouteHop"
+        stats:
+          $ref: "#/components/schemas/RouteStats"
+        updatedAt:
+          type: string
+          format: date-time
+          description: When it was last saved.
+          examples: ["2026-08-23T09:58:12.004Z"]
+        updatedBy:
+          type: [string, "null"]
+          description: |-
+            Who last saved it, or null for a route written by a seed — or by somebody since
+            deleted, because the route outlives the person who last touched it.
+
+    RoutingTaskKind:
+      type: object
+      title: RoutingTaskKind
+      description: One row of the routing matrix — a task kind, and the route it resolves through.
+      additionalProperties: false
+      required: [name, description, sortOrder, route]
+      properties:
+        name:
+          type: string
+          description: The mono label the row prints. A workspace's own list rather than a fixed vocabulary.
+          examples: [implement]
+        description:
+          type: string
+          description: The grey line under it.
+          examples: [Write the change, run tests, iterate to green]
+        sortOrder:
+          type: integer
+          minimum: 1
+          description: The order the matrix draws the rows in; 1 is first.
+          examples: [4]
+        route:
+          oneOf:
+            - $ref: "#/components/schemas/Route"
+            - type: "null"
+          description: |-
+            The route, or **null** for a kind with none — a matrix row with an empty cell. A
+            legal state, and one worth drawing rather than hiding.
+
+    EscalationWhen:
+      type: object
+      title: EscalationWhen
+      description: |-
+        An escalation rule's predicate — at least one condition, and every one present is
+        **ANDed** with the others. The empty object is refused: a rule with no condition always
+        fires, which is not an escalation, it is a route.
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        effort_gte:
+          type: string
+          enum: [xs, s, m, l, xl]
+          description: |-
+            Fires at this size **or larger**. `_gte` rather than the workflow builder's `_lte`
+            because the two ask opposite questions of the same scale: a trigger gates work
+            *small enough* to run unattended, an escalation catches work *big enough* to
+            deserve a better model.
+          examples: [l]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Fires when the issue carries this GitHub label. GitHub's vocabulary, not ours.
+          examples: [security]
+        diff_kind:
+          type: string
+          enum: [docs_only]
+          description: |-
+            Fires on this diff classification. One value today, and honestly so: a
+            classification nothing computes is a rule that can never fire.
+          examples: [docs_only]
+
+    EscalationThen:
+      title: EscalationThen
+      description: |-
+        An escalation rule's route modification — **exactly one** of three shapes. A document
+        carrying two actions is refused: a rule whose effect depends on which action a reader
+        notices first is a rule nobody can predict.
+      oneOf:
+        - type: object
+          title: EscalationUseAlias
+          description: |-
+            Swap the primary model for one task kind. The mockup's *"(max thinking)"* is
+            `params`, not prose — the same shape an alias's own defaults have, merged over
+            them. It swaps or prepends and never truncates: a rule asking for a *better*
+            primary must not reduce how many providers a run can survive the loss of.
+          additionalProperties: false
+          required: [use_alias]
+          properties:
+            use_alias:
+              type: object
+              additionalProperties: false
+              required: [task_kind, alias]
+              properties:
+                task_kind:
+                  type: string
+                  pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+                  maxLength: 64
+                  examples: [implement]
+                alias:
+                  type: string
+                  pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+                  maxLength: 64
+                  examples: [coder-max]
+                params:
+                  type: object
+                  minProperties: 1
+                  maxProperties: 8
+                  description: |-
+                    Invocation defaults merged **over** the alias's own. Scalars only — every
+                    one of them is rendered into the card's one-line sentence.
+                  additionalProperties:
+                    type: [string, number, boolean]
+        - type: object
+          title: EscalationAddVote
+          description: A second opinion appended to a kind's resolution.
+          additionalProperties: false
+          required: [add_vote]
+          properties:
+            add_vote:
+              type: object
+              additionalProperties: false
+              required: [task_kind, alias]
+              properties:
+                task_kind:
+                  type: string
+                  pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+                  maxLength: 64
+                  examples: [review]
+                alias:
+                  type: string
+                  pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+                  maxLength: 64
+                  examples: [second-opinion]
+        - type: object
+          title: EscalationRouteLocal
+          description: |-
+            Everything routes to local providers. The one action with **no task kind**, which
+            is what makes it the mockup's *"everything"*. Its body is an empty object rather
+            than null, so a later option is a key rather than a fourth encoding.
+          additionalProperties: false
+          required: [route_local]
+          properties:
+            route_local:
+              type: object
+              additionalProperties: false
+              maxProperties: 0
+
+    EscalationRule:
+      type: object
+      title: EscalationRule
+      description: |-
+        One line of mockup 06's **ESCALATION RULES** card, as structure rather than as the
+        sentence it reads like.
+      additionalProperties: false
+      required: [id, enabled, sortOrder, when, then, display]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: What the switch and the delete address.
+        enabled:
+          type: boolean
+          description: |-
+            The card's switch, and the card's `N active` is the count of these that are true.
+            A disabled rule keeps its place and its sentence, so switching it back on restores
+            it exactly where it was.
+        sortOrder:
+          type: integer
+          minimum: 1
+          description: |-
+            Evaluation order; 1 is first, and it is what gives *which rule wins* one answer
+            when two match the same run. Unique per workspace and deliberately not dense.
+          examples: [1]
+        when:
+          $ref: "#/components/schemas/EscalationWhen"
+        then:
+          $ref: "#/components/schemas/EscalationThen"
+        display:
+          type: string
+          description: |-
+            The sentence the card renders, **generated from the structure by the database**. A
+            client may not send one: it is derived, so it can never drift from what the rule
+            does, and the card, the matrix's escalation column and the resolution explanation
+            all print the same string because there is only one.
+          examples: ["effort ≥ L → implement uses coder-max (max thinking)"]
+
+    RoutingMatrix:
+      type: object
+      title: RoutingMatrix
+      description: |-
+        The routing page's read: the matrix and the rules card, in one payload because they are
+        one screen.
+      additionalProperties: false
+      required: [taskKinds, rules]
+      properties:
+        taskKinds:
+          type: array
+          description: |-
+            Every task kind, in the order the matrix draws them. Empty for a workspace whose
+            routing foundations have not been seeded.
+          items:
+            $ref: "#/components/schemas/RoutingTaskKind"
+        rules:
+          type: array
+          description: Every escalation rule, enabled and disabled alike, in evaluation order.
+          items:
+            $ref: "#/components/schemas/EscalationRule"
+
+    RoutingAlias:
+      type: object
+      title: RoutingAlias
+      description: One alias a route may name, with the resolution a swap menu previews.
+      additionalProperties: false
+      required: [alias, modelId, params, provider]
+      properties:
+        alias:
+          type: string
+          description: The name a route uses.
+          examples: [coder-max]
+        modelId:
+          type: string
+          description: What it resolves to — the only place a raw provider model string appears.
+          examples: [claude-fable-5]
+        params:
+          type: object
+          description: The alias's own invocation defaults. `{}` is the ordinary state.
+          additionalProperties: true
+        provider:
+          oneOf:
+            - $ref: "#/components/schemas/RouteProvider"
+            - type: "null"
+          description: Where it runs, or null for an alias with no provider bound yet.
+
+    RoutingAliasList:
+      type: object
+      title: RoutingAliasList
+      description: |-
+        The registry list the swap menus are built from. Unpaged: a workspace's registry is the
+        handful of aliases its routes name, and a page over a list that short would cost a
+        client a second request to discover there was nothing more.
+      additionalProperties: false
+      required: [aliases]
+      properties:
+        aliases:
+          type: array
+          description: Every alias in the workspace, ordered by name, unbound ones included.
+          items:
+            $ref: "#/components/schemas/RoutingAlias"
+
+    RouteHopInput:
+      type: object
+      title: RouteHopInput
+      description: |-
+        One hop of a chain, as a client sends it.
+
+        **There is no position**: the array's order *is* the chain's order, and the server
+        numbers the hops densely from 1 — so a client that dragged hop 3 above hop 2 sends the
+        array it now draws rather than computing two new numbers for it.
+
+        **And there is no model id.** A hop names an alias; the raw provider model string lives
+        in the registry and nowhere else.
+      additionalProperties: false
+      required: [alias]
+      properties:
+        alias:
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+          maxLength: 64
+          description: |-
+            The alias this hop uses. Checked for shape here and for existence in this workspace
+            by the server — an alias it has never bound is a `422` naming the hop.
+          examples: [coder-max]
+        note:
+          type: [string, "null"]
+          maxLength: 200
+          description: |-
+            The inspector's hop-meta line. Absent and `null` mean the same thing on this verb:
+            the hop has no note. Neither blank nor padded.
+          examples: ["Fallback on 5xx / timeouts"]
+
+    RoutePolicy:
+      type: object
+      title: RoutePolicy
+      description: |-
+        One route's chain and its policy triple — the inspector, as a body.
+
+        **All three policy fields are required.** A `PUT` has no leave-this-alone case, so
+        omitting one is a malformed body rather than a way to keep the value it had; `null` is
+        how *off* is said for the floor and *no cap* for the cost.
+      additionalProperties: false
+      required: [hops, allowLocalFallback, floorHopIndex, maxCostCentsPerRun]
+      properties:
+        hops:
+          type: array
+          minItems: 1
+          maxItems: 20
+          description: |-
+            The chain, primary first. Never empty — a route with no hops is refused by the
+            schema itself, so an empty array could not be stored by anything.
+          items:
+            $ref: "#/components/schemas/RouteHopInput"
+        allowLocalFallback:
+          type: boolean
+          description: Mockup 06's **Allow fallback to local models**. A switch has two positions, so there is no null.
+        floorHopIndex:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 20
+          description: |-
+            The deepest hop this route may run on, or null for the switch being off. Measured
+            against the chain **in the same body**: a save that shortens a chain and lowers its
+            floor is a legal edit, and one deeper than the chain sent with it is a `422`.
+          examples: [2]
+        maxCostCentsPerRun:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 2147483647
+          description: |-
+            The cap in **integer cents**, or null for no cap. A cap of zero is not a cap, it is
+            a route that can never run.
+          examples: [250]
+
+    SaveRouteInput:
+      title: SaveRouteInput
+      description: One entry of a batch — a route, plus the task kind that says which one.
+      allOf:
+        - $ref: "#/components/schemas/RoutePolicy"
+        - type: object
+          required: [taskKind]
+          properties:
+            taskKind:
+              type: string
+              pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+              maxLength: 64
+              description: |-
+                The matrix row this entry edits. A kind may appear once in a batch: a body that
+                says two different things about one row has no reading under which both were
+                applied.
+              examples: [implement]
+
+    SaveRoutesRequest:
+      type: object
+      title: SaveRoutesRequest
+      description: |-
+        One press of **Save routes** — the whole staged batch, committed atomically.
+
+        An object with one array rather than a bare array, for the reason every list in this API
+        is an object: a top-level array has nowhere to grow a field.
+      additionalProperties: false
+      required: [routes]
+      properties:
+        routes:
+          type: array
+          minItems: 1
+          maxItems: 64
+          description: The routes to commit, in any order. Each task kind at most once.
+          items:
+            $ref: "#/components/schemas/SaveRouteInput"
+
+    SaveRoutesResult:
+      type: object
+      title: SaveRoutesResult
+      description: What a save answers with — the revision it wrote, and the routes as they now stand.
+      additionalProperties: false
+      required: [revisionId, routes]
+      properties:
+        revisionId:
+          type: [string, "null"]
+          format: uuid
+          description: |-
+            The revision row this save wrote, or **null** when it changed nothing.
+
+            Null is neither a failure nor an omission: it is a client pressing **Save routes**
+            on a matrix it had not edited. A revision records what moved, and an audit trail of
+            button presses that moved nothing is one nobody reads to the end.
+        routes:
+          type: array
+          description: |-
+            The routes as they now stand, in the order the request listed them — re-read after
+            the commit rather than echoed from the body, so the round trip is a property of the
+            answer rather than a second request a client has to make.
+          items:
+            $ref: "#/components/schemas/Route"
+
+    CreateEscalationRule:
+      type: object
+      title: CreateEscalationRule
+      description: |-
+        A new escalation rule.
+
+        **There is no `display`, and its absence is the enforcement.** The sentence is derived
+        from the structure by the database; a body carrying one is refused rather than silently
+        discarded.
+      additionalProperties: false
+      required: [when, then]
+      properties:
+        enabled:
+          type: boolean
+          description: |-
+            The card's switch. Absent means **on**: the only reason to write a rule is to have
+            it apply, and the switch exists to suspend one without deleting it.
+        sortOrder:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+          description: |-
+            Where this rule evaluates; 1 is first. Absent means **appended** — one past the
+            highest this workspace holds, because a new rule that silently claimed the first
+            position would change what every existing rule does.
+          examples: [2]
+        when:
+          $ref: "#/components/schemas/EscalationWhen"
+        then:
+          $ref: "#/components/schemas/EscalationThen"
+
+    UpdateEscalationRule:
+      type: object
+      title: UpdateEscalationRule
+      description: |-
+        What may change about an escalation rule. Every field is optional and **none of them
+        admits `null`** — a rule has no clearable parts. An empty body changes nothing and
+        answers the rule as it stands.
+
+        `when` and `then` are replaced whole: there is no patching *inside* a predicate, because
+        a condition removed and a condition never sent would be the same request.
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: The card's switch.
+        sortOrder:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+          description: Where this rule evaluates; 1 is first.
+          examples: [2]
+        when:
+          $ref: "#/components/schemas/EscalationWhen"
+        then:
+          $ref: "#/components/schemas/EscalationThen"
 
     ProviderConnectionKind:
       type: string

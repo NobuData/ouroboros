@@ -875,6 +875,330 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/registry/param-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What one model can be tuned with
+         * @description The schema mockup 21's alias inspector renders its parameter fields from
+         *     ([#585](https://github.com/NobuData/ouroboros/issues/585)), and the same schema every
+         *     write to that alias's parameters is validated against.
+         *
+         *     **The fields are generated from what the bound model actually supports, and that is the
+         *     point of the endpoint.** A thinking budget on `qwen3-coder:32b` is a control somebody
+         *     fills in, a value the server stores and a chip the table renders — and nothing at all at
+         *     the other end. So the provider adapter says which tunables a model has, and this is
+         *     where it says it. A client renders `params.fields` in order and needs no knowledge of
+         *     any provider: a new adapter brings its own parameters without a change here or in the
+         *     UI.
+         *
+         *     **Four sources shape the answer, in this precedence:**
+         *
+         *     | Source | What it is | May it override? |
+         *     |---|---|---|
+         *     | `adapter` | what this build's provider adapter says about the model | — |
+         *     | `discovery` | what the provider reported into its discovered catalog | tightens a bound |
+         *     | `catalog` | the bundled price catalog's metadata ([#580](https://github.com/NobuData/ouroboros/issues/580)) | **fills an absent bound only** |
+         *     | `registry` | what this workspace's own columns will store | clamps, last |
+         *
+         *     Every field carries `x-ouroboros-sources` naming the ones that shaped it, and the
+         *     response repeats the union in `sources`. The catalog is a vendored snapshot of an
+         *     upstream file and can go stale, so it may fill a bound nothing else knows and may never
+         *     contradict one — which is why a reader can tell a live bound from a catalogued one
+         *     rather than having to distrust both.
+         *
+         *     **`connection` is optional, and omitting it is a question rather than a mistake.** An
+         *     alias created ahead of its key — mockup 21's `gpt5-experiments` — has a model and no
+         *     provider, so there is no adapter to ask. The answer is then an empty `params` schema
+         *     whose `description` says why, `reason: alias_unbound`, and the registry restrictions in
+         *     full: those are what *this workspace* allows the alias to be used for, which is true
+         *     whether or not anything is on the other end of it. Nothing is invented for such an
+         *     alias — no capability is guessed from a catalog.
+         *
+         *     `reason` is also non-null in two other honest cases: `provider_has_no_parameters` for a
+         *     fixed catalog such as Copilot or Cursor, which publish no per-call parameters this
+         *     product can set; and `provider_unsupported` for a connection whose kind this build has
+         *     no adapter for. Neither is an error — each is a form that explains itself.
+         *
+         *     **Any member may read it**, viewers included: a parameter schema describes a model
+         *     rather than a workspace's data, and names no credential, no spend and no alias. What it
+         *     *validates* is role-gated where that happens, on the alias writes.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs.
+         */
+        get: operations["getModelParamSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The routing matrix, the chains behind it, and the escalation rules
+         * @description Everything mockup 06 draws below the health strip
+         *     ([#195](https://github.com/NobuData/ouroboros/issues/195)) — the eight-row matrix, each
+         *     row's route and ordered chain with every hop resolved to an alias, a model and a
+         *     provider, the inspector's policy triple, and the **escalation rules** card beside it.
+         *
+         *     **One request rather than one per card**, because they are one screen: the matrix's
+         *     escalation column and the rules card render the same rows, and two requests would let
+         *     them disagree for as long as one of them was in flight.
+         *
+         *     **A task kind may have no route**, and it arrives as a row with `route: null`. That is a
+         *     state the schema permits on purpose — a matrix row with an empty cell — and hiding it
+         *     would hide a kind the workspace has.
+         *
+         *     **A hop whose alias is unbound keeps its place**, with `provider: null`. An alias created
+         *     ahead of its key is a first-class row in the model registry, and a chain that lost a hop
+         *     that way would arrive shorter than the operator configured it.
+         *
+         *     **`stats` is two nulls until spend attribution lands**
+         *     ([#198](https://github.com/NobuData/ouroboros/issues/198)). Roadmap decision **M7**: a
+         *     figure the product cannot compute is a figure it does not print, and `0` is not
+         *     *unknown* — it is a number. Render the em-dash.
+         *
+         *     **Any member may read it**, viewers included.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs.
+         */
+        get: operations["readRoutingMatrix"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The model aliases a route may name
+         * @description The registry list the matrix's swap menus are built from
+         *     ([#195](https://github.com/NobuData/ouroboros/issues/195)) — every alias this workspace
+         *     has, with the model and provider it currently resolves to, so a menu can preview what a
+         *     swap would mean before anybody presses **Save routes**.
+         *
+         *     **A read, and only a read.** Creating, editing and retiring an alias is the model
+         *     registry's surface (mockup 21); routing needs the names it is allowed to point at.
+         *
+         *     **Unbound aliases are in the list**, with `provider: null`. An alias created ahead of its
+         *     key is a real row, and hiding it would make it unreachable from the surface that would
+         *     bind a route to it — the hop it produces is dropped at resolution time, with a stated
+         *     reason, which is a different and more honest failure than a name that cannot be chosen.
+         *
+         *     **Unpaged.** A workspace's registry is the handful of aliases its routes name, and a page
+         *     over a list that short would cost a client a second request to discover there was
+         *     nothing more.
+         *
+         *     **Any member may read it.**
+         */
+        get: operations["listRoutingAliases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save routes — commit a batch of edits
+         * @description One press of mockup 06's **Save routes**
+         *     ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+         *
+         *     The page's editing model is **staged, not live**: drag a chain into order, swap an alias,
+         *     set a floor and a cap — all client-side — then commit the whole matrix in one request.
+         *     `200` rather than `201`, because nothing is created; routes exist, and this is what they
+         *     now say.
+         *
+         *     **The batch is atomic, and every refusal is decided before anything is written.** A body
+         *     naming an alias this workspace does not have, or a floor deeper than the chain sent with
+         *     it, is a `422` — and the other routes in the same batch are untouched, so a corrected
+         *     batch can simply be re-sent rather than reconciled.
+         *
+         *     **Errors map back to their route.** `details.routes` is keyed by task kind, so a client
+         *     that sent eight routes and got one wrong knows which row of the matrix to mark:
+         *     `{"docs": {"floorHopIndex": ["…"]}}`.
+         *
+         *     **The chain is the array you send.** There are no positions in the request: hop order is
+         *     array order, and the server numbers them densely from 1. A hop names an **alias** and
+         *     never a raw model id.
+         *
+         *     **`null` means off.** The three policy fields are required, and `floorHopIndex: null` is
+         *     *no floor* while `maxCostCentsPerRun: null` is *no cap*. A `PUT` has no
+         *     leave-this-alone case, so omitting a policy is a malformed body rather than a way to
+         *     keep the value it had.
+         *
+         *     **Each save that changes something writes a revision** — who, when, and a diff of
+         *     exactly what moved — and answers with its id. A save that changes nothing writes none
+         *     and answers `revisionId: null`; an audit trail of button presses that moved nothing is
+         *     one nobody reads to the end.
+         *
+         *     **`owner` or `admin`.** A member reads the matrix and cannot write it, refused by the
+         *     server rather than by a hidden control.
+         */
+        put: operations["saveRoutes"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing/routes/{taskKind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save one route
+         * @description The same operation as **Save routes**, addressed at one row of the matrix
+         *     ([#195](https://github.com/NobuData/ouroboros/issues/195)) — a batch of one, with the
+         *     same validation, the same atomicity, and the same revision.
+         *
+         *     The body is a route without its task kind, which comes from the path. A body that also
+         *     carried one is refused rather than resolved in the path's favour: addressing one route
+         *     and editing another is not a request this API guesses at.
+         *
+         *     Everything the batch operation's description says applies here — the array *is* the
+         *     chain, `null` means off, and the answer carries the revision and the route as re-read.
+         *
+         *     **`owner` or `admin`.**
+         */
+        put: operations["saveRoute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add an escalation rule
+         * @description The **+ Add rule** control on mockup 06's escalation-rules card
+         *     ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+         *
+         *     **A rule is structure, not a sentence.** `when` is a predicate — at least one of
+         *     `effort_gte`, `label` and `diff_kind`, ANDed — and `then` is exactly one of three route
+         *     modifications: `use_alias`, `add_vote`, `route_local`. Free text would be unenforceable;
+         *     the switch would toggle, the line would grey out, and routing would behave identically.
+         *
+         *     **`display` is derived and cannot be sent.** The sentence the card renders is generated
+         *     from the structure by the database, so it can never drift from what the rule does. A
+         *     body carrying one is a `422 validation_failed` naming the field, not a value this
+         *     service quietly discards.
+         *
+         *     **`sortOrder` is where it evaluates**, 1 first. Omit it and the rule is **appended** —
+         *     one past the highest this workspace holds — because a new rule that silently claimed the
+         *     first position would change what every existing rule does. A position another rule
+         *     already holds is a `409`.
+         *
+         *     **`enabled` defaults to on**: the only reason to write a rule is to have it apply, and
+         *     the switch exists to suspend one without deleting it.
+         *
+         *     **`owner` or `admin`.**
+         */
+        post: operations["addEscalationRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing/rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an escalation rule
+         * @description Delete a rule outright ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+         *
+         *     `204`, and no body: there is nothing to say about a row that no longer exists, and a
+         *     `200` carrying the deleted resource invites a client to keep using it.
+         *
+         *     **This is not the switch.** `PATCH {"enabled": false}` suspends a rule and keeps its
+         *     place in the order and the sentence the card greys out; this is for a rule that was a
+         *     mistake.
+         *
+         *     **`owner` or `admin`.**
+         */
+        delete: operations["removeEscalationRule"];
+        options?: never;
+        head?: never;
+        /**
+         * Change an escalation rule
+         * @description The switch on a rule row, its place in the evaluation order, or the rule itself
+         *     ([#195](https://github.com/NobuData/ouroboros/issues/195)).
+         *
+         *     A `PATCH` rather than a `PUT` because the card's affordance is a **switch**: turning one
+         *     off should not require resending a predicate and an action the client has no intention
+         *     of changing, nor risk rewriting them from a stale copy. An empty body changes nothing
+         *     and answers the rule as it stands.
+         *
+         *     **`when` and `then` are replaced whole.** There is no patching *inside* a predicate — a
+         *     condition removed and a condition never sent would be the same request — and neither
+         *     admits `null`, because a rule has no clearable parts.
+         *
+         *     **The sentence regenerates.** Change either half and `display` is re-derived, so an
+         *     edited rule cannot keep the sentence it used to have. It still cannot be sent.
+         *
+         *     **Switching off is not deleting.** A disabled rule keeps its `sortOrder` and its
+         *     sentence, so switching it back on restores it exactly where it was.
+         *
+         *     **`owner` or `admin`.**
+         */
+        patch: operations["changeEscalationRule"];
+        trace?: never;
+    };
     "/api/v1/routing/providers": {
         parameters: {
             query?: never;
@@ -916,6 +1240,265 @@ export interface paths {
         get: operations["listProviderHealth"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's provider connections
+         * @description One page of the providers this workspace has connected
+         *     ([#223](https://github.com/NobuData/ouroboros/issues/223)), ordered by display name —
+         *     the cards mockup 07 draws.
+         *
+         *     **The credential is not in this payload and cannot be.** Each entry carries `mask`,
+         *     a server-computed `••••Xq4A`: four bullets and the last four characters of the key,
+         *     made from the plaintext inside this service and unable to be turned back into it.
+         *     Returning the value and letting a browser draw the bullets would put the credential
+         *     in the page's memory, in the network tab and in every error report that page ever
+         *     sends, which is exactly what decision **P4** exists to prevent. The one endpoint that
+         *     answers with a live credential is `POST /api/v1/providers/{id}/reveal`, and it is
+         *     priced accordingly.
+         *
+         *     **Any member may read it**, viewers included — every field here is masked, and *which
+         *     providers does this workspace have* is the kind of question a role that exists to look
+         *     should be able to ask. Every write below is `owner` or `admin`.
+         *
+         *     **What is deliberately not here.** The card foot's health detail is
+         *     `GET /api/v1/routing/providers` ([#196](https://github.com/NobuData/ouroboros/issues/196)),
+         *     and the model chips are AE.4's
+         *     ([#230](https://github.com/NobuData/ouroboros/issues/230)) discovery. This surface is
+         *     the *lifecycle* — exactly the set of things the five writes below can change.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs.
+         */
+        get: operations["listProviderConnections"];
+        put?: never;
+        /**
+         * Connect a provider
+         * @description Add a provider connection — schema-checked, **validated against the live provider**,
+         *     sealed, and only then stored.
+         *
+         *     **A bad key is never stored silently, and nothing is written on failure.** The order
+         *     is the operation: the submitted `config` is checked against the adapter's own
+         *     `configSchema()`, then the adapter asks the provider whether the configuration and
+         *     credential work, and only a success reaches the database. There is no row to clean up
+         *     when a key is refused, because there was never a row — which is what makes *adding a
+         *     provider with an invalid key fails without persisting anything* a property of the
+         *     control flow rather than a promise.
+         *
+         *     **`config` is the adapter's own vocabulary.** Which fields it takes is
+         *     `configSchema()`'s answer for the `kind` — a base URL for a vLLM endpoint, a host for
+         *     Ollama, a key for Anthropic — and the credential is whichever field the schema marks
+         *     `x-ouroboros-secret`. It goes to the vault
+         *     ([#222](https://github.com/NobuData/ouroboros/issues/222)) and never to a column a
+         *     response can read. Two field names are reserved and land in columns of their own:
+         *     `baseUrl` and `capabilityNote`.
+         *
+         *     **A setting this build cannot store is a `501` naming it**, never a value silently
+         *     dropped. `provider_connections` keeps a connection's settings in columns, and one
+         *     adapter declares an optional field that has none — Copilot's billing `organization`.
+         *     Connecting Copilot without it works; sending it is refused with
+         *     `provider_config_not_storable` and the field named, so nobody is left believing they
+         *     configured something they did not.
+         *
+         *     **`owner` or `admin`, and nobody else.** A connection is what a workspace's routing
+         *     spends money through; a `member` or a `viewer` gets the API's one `403`.
+         *
+         *     The connection is created `enabled`, with the status and latency the live check just
+         *     measured, and `addedBy` set from the session — never from the body.
+         */
+        post: operations["addProviderConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One provider connection
+         * @description One connection, with its credential masked exactly as the listing masks it. Readable
+         *     by every member.
+         *
+         *     A connection of another workspace answers `404`, not `403` — the same rule the rest of
+         *     this API follows, and sharper here: a `403` would confirm that an identifier names a
+         *     real provider connection, which is the whole of what somebody enumerating identifiers
+         *     is trying to learn.
+         */
+        get: operations["readProviderConnection"];
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect a provider
+         * @description Remove a connection, unless the workspace's routing still points at it.
+         *
+         *     **A connection with model aliases resolving on it cannot be removed, and the refusal
+         *     names them.** V015's `model_aliases_provider_fk` is what makes the delete impossible;
+         *     `provider_connection_in_use` is what turns *violates foreign key constraint* into an
+         *     instruction — `details.aliases` lists the names to repoint or remove first. The check
+         *     runs before the delete so the message is a good one, and the delete is still guarded,
+         *     because an alias created in between makes the server refuse anyway.
+         *
+         *     `204` and no body: there is nothing to say about a row that no longer exists, and a
+         *     `200` carrying the deleted resource invites a client to keep using it.
+         *
+         *     **The sealed credential goes with the row.** There is no soft delete and no archive:
+         *     a credential nothing can reach is a credential every backup still carries.
+         *
+         *     `owner` or `admin`.
+         */
+        delete: operations["removeProviderConnection"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a connection's settings
+         * @description The card's switch, its monthly cap, its capability note and its address — each
+         *     independently, and each optional.
+         *
+         *     **A `PATCH` rather than a `PUT`**, which is the opposite of the choice
+         *     `PUT /api/v1/registry/prices` makes and for a reason about the resource rather than
+         *     about taste: a price is one statement replaced outright, while a connection is a row
+         *     of independent settings where *turn this off* should not require resending an address
+         *     the client may not have.
+         *
+         *     **An absent field is left alone; an explicit `null` clears one.** Only
+         *     `monthlyCapCents` and `capabilityNote` accept `null`, because those are the two
+         *     settings whose absence is itself a value — *no cap*, *no second line*. A body that
+         *     changes nothing is answered with the connection unchanged and writes no audit event.
+         *
+         *     **`config` is validated exactly as an add is, live provider included.** It is merged
+         *     over what is stored — a schema's rules can span fields, and half a request cannot be
+         *     judged against them — then checked against the adapter's schema and then against the
+         *     provider itself, with the stored credential opened for the length of that one call. A
+         *     refusal changes nothing. This is what makes editing a base URL safe: an address that
+         *     does not work is refused here rather than discovered by the next run.
+         *
+         *     **`capabilityNote` is not a `config` field on this body**, and sending it inside
+         *     `config` is a `422` saying so. The note has a column beside the cap and the switch and
+         *     only three of the five adapters declare it in their form schema — routing it through
+         *     `config` would make it editable for some providers and not others for a reason that is
+         *     about a form rather than about the connection.
+         *
+         *     **The credential is not here.** Replacing one is `POST {id}/rotate`, which validates
+         *     the new value against the live provider before it destroys anything; an edit that
+         *     could carry a key would be that operation without the check.
+         *
+         *     `owner` or `admin`.
+         */
+        patch: operations["updateProviderConnection"];
+        trace?: never;
+    };
+    "/api/v1/providers/{id}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reveal a stored credential
+         * @description The one operation in this API that answers with a live credential, and the only one
+         *     with four gates in front of it.
+         *
+         *     **It costs a step-up re-authentication.** A session cookie is not a strong enough
+         *     claim to open a key: a borrowed laptop, a copied cookie inside the session cache's
+         *     five-minute window and an XSS on any page of this product are all "a valid session".
+         *     So a reveal needs a *recent* proof that the browser is still the person, and without
+         *     one the answer is `401 step_up_required` carrying `details.methods` and
+         *     `details.maxAgeSeconds` — a challenge a client can act on rather than a wall.
+         *
+         *     Two methods, which are the two BetterAuth gives this build:
+         *
+         *     | Method | What satisfies it |
+         *     |---|---|
+         *     | `session` | the session was **created** within `maxAgeSeconds` — somebody who has just signed in, by any means their account uses, GitHub included |
+         *     | `password` | `password` in this body, compared against the caller's own credential account |
+         *
+         *     A confirmed password counts for `maxAgeSeconds`, so confirming once and revealing two
+         *     keys is one prompt rather than two. A **wrong** password answers exactly as an absent
+         *     one does: telling them apart would make this endpoint a password oracle for anybody
+         *     holding a stolen session, which is precisely the person a step-up exists to stop.
+         *
+         *     **It is rate-limited per user and per connection**, and every attempt counts —
+         *     including one that failed the step-up, because a limiter behind the step-up would
+         *     leave the password comparison unlimited. `details.scope` says which limit was reached
+         *     and `details.retryAfterSeconds` how long until it has room.
+         *
+         *     **It is always audited.** One `provider.revealed` event, recording the workspace, the
+         *     connection, the person and *how the step-up was satisfied* — which is the difference
+         *     between somebody with this session and somebody who proved they are this person.
+         *
+         *     **The answer carries `Cache-Control: no-store`** and an `expiresAt` a client should
+         *     stop displaying the value at. The second is an instruction rather than an enforcement,
+         *     and it is published because the alternative is every client inventing its own timeout
+         *     and most of them choosing *never*.
+         *
+         *     `owner` or `admin` — reveal is grouped with the writes despite changing nothing,
+         *     because it is the operation that hands back a key.
+         */
+        post: operations["revealProviderCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/providers/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace a credential, verify-then-retire
+         * @description Rotate a provider credential: accept the new one, **validate it against the live
+         *     provider**, and only then swap.
+         *
+         *     **A failed validation leaves the old credential live and working.** The naive
+         *     implementation writes the new key and drops the old one, so a typo leaves the
+         *     workspace's routing broken *and* the working credential gone. Here the check happens
+         *     before any statement is issued, and a refusal is `422 provider_validation_failed`
+         *     carrying the taxonomy's class and the adapter's own note — a designed error, not a
+         *     stack trace.
+         *
+         *     **The swap is atomic.** It is a single conditional `UPDATE`, so the old credential is
+         *     live until the instant the new one is: there is no window in which neither works. The
+         *     condition is that the row still holds the credential the validation ran against — two
+         *     administrators rotating at once, or the vault's re-encryption sweep landing in
+         *     between, answers `409 provider_connection_changed` rather than overwriting a value it
+         *     never checked.
+         *
+         *     **A provider that takes no credential cannot be rotated** — an Ollama host is
+         *     `409 provider_credential_absent`. A provider whose credential is *optional* and
+         *     currently absent **can** be: an OpenAI-compatible endpoint that has just been put
+         *     behind auth is a real thing to rotate onto, and the new key is live-validated exactly
+         *     as any other.
+         *
+         *     `owner` or `admin`. Audited as `provider.rotated`.
+         */
+        post: operations["rotateProviderCredential"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2743,6 +3326,230 @@ export interface components {
             offset: number;
         };
         /**
+         * ParamSource
+         * @description Where a parameter field, or one of its bounds, came from — in precedence order.
+         *
+         *     `adapter` is what this build's provider adapter says about the model. `discovery` is
+         *     what the provider itself reported about it into the discovered catalog. `catalog` is the
+         *     bundled price catalog's metadata, a vendored snapshot of an upstream file, which may
+         *     fill a bound nothing else knows and may **never** override the two above it. `registry`
+         *     is what this workspace's own columns will store, applied last so a schema cannot offer a
+         *     value a save would refuse.
+         *
+         *     A page that cannot tell a live bound from a catalogued one is a page whose bounds all
+         *     have to be distrusted, which is why every field says.
+         * @enum {string}
+         */
+        ParamSource: "adapter" | "discovery" | "catalog" | "registry";
+        /**
+         * ModelParamField
+         * @description One tunable, as JSON Schema plus one annotation. The keywords are JSON Schema's and mean
+         *     what JSON Schema says they mean; the dialect is deliberately narrow — one flat object of
+         *     scalar-valued fields, no `$ref`, no composition, no nesting — so a renderer can be total
+         *     over it rather than growing a case per keyword.
+         */
+        ModelParamField: {
+            /**
+             * @description Which of the four shapes this parameter is. `integer` is separate from `number`
+             *     because a token budget of `4096.5` is a value no provider accepts.
+             * @example integer
+             * @enum {string}
+             */
+            type: "string" | "integer" | "number" | "boolean";
+            /**
+             * @description The form's label. Never empty — a field name is not a label.
+             * @example Token budget
+             */
+            title: string;
+            /** @description The help line under the input, when the label is not enough on its own. */
+            description?: string;
+            /**
+             * @description The permitted values, for a `string` field. Drives a select.
+             * @example [
+             *       "off",
+             *       "std",
+             *       "max"
+             *     ]
+             */
+            enum?: string[];
+            /**
+             * @description The lowest acceptable value, for a `number` or an `integer`.
+             * @example 1
+             */
+            minimum?: number;
+            /**
+             * @description The highest acceptable value, for a `number` or an `integer`.
+             * @example 400000
+             */
+            maximum?: number;
+            /**
+             * @description What the input starts at when the alias has no value of its own. **Not a value this
+             *     product sends** — an alias whose parameters omit a key says nothing about it, and
+             *     what the provider then does is the provider's own default.
+             */
+            default?: string | number | boolean;
+            /**
+             * @description Every source that shaped this field, highest precedence first.
+             * @example [
+             *       "adapter",
+             *       "discovery"
+             *     ]
+             */
+            "x-ouroboros-sources"?: components["schemas"]["ParamSource"][];
+        };
+        /**
+         * ModelParamDocument
+         * @description A parameter schema, as JSON Schema — published unchanged rather than translated into a
+         *     vocabulary of this product's own, so a client may hand it to a generic validator and get
+         *     the same answer the server will give it.
+         *
+         *     **There is no `required`.** Every parameter is optional by construction: an alias that
+         *     names none of them takes the provider's defaults, which is the ordinary state.
+         *
+         *     `properties` may be **empty**, and then `description` says why — a fixed-catalog
+         *     provider with nothing to tune, or an alias with no provider bound. An empty form that
+         *     cannot explain itself is indistinguishable from one that failed to load, so the
+         *     explanation is required rather than hoped for.
+         */
+        ModelParamDocument: {
+            /**
+             * @description The dialect. Stated so a generic validator knows the rules.
+             * @enum {string}
+             */
+            $schema: "https://json-schema.org/draft/2020-12/schema";
+            /** @enum {string} */
+            type: "object";
+            /**
+             * @description What the inspector's parameter section is headed.
+             * @example Anthropic model parameters
+             */
+            title: string;
+            /**
+             * @description Why there is nothing to tune, when there is nothing. Present and non-empty whenever
+             *     `properties` is empty; allowed, and useful, alongside fields.
+             */
+            description?: string;
+            /**
+             * @description The tunables, keyed by the name a stored parameter document carries. **Key order is
+             *     the order the inspector renders them in**, and it is preserved end to end.
+             */
+            properties: {
+                [key: string]: components["schemas"]["ModelParamField"];
+            };
+            /**
+             * @description Always `false` — the keyword that makes *this model does not support thinking* a
+             *     validation failure rather than a stored key nothing reads.
+             * @enum {boolean}
+             */
+            additionalProperties: false;
+        };
+        /**
+         * ModelParamFormField
+         * @description One parameter, already derived into what a form draws. Served beside the schema because
+         *     which widget a field gets and what its bounds are is a decision this service should make
+         *     once — a client that wants the schema has it, a client that wants a form has one, and
+         *     the two cannot disagree because the second is computed from the first.
+         *
+         *     Every optional schema keyword is an explicit `null` here: absence is fine in a schema an
+         *     author is writing and unhelpful in a value a renderer is consuming.
+         */
+        ModelParamFormField: {
+            /**
+             * @description The key a submitted value is carried under. Never shown to a person.
+             * @example context_clamp
+             */
+            name: string;
+            /**
+             * @description What the `<label>` says.
+             * @example Context clamp
+             */
+            label: string;
+            /**
+             * @description How to draw it, derived from the field's own description rather than declared — a
+             *     `string` with an `enum` is a select, one without is free text, and the other three
+             *     types name themselves.
+             * @example integer
+             * @enum {string}
+             */
+            widget: "select" | "text" | "integer" | "number" | "switch";
+            /** @description The help line under the input, or null. */
+            help: string | null;
+            /** @description What the input starts at, or null. */
+            defaultValue: string | number | boolean | null;
+            /** @description The options for a select, or null for every other widget. */
+            choices: string[] | null;
+            /**
+             * @description The lowest acceptable value, or null.
+             * @example 1
+             */
+            minimum: number | null;
+            /**
+             * @description The highest acceptable value, or null.
+             * @example 32768
+             */
+            maximum: number | null;
+            /** @description Every source that shaped this field, highest precedence first. */
+            sources: components["schemas"]["ParamSource"][];
+        };
+        /**
+         * ModelParamSection
+         * @description One half of a parameter answer — a schema, and the fields it renders as.
+         */
+        ModelParamSection: {
+            schema: components["schemas"]["ModelParamDocument"];
+            /**
+             * @description The schema as an ordered field list. Empty exactly when the schema declares no
+             *     properties, which is where a client renders the schema's `description` instead.
+             */
+            fields: components["schemas"]["ModelParamFormField"][];
+        };
+        /**
+         * ModelParamSchemaResponse
+         * @description What a model can be tuned with, and what this workspace allows the alias to be used for.
+         *
+         *     **Two sections rather than one**, mirroring the two documents an alias write carries: a
+         *     `422` from a write names `params.thinking` or `restrictions.batch_ok`, and a client maps
+         *     either back to a field of the section it came from without a lookup table. Both sections
+         *     are in the same dialect, so one renderer draws both.
+         */
+        ModelParamSchemaResponse: {
+            /**
+             * @description The model this answer is about, echoed so a stale response is recognisable.
+             * @example qwen3-coder:32b
+             */
+            modelId: string;
+            /**
+             * Format: uuid
+             * @description The connection it was asked on, or null when the question was about an unbound
+             *     alias.
+             */
+            connectionId: string | null;
+            params: components["schemas"]["ModelParamSection"];
+            restrictions: components["schemas"]["ModelParamSection"];
+            /**
+             * @description Why `params` offers nothing, or null when it offers something.
+             *
+             *     A code and never a sentence: the prose belongs to whatever is rendering, and the
+             *     schema's own `description` carries the one this service would write. `alias_unbound`
+             *     is an alias with no provider yet; `provider_has_no_parameters` is a fixed catalog
+             *     that publishes nothing to set; `provider_unsupported` is a connection whose kind
+             *     this build has no adapter for. None of the three is an error.
+             * @enum {string|null}
+             */
+            reason: "alias_unbound" | "provider_unsupported" | "provider_has_no_parameters" | null;
+            /**
+             * @description Every source that shaped any field, in precedence order — the union of the per-field
+             *     annotations, so a client can say *some of these bounds are catalogued* once above a
+             *     form.
+             * @example [
+             *       "adapter",
+             *       "discovery",
+             *       "registry"
+             *     ]
+             */
+            sources: components["schemas"]["ParamSource"][];
+        };
+        /**
          * ProviderHealth
          * @description One chip on the routing page's provider health strip — a provider connection, and what
          *     the last check honestly found. Every optional fact is `null` rather than a stand-in
@@ -2833,6 +3640,721 @@ export interface components {
         ProviderHealthStrip: {
             /** @description Every connection in the workspace, ordered by display name. */
             providers: components["schemas"]["ProviderHealth"][];
+        };
+        /**
+         * RouteProvider
+         * @description Where a hop's model runs — the four identifying facts, and **no health**.
+         *
+         *     The status a provider is in comes from `GET /api/v1/routing/providers` and from
+         *     nowhere else. The strip and the matrix are drawn from the same page load, and a status
+         *     published twice is a status that can be shown two ways at once.
+         */
+        RouteProvider: {
+            /**
+             * Format: uuid
+             * @description The provider connection's id — how mockup 07's surfaces address it.
+             */
+            id: string;
+            kind: components["schemas"]["ProviderConnectionKind"];
+            /**
+             * @description What the resolution line prints beside the model — `Anthropic`, `Ollama`.
+             * @example Anthropic
+             */
+            displayName: string;
+            /**
+             * @description Where it is, or null for a kind reached at its vendor's own endpoint.
+             * @example http://workstation:11434
+             */
+            baseUrl: string | null;
+        };
+        /**
+         * RouteHop
+         * @description One numbered hop of a **configured** chain — the inspector's rail.
+         *
+         *     Nothing here says whether the hop would be *used*. Health, escalation rules and the
+         *     floor decide that at resolution time, and a second opinion published from the editor
+         *     would be a second thing to disagree with the first.
+         */
+        RouteHop: {
+            /**
+             * @description Where in the chain this hop sits; 1 is the primary. Dense from 1 by constraint,
+             *     which is what makes `floorHopIndex` a number anybody can count.
+             * @example 1
+             */
+            position: number;
+            /**
+             * @description The alias this hop names — `coder-max`. The only thing a route may name: raw
+             *     provider model ids are unreachable from a route by construction.
+             * @example coder-max
+             */
+            alias: string;
+            /**
+             * @description What the alias resolves to — the resolution line's first half.
+             * @example claude-fable-5
+             */
+            modelId: string;
+            /**
+             * @description The operator's sentence for this hop, or null. Most hops have none.
+             * @example Fallback on 5xx / timeouts
+             */
+            note: string | null;
+            /**
+             * @description Where it runs, or **null** for an alias with no provider bound yet. The hop keeps
+             *     its place either way — a chain that lost a hop would arrive shorter than the
+             *     operator configured it.
+             */
+            provider: components["schemas"]["RouteProvider"] | null;
+        };
+        /**
+         * RouteStats
+         * @description The matrix's two numeric columns, or nulls where nothing has been measured.
+         *
+         *     Both are computed from the token-spend ledger by
+         *     [#198](https://github.com/NobuData/ouroboros/issues/198). Until that lands they are
+         *     null — and null is the answer roadmap decision **M7** requires: a workspace that has
+         *     run nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
+         *     Render the em-dash.
+         */
+        RouteStats: {
+            /**
+             * @description The row's `$/run avg`, in cents, or null when nothing priced has been attributed to this kind.
+             * @example null
+             */
+            costCentsPerRunAvg: number | null;
+            /**
+             * @description The row's `p50 latency`, in milliseconds, or null when nothing timed a call for this kind.
+             * @example null
+             */
+            latencyP50Ms: number | null;
+        };
+        /**
+         * Route
+         * @description One task kind's route: the inspector's numbered chain, its policy triple, and who last
+         *     saved it.
+         */
+        Route: {
+            /**
+             * Format: uuid
+             * @description The route's id.
+             */
+            id: string;
+            /**
+             * @description The kind this route answers for.
+             * @example implement
+             */
+            taskKind: string;
+            /**
+             * @description The pill the matrix prints and the inspector's title. Its own value rather than
+             *     something derived from the kind: `test-gen` tags `testgen-primary`.
+             * @example implement-primary
+             */
+            tag: string;
+            /**
+             * @description Mockup 06's **Allow fallback to local models**. Off is a statement about which
+             *     providers this route may use at all — every local hop is dropped, primary
+             *     included, with a stated reason.
+             */
+            allowLocalFallback: boolean;
+            /**
+             * @description Mockup 06's **Fail run instead of degrading below fallback N**, as the hop number
+             *     it is really about — so *below fallback 2* is `3`, the chain's third hop. Null is
+             *     the switch being off: degrade as far as the chain goes.
+             * @example 3
+             */
+            floorHopIndex: number | null;
+            /**
+             * @description Mockup 06's **Max cost per run**, in **integer cents** — `250` is `$2.50`. Null
+             *     for no cap. Never a float and never dollars: it is compared against a running
+             *     total, in the unit the spend ledger already keeps.
+             * @example 250
+             */
+            maxCostCentsPerRun: number | null;
+            /** @description The chain, primary first. Never empty for a route that exists. */
+            hops: components["schemas"]["RouteHop"][];
+            stats: components["schemas"]["RouteStats"];
+            /**
+             * Format: date-time
+             * @description When it was last saved.
+             * @example 2026-08-23T09:58:12.004Z
+             */
+            updatedAt: string;
+            /**
+             * @description Who last saved it, or null for a route written by a seed — or by somebody since
+             *     deleted, because the route outlives the person who last touched it.
+             */
+            updatedBy: string | null;
+        };
+        /**
+         * RoutingTaskKind
+         * @description One row of the routing matrix — a task kind, and the route it resolves through.
+         */
+        RoutingTaskKind: {
+            /**
+             * @description The mono label the row prints. A workspace's own list rather than a fixed vocabulary.
+             * @example implement
+             */
+            name: string;
+            /**
+             * @description The grey line under it.
+             * @example Write the change
+             * @example run tests
+             * @example iterate to green
+             */
+            description: string;
+            /**
+             * @description The order the matrix draws the rows in; 1 is first.
+             * @example 4
+             */
+            sortOrder: number;
+            /**
+             * @description The route, or **null** for a kind with none — a matrix row with an empty cell. A
+             *     legal state, and one worth drawing rather than hiding.
+             */
+            route: components["schemas"]["Route"] | null;
+        };
+        /**
+         * EscalationWhen
+         * @description An escalation rule's predicate — at least one condition, and every one present is
+         *     **ANDed** with the others. The empty object is refused: a rule with no condition always
+         *     fires, which is not an escalation, it is a route.
+         */
+        EscalationWhen: {
+            /**
+             * @description Fires at this size **or larger**. `_gte` rather than the workflow builder's `_lte`
+             *     because the two ask opposite questions of the same scale: a trigger gates work
+             *     *small enough* to run unattended, an escalation catches work *big enough* to
+             *     deserve a better model.
+             * @example l
+             * @enum {string}
+             */
+            effort_gte?: "xs" | "s" | "m" | "l" | "xl";
+            /**
+             * @description Fires when the issue carries this GitHub label. GitHub's vocabulary, not ours.
+             * @example security
+             */
+            label?: string;
+            /**
+             * @description Fires on this diff classification. One value today, and honestly so: a
+             *     classification nothing computes is a rule that can never fire.
+             * @example docs_only
+             * @enum {string}
+             */
+            diff_kind?: "docs_only";
+        };
+        /**
+         * EscalationThen
+         * @description An escalation rule's route modification — **exactly one** of three shapes. A document
+         *     carrying two actions is refused: a rule whose effect depends on which action a reader
+         *     notices first is a rule nobody can predict.
+         */
+        EscalationThen: {
+            use_alias: {
+                /** @example implement */
+                task_kind: string;
+                /** @example coder-max */
+                alias: string;
+                /**
+                 * @description Invocation defaults merged **over** the alias's own. Scalars only — every
+                 *     one of them is rendered into the card's one-line sentence.
+                 */
+                params?: {
+                    [key: string]: string | number | boolean;
+                };
+            };
+        } | {
+            add_vote: {
+                /** @example review */
+                task_kind: string;
+                /** @example second-opinion */
+                alias: string;
+            };
+        } | {
+            route_local: Record<string, never>;
+        };
+        /**
+         * EscalationRule
+         * @description One line of mockup 06's **ESCALATION RULES** card, as structure rather than as the
+         *     sentence it reads like.
+         */
+        EscalationRule: {
+            /**
+             * Format: uuid
+             * @description What the switch and the delete address.
+             */
+            id: string;
+            /**
+             * @description The card's switch, and the card's `N active` is the count of these that are true.
+             *     A disabled rule keeps its place and its sentence, so switching it back on restores
+             *     it exactly where it was.
+             */
+            enabled: boolean;
+            /**
+             * @description Evaluation order; 1 is first, and it is what gives *which rule wins* one answer
+             *     when two match the same run. Unique per workspace and deliberately not dense.
+             * @example 1
+             */
+            sortOrder: number;
+            when: components["schemas"]["EscalationWhen"];
+            then: components["schemas"]["EscalationThen"];
+            /**
+             * @description The sentence the card renders, **generated from the structure by the database**. A
+             *     client may not send one: it is derived, so it can never drift from what the rule
+             *     does, and the card, the matrix's escalation column and the resolution explanation
+             *     all print the same string because there is only one.
+             * @example effort ≥ L → implement uses coder-max (max thinking)
+             */
+            display: string;
+        };
+        /**
+         * RoutingMatrix
+         * @description The routing page's read: the matrix and the rules card, in one payload because they are
+         *     one screen.
+         */
+        RoutingMatrix: {
+            /**
+             * @description Every task kind, in the order the matrix draws them. Empty for a workspace whose
+             *     routing foundations have not been seeded.
+             */
+            taskKinds: components["schemas"]["RoutingTaskKind"][];
+            /** @description Every escalation rule, enabled and disabled alike, in evaluation order. */
+            rules: components["schemas"]["EscalationRule"][];
+        };
+        /**
+         * RoutingAlias
+         * @description One alias a route may name, with the resolution a swap menu previews.
+         */
+        RoutingAlias: {
+            /**
+             * @description The name a route uses.
+             * @example coder-max
+             */
+            alias: string;
+            /**
+             * @description What it resolves to — the only place a raw provider model string appears.
+             * @example claude-fable-5
+             */
+            modelId: string;
+            /** @description The alias's own invocation defaults. `{}` is the ordinary state. */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description Where it runs, or null for an alias with no provider bound yet. */
+            provider: components["schemas"]["RouteProvider"] | null;
+        };
+        /**
+         * RoutingAliasList
+         * @description The registry list the swap menus are built from. Unpaged: a workspace's registry is the
+         *     handful of aliases its routes name, and a page over a list that short would cost a
+         *     client a second request to discover there was nothing more.
+         */
+        RoutingAliasList: {
+            /** @description Every alias in the workspace, ordered by name, unbound ones included. */
+            aliases: components["schemas"]["RoutingAlias"][];
+        };
+        /**
+         * RouteHopInput
+         * @description One hop of a chain, as a client sends it.
+         *
+         *     **There is no position**: the array's order *is* the chain's order, and the server
+         *     numbers the hops densely from 1 — so a client that dragged hop 3 above hop 2 sends the
+         *     array it now draws rather than computing two new numbers for it.
+         *
+         *     **And there is no model id.** A hop names an alias; the raw provider model string lives
+         *     in the registry and nowhere else.
+         */
+        RouteHopInput: {
+            /**
+             * @description The alias this hop uses. Checked for shape here and for existence in this workspace
+             *     by the server — an alias it has never bound is a `422` naming the hop.
+             * @example coder-max
+             */
+            alias: string;
+            /**
+             * @description The inspector's hop-meta line. Absent and `null` mean the same thing on this verb:
+             *     the hop has no note. Neither blank nor padded.
+             * @example Fallback on 5xx / timeouts
+             */
+            note?: string | null;
+        };
+        /**
+         * RoutePolicy
+         * @description One route's chain and its policy triple — the inspector, as a body.
+         *
+         *     **All three policy fields are required.** A `PUT` has no leave-this-alone case, so
+         *     omitting one is a malformed body rather than a way to keep the value it had; `null` is
+         *     how *off* is said for the floor and *no cap* for the cost.
+         */
+        RoutePolicy: {
+            /**
+             * @description The chain, primary first. Never empty — a route with no hops is refused by the
+             *     schema itself, so an empty array could not be stored by anything.
+             */
+            hops: components["schemas"]["RouteHopInput"][];
+            /** @description Mockup 06's **Allow fallback to local models**. A switch has two positions, so there is no null. */
+            allowLocalFallback: boolean;
+            /**
+             * @description The deepest hop this route may run on, or null for the switch being off. Measured
+             *     against the chain **in the same body**: a save that shortens a chain and lowers its
+             *     floor is a legal edit, and one deeper than the chain sent with it is a `422`.
+             * @example 2
+             */
+            floorHopIndex: number | null;
+            /**
+             * @description The cap in **integer cents**, or null for no cap. A cap of zero is not a cap, it is
+             *     a route that can never run.
+             * @example 250
+             */
+            maxCostCentsPerRun: number | null;
+        };
+        /**
+         * SaveRouteInput
+         * @description One entry of a batch — a route, plus the task kind that says which one.
+         */
+        SaveRouteInput: components["schemas"]["RoutePolicy"] & {
+            /**
+             * @description The matrix row this entry edits. A kind may appear once in a batch: a body that
+             *     says two different things about one row has no reading under which both were
+             *     applied.
+             * @example implement
+             */
+            taskKind: string;
+        };
+        /**
+         * SaveRoutesRequest
+         * @description One press of **Save routes** — the whole staged batch, committed atomically.
+         *
+         *     An object with one array rather than a bare array, for the reason every list in this API
+         *     is an object: a top-level array has nowhere to grow a field.
+         */
+        SaveRoutesRequest: {
+            /** @description The routes to commit, in any order. Each task kind at most once. */
+            routes: components["schemas"]["SaveRouteInput"][];
+        };
+        /**
+         * SaveRoutesResult
+         * @description What a save answers with — the revision it wrote, and the routes as they now stand.
+         */
+        SaveRoutesResult: {
+            /**
+             * Format: uuid
+             * @description The revision row this save wrote, or **null** when it changed nothing.
+             *
+             *     Null is neither a failure nor an omission: it is a client pressing **Save routes**
+             *     on a matrix it had not edited. A revision records what moved, and an audit trail of
+             *     button presses that moved nothing is one nobody reads to the end.
+             */
+            revisionId: string | null;
+            /**
+             * @description The routes as they now stand, in the order the request listed them — re-read after
+             *     the commit rather than echoed from the body, so the round trip is a property of the
+             *     answer rather than a second request a client has to make.
+             */
+            routes: components["schemas"]["Route"][];
+        };
+        /**
+         * CreateEscalationRule
+         * @description A new escalation rule.
+         *
+         *     **There is no `display`, and its absence is the enforcement.** The sentence is derived
+         *     from the structure by the database; a body carrying one is refused rather than silently
+         *     discarded.
+         */
+        CreateEscalationRule: {
+            /**
+             * @description The card's switch. Absent means **on**: the only reason to write a rule is to have
+             *     it apply, and the switch exists to suspend one without deleting it.
+             */
+            enabled?: boolean;
+            /**
+             * @description Where this rule evaluates; 1 is first. Absent means **appended** — one past the
+             *     highest this workspace holds, because a new rule that silently claimed the first
+             *     position would change what every existing rule does.
+             * @example 2
+             */
+            sortOrder?: number;
+            when: components["schemas"]["EscalationWhen"];
+            then: components["schemas"]["EscalationThen"];
+        };
+        /**
+         * UpdateEscalationRule
+         * @description What may change about an escalation rule. Every field is optional and **none of them
+         *     admits `null`** — a rule has no clearable parts. An empty body changes nothing and
+         *     answers the rule as it stands.
+         *
+         *     `when` and `then` are replaced whole: there is no patching *inside* a predicate, because
+         *     a condition removed and a condition never sent would be the same request.
+         */
+        UpdateEscalationRule: {
+            /** @description The card's switch. */
+            enabled?: boolean;
+            /**
+             * @description Where this rule evaluates; 1 is first.
+             * @example 2
+             */
+            sortOrder?: number;
+            when?: components["schemas"]["EscalationWhen"];
+            then?: components["schemas"]["EscalationThen"];
+        };
+        /**
+         * ProviderConnectionKind
+         * @description Which adapter reaches a provider (V015). The same six spellings a price's
+         *     `connectionKind` carries, so a connection and a price agree about what kind of thing
+         *     they describe without either translating.
+         *
+         *     Not every one of them is connectable in every build: a kind with no adapter compiled
+         *     in answers `501 provider_kind_unsupported`, whose `details.registered` lists the ones
+         *     that are.
+         * @example anthropic
+         * @enum {string}
+         */
+        ProviderConnectionKind: "anthropic" | "openai_compatible" | "ollama" | "copilot" | "cursor" | "custom";
+        /**
+         * ProviderConnectionStatus
+         * @description What the last health check concluded — read-only on this surface, and written by the
+         *     provider-health sweep ([#196](https://github.com/NobuData/ouroboros/issues/196)).
+         *
+         *     **Not the same thing as `enabled`.** The status is what a check measured; `enabled` is
+         *     what a person decided, and *connected* beside a switch that is off is a real state.
+         *     `unknown` is a state and must never be rendered as healthy.
+         * @example active
+         * @enum {string}
+         */
+        ProviderConnectionStatus: "active" | "paused" | "error" | "unknown";
+        /**
+         * ProviderConnection
+         * @description One provider connection — the card mockup 07 draws, minus the two things another
+         *     surface owns: the health detail is `GET /api/v1/routing/providers` and the model chips
+         *     are the discovery surface.
+         *
+         *     **There is nowhere in this shape for a credential.** `mask` is a server-computed
+         *     `••••Xq4A` and cannot be turned back into the key; the one endpoint that answers with
+         *     a live value is `POST /api/v1/providers/{id}/reveal`.
+         */
+        ProviderConnection: {
+            /**
+             * Format: uuid
+             * @description The connection, as every operation below the collection addresses it.
+             * @example 5eed000c-0000-4000-8000-000000000001
+             */
+            id: string;
+            kind: components["schemas"]["ProviderConnectionKind"];
+            /**
+             * @description The card's heading. Free text a workspace chose, and deliberately not unique — two
+             *     Ollama daemons on two machines are two legitimate connections.
+             * @example Anthropic Claude
+             */
+            displayName: string;
+            /**
+             * @description Where the provider is, or `null` for one reached at a fixed public endpoint.
+             *     Required for `ollama` and `openai_compatible`, which have none to fall back on.
+             * @example http://ken-station.local:11434
+             */
+            baseUrl: string | null;
+            /**
+             * @description The card's second line, verbatim — *api.anthropic.com · primary coding lane*. Null
+             *     when there is nothing to say, and the card then draws one line instead of two.
+             * @example self-hosted · A100 ×2
+             */
+            capabilityNote: string | null;
+            status: components["schemas"]["ProviderConnectionStatus"];
+            /**
+             * @description The card's switch — may this connection be used at all. A disabled connection
+             *     drops out of routing while its aliases and routes survive, which is the difference
+             *     between switched off and deleted.
+             * @example true
+             */
+            enabled: boolean;
+            /**
+             * @description The monthly cap in whole cents — `$600` is `60000` — or **`null` for no cap**,
+             *     which mockup 07 renders as an em-dash. Null is not the same as `0`, which is a
+             *     real instruction meaning *spend nothing*. Warning-only until the spend gate lands
+             *     ([#237](https://github.com/NobuData/ouroboros/issues/237)).
+             * @example 60000
+             */
+            monthlyCapCents: number | null;
+            /**
+             * @description The stored credential, masked: four bullets and its last four characters. `null`
+             *     when this provider needs no credential — a local daemon, an unauthenticated
+             *     endpoint — which is an ordinary state rather than an unfinished row.
+             *
+             *     Computed inside this service from the plaintext and unable to be reversed. It is
+             *     the **only** thing this API says about a stored credential outside `reveal`.
+             * @example ••••Xq4A
+             */
+            mask: string | null;
+            /**
+             * @description The person who connected this provider — the card's *Added by Ken* — or `null`.
+             *     Null is both *nobody in this table added it* and *the person who did has since
+             *     gone*: deleting a person must not delete their workspace's provider.
+             * @example 5eed0003-0000-4000-8000-000000000001
+             */
+            addedBy: string | null;
+            /**
+             * Format: date-time
+             * @description When the last health check finished, or `null` until one has.
+             * @example 2026-08-23T09:59:41.882Z
+             */
+            lastCheckedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When something last invoked through this connection — the card's *last used 3m
+             *     ago* — or `null` for *never used*. Written by the invocation gateway
+             *     ([#235](https://github.com/NobuData/ouroboros/issues/235)); `null` is therefore
+             *     the ordinary state today rather than a defect.
+             * @example 2026-08-23T09:57:12.004Z
+             */
+            lastUsedAt: string | null;
+            /**
+             * Format: date-time
+             * @example 2026-06-12T16:20:00.000Z
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @example 2026-08-23T09:59:41.882Z
+             */
+            updatedAt: string;
+        };
+        /**
+         * ProviderConnectionPage
+         * @description One page of a workspace's provider connections, ordered by display name.
+         */
+        ProviderConnectionPage: {
+            items: components["schemas"]["ProviderConnection"][];
+            /** @example 2 */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
+        };
+        /**
+         * ProviderConnectionConfig
+         * @description A provider's own settings, keyed by the field names its `configSchema()` declares — a
+         *     flat object of strings and nothing else.
+         *
+         *     The keys are **the adapter's**, which is why this schema cannot name them: a vLLM
+         *     endpoint takes `baseUrl` and an optional key, Ollama takes a host, Anthropic takes a
+         *     key. Two names are reserved across every adapter and land in columns of their own:
+         *     `baseUrl` is the connection's address and `capabilityNote` is the card's second line.
+         *     Whichever field the schema marks `x-ouroboros-secret` is the credential; it is sealed
+         *     and is never readable again except through `reveal`.
+         *
+         *     At most 20 settings, each at most 2048 characters. A setting the adapter does not
+         *     declare is a `422`; one it declares and this build has no column for is a `501` naming
+         *     it, never a value silently dropped.
+         * @example {
+         *       "baseUrl": "http://10.0.4.20:8000/v1",
+         *       "capabilityNote": "self-hosted · A100 ×2"
+         *     }
+         */
+        ProviderConnectionConfig: {
+            [key: string]: string;
+        };
+        /**
+         * ProviderConnectionCreate
+         * @description A provider to connect. Live-validated before anything is written; see
+         *     `POST /api/v1/providers`.
+         */
+        ProviderConnectionCreate: {
+            kind: components["schemas"]["ProviderConnectionKind"];
+            /**
+             * @description The card's heading. Trimmed and non-blank — a value carrying surrounding
+             *     whitespace is refused rather than quietly trimmed, because storing something other
+             *     than what was sent is the failure this surface refuses everywhere else.
+             * @example Anthropic Claude
+             */
+            displayName: string;
+            config: components["schemas"]["ProviderConnectionConfig"];
+            /**
+             * @description The monthly cap in whole cents. Absent or `null` is *no cap*, which is not the
+             *     same as `0`.
+             * @example 60000
+             */
+            monthlyCapCents?: number | null;
+        };
+        /**
+         * ProviderConnectionPatch
+         * @description What to change about a connection. Every field is optional, an absent field is left
+         *     alone, and an explicit `null` clears the two settings whose absence is a value. A body
+         *     that changes nothing is answered with the connection unchanged.
+         */
+        ProviderConnectionPatch: {
+            /** @example Anthropic Claude */
+            displayName?: string;
+            /**
+             * @description The card's switch. No `null` — a switch has two positions.
+             * @example false
+             */
+            enabled?: boolean;
+            /**
+             * @description The monthly cap in whole cents. `null` clears it, which is *no cap*.
+             * @example 75000
+             */
+            monthlyCapCents?: number | null;
+            /**
+             * @description The card's second line. `null` clears it. A connection field rather than a
+             *     `config` one — sending it inside `config` is refused; see the operation.
+             * @example api.anthropic.com · primary coding lane
+             */
+            capabilityNote?: string | null;
+            config?: components["schemas"]["ProviderConnectionConfig"];
+        };
+        /**
+         * ProviderRevealRequest
+         * @description How this reveal is stepping up, if it is. An empty object is a legitimate body: a
+         *     session created within the step-up window is itself a re-authentication, and so is a
+         *     password confirmed within it.
+         */
+        ProviderRevealRequest: {
+            /**
+             * @description The caller's own password, compared against their credential account by
+             *     BetterAuth. Never stored and never logged. A wrong one answers exactly as an
+             *     absent one does — see the operation.
+             * @example correct-horse-battery
+             */
+            password?: string;
+        };
+        /**
+         * ProviderRevealed
+         * @description A credential, in the clear — the one payload in this API that carries one. Sent with
+         *     `Cache-Control: no-store`.
+         */
+        ProviderRevealed: {
+            /**
+             * Format: uuid
+             * @description Which connection this belongs to, echoed so a page with two reveals in flight
+             *     cannot paint one provider's key onto another's row.
+             * @example 5eed000c-0000-4000-8000-000000000001
+             */
+            connectionId: string;
+            /**
+             * @description The credential.
+             * @example sk-ant-api03-not-a-real-key-Xq4A
+             */
+            value: string;
+            /**
+             * Format: date-time
+             * @description When a client should stop displaying the value and forget it. An **instruction**
+             *     rather than an enforcement — a value handed to a browser is in the browser, and no
+             *     header takes it back — published so that clients do not each invent a timeout, most
+             *     of them *never*.
+             * @example 2026-08-23T10:00:41.882Z
+             */
+            expiresAt: string;
+        };
+        /**
+         * ProviderRotateRequest
+         * @description The replacement credential. Live-validated before the old one is retired.
+         */
+        ProviderRotateRequest: {
+            /**
+             * @description The new credential. Not trimmed and not normalised: a credential is an opaque
+             *     string, and a service that stripped a character would break a key that
+             *     legitimately carried it.
+             * @example sk-ant-api03-the-new-key-7Kd2
+             */
+            secret: string;
         };
         /**
          * EngineStatus
@@ -3073,6 +4595,19 @@ export interface components {
          * @example 5eed0009-0000-4000-8000-000000000482
          */
         RunId: string;
+        /**
+         * @description A provider connection's id. A connection of another workspace answers `404`, never
+         *     `403`: confirming that an identifier names something real is the whole of what
+         *     enumerating identifiers is for.
+         * @example 5eed000c-0000-4000-8000-000000000001
+         */
+        ConnectionId: string;
+        /**
+         * @description The escalation rule's id. It must belong to the workspace the session is acting in;
+         *     another workspace's answers `404`, exactly as an id that names nothing does.
+         * @example f0000000-0000-4000-8000-000000000002
+         */
+        EscalationRuleId: string;
     };
     requestBodies: never;
     headers: never;
@@ -5283,6 +6818,1463 @@ export interface operations {
             };
         };
     };
+    getModelParamSchema: {
+        parameters: {
+            query: {
+                /**
+                 * @description The provider connection the alias is bound to. Omit it to ask about an unbound
+                 *     alias — see the description.
+                 */
+                connection?: string;
+                /**
+                 * @description The model's own identifier, exactly as the provider spells it and as the alias
+                 *     stores it. Unfolded — `claude-fable-5` and `qwen3-coder:32b` are two vendors'
+                 *     conventions and neither is normalised.
+                 */
+                model: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The two schemas, the fields they render as, and where each bound came from. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "modelId": "qwen3-coder:32b",
+                     *       "connectionId": "9c4a5f6e-7d8c-4b10-8f43-5a6b7c8d9e01",
+                     *       "params": {
+                     *         "schema": {
+                     *           "$schema": "https://json-schema.org/draft/2020-12/schema",
+                     *           "type": "object",
+                     *           "title": "Ollama model parameters",
+                     *           "properties": {
+                     *             "context_clamp": {
+                     *               "type": "integer",
+                     *               "title": "Context clamp",
+                     *               "description": "`num_ctx` — hold this model to a smaller context than it was loaded with.",
+                     *               "minimum": 1,
+                     *               "maximum": 32768,
+                     *               "x-ouroboros-sources": [
+                     *                 "adapter",
+                     *                 "discovery"
+                     *               ]
+                     *             }
+                     *           },
+                     *           "additionalProperties": false
+                     *         },
+                     *         "fields": [
+                     *           {
+                     *             "name": "context_clamp",
+                     *             "label": "Context clamp",
+                     *             "widget": "integer",
+                     *             "help": "`num_ctx` — hold this model to a smaller context than it was loaded with.",
+                     *             "defaultValue": null,
+                     *             "choices": null,
+                     *             "minimum": 1,
+                     *             "maximum": 32768,
+                     *             "sources": [
+                     *               "adapter",
+                     *               "discovery"
+                     *             ]
+                     *           }
+                     *         ]
+                     *       },
+                     *       "restrictions": {
+                     *         "schema": {
+                     *           "$schema": "https://json-schema.org/draft/2020-12/schema",
+                     *           "type": "object",
+                     *           "title": "Registry restrictions",
+                     *           "description": "What this workspace allows this alias to be used for. Registry policy rather than provider capability, so it is offered on every alias — including one with no provider bound yet.",
+                     *           "properties": {
+                     *             "review_vote_only": {
+                     *               "type": "boolean",
+                     *               "title": "Review vote only",
+                     *               "description": "This alias may cast a review vote and may not be routed work of its own.",
+                     *               "x-ouroboros-sources": [
+                     *                 "registry"
+                     *               ]
+                     *             },
+                     *             "batch_ok": {
+                     *               "type": "boolean",
+                     *               "title": "Batch ok",
+                     *               "description": "Work routed to this alias may be batched rather than sent one call at a time.",
+                     *               "x-ouroboros-sources": [
+                     *                 "registry"
+                     *               ]
+                     *             }
+                     *           },
+                     *           "additionalProperties": false
+                     *         },
+                     *         "fields": [
+                     *           {
+                     *             "name": "review_vote_only",
+                     *             "label": "Review vote only",
+                     *             "widget": "switch",
+                     *             "help": "This alias may cast a review vote and may not be routed work of its own.",
+                     *             "defaultValue": null,
+                     *             "choices": null,
+                     *             "minimum": null,
+                     *             "maximum": null,
+                     *             "sources": [
+                     *               "registry"
+                     *             ]
+                     *           },
+                     *           {
+                     *             "name": "batch_ok",
+                     *             "label": "Batch ok",
+                     *             "widget": "switch",
+                     *             "help": "Work routed to this alias may be batched rather than sent one call at a time.",
+                     *             "defaultValue": null,
+                     *             "choices": null,
+                     *             "minimum": null,
+                     *             "maximum": null,
+                     *             "sources": [
+                     *               "registry"
+                     *             ]
+                     *           }
+                     *         ]
+                     *       },
+                     *       "reason": null,
+                     *       "sources": [
+                     *         "adapter",
+                     *         "discovery",
+                     *         "registry"
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ModelParamSchemaResponse"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_connection_not_found` — `connection` names no connection in this
+             *     workspace, or `tenant_not_found` when `X-Ouro-Tenant` names no workspace you are a
+             *     member of. A connection that is absent and one that is somebody else's are
+             *     deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `model` was missing or malformed, or `connection` was not a
+             *     uuid. `details` carries the entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRoutingMatrix: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The matrix and the rules. Both arrays are empty for a workspace whose routing
+             *     foundations have not been seeded — the page's empty state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "taskKinds": [
+                     *         {
+                     *           "name": "implement",
+                     *           "description": "Write the change, run tests, iterate to green",
+                     *           "sortOrder": 4,
+                     *           "route": {
+                     *             "id": "5eed0011-0000-4000-8000-000000000004",
+                     *             "taskKind": "implement",
+                     *             "tag": "implement-primary",
+                     *             "allowLocalFallback": true,
+                     *             "floorHopIndex": null,
+                     *             "maxCostCentsPerRun": 250,
+                     *             "hops": [
+                     *               {
+                     *                 "position": 1,
+                     *                 "alias": "coder-max",
+                     *                 "modelId": "claude-fable-5",
+                     *                 "note": "Primary",
+                     *                 "provider": {
+                     *                   "id": "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+                     *                   "kind": "anthropic",
+                     *                   "displayName": "Anthropic",
+                     *                   "baseUrl": null
+                     *                 }
+                     *               },
+                     *               {
+                     *                 "position": 2,
+                     *                 "alias": "coder-fallback",
+                     *                 "modelId": "gpt-5-codex",
+                     *                 "note": "Fallback on 5xx / timeouts",
+                     *                 "provider": {
+                     *                   "id": "8b3f4e5d-6c7b-4a09-9e32-4f5a6b7c8d92",
+                     *                   "kind": "copilot",
+                     *                   "displayName": "GitHub Copilot",
+                     *                   "baseUrl": null
+                     *                 }
+                     *               }
+                     *             ],
+                     *             "stats": {
+                     *               "costCentsPerRunAvg": null,
+                     *               "latencyP50Ms": null
+                     *             },
+                     *             "updatedAt": "2026-08-23T09:58:12.004Z",
+                     *             "updatedBy": "5eed0003-0000-4000-8000-000000000001"
+                     *           }
+                     *         },
+                     *         {
+                     *           "name": "docs",
+                     *           "description": "Draft and revise the written record",
+                     *           "sortOrder": 7,
+                     *           "route": null
+                     *         }
+                     *       ],
+                     *       "rules": [
+                     *         {
+                     *           "id": "f0000000-0000-4000-8000-000000000001",
+                     *           "enabled": true,
+                     *           "sortOrder": 1,
+                     *           "when": {
+                     *             "effort_gte": "l"
+                     *           },
+                     *           "then": {
+                     *             "use_alias": {
+                     *               "task_kind": "implement",
+                     *               "alias": "coder-max",
+                     *               "params": {
+                     *                 "thinking": "max"
+                     *               }
+                     *             }
+                     *           },
+                     *           "display": "effort ≥ L → implement uses coder-max (max thinking)"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RoutingMatrix"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRoutingAliases: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Every alias, ordered by name. Empty for a workspace with none — the routing page's
+             *     empty state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "aliases": [
+                     *         {
+                     *           "alias": "coder-max",
+                     *           "modelId": "claude-fable-5",
+                     *           "params": {
+                     *             "thinking": "max"
+                     *           },
+                     *           "provider": {
+                     *             "id": "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+                     *             "kind": "anthropic",
+                     *             "displayName": "Anthropic",
+                     *             "baseUrl": null
+                     *           }
+                     *         },
+                     *         {
+                     *           "alias": "gpt5-experiments",
+                     *           "modelId": "gpt-5-preview",
+                     *           "params": {},
+                     *           "provider": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RoutingAliasList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveRoutes: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "routes": [
+                 *         {
+                 *           "taskKind": "implement",
+                 *           "hops": [
+                 *             {
+                 *               "alias": "coder-max",
+                 *               "note": "Primary"
+                 *             },
+                 *             {
+                 *               "alias": "coder-fallback",
+                 *               "note": "Fallback on 5xx / timeouts"
+                 *             },
+                 *             {
+                 *               "alias": "local-docs",
+                 *               "note": null
+                 *             }
+                 *           ],
+                 *           "allowLocalFallback": true,
+                 *           "floorHopIndex": 2,
+                 *           "maxCostCentsPerRun": 250
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["SaveRoutesRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The revision this save wrote — `null` when it changed nothing — and the routes as
+             *     they now stand, re-read after the commit rather than echoed from the request.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "revisionId": "a1000000-0000-4000-8000-000000000001",
+                     *       "routes": [
+                     *         {
+                     *           "id": "5eed0011-0000-4000-8000-000000000004",
+                     *           "taskKind": "implement",
+                     *           "tag": "implement-primary",
+                     *           "allowLocalFallback": true,
+                     *           "floorHopIndex": 2,
+                     *           "maxCostCentsPerRun": 250,
+                     *           "hops": [
+                     *             {
+                     *               "position": 1,
+                     *               "alias": "coder-max",
+                     *               "modelId": "claude-fable-5",
+                     *               "note": "Primary",
+                     *               "provider": {
+                     *                 "id": "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+                     *                 "kind": "anthropic",
+                     *                 "displayName": "Anthropic",
+                     *                 "baseUrl": null
+                     *               }
+                     *             }
+                     *           ],
+                     *           "stats": {
+                     *             "costCentsPerRunAvg": null,
+                     *             "latencyP50Ms": null
+                     *           },
+                     *           "updatedAt": "2026-08-23T09:58:12.004Z",
+                     *           "updatedBy": "5eed0003-0000-4000-8000-000000000001"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SaveRoutesResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing routes is `owner` or `admin`; `member` and `viewer` may read them.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Two codes, and the difference is which layer refused the request. **Nothing was
+             *     saved** in either case.
+             *
+             *     `validation_failed` — the body is malformed: an empty chain, a note that is blank or
+             *     padded, a cap of zero, a floor below 1, an alias that is not lower-case kebab.
+             *     `details` is keyed by field path, `routes.0.hops` and the like.
+             *
+             *     `route_save_invalid` — the body is well formed and this workspace cannot honour it:
+             *     a task kind it does not have, a task kind with no route to save onto, the same kind
+             *     twice in one batch, an alias it has never bound, or a floor deeper than the chain
+             *     sent with it. `details.routes` is keyed by **task kind**, so each complaint maps
+             *     back to the row of the matrix that produced it.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveRoute: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The task kind whose route this is — the mono label the matrix row prints,
+                 *     `implement` or `commit-msg`. Lower-case letters, digits and single hyphens: the
+                 *     shape the column itself is constrained to, so a path that could not name a kind is
+                 *     refused before a statement is issued.
+                 * @example implement
+                 */
+                taskKind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "hops": [
+                 *         {
+                 *           "alias": "coder-max",
+                 *           "note": "Primary"
+                 *         },
+                 *         {
+                 *           "alias": "local-docs",
+                 *           "note": null
+                 *         }
+                 *       ],
+                 *       "allowLocalFallback": true,
+                 *       "floorHopIndex": null,
+                 *       "maxCostCentsPerRun": 250
+                 *     }
+                 */
+                "application/json": components["schemas"]["RoutePolicy"];
+            };
+        };
+        responses: {
+            /**
+             * @description The same envelope the batch answers with, so a client has one shape to read: the
+             *     revision, and the route as it now stands.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "revisionId": null,
+                     *       "routes": [
+                     *         {
+                     *           "id": "5eed0011-0000-4000-8000-000000000004",
+                     *           "taskKind": "implement",
+                     *           "tag": "implement-primary",
+                     *           "allowLocalFallback": true,
+                     *           "floorHopIndex": null,
+                     *           "maxCostCentsPerRun": 250,
+                     *           "hops": [
+                     *             {
+                     *               "position": 1,
+                     *               "alias": "coder-max",
+                     *               "modelId": "claude-fable-5",
+                     *               "note": "Primary",
+                     *               "provider": {
+                     *                 "id": "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+                     *                 "kind": "anthropic",
+                     *                 "displayName": "Anthropic",
+                     *                 "baseUrl": null
+                     *               }
+                     *             }
+                     *           ],
+                     *           "stats": {
+                     *             "costCentsPerRunAvg": null,
+                     *             "latencyP50Ms": null
+                     *           },
+                     *           "updatedAt": "2026-08-23T09:58:12.004Z",
+                     *           "updatedBy": "5eed0003-0000-4000-8000-000000000001"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SaveRoutesResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing routes is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             *
+             *     A task kind this workspace does not have is **not** a `404` here: it is a
+             *     `422 route_save_invalid` naming the kind, because the batch operation this shares
+             *     an implementation with names its kinds in a body and both must answer alike.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` or `route_save_invalid`, exactly as the batch operation
+             *     documents them — including for a task kind this workspace does not have, or has no
+             *     route for. Nothing was saved.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addEscalationRule: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "when": {
+                 *         "label": "security"
+                 *       },
+                 *       "then": {
+                 *         "add_vote": {
+                 *           "task_kind": "review",
+                 *           "alias": "second-opinion"
+                 *         }
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateEscalationRule"];
+            };
+        };
+        responses: {
+            /** @description The rule as stored, with the sentence the database derived from it. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "f0000000-0000-4000-8000-000000000002",
+                     *       "enabled": true,
+                     *       "sortOrder": 2,
+                     *       "when": {
+                     *         "label": "security"
+                     *       },
+                     *       "then": {
+                     *         "add_vote": {
+                     *           "task_kind": "review",
+                     *           "alias": "second-opinion"
+                     *         }
+                     *       },
+                     *       "display": "security label → review adds second-opinion vote"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["EscalationRule"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing escalation rules is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `escalation_rule_sort_order_taken` — another rule already evaluates at that
+             *     position. Nothing about the request is malformed and a retry of it unchanged
+             *     answers the same thing: move the other rule, or leave `sortOrder` out to be
+             *     appended. `details.sortOrder` is the position that is taken.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed: `when` or `then` is not an object, or
+             *     it carries a `display` this API does not accept from a client.
+             *
+             *     `escalation_rule_invalid` — the body is well formed and the routing domain refuses
+             *     it: a predicate with no condition or an unknown one, an action that is not exactly
+             *     one of the three, or a rule naming a task kind or model alias this workspace does
+             *     not have. `details.fields` is keyed `when` and `then`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeEscalationRule: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The escalation rule's id. It must belong to the workspace the session is acting in;
+                 *     another workspace's answers `404`, exactly as an id that names nothing does.
+                 * @example f0000000-0000-4000-8000-000000000002
+                 */
+                id: components["parameters"]["EscalationRuleId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gone. No body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing escalation rules is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `escalation_rule_not_found` — this workspace has no rule by that id, which is also
+             *     the answer for another workspace's.
+             *
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the path segment is not a uuid, so it could not name a rule. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    changeEscalationRule: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The escalation rule's id. It must belong to the workspace the session is acting in;
+                 *     another workspace's answers `404`, exactly as an id that names nothing does.
+                 * @example f0000000-0000-4000-8000-000000000002
+                 */
+                id: components["parameters"]["EscalationRuleId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "enabled": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateEscalationRule"];
+            };
+        };
+        responses: {
+            /** @description The rule as it now stands, its sentence regenerated from whatever changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "f0000000-0000-4000-8000-000000000002",
+                     *       "enabled": false,
+                     *       "sortOrder": 2,
+                     *       "when": {
+                     *         "label": "security"
+                     *       },
+                     *       "then": {
+                     *         "add_vote": {
+                     *           "task_kind": "review",
+                     *           "alias": "second-opinion"
+                     *         }
+                     *       },
+                     *       "display": "security label → review adds second-opinion vote"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["EscalationRule"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing escalation rules is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `escalation_rule_not_found` — this workspace has no rule by that id. The same
+             *     answer for *no such rule* and *another workspace's rule*, deliberately: telling
+             *     the two apart would let somebody enumerate another workspace's rules by watching
+             *     which ids answer differently.
+             *
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `escalation_rule_sort_order_taken` — another rule already evaluates at the position
+             *     this request asked for.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` or `escalation_rule_invalid`, exactly as adding a rule documents
+             *     them — including the refusal of a client-supplied `display`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listProviderHealth: {
         parameters: {
             query?: never;
@@ -5452,6 +8444,1155 @@ export interface operations {
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately.
              */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listProviderConnections: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page. Empty for a workspace that has connected nothing — mockup 07's
+             *     dashed-card empty state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "5eed000c-0000-4000-8000-000000000001",
+                     *           "kind": "anthropic",
+                     *           "displayName": "Anthropic Claude",
+                     *           "baseUrl": null,
+                     *           "capabilityNote": "api.anthropic.com · primary coding lane",
+                     *           "status": "active",
+                     *           "enabled": true,
+                     *           "monthlyCapCents": 60000,
+                     *           "mask": "••••Xq4A",
+                     *           "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *           "lastCheckedAt": "2026-08-23T09:59:41.882Z",
+                     *           "lastUsedAt": "2026-08-23T09:57:12.004Z",
+                     *           "createdAt": "2026-06-12T16:20:00.000Z",
+                     *           "updatedAt": "2026-08-23T09:59:41.882Z"
+                     *         },
+                     *         {
+                     *           "id": "5eed000c-0000-4000-8000-000000000005",
+                     *           "kind": "ollama",
+                     *           "displayName": "Ollama · workstation",
+                     *           "baseUrl": "http://ken-station.local:11434",
+                     *           "capabilityNote": "zero-cost lane — used for docs & commit messages",
+                     *           "status": "active",
+                     *           "enabled": true,
+                     *           "monthlyCapCents": null,
+                     *           "mask": null,
+                     *           "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *           "lastCheckedAt": "2026-08-23T09:59:40.101Z",
+                     *           "lastUsedAt": null,
+                     *           "createdAt": "2026-05-14T08:55:00.000Z",
+                     *           "updatedAt": "2026-08-23T09:59:40.101Z"
+                     *         }
+                     *       ],
+                     *       "total": 2,
+                     *       "limit": 25,
+                     *       "offset": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderConnectionPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `limit` or `offset` was out of range or not an integer.
+             *     `details` carries the entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "anthropic",
+                 *       "displayName": "Anthropic Claude",
+                 *       "monthlyCapCents": 60000,
+                 *       "config": {
+                 *         "apiKey": "sk-ant-api03-not-a-real-key-Xq4A"
+                 *       }
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProviderConnectionCreate"];
+            };
+        };
+        responses: {
+            /** @description The connection, as it was stored, with its credential masked. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed000c-0000-4000-8000-000000000001",
+                     *       "kind": "anthropic",
+                     *       "displayName": "Anthropic Claude",
+                     *       "baseUrl": null,
+                     *       "capabilityNote": null,
+                     *       "status": "active",
+                     *       "enabled": true,
+                     *       "monthlyCapCents": 60000,
+                     *       "mask": "••••Xq4A",
+                     *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
+                     *       "lastUsedAt": null,
+                     *       "createdAt": "2026-08-23T09:59:41.882Z",
+                     *       "updatedAt": "2026-08-23T09:59:41.882Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderConnection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Connecting a provider is `owner` or `admin`; `member` and `viewer` may read
+             *     the list.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description One of three, and they are worth telling apart:
+             *
+             *     * `validation_failed` — the body's own shape is wrong. `details` is keyed by field.
+             *     * `provider_config_invalid` — the body is well-formed and does not satisfy the
+             *       adapter's `configSchema()`. `details.fields` is keyed by config field name, in
+             *       the same shape, so one renderer serves both.
+             *     * `provider_validation_failed` — the **provider** refused the configuration or the
+             *       credential. `details.errorClass` is one of `auth`, `network`, `rate_limit`,
+             *       `server`, `config`, and `details.detail` is the note mockup 07's card foot would
+             *       draw — `key rejected (401)`. Nothing was stored.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Either `provider_kind_unsupported` — this build has no adapter for that kind, and
+             *     `details.registered` lists the ones it has — or `provider_config_not_storable`,
+             *     which names the submitted settings this build has no column for. Both are a
+             *     capability this deployment lacks rather than a mistake the caller made, which is
+             *     why neither is a `4xx`.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A provider connection's id. A connection of another workspace answers `404`, never
+                 *     `403`: confirming that an identifier names something real is the whole of what
+                 *     enumerating identifiers is for.
+                 * @example 5eed000c-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["ConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed000c-0000-4000-8000-000000000004",
+                     *       "kind": "openai_compatible",
+                     *       "displayName": "OpenAI-compatible · local vLLM",
+                     *       "baseUrl": "http://10.0.4.20:8000/v1",
+                     *       "capabilityNote": "self-hosted · A100 ×2",
+                     *       "status": "active",
+                     *       "enabled": true,
+                     *       "monthlyCapCents": null,
+                     *       "mask": null,
+                     *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "lastCheckedAt": "2026-08-23T09:59:38.221Z",
+                     *       "lastUsedAt": "2026-08-23T09:50:12.000Z",
+                     *       "createdAt": "2026-05-30T14:12:00.000Z",
+                     *       "updatedAt": "2026-08-23T09:59:38.221Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderConnection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_connection_not_found` — this workspace has no connection with that id,
+             *     including when another workspace does. Or `tenant_not_found`, when the
+             *     `X-Ouro-Tenant` header names no workspace you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A provider connection's id. A connection of another workspace answers `404`, never
+                 *     `403`: confirming that an identifier names something real is the whole of what
+                 *     enumerating identifiers is for.
+                 * @example 5eed000c-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["ConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The connection is gone. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Disconnecting a provider is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `provider_connection_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_connection_in_use` — model aliases still resolve on this connection.
+             *     `details.aliases` names them, sorted, and `details.connectionId` echoes the
+             *     connection. Repoint or remove the aliases first; nothing about the request is
+             *     wrong, so retrying it unchanged gets the same answer.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateProviderConnection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A provider connection's id. A connection of another workspace answers `404`, never
+                 *     `403`: confirming that an identifier names something real is the whole of what
+                 *     enumerating identifiers is for.
+                 * @example 5eed000c-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["ConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "enabled": false,
+                 *       "monthlyCapCents": 75000
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProviderConnectionPatch"];
+            };
+        };
+        responses: {
+            /** @description The connection after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed000c-0000-4000-8000-000000000001",
+                     *       "kind": "anthropic",
+                     *       "displayName": "Anthropic Claude",
+                     *       "baseUrl": null,
+                     *       "capabilityNote": "api.anthropic.com · primary coding lane",
+                     *       "status": "active",
+                     *       "enabled": false,
+                     *       "monthlyCapCents": 75000,
+                     *       "mask": "••••Xq4A",
+                     *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "lastCheckedAt": "2026-08-23T09:59:41.882Z",
+                     *       "lastUsedAt": "2026-08-23T09:57:12.004Z",
+                     *       "createdAt": "2026-06-12T16:20:00.000Z",
+                     *       "updatedAt": "2026-08-23T10:02:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderConnection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Editing a connection is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `provider_connection_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed`, `provider_config_invalid` or `provider_validation_failed` —
+             *     on exactly the terms `POST /api/v1/providers` describes. A refused edit changes
+             *     nothing.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_kind_unsupported` or `provider_config_not_storable`, as
+             *     `POST /api/v1/providers` describes. Reachable only from a body carrying `config`.
+             */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    revealProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A provider connection's id. A connection of another workspace answers `404`, never
+                 *     `403`: confirming that an identifier names something real is the whole of what
+                 *     enumerating identifiers is for.
+                 * @example 5eed000c-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["ConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "password": "correct-horse-battery"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProviderRevealRequest"];
+            };
+        };
+        responses: {
+            /** @description The credential, and when to stop showing it. Sent with `Cache-Control: no-store`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "connectionId": "5eed000c-0000-4000-8000-000000000001",
+                     *       "value": "sk-ant-api03-not-a-real-key-Xq4A",
+                     *       "expiresAt": "2026-08-23T10:00:41.882Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderRevealed"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `step_up_required` — there is no recent re-authentication on this session, or the
+             *     password offered was not accepted. `details.methods` names what would satisfy it
+             *     and `details.maxAgeSeconds` how long a proof counts for.
+             *
+             *     Or `unauthenticated`, when the request carries no session at all.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Revealing a credential is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `provider_connection_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_credential_absent` — this connection stores no credential. A local
+             *     provider is reached without one, which V015 makes an ordinary state rather than an
+             *     unfinished row.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `id` is not a uuid, or `password` is not a string of 1–128
+             *     characters.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_reveal_rate_limited` — too many attempts. `details.scope` is `user` or
+             *     `connection`, and `details.retryAfterSeconds` is how long until that limit has
+             *     room. Waiting works; retrying immediately does not.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rotateProviderCredential: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A provider connection's id. A connection of another workspace answers `404`, never
+                 *     `403`: confirming that an identifier names something real is the whole of what
+                 *     enumerating identifiers is for.
+                 * @example 5eed000c-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["ConnectionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "secret": "sk-ant-api03-the-new-key-7Kd2"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProviderRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description The connection after the swap, masked with the new credential's suffix. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed000c-0000-4000-8000-000000000001",
+                     *       "kind": "anthropic",
+                     *       "displayName": "Anthropic Claude",
+                     *       "baseUrl": null,
+                     *       "capabilityNote": "api.anthropic.com · primary coding lane",
+                     *       "status": "active",
+                     *       "enabled": true,
+                     *       "monthlyCapCents": 60000,
+                     *       "mask": "••••7Kd2",
+                     *       "addedBy": "5eed0003-0000-4000-8000-000000000001",
+                     *       "lastCheckedAt": "2026-08-23T10:04:02.510Z",
+                     *       "lastUsedAt": "2026-08-23T09:57:12.004Z",
+                     *       "createdAt": "2026-06-12T16:20:00.000Z",
+                     *       "updatedAt": "2026-08-23T10:04:02.510Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ProviderConnection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Rotating a credential is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `provider_connection_not_found`, or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `provider_credential_absent` — this provider takes no credential, so there is
+             *     nothing to rotate. Or `provider_connection_changed` — the row was rewritten while
+             *     the new credential was being checked; read it again and retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `id` is not a uuid, or `secret` is not a string of 1–4096
+             *     characters. Or `provider_validation_failed` — the provider refused the new
+             *     credential, and **the old one is still live**. `details.errorClass` and
+             *     `details.detail` say what the provider said.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
             500: {
                 headers: {
                     [name: string]: unknown;

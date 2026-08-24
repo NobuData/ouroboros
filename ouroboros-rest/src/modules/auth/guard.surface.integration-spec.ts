@@ -65,6 +65,10 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `GET /api/v1/runs/:id` (#71). A well-formed uuid, so the guard's answer — not the
   // pipe's 422 — is what this suite observes.
   id: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+  // `PUT /api/v1/routing/routes/:taskKind` (#195). Lower-case kebab, which is the shape
+  // `task_kinds.name` is constrained to — so the pipe would let it through and whatever this
+  // suite sees is the guard's answer.
+  taskKind: "implement",
 };
 
 /**
