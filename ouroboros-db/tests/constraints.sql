@@ -31,8 +31,10 @@
 -- foundation `provider_connections` and `model_aliases` (V015, #189), the routing matrix
 -- itself — `task_kinds`, `routes` and ordered `route_hops` (V016, #190) — what mockup
 -- 07's provider cards show and the discovered catalog beneath them (V017, #221), the
--- `escalation_rules` that modify a route (V018, #191), and the alias switch, unbound
--- binding and structured params mockup 21's registry manages (V019, #579).
+-- `escalation_rules` that modify a route (V018, #191), the alias switch, unbound
+-- binding and structured params mockup 21's registry manages (V019, #579), and
+-- `route_revisions`, the audit trail one press of mockup 06's *Save routes* leaves behind
+-- (V021, #195).
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -6093,6 +6095,147 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.provider_connections where organization_id = 'org-registry')
    and (select count(*) = 0 from ouroboros.route_hops where organization_id = 'org-registry'),
   'deleting a workspace still takes its aliases, its connections and its chains — the unbound alias included');
+
+
+-- ===========================================================================
+-- V021 — route_revisions, the audit trail behind Save routes (#195)
+-- ===========================================================================
+--
+-- Mockup 06's editing model is staged: edits accumulate in the browser and commit as one
+-- batch when **Save routes** is pressed. V016 said what would record that press —
+--
+--   > When versioned route configuration arrives it is history in a table of its own, where
+--   > a superseded revision cannot be mistaken for a route that is merely switched off.
+--
+-- — and this is the section that holds the table to it. Three rules are the point of the
+-- migration rather than incidental to it, so each is asserted with the constraint named:
+--
+--   * **a diff has a shape**, and a jsonb column with no rule would hold four of them
+--     within a year — one per service that ever wrote to it. #26 reads these rows.
+--   * **a save that changed nothing cannot be stored**, which is the same rule seen from
+--     the other end: `routes` is non-empty and every `changes` is non-empty, so the
+--     no-op revision is unstorable rather than merely not written.
+--   * **the actor is set null and never cascaded.** Deleting the person deletes neither
+--     the record of what they changed nor the workspace's history of it.
+--
+-- Its own fixtures again: the V019 section deleted `org-registry` on its way out.
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "createdAt", "updatedAt") values
+  ('user-saver', 'Sav Er', 'sav@routes-works.dev', true, now(), now());
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-revisions', 'Routes Works', 'routes-works', now());
+
+-- --- one press of Save routes ---------------------------------------------------
+--
+-- The document the header of V021 draws, inserted whole: a reorder, a floor being set and a
+-- cap being raised, on one task kind, in one batch.
+insert into ouroboros.route_revisions (id, organization_id, actor, diff) values
+  ('a1000000-0000-0000-0000-000000000001', 'org-revisions', 'user-saver', $${
+     "routes": [
+       {
+         "task_kind": "implement",
+         "changes": {
+           "hops": {"from": [{"alias": "coder-max", "note": "Primary"}],
+                    "to":   [{"alias": "coder-max", "note": "Primary"},
+                             {"alias": "local-docs", "note": null}]},
+           "floor_hop_index": {"from": null, "to": 2},
+           "max_cost_cents_per_run": {"from": 250, "to": 500}
+         }
+       }
+     ]
+   }$$);
+
+select pg_temp.must_hold(
+  (select diff -> 'routes' -> 0 ->> 'task_kind' = 'implement'
+      and jsonb_array_length(diff -> 'routes' -> 0 -> 'changes' -> 'hops' -> 'to') = 2
+      and diff -> 'routes' -> 0 -> 'changes' -> 'floor_hop_index' ->> 'to' = '2'
+     from ouroboros.route_revisions
+    where id = 'a1000000-0000-0000-0000-000000000001'),
+  'a revision round-trips the batch it recorded — the chain, the floor and the cap, each as a from/to pair');
+
+-- --- what a diff may not be -----------------------------------------------------
+--
+-- Every rejection names `route_revisions_diff_shape`, because a document refused by a
+-- not-null or by a type error would read as a working check while the grammar was missing
+-- entirely.
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_revisions (organization_id, diff)
+    values ('org-revisions', '{"routes": []}')$$,
+  'a save that changed no route is not a revision',
+  'route_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_revisions (organization_id, diff)
+    values ('org-revisions', '{"routes": [{"task_kind": "implement", "changes": {}}]}')$$,
+  'a route that changed nothing is not an entry',
+  'route_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_revisions (organization_id, diff)
+    values ('org-revisions',
+            '{"routes": [{"task_kind": "implement", "changes": {"tag": {"from": "a"}}}]}')$$,
+  'a change has two sides, so a from with no to is not one',
+  'route_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_revisions (organization_id, diff)
+    values ('org-revisions',
+            '{"routes": [{"task_kind": "Implement", "changes": {"tag": {"from": "a", "to": "b"}}}]}')$$,
+  'a task kind in a diff is shaped as task_kinds.name is, so a diff can only name something that table could hold',
+  'route_revisions_diff_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.route_revisions (organization_id, diff)
+    values ('org-revisions',
+            '{"routes": [{"task_kind": "implement", "changes": {"tag": {"from": "a", "to": "b"}}}], "rules": []}')$$,
+  'a second vocabulary cannot be smuggled in beside routes',
+  'route_revisions_diff_shape');
+
+-- --- the actor is a record, not a dependency ------------------------------------
+--
+-- Deleting the person who pressed Save must not delete what they changed: `on delete set
+-- null`, exactly as `routes.updated_by` has it and for the same reason. A cascade here
+-- would empty the audit trail of everybody who has ever left.
+delete from ouroboros."user" where "id" = 'user-saver';
+
+select pg_temp.must_hold(
+  (select actor is null from ouroboros.route_revisions
+    where id = 'a1000000-0000-0000-0000-000000000001'),
+  'deleting the actor empties the attribution and keeps the revision');
+
+-- A revision is an event, and an event has no updated_at to move.
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'route_revisions'
+      and column_name = 'updated_at'),
+  'there is no updated_at on an append-only table, so nothing can quietly rewrite a revision');
+
+-- --- the one read this table has ------------------------------------------------
+--
+-- A workspace's revisions, newest first — what #26 pages and where a support question
+-- about a routing change starts.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.route_revisions
+     where organization_id = 'org-revisions' order by created_at desc, id desc$$,
+  'route_revisions_organization_created_at_idx');
+set local enable_seqscan = on;
+
+-- --- the catalogue carries the decision -----------------------------------------
+select pg_temp.must_hold(
+  obj_description('ouroboros.route_revisions'::regclass) like '%Save routes%'
+   and obj_description('ouroboros.route_revisions'::regclass) like '%#26%',
+  'the revisions table says what writes it and what reads it, in the database');
+
+-- --- the workspace cascade ------------------------------------------------------
+--
+-- History goes with the workspace it is history of.
+delete from ouroboros.organization where "id" = 'org-revisions';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.route_revisions where organization_id = 'org-revisions'),
+  'deleting a workspace takes its routing history with it');
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

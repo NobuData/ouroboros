@@ -608,7 +608,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | Z.1 | #194 | 🟢 Done | ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations) | Pure health/rule/floor/cost-aware chain resolution (M6) | mvp, routing, rest | N (after Y.3, Z.3) | Y | L | ouroboros-rest |
-| Z.2 | #195 | 🟡 Open | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
+| Z.2 | #195 | 🟢 Done | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
 | Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
 | Z.4 | #197 | 🟡 Open | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate`; engine estimator + WF catalog amendments | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest, ouroboros-engine |
 | Z.5 | #198 | 🟡 Open | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
@@ -728,7 +728,92 @@ resolve("implement", {effort:"l"}) ─▶
 
 ### Issue Z.2 — ouroboros-rest: [Z.2] Routing management API
 
-> **GitHub issue:** #195 · **Status:** 🟡 Open · **Parent epic:** #186
+> **GitHub issue:** #195 · **Status:** 🟢 Done · **Parent epic:** #186
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-rest/src/modules/routing/`](../ouroboros-rest/src/modules/routing/) — seven new
+> files beside Z.1's engine, one migration
+> ([`V021__route_revisions.sql`](../ouroboros-db/migrations/V021__route_revisions.sql)) and
+> seven operations in `openapi.yaml`. `management.*` is the editor, `routing.controller.ts` is
+> the surface, and `routing.repository.ts` still contains no write — its own spec compiles every
+> statement in it and asserts that, so decision **M2**'s split survives the ticket that finally
+> used it.
+>
+> **The batch is an endpoint, and the ticket implied it rather than named it.** The scope names
+> `PUT /api/v1/routing/routes/:taskKind`; the save semantics beside it describe *"an explicit
+> batch commit"* whose *"per-route errors map back to their route"*, and the acceptance criteria
+> ask that *"a batch save is atomic"*. One route per request cannot be any of those. So
+> **`PUT /api/v1/routing/routes`** is what **Save routes** presses — the whole staged matrix, one
+> transaction, one revision — and the per-kind `PUT` is a **batch of one**, built in the
+> controller and handed to the same service method. Two paths and one implementation, so they
+> cannot come to disagree about validation, about atomicity, or about what gets recorded.
+>
+> **`route_revisions` did not exist, and V016 had already said where it would go.** No Y ticket
+> owned it — *"when versioned route configuration arrives it is history in a table of its own,
+> where a superseded revision cannot be mistaken for a route that is merely switched off"* — so
+> `V021` is this ticket's. Three facts and no more: an `actor` (`on delete set null`, because
+> deleting the person must not delete the record of what they changed), a stamp, and a `diff`
+> whose shape is CHECKed, so the audit log (#26) is not left reading a union of whatever four
+> services happened to write. It is **history rather than versions**: what changed, keyed by
+> column name, with hops named by alias — a uuid is a lookup into a row that may since have been
+> repointed, which is exactly the interval somebody reading a revision is asking about.
+>
+> **A save that changed nothing writes no revision**, and `revisionId` is `null`. The criterion
+> reads *"every save writes a `route_revisions` row whose diff reflects exactly what changed"*,
+> and a save that changed nothing has nothing for a diff to reflect; V021 makes the reading
+> structural rather than a habit by requiring `routes` and every `changes` to be non-empty, so an
+> empty revision is unstorable even by a caller that tried. An audit trail whose rows mostly say
+> *somebody pressed Save and nothing moved* is one nobody reads to the end.
+>
+> **The diff drives the write rather than describing it afterwards.** The obvious arrangement —
+> apply the body, then record what was applied — is a second computation over the same inputs,
+> so a route can be written one way and reported another, invisibly until an audit. Here the
+> comparison happens once: a route with no entry has no statement run against it, and a route
+> with an entry is written *and* recorded from the same object.
+>
+> **Nothing is written when anything is wrong, so atomicity is a write that never started.**
+> Every refusal — unknown kind, kind with no route, a kind named twice, an unbound alias name, a
+> floor deeper than the chain that arrived with it — is decided before the transaction opens. The
+> `422` is keyed by **task kind** (`route_save_invalid`), which is the ticket's *"per-route errors
+> map back to their route"* as a shape rather than a convention.
+>
+> **The empty chain is the DTO's `422` and not the service's**, deliberately: it is a fact about
+> the request rather than about the workspace, `route_chain_intact()` refuses an empty chain
+> whoever sends it, and the answer names `hops` before a statement is issued. And *unknown task
+> kind* is a `422` here rather than Z.1's `404`, because the batch names its kinds in a **body**
+> and one implementation must answer both paths alike.
+>
+> **The rule grammar is asked of the database, which is what V018 asked for in as many words** —
+> *"reachable on its own so Z.2's API validates a submitted rule with this definition instead of a
+> TypeScript copy of it"*. `escalation_rule_when_valid()` and `escalation_rule_then_valid()` are
+> called in one round trip, so a client that got both halves wrong is told both. The names inside
+> `then` are then pre-flighted against the workspace's kinds and aliases — a pre-flight over the
+> deferred trigger V018 attaches to three tables — and that trigger's own refusal is recognised,
+> so the race a pre-flight cannot close answers the same `422` rather than a `500`.
+>
+> **`display` is refused in three places and none is redundant**: the DTO declares no such
+> property under a `forbidNonWhitelisted` pipe, the insert type is `ColumnType<string, never,
+> never>` so naming it does not compile, and the column is `generated always … stored`. Decision
+> **M5** end to end.
+>
+> **The rules card is not part of the staged batch.** Its switches commit immediately, one
+> request each, which is why `diff.routes` is a name that does not lie about half its contents —
+> and why a rule write is a `PATCH` rather than a `PUT`: the affordance on a rule row is a switch,
+> and turning one off must not require resending a predicate from a stale copy.
+>
+> **`stats` ships present and null.** The matrix's `$/run avg` and `p50 latency` are Z.5's
+> (#198), and decision **M7** says a figure the product cannot compute is one it does not print.
+> Publishing the field now is what lets AA.2 render the em-dash today and the real number later
+> with no contract change; `0` appears nowhere as a stand-in for *unmeasured*.
+>
+> **Deliberately not here:** `/routing/simulate` (Z.4, #197), the stats themselves (Z.5, #198),
+> alias CRUD (CH.1, #584 — this ticket serves the *list*, which is M2's foundation scope), and
+> any surface that reads `route_revisions` back — #26 owns that, and this ticket's job was to
+> give it something to read.
+>
+> 137 unit tests across eight new suites and 25 integration ones against a real migrated
+> database, including the deferred chain rewrite, the generated sentence coming back from
+> PostgreSQL rather than from a fixture, and one workspace failing to reach another's routes.
 
 
 - **Problem Statement:** The matrix, inspector, and rules card need read/write
@@ -736,12 +821,16 @@ resolve("implement", {effort:"l"}) ─▶
   Save routes).
 - **Solution/Scope:** Under tenant context: `GET /api/v1/routing` (matrix
   payload: kinds, routes, chains with alias resolutions, stats refs, rules);
-  `PUT /api/v1/routing/routes/:taskKind` (chain order, alias swaps, policy
-  toggles, max cost — validated against Y.2 constraints); `POST/PATCH/DELETE
+  `PUT /api/v1/routing/routes` (**the batch Save routes presses** — one
+  transaction, one revision; the wording below implied it and the shipped note
+  above records the correction) and `PUT /api/v1/routing/routes/:taskKind` (the
+  same operation addressed at one row — chain order, alias swaps, policy
+  toggles, max cost, validated against Y.2 constraints); `POST/PATCH/DELETE
   /api/v1/routing/rules` (M5 shapes; display strings server-generated);
   save semantics: explicit **Save routes** commits a batch as a
   `route_revisions` row (who/when/diff jsonb — cheap audit trail, feeds #26
-  later); alias list endpoint for swap menus (registry read — foundation
+  later; the table is **V021**, added by this ticket, because no Y issue owned
+  it); alias list endpoint for swap menus (registry read — foundation
   scope). Owner/admin write, member read.
 - **Acceptance Criteria:** Reorder/swap/policy round-trips; invalid states
   (empty chain, floor > length, unknown alias) → 422 envelope; revision rows
@@ -751,8 +840,10 @@ resolve("implement", {effort:"l"}) ─▶
 - **Epic:** Z
 
 ```
-GET /routing ─▶ {kinds[8], chains, policies, rules[3], statsRef}
-PUT /routes/implement {hops:[…], floor:2, maxCost:250} ─▶ revision recorded
+GET /routing        ─▶ {kinds[8], chains, policies, rules[3], stats(null until Z.5)}
+PUT /routes         {routes:[…]}                      ─▶ one transaction, one revision
+PUT /routes/implement {hops:[…], floor:2, maxCost:250} ─▶ a batch of one, same code path
+                                                          422 · details.routes keyed by kind
 ```
 
 ### Issue Z.3 — ouroboros-rest: [Z.3] Provider health service (passive-first)
@@ -1434,3 +1525,16 @@ hop positions, `use_alias` never truncates a chain, and `allow_local_fallback` o
 primary too — and each of them is a sentence Z.2 (#195) and AA.4 (#203) will render rather than
 compose. Next in epic Z is **#197** ([Z.4] simulate), which now has the contract it exposes
 unchanged, and **#195** ([Z.2] the management API), which is the write half of the same tables.
+
+**#195** ([Z.2] the management API) has landed, and mockup 06's staged editing model is now an
+API shape rather than a description of one: `PUT /api/v1/routing/routes` is what **Save routes**
+presses — the whole matrix, one transaction, one `route_revisions` row — and the per-kind `PUT`
+is a batch of one through the same code path. It carried a migration with it, **`V021`**, the
+table V016 had already named the reason for; its diff is CHECKed rather than trusted, so the
+audit log (#26) has one shape to read, and a save that moved nothing is unstorable rather than
+merely unwritten. Two readings the ticket left open are settled in its issue section above — the
+batch is an endpoint, and a no-op save writes no revision. A rule's grammar is now asked of
+V018's own functions rather than of a TypeScript copy of them, which is what that migration
+exposed them for. Next in epic Z are **#197** ([Z.4] simulate) and **#198** ([Z.5] the stats),
+which is what the matrix's two null columns are waiting on — and AA.2 (#201), AA.3 (#202) and
+AA.5 (#204) now have the contract they were blocked by.

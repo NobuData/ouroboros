@@ -252,10 +252,38 @@ describe("TABLE_COLUMNS", () => {
     // discovered catalog whose `meta` bounds a param schema by the context length a provider
     // actually published. This service reads it and never writes it.
     //
-    // The last four are the routing tables V016 and V018 created (#190, #191), mirrored by
+    // Four more are the routing tables V016 and V018 created (#190, #191), mirrored by
     // Z.1 (#194): `task_kinds`, `routes`, `route_hops` and `escalation_rules`. Resolution
-    // reads all four and writes none of them — the write surface is Z.2's (#195).
-    expect(TABLE_NAMES).toHaveLength(21);
+    // reads all four and writes none of them; the write surface is Z.2's (#195), which is
+    // what now writes three of them.
+    //
+    // The twenty-second is V021's `route_revisions` (#195) — the audit trail one press of
+    // mockup 06's *Save routes* leaves behind, and the first table here this service only
+    // ever *writes*. What reads it is the audit log (#26).
+    expect(TABLE_NAMES).toHaveLength(22);
+  });
+
+  it("mirrors the revision trail V021 created", () => {
+    // Named as well as counted, for the reason the routing matrix is: this is the one table
+    // in the mirror nothing in this service reads, so a missing entry would surface as a
+    // failed save rather than as a failed query — much later, and against a stack trace that
+    // says nothing about a mirror.
+    expect(TABLE_NAMES).toContain("route_revisions");
+    expect(READ_ONLY_VIEWS).not.toContain("route_revisions");
+    expect(TABLE_COLUMNS.route_revisions).toEqual([
+      "id",
+      "organization_id",
+      "actor",
+      "diff",
+      "created_at",
+    ]);
+  });
+
+  it("gives a revision no updated_at, because an event that can be edited is not one", () => {
+    // V021 declares no `updated_at` and attaches no touch trigger, which is the append-only
+    // rule as a property of the table. A mirror that added the column would type-check an
+    // update PostgreSQL would then refuse — and would invite one to be written.
+    expect(TABLE_COLUMNS.route_revisions).not.toContain("updated_at");
   });
 
   it("mirrors the routing matrix V016 and V018 created", () => {
