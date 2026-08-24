@@ -8,18 +8,19 @@ import { ResolutionService } from "./resolution.service";
 import { RoutingController } from "./routing.controller";
 import { RoutingModule } from "./routing.module";
 import { RoutingRepository } from "./routing.repository";
+import { SimulateController } from "./simulate.controller";
 
 /**
  * The wiring — the one thing about a Nest module that can be wrong at run time and right at
  * compile time; `tenancy.module.spec.ts` carries the argument. Nothing connects: `pg` connects
  * lazily and the module is compiled rather than initialised.
  *
- * Two assertions here are contracts rather than checks. The **export** is what Z.4 (#197),
- * AB.5 (#211) and CH.6 (#589) were all told to consume, and an export removed in a refactor
- * would send one of them back to re-implementing resolution. The **single controller** is
- * Z.2's scope (#195): this module now serves the management API, and it still does not serve
- * `/routing/simulate` — that is Z.4's, and a second controller appearing here would be this
- * module answering a question another ticket owns the shape of.
+ * Two assertions here are contracts rather than checks. The **export** is what AB.5 (#211)
+ * and CH.6 (#589) were told to consume, and an export removed in a refactor would send one of
+ * them back to re-implementing resolution. The **two controllers** are the module's two
+ * surfaces (#195 and #197) and their order is the seam: the editor's routes and, separately,
+ * the engine's one. A third appearing here would be this module answering a question another
+ * ticket owns the shape of.
  */
 
 describe("the routing module", () => {
@@ -33,6 +34,7 @@ describe("the routing module", () => {
     expect(moduleRef.get(RoutingManagementService)).toBeInstanceOf(RoutingManagementService);
     expect(moduleRef.get(RoutingManagementRepository)).toBeInstanceOf(RoutingManagementRepository);
     expect(moduleRef.get(RoutingController)).toBeInstanceOf(RoutingController);
+    expect(moduleRef.get(SimulateController)).toBeInstanceOf(SimulateController);
 
     await moduleRef.close();
   });
@@ -47,9 +49,12 @@ describe("the routing module", () => {
     expect(exports).toEqual([ResolutionService]);
   });
 
-  it("declares the management controller, and only it", () => {
+  it("declares the editor's controller and the engine's, and only those two", () => {
+    // Two surfaces over four shared tables, and the split is `routing.module.ts`'s: the editor
+    // writes routes and rules, and the engine answers *which model runs this*. A controller
+    // added here without a ticket that owns its shape is what this assertion is for.
     const controllers = Reflect.getMetadata("controllers", RoutingModule) as unknown[] | undefined;
 
-    expect(controllers).toEqual([RoutingController]);
+    expect(controllers).toEqual([RoutingController, SimulateController]);
   });
 });

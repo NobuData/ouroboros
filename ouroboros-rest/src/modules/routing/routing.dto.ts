@@ -123,11 +123,17 @@ export const MAX_RULE_SORT_ORDER = 2_147_483_647;
  * explicit `null` is a request nothing can honour, and being told so beats being silently
  * ignored.
  *
+ * Exported because Z.4's simulation context
+ * ([#197](https://github.com/NobuData/ouroboros/issues/197)) wants the same rule for the same
+ * reason — a `ctx` whose `effort` is `null` is a client saying something no resolution can
+ * mean — and a second copy of a two-line predicate is a second place for *absent* to be
+ * defined.
+ *
  * @param _body - The object being validated. Unused; the value is what decides.
  * @param value - What the field carries.
  * @returns Whether the validators below should run.
  */
-function present(_body: object, value: unknown): boolean {
+export function present(_body: object, value: unknown): boolean {
   return value !== undefined;
 }
 

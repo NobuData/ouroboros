@@ -966,12 +966,37 @@ resolve("implement", {effort: "l"}) ─▶
   floor  none  ·  max cost  250¢  ·  version  r1
 ```
 
-**The engine is an injectable, not an endpoint.** `ResolutionService` is this module's one
-export and no route serves it: `/routing/simulate` is Z.4's
-([#197](https://github.com/NobuData/ouroboros/issues/197)). What makes **Simulate routing**
-honest is that it will call this and not a copy of it — production behaviour minus the network
-call. The management API beside it is Z.2's
+**One route serves the engine, and it injects nothing else.**
+`POST /api/v1/routing/simulate` is **Simulate routing**
+([#197](https://github.com/NobuData/ouroboros/issues/197)): it calls `ResolutionService.resolve`
+and returns what came back, unchanged. That the simulator cannot drift from execution is a fact
+about the dependency graph rather than a promise in a comment — `SimulateController` injects one
+token, so there is nowhere for a second answer to live, and its spec reads the constructor's
+parameter types and asserts exactly that. Production behaviour minus the network call, because
+`resolve()` has no network call to remove. The management API beside it is Z.2's
 ([#195](https://github.com/NobuData/ouroboros/issues/195)) and is the next section.
+
+```
+POST /api/v1/routing/simulate   {taskKind, ctx} ─▶ the chain, the rules, the floor, and why
+```
+
+**`ctx` is closed at the three conditions a rule can ask about** — `effort`, `labels`,
+`diffKind` — plus `repo`, which is carried and read by nothing until AB.5
+([#211](https://github.com/NobuData/ouroboros/issues/211)). A fourth fact is a `422` naming it
+rather than a value silently dropped: a client that invented a condition should not believe it
+was honoured. `null` is refused too — an absent fact is *unknown* and has a documented path
+through `context.ts`, and a `null` is a client saying something a context cannot mean.
+
+**`fail_run` answers `200`.** Every provider down, a chain filtered to nothing, the floor
+breached: the caller asked a well-formed question about a route that exists and is entitled to
+the reason. The one `4xx` of its own is `404 route_not_found`, for the case with no chain to
+explain. **Any member may simulate**, viewers included — looking changes nothing — and the
+workspace is the session's, so there is no way to ask about somebody else's routes.
+
+**What did not ship with it.** The estimator (#106) and WF-catalog (#145) amendments the ticket
+also names are unbuilt because their consumers are: there is no estimator in `ouroboros-engine`
+and no workflow module here, and each waits behind its own chain. They are consumers of this
+contract, and the contract now exists.
 
 **The engine performs no I/O and reads no clock.** `resolve()` takes six values — a route, its
 hops, the workspace's aliases, its enabled rules, a health snapshot and a context — and returns
@@ -2449,6 +2474,7 @@ ouroboros-rest/
 │       │                   #   scheduled, jittered — and never a completion
 │       ├── routing/        # resolve() — pure, versioned, health-aware      · #194
 │       │                   #   management.* — GET /routing, Save routes, the rules · #195
+│       │                   #   simulate.*  — POST /routing/simulate, one dependency · #197
 │       ├── providers/     # the ModelProviderAdapter SPI, registry, kit   · #216
 │       │                   #   adapters/anthropic.adapter.ts — the first real one · #217
 │       │                   #   adapters/openai-compatible.adapter.ts + the SSRF policy · #218

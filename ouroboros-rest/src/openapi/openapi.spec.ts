@@ -155,6 +155,7 @@ function validatorFor(source: OpenAPIObject, ref: string) {
 interface DocumentedBody {
   schema: { $ref: string };
   example?: unknown;
+  examples?: Record<string, { value?: unknown }>;
 }
 
 /**
@@ -207,22 +208,56 @@ function documentedStatuses(operation: Record<string, unknown>): string[] {
 }
 
 /**
- * Every documented example in the document, as the pairs that address one.
+ * The examples one documented body carries, by the name that addresses each.
  *
- * @returns One `[operation, status]` pair per documented JSON example.
+ * OpenAPI spells a body's examples two ways and the document uses both: `example` for an
+ * operation with one honest answer, and the keyed `examples` map for an operation with more
+ * than one — `/api/v1/routing/simulate` documents a resolved chain *and* a `fail_run`, and
+ * both are `200`s because a refusal to route is an answer rather than an error
+ * ([#197](https://github.com/NobuData/ouroboros/issues/197)). Reading only the singular form
+ * would leave a whole family of examples unvalidated, which is the one thing the suite below
+ * exists to prevent.
+ *
+ * @param body - One media-type object from {@link jsonBodies}.
+ * @returns The examples, keyed — `"example"` for the singular form, the map's own keys for the
+ *   plural one. Empty when the body documents none.
  */
-function documentedExamples(): [OperationKey, string][] {
-  const pairs: [OperationKey, string][] = [];
+function examplesOf(body: DocumentedBody): Map<string, unknown> {
+  const found = new Map<string, unknown>();
+
+  if (body.example !== undefined) {
+    found.set("example", body.example);
+  }
+
+  for (const [name, example] of Object.entries(body.examples ?? {})) {
+    // A keyed entry with no `value` is `externalValue` or a `$ref`, neither of which this
+    // document uses; skipping it is honest, asserting `undefined` against a schema is not.
+    if (example.value !== undefined) {
+      found.set(name, example.value);
+    }
+  }
+
+  return found;
+}
+
+/**
+ * Every documented example in the document, as the triples that address one.
+ *
+ * @returns One `[operation, status, name]` triple per documented JSON example, in both the
+ *   singular and the keyed form.
+ */
+function documentedExamples(): [OperationKey, string, string][] {
+  const triples: [OperationKey, string, string][] = [];
 
   for (const [key, operation] of operations(document())) {
     for (const [status, body] of jsonBodies(operation)) {
-      if (body.example !== undefined) {
-        pairs.push([key, status]);
+      for (const name of examplesOf(body).keys()) {
+        triples.push([key, status, name]);
       }
     }
   }
 
-  return pairs;
+  return triples;
 }
 
 describe("the specification as a document", () => {
@@ -392,13 +427,13 @@ describe("the document and the running application", () => {
   );
 
   it.each(documentedExamples())(
-    "documents %s's %s with an example the service could actually send",
-    (key, status) => {
+    "documents %s's %s `%s` with an example the service could actually send",
+    (key, status, name) => {
       // An example that no longer validates is a lie a reader copies into their client.
       const body = jsonBodies(operations(document()).get(key)!).get(status)!;
       const mismatch = validatorFor(document(), body.schema.$ref);
 
-      expect(mismatch(body.example)).toBeUndefined();
+      expect(mismatch(examplesOf(body).get(name))).toBeUndefined();
     },
   );
 });

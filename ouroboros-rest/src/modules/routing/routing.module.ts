@@ -36,11 +36,19 @@
  * repository — `routing.repository.ts` is resolution's four reads and contains no write, and
  * its own spec asserts that, so a write added there fails a test rather than a review.
  *
+ * Z.4 ([#197](https://github.com/NobuData/ouroboros/issues/197)) added one route on the engine
+ * side, and it is one file because it is one call:
+ *
+ * ```
+ * simulate.dto.ts            what a simulation may ask — {taskKind, ctx}, and nothing else
+ * simulate.controller.ts     POST /routing/simulate — one dependency, and no second answer
+ * ```
+ *
  * **`ResolutionService` is the one export**, unchanged: the editor's service is this module's
- * own controller's dependency and nothing outside reaches it. The controller *is* now
- * declared, which is Z.2 landing rather than Z.1 growing a route — Z.4's `/routing/simulate`
- * ([#197](https://github.com/NobuData/ouroboros/issues/197)) is still somebody else's, and
- * still belongs on the engine side of this file.
+ * own controller's dependency and nothing outside reaches it. What changed is that the engine
+ * now has a controller of its own — `SimulateController` injects the service and nothing else,
+ * which is how *"the simulator calls the same code execution will"* is a fact about the
+ * dependency graph rather than a sentence in a comment.
  *
  * **`ProviderHealthModule` is imported, and the import is the whole of the pure-inputs rule.**
  * Z.3 exports `ProviderHealthService` for exactly two consumers and this is one of them. The
@@ -62,10 +70,11 @@ import { RoutingManagementService } from "./management.service";
 import { ResolutionService } from "./resolution.service";
 import { RoutingController } from "./routing.controller";
 import { RoutingRepository } from "./routing.repository";
+import { SimulateController } from "./simulate.controller";
 
 @Module({
   imports: [DbModule, ProviderHealthModule],
-  controllers: [RoutingController],
+  controllers: [RoutingController, SimulateController],
   providers: [
     ResolutionService,
     RoutingRepository,
