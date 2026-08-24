@@ -16,7 +16,9 @@
 > [dashboard](#dashboard) ([#45](https://github.com/NobuData/ouroboros/issues/45)), both
 > built from the [UI primitives](#ui-primitives)
 > ([#46](https://github.com/NobuData/ouroboros/issues/46)) and, beside it,
-> [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200)) —
+> [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200))
+> and the [credential audit trail](#the-credential-audit-trail)
+> ([#225](https://github.com/NobuData/ouroboros/issues/225)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
 > ([#47](https://github.com/NobuData/ouroboros/issues/47)). The scaffold's placeholder
 > page is gone: `/` redirects to `/dashboard`, and every screen the sidebar names beyond
@@ -224,6 +226,7 @@ ouroboros-ui/
 │   │   ├── dashboard-summary.ts # …and the other: the aggregate, read conditionally
 │   │   ├── reading.ts       #   Reading<T> + attempt() — a read allowed to fail
 │   │   ├── routing.ts       #   routing.providers() — the model page's health strip
+│   │   ├── audit.ts         #   audit.events() — the credential trail, org-scoped
 │   │   └── dashboard/route.ts   # GET /api/dashboard — the poll, on this origin
 │   ├── ui/                  # the UI component primitives — the design system
 │   │   ├── ui.css           #   one token-driven sheet, every class prefixed `ou-`
@@ -257,6 +260,11 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readModels() — the strip, degraded rather than thrown
 │   │   ├── provider-strip.tsx #  the `.phealth` strip: one chip per connection
 │   │   └── models-screen.tsx  #  the page head, the tab set, and what is not built yet
+│   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
+│   │   ├── view.ts          #   the four ways a trail lies, and what stops each
+│   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
+│   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
+│   ├── workshop/            # stories for surfaces whose page has not landed yet
 │   ├── (app)/               # signed-in screens — inside the shell
 │   └── (auth)/              # signed-out screens — sign-in & tenancy #44
 ├── __tests__/          # Vitest suites, mirroring app/
@@ -1204,6 +1212,67 @@ number, the control enables itself.
 Both head actions are inert through `Button`'s `reason`, so each says what is missing rather than
 sitting dead; the three sibling tabs are `SubnavSoon`, which does the same for a destination.
 
+## The credential audit trail
+
+Mockup 07 puts an **Audit log** ghost action in its page head beside **+ Add provider**, and
+AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225)) is what turns it from a button
+into the visible end of a trail that starts at every key operation.
+
+```
+[ Audit log ]  ← press
+┌──────────────────────────────────────────────────────────────────────── sheet over the pane ─┐
+│ Credential audit log                                                                          │
+│ Every credential operation in this workspace, newest first. Refusals are recorded too.        │
+│ No entry ever holds a key.                                                                    │
+│                                                                                               │
+│ When (UTC)        Who          What                                          Provider         │
+│ 2026-08-24 16:13  Ken Suenobu  revealed the credential                       anthropic        │
+│ 2026-08-24 15:23  —            was granted a provider lease                  ollama           │
+│ 2026-08-22 10:53  Maya Chen    rotated the credential  [refused · provider_validation_failed] │
+└───────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### It ships as a head action, because the page is somebody else's
+
+`/providers` is AE.1's ([#227](https://github.com/NobuData/ouroboros/issues/227)) and has not
+landed. Rather than invent a page frame this ticket would then hand over, `<AuditTrail />` is
+**the button and its sheet as one element**: AE.1 renders it in its own page head and nothing
+in [`app/providers/audit-trail.tsx`](app/providers/audit-trail.tsx) changes. Until then it is
+mounted at `/workshop/providers-audit`, which is the role
+[`app/workshop/chrome-story.tsx`](app/workshop/chrome-story.tsx) plays for a primitive whose
+page has not arrived.
+
+The sheet's frame is [`ShellOverlay`](#app-shell)'s rather than a new one — the portal above
+the pane, the scroll lock, the focus trap, Escape and focus restoration are one implementation
+in this product, and the keyboard-shortcuts sheet is the same file with different content
+inside.
+
+### It reads when opened, and again on every open
+
+A page-load read would make every visit to the providers page pay for an audit query — one a
+`viewer` or a `member` is not even allowed to make, so most of them would be `403`s discarded
+before render. And a trail is a moving surface: somebody opening it twice during an incident
+wants the second read to include what happened in between, so nothing is cached. The cost is a
+line saying *Reading the trail…* the first time, which is the honest trade for a surface whose
+job is to be available when it is wanted.
+
+The read is a Server Action ([`audit-actions.ts`](app/providers/audit-actions.ts)) taking **no
+arguments at all**: there is no workspace in the call and no person, so there is nothing to
+forge — the trail belongs to the workspace the caller's own session is acting in, and the role
+gate is `ouroboros-rest`'s.
+
+### Four ways a trail lies, and what stops each
+
+[`app/providers/view.ts`](app/providers/view.ts) is where the sheet's judgements live, and it
+is organised around them:
+
+| It would lie by… | What stops it |
+|---|---|
+| inventing an actor | `actorOf` answers `—` where there is none, and never an id — a lease grant never had one, and a deleted person leaves none behind |
+| rendering an unknown action | `SENTENCES` is `Record<AuditAction, string>` over the contract's own union, so an eleventh action is a **build error** rather than a row printing `provider.cap_changed` at somebody |
+| drawing a refusal as an act | `outcomeOf` reads `detail.outcome`, and the marker is a **word** in the error hue rather than the hue alone |
+| printing a time in a zone nobody named | `stampOf` formats in UTC, and the column heading says so once rather than every row saying it fifty times |
+
 ## The polling store
 
 The page's cards and the header's two pills all want the same freshness, and
@@ -1843,6 +1912,7 @@ route guards & session-aware redirects [#720](https://github.com/NobuData/ourobo
 sign-in & tenancy [#44](https://github.com/NobuData/ouroboros/issues/44) ·
 dashboard [#45](https://github.com/NobuData/ouroboros/issues/45) ·
 model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
+the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

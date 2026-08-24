@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 #
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
-# migrations/R__dev_seed_dashboard.sql, migrations/R__dev_seed_providers.sql,
-# migrations/R__dev_seed_routing.sql, and the configuration that decides whether they do
-# anything.
+# migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
+# migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_routing.sql, and the
+# configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -11,12 +11,13 @@
 # deliberate `--config` resolve it to `true`, and that every statement in either file is
 # behind that guard and can be applied twice.
 #
-# There are four files because they answer different questions — R__dev_seed.sql (#23) is
+# There are five files because they answer different questions — R__dev_seed.sql (#23) is
 # *who exists*, R__dev_seed_dashboard.sql (#68) is *what the loop has done*,
-# R__dev_seed_providers.sql (#221) is *what it is allowed to call*, and
-# R__dev_seed_routing.sql (#192) is *how it decides which one to call* — and the structural
-# rules below are asserted over all of them, in a loop, so that a fifth seed inherits them
-# by being added to one list.
+# R__dev_seed_providers.sql (#221) is *what it is allowed to call*,
+# R__dev_seed_routing.sql (#192) is *how it decides which one to call*, and
+# R__dev_seed_audit.sql (#225) is *who touched the keys* — and the structural rules below
+# are asserted over all of them, in a loop, so that a sixth seed inherits them by being
+# added to one list.
 #
 # All of it is a file read plus the stubbed runners tests/lib/fixture.sh provides, so
 # this needs no database, no Docker and no network — the same contract as
@@ -57,6 +58,7 @@ SEED="$MODULE_DIR/migrations/R__dev_seed.sql"
 DASHBOARD_SEED="$MODULE_DIR/migrations/R__dev_seed_dashboard.sql"
 PROVIDERS_SEED="$MODULE_DIR/migrations/R__dev_seed_providers.sql"
 ROUTING_SEED="$MODULE_DIR/migrations/R__dev_seed_routing.sql"
+AUDIT_SEED="$MODULE_DIR/migrations/R__dev_seed_audit.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -87,10 +89,12 @@ BODY="$work/seed-body.sql"
 DASHBOARD_BODY="$work/seed-body-dashboard.sql"
 PROVIDERS_BODY="$work/seed-body-providers.sql"
 ROUTING_BODY="$work/seed-body-routing.sql"
+AUDIT_BODY="$work/seed-body-audit.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$PROVIDERS_SEED" "$PROVIDERS_BODY"
 seed_body "$ROUTING_SEED" "$ROUTING_BODY"
+seed_body "$AUDIT_SEED" "$AUDIT_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -111,10 +115,11 @@ check_exists "$SEED" 'migrations/R__dev_seed.sql exists'
 check_exists "$DASHBOARD_SEED" 'migrations/R__dev_seed_dashboard.sql exists'
 check_exists "$PROVIDERS_SEED" 'migrations/R__dev_seed_providers.sql exists'
 check_exists "$ROUTING_SEED" 'migrations/R__dev_seed_routing.sql exists'
+check_exists "$AUDIT_SEED" 'migrations/R__dev_seed_audit.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
-for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
+for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -138,15 +143,23 @@ providers_description=$(basename -- "$PROVIDERS_SEED" .sql)
 providers_description=${providers_description#R__}
 routing_description=$(basename -- "$ROUTING_SEED" .sql)
 routing_description=${routing_description#R__}
+audit_description=$(basename -- "$AUDIT_SEED" .sql)
+audit_description=${audit_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
 # connection by kind and name. So the whole order is asserted rather than the first pair of
-# it, and a rename that reshuffled any of the four fails here.
-check_equals "$(printf '%s %s %s %s' "$base_description" "$dashboard_description" "$providers_description" "$routing_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n' "$base_description" "$dashboard_description" "$providers_description" "$routing_description" |
+# it, and a rename that reshuffled any of the five fails here.
+#
+# The audit seed sorts second, before the providers one it writes events *about*, and that
+# is the one place in this list where the order does not matter: `audit_events.subject_id`
+# is deliberately non-referential, so that seed names its connections by literal uuid and
+# has nothing to join to. It is still asserted, because a seed added later between them
+# would inherit the position without inheriting the argument.
+check_equals "$(printf '%s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$providers_description" "$routing_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$providers_description" "$routing_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the four seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the five seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -156,9 +169,10 @@ check_equals "$(printf '%s %s %s %s' "$base_description" "$dashboard_description
 # carries a deferrable unique key, and PostgreSQL refuses a targetless `on conflict` on
 # such a table outright. Naming the primary key is what that statement does instead, and it
 # is still the "applied twice writes nothing" rule this check exists for.
-for seed_file in "$SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
+for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$PROVIDERS_SEED" "$ROUTING_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
+  [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
   [ "$seed_file" = "$DASHBOARD_SEED" ] && body=$DASHBOARD_BODY
   [ "$seed_file" = "$PROVIDERS_SEED" ] && body=$PROVIDERS_BODY
   [ "$seed_file" = "$ROUTING_SEED" ] && body=$ROUTING_BODY
@@ -439,6 +453,7 @@ check_contains "$README" 'R__dev_seed\.sql' 'README.md documents the seed migrat
 check_contains "$README" 'R__dev_seed_dashboard\.sql' 'README.md documents the dashboard seed'
 check_contains "$README" 'R__dev_seed_providers\.sql' 'README.md documents the providers seed'
 check_contains "$README" 'R__dev_seed_routing\.sql' 'README.md documents the routing seed'
+check_contains "$README" 'R__dev_seed_audit\.sql' 'README.md documents the audit seed'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
 check_contains "$README" 'acme-robotics' 'README.md names the demo tenant a developer will find'
 check_contains "$README" 'tests/seed\.sql' 'README.md says how to assert the seeded content'

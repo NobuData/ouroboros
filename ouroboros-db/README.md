@@ -152,6 +152,37 @@
 > nothing is **unstorable**, because `routes` and every `changes` must be non-empty — an audit
 > trail whose rows mostly say *somebody pressed Save and nothing moved* is one nobody reads to
 > the end.
+> `V022` ([#225](https://github.com/NobuData/ouroboros/issues/225)) adds `audit_events` — and
+> it is the one migration in this project that **lands somebody else's table**. Scaffolding
+> [#26](https://github.com/NobuData/ouroboros/issues/26) specified it for the platform's audit
+> log and is v2; AD.4 is MVP, because a page that reveals and rotates credentials while keeping
+> no record of who did it fails its own stated security posture, and *"we'll add audit later"*
+> means the first months of a credential store's history are simply gone. Two tables would have
+> been the cheap way out of that ordering, so the coordination was made at filing time and is
+> recorded in the migration's header: the shape is #26's column for column — tenant fk, nullable
+> actor fk, action, subject type/id, jsonb detail, `occurred_at` — with one addition that issue
+> did not name, `ip`, and #26 will inherit the table rather than create a second one.
+> It is the schema's first **append-only** table in the database rather than by convention, and
+> that takes two mechanisms because neither covers the other's case: `ouroboros_app` — a role
+> this migration creates, `nologin` and unprivileged — is granted `select` and `insert` and
+> nothing else, and `audit_events_no_update` refuses a revision from **any** role including the
+> owner this stack connects as, since a superuser bypasses every grant in the catalogue and a
+> rule that is true in production and false on a developer's machine is a rule nobody can test.
+> Both of its foreign keys shape that trigger: `organization_id` cascades, which is why the
+> trigger covers `update` and not `delete` — a delete-refusing trigger would not protect the
+> trail, it would make removing a workspace impossible — and `actor_id`'s `on delete set null`
+> *is* an update, so exactly that one statement is permitted and nothing beside it. The
+> guarantee is therefore stated precisely rather than approximately: **what happened cannot be
+> rewritten; who did it can be forgotten.** The invariant that matters most is enforced outside
+> the schema, and the header says why: a CHECK against secret material could only pattern-match
+> the credential shapes somebody thought of, so `detail` is built from a closed field set by
+> `ouroboros-rest`'s audit module and grep-tested — here too, in `tests/seed.sql`, over the rows
+> the seed writes.
+> [`migrations/R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) is the fifth seed and
+> the fixture mockup 07's **Audit log** sheet is drawn against: fourteen events covering every
+> action in the vocabulary, including the three a renderer would otherwise meet for the first
+> time in production — a failed rotation, a lease grant with **no actor**, and a worker's
+> cluster address rather than a person's.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -312,7 +343,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **four migrations**, because they answer four questions and change on different
+It is **five migrations**, because they answer five questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -321,16 +352,24 @@ days:
 | [`R__dev_seed_dashboard.sql`](migrations/R__dev_seed_dashboard.sql) | *What the loop has done* — runs, queue, spend, and the auto-merge switch | [#68](https://github.com/NobuData/ouroboros/issues/68) |
 | [`R__dev_seed_providers.sql`](migrations/R__dev_seed_providers.sql) | *What it is allowed to call* — mockup 07's five provider cards, their discovered models, and the spend behind their meters | [#221](https://github.com/NobuData/ouroboros/issues/221) |
 | [`R__dev_seed_routing.sql`](migrations/R__dev_seed_routing.sql) | *How it decides which one to call* — mockup 06's aliases, task kinds, chains, escalation rules, and the routed calls its numbers are computed from | [#192](https://github.com/NobuData/ouroboros/issues/192) |
+| [`R__dev_seed_audit.sql`](migrations/R__dev_seed_audit.sql) | *Who touched the keys* — the credential trail mockup 07's **Audit log** sheet opens, including a failed rotation and a lease grant with no actor | [#225](https://github.com/NobuData/ouroboros/issues/225) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
-> their *descriptions*, and every row the second, third and fourth seeds write finds its
-> parent by natural key — so `dev_seed_dashboard`, `dev_seed_providers` and
-> `dev_seed_routing` all have to sort after `dev_seed`, and `dev_seed_routing` after
-> `dev_seed_providers` besides, since every alias binds to a connection by kind and name.
-> They do. `tests/seed.test.sh` asserts the whole order, because the failure mode is
-> silent: applied in the wrong order, every join finds nothing, every insert inserts
-> nothing, and a second `migrate` does not put it right (Flyway re-applies a repeatable
-> migration only when its checksum changes).
+> their *descriptions*, and every row the later seeds write finds its parent by natural key —
+> so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_providers` and `dev_seed_routing` all
+> have to sort after `dev_seed`, and `dev_seed_routing` after `dev_seed_providers` besides,
+> since every alias binds to a connection by kind and name. They do. `tests/seed.test.sh`
+> asserts the whole order, because the failure mode is silent: applied in the wrong order,
+> every join finds nothing, every insert inserts nothing, and a second `migrate` does not put
+> it right (Flyway re-applies a repeatable migration only when its checksum changes).
+>
+> **`dev_seed_audit` sorts *before* `dev_seed_providers`, and is the one seed that does not
+> care.** Its events name their connections by literal uuid rather than by join, because
+> `audit_events.subject_id` is deliberately non-referential — an event about a connection has
+> to outlive the connection — so there is nothing to join to and nothing for the ordering to
+> break. The alternative would have been a seed that finds nothing on the first pass and
+> inserts on the second, which is exactly the non-convergence the rule above exists to
+> prevent.
 
 #### Who exists
 
@@ -974,7 +1013,9 @@ ouroboros-db/
 │   ├── V020__routing_usage_attribution.sql
 │   │                                 # token_usage.task_kind + .latency_ms — what $/run and p50 compute from — #192
 │   ├── V021__route_revisions.sql     # route_revisions — who changed the routing table, and what moved — #195
+│   ├── V022__audit_events.sql        # audit_events — #26's table, landed early; append-only — #225
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
+│   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, dev only — #192 (sorts after the above)
@@ -988,7 +1029,7 @@ ouroboros-db/
     │   └── post.sql                  # what V006 must have done to those rows — #708
     ├── run.test.sh                   # the runner
     ├── scripts.test.sh               # the four commands and the project configuration
-    ├── seed.test.sh                  # both seeds' guard, order, idempotency and determinism — #23, #68
+    ├── seed.test.sh                  # every seed's guard, order, idempotency and determinism — #23, #68
     ├── betterauth-schema.test.sh     # the drift check's contract, without a database — #710
     ├── price-catalog.test.sh         # the price transform, its provenance and --check — #580
     ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
@@ -1032,6 +1073,7 @@ outside this module alters it.
 | `route_hops` | `V016` | The ordered fallback chain — mockup 06's numbered inspector rail, each hop naming a registry alias and carrying the hop-meta line beside it | `position` unique per route and **deferrable**, so a reorder swaps inside a transaction, and **dense from 1** by the `route_chain_intact()` constraint trigger — unlike `queue_items.position`, because these numbers are read: `floor_hop_index` counts them; a route may never be left with an empty chain; the alias is reached through a **composite** foreign key on `(organization_id, model_alias_id)` and it **restricts** on delete, so an alias a chain names cannot be retired out from under it; **there is no raw model id column here, in any of the three tables** — decision **M1** by construction |
 | `escalation_rules` | `V018` | Mockup 06's *ESCALATION RULES* card — the three rules as **structured predicates that modify a route**, not as the sentences they read like (decision **M5**) | `"when"` is the WF-P8 predicate grammar scoped to routing — `effort_gte` (V009's five **F9** sizes, the same vocabulary the queue uses), `label` (GitHub's, as `V014` mirrors them) and `diff_kind` (`docs_only`), at least one, ANDed; `"then"` is **exactly one** of `{use_alias: {task_kind, alias, params?}}` — the mockup's *"(max thinking)"* is `params`, not prose — `{add_vote: {task_kind, alias}}` or `{route_local: {}}`; both are **domains**, so an unknown key is refused at the value rather than at the row; `display` is **`generated always … stored`** from the two, so a hand-written sentence is refused by PostgreSQL and an edited rule cannot keep the sentence it had; the task kind and alias a rule names must exist **in the rule's own workspace**, held by a deferred constraint trigger on all three tables; `sort_order` is unique per workspace and **deferrable**, which is what makes "which rule wins" have one answer and a drag-reorder plain SQL |
 | `route_revisions` | `V021` | One row per press of mockup 06's **Save routes** — who changed the routing table, when, and exactly what moved ([#195](https://github.com/NobuData/ouroboros/issues/195)); the feed the audit log ([#26](https://github.com/NobuData/ouroboros/issues/26)) reads | `actor` references `"user"` and **sets null**, because deleting a person must not delete the record of what they changed; `diff` is CHECKed by `ouroboros.route_revision_diff_valid()` to `{routes: [{task_kind, changes: {<column>: {from, to}}}]}` — at least one route, at least one change each, every change a `{from, to}` pair — so a save that changed **nothing** is unstorable rather than merely not written; task kinds inside the document are *shaped* as `task_kinds.name` is but are deliberately **not** foreign keys, and hops are named by `model_aliases.alias`, because a revision is history a person reads months later and an id is a lookup into a row that may since have been repointed; there is **no `updated_at`** and no touch trigger, because an event that can be edited is not one; one index — `(organization_id, created_at desc, id desc)` — which is the only read this table has |
+| `audit_events` | `V022` | Who did what to which credential, from where, and when — the platform audit trail ([#225](https://github.com/NobuData/ouroboros/issues/225)), in the shape [#26](https://github.com/NobuData/ouroboros/issues/26) specified and landed early because decision **P5** puts credential auditing in the MVP. `ouroboros-rest`'s audit module is the only writer; `GET /api/v1/providers/audit` is the only reader, and mockup 07's **Audit log** sheet is what it draws | **Append-only, enforced twice**: `ouroboros_app` — a role this migration creates `nologin` — holds `select` and `insert` and nothing else, and `audit_events_no_update` refuses a revision from *any* role including the owner, because a superuser bypasses every grant and a rule that is true only in production is a rule nobody can test. Both foreign keys shape that trigger: `organization_id` **cascades**, which is why the trigger covers `update` and not `delete` — a delete-refusing trigger would make removing a workspace impossible rather than protecting the trail — and `actor_id`'s `on delete set null` **is** an update, so exactly that one statement is permitted and nothing beside it (*what happened cannot be rewritten; who did it can be forgotten*). `actor_id` is nullable because a `credential.lease_granted` has no person behind it; the **subject** is `subject_type` + `subject_id` with deliberately **no** foreign key, because `provider.deleted` is exactly the row one would make unwritable; `action` and `subject_type` are CHECKed to an identifier *grammar* and not to a vocabulary, so adding an event is an application release while a misspelled one is still refused; `ip` is `inet`, which refuses a string that is not an address; `detail` must be an **object** so the secrecy grep can enumerate its keys — that it holds no secret material is enforced by the writer and by that grep, because a CHECK could only match the credential shapes somebody thought of. There is **no `updated_at`**, and one index — `(organization_id, occurred_at desc, id desc)` — which is the only read this table has; #26's BRIN is deliberately not created until something sweeps by time |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in

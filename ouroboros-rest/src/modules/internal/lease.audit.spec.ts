@@ -1,22 +1,30 @@
-import { Logger } from "@nestjs/common";
-
+import { recordingAudit } from "../audit/audit.fixture";
 import { DENIED_WORDS } from "../vault/no-secret-logging";
-import { LEASE_GRANTED_EVENT, LeaseAudit, type LeaseGrantedEvent } from "./lease.audit";
+import {
+  LEASE_GRANTED_EVENT,
+  LEASE_SUBJECT,
+  LeaseAudit,
+  type LeaseGrantedEvent,
+} from "./lease.audit";
 
 /**
- * The trail, and the two claims made about it.
+ * The trail, and the three claims made about it.
  *
- * *Every lease grant writes an audit event* is an acceptance criterion, and the honest
- * version of it today is an emission with every field AD.4's
- * ([#225](https://github.com/NobuData/ouroboros/issues/225)) row will carry, into the sink
- * that exists — see `lease.audit.ts` on why that is a seam rather than a stub. So this suite
- * asserts what will still be true when the sink changes: the event's **name**, which is
- * AD.4's own vocabulary and what somebody will grep for, and the **record's contents**,
- * which must name what was granted and carry nothing secret.
+ * *Every lease grant writes an audit event* is AD.3's acceptance criterion, and since AD.4
+ * ([#225](https://github.com/NobuData/ouroboros/issues/225)) landed `audit_events` the event
+ * is a row rather than the log line the seam emitted while the table did not exist. What this
+ * suite asserts is what was true of the seam and is still true of the row: the event's
+ * **name**, which is AD.4's vocabulary and what somebody will grep for; the **record's
+ * contents**, which must name what was granted; and that it carries **nothing secret**.
  *
- * The second claim is checked against the vault's own denied-word list rather than against a
+ * The third claim is checked against the vault's own denied-word list rather than against a
  * list typed here, so a word added there — the place that decides what "secret material"
  * means in this codebase — tightens this test too.
+ *
+ * `connection.audit.spec.ts` is the same suite for AD.2's operations, where there is one more
+ * claim: a refusal is an event too. There is deliberately no such claim here — see
+ * `lease.audit.ts` on why a refused lease is a fact about a deployment's policy rather than
+ * about a credential.
  */
 
 const EVENT: LeaseGrantedEvent = {
@@ -31,59 +39,86 @@ const EVENT: LeaseGrantedEvent = {
 
 describe("the event's name", () => {
   it("is the one AD.4 named", () => {
-    // Agreed before the trail exists, so that a consumer grepping for it later finds the
-    // string that was written down in #225's scope rather than one this module invented.
+    // One spelling, in one file, so a consumer grepping the trail finds every grant.
     expect(LEASE_GRANTED_EVENT).toBe("credential.lease_granted");
   });
 });
 
 describe("what one grant records", () => {
-  let written: string[];
+  it("writes exactly one record", async () => {
+    const trail = recordingAudit();
 
-  beforeEach(() => {
-    written = [];
-    jest.spyOn(Logger.prototype, "log").mockImplementation((message: unknown) => {
-      written.push(String(message));
+    await new LeaseAudit(trail.service).granted(EVENT);
+
+    expect(trail.records).toHaveLength(1);
+  });
+
+  it("names the event, the run, the workspace and the instant", async () => {
+    const trail = recordingAudit();
+
+    await new LeaseAudit(trail.service).granted(EVENT);
+
+    expect(trail.records[0]).toMatchObject({
+      action: LEASE_GRANTED_EVENT,
+      organizationId: EVENT.organizationId,
+      subjectType: LEASE_SUBJECT,
+      subjectId: EVENT.run,
+      at: EVENT.grantedAt,
     });
   });
 
-  afterEach(() => {
-    jest.restoreAllMocks();
+  it("has no actor, because a worker is not somebody", async () => {
+    // The one event class in the vocabulary that never names a person: a worker
+    // authenticates with a service key, and `audit_events.actor_id` is nullable for exactly
+    // this. A sheet that assumed an actor would render nothing sensible against it, which is
+    // why `ouroboros-db`'s seed carries one such row.
+    const trail = recordingAudit();
+
+    await new LeaseAudit(trail.service).granted(EVENT);
+
+    expect(trail.records[0].actorId).toBeNull();
   });
 
-  it("writes exactly one record", () => {
-    new LeaseAudit().granted(EVENT);
+  it("says which lease, which provider, which address and when it stops being current", async () => {
+    // A trail that recorded *a lease happened* without saying what was handed over would be
+    // a trail nobody can answer a question with.
+    const trail = recordingAudit();
 
-    expect(written).toHaveLength(1);
+    await new LeaseAudit(trail.service).granted(EVENT);
+
+    expect(trail.records[0].detail).toEqual({
+      lease: EVENT.id,
+      provider: EVENT.provider,
+      address: EVENT.baseUrl,
+      expires_at: EVENT.expiresAt.toISOString(),
+    });
   });
 
-  it("names the event, the lease, the run, the workspace, the provider and the address", () => {
-    // Everything AD.4's row will hold. A trail that recorded *a lease happened* without
-    // saying which workspace it was for would be a trail nobody can answer a question with.
-    new LeaseAudit().granted(EVENT);
+  it("lets a failed write fail, because a worker holding an unrecorded address is the thing this prevents", async () => {
+    // Unlike a rotation there is nothing here that a refusal would have to un-happen: the
+    // lease has not left the process yet. See `audit.service.ts`.
+    const trail = recordingAudit();
 
-    const [record] = written;
+    trail.failWith(new Error("audit_events is unavailable"));
 
-    expect(record).toContain(LEASE_GRANTED_EVENT);
-    expect(record).toContain(EVENT.id);
-    expect(record).toContain(EVENT.run);
-    expect(record).toContain(EVENT.organizationId);
-    expect(record).toContain(EVENT.provider);
-    expect(record).toContain(EVENT.baseUrl);
-    expect(record).toContain(EVENT.expiresAt.toISOString());
+    await expect(new LeaseAudit(trail.service).granted(EVENT)).rejects.toThrow(
+      "audit_events is unavailable",
+    );
   });
 
-  it("carries nothing that names secret material", () => {
+  it("carries nothing that names secret material", async () => {
     // The grep test the roadmap asks of every credential event, run against the vocabulary
     // `no-secret-logging.mjs` defines rather than a list typed here. The event's own name
     // contains `credential`, which is the one legitimate occurrence — it is the *family* the
     // trail files this under — so it is removed before the words are looked for.
-    new LeaseAudit().granted(EVENT);
+    const trail = recordingAudit();
 
-    const record = written[0].replace(LEASE_GRANTED_EVENT, "");
+    await new LeaseAudit(trail.service).granted(EVENT);
+
+    const rendered = JSON.stringify(trail.records[0]).replace(LEASE_GRANTED_EVENT, "");
 
     for (const word of DENIED_WORDS) {
-      expect(record.toLowerCase()).not.toContain(word);
+      expect(rendered.toLowerCase()).not.toContain(word);
     }
   });
 });

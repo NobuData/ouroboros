@@ -55,6 +55,7 @@
 
 import { Module } from "@nestjs/common";
 
+import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
@@ -67,7 +68,7 @@ import { RevealLimiter } from "./reveal.limiter";
 import { StepUpRegistry, StepUpService } from "./step-up";
 
 @Module({
-  imports: [DbModule, VaultModule, ProvidersModule, RegistryModule],
+  imports: [DbModule, VaultModule, ProvidersModule, RegistryModule, AuditModule],
   controllers: [ProviderConnectionsController],
   providers: [
     ProviderConnectionsService,

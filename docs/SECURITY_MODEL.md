@@ -518,34 +518,44 @@ this service and upgraded with it.
 
 ## 5. What is written down when somebody touches a key
 
-> **Status: Specified** — AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225)),
-> roadmap decision **P5**, coordinating with
-> [#26](https://github.com/NobuData/ouroboros/issues/26)'s `audit_events` shape.
-> **Six of the events are already emitted**, on an interim sink — `credential.lease_granted`
-> from AD.3 and the five `provider.*` from AD.2
-> ([#223](https://github.com/NobuData/ouroboros/issues/223)) — see
-> [§5.4](#54-where-the-events-go-today).
+> **Status: Shipped** — AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225)),
+> roadmap decision **P5**. `audit_events` is `ouroboros-db`'s `V022`, landed early from
+> [#26](https://github.com/NobuData/ouroboros/issues/26)'s own specification so there is one
+> audit schema rather than two; `ouroboros-rest/src/modules/audit/` is the only writer and
+> `GET /api/v1/providers/audit` the only reader. The interim log sink §5.4 used to describe
+> is gone — see [§5.4](#54-where-the-events-go).
 
 ### 5.1 What is recorded
 
 Every credential operation writes exactly one event, carrying the actor, the connection,
-the source IP and a detail object:
+the source IP, the instant and a detail object:
 
 ```
 provider.added        provider.revealed     provider.rotated
+provider.enabled      provider.disabled     provider.cap_changed
 provider.updated      provider.deleted      provider.tested
 credential.lease_granted
 ```
 
-**`provider.updated` is one event where this section once named three.** The specification
-listed `provider.enabled`, `provider.disabled` and `provider.cap_changed` separately, and
-AD.2's `PATCH` can change the switch, the cap, the note and the address in a single request
-— so three names would have meant either several events for one operation, contradicting the
-sentence above it, or an arbitrary rule about which one wins. The distinction is not lost: an
-edit's detail carries **which settings were written**, which is what a reader filtering for
-*who turned this connection off* actually needs, and it stays correct for a request that also
-did something else. `provider.tested` is AE.4's
-([#230](https://github.com/NobuData/ouroboros/issues/230)) and is not emitted yet.
+**A refusal is an event too, under the same name.** AD.2 recorded successes only, and AD.4's
+first acceptance criterion says the opposite — *including the failure paths (a failed rotation
+is still an event)* — so a refused reveal, add, rotation, edit or delete writes one row under
+the action its success would have used, with `detail.outcome` and `detail.reason` saying which
+it was. That is the more useful trail: *nobody rotated this key* and *three people tried and
+the provider refused all three* are very different facts, and only one of them is visible in a
+trail of successes. No refusal introduces a name of its own.
+
+**`provider.updated` is the name an edit gets when the three specialised ones do not fit.**
+This section once argued for collapsing `provider.enabled`, `provider.disabled` and
+`provider.cap_changed` into it, on the grounds that AD.2's `PATCH` can change the switch, the
+cap, the note and the address in one request and three names would mean either several events
+for one operation or an arbitrary rule about which wins. AD.4 keeps all four and states the
+rule instead: **a specialised name when that was the only thing that changed, and the general
+name otherwise** — so a reader sees *switched the provider off* where somebody saw themselves
+press a switch, and a request that flipped the switch *and* raised the cap is one
+`provider.updated` whose detail names both fields. `provider.tested` is defined and written by
+AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) when that lands; the name is
+fixed here so that ticket does not invent a second spelling of it.
 
 Key custody without a trail would fail the page's own security posture, which is why this
 is day-one scope rather than a later hardening ticket.
@@ -571,22 +581,50 @@ on that path at all** ([§4.3](#43-the-one-exception-and-why-it-is-not-one)).
 
 ### 5.3 Append-only
 
-The trail is append-only by grant posture — the application role may insert and select,
-and may not update or delete. An audit trail the audited party can edit is not one.
+The trail is append-only, and it is enforced twice because neither mechanism covers the
+other's case:
 
-### 5.4 Where the events go today
+- **By grant** — `ouroboros_app`, the role a deployment that separates migrating from running
+  connects the API as, holds `select` and `insert` on `audit_events` and nothing else. This is
+  the posture AD.4 specifies, and what a non-owner deployment gets for free.
+- **By trigger** — because the compose stack and every developer machine connect as the
+  database's *owner*, and a superuser bypasses every grant in the catalogue. A rule that is
+  true in production and false on the machine where the code is written is a rule nobody can
+  test, so `audit_events_no_update` refuses a revision from any role at all.
 
-**The events are real and their sink is interim.** Each record is assembled at the one point
-the operation is known to have happened and emitted to the service log — a durable,
-timestamped, in-cluster record carrying every field the eventual row will carry. AD.4 has not
-landed, so there is no `audit_events` table to insert into. When #225 lands, six method
-bodies become an insert — one in `internal/lease.audit.ts`, five in
-`provider-connections/connection.audit.ts` — and every caller, every field and every event
-name stay as they are.
+There are exactly two things the table permits that look like exceptions and are not, and both
+are referential actions the database issues on its own behalf. Deleting a **workspace**
+cascades and takes its trail with it, on the same reasoning `tenant_keys` cascades — which is
+also why the trigger covers `update` and not `delete`, since a delete-refusing trigger would
+not protect the trail, it would make removing a tenant impossible. Deleting a **person** sets
+`actor_id` to null, which is an UPDATE, so the trigger permits that one statement and nothing
+beside it: *what happened cannot be rewritten; who did it can be forgotten*, which is a
+right-to-erasure request answered by the schema rather than by a script.
 
-That is said here rather than glossed because "every operation is audited" and "every
-operation is audited into a queryable table" are different claims, and only the first is
-true today.
+An audit trail the audited party can edit is not one.
+
+### 5.4 Where the events go
+
+Into `ouroboros.audit_events` — `ouroboros-db`'s `V022`, in the shape
+[#26](https://github.com/NobuData/ouroboros/issues/26) specified for the platform's own audit
+log, landed early by AD.4 because decision **P5** puts credential auditing in the MVP. When
+#26 lands it inherits this table and writes `member.added` and `tenant.updated` into it;
+nothing in that issue has to migrate anything.
+
+`ouroboros-rest/src/modules/audit/` is the only writer, and the address on each row is read
+from the request rather than passed in by the caller — a writer that could supply its own
+address could supply somebody else's. **What that address honestly is** is worth stating: it
+is the peer address of the socket the API was reached on, and no forwarded header is trusted,
+because a header a client writes is a header a client can choose and a trail that can be made
+to lie is worse than one whose address is less specific. Behind `ouroboros-ui`'s server-side
+client that means the address on a browser-driven event is the UI's rather than the person's;
+making a forwarded header trustworthy needs a configured list of trusted proxies, which is an
+operational feature with its own failure modes and belongs to the ticket that introduces it.
+
+`GET /api/v1/providers/audit` is the only reader — organization-scoped, filterable by
+connection, actor and action, and restricted to `owner` and `admin`. It is the one read in the
+providers surface that a `member` may not make, because *who revealed which credential, when,
+and from where* is a fact about a colleague rather than about the workspace's configuration.
 
 ---
 

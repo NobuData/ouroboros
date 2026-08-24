@@ -2,6 +2,7 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
+import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { DatabaseService } from "../db/db.service";
 import { ProvidersModule } from "../providers/providers.module";
@@ -87,10 +88,14 @@ describe("the provider connections module", () => {
     expect(app.get(RegistryService)).toBeInstanceOf(RegistryService);
   });
 
-  it("imports exactly the four modules whose capabilities it borrows", () => {
+  it("imports exactly the five modules whose capabilities it borrows", () => {
+    // `AuditModule` joined the four with AD.4 (#225): the trail is another module's
+    // capability, reached through its exported service, on the same terms as the vault's and
+    // the registry's. It is not a provider declared here, which is what keeps *the address
+    // comes from the request rather than from the caller* true of every event.
     const imports = Reflect.getMetadata("imports", ProviderConnectionsModule) as unknown[];
 
-    expect(imports).toEqual([DbModule, VaultModule, ProvidersModule, RegistryModule]);
+    expect(imports).toEqual([DbModule, VaultModule, ProvidersModule, RegistryModule, AuditModule]);
   });
 
   it("exports nothing", () => {

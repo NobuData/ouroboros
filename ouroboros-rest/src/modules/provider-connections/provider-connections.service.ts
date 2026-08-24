@@ -50,6 +50,7 @@ import { Injectable } from "@nestjs/common";
 
 import type { AuthRequest } from "../auth/http";
 import type { Principal } from "../auth/principal";
+import { PROVIDER_UPDATED_EVENT, type AuditAction } from "../audit/audit.events";
 import type { ProviderConnectionKind } from "../db/schema";
 import { ModelProviderRegistry } from "../providers/provider.registry";
 import type { ModelProviderAdapter, ProviderValidation } from "../providers/provider.adapter";
@@ -66,7 +67,15 @@ import { zeroize } from "../vault/envelope";
 import { VaultService } from "../vault/vault.service";
 import { columnsFor, submissionOf, unstorableFields } from "./config.mapping";
 import { configViolations } from "./config.validation";
-import { ProviderAudit, type ProviderAuditContext } from "./connection.audit";
+import {
+  ProviderAudit,
+  PROVIDER_ADDED_EVENT,
+  PROVIDER_DELETED_EVENT,
+  PROVIDER_REVEALED_EVENT,
+  PROVIDER_ROTATED_EVENT,
+  type ProviderAuditAttempt,
+  type ProviderAuditContext,
+} from "./connection.audit";
 import { maskCredential } from "./masking";
 import {
   configInvalid,
@@ -109,6 +118,20 @@ import { STEP_UP_METHODS, STEP_UP_MAX_AGE_SECONDS, StepUpService } from "./step-
  * open.
  */
 export const REVEAL_TTL_SECONDS = 60;
+
+/**
+ * A {@link ProviderAuditAttempt} while the operation it describes is still running.
+ *
+ * `ProviderAuditAttempt` is `readonly` because a *recorded* attempt is a fact and facts do
+ * not change. This is the same shape before it becomes one: the provider kind is usually not
+ * known until the operation has read its row, and the connection id is not known at all until
+ * an `add` has minted one, so the wrapper hands the operation a draft to fill in and reads
+ * whatever it holds if the operation throws.
+ *
+ * Written as a mapped type rather than as a second interface so the two cannot drift: a field
+ * added to the attempt is a field the draft has.
+ */
+type AuditAttemptDraft = { -readonly [K in keyof ProviderAuditAttempt]: ProviderAuditAttempt[K] };
 
 @Injectable()
 export class ProviderConnectionsService {
@@ -203,43 +226,67 @@ export class ProviderConnectionsService {
     actorId: string,
     body: CreateConnectionDto,
   ): Promise<ProviderConnectionResource> {
-    const adapter = this.registry.get(body.kind);
-    const schema = adapter.configSchema();
-
-    this.refuseBadConfig(schema, body.kind, body.config);
-
-    const submission = partitionSubmission(schema, body.config);
-    const validation = await this.checked(adapter, submission.config, submission.secret);
-
-    // The id is minted here rather than by the column's default, because the vault binds a
-    // ciphertext to `(organization, record)` — so the row's identity has to exist before its
-    // credential can be sealed. See the repository's `insert`.
-    const connectionId = randomUUID();
     const at = new Date();
-    const columns = columnsFor(submission.config);
+    // The kind is known from the body, so a refused add records *which provider was being
+    // connected* — which is most of what makes the row worth having. The connection id
+    // stays null unless the insert gets that far, because until it does there is genuinely
+    // no row to name; see `connection.audit.ts` on why that is a second shape rather than a
+    // widened one.
+    const attempt: AuditAttemptDraft = {
+      organizationId,
+      connectionId: null,
+      kind: body.kind,
+      actorId,
+      at,
+    };
 
-    const row = await this.connections.insert(
-      {
-        id: connectionId,
-        organization_id: organizationId,
-        kind: body.kind,
-        display_name: body.displayName,
-        base_url: columns.base_url,
-        capability_note: columns.capability_note,
-        status: "active",
-        last_checked_at: at,
-        health: healthOf(validation),
-        monthly_cap_cents: body.monthlyCapCents ?? null,
-        added_by: actorId,
-      } satisfies NewConnection,
-      submission.secret === null
-        ? null
-        : await this.vault.encryptText(organizationId, connectionId, submission.secret),
-    );
+    return this.recording(PROVIDER_ADDED_EVENT, attempt, async () => {
+      const adapter = this.registry.get(body.kind);
+      const schema = adapter.configSchema();
 
-    this.audit.added(contextFor(organizationId, row, actorId, at));
+      this.refuseBadConfig(schema, body.kind, body.config);
 
-    return connectionResource(row, maskOf(submission.secret));
+      const submission = partitionSubmission(schema, body.config);
+      const validation = await this.checked(adapter, submission.config, submission.secret);
+
+      // The id is minted here rather than by the column's default, because the vault binds a
+      // ciphertext to `(organization, record)` — so the row's identity has to exist before its
+      // credential can be sealed. See the repository's `insert`.
+      const connectionId = randomUUID();
+      const columns = columnsFor(submission.config);
+
+      attempt.connectionId = connectionId;
+
+      const row = await this.connections.insert(
+        {
+          id: connectionId,
+          organization_id: organizationId,
+          kind: body.kind,
+          display_name: body.displayName,
+          base_url: columns.base_url,
+          capability_note: columns.capability_note,
+          status: "active",
+          last_checked_at: at,
+          health: healthOf(validation),
+          monthly_cap_cents: body.monthlyCapCents ?? null,
+          added_by: actorId,
+        } satisfies NewConnection,
+        submission.secret === null
+          ? null
+          : await this.vault.encryptText(organizationId, connectionId, submission.secret),
+      );
+
+      // The resource is built *before* the event is recorded, and that ordering is the
+      // "exactly one event" rule rather than a preference: `recording()` writes a refusal for
+      // anything this callback throws, so a statement that could throw *after* a successful
+      // audit write would leave two rows describing one operation. The audit call is
+      // therefore the last thing here that can fail, in all five operations.
+      const resource = connectionResource(row, maskOf(submission.secret));
+
+      await this.audit.added(contextFor(organizationId, row, actorId, at));
+
+      return resource;
+    });
   }
 
   /**
@@ -275,34 +322,55 @@ export class ProviderConnectionsService {
     body: RevealConnectionDto,
     now: Date = new Date(),
   ): Promise<RevealResource> {
-    const exceeded = this.limiter.attempt(principal.user.id, connectionId, now);
-
-    if (exceeded !== null) {
-      throw revealRateLimited(exceeded.scope, exceeded.retryAfterSeconds);
-    }
-
-    const method = await this.stepUp.satisfied(principal, request, body.password, now);
-
-    if (method === null) {
-      throw stepUpRequired([...STEP_UP_METHODS], STEP_UP_MAX_AGE_SECONDS);
-    }
-
-    const row = await this.require(organizationId, connectionId);
-    const envelope = await this.connections.envelopeOf(organizationId, connectionId);
-
-    if (envelope === null || envelope === undefined) {
-      throw credentialAbsent(connectionId);
-    }
-
-    const value = await this.vault.decryptText(organizationId, connectionId, envelope);
-
-    this.audit.revealed(contextFor(organizationId, row, principal.user.id, now), method);
-
-    return {
+    // The kind starts unknown and is filled in once the row has been read. A reveal is rate-
+    // limited *before* anything is fetched — see this file's header on why the limiter is
+    // first — so a refusal on that path genuinely does not know which provider was being
+    // asked for, and recording a guess would be worse than recording nothing.
+    const attempt: AuditAttemptDraft = {
+      organizationId,
       connectionId,
-      value,
-      expiresAt: new Date(now.getTime() + REVEAL_TTL_SECONDS * 1000).toISOString(),
+      kind: null,
+      actorId: principal.user.id,
+      at: now,
     };
+
+    return this.recording(PROVIDER_REVEALED_EVENT, attempt, async () => {
+      const exceeded = this.limiter.attempt(principal.user.id, connectionId, now);
+
+      if (exceeded !== null) {
+        throw revealRateLimited(exceeded.scope, exceeded.retryAfterSeconds);
+      }
+
+      const method = await this.stepUp.satisfied(principal, request, body.password, now);
+
+      if (method === null) {
+        throw stepUpRequired([...STEP_UP_METHODS], STEP_UP_MAX_AGE_SECONDS);
+      }
+
+      const row = await this.require(organizationId, connectionId);
+
+      attempt.kind = row.kind;
+
+      const envelope = await this.connections.envelopeOf(organizationId, connectionId);
+
+      if (envelope === null || envelope === undefined) {
+        throw credentialAbsent(connectionId);
+      }
+
+      const value = await this.vault.decryptText(organizationId, connectionId, envelope);
+
+      // Awaited before the credential is returned, and that ordering is the point rather
+      // than the style: an unaudited reveal is the one outcome decision P5 exists to
+      // prevent, and here — unlike after a rotation or a delete — nothing has happened yet
+      // that a refusal would have to un-happen. See `audit.service.ts`.
+      await this.audit.revealed(contextFor(organizationId, row, principal.user.id, now), method);
+
+      return {
+        connectionId,
+        value,
+        expiresAt: new Date(now.getTime() + REVEAL_TTL_SECONDS * 1000).toISOString(),
+      };
+    });
   }
 
   /**
@@ -335,7 +403,50 @@ export class ProviderConnectionsService {
     connectionId: string,
     body: RotateConnectionDto,
   ): Promise<ProviderConnectionResource> {
+    const at = new Date();
+    const attempt: AuditAttemptDraft = {
+      organizationId,
+      connectionId,
+      kind: null,
+      actorId,
+      at,
+    };
+
+    return this.recording(PROVIDER_ROTATED_EVENT, attempt, () =>
+      this.rotating(organizationId, actorId, connectionId, body, at, attempt),
+    );
+  }
+
+  /**
+   * The rotation itself, once the trail is watching it.
+   *
+   * Split out rather than nested inside {@link ProviderConnectionsService.rotate}, which is
+   * what the other four operations do: this one is long enough that another level of
+   * indentation would push the interesting part — *validate the new credential, then swap* —
+   * off the left margin, and the whole of AD.2's argument is that the order of these
+   * statements is the ticket.
+   *
+   * @param organizationId - The workspace.
+   * @param actorId - Who is rotating it.
+   * @param connectionId - The connection.
+   * @param body - The validated request.
+   * @param at - The instant, minted by the caller so the attempt and the event agree.
+   * @param attempt - The draft the caller will record a refusal from; this fills in the
+   *   provider kind as soon as the row makes it known.
+   * @returns The connection after the swap, masked.
+   */
+  private async rotating(
+    organizationId: string,
+    actorId: string,
+    connectionId: string,
+    body: RotateConnectionDto,
+    at: Date,
+    attempt: AuditAttemptDraft,
+  ): Promise<ProviderConnectionResource> {
     const row = await this.require(organizationId, connectionId);
+
+    attempt.kind = row.kind;
+
     const adapter = this.registry.get(row.kind);
     const schema = adapter.configSchema();
 
@@ -352,7 +463,6 @@ export class ProviderConnectionsService {
     const config = Object.freeze(submissionOf(storedConfigSchema(schema), row));
     const validation = await this.checked(adapter, config, body.secret);
 
-    const at = new Date();
     const swapped = await this.connections.swapCredential(
       organizationId,
       connectionId,
@@ -366,9 +476,12 @@ export class ProviderConnectionsService {
       throw connectionChanged(connectionId);
     }
 
-    this.audit.rotated(contextFor(organizationId, swapped, actorId, at));
+    // Built before the event is recorded — see `add` for why that ordering is the rule.
+    const resource = connectionResource(swapped, maskOf(body.secret));
 
-    return connectionResource(swapped, maskOf(body.secret));
+    await this.audit.rotated(contextFor(organizationId, swapped, actorId, at));
+
+    return resource;
   }
 
   /**
@@ -399,8 +512,52 @@ export class ProviderConnectionsService {
     connectionId: string,
     body: UpdateConnectionDto,
   ): Promise<ProviderConnectionResource> {
-    const row = await this.require(organizationId, connectionId);
     const at = new Date();
+    const attempt: AuditAttemptDraft = {
+      organizationId,
+      connectionId,
+      kind: null,
+      actorId,
+      at,
+    };
+
+    // `provider.updated` is the name a *refused* edit records under, whichever of the four a
+    // successful one would have chosen. The specialisation in `providerUpdateEvent` reads
+    // what the request actually wrote, and a request that was refused wrote nothing — so
+    // `provider.enabled` on an edit that never flipped a switch would be the trail
+    // describing an intention rather than an act.
+    return this.recording(PROVIDER_UPDATED_EVENT, attempt, () =>
+      this.updating(organizationId, actorId, connectionId, body, at, attempt),
+    );
+  }
+
+  /**
+   * The edit itself, once the trail is watching it.
+   *
+   * Split out for {@link ProviderConnectionsService.rotating}'s reason: this method is a
+   * sequence of five near-identical blocks, and the thing worth seeing about it is that they
+   * are in a deliberate order (see the `capabilityNote` comment below).
+   *
+   * @param organizationId - The workspace.
+   * @param actorId - Who is editing it.
+   * @param connectionId - The connection.
+   * @param body - The validated request.
+   * @param at - The instant, minted by the caller so the attempt and the event agree.
+   * @param attempt - The draft the caller will record a refusal from.
+   * @returns The connection after the change.
+   */
+  private async updating(
+    organizationId: string,
+    actorId: string,
+    connectionId: string,
+    body: UpdateConnectionDto,
+    at: Date,
+    attempt: AuditAttemptDraft,
+  ): Promise<ProviderConnectionResource> {
+    const row = await this.require(organizationId, connectionId);
+
+    attempt.kind = row.kind;
+
     const fields: string[] = [];
     let patch: ConnectionPatch = {};
 
@@ -451,14 +608,29 @@ export class ProviderConnectionsService {
       throw connectionNotFound(connectionId);
     }
 
-    this.audit.updated(contextFor(organizationId, updated, actorId, at), fields.sort());
-
     // Re-read rather than remembered: nothing on this path changes the credential — that is
     // `rotate`'s — so the mask is whatever the row still holds, and reading it here keeps
-    // this method free of a second way for a plaintext to be in scope.
+    // this method free of a second way for a plaintext to be in scope. Read *before* the
+    // event is recorded — see `add` for why that ordering is the "exactly one event" rule.
     const envelope = await this.connections.envelopeOf(organizationId, connectionId);
+    const resource = connectionResource(
+      updated,
+      await this.mask(organizationId, connectionId, envelope),
+    );
 
-    return connectionResource(updated, await this.mask(organizationId, connectionId, envelope));
+    await this.audit.updated(
+      contextFor(organizationId, updated, actorId, at),
+      fields.sort(),
+      // The two figures are only recorded when the cap is what moved. A `from`/`to` pair on
+      // an edit that did not touch the cap would be two more columns of *unchanged* in every
+      // settings event, which is how a payload stops being read.
+      body.monthlyCapCents === undefined
+        ? undefined
+        : { from: row.monthly_cap_cents, to: body.monthlyCapCents },
+      body.enabled,
+    );
+
+    return resource;
   }
 
   /**
@@ -482,24 +654,71 @@ export class ProviderConnectionsService {
    * @throws {ConflictError} `409 provider_connection_in_use`, naming the aliases.
    */
   async remove(organizationId: string, actorId: string, connectionId: string): Promise<void> {
-    const row = await this.require(organizationId, connectionId);
-    const dependents = await this.aliases.dependentAliases(organizationId, connectionId);
-
-    if (dependents.length > 0) {
-      throw providerConnectionInUse(connectionId, dependents);
-    }
-
     const at = new Date();
+    const attempt: AuditAttemptDraft = {
+      organizationId,
+      connectionId,
+      kind: null,
+      actorId,
+      at,
+    };
 
-    try {
-      if (!(await this.connections.remove(organizationId, connectionId))) {
-        throw connectionNotFound(connectionId);
+    await this.recording(PROVIDER_DELETED_EVENT, attempt, async () => {
+      const row = await this.require(organizationId, connectionId);
+
+      attempt.kind = row.kind;
+
+      const dependents = await this.aliases.dependentAliases(organizationId, connectionId);
+
+      if (dependents.length > 0) {
+        throw providerConnectionInUse(connectionId, dependents);
       }
-    } catch (error) {
-      throw await this.explainDeleteFailure(organizationId, connectionId, error);
-    }
 
-    this.audit.deleted(contextFor(organizationId, row, actorId, at));
+      try {
+        if (!(await this.connections.remove(organizationId, connectionId))) {
+          throw connectionNotFound(connectionId);
+        }
+      } catch (error) {
+        throw await this.explainDeleteFailure(organizationId, connectionId, error);
+      }
+
+      await this.audit.deleted(contextFor(organizationId, row, actorId, at));
+    });
+  }
+
+  /**
+   * Run one lifecycle operation with the trail watching it.
+   *
+   * **This is what makes *every operation writes exactly one event* a property of the
+   * control flow** rather than of five call sites that each remembered. The success event is
+   * written by the operation itself, at the one point it is known to have happened; this
+   * covers the other half — the refusal — under the same action name, with `outcome` and
+   * `reason` saying which it was. See `connection.audit.ts` on why a refusal is an event at
+   * all, and why AD.2 recorded no such thing.
+   *
+   * `ProviderAudit.failed` swallows what it cannot store, which is what keeps this wrapper
+   * transparent: the error the caller sees is always the operation's own, never the trail's.
+   *
+   * @param action - The action the operation would have recorded had it succeeded.
+   * @param attempt - What is known about the attempt. Mutable on purpose — the provider kind
+   *   is often not known until the operation has read the row, and a refusal after that point
+   *   should say which provider it was about.
+   * @param work - The operation.
+   * @returns Whatever the operation returned.
+   * @throws Whatever the operation threw, unchanged.
+   */
+  private async recording<T>(
+    action: AuditAction,
+    attempt: AuditAttemptDraft,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      await this.audit.failed(attempt, action, error);
+
+      throw error;
+    }
   }
 
   /**

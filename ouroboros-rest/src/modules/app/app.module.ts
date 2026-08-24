@@ -1,6 +1,7 @@
 import { Module, type DynamicModule } from "@nestjs/common";
 
 import { BetterAuthModule } from "../../auth/auth.module";
+import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { ConfigurationModule } from "../config/config.module";
 import type { Configuration } from "../config/configuration";
@@ -196,6 +197,15 @@ export class AppModule {
         VaultModule,
         ProviderHealthModule,
         ProvidersModule,
+        // Before `ProviderConnectionsModule`, and the order is a rule rather than a
+        // preference: `AuditController` serves `GET /api/v1/providers/audit` and
+        // `ProviderConnectionsController` serves `GET /api/v1/providers/{id}`. A router
+        // matches in registration order, so with these two swapped a request for the trail
+        // becomes a request for a connection whose id is the word *audit* — refused as a
+        // `422` by `ConnectionParams`, on a route that exists. `audit.integration-spec.ts`
+        // asserts the consequence rather than this list, which is what keeps the guarantee
+        // when somebody sorts the imports.
+        AuditModule,
         ProviderConnectionsModule,
         RoutingModule,
         InternalModule,

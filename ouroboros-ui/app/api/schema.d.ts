@@ -1325,6 +1325,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/providers/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * This workspace's credential audit trail
+         * @description Every credential operation this workspace has performed, newest first
+         *     ([#225](https://github.com/NobuData/ouroboros/issues/225)) — what mockup 07's **Audit
+         *     log** button in the page head opens.
+         *
+         *     **Decision P5 is why this exists in v1 rather than in v2.** A page that reveals and
+         *     rotates credentials while keeping no record of who did it fails its own stated
+         *     security posture, and *"we'll add audit later"* means the first months of a credential
+         *     store's history are simply gone. The rows are written to the `audit_events` table
+         *     scaffolding [#26](https://github.com/NobuData/ouroboros/issues/26) specified; this
+         *     issue landed it early so there is one audit schema rather than two.
+         *
+         *     **Every operation is here, and a refusal is an operation.** Each of `add`, `reveal`,
+         *     `rotate`, the settings edits, and `delete` writes exactly one event whether it
+         *     succeeded or was refused — `detail.outcome` is `success` or `failure`, and on a
+         *     failure `detail.reason` carries the refusal's own error code. *Nobody rotated this
+         *     key* and *three people tried and the provider refused all three* are very different
+         *     facts, and only one of them is visible in a trail of successes.
+         *
+         *     **No event ever contains secret material.** `detail` is a flat object of scalars built
+         *     from a closed field set — a step-up method, a pair of cap figures, an outcome — and
+         *     there is no code path that could put a plaintext, a mask or an envelope in it. It is
+         *     enforced by the writer's own types, by a lint rule over the whole module, and by a
+         *     grep test over the rows a full credential lifecycle actually writes.
+         *
+         *     **Append-only.** Nothing in this API updates or deletes an event; the application role
+         *     holds `select` and `insert` on the table and nothing else, and a database trigger
+         *     refuses a revision from any role at all. The single exception is erasing an
+         *     attribution when a person is deleted — what happened cannot be rewritten, who did it
+         *     can be forgotten.
+         *
+         *     **`owner` or `admin` only**, and this is the one read in the providers surface that
+         *     is. The listing and the single-connection read are open to every member because every
+         *     field they show is masked; *Maya revealed the Anthropic key at 14:02 from
+         *     198.51.100.61* is not a fact about the workspace's configuration but a fact about a
+         *     colleague.
+         *
+         *     **The `ip` is the address this API saw**, which behind a reverse proxy is the proxy's
+         *     rather than the browser's — no forwarded header is trusted, because a header a client
+         *     writes is a header a client can choose, and an audit trail that can be made to lie is
+         *     worse than one whose address is less specific. It is `null` when none was knowable.
+         *
+         *     **What is deliberately not here.** The full audit surface — every kind of event this
+         *     installation records, not only credential ones — is mockup 17's, and this endpoint is
+         *     scoped to the trail the providers page opens. `credential.lease_granted` appears
+         *     because a worker being told how to reach a provider *is* a credential operation
+         *     (AD.3, [#224](https://github.com/NobuData/ouroboros/issues/224)), and it is the one
+         *     event class with no actor.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, and another organization's events are unreachable rather than merely unlisted.
+         */
+        get: operations["listProviderAuditEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/providers/{id}": {
         parameters: {
             query?: never;
@@ -4094,6 +4163,123 @@ export interface components {
             sortOrder?: number;
             when?: components["schemas"]["EscalationWhen"];
             then?: components["schemas"]["EscalationThen"];
+        };
+        /**
+         * AuditAction
+         * @description What an audit event records — `family.event`, lower snake on both sides.
+         *
+         *     Nine names, and the set is deliberately not a database constraint: `audit_events.action`
+         *     is CHECKed for the *grammar* and not for the vocabulary, so adding an event is an
+         *     application release rather than a migration. What the grammar buys is that
+         *     `action = "provider.revealed"` finds every reveal — one writer spelling it
+         *     `Provider.Revealed` would make that filter quietly wrong rather than loudly broken.
+         *
+         *     The three settings names are the three affordances mockup 07 draws — the switch on a
+         *     card, and the cap under it — so a trail says *disabled* where somebody saw themselves
+         *     press a switch. `provider.updated` is what a rename, an address change, or a request
+         *     that did two things at once records under: naming one of the specialisations on an
+         *     edit that also tripled the spend ceiling would be answering *what happened* with half
+         *     of it.
+         * @example provider.rotated
+         * @enum {string}
+         */
+        AuditAction: "provider.added" | "provider.revealed" | "provider.rotated" | "provider.enabled" | "provider.disabled" | "provider.cap_changed" | "provider.updated" | "provider.deleted" | "provider.tested" | "credential.lease_granted";
+        /**
+         * AuditEventDetail
+         * @description The rest of what happened — **a flat object of scalars, and never anything else**.
+         *
+         *     Flatness is load-bearing rather than tidy: it is what makes *enumerate the keys and you
+         *     have read the whole payload* true, and both of this repository's secrecy greps depend
+         *     on it. A nested object would give a credential somewhere to hide from a top-level
+         *     scan.
+         *
+         *     The keys depend on the action, and the set is closed by the writer's own types rather
+         *     than by this schema — `kind` on every provider event, `outcome` (and `reason` on a
+         *     failure) on all of them, `step_up` on a reveal, `fields` on an edit,
+         *     `from_cap_cents`/`to_cap_cents` on a cap change, `latency_ms` on a test, and
+         *     `lease`/`provider`/`address`/`expires_at` on a lease grant.
+         *
+         *     **There is no credential here and no code path that could put one here.** See the
+         *     endpoint's description.
+         * @example {
+         *       "kind": "anthropic",
+         *       "step_up": "password",
+         *       "outcome": "success"
+         *     }
+         */
+        AuditEventDetail: {
+            [key: string]: string | number | boolean | null;
+        };
+        /**
+         * AuditEvent
+         * @description One thing that happened to this workspace's credentials, and who did it.
+         */
+        AuditEvent: {
+            /**
+             * Format: uuid
+             * @description The event's own id — what a support conversation names.
+             * @example 5eed0015-0000-4000-8000-000000000009
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When it happened, ISO-8601 in UTC.
+             * @example 2026-08-21T16:53:00.000Z
+             */
+            occurredAt: string;
+            /**
+             * @description Who did it, or `null`.
+             *
+             *     Two different `null`s, and this payload does not distinguish them because a reader
+             *     cannot act on the difference: a lease grant never had an actor, and a person who
+             *     has since been deleted left one behind.
+             * @example 5eed0003-0000-4000-8000-000000000001
+             */
+            actorId: string | null;
+            /**
+             * @description Their name, or `null` on the same two terms.
+             *
+             *     **A name and never an address.** A trail that was a list of email addresses would
+             *     be a trail worth exfiltrating, and the sheet renders a person rather than a
+             *     mailbox.
+             * @example Ken Suenobu
+             */
+            actorName: string | null;
+            action: components["schemas"]["AuditAction"];
+            /**
+             * @description What kind of thing it was about — `provider_connection` for every `provider.*`
+             *     event, `run` for a lease grant.
+             * @example provider_connection
+             */
+            subjectType: string;
+            /**
+             * @description Which one, or `null` when the event named a kind rather than an instance — a
+             *     refused `add` has no connection to name, because nothing was written.
+             * @example 5eed000c-0000-4000-8000-000000000001
+             */
+            subjectId: string | null;
+            /**
+             * @description Where from, or `null` when no address was knowable.
+             *
+             *     The address this API saw. See the endpoint's description on what that honestly
+             *     means behind a proxy, and why no forwarded header is trusted.
+             * @example 198.51.100.24
+             */
+            ip: string | null;
+            detail: components["schemas"]["AuditEventDetail"];
+        };
+        /**
+         * AuditEventPage
+         * @description One page of a workspace's credential trail, newest first.
+         */
+        AuditEventPage: {
+            items: components["schemas"]["AuditEvent"][];
+            /** @example 14 */
+            total: number;
+            /** @example 25 */
+            limit: number;
+            /** @example 0 */
+            offset: number;
         };
         /**
          * ProviderConnectionKind
@@ -8800,6 +8986,182 @@ export interface operations {
              *     why neither is a `4xx`.
              */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listProviderAuditEvents: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+                /**
+                 * @description Only events about this connection. *What has been done to this key* — the first
+                 *     question a trail is opened with.
+                 *
+                 *     Matched against the event's subject, which carries no foreign key: an event about
+                 *     a connection outlives the connection, and `provider.deleted` is exactly the row a
+                 *     foreign key would have made unwritable.
+                 * @example 5eed000c-0000-4000-8000-000000000001
+                 */
+                connectionId?: string;
+                /**
+                 * @description Only events by this person. *What has this person done.*
+                 *
+                 *     A `"user".id`, which is text minted by BetterAuth rather than a uuid this service
+                 *     constrains — so it is bounded in length and not in shape.
+                 * @example 5eed0003-0000-4000-8000-000000000002
+                 */
+                actorId?: string;
+                /**
+                 * @description Only events of this kind. *Who has revealed anything.*
+                 *
+                 *     Validated against the vocabulary rather than accepted as free text: a filter
+                 *     naming an event this service never writes would return an empty page, which is
+                 *     indistinguishable from *nothing has happened yet* — and `provider.reveal` is a
+                 *     typo, not a finding.
+                 */
+                action?: components["schemas"]["AuditAction"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The page, newest first. Ordered by instant then id, so two events inside the same
+             *     millisecond page deterministically rather than swapping places between requests.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "items": [
+                     *         {
+                     *           "id": "5eed0015-0000-4000-8000-000000000014",
+                     *           "occurredAt": "2026-08-24T16:13:00.000Z",
+                     *           "actorId": "5eed0003-0000-4000-8000-000000000001",
+                     *           "actorName": "Ken Suenobu",
+                     *           "action": "provider.revealed",
+                     *           "subjectType": "provider_connection",
+                     *           "subjectId": "5eed000c-0000-4000-8000-000000000001",
+                     *           "ip": "198.51.100.24",
+                     *           "detail": {
+                     *             "kind": "anthropic",
+                     *             "step_up": "session",
+                     *             "outcome": "success"
+                     *           }
+                     *         },
+                     *         {
+                     *           "id": "5eed0015-0000-4000-8000-000000000013",
+                     *           "occurredAt": "2026-08-24T15:23:00.000Z",
+                     *           "actorId": null,
+                     *           "actorName": null,
+                     *           "action": "credential.lease_granted",
+                     *           "subjectType": "run",
+                     *           "subjectId": "5eed0009-0000-4000-8000-000000000482",
+                     *           "ip": "10.0.4.20",
+                     *           "detail": {
+                     *             "kind": "ollama",
+                     *             "ttl_seconds": 900
+                     *           }
+                     *         }
+                     *       ],
+                     *       "total": 14,
+                     *       "limit": 25,
+                     *       "offset": 0
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AuditEventPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Reading the credential trail is `owner` or `admin`. `details.role` is what
+             *     you hold and `details.required` is what would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a filter or a window parameter was out of range, not an
+             *     integer, not a uuid, or named an action this service does not write. `details`
+             *     carries the entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

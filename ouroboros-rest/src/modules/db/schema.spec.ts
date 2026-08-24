@@ -260,7 +260,62 @@ describe("TABLE_COLUMNS", () => {
     // The twenty-second is V021's `route_revisions` (#195) — the audit trail one press of
     // mockup 06's *Save routes* leaves behind, and the first table here this service only
     // ever *writes*. What reads it is the audit log (#26).
-    expect(TABLE_NAMES).toHaveLength(22);
+    //
+    // The twenty-third is V022's `audit_events` (#225) — #26's own table, landed early by
+    // AD.4 because decision P5 puts credential auditing in the MVP. It is the first table
+    // here that is append-only *in the database*, which is why two of its columns carry a
+    // `never` in their update position.
+    //
+    // The twenty-fourth arrived with it: V004's `"user"` (#706), mirrored by #225 so the
+    // trail's one query can join a person's name onto their id. It is the third
+    // library-owned table and the first this service reads for a reason that is not an
+    // authorization decision.
+    expect(TABLE_NAMES).toHaveLength(24);
+  });
+
+  it("mirrors the person a trail names, and only so a select can say their name", () => {
+    // The library still owns the rows — `LIBRARY_OWNED_TABLES` is what says so, and
+    // `organization.repository.spec.ts` is what enforces it against this module's source.
+    // Mirroring the table buys one join and no write path.
+    expect(TABLE_NAMES).toContain("user");
+    expect(LIBRARY_OWNED_TABLES).toContain("user");
+    expect(READ_ONLY_VIEWS).not.toContain("user");
+    expect(TABLE_COLUMNS.user).toEqual([
+      "id",
+      "name",
+      "email",
+      "emailVerified",
+      "image",
+      "createdAt",
+      "updatedAt",
+    ]);
+  });
+
+  it("mirrors the audit trail V022 created", () => {
+    // Named as well as counted, for the reason `route_revisions` is: nothing about a missing
+    // entry here would surface as a failed *read*. It would surface as a credential
+    // operation that could not record itself, which is the one failure this table exists to
+    // make impossible.
+    expect(TABLE_NAMES).toContain("audit_events");
+    expect(READ_ONLY_VIEWS).not.toContain("audit_events");
+    expect(TABLE_COLUMNS.audit_events).toEqual([
+      "id",
+      "organization_id",
+      "actor_id",
+      "action",
+      "subject_type",
+      "subject_id",
+      "ip",
+      "detail",
+      "occurred_at",
+    ]);
+  });
+
+  it("gives an audit event no updated_at, because an event that can be edited is not one", () => {
+    // The same rule `route_revisions` states, and here the database states it too:
+    // `audit_events_no_update` refuses a revision from any role, the owner included. A mirror
+    // that declared the column would type-check a statement PostgreSQL raises on.
+    expect(TABLE_COLUMNS.audit_events).not.toContain("updated_at");
   });
 
   it("mirrors the revision trail V021 created", () => {

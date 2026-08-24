@@ -1,5 +1,5 @@
-import { Logger } from "@nestjs/common";
-
+import type { AuditRecord } from "../audit/audit.events";
+import { recordingAudit } from "../audit/audit.fixture";
 import { COOKIE } from "../auth/http";
 import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
 import {
@@ -61,7 +61,7 @@ interface Harness {
   aliases: { dependentAliases: jest.Mock };
   stepUp: { satisfied: jest.Mock };
   limiter: RevealLimiter;
-  audited: string[];
+  audited: AuditRecord[];
   /** What the adapter was asked to validate, in order — the config and the credential. */
   validate: jest.SpyInstance<
     Promise<ProviderValidation>,
@@ -98,10 +98,10 @@ function harness(): Harness {
   const stepUp = { satisfied: jest.fn().mockResolvedValue("password") };
   const limiter = new RevealLimiter();
 
-  const audited: string[] = [];
-  jest.spyOn(Logger.prototype, "log").mockImplementation((message: unknown) => {
-    audited.push(String(message));
-  });
+  // The trail, as records rather than log lines: AD.4 (#225) turned the interim sink into
+  // `audit_events`, so what a suite asserts about is now the row that was written.
+  const trail = recordingAudit();
+  const audited = trail.records;
 
   const service = new ProviderConnectionsService(
     connections,
@@ -110,7 +110,7 @@ function harness(): Harness {
     aliases as unknown as RegistryService,
     stepUp as unknown as StepUpService,
     limiter,
-    new ProviderAudit(),
+    new ProviderAudit(trail.service),
   );
 
   return { service, connections, adapter, vault, aliases, stepUp, limiter, audited, validate };
@@ -180,7 +180,7 @@ describe("adding a provider", () => {
       subject.aliases as unknown as RegistryService,
       subject.stepUp as unknown as StepUpService,
       subject.limiter,
-      new ProviderAudit(),
+      new ProviderAudit(recordingAudit().service),
     );
 
     await expect(
@@ -243,7 +243,7 @@ describe("adding a provider", () => {
       subject.aliases as unknown as RegistryService,
       subject.stepUp as unknown as StepUpService,
       subject.limiter,
-      new ProviderAudit(),
+      new ProviderAudit(recordingAudit().service),
     );
 
     await service.add(FIXTURE_WORKSPACE, FIXTURE_ACTOR, {
@@ -276,15 +276,26 @@ describe("adding a provider", () => {
   it("writes one audit event", async () => {
     await add();
 
-    expect(subject.audited.filter((line) => line.startsWith("provider.added"))).toHaveLength(1);
+    expect(subject.audited.filter((event) => event.action === "provider.added")).toHaveLength(1);
+    expect(subject.audited[0].detail).toMatchObject({ kind: "anthropic", outcome: "success" });
   });
 
-  it("writes no audit event when nothing was stored", async () => {
+  it("writes one audit event when nothing was stored, and marks it a refusal", async () => {
+    // AD.4's first criterion covers the failure paths, which is where it parts company with
+    // AD.2: *nobody added a provider* and *somebody tried and the provider refused the key*
+    // are different facts, and only the second is worth an incident. The event names no
+    // connection because nothing was written — see `connection.audit.ts`.
     subject.adapter.willFail("auth");
 
     await expect(add()).rejects.toThrow();
 
-    expect(subject.audited).toHaveLength(0);
+    expect(subject.audited).toHaveLength(1);
+    expect(subject.audited[0]).toMatchObject({ action: "provider.added", subjectId: null });
+    expect(subject.audited[0].detail).toMatchObject({
+      kind: "anthropic",
+      outcome: "failure",
+      reason: "provider_validation_failed",
+    });
   });
 
   it("refuses a kind this build has no adapter for, before anything else", async () => {
@@ -438,18 +449,40 @@ describe("revealing a credential", () => {
 
     await reveal();
 
-    const revealed = subject.audited.filter((line) => line.startsWith("provider.revealed"));
+    const revealed = subject.audited.filter((event) => event.action === "provider.revealed");
     expect(revealed).toHaveLength(1);
-    expect(revealed[0]).toContain("step-up=session");
-    expect(revealed[0]).toContain(`actor=${FIXTURE_USER.id}`);
+    expect(revealed[0].detail).toMatchObject({ step_up: "session", outcome: "success" });
+    expect(revealed[0].actorId).toBe(FIXTURE_USER.id);
   });
 
-  it("writes no audit event when the step-up refused", async () => {
+  it("writes one audit event when the step-up refused, which is the reveal worth reading", async () => {
+    // *Somebody could not prove they were who they said and asked for this key anyway* is
+    // the single most interesting row this trail can hold, and AD.2 did not record it.
     subject.stepUp.satisfied.mockResolvedValue(null);
 
     await expect(reveal()).rejects.toThrow();
 
-    expect(subject.audited).toHaveLength(0);
+    expect(subject.audited).toHaveLength(1);
+    expect(subject.audited[0]).toMatchObject({
+      action: "provider.revealed",
+      subjectId: FIXTURE_CONNECTION,
+      actorId: FIXTURE_USER.id,
+    });
+    expect(subject.audited[0].detail).toMatchObject({
+      outcome: "failure",
+      reason: "step_up_required",
+    });
+  });
+
+  it("names no provider on a refusal that happened before the row was read", async () => {
+    // The limiter runs first, on purpose — see the service's header. A refusal there
+    // genuinely does not know which provider was being asked for, and a guess would be worse
+    // than the honest absence.
+    subject.stepUp.satisfied.mockResolvedValue(null);
+
+    await expect(reveal()).rejects.toThrow();
+
+    expect(subject.audited[0].detail?.kind).toBeUndefined();
   });
 });
 
@@ -541,7 +574,7 @@ describe("rotating a credential", () => {
       subject.aliases as unknown as RegistryService,
       subject.stepUp as unknown as StepUpService,
       subject.limiter,
-      new ProviderAudit(),
+      new ProviderAudit(recordingAudit().service),
     );
 
     await expect(
@@ -560,13 +593,24 @@ describe("rotating a credential", () => {
     expect(seen).toBeNull();
   });
 
-  it("writes one audit event, and none on a refusal", async () => {
+  it("writes one audit event, and one more on a refusal", async () => {
+    // *A failed rotation is still an event* — AD.4's criterion, named in that issue's own
+    // words. Both rows carry `provider.rotated`; `outcome` is what tells them apart, so no
+    // tenth name enters the vocabulary from outside it.
     await rotate();
-    expect(subject.audited.filter((line) => line.startsWith("provider.rotated"))).toHaveLength(1);
+    expect(subject.audited).toHaveLength(1);
+    expect(subject.audited[0].detail).toMatchObject({ outcome: "success" });
 
     subject.adapter.willFail("auth");
     await expect(rotate()).rejects.toThrow();
-    expect(subject.audited.filter((line) => line.startsWith("provider.rotated"))).toHaveLength(1);
+
+    const rotations = subject.audited.filter((event) => event.action === "provider.rotated");
+    expect(rotations).toHaveLength(2);
+    expect(rotations[1].detail).toMatchObject({
+      kind: "anthropic",
+      outcome: "failure",
+      reason: "provider_validation_failed",
+    });
   });
 });
 
@@ -680,9 +724,27 @@ describe("editing a connection", () => {
   it("records which settings an edit wrote", async () => {
     await update({ enabled: false, monthlyCapCents: 100 });
 
-    const updated = subject.audited.filter((line) => line.startsWith("provider.updated"));
+    const updated = subject.audited.filter((event) => event.action === "provider.updated");
     expect(updated).toHaveLength(1);
-    expect(updated[0]).toContain("fields=enabled,monthlyCapCents");
+    expect(updated[0].detail).toMatchObject({ fields: "enabled,monthlyCapCents" });
+  });
+
+  it("names the switch when the switch is all that moved", async () => {
+    // AD.4's vocabulary singles out the two settings mockup 07 draws as affordances of their
+    // own, and a trail that said *updated* where somebody saw themselves press a switch would
+    // be describing the request instead of the act.
+    await update({ enabled: false });
+
+    expect(subject.audited).toHaveLength(1);
+    expect(subject.audited[0].action).toBe("provider.disabled");
+  });
+
+  it("names the cap when the cap is all that moved, and says where it moved from", async () => {
+    await update({ monthlyCapCents: 100 });
+
+    expect(subject.audited).toHaveLength(1);
+    expect(subject.audited[0].action).toBe("provider.cap_changed");
+    expect(subject.audited[0].detail).toMatchObject({ to_cap_cents: 100 });
   });
 });
 
@@ -705,7 +767,7 @@ describe("removing a connection", () => {
     await expect(remove()).resolves.toBeUndefined();
 
     expect(subject.connections.remove).toHaveBeenCalledWith(FIXTURE_WORKSPACE, FIXTURE_CONNECTION);
-    expect(subject.audited.filter((line) => line.startsWith("provider.deleted"))).toHaveLength(1);
+    expect(subject.audited.filter((event) => event.action === "provider.deleted")).toHaveLength(1);
   });
 
   it("refuses while aliases resolve on it, and names them", async () => {
