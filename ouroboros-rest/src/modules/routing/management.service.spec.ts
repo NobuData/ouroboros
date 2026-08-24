@@ -20,7 +20,39 @@ import {
   RULE_TARGETS_CONSTRAINT,
   UNIQUE_VIOLATION,
 } from "./routing.errors";
+import type { RouteStatsResource, RoutingSpendResource } from "./resources";
 import type { RoutingRepository } from "./routing.repository";
+import type { RoutingStatsService } from "./stats.service";
+
+/** What Z.5 measured for `implement` — carried onto the route unchanged, never recomputed. */
+const MEASURED: RouteStatsResource = {
+  costCentsPerRunAvg: 87,
+  latencyP50Ms: 41_000,
+  pricedCalls: 15,
+  unpricedCalls: 0,
+  timedCalls: 15,
+};
+
+/**
+ * The spend card a workspace with no ledger rows gets — every zero-state, and a **null** share.
+ *
+ * Deliberately not a fixture with figures in it: this suite's subject is the orchestration, and
+ * `stats.spec.ts` is where the arithmetic is asserted. What matters here is that the matrix
+ * carries whatever the stats service answered, unmodified.
+ */
+const EMPTY_SPEND: RoutingSpendResource = {
+  window: {
+    days: 30,
+    since: "2026-07-24T09:58:12.004Z",
+    until: "2026-08-23T09:58:12.004Z",
+  },
+  providers: [],
+  totalSpendCents: null,
+  tokens: 0,
+  localTokens: 0,
+  localTokenShare: null,
+  unpricedCalls: 0,
+};
 
 /**
  * The orchestration — what the statements and the pure functions cannot say between them.
@@ -113,6 +145,7 @@ describe("the routing management service", () => {
   let database: jest.Mocked<DatabaseService>;
   let routing: jest.Mocked<RoutingRepository>;
   let management: jest.Mocked<RoutingManagementRepository>;
+  let stats: jest.Mocked<RoutingStatsService>;
   let service: RoutingManagementService;
   let entered: number;
 
@@ -150,7 +183,11 @@ describe("the routing management service", () => {
       deleteRule: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<RoutingManagementRepository>;
 
-    service = new RoutingManagementService(database, routing, management);
+    stats = {
+      read: jest.fn().mockResolvedValue({ byTaskKind: new Map(), spend: EMPTY_SPEND }),
+    } as unknown as jest.Mocked<RoutingStatsService>;
+
+    service = new RoutingManagementService(database, routing, management, stats);
   });
 
   describe("the matrix read", () => {
@@ -160,6 +197,41 @@ describe("the routing management service", () => {
       expect(matrix.taskKinds.map((kind) => kind.name)).toEqual(["implement", "docs"]);
       expect(matrix.taskKinds[0].route?.hops).toHaveLength(2);
       expect(matrix.taskKinds[1].route).toBeNull();
+    });
+
+    it("carries the spend card in the same payload, measured once for the whole page", async () => {
+      // The matrix's `$/run avg` and this card's totals are aggregates over the same ledger
+      // rows. Fetched apart they would be aggregates over those rows *at two instants*, which
+      // is a page that can show a call in one figure and not the other.
+      const matrix = await service.matrix(WORKSPACE);
+
+      expect(matrix.spend).toBe(EMPTY_SPEND);
+      expect(stats.read).toHaveBeenCalledTimes(1);
+      expect(stats.read).toHaveBeenCalledWith(WORKSPACE);
+    });
+
+    it("hands each route what the window measured for its kind, and em-dashes for the rest", async () => {
+      stats.read.mockResolvedValue({
+        byTaskKind: new Map([["implement", MEASURED]]),
+        spend: EMPTY_SPEND,
+      });
+
+      const matrix = await service.matrix(WORKSPACE);
+
+      expect(matrix.taskKinds[0].route?.stats).toEqual(MEASURED);
+      // `docs` has no route in this fixture, so the em-dash it renders is the missing route's;
+      // what is asserted below is the other absence — a kind with a route and no measurements.
+      stats.read.mockResolvedValue({ byTaskKind: new Map(), spend: EMPTY_SPEND });
+
+      const unmeasured = await service.matrix(WORKSPACE);
+
+      expect(unmeasured.taskKinds[0].route?.stats).toEqual({
+        costCentsPerRunAvg: null,
+        latencyP50Ms: null,
+        pricedCalls: 0,
+        unpricedCalls: 0,
+        timedCalls: 0,
+      });
     });
 
     it("carries the rules card beside the matrix, in one request", async () => {
@@ -177,7 +249,14 @@ describe("the routing management service", () => {
       management.chains.mockResolvedValue([]);
       management.rules.mockResolvedValue([]);
 
-      await expect(service.matrix(WORKSPACE)).resolves.toEqual({ taskKinds: [], rules: [] });
+      // The spend card is present and in its zero-state rather than absent: a workspace with
+      // no foundations still has a card to draw, and `localTokenShare: null` is what it says —
+      // *nothing ran*, not *nothing ran locally*.
+      await expect(service.matrix(WORKSPACE)).resolves.toEqual({
+        taskKinds: [],
+        rules: [],
+        spend: EMPTY_SPEND,
+      });
     });
   });
 

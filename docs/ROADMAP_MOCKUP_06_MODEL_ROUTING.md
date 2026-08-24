@@ -685,7 +685,7 @@ ci/db: migrate ─▶ constraints (+Y probes) ─▶ ✓/✗
 | Z.2 | #195 | 🟢 Done | ouroboros-rest: [Z.2] Routing management API | Matrix read, chain reorder, policy save, rules CRUD, versioned saves | mvp, routing, rest | N (after Y.3, BA-C.3) | Y | M | ouroboros-rest |
 | Z.3 | #196 | 🟢 Done | ouroboros-rest: [Z.3] Provider health service (passive-first) | Local reachability + key validation + `unknown`; strip payload | mvp, routing, rest | N (after Y.1) | Y | M | ouroboros-rest |
 | Z.4 | #197 | 🟢 Done | ouroboros-rest: [Z.4] Simulate endpoint & consumer contract | `/routing/simulate` shipped; the two consumer amendments wait on #106 and #145 | mvp, routing, rest, engine | N (after Z.1) | Y | M | ouroboros-rest |
-| Z.5 | #198 | 🟡 Open | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
+| Z.5 | #198 | 🟢 Done | ouroboros-rest: [Z.5] Route stats & spend aggregation | $/run avg, p50, 30d spend by provider, local-token share | mvp, routing, rest | N (after Y.4, DASH-F.3) | Y | M | ouroboros-rest |
 | Z.6 | #199 | 🟡 Open | ouroboros-rest: [Z.6] Routing integration tests | Resolution matrices, save/reorder, rules, stats, isolation | mvp, routing, rest, ci | N (after Z.1–Z.5) | Y | M | ouroboros-rest |
 
 ### Issue Z.1 — ouroboros-rest: [Z.1] Resolution engine (`resolve` + explanations)
@@ -1099,8 +1099,77 @@ consumers: estimator (INTAKE-L.2) · WF catalog kinds · DSL route.task validati
 
 ### Issue Z.5 — ouroboros-rest: [Z.5] Route stats & spend aggregation
 
-> **GitHub issue:** #198 · **Status:** 🟡 Open · **Parent epic:** #186
+> **GitHub issue:** #198 · **Status:** 🟢 Done · **Parent epic:** #186
 
+> **Shipped 2026-08-24.**
+> [`ouroboros-rest/src/modules/routing/stats.window.ts`](../ouroboros-rest/src/modules/routing/stats.window.ts),
+> [`stats.repository.ts`](../ouroboros-rest/src/modules/routing/stats.repository.ts),
+> [`stats.ts`](../ouroboros-rest/src/modules/routing/stats.ts),
+> [`stats.cache.ts`](../ouroboros-rest/src/modules/routing/stats.cache.ts) and
+> [`stats.service.ts`](../ouroboros-rest/src/modules/routing/stats.service.ts), with
+> `GET /api/v1/routing/spend`, a `spend` member on the matrix payload and three new schemas in
+> [`ouroboros-rest/openapi.yaml`](../ouroboros-rest/openapi.yaml) (0.30.8 → 0.30.9, an
+> addition). **No migration**: V020 (#192) already carried `task_kind` and `latency_ms`, and
+> this ticket is the read that migration was written for — its header states both aggregates
+> verbatim, and `stats.repository.ts` issues them unchanged.
+>
+> **Two statements and one boundary, which is the whole of why the four figures agree.** The
+> matrix's `$/run avg`, its `p50 latency`, the spend meters and the local-token share are four
+> claims about one thirty days, so `stats.window.ts` computes that window **once per read** from
+> one `now` and hands it to both statements as a parameter. `now()` written into the SQL would
+> have let two aggregates measure two nearly-identical spans, putting a call on the boundary
+> inside one figure and outside the next — an inconsistency nothing downstream could detect.
+> It is also the acceptance criterion *"window arithmetic is relative to `now()`"*: *30d* is
+> `now − 30 × 24h`, not the calendar month, so the card reads the same way on the 1st as on the
+> 28th.
+>
+> **`0` and `null` are kept apart structurally, not by a convention.** `sum` and `avg` skip
+> nulls rather than propagate them, which is what makes the ledger's two populations separable
+> in one pass: a provider whose calls were **priced at nothing** sums to `0.0000`, and one whose
+> calls are **unpriced** sums to null. Nothing in the statements is `coalesce`d —
+> `stats.repository.spec.ts` asserts the absence over both, because a `coalesce(sum(…), 0)` is
+> the single edit that would turn every unknown on this page into a fabricated `$0.00` and it is
+> the kind of edit that looks like a tidy-up. Three counts travel beside every figure
+> (`pricedCalls`, `unpricedCalls`, `timedCalls`) so a `0` can be believed: an average of zero
+> over fifteen priced calls is money, and an absent average over fifteen unpriced ones is an
+> unknown, and neither is inferable from the figure alone.
+>
+> **The local row carries both states at once, which is the criterion made visible.** vLLM and
+> Ollama are folded into the mockup's one *Local (vLLM + Ollama)* line — server-side, because the
+> meters are widths relative to the largest row and a client that merged afterwards would be
+> rescaling numbers it had already been given. The seeded workspace's local row is `$0.00` from
+> 260 calls priced at nothing **and** five calls nobody has priced, side by side in one payload.
+>
+> **What the seeds actually produce, and where the mockup does not close.** Against Y.4's ledger
+> the eight per-kind pairs land exactly — `$0.87` / 41.0s for `implement`, down to `$0.00` /
+> 0.8s for `commit-msg` — as do Anthropic's `$412.80`, the local `$0.00` and the footnote's
+> **31%**, with no rounding. Copilot reads `$76.00` and Cursor `$64.10` rather than the card's
+> `$96.40` and `$54.10`, which is #192's own finding restated: a thirty-day window contains the
+> calendar month it is asked to be smaller than, so mockup 06's two figures are unreachable from
+> any ledger that also satisfies mockup 07's. **The design should be amended to the reachable
+> reading before AA.5 (#204) or AA.7 (#206) writes a parity assertion against either.**
+>
+> **The cache is thirty seconds, and the number is argued rather than picked.** `ouroboros-ui`'s
+> `DEFAULT_POLL_SECONDS` is fifteen, so a TTL at the poll interval would re-aggregate on
+> essentially every poll — the criterion's second half failed by a hair — and a TTL of minutes
+> would hide a run that has just finished. Twice the poll interval is the smallest number that
+> satisfies both, and `stats.cache.spec.ts` asserts the bound with fake timers rather than
+> claiming it in a comment. A cached snapshot keeps the `until` it was measured at: refreshing
+> that label on the way out would make a stale answer claim to be fresh.
+>
+> **One reading the ticket left open, settled here.** *"$/run"* is the average cost of one
+> **routed call** of that kind, not a sum grouped by run — because the ledger's grain is the
+> call and Y.4 leaves `run_id` null throughout, for the reason its own header gives: a `runs` row
+> is a *loop* and a task kind is a step inside one, so inventing a mapping from 370 synthetic
+> calls onto 53 loops would be a fixture nothing renders. V020's header states `avg(cost_cents)`
+> as the read its columns exist for, and that is the read.
+>
+> **`isLocalProvider` widened from `ProviderConnectionKind` to `string`**, which is the one
+> change outside the new files. `token_usage.provider` is plain text with no reference to V015's
+> column — decision **F8**, so retiring a connection cannot rewrite the ledger that recorded
+> spending through it — so a kind that column no longer admits is a real value here. The honest
+> answer for it is the one `locality.ts` already argues for `custom`: not local, because *we do
+> not know what this is* must not promise the network is unnecessary.
 
 - **Problem Statement:** $/run avg, p50 latency, the spend card, and the
   local-token share must be computed from usage truth (decision M7).
@@ -1113,7 +1182,9 @@ consumers: estimator (INTAKE-L.2) · WF catalog kinds · DSL route.task validati
   endpoint for the AB.4 report later.
 - **Acceptance Criteria:** Seeded numbers reproduce the mockup figures; empty
   org → em-dashes and zero-states, never `$0.00` for unpriced; p50 absent
-  where timings don't exist.
+  where timings don't exist. *Met, with two figures reproducing the seed
+  rather than the card — see the shipped note above, and #192's header for
+  why no ledger can produce mockup 06's `$96.40` and `$54.10`.*
 - **Parallelism/Dependencies:** Needs Y.4, DASH-F.3. Feeds AA.2, AA.5.
 - **Technical Stack:** NestJS, Kysely (filtered aggregates).
 - **Epic:** Z
@@ -1797,3 +1868,33 @@ stay open and now say what they wait on.
 
 Next in epic Z is **#198** ([Z.5] the stats), and AA.4 (#203) — the inspector and simulate panel —
 now has the endpoint it renders, sentences included, with no story assembly left for the client.
+
+**#198** ([Z.5] the stats) has landed and **epic Z's service half is complete** — only Z.6 (#199),
+its integration suite, is left. Decision **M7** is now arithmetic rather than an intention: the
+matrix's `$/run avg` and `p50 latency`, the **Spend by provider · 30d** meters and the *"Local
+models served 31% of all tokens"* footnote are four aggregates over `token_usage`, measured
+against **one** thirty-day boundary computed per read — because they are four claims about the
+same days, and two statements each asking the database for `now()` would eventually put a call on
+the boundary inside one figure and outside the next. It carried no migration: V020 had already
+added `task_kind` and `latency_ms` for exactly this, and its header states both aggregates
+verbatim.
+
+**The honesty rule is enforced by the shape of the answer rather than by care.** `sum` and `avg`
+skip nulls, so a provider priced at nothing sums to `0` and one nobody has priced sums to null —
+and nothing anywhere in the two statements is `coalesce`d, which the repository's own spec
+asserts, because `coalesce(sum(…), 0)` is the single edit that turns every unknown on this page
+into a plausible `$0.00`. Three counts ride beside every figure so a zero can be believed. The
+seeded local row is the criterion made visible: `$0.00` from 260 calls priced at nothing, beside
+five calls nobody has priced, in one row of one payload.
+
+**Two of the card's figures are the mockup's problem and not the ledger's, and it is worth
+settling before AA.5 (#204) draws them.** Anthropic's `$412.80`, the local `$0.00` and the 31%
+share reproduce exactly. Copilot reads `$76.00` and Cursor `$64.10`, because a thirty-day window
+contains the calendar month it is asked to be smaller than — #192 found this and said so, and
+this ticket confirms it against the running aggregate. **The design should be amended to the
+reachable reading**; AA.7 (#206) must not write a parity assertion against `$96.40`.
+
+Next in epic Z is **#199** ([Z.6] the integration suite), which now has all five services to
+exercise — and AA.2 (#201) and AA.5 (#204) have the numbers they were blocked on: the matrix's two
+columns are no longer em-dashes by construction, and the spend card arrives in the same payload
+rather than behind a second request.

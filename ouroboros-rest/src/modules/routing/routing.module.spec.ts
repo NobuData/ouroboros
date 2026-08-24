@@ -8,6 +8,9 @@ import { ResolutionService } from "./resolution.service";
 import { RoutingController } from "./routing.controller";
 import { RoutingModule } from "./routing.module";
 import { RoutingRepository } from "./routing.repository";
+import { RoutingStatsCache } from "./stats.cache";
+import { RoutingStatsRepository } from "./stats.repository";
+import { RoutingStatsService } from "./stats.service";
 import { SimulateController } from "./simulate.controller";
 
 /**
@@ -33,6 +36,9 @@ describe("the routing module", () => {
     expect(moduleRef.get(RoutingRepository)).toBeInstanceOf(RoutingRepository);
     expect(moduleRef.get(RoutingManagementService)).toBeInstanceOf(RoutingManagementService);
     expect(moduleRef.get(RoutingManagementRepository)).toBeInstanceOf(RoutingManagementRepository);
+    expect(moduleRef.get(RoutingStatsService)).toBeInstanceOf(RoutingStatsService);
+    expect(moduleRef.get(RoutingStatsRepository)).toBeInstanceOf(RoutingStatsRepository);
+    expect(moduleRef.get(RoutingStatsCache)).toBeInstanceOf(RoutingStatsCache);
     expect(moduleRef.get(RoutingController)).toBeInstanceOf(RoutingController);
     expect(moduleRef.get(SimulateController)).toBeInstanceOf(SimulateController);
 
@@ -43,7 +49,9 @@ describe("the routing module", () => {
     // Both repositories stay private: a consumer reaching past the service would be a consumer
     // holding rows instead of a resolution, and rows carry no explanations. The management
     // service stays private for the sharper version of the same reason — it writes, and a
-    // module that could inject it could edit another surface's routes.
+    // module that could inject it could edit another surface's routes. The stats service stays
+    // private too: AB.4 (#210) is a UI surface and reads `GET /routing/spend` like any other
+    // client, so exporting it would only create a second way into the same numbers.
     const exports = Reflect.getMetadata("exports", RoutingModule) as unknown[] | undefined;
 
     expect(exports).toEqual([ResolutionService]);

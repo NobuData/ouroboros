@@ -967,10 +967,17 @@ export interface paths {
          *     ahead of its key is a first-class row in the model registry, and a chain that lost a hop
          *     that way would arrive shorter than the operator configured it.
          *
-         *     **`stats` is two nulls until spend attribution lands**
+         *     **`stats` is measured, or it is two nulls**
          *     ([#198](https://github.com/NobuData/ouroboros/issues/198)). Roadmap decision **M7**: a
          *     figure the product cannot compute is a figure it does not print, and `0` is not
-         *     *unknown* — it is a number. Render the em-dash.
+         *     *unknown* — it is a number. A kind nothing has been spent on renders the em-dash.
+         *
+         *     **`spend` is the card under the matrix**, in this payload rather than behind a second
+         *     request. The matrix's `$/run avg` and the card's totals are aggregates over the same
+         *     ledger rows over the same thirty days; fetched apart they would be aggregates over
+         *     those rows *at two instants*, which is a page that can show a call in one figure and
+         *     not the other. `GET /api/v1/routing/spend` serves the identical object for a client
+         *     that wants the card alone.
          *
          *     **Any member may read it**, viewers included.
          *
@@ -1016,6 +1023,52 @@ export interface paths {
          *     **Any member may read it.**
          */
         get: operations["listRoutingAliases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/routing/spend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Spend by provider over the trailing thirty days, and the local-token share
+         * @description Mockup 06's **Spend by provider · 30d** card, on its own
+         *     ([#198](https://github.com/NobuData/ouroboros/issues/198)) — the metered rows, the
+         *     *"Local models served 31% of all tokens"* footnote, and the window all of it was
+         *     measured over.
+         *
+         *     **The identical object `GET /api/v1/routing` carries under `spend`**, from the same
+         *     computation and the same short-TTL cache. It is published separately for a surface that
+         *     wants the card without the matrix — the full spend report
+         *     ([#210](https://github.com/NobuData/ouroboros/issues/210)) — because a report that
+         *     re-aggregated the ledger for itself would be a second opinion about one invoice.
+         *
+         *     **Every figure is an aggregate, and nothing is coalesced.** Roadmap decision **M7**:
+         *     `$/run`, p50 and spend are computed from the token-spend ledger, and a figure the
+         *     product cannot compute is one it does not print. A provider whose calls nobody has
+         *     priced answers `spendCents: null` and renders as **unpriced**; a provider whose calls
+         *     were priced at nothing answers `spendCents: 0` and renders `$0.00`. Those are different
+         *     facts and the payload never merges them.
+         *
+         *     **The window is rolling.** *30d* is `now − 30 × 24h`, not the calendar month, so the
+         *     card reads the same way on the 1st as on the 28th. It is served with the figures.
+         *
+         *     **Any member may read it**, viewers included: what a workspace spends on models is
+         *     something everybody in it may look at.
+         *
+         *     **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+         *     path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+         *     checked before the operation runs. No other workspace's usage can reach a total here.
+         */
+        get: operations["readRoutingSpend"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1197,6 +1250,71 @@ export interface paths {
          *     **`owner` or `admin`.**
          */
         patch: operations["changeEscalationRule"];
+        trace?: never;
+    };
+    "/api/v1/routing/simulate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Simulate routing — resolve a task kind against a context, and say why
+         * @description Mockup 06's **Simulate routing**
+         *     ([#197](https://github.com/NobuData/ouroboros/issues/197)) — ask what would run, and be
+         *     told what would run *and why*.
+         *
+         *     **This is the resolution function, not a preview of it.** The endpoint calls the same
+         *     `ResolutionService` an execution bridge will call, and returns what it answered
+         *     unchanged. That is the whole point of the operation: a simulator that re-implemented
+         *     routing would be a second answer to *which model runs this*, and the two would disagree
+         *     the first time either was edited. What the panel shows is what execution does.
+         *
+         *     **`ctx` is what is known about the work, and nothing else can be known.** An escalation
+         *     rule's predicate is closed over three conditions — `effort_gte`, `label`, `diff_kind` —
+         *     so a context carrying a fourth fact would be carrying something no rule could ever read,
+         *     and it is refused rather than ignored. `repo` is accepted and read by nothing yet;
+         *     per-repository overrides are
+         *     [#211](https://github.com/NobuData/ouroboros/issues/211).
+         *
+         *     **An absent fact is *unknown*, never *small*.** A context with no `effort` has not told
+         *     this service the work is tiny; it has told it nothing, and a rule reading `effort_gte:
+         *     "l"` does not fire on it. Simulating with no `ctx` at all is a legitimate question — it
+         *     is what `route.task("docs")` looks like before anything has been sized — and it means
+         *     *no escalation rule fires*.
+         *
+         *     **`fail_run` is a `200`.** Every provider down, a chain filtered to nothing, the floor
+         *     breached: those are *answers*, carrying an `outcome`, a `failure.code` and a sentence,
+         *     because the caller asked a well-formed question about a route that exists and is
+         *     entitled to know what the route did. The only `4xx` this operation has of its own is
+         *     `404 route_not_found`, for the one case with no chain to explain.
+         *
+         *     **Dropped hops stay in the chain.** The array is every hop in the order the executor
+         *     would try them, each `kept` or `dropped` with a stable `code` and a sentence — because
+         *     the inspector draws hop 2 struck through with a reason beside it, and it can only do
+         *     that if the hop is still there. The chain an executor walks is the `kept` ones, and that
+         *     filter is deliberately the client's.
+         *
+         *     **Sentences are rendered verbatim.** Every `explanation` is composed server-side, once,
+         *     so the inspector and this panel cannot print two different accounts of one decision.
+         *     Branch on `code`, which is stable; never on wording, which improves.
+         *
+         *     **`POST` for a read.** Nothing is created — hence `200` — but a context is a nested
+         *     document with an array in it, and `?ctx[labels][]=security` is a shape every client
+         *     library spells differently.
+         *
+         *     **Any member may simulate**, viewers included: looking at which model would answer a
+         *     piece of work changes nothing. **The workspace is the session's**, as everywhere in
+         *     `/api/v1` — there is no workspace in this path and none in the body.
+         */
+        post: operations["simulateRouting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/routing/providers": {
@@ -3778,23 +3896,202 @@ export interface components {
          * RouteStats
          * @description The matrix's two numeric columns, or nulls where nothing has been measured.
          *
-         *     Both are computed from the token-spend ledger by
-         *     [#198](https://github.com/NobuData/ouroboros/issues/198). Until that lands they are
-         *     null — and null is the answer roadmap decision **M7** requires: a workspace that has
-         *     run nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
+         *     Both are computed from the token-spend ledger over the trailing thirty days
+         *     ([#198](https://github.com/NobuData/ouroboros/issues/198)) — never stored on a route.
+         *     A null is the answer roadmap decision **M7** requires: a workspace that has run
+         *     nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
          *     Render the em-dash.
+         *
+         *     **The three counts are why a `0` here can be believed.** `costCentsPerRunAvg: 0` with
+         *     `pricedCalls: 15` is fifteen calls that really did cost nothing — a `docs` pass on a
+         *     local model. `costCentsPerRunAvg: null` with `unpricedCalls: 15` is fifteen calls
+         *     nobody has priced. Those are different facts about the same money, and only one of
+         *     them is an em-dash. A non-zero `unpricedCalls` also means the average is over *part*
+         *     of this kind's work.
          */
         RouteStats: {
             /**
              * @description The row's `$/run avg`, in cents, or null when nothing priced has been attributed to this kind.
-             * @example null
+             * @example 87
              */
             costCentsPerRunAvg: number | null;
             /**
              * @description The row's `p50 latency`, in milliseconds, or null when nothing timed a call for this kind.
-             * @example null
+             * @example 41000
              */
             latencyP50Ms: number | null;
+            /**
+             * @description How many calls of this kind carried a price — what `costCentsPerRunAvg` averages.
+             * @example 15
+             */
+            pricedCalls: number;
+            /**
+             * @description How many carried none. Surfaced rather than rounded away; non-zero means the
+             *     average above is a figure over part of this kind's work.
+             * @example 0
+             */
+            unpricedCalls: number;
+            /**
+             * @description How many were timed — the size of the sample `latencyP50Ms` is the median of.
+             * @example 15
+             */
+            timedCalls: number;
+        };
+        /**
+         * StatsWindow
+         * @description The span every figure on the routing page was measured over
+         *     ([#198](https://github.com/NobuData/ouroboros/issues/198)).
+         *
+         *     A **rolling duration** subtracted from the request instant, never a calendar month:
+         *     *30d* means `now − 30 × 24h`, which needs no timezone to be well defined and is immune
+         *     to daylight saving by construction. One window is computed per read and handed to
+         *     every aggregate, so the matrix's averages and the spend card's totals are over the
+         *     same population.
+         *
+         *     `until` is the instant the aggregation ran at, which a short-TTL cached answer
+         *     preserves rather than refreshes — a stale answer that claimed to be fresh would be the
+         *     one thing a cache must never add.
+         */
+        StatsWindow: {
+            /**
+             * @description How many days wide the window is.
+             * @example 30
+             */
+            days: number;
+            /**
+             * Format: date-time
+             * @description The oldest instant a counted call occurred at. Inclusive.
+             * @example 2026-07-24T09:58:12.004Z
+             */
+            since: string;
+            /**
+             * Format: date-time
+             * @description When the figures were measured.
+             * @example 2026-08-23T09:58:12.004Z
+             */
+            until: string;
+        };
+        /**
+         * ProviderSpend
+         * @description One metered row of the **Spend by provider · 30d** card
+         *     ([#198](https://github.com/NobuData/ouroboros/issues/198)).
+         *
+         *     A row is a provider *kind* as the ledger records one, except for the local row, which
+         *     is the mockup's *Local (vLLM + Ollama)*: `ollama` and `openai_compatible` are summed
+         *     into one line because the meters are widths relative to the largest row — a client
+         *     that merged afterwards would be rescaling numbers it had already been given — and the
+         *     card's footnote is a fraction of exactly this row's tokens.
+         *
+         *     **`spendCents: 0` and `spendCents: null` are the two states this card exists to keep
+         *     apart.** Zero is a total over calls that were **priced, at nothing** — a local model on
+         *     hardware the workspace already owns — and is the mockup's `$0.00`. Null is *nobody
+         *     priced these calls*, which renders as **unpriced** and never as a figure. A row can
+         *     carry both facts at once: `spendCents: 0` with a non-zero `unpricedCalls` is a local
+         *     provider whose routed calls cost nothing and whose earlier calls nobody has priced.
+         */
+        ProviderSpend: {
+            /**
+             * @description The row's identity, stable across reads — the kinds it sums, joined by `+`.
+             *     Derived rather than reserved, so no provider a workspace records can collide with
+             *     the local row's name.
+             * @example ollama+openai_compatible
+             */
+            key: string;
+            /**
+             * @description The `token_usage.provider` values summed into this row.
+             * @example [
+             *       "ollama",
+             *       "openai_compatible"
+             *     ]
+             */
+            kinds: string[];
+            /**
+             * @description Whether this is the local row — a provider reachable without a credential, which
+             *     is the same list the worker lease policy draws.
+             * @example true
+             */
+            local: boolean;
+            /**
+             * @description The window's spend on this provider in cents, or null when none of its calls are
+             *     priced. `41280` is `$412.80`.
+             * @example 0
+             */
+            spendCents: number | null;
+            /**
+             * @description The meter's width, 0–1, relative to the largest `spendCents` on the card — or null
+             *     when this row has nothing priced to draw. Served rather than left to the client
+             *     because *relative to the maximum* is a property of the whole card. `0` is the
+             *     honest width of a row that really did cost nothing; a visible minimum sliver is
+             *     the stylesheet's.
+             * @example 0
+             */
+            meterFraction: number | null;
+            /**
+             * @description `tokens_in + tokens_out` over the window.
+             * @example 21700000
+             */
+            tokens: number;
+            /**
+             * @description How many of this provider's calls carried a price.
+             * @example 260
+             */
+            pricedCalls: number;
+            /**
+             * @description How many did not. Non-zero makes `spendCents` a lower bound.
+             * @example 5
+             */
+            unpricedCalls: number;
+        };
+        /**
+         * RoutingSpend
+         * @description The **Spend by provider · 30d** card, its footnote, and the window all of it was
+         *     measured over ([#198](https://github.com/NobuData/ouroboros/issues/198)).
+         *
+         *     Served both inside `RoutingMatrix` — because the card and the matrix are one screen —
+         *     and on its own at `GET /api/v1/routing/spend`. One computation and one shape, so the
+         *     card and a report built on it cannot come to differ about an invoice.
+         *
+         *     Every figure is an aggregate over the token-spend ledger (roadmap decision **M7**), and
+         *     nothing here is coalesced: a workspace that has spent nothing answers with an empty
+         *     `providers`, a null total and a **null** share, never `$0.00`.
+         */
+        RoutingSpend: {
+            window: components["schemas"]["StatsWindow"];
+            /**
+             * @description The card's metered rows, largest spend first, the local kinds folded into one. A
+             *     provider with no usage in the window is **absent** rather than a row of zeros;
+             *     empty is the card's zero-state.
+             */
+            providers: components["schemas"]["ProviderSpend"][];
+            /**
+             * @description Every row's priced spend added together, in cents, or null when nothing at all is
+             *     priced. A lower bound whenever `unpricedCalls` is non-zero.
+             * @example 55290
+             */
+            totalSpendCents: number | null;
+            /**
+             * @description Every token the workspace spent in the window — the footnote's denominator.
+             * @example 70000000
+             */
+            tokens: number;
+            /**
+             * @description How many of them a local provider served — the footnote's numerator.
+             * @example 21700000
+             */
+            localTokens: number;
+            /**
+             * @description The footnote — *"Local models served 31% of all tokens"* — as a fraction between 0
+             *     and 1. **Null when the window holds no tokens at all**, and `0` when it holds
+             *     tokens and none of them are local: *nothing ran* and *nothing ran locally* are
+             *     different sentences, and only the first is an em-dash.
+             * @example 0.31
+             */
+            localTokenShare: number | null;
+            /**
+             * @description Calls in the window with no price, across every provider.
+             * @example 5
+             */
+            unpricedCalls: number;
         };
         /**
          * Route
@@ -3976,8 +4273,11 @@ export interface components {
         };
         /**
          * RoutingMatrix
-         * @description The routing page's read: the matrix and the rules card, in one payload because they are
-         *     one screen.
+         * @description The routing page's read: the matrix, the rules card and the spend card, in one payload
+         *     because they are one screen — and, since
+         *     [#198](https://github.com/NobuData/ouroboros/issues/198), because the matrix's numerics
+         *     and the spend card's totals are aggregates over the same ledger rows over the same
+         *     thirty days.
          */
         RoutingMatrix: {
             /**
@@ -3987,6 +4287,11 @@ export interface components {
             taskKinds: components["schemas"]["RoutingTaskKind"][];
             /** @description Every escalation rule, enabled and disabled alike, in evaluation order. */
             rules: components["schemas"]["EscalationRule"][];
+            /**
+             * @description The **Spend by provider · 30d** card, over the same window the matrix's numerics
+             *     are. Identical to what `GET /api/v1/routing/spend` answers with.
+             */
+            spend: components["schemas"]["RoutingSpend"];
         };
         /**
          * RoutingAlias
@@ -4019,6 +4324,391 @@ export interface components {
         RoutingAliasList: {
             /** @description Every alias in the workspace, ordered by name, unbound ones included. */
             aliases: components["schemas"]["RoutingAlias"][];
+        };
+        /**
+         * RoutingSimulationContext
+         * @description What is known about the work a route is being simulated for — the `ctx` of
+         *     `resolve(taskKind, ctx)`.
+         *
+         *     **Everything an escalation rule can ask about is here, and nothing else is.** The
+         *     predicate grammar is closed over `effort_gte`, `label` and `diff_kind`, so a fourth fact
+         *     would be one no rule could ever read; a property this schema does not declare is a `422`
+         *     rather than a value quietly discarded.
+         *
+         *     **Every field is optional, and absence is a real answer.** An unstated fact never
+         *     satisfies a condition about it: a rule reading `effort_gte: "l"` against a context with
+         *     no effort has not learned the work is small, it has learned nothing. `null` is refused —
+         *     it is a client saying something a context cannot mean.
+         */
+        RoutingSimulationContext: {
+            /**
+             * @description How big the work was sized. Absent for work nothing has estimated, which is the
+             *     ordinary state of an issue that has not been through the estimator.
+             * @example l
+             * @enum {string}
+             */
+            effort?: "xs" | "s" | "m" | "l" | "xl";
+            /**
+             * @description The issue's labels, as GitHub spells them — GitHub's vocabulary, not ours. Compared
+             *     **whole and case-sensitively**, because GitHub's own labels are: `security` and
+             *     `Security` are two labels a repository may genuinely have.
+             * @example [
+             *       "security"
+             *     ]
+             */
+            labels?: string[];
+            /**
+             * @description How the change was classified, when something classified it. One value today, and
+             *     honestly so: a classification nothing computes is a rule that can never fire.
+             * @example docs_only
+             * @enum {string}
+             */
+            diffKind?: "docs_only";
+            /**
+             * @description The repository the work belongs to. **Read by nothing today** — per-repository route
+             *     overrides are [#211](https://github.com/NobuData/ouroboros/issues/211). Accepted now
+             *     so a consumer holding the repository sends it now rather than being amended later.
+             * @example acme-robotics/control-plane
+             */
+            repo?: string;
+        };
+        /**
+         * RoutingSimulationRequest
+         * @description What to simulate: a task kind, and what is known about the work.
+         *
+         *     There is no workspace in it. The workspace is the session's, as everywhere in `/api/v1`,
+         *     and a body that could name one would be a body that could simulate somebody else's
+         *     routes.
+         */
+        RoutingSimulationRequest: {
+            /**
+             * @description The kind of work being routed — the matrix row being asked about. Lower-case kebab,
+             *     which is the shape the column has: a name outside it names something no row could
+             *     hold.
+             * @example review
+             */
+            taskKind: string;
+            ctx?: components["schemas"]["RoutingSimulationContext"];
+        };
+        /**
+         * ResolvedProvider
+         * @description Where a resolved hop's model runs, and whether it is usable — `RouteProvider`'s four
+         *     identifying facts **plus** the health the resolution decided on.
+         *
+         *     Health is present here and absent from `RouteProvider`, and the difference is the
+         *     difference between the two surfaces: the editor publishes the chain an operator
+         *     configured, and this publishes the chain a run would walk. The status arrives from the
+         *     health snapshot, so a resolution has exactly one opinion about a provider's state and
+         *     the hop's sentence can be composed once — a client that had to fetch the health strip to
+         *     learn why a hop was dropped would be composing the story this endpoint exists to stop it
+         *     composing.
+         *
+         *     **There is no credential here and nowhere to put one.** A resolution carries an address
+         *     and a model: everything an executor needs to choose a provider, and nothing it needs to
+         *     authenticate as one.
+         */
+        ResolvedProvider: {
+            /**
+             * Format: uuid
+             * @description The provider connection's id — how mockup 07's surfaces address it.
+             */
+            id: string;
+            kind: components["schemas"]["ProviderConnectionKind"];
+            /**
+             * @description What the hop's sentence prints beside the model.
+             * @example Anthropic Claude
+             */
+            displayName: string;
+            /**
+             * @description Where it is, or null for a kind reached at its vendor's own endpoint.
+             * @example http://workstation:11434
+             */
+            baseUrl: string | null;
+            status: components["schemas"]["ProviderConnectionStatus"];
+            /**
+             * @description Milliseconds the last check measured, or **null** when none measured one. Never `0`
+             *     as a stand-in for *unmeasured*: `0ms` is an excellent latency, not an absence.
+             * @example 42
+             */
+            latencyMs: number | null;
+            /**
+             * @description Why the provider is in this state, when there is something to say — `elevated
+             *     latency`, `503 upstream` — or null.
+             * @example 503 upstream
+             */
+            detail: string | null;
+        };
+        /**
+         * ResolutionHop
+         * @description One hop of a **resolved** chain — kept or dropped, and why.
+         *
+         *     **Dropped hops stay in the array.** A chain that quietly omitted them would be exactly
+         *     the silence mockup 06's promise is about: the inspector draws hop 2 struck through with
+         *     a reason beside it, and it can only do that if the hop is still there. The chain an
+         *     executor walks is the hops whose `decision` is `kept`, and that filter is the client's.
+         */
+        ResolutionHop: {
+            /**
+             * @description Where this hop sits in the **resolved** chain; 1 is the primary. Dense, and it counts
+             *     dropped hops — it is the number the inspector's rail prints.
+             * @example 1
+             */
+            index: number;
+            /**
+             * @description The hop's number in the **stored** chain, or **null** for a hop an escalation rule
+             *     prepended. The distinction is load-bearing: `floor.hopIndex` is measured against this
+             *     and never against `index`, so a rule that prepends a primary cannot silently move a
+             *     floor an operator set against the chain they saw.
+             * @example 1
+             */
+            position: number | null;
+            /**
+             * @description The alias this hop names. Never a raw model id — a route may name nothing else.
+             * @example coder-max
+             */
+            alias: string;
+            /**
+             * @description What that alias means — the raw provider model string, and the only place it appears.
+             * @example claude-fable-5
+             */
+            modelId: string;
+            /**
+             * @description The invocation defaults this hop carries: the alias's own, with an applied rule's
+             *     merged **over** them, because the rule is the more specific statement. Keys are
+             *     sorted, which is not cosmetic — a resolution is byte-for-byte identical for identical
+             *     inputs, and key order survives serialisation.
+             */
+            params: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Where it runs, or **null** when the alias is bound to no provider connection. Such a
+             *     hop is always `dropped`, with a stated reason.
+             */
+            provider: components["schemas"]["ResolvedProvider"] | null;
+            /**
+             * @description The **operator's** own sentence for this hop, unchanged, or null. Separate from
+             *     `explanation` because the two have different authors: a note says why this hop is in
+             *     the chain, an explanation says what this resolution concluded about it.
+             * @example Fallback on 5xx / timeouts
+             */
+            note: string | null;
+            /**
+             * @description Whether the executor will try this hop.
+             * @example kept
+             * @enum {string}
+             */
+            decision: "kept" | "dropped";
+            /**
+             * @description Why — **stable**, and what a client branches on. Two of the eight keep a hop:
+             *     `provider_healthy` and `provider_unknown`. They are separate codes because *usable*
+             *     and *nothing has checked it* are different claims, and the second must never be
+             *     rendered as the first. A code this list does not carry still arrives with a sentence
+             *     and a `decision`, which is why adding one is not a version bump.
+             * @example provider_healthy
+             * @enum {string}
+             */
+            code: "provider_healthy" | "provider_unknown" | "provider_paused" | "provider_error" | "alias_unbound" | "below_floor" | "rule_route_local" | "local_not_allowed";
+            /**
+             * @description Why, as a sentence — **rendered verbatim**. A kept hop reads as the inspector's
+             *     hop-meta line (`Primary · healthy · 42ms`); anything that removed a hop reads as a
+             *     sentence saying what and why. Never branch on this wording; branch on `code`.
+             * @example Primary · healthy · 42ms
+             */
+            explanation: string;
+        };
+        /**
+         * ResolutionRule
+         * @description One escalation rule whose predicate **matched the context**, and what it did about it.
+         *
+         *     Matched rather than applied, deliberately. A rule that fired but names another task kind
+         *     did nothing, and *nothing happened and here is why* is the answer an operator needs when
+         *     a rule they can see on the card did not change the run they are looking at. Filter on
+         *     `applied` for the rules that took effect; the rest are the near misses, each with a
+         *     reason.
+         */
+        ResolutionRule: {
+            /**
+             * Format: uuid
+             * @description The rule's id — what `/api/v1/routing/rules/{id}` addresses it by.
+             */
+            id: string;
+            /**
+             * @description Its evaluation order; 1 is first. Rules are listed in this order.
+             * @example 2
+             */
+            sortOrder: number;
+            /**
+             * @description The sentence the rules card renders, **reported rather than recomposed**: the
+             *     database derives it from the rule's structure and refuses a hand-written one, so this
+             *     panel and the card cannot print two different sentences for one rule.
+             * @example security label → review adds second-opinion vote
+             */
+            display: string;
+            /**
+             * @description Whether it changed this resolution.
+             * @example true
+             */
+            applied: boolean;
+            /**
+             * @description What it did, or why it did not. The first five mean `applied: true`; the last three
+             *     are the near misses.
+             * @example add_vote_added
+             * @enum {string}
+             */
+            code: "use_alias_params_merged" | "use_alias_swapped" | "use_alias_prepended" | "add_vote_added" | "route_local_applied" | "not_this_task_kind" | "alias_unresolvable" | "vote_already_added";
+            /**
+             * @description The same, as a sentence — rendered verbatim.
+             * @example Applied — a second-opinion vote was added for the executor to obtain.
+             */
+            explanation: string;
+        };
+        /**
+         * ResolutionVote
+         * @description A second opinion an `add_vote` rule attached — the matrix's *"always second vote"*.
+         *
+         *     **A requirement, not a hop.** It is not somewhere the run falls back to, it is something
+         *     the executor must *also* do; dropping it into the chain would make it look like a
+         *     fallback only reached when everything above it fails.
+         */
+        ResolutionVote: {
+            /**
+             * @description The alias casting the vote.
+             * @example second-opinion
+             */
+            alias: string;
+            /**
+             * @description What it resolves to.
+             * @example claude-opus-5
+             */
+            modelId: string;
+            /** @description Its invocation defaults. Sorted, for the determinism reason a hop's are. */
+            params: {
+                [key: string]: unknown;
+            };
+            provider: components["schemas"]["ResolvedProvider"];
+            /**
+             * Format: uuid
+             * @description Which rule asked for it, so a client can point at the row that did.
+             */
+            ruleId: string;
+        };
+        /**
+         * ResolutionFloor
+         * @description What mockup 06's **Fail run instead of degrading below fallback N** decided — recorded on
+         *     **every** resolution, including the ones where it did nothing.
+         *
+         *     *No floor is set* and *the floor was satisfied* are different facts, and a field that
+         *     appeared only when a policy fired would leave a reader unable to tell either from a
+         *     client that forgot to render it.
+         */
+        ResolutionFloor: {
+            /**
+             * @description The deepest **stored** hop position this route may run on, or null for the switch
+             *     being off. Measured against `chain[].position`, never against `chain[].index`.
+             * @example 1
+             */
+            hopIndex: number | null;
+            /**
+             * @description What it decided.
+             * @example no_floor
+             * @enum {string}
+             */
+            code: "no_floor" | "floor_held" | "floor_breached";
+            /**
+             * @description The same, as a sentence — rendered verbatim.
+             * @example No floor is set — this route may degrade to the end of its chain.
+             */
+            explanation: string;
+        };
+        /**
+         * ResolutionFailure
+         * @description Why a resolution refuses to produce a chain — present exactly when `outcome` is
+         *     `fail_run`, and null otherwise.
+         *
+         *     **Never a truncated chain instead.** *The run may not proceed* and *the run proceeds on
+         *     the third fallback* are different outcomes, and this product does not quietly turn the
+         *     first into the second.
+         */
+        ResolutionFailure: {
+            /**
+             * @description Which refusal. `floor_breached` is the same fact `floor.code` states, spelled the
+             *     same way on purpose so a client does not have to check both for two names.
+             * @example floor_breached
+             * @enum {string}
+             */
+            code: "floor_breached" | "no_eligible_hop";
+            /**
+             * @description Why, as a sentence — rendered verbatim.
+             * @example The floor is hop 1 — no hop at or above it is usable
+             * @example so this run fails rather than degrading below it.
+             */
+            explanation: string;
+        };
+        /**
+         * Resolution
+         * @description One resolution — what would run for this task kind in this context, and why.
+         *
+         *     **Deterministic given its inputs**: the same route, health snapshot and context produce
+         *     this object byte for byte, which is what makes **Simulate routing** the same code path as
+         *     execution rather than a parallel mock of it.
+         *
+         *     `resolutionVersion` is the pin a consumer holds. Adding a hop code or a rule code is
+         *     **not** a bump — an unrecognised code still arrives with a sentence and a decision to
+         *     branch on. Renaming a field, removing one, or changing what an existing one means is.
+         */
+        Resolution: {
+            /**
+             * @description The shape's version — the string a consumer pins. Deliberately not a semver: a
+             *     resolution is not a package, and `1.0.0` would invite reasoning about a patch digit
+             *     that will never move.
+             * @example r1
+             * @enum {string}
+             */
+            resolutionVersion: "r1";
+            /**
+             * @description The kind that was asked for.
+             * @example review
+             */
+            taskKind: string;
+            /**
+             * @description Its route's tag — the inspector's title.
+             * @example review-primary
+             */
+            routeTag: string;
+            /**
+             * @description Whether there is a chain to run. `fail_run` arrives with a `200`: it is a successful
+             *     answer carrying a reason, not an error.
+             * @example resolved
+             * @enum {string}
+             */
+            outcome: "resolved" | "fail_run";
+            /**
+             * @description Every hop, in the order the executor would try them, **dropped ones included**. The
+             *     chain actually walked is the hops whose `decision` is `kept`.
+             */
+            chain: components["schemas"]["ResolutionHop"][];
+            /** @description Every rule whose predicate matched, in evaluation order, applied or not. */
+            rules: components["schemas"]["ResolutionRule"][];
+            /** @description Second opinions the executor must also obtain. Empty is the ordinary case. */
+            votes: components["schemas"]["ResolutionVote"][];
+            floor: components["schemas"]["ResolutionFloor"];
+            /**
+             * @description The route's **Allow fallback to local models** switch, echoed. No sentence of its
+             *     own: the policy has nothing to say until it drops something, and then the sentence is
+             *     on the hop it dropped, where the reader is already looking.
+             * @example true
+             */
+            allowLocalFallback: boolean;
+            /**
+             * @description The cost cap that travels to the executor, in integer cents — `250` is `$2.50` — or
+             *     null for a route with none. Attached to **every** resolution including a `fail_run`,
+             *     because it is a property of the route rather than of the outcome.
+             * @example 250
+             */
+            maxCostCents: number | null;
+            /** @description Why there is no chain, or null when there is one. */
+            failure: components["schemas"]["ResolutionFailure"] | null;
         };
         /**
          * RouteHopInput
@@ -7334,8 +8024,11 @@ export interface operations {
                      *               }
                      *             ],
                      *             "stats": {
-                     *               "costCentsPerRunAvg": null,
-                     *               "latencyP50Ms": null
+                     *               "costCentsPerRunAvg": 87,
+                     *               "latencyP50Ms": 41000,
+                     *               "pricedCalls": 15,
+                     *               "unpricedCalls": 0,
+                     *               "timedCalls": 15
                      *             },
                      *             "updatedAt": "2026-08-23T09:58:12.004Z",
                      *             "updatedBy": "5eed0003-0000-4000-8000-000000000001"
@@ -7367,7 +8060,70 @@ export interface operations {
                      *           },
                      *           "display": "effort ≥ L → implement uses coder-max (max thinking)"
                      *         }
-                     *       ]
+                     *       ],
+                     *       "spend": {
+                     *         "window": {
+                     *           "days": 30,
+                     *           "since": "2026-07-24T09:58:12.004Z",
+                     *           "until": "2026-08-23T09:58:12.004Z"
+                     *         },
+                     *         "providers": [
+                     *           {
+                     *             "key": "anthropic",
+                     *             "kinds": [
+                     *               "anthropic"
+                     *             ],
+                     *             "local": false,
+                     *             "spendCents": 41280,
+                     *             "meterFraction": 1,
+                     *             "tokens": 35000000,
+                     *             "pricedCalls": 101,
+                     *             "unpricedCalls": 0
+                     *           },
+                     *           {
+                     *             "key": "copilot",
+                     *             "kinds": [
+                     *               "copilot"
+                     *             ],
+                     *             "local": false,
+                     *             "spendCents": 7600,
+                     *             "meterFraction": 0.1841085271317829,
+                     *             "tokens": 8180000,
+                     *             "pricedCalls": 21,
+                     *             "unpricedCalls": 0
+                     *           },
+                     *           {
+                     *             "key": "cursor",
+                     *             "kinds": [
+                     *               "cursor"
+                     *             ],
+                     *             "local": false,
+                     *             "spendCents": 6410,
+                     *             "meterFraction": 0.15528100775193798,
+                     *             "tokens": 5120000,
+                     *             "pricedCalls": 6,
+                     *             "unpricedCalls": 0
+                     *           },
+                     *           {
+                     *             "key": "ollama+openai_compatible",
+                     *             "kinds": [
+                     *               "ollama",
+                     *               "openai_compatible"
+                     *             ],
+                     *             "local": true,
+                     *             "spendCents": 0,
+                     *             "meterFraction": 0,
+                     *             "tokens": 21700000,
+                     *             "pricedCalls": 260,
+                     *             "unpricedCalls": 5
+                     *           }
+                     *         ],
+                     *         "totalSpendCents": 55290,
+                     *         "tokens": 70000000,
+                     *         "localTokens": 21700000,
+                     *         "localTokenShare": 0.31,
+                     *         "unpricedCalls": 5
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["RoutingMatrix"];
@@ -7557,6 +8313,115 @@ export interface operations {
             };
         };
     };
+    readRoutingSpend: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The card. `providers` is empty, `totalSpendCents` and `localTokenShare` are null and
+             *     the counts are zero for a workspace that has spent nothing in the window — the
+             *     card's zero-state, and never `$0.00` for usage nobody priced.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutingSpend"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     saveRoutes: {
         parameters: {
             query?: never;
@@ -7667,8 +8532,11 @@ export interface operations {
                      *             }
                      *           ],
                      *           "stats": {
-                     *             "costCentsPerRunAvg": null,
-                     *             "latencyP50Ms": null
+                     *             "costCentsPerRunAvg": 87,
+                     *             "latencyP50Ms": 41000,
+                     *             "pricedCalls": 15,
+                     *             "unpricedCalls": 0,
+                     *             "timedCalls": 15
                      *           },
                      *           "updatedAt": "2026-08-23T09:58:12.004Z",
                      *           "updatedBy": "5eed0003-0000-4000-8000-000000000001"
@@ -7874,8 +8742,11 @@ export interface operations {
                      *             }
                      *           ],
                      *           "stats": {
-                     *             "costCentsPerRunAvg": null,
-                     *             "latencyP50Ms": null
+                     *             "costCentsPerRunAvg": 87,
+                     *             "latencyP50Ms": 41000,
+                     *             "pricedCalls": 15,
+                     *             "unpricedCalls": 0,
+                     *             "timedCalls": 15
                      *           },
                      *           "updatedAt": "2026-08-23T09:58:12.004Z",
                      *           "updatedBy": "5eed0003-0000-4000-8000-000000000001"
@@ -8438,6 +9309,140 @@ export interface operations {
             /**
              * @description `validation_failed` or `escalation_rule_invalid`, exactly as adding a rule documents
              *     them — including the refusal of a client-supplied `display`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    simulateRouting: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutingSimulationRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The resolution — the chain with a reason on every hop, the rules that matched and
+             *     what each did, any votes the executor must also obtain, the floor's decision and
+             *     the cost cap.
+             *
+             *     **`outcome: "fail_run"` arrives here**, not in an error status. It is a successful
+             *     answer to a well-formed question, and `failure` carries the reason.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Resolution"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `route_not_found` — this workspace has no route for that task kind. The one failure
+             *     that is not an answer: there is no chain to explain. Reachable two ways and both are
+             *     the caller's — a kind the workspace never had, and a kind that exists with no route
+             *     pointing at it. `details.taskKind` echoes what was asked for.
+             *
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body is malformed: a `taskKind` outside the shape a task
+             *     kind has, an `effort` that is not one of the five sizes, a `diffKind` nothing
+             *     classifies, or a `ctx` carrying a condition no escalation rule could read.
              */
             422: {
                 headers: {

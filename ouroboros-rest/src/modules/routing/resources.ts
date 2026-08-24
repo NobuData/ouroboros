@@ -20,13 +20,14 @@
  * draw. The resolution line is simply empty, which is what the operator's configuration
  * honestly is.
  *
- * **3. `stats` is present and null**, which is decision **M7** rather than a placeholder. The
- * matrix draws `$/run avg` and `p50 latency` per row, both computed from `token_usage` by Z.5
- * ([#198](https://github.com/NobuData/ouroboros/issues/198)); until that lands there is
- * nothing measured to report, and the rule is *no data → em-dash, never a fabricated number*.
- * Publishing the field as null now is what lets AA.2 render the em-dash today and the real
- * figure later without a contract change — and it is why `0` appears nowhere in this file as
- * a stand-in for *we did not measure this*.
+ * **3. `stats` is measured or it is null**, which is decision **M7** rather than a placeholder.
+ * The matrix draws `$/run avg` and `p50 latency` per row and Z.5
+ * ([#198](https://github.com/NobuData/ouroboros/issues/198)) computes both from `token_usage`;
+ * the rule they are computed under is *no data → em-dash, never a fabricated number*, so a kind
+ * nothing has been spent on arrives as two nulls and `0` appears nowhere in this file as a
+ * stand-in for *we did not measure this*. Z.5 added the spend card beside them on the same
+ * terms — see {@link RoutingSpendResource}, where the distinction between a total that is
+ * genuinely zero and a total nobody has priced is the whole of the shape.
  */
 
 import type { EscalationThen, EscalationWhen, ProviderConnectionKind } from "../db/schema";
@@ -73,17 +74,50 @@ export interface RouteHopResource {
 /**
  * The matrix's two numeric columns, or nulls where nothing has been measured.
  *
- * Both are Z.5's ([#198](https://github.com/NobuData/ouroboros/issues/198)) to compute from
- * `token_usage` — which V020 gave a `task_kind` and a `latency_ms` for exactly this. Until it
- * lands they are null, and null is the answer decision **M7** requires: a workspace that has
- * run nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
+ * Both are Z.5's ([#198](https://github.com/NobuData/ouroboros/issues/198)), computed from
+ * `token_usage` — which V020 gave a `task_kind` and a `latency_ms` for exactly this. A null is
+ * the answer decision **M7** requires: a workspace that has run nothing has not spent `$0.00`
+ * per run, it has spent nothing anybody can average.
+ *
+ * **The three counts are why a `0` here can be believed.** `costCentsPerRunAvg: 0` with
+ * `pricedCalls: 15` is fifteen calls that really did cost nothing — a `docs` pass on a local
+ * model — and `costCentsPerRunAvg: null` with `unpricedCalls: 15` is fifteen calls nobody has
+ * priced. Those are different facts about the same money and the em-dash belongs to only one of
+ * them, so the counts are published rather than left for a client to guess at from a null.
  */
 export interface RouteStatsResource {
   /** The row's `$/run avg`, in cents, or null when no priced call has been attributed to this kind. */
   readonly costCentsPerRunAvg: number | null;
   /** The row's `p50 latency`, in milliseconds, or null when nothing timed a call for this kind. */
   readonly latencyP50Ms: number | null;
+  /** How many calls of this kind carried a price — what {@link RouteStatsResource.costCentsPerRunAvg} averages. */
+  readonly pricedCalls: number;
+  /**
+   * How many carried none — the DASH-J.4 ([#92](https://github.com/NobuData/ouroboros/issues/92))
+   * state, surfaced rather than rounded away.
+   *
+   * Non-zero means the average above is over *part* of this kind's work, which is the `≈` the
+   * dashboard's own spend card already carries for the same reason.
+   */
+  readonly unpricedCalls: number;
+  /** How many were timed — the size of the sample {@link RouteStatsResource.latencyP50Ms} is the median of. */
+  readonly timedCalls: number;
 }
+
+/**
+ * What a matrix row reports when nothing in the window touched its kind.
+ *
+ * Two em-dashes and three honest zeros: *no calls were priced, none were unpriced, none were
+ * timed*, which is a count of rows and not a claim about money. A shared constant because two
+ * call sites need it and a second literal is a second chance to write `costCentsPerRunAvg: 0`.
+ */
+export const EMPTY_ROUTE_STATS: RouteStatsResource = {
+  costCentsPerRunAvg: null,
+  latencyP50Ms: null,
+  pricedCalls: 0,
+  unpricedCalls: 0,
+  timedCalls: 0,
+};
 
 /** One route: the inspector's chain, its policy triple, and who last saved it. */
 export interface RouteResource {
@@ -152,12 +186,145 @@ export interface EscalationRuleResource {
   readonly display: string;
 }
 
-/** The whole page's read: the matrix, and the rules card beside it. */
+/**
+ * The span every figure on this page was measured over — one window, published once.
+ *
+ * Carried on the payload rather than assumed by the client, because *30d* on the card and the
+ * matrix's two columns are the same thirty days and a client that recomputed the boundary for
+ * a label would eventually print a span the numbers were not measured over. `until` is the
+ * instant the aggregation ran at, which a cached answer preserves rather than refreshes — see
+ * `stats.cache.ts`.
+ */
+export interface StatsWindowResource {
+  /** How many days wide — `30`. */
+  readonly days: number;
+  /** The oldest instant a counted call occurred at, ISO 8601. Inclusive. */
+  readonly since: string;
+  /** When the figures were measured, ISO 8601. */
+  readonly until: string;
+}
+
+/**
+ * One metered row of the **Spend by provider · 30d** card.
+ *
+ * A row is a provider *kind* as the ledger records one, except for the local row, which is the
+ * mockup's *Local (vLLM + Ollama)* — see {@link ProviderSpendResource.local}.
+ *
+ * **`spendCents: 0` and `spendCents: null` are the two states this card exists to keep apart.**
+ * Zero is a total over calls that were **priced, at nothing** — a local model on hardware the
+ * workspace already owns — and it is the mockup's `$0.00`. Null is *nobody priced these calls*,
+ * which renders as **unpriced** and never as a figure. Collapsing them is the failure DASH-J.4
+ * ([#92](https://github.com/NobuData/ouroboros/issues/92)) exists to prevent, and the type is
+ * what makes it unrepresentable: there is no member here meaning *unknown, treated as zero*.
+ */
+export interface ProviderSpendResource {
+  /**
+   * The row's identity, stable across reads — the kinds it sums, joined by `+`.
+   *
+   * `anthropic` for a cloud row, `ollama+openai_compatible` for the local one. Derived rather
+   * than reserved, so no provider a workspace happens to record can collide with the local
+   * row's name.
+   */
+  readonly key: string;
+  /** The `token_usage.provider` values summed into this row — one, or both local kinds. */
+  readonly kinds: readonly string[];
+  /**
+   * Whether this is the local row.
+   *
+   * The mockup draws vLLM and Ollama as **one** metered line, and they are merged here rather
+   * than by the client for two reasons: the meters are widths relative to the largest row, so a
+   * client that merged afterwards would be rescaling numbers it had already been given, and the
+   * footnote's share is a fraction of exactly this row's tokens. Which kinds count as local is
+   * `locality.ts`'s answer, borrowed from the AD.3 lease policy rather than restated.
+   */
+  readonly local: boolean;
+  /**
+   * The window's spend on this provider in cents, or **null** when none of its calls are priced.
+   *
+   * `41280` is the mockup's `$412.80`. See this interface's header on why `0` and `null` are
+   * different facts.
+   */
+  readonly spendCents: number | null;
+  /**
+   * The meter's width, `0`–`1`, relative to the largest {@link ProviderSpendResource.spendCents}
+   * on the card — or null when this row has nothing priced to draw.
+   *
+   * Served rather than left to the client because *relative to the maximum* is a property of
+   * the whole card, and a row cannot compute it from itself. `0` is the honest width of a row
+   * that really did cost nothing; the mockup's visible 2% sliver for the local row is a
+   * minimum the stylesheet applies, not a number this service invents.
+   */
+  readonly meterFraction: number | null;
+  /** `tokens_in + tokens_out` over the window — what the footnote's share is computed from. */
+  readonly tokens: number;
+  /** How many of this provider's calls carried a price. */
+  readonly pricedCalls: number;
+  /** How many did not. Non-zero makes {@link ProviderSpendResource.spendCents} a lower bound. */
+  readonly unpricedCalls: number;
+}
+
+/**
+ * The **Spend by provider · 30d** card, its footnote, and the window all of it was measured over.
+ *
+ * Served both inside {@link RoutingMatrixResource} — because the card and the matrix are one
+ * screen, and two requests would let them disagree for as long as one was in flight — and on its
+ * own at `GET /api/v1/routing/spend`, which is what AB.4
+ * ([#210](https://github.com/NobuData/ouroboros/issues/210))'s full report reads. One shape and
+ * one computation, so the card and the report cannot come to differ about an invoice.
+ */
+export interface RoutingSpendResource {
+  /** The thirty days every figure below is over. */
+  readonly window: StatsWindowResource;
+  /**
+   * The card's metered rows, largest spend first, the local row folded into one.
+   *
+   * Empty for a workspace that has spent nothing in the window — the card's zero-state. A
+   * provider with no usage is **absent** rather than a row of zeros, for the reason a task kind
+   * with no calls has no average: a zero drawn for work nobody did is a number, not an absence.
+   */
+  readonly providers: readonly ProviderSpendResource[];
+  /**
+   * Every row's priced spend added together, in cents, or null when nothing at all is priced.
+   *
+   * A lower bound whenever {@link RoutingSpendResource.unpricedCalls} is non-zero, which is
+   * exactly what that count is published for.
+   */
+  readonly totalSpendCents: number | null;
+  /** Every token the workspace spent in the window — the footnote's denominator. */
+  readonly tokens: number;
+  /** How many of them were served by a local provider — the footnote's numerator. */
+  readonly localTokens: number;
+  /**
+   * The footnote — *"Local models served 31% of all tokens"* — as a **fraction** between 0 and 1.
+   *
+   * A fraction rather than a percentage, on `LoopPulse.mergeRate`'s precedent: where the digits
+   * are grouped and how many survive rounding is the stylesheet's business. `0.31` is the
+   * mockup's 31%.
+   *
+   * **Null when the window holds no tokens at all**, and `0` when it holds tokens and none of
+   * them are local. Those are different sentences — *nothing ran* and *nothing ran locally* —
+   * and only the first is an em-dash.
+   */
+  readonly localTokenShare: number | null;
+  /** Calls in the window with no price, across every provider. Surfaced, never rounded away. */
+  readonly unpricedCalls: number;
+}
+
+/** The whole page's read: the matrix, the rules card beside it, and the spend card under both. */
 export interface RoutingMatrixResource {
   /** Every task kind, in `sort_order`. Empty for a workspace whose foundations are unseeded. */
   readonly taskKinds: readonly TaskKindResource[];
   /** Every rule, enabled and disabled alike, in evaluation order. */
   readonly rules: readonly EscalationRuleResource[];
+  /**
+   * The **Spend by provider · 30d** card, over the same window the matrix's numerics are.
+   *
+   * In this payload rather than behind a second request, for the reason the rules are: the
+   * three cards are one screen, and the matrix's `$/run avg` and this card's totals are
+   * aggregates over the same rows. Fetched apart they would be aggregates over the same rows
+   * *at two instants*, which is a page that can show a call in one figure and not the other.
+   */
+  readonly spend: RoutingSpendResource;
 }
 
 /** One alias, as a swap menu offers it. */
@@ -245,11 +412,17 @@ export function toRouteHopResource(row: ManagedHopRow): RouteHopResource {
  *
  * @param route - The route row.
  * @param hops - Its chain, already in `position` order.
- * @returns The route, with `stats` honestly empty until Z.5 fills it.
+ * @param stats - What the window measured for this route's task kind, or
+ *   {@link EMPTY_ROUTE_STATS} for a kind nothing touched. A **required** parameter rather than
+ *   one defaulting to the empty value: a caller that forgot to pass measurements would
+ *   otherwise publish em-dashes over a workspace that has them, which is the one failure mode
+ *   of this field that nobody would notice.
+ * @returns The route.
  */
 export function toRouteResource(
   route: ManagedRouteRow,
   hops: readonly ManagedHopRow[],
+  stats: RouteStatsResource,
 ): RouteResource {
   return {
     id: route.route_id,
@@ -259,7 +432,7 @@ export function toRouteResource(
     floorHopIndex: route.floor_hop_index,
     maxCostCentsPerRun: route.max_cost_cents_per_run,
     hops: hops.map(toRouteHopResource),
-    stats: { costCentsPerRunAvg: null, latencyP50Ms: null },
+    stats,
     updatedAt: route.updated_at.toISOString(),
     updatedBy: route.updated_by,
   };

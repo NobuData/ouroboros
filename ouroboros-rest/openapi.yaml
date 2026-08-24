@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.30.8"
+  version: "0.30.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -2491,10 +2491,17 @@ paths:
         ahead of its key is a first-class row in the model registry, and a chain that lost a hop
         that way would arrive shorter than the operator configured it.
 
-        **`stats` is two nulls until spend attribution lands**
+        **`stats` is measured, or it is two nulls**
         ([#198](https://github.com/NobuData/ouroboros/issues/198)). Roadmap decision **M7**: a
         figure the product cannot compute is a figure it does not print, and `0` is not
-        *unknown* — it is a number. Render the em-dash.
+        *unknown* — it is a number. A kind nothing has been spent on renders the em-dash.
+
+        **`spend` is the card under the matrix**, in this payload rather than behind a second
+        request. The matrix's `$/run avg` and the card's totals are aggregates over the same
+        ledger rows over the same thirty days; fetched apart they would be aggregates over
+        those rows *at two instants*, which is a page that can show a call in one figure and
+        not the other. `GET /api/v1/routing/spend` serves the identical object for a client
+        that wants the card alone.
 
         **Any member may read it**, viewers included.
 
@@ -2545,8 +2552,11 @@ paths:
                             displayName: GitHub Copilot
                             baseUrl: null
                       stats:
-                        costCentsPerRunAvg: null
-                        latencyP50Ms: null
+                        costCentsPerRunAvg: 87
+                        latencyP50Ms: 41000
+                        pricedCalls: 15
+                        unpricedCalls: 0
+                        timedCalls: 15
                       updatedAt: "2026-08-23T09:58:12.004Z"
                       updatedBy: 5eed0003-0000-4000-8000-000000000001
                   - name: docs
@@ -2566,6 +2576,49 @@ paths:
                         params:
                           thinking: max
                     display: effort ≥ L → implement uses coder-max (max thinking)
+                spend:
+                  window:
+                    days: 30
+                    since: "2026-07-24T09:58:12.004Z"
+                    until: "2026-08-23T09:58:12.004Z"
+                  providers:
+                    - key: anthropic
+                      kinds: [anthropic]
+                      local: false
+                      spendCents: 41280
+                      meterFraction: 1
+                      tokens: 35000000
+                      pricedCalls: 101
+                      unpricedCalls: 0
+                    - key: copilot
+                      kinds: [copilot]
+                      local: false
+                      spendCents: 7600
+                      meterFraction: 0.1841085271317829
+                      tokens: 8180000
+                      pricedCalls: 21
+                      unpricedCalls: 0
+                    - key: cursor
+                      kinds: [cursor]
+                      local: false
+                      spendCents: 6410
+                      meterFraction: 0.15528100775193798
+                      tokens: 5120000
+                      pricedCalls: 6
+                      unpricedCalls: 0
+                    - key: ollama+openai_compatible
+                      kinds: [ollama, openai_compatible]
+                      local: true
+                      spendCents: 0
+                      meterFraction: 0
+                      tokens: 21700000
+                      pricedCalls: 260
+                      unpricedCalls: 5
+                  totalSpendCents: 55290
+                  tokens: 70000000
+                  localTokens: 21700000
+                  localTokenShare: 0.31
+                  unpricedCalls: 5
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -2650,6 +2703,157 @@ paths:
                     modelId: gpt-5-preview
                     params: {}
                     provider: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/routing/spend:
+    get:
+      tags: [routing]
+      summary: Spend by provider over the trailing thirty days, and the local-token share
+      description: |-
+        Mockup 06's **Spend by provider · 30d** card, on its own
+        ([#198](https://github.com/NobuData/ouroboros/issues/198)) — the metered rows, the
+        *"Local models served 31% of all tokens"* footnote, and the window all of it was
+        measured over.
+
+        **The identical object `GET /api/v1/routing` carries under `spend`**, from the same
+        computation and the same short-TTL cache. It is published separately for a surface that
+        wants the card without the matrix — the full spend report
+        ([#210](https://github.com/NobuData/ouroboros/issues/210)) — because a report that
+        re-aggregated the ledger for itself would be a second opinion about one invoice.
+
+        **Every figure is an aggregate, and nothing is coalesced.** Roadmap decision **M7**:
+        `$/run`, p50 and spend are computed from the token-spend ledger, and a figure the
+        product cannot compute is one it does not print. A provider whose calls nobody has
+        priced answers `spendCents: null` and renders as **unpriced**; a provider whose calls
+        were priced at nothing answers `spendCents: 0` and renders `$0.00`. Those are different
+        facts and the payload never merges them.
+
+        **The window is rolling.** *30d* is `now − 30 × 24h`, not the calendar month, so the
+        card reads the same way on the 1st as on the 28th. It is served with the figures.
+
+        **Any member may read it**, viewers included: what a workspace spends on models is
+        something everybody in it may look at.
+
+        **The workspace is the session's**, as everywhere in `/api/v1`: no workspace in this
+        path, the session's active organization or `X-Ouro-Tenant` decides, and membership is
+        checked before the operation runs. No other workspace's usage can reach a total here.
+      operationId: readRoutingSpend
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: |-
+            The card. `providers` is empty, `totalSpendCents` and `localTokenShare` are null and
+            the counts are zero for a workspace that has spent nothing in the window — the
+            card's zero-state, and never `$0.00` for usage nobody priced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingSpend"
+              examples:
+                seeded:
+                  summary: The seeded workspace — four rows, and a 31% local share
+                  description: |-
+                    Anthropic and the local `$0.00` are mockup 06's figures exactly. Copilot and
+                    Cursor are mockup 07's for the reason #192's seed header sets out: a
+                    thirty-day window contains the calendar month it is asked to be smaller
+                    than, so the card's own `$96.40` and `$54.10` are unreachable from any
+                    ledger that also satisfies mockup 07.
+
+                    The local row is the honesty rule made visible — `$0.00` from calls priced
+                    at nothing, beside five calls nobody has priced.
+                  value:
+                    window:
+                      days: 30
+                      since: "2026-07-24T09:58:12.004Z"
+                      until: "2026-08-23T09:58:12.004Z"
+                    providers:
+                      - key: anthropic
+                        kinds: [anthropic]
+                        local: false
+                        spendCents: 41280
+                        meterFraction: 1
+                        tokens: 35000000
+                        pricedCalls: 101
+                        unpricedCalls: 0
+                      - key: copilot
+                        kinds: [copilot]
+                        local: false
+                        spendCents: 7600
+                        meterFraction: 0.1841085271317829
+                        tokens: 8180000
+                        pricedCalls: 21
+                        unpricedCalls: 0
+                      - key: cursor
+                        kinds: [cursor]
+                        local: false
+                        spendCents: 6410
+                        meterFraction: 0.15528100775193798
+                        tokens: 5120000
+                        pricedCalls: 6
+                        unpricedCalls: 0
+                      - key: ollama+openai_compatible
+                        kinds: [ollama, openai_compatible]
+                        local: true
+                        spendCents: 0
+                        meterFraction: 0
+                        tokens: 21700000
+                        pricedCalls: 260
+                        unpricedCalls: 5
+                    totalSpendCents: 55290
+                    tokens: 70000000
+                    localTokens: 21700000
+                    localTokenShare: 0.31
+                    unpricedCalls: 5
+                empty:
+                  summary: A workspace that has run nothing — em-dashes, not zeros
+                  description: |-
+                    `localTokenShare` is **null** rather than `0`: a workspace that ran nothing
+                    did not fail to run locally, and `0%` would be a sentence about behaviour
+                    that never happened.
+                  value:
+                    window:
+                      days: 30
+                      since: "2026-07-24T09:58:12.004Z"
+                      until: "2026-08-23T09:58:12.004Z"
+                    providers: []
+                    totalSpendCents: null
+                    tokens: 0
+                    localTokens: 0
+                    localTokenShare: null
+                    unpricedCalls: 0
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -2773,8 +2977,11 @@ paths:
                           displayName: Anthropic
                           baseUrl: null
                     stats:
-                      costCentsPerRunAvg: null
-                      latencyP50Ms: null
+                      costCentsPerRunAvg: 87
+                      latencyP50Ms: 41000
+                      pricedCalls: 15
+                      unpricedCalls: 0
+                      timedCalls: 15
                     updatedAt: "2026-08-23T09:58:12.004Z"
                     updatedBy: 5eed0003-0000-4000-8000-000000000001
         "400":
@@ -2914,8 +3121,11 @@ paths:
                           displayName: Anthropic
                           baseUrl: null
                     stats:
-                      costCentsPerRunAvg: null
-                      latencyP50Ms: null
+                      costCentsPerRunAvg: 87
+                      latencyP50Ms: 41000
+                      pricedCalls: 15
+                      unpricedCalls: 0
+                      timedCalls: 15
                     updatedAt: "2026-08-23T09:58:12.004Z"
                     updatedBy: 5eed0003-0000-4000-8000-000000000001
         "400":
@@ -8543,22 +8753,225 @@ components:
       description: |-
         The matrix's two numeric columns, or nulls where nothing has been measured.
 
-        Both are computed from the token-spend ledger by
-        [#198](https://github.com/NobuData/ouroboros/issues/198). Until that lands they are
-        null — and null is the answer roadmap decision **M7** requires: a workspace that has
-        run nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
+        Both are computed from the token-spend ledger over the trailing thirty days
+        ([#198](https://github.com/NobuData/ouroboros/issues/198)) — never stored on a route.
+        A null is the answer roadmap decision **M7** requires: a workspace that has run
+        nothing has not spent `$0.00` per run, it has spent nothing anybody can average.
         Render the em-dash.
+
+        **The three counts are why a `0` here can be believed.** `costCentsPerRunAvg: 0` with
+        `pricedCalls: 15` is fifteen calls that really did cost nothing — a `docs` pass on a
+        local model. `costCentsPerRunAvg: null` with `unpricedCalls: 15` is fifteen calls
+        nobody has priced. Those are different facts about the same money, and only one of
+        them is an em-dash. A non-zero `unpricedCalls` also means the average is over *part*
+        of this kind's work.
       additionalProperties: false
-      required: [costCentsPerRunAvg, latencyP50Ms]
+      required: [costCentsPerRunAvg, latencyP50Ms, pricedCalls, unpricedCalls, timedCalls]
       properties:
         costCentsPerRunAvg:
           type: [number, "null"]
           description: The row's `$/run avg`, in cents, or null when nothing priced has been attributed to this kind.
-          examples: [null]
+          examples: [87]
         latencyP50Ms:
           type: [number, "null"]
           description: The row's `p50 latency`, in milliseconds, or null when nothing timed a call for this kind.
-          examples: [null]
+          examples: [41000]
+        pricedCalls:
+          type: integer
+          minimum: 0
+          description: How many calls of this kind carried a price — what `costCentsPerRunAvg` averages.
+          examples: [15]
+        unpricedCalls:
+          type: integer
+          minimum: 0
+          description: |-
+            How many carried none. Surfaced rather than rounded away; non-zero means the
+            average above is a figure over part of this kind's work.
+          examples: [0]
+        timedCalls:
+          type: integer
+          minimum: 0
+          description: How many were timed — the size of the sample `latencyP50Ms` is the median of.
+          examples: [15]
+
+    StatsWindow:
+      type: object
+      title: StatsWindow
+      description: |-
+        The span every figure on the routing page was measured over
+        ([#198](https://github.com/NobuData/ouroboros/issues/198)).
+
+        A **rolling duration** subtracted from the request instant, never a calendar month:
+        *30d* means `now − 30 × 24h`, which needs no timezone to be well defined and is immune
+        to daylight saving by construction. One window is computed per read and handed to
+        every aggregate, so the matrix's averages and the spend card's totals are over the
+        same population.
+
+        `until` is the instant the aggregation ran at, which a short-TTL cached answer
+        preserves rather than refreshes — a stale answer that claimed to be fresh would be the
+        one thing a cache must never add.
+      additionalProperties: false
+      required: [days, since, until]
+      properties:
+        days:
+          type: integer
+          minimum: 1
+          description: How many days wide the window is.
+          examples: [30]
+        since:
+          type: string
+          format: date-time
+          description: The oldest instant a counted call occurred at. Inclusive.
+          examples: ["2026-07-24T09:58:12.004Z"]
+        until:
+          type: string
+          format: date-time
+          description: When the figures were measured.
+          examples: ["2026-08-23T09:58:12.004Z"]
+
+    ProviderSpend:
+      type: object
+      title: ProviderSpend
+      description: |-
+        One metered row of the **Spend by provider · 30d** card
+        ([#198](https://github.com/NobuData/ouroboros/issues/198)).
+
+        A row is a provider *kind* as the ledger records one, except for the local row, which
+        is the mockup's *Local (vLLM + Ollama)*: `ollama` and `openai_compatible` are summed
+        into one line because the meters are widths relative to the largest row — a client
+        that merged afterwards would be rescaling numbers it had already been given — and the
+        card's footnote is a fraction of exactly this row's tokens.
+
+        **`spendCents: 0` and `spendCents: null` are the two states this card exists to keep
+        apart.** Zero is a total over calls that were **priced, at nothing** — a local model on
+        hardware the workspace already owns — and is the mockup's `$0.00`. Null is *nobody
+        priced these calls*, which renders as **unpriced** and never as a figure. A row can
+        carry both facts at once: `spendCents: 0` with a non-zero `unpricedCalls` is a local
+        provider whose routed calls cost nothing and whose earlier calls nobody has priced.
+      additionalProperties: false
+      required:
+        [key, kinds, local, spendCents, meterFraction, tokens, pricedCalls, unpricedCalls]
+      properties:
+        key:
+          type: string
+          description: |-
+            The row's identity, stable across reads — the kinds it sums, joined by `+`.
+            Derived rather than reserved, so no provider a workspace records can collide with
+            the local row's name.
+          examples: [ollama+openai_compatible]
+        kinds:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: The `token_usage.provider` values summed into this row.
+          examples: [[ollama, openai_compatible]]
+        local:
+          type: boolean
+          description: |-
+            Whether this is the local row — a provider reachable without a credential, which
+            is the same list the worker lease policy draws.
+          examples: [true]
+        spendCents:
+          type: [number, "null"]
+          description: |-
+            The window's spend on this provider in cents, or null when none of its calls are
+            priced. `41280` is `$412.80`.
+          examples: [0]
+        meterFraction:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: |-
+            The meter's width, 0–1, relative to the largest `spendCents` on the card — or null
+            when this row has nothing priced to draw. Served rather than left to the client
+            because *relative to the maximum* is a property of the whole card. `0` is the
+            honest width of a row that really did cost nothing; a visible minimum sliver is
+            the stylesheet's.
+          examples: [0]
+        tokens:
+          type: integer
+          minimum: 0
+          description: "`tokens_in + tokens_out` over the window."
+          examples: [21700000]
+        pricedCalls:
+          type: integer
+          minimum: 0
+          description: How many of this provider's calls carried a price.
+          examples: [260]
+        unpricedCalls:
+          type: integer
+          minimum: 0
+          description: How many did not. Non-zero makes `spendCents` a lower bound.
+          examples: [5]
+
+    RoutingSpend:
+      type: object
+      title: RoutingSpend
+      description: |-
+        The **Spend by provider · 30d** card, its footnote, and the window all of it was
+        measured over ([#198](https://github.com/NobuData/ouroboros/issues/198)).
+
+        Served both inside `RoutingMatrix` — because the card and the matrix are one screen —
+        and on its own at `GET /api/v1/routing/spend`. One computation and one shape, so the
+        card and a report built on it cannot come to differ about an invoice.
+
+        Every figure is an aggregate over the token-spend ledger (roadmap decision **M7**), and
+        nothing here is coalesced: a workspace that has spent nothing answers with an empty
+        `providers`, a null total and a **null** share, never `$0.00`.
+      additionalProperties: false
+      required:
+        [
+          window,
+          providers,
+          totalSpendCents,
+          tokens,
+          localTokens,
+          localTokenShare,
+          unpricedCalls,
+        ]
+      properties:
+        window:
+          $ref: "#/components/schemas/StatsWindow"
+        providers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProviderSpend"
+          description: |-
+            The card's metered rows, largest spend first, the local kinds folded into one. A
+            provider with no usage in the window is **absent** rather than a row of zeros;
+            empty is the card's zero-state.
+        totalSpendCents:
+          type: [number, "null"]
+          description: |-
+            Every row's priced spend added together, in cents, or null when nothing at all is
+            priced. A lower bound whenever `unpricedCalls` is non-zero.
+          examples: [55290]
+        tokens:
+          type: integer
+          minimum: 0
+          description: Every token the workspace spent in the window — the footnote's denominator.
+          examples: [70000000]
+        localTokens:
+          type: integer
+          minimum: 0
+          description: How many of them a local provider served — the footnote's numerator.
+          examples: [21700000]
+        localTokenShare:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: |-
+            The footnote — *"Local models served 31% of all tokens"* — as a fraction between 0
+            and 1. **Null when the window holds no tokens at all**, and `0` when it holds
+            tokens and none of them are local: *nothing ran* and *nothing ran locally* are
+            different sentences, and only the first is an em-dash.
+          examples: [0.31]
+        unpricedCalls:
+          type: integer
+          minimum: 0
+          description: Calls in the window with no price, across every provider.
+          examples: [5]
 
     Route:
       type: object
@@ -8816,10 +9229,13 @@ components:
       type: object
       title: RoutingMatrix
       description: |-
-        The routing page's read: the matrix and the rules card, in one payload because they are
-        one screen.
+        The routing page's read: the matrix, the rules card and the spend card, in one payload
+        because they are one screen — and, since
+        [#198](https://github.com/NobuData/ouroboros/issues/198), because the matrix's numerics
+        and the spend card's totals are aggregates over the same ledger rows over the same
+        thirty days.
       additionalProperties: false
-      required: [taskKinds, rules]
+      required: [taskKinds, rules, spend]
       properties:
         taskKinds:
           type: array
@@ -8833,6 +9249,12 @@ components:
           description: Every escalation rule, enabled and disabled alike, in evaluation order.
           items:
             $ref: "#/components/schemas/EscalationRule"
+        spend:
+          allOf:
+            - $ref: "#/components/schemas/RoutingSpend"
+          description: |-
+            The **Spend by provider · 30d** card, over the same window the matrix's numerics
+            are. Identical to what `GET /api/v1/routing/spend` answers with.
 
     RoutingAlias:
       type: object
