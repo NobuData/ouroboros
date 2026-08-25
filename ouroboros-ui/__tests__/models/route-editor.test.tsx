@@ -44,7 +44,11 @@ const { RouteEditorProvider, useRouteEditor } = await import("@/app/models/route
 const ROUTES = savedRoutes(seededTaskKinds());
 
 /** A registry alias as the menu offers it. */
-const CODER_STD = { alias: "coder-std", resolution: "claude-sonnet-5 · Anthropic Claude" };
+const CODER_STD = {
+  alias: "coder-std",
+  resolution: "claude-sonnet-5 · Anthropic Claude",
+  providerId: "5eed000c-0000-4000-8000-000000000001",
+};
 
 /**
  * The editor, under a provider.
@@ -415,5 +419,95 @@ describe("a role that may not edit", () => {
 
     expect(result.current.pending).toBe(0);
     expect(result.current.draft("implement")).toEqual(ROUTES[3]);
+  });
+});
+
+describe("the policy edits join the batch (#203)", () => {
+  it("count a flipped switch as one changed route, and a switch flipped back as none", () => {
+    const { result } = editor();
+
+    act(() => {
+      result.current.allowLocal("implement", false);
+    });
+    expect(result.current.pending).toBe(1);
+    expect(result.current.draft("implement")?.allowLocalFallback).toBe(false);
+
+    act(() => {
+      result.current.allowLocal("implement", true);
+    });
+    expect(result.current.pending).toBe(0);
+    expect(result.current.edit("implement")).toBeNull();
+  });
+
+  it("hold a floor, a cap and a chain edit on one route as one entry in the batch", async () => {
+    const { result } = editor();
+
+    act(() => {
+      result.current.floor("implement", 2);
+      result.current.maxCost("implement", 300);
+      result.current.move("implement", 1, 2);
+    });
+    expect(result.current.pending).toBe(1);
+
+    await act(async () => {
+      result.current.save();
+    });
+
+    expect(saveRoutes).toHaveBeenCalledExactlyOnceWith([
+      expect.objectContaining({
+        taskKind: "implement",
+        floorHopIndex: 2,
+        maxCostCentsPerRun: 300,
+        hops: [
+          { alias: "coder-max", note: null },
+          { alias: "local-docs", note: "Offline mode — keeps the loop turning without a network" },
+          { alias: "coder-fallback", note: "Fallback on 5xx / timeouts" },
+        ],
+      }),
+    ]);
+  });
+
+  it("refuse a floor the chain does not have, leaving the route unchanged", () => {
+    const { result } = editor();
+
+    act(() => {
+      result.current.floor("implement", 4);
+      result.current.maxCost("implement", 0);
+    });
+
+    expect(result.current.pending).toBe(0);
+  });
+
+  it("are discarded with the chain edits, restoring the policy exactly", () => {
+    const { result } = editor();
+
+    act(() => {
+      result.current.floor("implement", 1);
+      result.current.maxCost("implement", null);
+      result.current.allowLocal("implement", false);
+    });
+    act(() => {
+      result.current.discard();
+    });
+
+    expect(result.current.pending).toBe(0);
+    expect(result.current.draft("implement")).toMatchObject({
+      allowLocalFallback: true,
+      floorHopIndex: null,
+      maxCostCentsPerRun: 250,
+    });
+  });
+
+  it("are refused for a role that may not edit", () => {
+    const { result } = editor(false);
+
+    act(() => {
+      result.current.allowLocal("implement", false);
+      result.current.floor("implement", 2);
+      result.current.maxCost("implement", 100);
+    });
+
+    expect(result.current.pending).toBe(0);
+    expect(result.current.draft("implement")?.allowLocalFallback).toBe(true);
   });
 });

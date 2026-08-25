@@ -126,10 +126,11 @@ describe("the controls' names", () => {
 });
 
 describe("the builder's targets", () => {
-  it("labels an alias with the same resolution line the matrix draws for it", () => {
+  it("labels an alias with the same resolution line the matrix draws for it, and the connection it runs on", () => {
     expect(ruleTarget(seededAliases()[1])).toEqual({
       alias: "coder-max",
       resolution: "claude-fable-5 · Anthropic Claude",
+      providerId: "5eed000c-0000-4000-8000-000000000001",
     });
   });
 
@@ -137,6 +138,7 @@ describe("the builder's targets", () => {
     expect(ruleTarget(seededAliases()[3])).toEqual({
       alias: "gpt5-experiments",
       resolution: "gpt-5 · no provider",
+      providerId: null,
     });
   });
 });

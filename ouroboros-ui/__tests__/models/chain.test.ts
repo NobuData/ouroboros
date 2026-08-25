@@ -13,6 +13,7 @@ import {
   dirtyBarLabel,
   editChainHint,
   editedRow,
+  floorDefault,
   floorReason,
   moveAnnouncement,
   moveDownLabel,
@@ -26,6 +27,9 @@ import {
   sameChain,
   savedRoute,
   savedRoutes,
+  setAllowLocal,
+  setFloor,
+  setMaxCost,
   swapAnnouncement,
   swapHop,
   swapLabel,
@@ -53,8 +57,12 @@ function implement(): ChainDraft {
   return route;
 }
 
-/** A registry alias as the swap menu offers it. */
-const CODER_STD = { alias: "coder-std", resolution: "claude-sonnet-5 · Anthropic Claude" };
+/** A registry alias as the swap menu offers it — the cell, and the connection it runs on. */
+const CODER_STD = {
+  alias: "coder-std",
+  resolution: "claude-sonnet-5 · Anthropic Claude",
+  providerId: "5eed000c-0000-4000-8000-000000000001",
+};
 
 describe("the baseline", () => {
   it("reads a route's hops in position order, with the matrix's own resolution lines", () => {
@@ -136,11 +144,12 @@ describe("moving a hop", () => {
 });
 
 describe("swapping a hop's alias", () => {
-  it("changes what the hop names and what it resolves to, and nothing else about it", () => {
+  it("changes what the hop names, what it resolves to and where it runs, and nothing else about it", () => {
     const swapped = swapHop(implement(), 1, CODER_STD);
 
     expect(swapped.hops[1].alias).toBe("coder-std");
     expect(swapped.hops[1].resolution).toBe(CODER_STD.resolution);
+    expect(swapped.hops[1].providerId).toBe("5eed000c-0000-4000-8000-000000000001");
     expect(swapped.hops[1].id).toBe("implement:2");
     expect(swapped.hops[1].note).toBe("Fallback on 5xx / timeouts");
   });
@@ -148,7 +157,7 @@ describe("swapping a hop's alias", () => {
   it("is the same draft for the alias the hop already names, or a hop it does not have", () => {
     const draft = implement();
 
-    expect(swapHop(draft, 0, { alias: "coder-max", resolution: "whatever" })).toBe(draft);
+    expect(swapHop(draft, 0, { alias: "coder-max", resolution: "whatever", providerId: null })).toBe(draft);
     expect(swapHop(draft, 7, CODER_STD)).toBe(draft);
   });
 });
@@ -158,7 +167,13 @@ describe("adding a hop", () => {
     const added = addHop(implement(), CODER_STD, addedHopId("implement", 1));
 
     expect(added.hops).toHaveLength(4);
-    expect(added.hops[3]).toEqual({ id: "implement:+1", alias: "coder-std", resolution: CODER_STD.resolution, note: null });
+    expect(added.hops[3]).toEqual({
+      id: "implement:+1",
+      alias: "coder-std",
+      resolution: CODER_STD.resolution,
+      note: null,
+      providerId: CODER_STD.providerId,
+    });
   });
 });
 
@@ -368,5 +383,94 @@ describe("the copy", () => {
   it("explains an inert move control by where the hop already is", () => {
     expect(AT_TOP_REASON).toMatch(/primary/);
     expect(AT_BOTTOM_REASON).toMatch(/last/);
+  });
+});
+
+describe("the connection a hop runs on (#203)", () => {
+  it("is read from the saved hop's provider, and null for an alias bound to none", () => {
+    const draft = implement();
+
+    expect(draft.hops.map((hop) => hop.providerId)).toEqual([
+      "5eed000c-0000-4000-8000-000000000001",
+      "5eed000c-0000-4000-8000-000000000003",
+      "5eed000c-0000-4000-8000-000000000005",
+    ]);
+
+    const [kind] = seededTaskKinds();
+    const unbound = savedRoute({
+      ...kind,
+      route: kind.route === null ? null : { ...kind.route, hops: kind.route.hops.map((hop) => ({ ...hop, provider: null })) },
+    });
+
+    expect(unbound?.hops.map((hop) => hop.providerId)).toEqual([null, null]);
+  });
+
+  it("is not sent — nothing about where an alias runs is the client's to say", () => {
+    const entry = toSaveInput(implement());
+
+    expect(JSON.stringify(entry)).not.toContain("providerId");
+  });
+});
+
+describe("the policy edits (#203)", () => {
+  it("move the local-fallback switch, and are the same draft for the position it already holds", () => {
+    const draft = implement();
+
+    expect(setAllowLocal(draft, false).allowLocalFallback).toBe(false);
+    expect(setAllowLocal(draft, true)).toBe(draft);
+  });
+
+  it("set the floor one above the last resort when the switch is turned on", () => {
+    // The deepest floor that still refuses something: on the seeded three-hop chain, hop 2 —
+    // mockup 06's own *fallback 2*.
+    const draft = implement();
+
+    expect(floorDefault(draft)).toBe(2);
+    expect(floorDefault({ ...draft, hops: draft.hops.slice(0, 2) })).toBe(1);
+    expect(floorDefault({ ...draft, hops: draft.hops.slice(0, 1) })).toBe(1);
+  });
+
+  it("move the floor within the chain, or switch it off with null", () => {
+    const draft = implement();
+
+    expect(setFloor(draft, 2).floorHopIndex).toBe(2);
+    expect(setFloor(setFloor(draft, 2), null).floorHopIndex).toBeNull();
+    expect(setFloor(draft, null)).toBe(draft);
+  });
+
+  it("refuse a floor the chain does not have, as the contract would", () => {
+    const draft = implement();
+
+    expect(setFloor(draft, 0)).toBe(draft);
+    expect(setFloor(draft, 4)).toBe(draft);
+    expect(setFloor(draft, 1.5)).toBe(draft);
+  });
+
+  it("move the cap in whole cents, or remove it with null", () => {
+    const draft = implement();
+
+    expect(setMaxCost(draft, 300).maxCostCentsPerRun).toBe(300);
+    expect(setMaxCost(draft, null).maxCostCentsPerRun).toBeNull();
+    expect(setMaxCost(draft, 250)).toBe(draft);
+  });
+
+  it("refuse a cap that is not a positive whole number of cents", () => {
+    // The contract's own rule: `@IsInt() @Min(1)`, and *a cap of zero is a route that can
+    // never run*.
+    const draft = implement();
+
+    expect(setMaxCost(draft, 0)).toBe(draft);
+    expect(setMaxCost(draft, -1)).toBe(draft);
+    expect(setMaxCost(draft, 2.5)).toBe(draft);
+  });
+
+  it("are the edits that join the batch — a policy edit is a changed route, and undone it is not", () => {
+    const draft = implement();
+
+    expect(sameChain(setAllowLocal(draft, false), draft)).toBe(false);
+    expect(sameChain(setFloor(draft, 2), draft)).toBe(false);
+    expect(sameChain(setMaxCost(draft, null), draft)).toBe(false);
+    expect(sameChain(setFloor(setFloor(draft, 2), null), draft)).toBe(true);
+    expect(toSaveInput(setFloor(draft, 2)).floorHopIndex).toBe(2);
   });
 });

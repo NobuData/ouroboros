@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CHANGED, NO_ROUTE_NOTE, POLICY_NOTE, editChainHint, savedRoutes } from "@/app/models/chain";
+import { CHANGED, NO_ROUTE_NOTE, editChainHint, savedRoutes } from "@/app/models/chain";
+import { ALLOW_LOCAL_LABEL, OPEN_REGISTRY, SIMULATE_ROUTE, hopHealthIndex } from "@/app/models/inspector";
+import { REGISTRY_PATH } from "@/app/paths";
 import {
   EM_DASH,
   INSPECTOR_EMPTY_TITLE,
@@ -14,8 +16,8 @@ import {
   type MatrixRow,
 } from "@/app/models/matrix";
 
-import { seededRules, seededTaskKinds, unmeasuredMatrix } from "../helpers/models";
-import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+import { seededProviders, seededRules, seededTaskKinds, unmeasuredMatrix } from "../helpers/models";
+import { PALETTES, maskIds, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
 
 /**
  * The routing matrix as it is drawn (#201) — mockup 06's densest region, and the selection
@@ -46,6 +48,9 @@ vi.mock("@/app/models/rule-actions", () => ({
   addRule: vi.fn(),
   removeRule: vi.fn(),
 }));
+// The inspector's simulate button opens a sheet whose question is the same kind of seam
+// (`simulate-actions.test.ts`, `simulate-sheet.test.tsx`).
+vi.mock("@/app/models/simulate-actions", () => ({ simulateRoute: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { RoutingMatrix } = await import("@/app/models/routing-matrix");
@@ -88,15 +93,17 @@ function matrix({
   selected = null,
   editable = true,
   aside,
+  health,
 }: {
   rows?: readonly MatrixRow[];
   selected?: string | null;
   editable?: boolean;
   aside?: React.ReactNode;
+  health?: ReturnType<typeof hopHealthIndex>;
 } = {}) {
   return render(
     <RouteEditorProvider editable={editable} routes={ROUTES}>
-      <RoutingMatrix aside={aside} rows={rows} selected={selected} />
+      <RoutingMatrix aside={aside} health={health} rows={rows} selected={selected} />
     </RouteEditorProvider>,
   );
 }
@@ -448,11 +455,33 @@ describe("the route card", () => {
     expect(within(chain).getByText("→ claude-fable-5 · Anthropic Claude")).toBeInTheDocument();
   });
 
-  it("names the issue that brings the policy switches rather than drawing a mock-up of them", () => {
+  it("draws the inspector whole — the chain, its dots, the policy controls, the footnote and the way into the simulator (#203)", () => {
+    matrix({ selected: "implement", health: hopHealthIndex({ ok: true, value: seededProviders() }) });
+
+    const card = screen.getByRole("region", { name: "Route — implement-primary" });
+
+    expect(within(card).getAllByRole("img").map((dot) => dot.className)).toEqual([
+      "models-chain__dot models-chain__dot--ok",
+      "models-chain__dot models-chain__dot--err",
+      "models-chain__dot models-chain__dot--ok",
+    ]);
+    expect(within(card).getByRole("switch", { name: ALLOW_LOCAL_LABEL })).toHaveAttribute("aria-checked", "true");
+    expect(within(card).getByRole("switch", { name: "Fail run instead of degrading below fallback 2" })).toHaveAttribute("aria-checked", "false");
+    expect(within(card).getByLabelText("Max cost per run")).toHaveValue("$2.50");
+    expect(within(card).getByRole("link", { name: OPEN_REGISTRY })).toHaveAttribute("href", REGISTRY_PATH);
+    expect(within(card).getByRole("button", { name: SIMULATE_ROUTE })).not.toHaveAttribute("aria-disabled");
+    expect(screen.queryByText(/#203/)).not.toBeInTheDocument();
+  });
+
+  it("marks the route card changed for a policy edit exactly as for a chain edit — one batch", () => {
     matrix({ selected: "implement" });
 
-    expect(screen.getByText(POLICY_NOTE)).toBeInTheDocument();
-    expect(screen.getByText(/#203/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: ALLOW_LOCAL_LABEL }));
+
+    const card = screen.getByRole("region", { name: "Route — implement-primary" });
+
+    expect(within(card).getByText(CHANGED)).toBeInTheDocument();
+    expect(within(rowFor("implement")).getByText(CHANGED)).toBeInTheDocument();
   });
 
   it("says so for a selected kind that has no route", () => {
@@ -561,11 +590,28 @@ describe("a role that may not edit — read-only as a rendering mode (#202)", ()
     expect(screen.queryByText(REORDER_HINT)).not.toBeInTheDocument();
   });
 
-  it("draws the selected route's chain with nothing that looks like a control", () => {
+  it("draws the selected route's chain with nothing that looks like an editing control", () => {
     matrix({ editable: false, selected: "implement" });
 
-    expect(within(screen.getByRole("list", { name: "Chain" })).getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    const chain = screen.getByRole("list", { name: "Chain" });
+
+    expect(within(chain).getAllByRole("listitem")).toHaveLength(3);
+    expect(within(chain).queryByRole("button")).not.toBeInTheDocument();
+    // The one button left in the card is the simulate panel's, which any member may open —
+    // reading what would run changes nothing.
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([SIMULATE_ROUTE]);
+  });
+
+  it("draws the policy in its real positions, inert with the reason, rather than hiding it (#203)", () => {
+    // § 3.3's permission-limited state: a route's policy is part of its story, and a card that
+    // hid it from a reader who may only read would look like a route with none.
+    matrix({ editable: false, selected: "implement" });
+
+    const allowLocal = screen.getByRole("switch", { name: ALLOW_LOCAL_LABEL });
+
+    expect(allowLocal).toHaveAttribute("aria-checked", "true");
+    expect(allowLocal).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByLabelText("Max cost per run")).toBeDisabled();
   });
 });
 
@@ -600,7 +646,7 @@ describe("both palettes", () => {
       </RouteEditorProvider>,
     );
 
-    expect(light).toBe(dark);
+    expect(maskIds(light)).toBe(maskIds(dark));
   });
 });
 

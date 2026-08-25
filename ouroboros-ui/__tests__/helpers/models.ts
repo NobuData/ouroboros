@@ -3,6 +3,7 @@ import type {
   ProviderHealth,
   ProviderHealthStrip,
   ProviderSpend,
+  Resolution,
   RouteHop,
   RoutingAlias,
   RoutingMatrix,
@@ -656,4 +657,175 @@ export function unmeasuredMatrix(): RoutingMatrix {
  */
 export function emptyMatrix(): RoutingMatrix {
   return { taskKinds: [], rules: [], spend: emptySpend() };
+}
+
+/* ------------------------------------------------------------------ Simulate routing */
+
+/**
+ * The simulate endpoint's two documented answers (#197, drawn by #203) — transcribed from
+ * `ouroboros-rest/openapi.yaml`'s keyed `examples` rather than invented, because the panel's
+ * whole claim is that it prints what the service composed, and a fixture written here would
+ * prove only that it prints *something*.
+ *
+ * The first is a `review` in a security-labelled context: a rule fired, a second opinion was
+ * attached, both hops kept. The second is the ticket's own scenario — a dead primary on
+ * `implement` with the floor at hop 1 — answered as a `fail_run` with its reason, on a `200`.
+ * The provider ids are the contract's examples' own and not the seed's, which is deliberate:
+ * nothing the panel draws is looked up anywhere.
+ */
+
+/** A provider as the resolution carries it: the four identifying facts plus the health it decided on. */
+const ANTHROPIC_RESOLVED = {
+  id: "6f1d2c3b-4a59-4e87-9c10-2d3e4f5a6b70",
+  kind: "anthropic",
+  displayName: "Anthropic Claude",
+  baseUrl: null,
+  status: "active",
+  latencyMs: 42,
+  detail: null,
+} as const;
+
+/**
+ * A rule fired — the chain runs, with a second opinion attached.
+ *
+ * @returns The contract's `resolved` example.
+ */
+export function resolvedExample(): Resolution {
+  return {
+    resolutionVersion: "r1",
+    taskKind: "review",
+    routeTag: "review-primary",
+    outcome: "resolved",
+    chain: [
+      {
+        index: 1,
+        position: 1,
+        alias: "coder-max",
+        modelId: "claude-fable-5",
+        params: {},
+        provider: ANTHROPIC_RESOLVED,
+        note: null,
+        decision: "kept",
+        code: "provider_healthy",
+        explanation: "Primary · healthy · 42ms",
+      },
+      {
+        index: 2,
+        position: 2,
+        alias: "coder-std",
+        modelId: "claude-sonnet-5",
+        params: {},
+        provider: ANTHROPIC_RESOLVED,
+        note: null,
+        decision: "kept",
+        code: "provider_healthy",
+        explanation: "Fallback 1 · healthy · 42ms",
+      },
+    ],
+    rules: [
+      {
+        id: "f0000000-0000-4000-8000-000000000002",
+        sortOrder: 2,
+        display: "security label → review adds second-opinion vote",
+        applied: true,
+        code: "add_vote_added",
+        explanation: "Applied — a second-opinion vote was added for the executor to obtain.",
+      },
+    ],
+    votes: [
+      {
+        alias: "second-opinion",
+        modelId: "claude-opus-5",
+        params: {},
+        provider: ANTHROPIC_RESOLVED,
+        ruleId: "f0000000-0000-4000-8000-000000000002",
+      },
+    ],
+    floor: {
+      hopIndex: null,
+      code: "no_floor",
+      explanation: "No floor is set — this route may degrade to the end of its chain.",
+    },
+    allowLocalFallback: true,
+    maxCostCents: null,
+    failure: null,
+  };
+}
+
+/** The sentence the floor breach answers with, stated once on the floor and once as the failure. */
+export const FLOOR_BREACHED =
+  "The floor is hop 1 — no hop at or above it is usable, so this run fails rather than degrading below it.";
+
+/**
+ * The floor was breached — the run is refused rather than degraded.
+ *
+ * @returns The contract's `failRun` example.
+ */
+export function failRunExample(): Resolution {
+  return {
+    resolutionVersion: "r1",
+    taskKind: "implement",
+    routeTag: "implement-primary",
+    outcome: "fail_run",
+    chain: [
+      {
+        index: 1,
+        position: 1,
+        alias: "coder-max",
+        modelId: "claude-fable-5",
+        params: {},
+        provider: { ...ANTHROPIC_RESOLVED, status: "error", latencyMs: null, detail: "503 upstream" },
+        note: null,
+        decision: "dropped",
+        code: "provider_error",
+        explanation: "Primary dropped — Anthropic Claude is unreachable (503 upstream).",
+      },
+      {
+        index: 2,
+        position: 2,
+        alias: "coder-fallback",
+        modelId: "gpt-5-codex",
+        params: {},
+        provider: {
+          id: "8b3f4e5d-6c7b-4a09-9e32-4f5a6b7c8d92",
+          kind: "copilot",
+          displayName: "GitHub Copilot",
+          baseUrl: null,
+          status: "active",
+          latencyMs: null,
+          detail: null,
+        },
+        note: "Fallback on 5xx / timeouts",
+        decision: "dropped",
+        code: "below_floor",
+        explanation: "Fallback 1 dropped — this route may not degrade below hop 1.",
+      },
+      {
+        index: 3,
+        position: 3,
+        alias: "local-docs",
+        modelId: "qwen3-coder:32b",
+        params: {},
+        provider: {
+          id: "1a2b3c4d-5e6f-4a80-9b12-3c4d5e6f7a81",
+          kind: "ollama",
+          displayName: "Ollama",
+          baseUrl: "http://workstation:11434",
+          status: "active",
+          latencyMs: 8,
+          detail: null,
+        },
+        note: "Offline mode — keeps the loop turning without a network",
+        decision: "dropped",
+        code: "below_floor",
+        explanation: "Fallback 2 dropped — this route may not degrade below hop 1.",
+      },
+    ],
+    rules: [],
+    votes: [],
+    floor: { hopIndex: 1, code: "floor_breached", explanation: FLOOR_BREACHED },
+    allowLocalFallback: true,
+    maxCostCents: 250,
+    failure: { code: "floor_breached", explanation: FLOOR_BREACHED },
+  };
 }

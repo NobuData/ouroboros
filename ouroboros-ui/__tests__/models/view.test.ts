@@ -4,11 +4,12 @@ import type { ProviderStatus } from "@/app/api/routing";
 import {
   MODELS_TABS,
   NEVER_CHECKED,
-  SIMULATE_REASON,
+  NO_KINDS_TO_SIMULATE,
   isLiveTab,
   providerChip,
   providerDetail,
   saveRoutesReason,
+  simulateReason,
   utcStamp,
 } from "@/app/models/view";
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
@@ -217,10 +218,12 @@ describe("the page head's two actions", () => {
     expect(saveRoutesReason(8)).toBeUndefined();
   });
 
-  it("explains Simulate routing by naming the issue that builds it", () => {
-    // The sidebar's treatment for an unbuilt surface: a usable answer to "when?" rather than
-    // the word *soon* on its own.
-    expect(SIMULATE_REASON).toMatch(/#203/);
+  it("disables Simulate routing only while there is no task kind to ask about", () => {
+    // The same shape as the save rule since AA.4 (#203) built the panel: a number decides. A
+    // workspace with no kinds — unseeded, or a matrix that could not be read — has nothing to
+    // simulate, and the control says so rather than opening a panel with an empty select.
+    expect(simulateReason(0)).toBe(NO_KINDS_TO_SIMULATE);
+    expect(simulateReason(8)).toBeUndefined();
   });
 });
 

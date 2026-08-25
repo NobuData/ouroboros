@@ -31,6 +31,24 @@ import { type ResolvedTheme, stampTheme } from "@/app/theme";
 /** The two palettes a primitive is rendered under. Not `system`: that resolves to one. */
 export const PALETTES: readonly ResolvedTheme[] = ["light", "dark"];
 
+/** A `useId` value, in every spelling React has used for one — `:r0:`, `«r0»`, `_r_0_`. */
+const REACT_ID = /(?:«r[0-9a-z]+»|:r[0-9a-z]+:|_r_[0-9a-z]+_)/g;
+
+/**
+ * Markup with React's generated ids masked.
+ *
+ * React numbers `useId` per root, so two renders of one component in two containers differ
+ * in their ids and — if the component is honest about the theme — in nothing else. A
+ * component that emits an id (a field's `for`, a switch's `aria-describedby`) is compared
+ * through this, so the ids are what is masked and the markup is what is asserted.
+ *
+ * @param html The container's markup.
+ * @returns The same markup, every generated id replaced by one word.
+ */
+export function maskIds(html: string): string {
+  return html.replace(REACT_ID, "id");
+}
+
 // Every test that stamps a palette leaves the document as it found it, so a suite's
 // ordering can never decide what the next one renders under.
 afterEach(() => {

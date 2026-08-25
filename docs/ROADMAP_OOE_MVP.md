@@ -689,7 +689,7 @@ that roadmap's "Existing issues affected" section.
 | 130 | **CH.4** | [#587](https://github.com/NobuData/ouroboros/issues/587) | Import from provider | ouroboros-rest | M | AC.6, CH.1 |
 | 131 | **CH.5** | ✅ [#588](https://github.com/NobuData/ouroboros/issues/588) | Registry read model & alias health | ouroboros-rest | M | Z.3, CH.1, CH.3 |
 | 132 | **AA.3** | ✅ [#202](https://github.com/NobuData/ouroboros/issues/202) | Chain editing & drag-reorder | ouroboros-ui | M | AA.2 |
-| 133 | **AA.4** | [#203](https://github.com/NobuData/ouroboros/issues/203) | Route inspector & simulate panel | ouroboros-ui | M | Z.4, AA.2 |
+| 133 | **AA.4** | ✅ [#203](https://github.com/NobuData/ouroboros/issues/203) | Route inspector & simulate panel | ouroboros-ui | M | Z.4, AA.2 |
 | 134 | **AA.6** | [#205](https://github.com/NobuData/ouroboros/issues/205) | Routing states & guards | ouroboros-ui | S | AA.2, AA.5 |
 | 135 | **AE.3** | [#229](https://github.com/NobuData/ouroboros/issues/229) | Key management flows | ouroboros-ui | M | AD.2, AE.2 |
 | 136 | **AE.4** | [#230](https://github.com/NobuData/ouroboros/issues/230) | Test, discovery & Ollama pulls UX | ouroboros-ui | M | AC.4, AE.2 |

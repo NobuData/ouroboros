@@ -13,8 +13,8 @@ import {
   type ChainDraft,
   DRAG_HINT,
   type DraftHop,
+  type HopTarget,
   NO_ROUTE_NOTE,
-  POLICY_NOTE,
   SAVING,
   addAnnouncement,
   moveAnnouncement,
@@ -28,7 +28,14 @@ import {
   swapLabel,
   swapMenuLabel,
 } from "./chain";
-import type { AliasCell } from "./matrix";
+import {
+  HEALTH_UNREAD,
+  type HopHealth,
+  type HopHealthIndex,
+  hopHealth,
+  hopHealthTitle,
+  hopMetaLine,
+} from "./inspector";
 import { type RouteEditor, useRouteEditor } from "./route-editor";
 
 import "./models.css";
@@ -39,11 +46,21 @@ import "./models.css";
  *
  * Mockup 06's **ROUTE — implement-primary** card draws the chain as a numbered rail: the
  * index in a violet ring, a line down to the next hop, the alias pill, the resolution after an
- * arrow, and the operator's note beneath. That is what this draws, from the editor's draft of
- * the route — and for an owner or admin, the controls the ticket adds to each hop: a drag
- * handle, move-up and move-down, the swap menu on the pill, and remove; plus **+ Add hop**
- * under the chain. The health dot and the policy switches beside it are AA.4's
- * ([#203](https://github.com/NobuData/ouroboros/issues/203)), and the foot says so.
+ * arrow, the health dot, and the hop-meta line beneath. That is what this draws, from the
+ * editor's draft of the route — and for an owner or admin, the controls the ticket adds to
+ * each hop: a drag handle, move-up and move-down, the swap menu on the pill, and remove; plus
+ * **+ Add hop** under the chain. The policy switches under the chain are
+ * `app/models/route-policy.tsx`'s (AA.4, [#203](https://github.com/NobuData/ouroboros/issues/203)).
+ *
+ * ### The dot is the strip's, and the line under a hop is the operator's or the health's
+ *
+ * Since AA.4 each hop wears the health of the connection its alias is bound to, looked up in
+ * the page's own strip read — `app/models/inspector.ts` says why it is a lookup rather than a
+ * status of the hop's own, and why `unknown` is a ring. Its `title` is the last-checked detail
+ * the strip's chip carries. The line beneath is the operator's note where there is one, and
+ * the hop's health line — `Primary · healthy · 42ms`, the shape Z.1's kept-hop sentence takes
+ * — where there is not, because a hop with nothing to say about itself still has a role and a
+ * state.
  *
  * ### Every drag has a keyboard path, and the path is the same edit
  *
@@ -89,6 +106,14 @@ export interface ChainEditorProps {
    * focus twice; the value itself means nothing.
    */
   readonly focusToken?: number;
+  /**
+   * The strip, indexed by connection — what the health dots are drawn from
+   * (`app/models/inspector.ts`'s `hopHealthIndex`).
+   *
+   * Defaults to *not read*, which draws every dot as a ring with a hover saying so: a chain
+   * rendered without a strip — a test, a story — says nothing it cannot know.
+   */
+  readonly health?: HopHealthIndex;
 }
 
 /** Which of a hop's controls focus is put back on after a move. */
@@ -100,7 +125,7 @@ type Control = "up" | "down";
  * @param props See {@link ChainEditorProps}.
  * @returns The rail, the controls for a role that may edit, and the foot.
  */
-export function ChainEditor({ kind, focusToken = 0 }: ChainEditorProps) {
+export function ChainEditor({ kind, focusToken = 0, health = HEALTH_UNREAD }: ChainEditorProps) {
   const editor = useRouteEditor();
   const draft = editor.draft(kind);
 
@@ -179,87 +204,94 @@ export function ChainEditor({ kind, focusToken = 0 }: ChainEditorProps) {
   return (
     <div className="models-chain-editor" ref={root}>
       <ol aria-label="Chain" className="models-chain">
-        {draft.hops.map((hop, index) => (
-          <li
-            className={cx(
-              "models-chain__hop",
-              dragging === index && "models-chain__hop--dragging",
-              over === index && dragging !== index && "models-chain__hop--over",
-            )}
-            data-hop-id={hop.id}
-            key={hop.id}
-            onDragLeave={() => {
-              if (over === index) setOver(null);
-            }}
-            onDragOver={(event) => {
-              if (dragging === null) return;
-              // The default refuses the drop; preventing it is what makes this hop a target.
-              event.preventDefault();
-              if (over !== index) setOver(index);
-            }}
-            onDrop={(event) => {
-              drop(index, event);
-            }}
-          >
-            <div aria-hidden className="models-chain__rail">
-              <span className="models-chain__idx">{index + 1}</span>
-              {index < count - 1 && <span className="models-chain__line" />}
-            </div>
+        {draft.hops.map((hop, index) => {
+          // Looked up once per hop: the dot and the line beneath it read the same answer.
+          const wellbeing = hopHealth(hop.providerId, health);
 
-            <div className="models-chain__body">
-              <div className="models-chain__row">
-                {editor.editable && (
-                  <span
-                    aria-hidden
-                    className="models-chain__handle"
-                    draggable
-                    onDragEnd={() => {
-                      setDragging(null);
-                      setOver(null);
-                    }}
-                    onDragStart={(event) => {
-                      carry(event, hop.alias);
-                      setDragging(index);
-                    }}
-                    title={DRAG_HINT}
-                  >
-                    ⠿
-                  </span>
-                )}
-
-                <HopAlias
-                  editor={editor}
-                  hop={hop}
-                  index={index}
-                  onSwap={(to) => {
-                    editor.swap(kind, index, to);
-                    setAnnouncement(swapAnnouncement(index + 1, hop.alias, to.alias));
-                  }}
-                />
-
-                <span className="models-chain__resolution">→ {hop.resolution}</span>
+          return (
+            <li
+              className={cx(
+                "models-chain__hop",
+                dragging === index && "models-chain__hop--dragging",
+                over === index && dragging !== index && "models-chain__hop--over",
+              )}
+              data-hop-id={hop.id}
+              key={hop.id}
+              onDragLeave={() => {
+                if (over === index) setOver(null);
+              }}
+              onDragOver={(event) => {
+                if (dragging === null) return;
+                // The default refuses the drop; preventing it is what makes this hop a target.
+                event.preventDefault();
+                if (over !== index) setOver(index);
+              }}
+              onDrop={(event) => {
+                drop(index, event);
+              }}
+            >
+              <div aria-hidden className="models-chain__rail">
+                <span className="models-chain__idx">{index + 1}</span>
+                {index < count - 1 && <span className="models-chain__line" />}
               </div>
 
-              {hop.note !== null && <div className="models-chain__meta">{hop.note}</div>}
+              <div className="models-chain__body">
+                <div className="models-chain__row">
+                  {editor.editable && (
+                    <span
+                      aria-hidden
+                      className="models-chain__handle"
+                      draggable
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setOver(null);
+                      }}
+                      onDragStart={(event) => {
+                        carry(event, hop.alias);
+                        setDragging(index);
+                      }}
+                      title={DRAG_HINT}
+                    >
+                      ⠿
+                    </span>
+                  )}
 
-              {editor.editable && (
-                <HopControls
-                  draft={draft}
-                  hop={hop}
-                  index={index}
-                  onMove={(direction) => {
-                    press(hop, index, direction);
-                  }}
-                  onRemove={() => {
-                    editor.remove(kind, index);
-                    setAnnouncement(removeAnnouncement(hop.alias, count - 1));
-                  }}
-                  saving={editor.saving}
-                />
-              )}
-            </div>
-          </li>
-        ))}
+                  <HopAlias
+                    editor={editor}
+                    hop={hop}
+                    index={index}
+                    onSwap={(to) => {
+                      editor.swap(kind, index, to);
+                      setAnnouncement(swapAnnouncement(index + 1, hop.alias, to.alias));
+                    }}
+                  />
+
+                  <span className="models-chain__resolution">→ {hop.resolution}</span>
+
+                  <HealthDot health={wellbeing} />
+                </div>
+
+                <div className="models-chain__meta">{hopMetaLine(hop, index + 1, wellbeing)}</div>
+
+                {editor.editable && (
+                  <HopControls
+                    draft={draft}
+                    hop={hop}
+                    index={index}
+                    onMove={(direction) => {
+                      press(hop, index, direction);
+                    }}
+                    onRemove={() => {
+                      editor.remove(kind, index);
+                      setAnnouncement(removeAnnouncement(hop.alias, count - 1));
+                    }}
+                    saving={editor.saving}
+                  />
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ol>
 
       <div className="models-chain__foot">
@@ -279,8 +311,6 @@ export function ChainEditor({ kind, focusToken = 0 }: ChainEditorProps) {
         )}
 
         <ChainProblems editor={editor} kind={kind} />
-
-        <p className="models-chain__note">{POLICY_NOTE}</p>
       </div>
 
       {/*
@@ -291,6 +321,34 @@ export function ChainEditor({ kind, focusToken = 0 }: ChainEditorProps) {
         {announcement}
       </p>
     </div>
+  );
+}
+
+/**
+ * The hop's health dot — mockup 06's `.dot` beside the resolution, in the strip's treatment
+ * for the hop's connection.
+ *
+ * An image with a name rather than a decoration: the dot is the one place on the rail the
+ * state is carried for a hop with a note, and a reader who cannot see the hue hears the word
+ * and the last-checked detail. A ring, never a disc, for every state nobody reported.
+ *
+ * @param props.health The hop's health, decided.
+ * @returns The dot.
+ */
+function HealthDot({ health }: Readonly<{ health: HopHealth }>) {
+  const title = hopHealthTitle(health);
+
+  return (
+    <span
+      aria-label={title}
+      className={cx(
+        "models-chain__dot",
+        `models-chain__dot--${health.tone}`,
+        health.dot === "ring" && "models-chain__dot--ring",
+      )}
+      role="img"
+      title={title}
+    />
   );
 }
 
@@ -313,7 +371,7 @@ function HopAlias({
   editor: RouteEditor;
   hop: DraftHop;
   index: number;
-  onSwap: (to: AliasCell) => void;
+  onSwap: (to: HopTarget) => void;
 }>) {
   // The primary in the model hue, the fallbacks in the quiet neutral — the matrix's own two
   // treatments, so the chain and the row it summarises read as one thing.

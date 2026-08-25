@@ -7,6 +7,8 @@ import type { ProviderHealthStrip, RoutingMatrix } from "@/app/api/routing";
 import { clientAnswering, stubClient } from "../helpers/api";
 import {
   emptyMatrix,
+  failRunExample,
+  resolvedExample,
   seededAliases,
   seededMatrix,
   seededProviders,
@@ -75,6 +77,7 @@ describe("routing.providers", () => {
     // (#204) and address `/routing/rules`; the batch save is chain editing's (#202) and
     // addresses `/routing/routes`; none of them, and no read, touches the providers path
     // with anything but GET.
+    // …and the simulate question (#203) is a `POST` that creates nothing, at `/routing/simulate`.
     expect(Object.keys(routing)).toEqual([
       "providers",
       "matrix",
@@ -83,6 +86,7 @@ describe("routing.providers", () => {
       "addRule",
       "changeRule",
       "removeRule",
+      "simulate",
     ]);
   });
 
@@ -457,5 +461,58 @@ describe("routing.saveRoutes", () => {
     const caught: unknown = await routing.saveRoutes([IMPLEMENT_ENTRY], client).catch((e: unknown) => e);
 
     expect((caught as ApiError).code).toBe("forbidden");
+  });
+});
+
+describe("routing.simulate", () => {
+  it("POSTs the question to the simulate endpoint and returns the resolution itself", async () => {
+    const { client, requests } = clientAnswering(resolvedExample());
+    const request = { taskKind: "review", ctx: { labels: ["security"] } };
+
+    const resolution = await routing.simulate(request, client);
+
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/routing/simulate");
+    expect(requests[0]?.method).toBe("POST");
+    await expect(requests[0]?.json()).resolves.toEqual(request);
+    expect(resolution).toEqual(resolvedExample());
+  });
+
+  it("sends a kind alone when nothing is known — no ctx, and never a null fact", async () => {
+    const { client, requests } = clientAnswering(resolvedExample());
+
+    await routing.simulate({ taskKind: "docs" }, client);
+
+    await expect(requests[0]?.json()).resolves.toEqual({ taskKind: "docs" });
+  });
+
+  it("resolves — never rejects — with a fail_run, which is an answer on a 200", async () => {
+    const { client } = clientAnswering(failRunExample());
+
+    const resolution = await routing.simulate({ taskKind: "implement" }, client);
+
+    expect(resolution.outcome).toBe("fail_run");
+    expect(resolution.failure?.code).toBe("floor_breached");
+  });
+
+  it("names no workspace, because the session's active organization is the scope", async () => {
+    const { client, requests } = clientAnswering(resolvedExample());
+
+    await routing.simulate({ taskKind: "review" }, client);
+
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+    await expect(requests[0]?.json()).resolves.not.toHaveProperty("organizationId");
+  });
+
+  it("rejects with the service's envelope for a kind with no route to explain", async () => {
+    const { client } = clientAnswering(
+      { code: "route_not_found", message: "This workspace has no route for deploy.", details: { taskKind: "deploy" } },
+      404,
+    );
+
+    await expect(routing.simulate({ taskKind: "deploy" }, client)).rejects.toMatchObject({
+      status: 404,
+      code: "route_not_found",
+      message: "This workspace has no route for deploy.",
+    });
   });
 });

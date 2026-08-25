@@ -403,6 +403,82 @@ describe("the chain (#202)", () => {
   });
 });
 
+describe("the inspector's health dots (#203)", () => {
+  it("takes every dot's colour from the tone modifier, so the dot and its class cannot disagree", () => {
+    expect(rule("\\.models-chain__dot")).toMatch(/background:\s*currentColor/);
+    expect(rule("\\.models-chain__dot")).toMatch(/border-radius:\s*var\(--r-round\)/);
+  });
+
+  it("defines a rule for every tone the strip can give a connection, from the status tokens", () => {
+    expect(rule("\\.models-chain__dot--ok")).toMatch(/color:\s*var\(--ok\)/);
+    expect(rule("\\.models-chain__dot--err")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.models-chain__dot--paused")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.models-chain__dot--unknown")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.models-chain__dot--err")).not.toMatch(/var\(--warn/);
+  });
+
+  it("draws the unreported state as a ring, distinguishable from a disc without colour (M8)", () => {
+    expect(rule("\\.models-chain__dot--ring")).toMatch(/background:\s*transparent/);
+    expect(rule("\\.models-chain__dot--ring")).toMatch(/box-shadow:\s*inset[^;]*currentColor/);
+  });
+});
+
+describe("the policy controls (#203)", () => {
+  it("divides the policy from the chain with a hairline, as the mockup's divider does", () => {
+    expect(rule("\\.models-policy")).toMatch(/border-block-start:\s*1px solid var\(--line\)/);
+  });
+
+  it("lets the sentence wrap and keeps the switch its size", () => {
+    expect(rule("\\.models-policy__row")).toMatch(/justify-content:\s*space-between/);
+    expect(rule("\\.models-policy__label")).toMatch(/min-width:\s*0/);
+  });
+
+  it("sets the floor's number in the data face, inside its sentence", () => {
+    expect(rule("\\.models-policy__hop")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.models-policy__hop")).toMatch(/font:\s*inherit/);
+  });
+
+  it("gives the cost field the mockup's measure, in rem", () => {
+    expect(rule("\\.models-policy__cost")).toMatch(/max-width:\s*[\d.]+rem/);
+  });
+
+  it("draws the footnote's link in the accent, from the token", () => {
+    expect(rule("\\.models-policy__link")).toMatch(/color:\s*var\(--accent\)/);
+  });
+});
+
+describe("the simulate panel (#203)", () => {
+  it("lays the inputs out on a grid that reflows, so the panel holds at the 125% font-scale step", () => {
+    expect(rule("\\.models-simulate__fields")).toMatch(/repeat\(auto-fit, minmax\([\d.]+rem, 1fr\)\)/);
+  });
+
+  it("marks a dropped hop by shape and word — a strike and the error hue on the word — never by hue alone", () => {
+    expect(rule("\\.models-simulate__hop--dropped \\.models-simulate__resolution")).toMatch(/text-decoration:\s*line-through/);
+    expect(rule("\\.models-simulate__hop--dropped \\.models-simulate__decision")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("draws a fail_run's reason as an answer, in the full ink, and a refused question in the error hue", () => {
+    // A `fail_run` is the outcome the floor exists to produce, not a failure of the panel.
+    expect(rule("\\.models-simulate__failure")).toMatch(/color:\s*var\(--ink\)/);
+    expect(rule("\\.models-simulate__failure")).not.toMatch(/var\(--err\)/);
+    expect(rule("\\.models-simulate__refused")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("undoes the list defaults the chain, the rules and the votes are built on", () => {
+    const lists = rule("\\.models-simulate__chain,\\s*\\.models-simulate__rules,\\s*\\.models-simulate__votes");
+
+    expect(lists).toMatch(/margin:\s*0/);
+    expect(lists).toMatch(/padding:\s*0/);
+    expect(lists).toMatch(/list-style:\s*none/);
+  });
+
+  it("lets every sentence wrap rather than widen the panel", () => {
+    expect(rule("\\.models-simulate__explanation")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.models-simulate__sentence")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.models-simulate__resolution")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+});
+
 describe("the dirty-state bar (#202)", () => {
   it("spans the pane the way the tab set does, so the two stick as one stack", () => {
     expect(rule("\\.models \\.models-dirty")).toMatch(/margin:[^;]*calc\(var\(--sp-10\) \* -1\)/);

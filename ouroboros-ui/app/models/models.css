@@ -1,7 +1,8 @@
 /*
  * The routing page — mockup 06's page frame and provider health strip (#200), the routing
- * matrix and the seat its inspector takes (#201), and the chain that seat holds and edits,
- * with the dirty-state bar the edits are committed from (#202).
+ * matrix and the seat its inspector takes (#201), the chain that seat holds and edits, with
+ * the dirty-state bar the edits are committed from (#202), and the rest of the inspector —
+ * the hops' health dots, the policy controls and the simulate panel (#203).
  *
  * The mockup is docs/mockups/06-model-routing.html over docs/mockups/assets/ouroboros.css.
  * What is taken from it is the *anatomy* the design system requires of every module page
@@ -1153,10 +1154,372 @@
   line-height: var(--lh-body);
 }
 
-/* The mockup's `small faint` footnote, for what the card does not hold yet. */
-.models-chain__note {
+/* ---------- the hop's health dot (#203) — mockup 06's .dot beside the resolution ---------- */
+
+/*
+ * The strip's dot, on the rail: a disc that takes `currentColor` from its tone modifier, so
+ * the hue lives in one declaration per state and the dot cannot report a state its class
+ * does not name. The same anatomy as `.models-health__dot`, because it is the same fact —
+ * the connection's health — drawn in a second place; the tones below are the strip's own.
+ */
+.models-chain__dot {
+  width: var(--sp-4);
+  height: var(--sp-4);
+  flex: none;
+  border-radius: var(--r-round);
+  background: currentColor;
+}
+
+/*
+ * The ring — every state nobody reported (decision M8): `unknown`, an unbound alias, a
+ * strip that could not be read. Distinguishable from a healthy disc by shape, and never by
+ * hue alone, which is what "not a grey dot that reads as green in a hurry" means on a rail.
+ */
+.models-chain__dot--ring {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+/* The four tones, each from the palette's own status tokens, so both palettes publish contrast. */
+.models-chain__dot--ok {
+  color: var(--ok);
+}
+
+.models-chain__dot--paused {
+  color: var(--ink-mut);
+}
+
+/*
+ * A failed check, in the error hue rather than the mockup's amber — the strip's correction,
+ * kept: `--warn` is *needs attention*, and V015 defines `error` as *the last check failed*.
+ */
+.models-chain__dot--err {
+  color: var(--err);
+}
+
+.models-chain__dot--unknown {
+  color: var(--ink-faint);
+}
+
+/* ---------- the policy controls (#203) — mockup 06's switches under the chain ---------- */
+
+/*
+ * The mockup's `<hr class="divider">` and the `.col` under it: a hairline over the chain's
+ * foot, then the two switch rows, the field and the footnote at the mockup's 12px rhythm.
+ */
+.models-policy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-7);
+  border-block-start: 1px solid var(--line);
+}
+
+/*
+ * One switch row — the mockup's `.row.between`: the sentence and its switch on one line, the
+ * switch keeping its size and the sentence wrapping, for the reason the rules card gives.
+ */
+.models-policy__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+}
+
+/* The mockup's `small muted`: the sentence, in the muted ink. */
+.models-policy__label {
+  min-width: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The floor's number, as a select inside its sentence. Sized to the sentence rather than to
+ * the form field's own box, so the sentence still reads as one line with a number in it; in
+ * the data face, because the number is a hop the rail prints in the same face.
+ */
+.models-policy__hop {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink);
+  font: inherit;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.models-policy__hop:disabled {
+  cursor: not-allowed;
+}
+
+/* The mockup's `max-width: 120px` on the cost input, as the field's own measure. */
+.models-policy__cost {
+  max-width: 10rem;
+}
+
+/* Why a member's controls are inert, printed once under them — the switches' description. */
+.models-policy__readonly {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `small faint` footnote, with its `.card-link` inside. */
+.models-policy__note {
   margin: 0;
   color: var(--ink-faint);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* The mockup's `.card-link`: a link in the accent, quiet until hovered. */
+.models-policy__link {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.models-policy__link:hover,
+.models-policy__link:focus-visible {
+  text-decoration: underline;
+}
+
+/* The inspector's foot: the way into the simulate panel, under the policy. */
+.models-inspector__foot {
+  display: flex;
+  margin-top: var(--sp-7);
+}
+
+/* ---------- the simulate panel (#203) ---------- */
+
+/*
+ * The sheet's form: the four inputs, then the controls. The dialog around it is
+ * .shell-overlay's, so nothing here positions or sizes the panel.
+ */
+.models-simulate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/*
+ * The inputs, two abreast where the panel is wide enough and one under another where it is
+ * not — which is what keeps the panel usable at the 125% font-scale step, where four fields
+ * on one line would each be narrower than the words in them.
+ */
+.models-simulate__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--sp-6);
+}
+
+.models-simulate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+}
+
+/* The note about unsaved edits, above the form: a standing fact, in the muted ink. */
+.models-simulate__unsaved {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A question the service refused — the panel's one failure, in the error hue. */
+.models-simulate__refused {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The answer: a hairline over it, then the outcome and its sections. */
+.models-simulate__answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding-top: var(--sp-8);
+  border-block-start: 1px solid var(--line);
+}
+
+/* The outcome heading: the chip, then the route's tag in the data face. */
+.models-simulate__outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+  font-size: var(--t-md);
+}
+
+.models-simulate__tag {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * Why the run fails — the resolution's own sentence, first. In the full ink rather than the
+ * error hue: a `fail_run` is the answer the floor exists to give, not a failure of the panel,
+ * and the chip above it already carries the hue.
+ */
+.models-simulate__failure {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 500;
+  line-height: var(--lh-body);
+}
+
+/* The section headings, in the eyebrow treatment the rule builder's legends use. */
+.models-simulate__heading {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-dim);
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/*
+ * The resolved chain — an `ol`, undone, one hop per row: the index, the pill and its
+ * resolution, the decision's word, and the explanation on the line beneath.
+ */
+.models-simulate__chain,
+.models-simulate__rules,
+.models-simulate__votes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.models-simulate__hop,
+.models-simulate__rule {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--sp-4);
+  row-gap: var(--sp-2);
+}
+
+.models-simulate__rule {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The rail's ring, at the chain's own size. */
+.models-simulate__idx {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  grid-row: span 2;
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-round);
+  background: var(--model-tint);
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.models-simulate__hop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.models-simulate__resolution {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The contract's own word beside the hop — *kept* or *dropped* — so the shape is never the only signal. */
+.models-simulate__decision {
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tr-wide);
+}
+
+/*
+ * A dropped hop: the alias struck through, as the contract says the inspector draws it, and
+ * the word *dropped* beside it — shape and word, never hue alone.
+ */
+.models-simulate__hop--dropped .models-simulate__resolution {
+  text-decoration: line-through;
+}
+
+.models-simulate__hop--dropped .models-simulate__decision {
+  color: var(--err);
+}
+
+/* The explanation, verbatim, under the row it is about. */
+.models-simulate__explanation {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A rule's sentence — the database's `display`, in the treatment the rules card gives it. */
+.models-simulate__sentence {
+  min-width: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* A near miss recedes; an applied rule keeps the full treatment. */
+.models-simulate__rule:not(.models-simulate__rule--applied) .models-simulate__sentence {
+  color: var(--ink-faint);
+}
+
+/* What a section says when it holds nothing — *No escalation rule matched this context.* */
+.models-simulate__none {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The policy the resolution ran under: three definitions, term and sentence on one row each. */
+.models-simulate__policy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-3) var(--sp-6);
+  margin: var(--sp-4) 0 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.models-simulate__policy dt {
+  color: var(--ink-faint);
+}
+
+.models-simulate__policy dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.models-simulate__figure {
+  font-family: var(--f-mono);
 }
