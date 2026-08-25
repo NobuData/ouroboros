@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, primaryRole } from "@/app/api/membership";
 import { readModels } from "@/app/models/data";
 import { ROUTE_PARAM } from "@/app/models/matrix";
 import { ModelsScreen } from "@/app/models/models-screen";
@@ -11,8 +11,8 @@ import { ModelsScreen } from "@/app/models/models-screen";
  * returns the workspace this request may render, a reader turns that into everything the
  * screen draws, and a component draws it. Nothing is decided here, so there is nothing here
  * that has to be tested by driving a route — the decisions are in
- * [`app/models/view.ts`](../../models/view.ts) and the read in
- * [`app/models/data.ts`](../../models/data.ts), both covered directly.
+ * [`app/models/view.ts`](../../../models/view.ts) and the read in
+ * [`app/models/data.ts`](../../../models/data.ts), both covered directly.
  *
  * `requireWorkspace()` is called here rather than in the group's layout for the reason
  * `app/(app)/layout.tsx` sets out at length: a layout does not re-render on a client-side
@@ -33,10 +33,17 @@ import { ModelsScreen } from "@/app/models/models-screen";
  * There is no `Freshness` boundary here, unlike the dashboard's route. That boundary holds
  * the last render that worked so a *refresh* that fails does not blank a page somebody is
  * reading, and it is worth its client component on a screen of live figures that polls. This
- * page has one read, does not poll, and degrades that read in place — the strip says what it
- * could not read, where it would have been. AA.6 ([#205](https://github.com/NobuData/ouroboros/issues/205))
- * is where this page's full state and guard treatment is decided, once there are cards for
- * it to be about.
+ * page has two reads, does not poll, and degrades each in place — the strip says what it
+ * could not read where it would have been, and a refused matrix is the DASH-I.7 banner with
+ * the page's one retry (AA.6, [#205](https://github.com/NobuData/ouroboros/issues/205);
+ * `app/models/states.ts` decides every state the page can be in).
+ *
+ * ### Why this file is in a `(routing)` group
+ *
+ * The group changes no URL — this is still `/models` — and exists for the sibling file: a
+ * `loading.tsx` wraps its segment's page and every child segment, so one beside
+ * `models/providers/` would stand in for the providers page too, at the wrong geometry. See
+ * `loading.tsx` here.
  *
  * ### Why the selected route is read here rather than in the browser
  *
@@ -61,6 +68,12 @@ import { ModelsScreen } from "@/app/models/models-screen";
  * may do and it is `app/api/membership.ts`. The gate that **enforces** is the service's;
  * `app/models/rule-actions.ts` says what happens to a member who reaches a write anyway.
  *
+ * The role's **name** travels beside the boolean since AA.6, for one sentence: a reader who
+ * may not edit is told so, and told as what — *viewing routing as a member* — rather than
+ * handed a page with things quietly missing. `primaryRole` collapses the list the contract
+ * carries to the strongest word, the same way the account menu names it. The screen decides
+ * nothing from the name; it prints it.
+ *
  * @param props.searchParams The URL's query, which carries the selected route.
  * @returns The routing page, for the workspace this request is operating in.
  */
@@ -74,6 +87,7 @@ export default async function Page({
     <ModelsScreen
       mayAdminister={mayAdminister(access.membership.roles)}
       readings={readings}
+      role={primaryRole(access.membership.roles)}
       route={query[ROUTE_PARAM] ?? null}
     />
   );

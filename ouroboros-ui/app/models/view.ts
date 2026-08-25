@@ -262,6 +262,27 @@ export function utcStamp(iso: string | null): string | null {
 
 /* ------------------------------------------------------------------ the page head */
 
+/** The `<h1>`, from the mockup verbatim. */
+export const ROUTING_TITLE = "Route every kind of work to the model that earns it.";
+
+/**
+ * The subline, from the mockup verbatim.
+ *
+ * Held as a constant rather than typed into the JSX because it is *copy* — the promise the
+ * product makes about routing — and copy that lives in one named place is copy a designer
+ * can be pointed at. Its three sentences are the three things a route is: an ordered chain,
+ * an indirection through the registry, and a floor.
+ *
+ * Here rather than in the screen since AA.6 ([#205](https://github.com/NobuData/ouroboros/issues/205)),
+ * because the skeleton draws the same head: two spellings of the title would be a page that
+ * moves by the difference the moment the data lands.
+ */
+export const ROUTING_SUBLINE =
+  "Each task kind resolves to a primary model with ordered fallbacks and escalation " +
+  "rules. Routes point at named registry aliases, never raw model ids — see the Model " +
+  "registry tab. The loop degrades gracefully when a provider stumbles — and never " +
+  "silently below the floor you set.";
+
 /**
  * Why **Save routes** cannot act, or `undefined` when it can.
  *

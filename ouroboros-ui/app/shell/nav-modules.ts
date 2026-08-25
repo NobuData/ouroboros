@@ -86,7 +86,7 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     status: "soon",
     soonNote: "The workflow builder arrives with its own roadmap (mockup 04).",
   },
-  // Live since #200: the routing frame is built (`app/(app)/models/page.tsx`), so the row
+  // Live since #200: the routing frame is built (`app/(app)/models/(routing)/page.tsx`), so the row
   // that named the issue it was waiting for is a link. The entry stays seeded here rather
   // than moving into `app/models/` — the sidebar would then have to import the module for
   // its effect, which is a second reason for one screen to be in every bundle.

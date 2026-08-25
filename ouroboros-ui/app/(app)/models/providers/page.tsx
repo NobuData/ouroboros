@@ -20,7 +20,7 @@ import { ProvidersScreen } from "@/app/providers/providers-screen";
  * navigation and does not control whether the segment beneath it renders anyway. Here the
  * gate is also two of the page's **inputs**: the subline the security model approved names
  * the workspace, and whether this reader may connect a provider or press a card's switch is
- * answered once, here, from the same membership, the way `app/(app)/models/page.tsx` answers
+ * answered once, here, from the same membership, the way `app/(app)/models/(routing)/page.tsx` answers
  * it for the rules card. The screen is handed a boolean rather than a role, so there is one
  * place deciding what a role may do and it is `app/api/membership.ts`; the gate that
  * **enforces** is the service's.

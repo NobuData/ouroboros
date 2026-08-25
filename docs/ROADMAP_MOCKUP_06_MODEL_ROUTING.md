@@ -1300,7 +1300,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 | AA.3 | #202 | 🟢 Done | ouroboros-ui: [AA.3] Chain editing & drag-reorder | ⠿ reorder, alias swap menus, unsaved-state + Save routes flow | mvp, routing, ui | N (after AA.2) | Y | M | ouroboros-ui |
 | AA.4 | #203 | 🟢 Done | ouroboros-ui: [AA.4] Route inspector & simulate panel | Chain hops with health, policy toggles, max cost, simulate results | mvp, routing, ui, design | N (after AA.2, Z.4) | Y | M | ouroboros-ui |
 | AA.5 | #204 | 🟢 Done | ouroboros-ui: [AA.5] Escalation rules & spend cards | Rule rows + switches + add-rule builder; spend meters + local share | mvp, routing, ui, design | N (after AA.1, Z.2, Z.5) | Y | M | ouroboros-ui |
-| AA.6 | #205 | 🟡 Open | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
+| AA.6 | #205 | 🟢 Done | ouroboros-ui: [AA.6] Routing states & guards | Empty foundations guidance, member read-only, load/error states | mvp, routing, ui, design | N (after AA.2–AA.5) | Y | S | ouroboros-ui |
 | AA.7 | #206 | 🟡 Open | ouroboros-ui: [AA.7] Routing e2e leg | Parity, reorder→save, rule toggle, simulate, honesty states, themes | mvp, routing, ui, ci | N (after AA.1–AA.6) | Y | S | ouroboros-ui, .github |
 
 ### Issue AA.1 — ouroboros-ui: [AA.1] Models route, subnav & provider health strip
@@ -1309,7 +1309,7 @@ cards — via the #16 tokens (both themes; the mockup is dark-only).
 
 > **Shipped 2026-08-24.**
 > [`ouroboros-ui/app/models/`](../ouroboros-ui/app/models/) over
-> [`app/(app)/models/page.tsx`](../ouroboros-ui/app/%28app%29/models/page.tsx), reading
+> [`app/(app)/models/(routing)/page.tsx`](../ouroboros-ui/app/%28app%29/models/%28routing%29/page.tsx), reading
 > `GET /api/v1/routing/providers` through
 > [`app/api/routing.ts`](../ouroboros-ui/app/api/routing.ts). The sidebar's **Models** entry
 > stops being a *soon* row on the same commit, which is what actually retires #49's placeholder:
@@ -1822,7 +1822,80 @@ SPEND · 30D  Anthropic ▓▓▓▓▓ $412.80 … Local ▓ $0.00 · "Local se
 
 ### Issue AA.6 — ouroboros-ui: [AA.6] Routing states & guards
 
-> **GitHub issue:** #205 · **Status:** 🟡 Open · **Parent epic:** #187
+> **GitHub issue:** #205 · **Status:** 🟢 Done · **Parent epic:** #187
+
+> **Shipped 2026-08-25.** The four states mockup 06 does not draw, decided in one pure module
+> — [`app/models/states.ts`](../ouroboros-ui/app/models/states.ts)'s `routingState` reads the
+> page's two reads and answers `failed`, `no-providers`, `no-routes` or `populated` — and drawn
+> one way each: the guidance card
+> ([`app/models/foundations-card.tsx`](../ouroboros-ui/app/models/foundations-card.tsx)) in the
+> matrix's seat for the two empty states, the DASH-I.7 banner
+> ([`app/models/routing-banner.tsx`](../ouroboros-ui/app/models/routing-banner.tsx)) above the
+> strip for the refused read, the skeleton
+> ([`app/models/models-skeleton.tsx`](../ouroboros-ui/app/models/models-skeleton.tsx), drawn by
+> [`app/(app)/models/(routing)/loading.tsx`](../ouroboros-ui/app/%28app%29/models/%28routing%29/loading.tsx))
+> while the reads are in flight, and a read-only note under the tab set for a reader who may
+> not edit. The banner's shape became a design-system primitive on the way —
+> [`app/ui/retry-banner.tsx`](../ouroboros-ui/app/ui/retry-banner.tsx) — and the dashboard's
+> stale-data banner now draws through it, so the two pages cannot drift.
+>
+> **The guidance is one card with two steps, and the strip decides which is next.** *Connect a
+> provider* and *seed the default routes* are both always drawn, in order, with the reader's
+> place marked (`aria-current="step"`, a word beside each title, a hue on the mark that is never
+> the only signal). The personal-organization seed lands on step one; a provider connected
+> moves it to step two; a strip that could not be read marks step one *unknown* with a dashed
+> ring rather than guessing either way — the strip's own M8 honesty carried onto the path. The
+> right column keeps its rules and spend zero-states beside the card, so the populated page is
+> approached rather than jumped to; the matrix's em-dashes (M7) appear the moment kinds exist
+> with nothing measured, which the screen test walks end to end.
+>
+> **Two corrections to the ticket's wording.** The ticket asked for an *honest pointer* to
+> mockup 07's surface because it did not exist; AE.1 (#227) and AE.5 (#231) built it before this
+> card was drawn, so the honest pointer is a **link** — the guidance's **Providers & keys →**
+> and the strip's own empty note both link `/models/providers`, and the *(mockup 07)* the strip
+> used to say is gone, the same amendment AA.4 made for the registry footnote. And the ticket's
+> technical stack names a *Skeleton primitive* from #46 that #46 never shipped: the dashboard's
+> skeleton is page-owned in `dashboard.css`, and this one follows that precedent in
+> `models.css`, each region at its own geometry.
+>
+> **One acceptance criterion is not met, and the page says so rather than pretending.**
+> *Default-route bootstrap produces a working matrix in one step* needs a write the contract
+> does not have: a task kind is a row of `task_kinds`, `PUT /api/v1/routing/routes` refuses a
+> kind the workspace does not have, and the eight defaults are written today by
+> `R__dev_seed_routing.sql` and nothing else — nothing in `ouroboros-rest` creates one. A
+> UI-only ticket cannot supply that, and inventing a `POST /api/v1/routing/bootstrap` with a
+> template design (which aliases, bound to which of the connection's models?) is a service
+> decision this roadmap has not made. So **Seed default routes** is drawn in its real position,
+> inert with its reason printed as well as carried (§ 3.5), and the reason names the service
+> rather than an issue because no issue owns the endpoint yet. **The service side is open:** a
+> routing bootstrap write — the eight kinds from the seed's template, and routes over whatever
+> aliases the workspace has — should be filed under epic Z, and the control's handler is the one
+> thing this page then needs.
+>
+> **Read-only is verified as a rendering mode, across all three cards.** A member's page has no
+> handle column, no reorder hint, no **Save routes**, no dirty bar, no move/remove/swap/add on the
+> chain and no switch, builder or delete on the rules — absence, per AA.5's decision — with the
+> policy switches the one place the disabled-with-reason rule applies, because a position has no
+> other carrier. The role is **explained**: *Viewing routing as a member.* and what that means,
+> once, in the slot the dirty bar takes for an owner, named from `primaryRole` the way the
+> account menu names it, with `mayAdminister` still the only decision.
+>
+> **The skeleton is scoped by a route group.** A `loading.tsx` wraps its segment's page and every
+> child segment, so one at `models/` would have stood in for `/models/providers` and
+> `/models/registry` at the wrong geometry; the page moved into `models/(routing)/`, which
+> changes no URL. The skeleton draws the head and the tab set **as themselves** — their copy does
+> not depend on the reads — and reserves the strip, the eight-row matrix at the table's own cell
+> padding, the inspector's empty seat, three ruled rule rows and four metered spend rows, all in
+> tokens and rem so the reservation holds at every font-scale step.
+>
+> **Deliberately not here:** the bootstrap's service (above); the e2e leg (AA.7, #206), which
+> should script the guidance path against the `kensuenobu` workspace and the read-only pass as
+> `jorge@acme-robotics.dev`; converging the dashboard's page-owned skeleton onto a primitive,
+> which is a refactor no ticket has asked for.
+>
+> **91 tests added** across the states module, the guidance card, the two banners, the
+> skeleton, the screen, the route and the two stylesheets, and two of the dashboard's
+> stylesheet assertions became the primitive's; 3,384 in `ouroboros-ui`.
 
 
 - **Problem Statement:** A fresh org has no providers, no aliases, no routes —
@@ -2349,3 +2422,23 @@ floor that refuses something on every chain.
 Next in epic AA are **#205** ([AA.6] the states and guards), which now has every card drawn to
 draw its skeletons and its read-only pass over, and **#206** ([AA.7] the e2e leg), whose
 *reorder → save*, *rule toggle* and *simulate* assertions now have every control they script.
+
+**#205** ([AA.6] the states and guards) has landed, and the page has a designed answer for every
+state a real workspace spends its first week in: the guidance card walks *connect a provider →
+seed the default routes* with the reader's place marked, a refused read is the dashboard's banner
+— now a primitive both pages draw — said once with the page's one retry, the skeleton reserves
+every region's own geometry behind a route group so it never stands in for the providers page,
+and a member is told *viewing routing as a member* rather than handed a page with things quietly
+missing. Two amendments to the ticket: the pointer to mockup 07 is a **link**, because AE.1 built
+the surface first, and the ticket's *Skeleton primitive* does not exist — the skeleton is
+page-owned, the dashboard's own precedent.
+
+**One criterion is open on the service side, and the page is honest about it.** The
+default-route bootstrap needs a write that creates task kinds, and nothing in the routing
+contract does: **Seed default routes** is drawn inert with that reason printed under it. A
+bootstrap endpoint — the seed's eight kinds as a template, routes over the workspace's aliases —
+is epic Z's to file, and wiring the control is the one edit this page then needs.
+
+Next in epic AA is **#206** ([AA.7] the e2e leg), which should script the guidance path against
+the `kensuenobu` workspace (no providers → no routes) and the read-only pass as a `member`
+session, beside the *reorder → save*, *rule toggle* and *simulate* assertions.

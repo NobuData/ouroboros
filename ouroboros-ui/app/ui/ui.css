@@ -959,3 +959,55 @@
   border-color: var(--accent-line);
   box-shadow: 0 0 22px -6px var(--accent-glow);
 }
+
+/* ============================================================ the retry banner */
+
+/*
+ * What a failed read degrades to (#86): one line saying what could not be read and why, and
+ * the page's only retry — drawn once per page, above the content it is about. The dashboard
+ * established it and the routing page (#205) draws it too, which is why the box lives here
+ * and the placement (its margins against the page head) stays with each page.
+ *
+ * The warn hue rather than the error hue, deliberately: the page underneath is still there —
+ * the dashboard's last good render, the routing page's frame and strip — and a banner in the
+ * error hue over a page full of data would report an outage the reader is not having. Both
+ * palettes publish this token's contrast against `--surface`; a hand-picked amber would be
+ * legible in one theme and not the other.
+ */
+.ou-retry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+/*
+ * The headline and the reason share a paragraph, so they wrap as one block beside the
+ * control rather than as two lines that can separate. `margin: 0` because it is a
+ * paragraph, and the flex gap already spaces it.
+ */
+.ou-retry__text {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The headline carries the state — the warn hue, and the weight that makes it the first
+ * thing read. It is never the only signal: the sentence says what failed in words, which is
+ * what a reader who cannot separate two hues has (design system § 3.4).
+ */
+.ou-retry__headline {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* The service's own sentence, quieter than the headline it follows. */
+.ou-retry__reason {
+  color: var(--ink-mut);
+}
