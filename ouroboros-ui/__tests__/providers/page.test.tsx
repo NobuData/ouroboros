@@ -38,6 +38,11 @@ vi.mock("@/app/providers/add-actions", () => ({
   addProvider: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "", details: {} } }),
 }));
 vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
+vi.mock("@/app/providers/live-actions", () => ({
+  testConnection: vi.fn(),
+  refreshModels: vi.fn(),
+  startPull: vi.fn(),
+}));
 vi.mock("@/app/providers/key-actions", () => ({
   revealCredential: vi.fn(),
   rotateCredential: vi.fn(),

@@ -19,7 +19,7 @@
  * config.mapping.ts    field name ↔ column              → and the honest 501 where there is none
  * ```
  *
- * **Four modules are imported and each one is a capability this module is not allowed to
+ * **Five modules are imported and each one is a capability this module is not allowed to
  * have of its own.**
  *
  *   * `DbModule` — the answer to *who can reach `provider_connections`*, and non-global so
@@ -34,7 +34,15 @@
  *   * `RegistryModule` — Y.1's ([#189](https://github.com/NobuData/ouroboros/issues/189))
  *     alias resolution, for the one question `DELETE` asks. Y.1 wrote
  *     `providerConnectionInUse` *for* this ticket and left it unthrown; this is where it is
- *     thrown.
+ *     thrown. AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) asks it a
+ *     second question — which aliases name which model — for the flag on a model discovery
+ *     no longer lists.
+ *   * `ProviderHealthModule` — Z.3's ([#196](https://github.com/NobuData/ouroboros/issues/196))
+ *     one export, its service, for the one write **Test connection** owes it: the snapshot
+ *     the routing strip reads, so the pill here and the chip there are one measurement. The
+ *     repository behind it stays that module's, which is the *no check on demand* rule kept
+ *     — a test is the adapter's call under an administrator's session, and only its answer
+ *     crosses into that module.
  *
  * `BetterAuthModule` is **not** imported and does not need to be: the library's own module
  * is global, so `AuthService` — the typed access to `auth.api` the step-up's password check
@@ -57,6 +65,7 @@ import { Module } from "@nestjs/common";
 
 import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
+import { ProviderHealthModule } from "../provider-health/provider-health.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
 import { RoutingStatsRepository } from "../routing/stats.repository";
@@ -65,15 +74,24 @@ import { ProviderAudit } from "./connection.audit";
 import { ProviderConnectionsController } from "./provider-connections.controller";
 import { ProviderConnectionsRepository } from "./provider-connections.repository";
 import { ProviderConnectionsService } from "./provider-connections.service";
+import { ProviderModelsRepository } from "./provider-models.repository";
 import { RevealLimiter } from "./reveal.limiter";
 import { StepUpRegistry, StepUpService } from "./step-up";
 
 @Module({
-  imports: [DbModule, VaultModule, ProvidersModule, RegistryModule, AuditModule],
+  imports: [
+    DbModule,
+    VaultModule,
+    ProvidersModule,
+    RegistryModule,
+    AuditModule,
+    ProviderHealthModule,
+  ],
   controllers: [ProviderConnectionsController],
   providers: [
     ProviderConnectionsService,
     ProviderConnectionsRepository,
+    ProviderModelsRepository,
     ProviderAudit,
     RevealLimiter,
     StepUpRegistry,

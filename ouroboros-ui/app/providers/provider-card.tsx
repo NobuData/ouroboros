@@ -1,4 +1,4 @@
-import { Button, Card, Chip, Meter, TextField, cx } from "@/app/ui";
+import { Card, Chip, Meter, TextField, cx } from "@/app/ui";
 
 import { AddressRow } from "./address-row";
 import { CardMenu } from "./card-menu";
@@ -6,19 +6,15 @@ import {
   CAP_LABEL,
   CAP_SOON,
   type CardModel,
-  DETECTED_LABEL,
   MODELS_LABEL,
-  type ModelsRegion,
+  type ModelsRegion as Region,
   type MonogramTint,
-  NO_MODELS,
-  PULL_SOON,
-  TEST_CONNECTION,
-  TEST_SOON,
   THIS_MONTH,
-  tierLabel,
 } from "./cards";
 import { KeyRow } from "./key-row";
+import { ModelsRegion } from "./models-region";
 import { ProviderSwitch } from "./provider-switch";
+import { TestConnection } from "./test-connection";
 
 import "./providers.css";
 
@@ -36,19 +32,22 @@ import "./providers.css";
  *
  * ### What is live, and what is honestly not
  *
- * The **switch** persists (`provider-switch.tsx`), and since AE.3
+ * The **switch** persists (`provider-switch.tsx`); since AE.3
  * ([#229](https://github.com/NobuData/ouroboros/issues/229)) the **key row** reveals,
  * rotates and saves (`key-row.tsx`), the **address** validates on save (`address-row.tsx`),
- * and the head's **overflow menu** deletes behind the dependency guard (`card-menu.tsx`).
- * What is still drawn inert with its issue named (design system § 3.5): **Test connection**
- * (AE.4) and the **Monthly cap** field (AE.6) — a card with dead controls looks broken and a
- * card missing them looks like it has fewer affordances, so each is the control it will be.
+ * and the head's **overflow menu** deletes behind the dependency guard (`card-menu.tsx`);
+ * and since AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) the foot's
+ * **Test connection** answers with what the provider said (`test-connection.tsx`), the
+ * **models region** refreshes and flags a stranded alias (`models-region.tsx`), and the
+ * pull-list's **Pull latest** streams a transfer the service tracks (`pull-list.tsx`). What
+ * is still drawn inert with its issue named (design system § 3.5): the **Monthly cap** field
+ * (AE.6) — a card with a dead control looks broken and a card missing it looks like it has
+ * fewer affordances, so it is the control it will be.
  *
- * A Server Component. The controls that write — the switch, the key row, the address row and
- * the menu — are its Client Component islands, each handed the decided model and a
- * `mayAdminister` boolean; a member is handed the same card with those islands drawn
- * read-only or absent, never a different card. Every figure arrives already decided, so this
- * file is a description of a card.
+ * A Server Component. The controls that write are its Client Component islands, each handed
+ * the decided model and a `mayAdminister` boolean; a member is handed the same card with
+ * those islands drawn read-only or absent, never a different card. Every figure arrives
+ * already decided, so this file is a description of a card.
  */
 
 /**
@@ -133,7 +132,7 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
         Added by {model.meta.addedBy} · {model.meta.addedOn} · last used {model.meta.lastUsed}
       </p>
 
-      <ModelsRegionView id={model.id} region={model.models} />
+      <ModelsRegionView id={model.id} mayAdminister={mayAdminister} region={model.models} />
 
       <div className="providers-card__meter">
         <div className="providers-card__meter-line">
@@ -153,12 +152,7 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
       </div>
 
       <footer className="providers-card__foot">
-        <Button reason={TEST_SOON} size="sm" tone="ghost">
-          {TEST_CONNECTION}
-        </Button>
-        {/* The result-note slot: AE.4's live test writes here. Empty until it does, and
-            drawn so the foot keeps its shape. */}
-        <span className="providers-card__test-note" />
+        <TestConnection connectionId={model.id} mayAdminister={mayAdminister} />
         <TextField
           className="providers-card__cap"
           hint={<span className="sr-only">{CAP_SOON}</span>}
@@ -175,19 +169,25 @@ export function ProviderCard({ model, mayAdminister }: ProviderCardProps) {
 }
 
 /**
- * The models region: chips, the pull-list slot, or the line that says why neither.
+ * The models region: the line that says why it could not be read, or the live island.
+ *
+ * The unavailable state is drawn here, on the server, because it is a sentence and nothing
+ * else; the two regions with something to refresh, animate or pull are `models-region.tsx`'s.
  *
  * @param props.id The connection, for the region's heading id.
+ * @param props.mayAdminister Whether this reader may refresh or pull.
  * @param props.region The decided region.
  * @returns The label and what follows it.
  */
-function ModelsRegionView({ id, region }: Readonly<{ id: string; region: ModelsRegion }>) {
-  const labelId = `provider-${id}-models`;
-
+function ModelsRegionView({
+  id,
+  mayAdminister,
+  region,
+}: Readonly<{ id: string; mayAdminister: boolean; region: Region }>) {
   if (region.kind === "unavailable") {
     return (
       <div className="providers-card__models">
-        <p className="providers-card__models-label" id={labelId}>
+        <p className="providers-card__models-label" id={`provider-${id}-models`}>
           {MODELS_LABEL}
         </p>
         <p className="providers-card__models-state" role="status">
@@ -197,54 +197,5 @@ function ModelsRegionView({ id, region }: Readonly<{ id: string; region: ModelsR
     );
   }
 
-  if (region.kind === "pull-list") {
-    return (
-      <div className="providers-card__models">
-        <p className="providers-card__models-label" id={labelId}>
-          {DETECTED_LABEL}
-        </p>
-        {region.models.length === 0 ? (
-          <p className="providers-card__models-state">{NO_MODELS}</p>
-        ) : (
-          <ul aria-labelledby={labelId} className="providers-card__pull-list">
-            {region.models.map((model) => (
-              <li className="providers-card__pull-row" key={model.modelId}>
-                <span className="providers-card__pull-model">{model.display}</span>
-                <Button reason={PULL_SOON} size="sm" tone="ghost">
-                  Pull latest
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="providers-card__models">
-      <p className="providers-card__models-label" id={labelId}>
-        {MODELS_LABEL}
-      </p>
-      {region.models.length === 0 ? (
-        <p className="providers-card__models-state">{NO_MODELS}</p>
-      ) : (
-        <ul aria-labelledby={labelId} className="providers-card__chips">
-          {region.models.map((model) => (
-            <li key={model.modelId}>
-              <Chip mono tone="model">
-                {model.display}
-              </Chip>
-            </li>
-          ))}
-          {/* A tier pill only where discovery reported one — decision P8. */}
-          {region.tiers.map((tier) => (
-            <li key={tier}>
-              <Chip tone="ok">{tierLabel(tier)}</Chip>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  return <ModelsRegion connectionId={id} mayAdminister={mayAdminister} region={region} />;
 }

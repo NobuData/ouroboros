@@ -1492,17 +1492,19 @@ on Ollama's — and the `secret` field is the masked key row, with the mockup's 
 **Rotate** (or **Save**, for an optional key left empty) live since AE.3 ([the key management
 flows](#the-key-management-flows), [#229](https://github.com/NobuData/ouroboros/issues/229)).
 The entry's `capabilities.pull`
-decides whether the models region is chips or Ollama's pull-list slot, which AE.4
-([#230](https://github.com/NobuData/ouroboros/issues/230)) fills. Whether a cap exists decides
+decides whether the models region is chips or Ollama's pull-list, and its `capabilities.discovery`
+whether that region offers a **Refresh models** at all (a fixed catalog has nothing to refresh)
+— both live since AE.4 ([the live surfaces](#the-live-surfaces),
+[#230](https://github.com/NobuData/ouroboros/issues/230)). Whether a cap exists decides
 between a meter and an em-dash. The monogram's two letters and tint are the one thing written
 per kind, and they are *copy*: a token map with a fallback that derives an unknown kind's
 letters from its own name in the neutral tint.
 
-**What the cards read.** [`app/providers/data.ts`](app/providers/data.ts) composes six
+**What the cards read.** [`app/providers/data.ts`](app/providers/data.ts) composes seven
 readings — the listing, the catalog, the health strip, the month's spend, the registry's
-aliases (each card's dependent routes, for AE.3's delete guard and switch-off confirm), and
-each connection's models — under the rule every reader here keeps: one failed read is one
-degraded region. A catalog that could not be read leaves every key row under a fallback label; a month
+aliases (each card's dependent routes, for AE.3's delete guard and switch-off confirm), each
+connection's models, and each *pulling* connection's pulls in flight — under the rule every
+reader here keeps: one failed read is one degraded region. A catalog that could not be read leaves every key row under a fallback label; a month
 that could not be read leaves every meter at *no spend recorded*; one card's models failing
 says so on that card. The listing failing is the one read the grid cannot survive, and it says
 so where the grid would be. Three of those readings are new to the contract with this issue
@@ -1527,8 +1529,9 @@ spelling the service writes it in (`provider.entitlements.ts`). A connection nev
 an em-dash for last-used, and every relative time is measured from the one instant the reader
 took, so a server render and its hydration agree. The status pill is `connected` for an active
 connection (the taxonomy's own word) and the health strip's words for the other three, with
-the last check's detail on hover; the taxonomy's finer pills need an error class the stored
-status does not carry, and arrive with AE.4's live test.
+the last check's detail on hover — except that an `error` whose snapshot carries the class a
+test wrote draws the taxonomy's finer pill, `degraded upstream` or `key rejected`, which is
+how the mockup's Copilot card earns its word after a reload (AE.4).
 
 **The switch persists.** [`app/providers/provider-switch.tsx`](app/providers/provider-switch.tsx)
 is the dashboard's auto-merge switch to the line — optimistic, reconciled by `router.refresh()`,
@@ -1540,6 +1543,77 @@ switch renders in its real position, read-only, with the reason. **The switch-of
 first** when routes resolve through the connection (AE.3): disabling has the same practical
 effect on a running loop as deleting, and unlike delete the service has no guard to catch it,
 so the confirmation names the routes.
+
+#### The live surfaces
+
+**Test connection, the chips' refresh, and the Ollama pull-list — the places where the card
+stops describing stored state and starts reflecting the world** ([#230](https://github.com/NobuData/ouroboros/issues/230),
+decisions **P6** and **P9**). Three client islands on the server-rendered card, over one
+`"use server"` module ([`app/providers/live-actions.ts`](app/providers/live-actions.ts)) and
+one pure decision module ([`app/providers/live.ts`](app/providers/live.ts)), on AE.3's
+pattern; and five routes added to `ouroboros-rest` for them (0.30.15 → 0.30.16), because the
+adapter's three questions can only be asked by the module that resolves a connection for a
+workspace and opens its credential for one call.
+
+```
+[Test connection] ─▶ POST …/test ─▶ ✓ 200 · 38ms   △ 503 upstream · retrying   ✗ key rejected (401)
+                                  └─▶ written to the strip's snapshot ─▶ router.refresh() ─▶ pill
+MODELS AVAILABLE  [Refresh models] ─▶ POST …/discover ─▶ chips enter/leave · ⚠ alias local-ds still points here →
+DETECTED MODELS   qwen3-coder:32b [19 GB] [Pull latest] ─▶ POST …/pulls ─▶ ▓▓▓▓▓▓░░░░ 61% ─ polled ─▶ ✓ pulled
+                  phi4:14b        [9.1 GB] queued…                                   ← reload: still 61%
+```
+
+**The note is the service's sentence, and a provider that is down is a `200`.**
+[`app/providers/test-connection.tsx`](app/providers/test-connection.tsx) presses
+`POST /api/v1/providers/{id}/test`, which runs the adapter's own `validate` — a models-list
+or a version ping, never a completion — and answers *whatever it found* as a value: the
+status the column was set to, the pill, the note composed through the taxonomy, the measured
+latency (only on a pass; a failure has none, by design), and the class. The island adds the
+glyph and the `· 38ms` and draws the note whole; because the service wrote the answer to
+`provider_connections.status` and the health snapshot before answering, the island then asks
+the router to re-read the card, which is how the head's pill and the chips change without the
+foot knowing how to draw either. The snapshot gained an `errorClass` probe key for this, so
+the finer pill survives a reload and the routing page's strip describes the same measurement.
+**`· retrying` is the taxonomy's word, and the card gives it exactly one bounded retry**:
+an `upstream` failure earns one automatic re-test after `RETRY_DELAY_MS`, drawn busy while it
+waits; a `429`, a closed socket and a refused key earn none, because retrying those is either
+what a rate limit asks you not to do or a wait that changes nothing. Testing is an
+administrator's; a member's button is inert with the reason, and the API is the enforcer.
+
+**Discovery replaces the catalog, and the alias is what is flagged.** After a pass the same
+Server Action runs `POST …/discover`; **Refresh models**
+([`app/providers/models-region.tsx`](app/providers/models-region.tsx)) runs it on demand,
+hidden where the adapter's `discovery` flag is false because a fixed catalog has nothing to
+refresh. The service upserts what the provider reported on V017's key and **deletes what it
+no longer lists** — `provider_models` is discovery's report of what exists, and the registry,
+alias validation and the import wizard all read it as exactly that — and answers `unlisted`:
+every alias on the connection whose model the catalog no longer holds. The island draws a chip
+that appeared entering and keeps a vanished one drawn, leaving, for `CHIP_LEAVE_MS` before it
+goes (motion only where the reader allows it), and draws each stranded model as
+[`app/providers/unlisted-flag.tsx`](app/providers/unlisted-flag.tsx): the id in the warn tone,
+*not listed upstream*, and a link to the alias on the registry page (`aliasPath`, a query
+parameter the alias table will honour when CI.2 lands). Nothing is flagged on a connection
+nothing has discovered on — a gap is not a mismatch. A provider that did not answer its list is
+`502 provider_discovery_failed`, **the list is unchanged**, and the region says so with the
+provider's own phrase.
+
+**Progress lives on the server, and the page polls it.**
+[`app/providers/pull-list.tsx`](app/providers/pull-list.tsx) is the Ollama card's rows — mono
+name, the size in bytes turned into `19 GB` / `9.1 GB` by `sizeTag` (decimal, as `ollama list`
+prints them), **Pull latest**. A press asks `POST …/pulls`, which answers at once with the
+record AC.4's tracker holds — `running`, or `queued` behind the connection's one active pull —
+and from then on the list polls `GET /api/providers/{id}/pulls`, a route handler on this origin
+([`app/api/providers/[id]/pulls/route.ts`](app/api/providers/[id]/pulls/route.ts)) for the
+reason the dashboard's summary poll is one, every `PULL_POLL_MS` while anything moves. The
+reader hands a pulling card its records *with the page*, so **a reload mid-pull lands on the bar
+at the transfer's real percentage** rather than on an idle button, and the list stops polling by
+itself when nothing is in flight. The bar is a `progressbar` announcing `llama4:scout · 61%`,
+indeterminate while the daemon has not yet said how big the transfer is; a finished pull is
+`succeeded`, not `100%` — the daemon's last line carries no counts and the service reports what
+it said. When a pull lands the service re-runs discovery itself, whether or not a page is still
+watching; the list waits `PULL_SETTLE_MS` and re-reads the card, which is how the new size
+reaches the row. Queue management proper — ordering, cancellation, disk awareness — is AF.5's
+(#238); the e2e leg that stops the compose Ollama and pulls a real model is AE.7's (#233).
 
 #### The key management flows
 

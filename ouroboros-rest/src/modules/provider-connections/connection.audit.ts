@@ -62,6 +62,8 @@ import {
 import { AuditService } from "../audit/audit.service";
 import type { ProviderConnectionKind } from "../db/schema";
 import { failureCode } from "../errors/failure";
+import type { ProviderValidation } from "../providers/provider.adapter";
+import { PROVIDER_CONNECTION_ERRORS } from "./provider-connections.errors";
 import type { StepUpMethod } from "./step-up";
 
 export {
@@ -213,26 +215,36 @@ export class ProviderAudit {
   }
 
   /**
-   * Record that a connection was checked against its live provider.
+   * Record that a connection was checked against its live provider, and what was found.
    *
-   * **Nothing calls this yet, and that is the honest state rather than an oversight.** The
-   * test-and-discovery routes are AE.4's ([#230](https://github.com/NobuData/ouroboros/issues/230)),
-   * and AD.4's scope names `provider.tested` in the vocabulary this file writes. The
-   * alternative was to leave the eighth name unimplemented and have AE.4 invent its own
-   * spelling of it, which is the drift the shared vocabulary exists to prevent — a method
-   * with one caller-to-be is cheaper than two names for one event.
+   * Defined by AD.4 ([#225](https://github.com/NobuData/ouroboros/issues/225)) ahead of its
+   * caller, so the name was spelled once; the caller is AE.4's
+   * ([#230](https://github.com/NobuData/ouroboros/issues/230)) test route. **A provider that
+   * failed the test is a `failure` outcome**, under the same reason a refused add or rotate
+   * records — `provider_validation_failed` — with the taxonomy's class beside it: the
+   * operation ran to completion either way, and what a reader of the trail wants to know is
+   * what it found. A trail that recorded every test as a success would be a trail that could
+   * not tell a key rejected on Tuesday from one that worked.
    *
    * @param context - Who, what and when.
-   * @param latencyMs - What the provider took to answer, when it answered. The same figure
-   *   `provider_connections.health` carries, and the reason a *tested* row is worth reading:
-   *   a check that passed in 38ms and a check that passed in 3 800ms are different facts.
+   * @param validation - What the adapter found. A success carries its latency — the same
+   *   figure `provider_connections.health` carries, and the reason a *tested* row is worth
+   *   reading: a check that passed in 38ms and one that passed in 3 800ms are different facts.
+   *   A failure carries its class and no latency, because it has none.
    * @returns When the event is stored.
    */
-  async tested(context: ProviderAuditContext, latencyMs?: number): Promise<void> {
-    await this.write(PROVIDER_TESTED_EVENT, context, {
-      outcome: "success",
-      latency_ms: latencyMs,
-    });
+  async tested(context: ProviderAuditContext, validation: ProviderValidation): Promise<void> {
+    await this.write(
+      PROVIDER_TESTED_EVENT,
+      context,
+      validation.status === "ok"
+        ? { outcome: "success", latency_ms: validation.latencyMs }
+        : {
+            outcome: "failure",
+            reason: PROVIDER_CONNECTION_ERRORS.validationFailed,
+            error_class: validation.errorClass,
+          },
+    );
   }
 
   /**

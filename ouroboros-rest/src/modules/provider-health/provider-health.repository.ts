@@ -197,6 +197,33 @@ export class ProviderHealthRepository {
   }
 
   /**
+   * The `health` one connection holds, for a writer about to merge over it.
+   *
+   * The sweep reads the column in the same statement that selects what is due; a check that
+   * arrives from outside the sweep — mockup 07's **Test connection**
+   * ([#230](https://github.com/NobuData/ouroboros/issues/230)) — has to read it separately, and
+   * has to read it here rather than through the lifecycle's own row, whose `select` list
+   * deliberately omits this column.
+   *
+   * @param organizationId - The workspace the row belongs to.
+   * @param connectionId - The connection.
+   * @returns The column's value, or `undefined` when this workspace has no such connection.
+   */
+  async healthOf(
+    organizationId: string,
+    connectionId: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    const row = await this.database.db
+      .selectFrom("provider_connections")
+      .select("health")
+      .where("organization_id", "=", organizationId)
+      .where("id", "=", connectionId)
+      .executeTakeFirst();
+
+    return row?.health;
+  }
+
+  /**
    * Every connection in one workspace, with whatever is known about its health.
    *
    * What the strip renders and what Z.1 ([#194](https://github.com/NobuData/ouroboros/issues/194))

@@ -93,8 +93,29 @@ export type ProviderMonthlySpend = components["schemas"]["ProviderMonthlySpend"]
 /** One kind's month — what one card's meter is computed from. */
 export type ProviderMonthlySpendRow = components["schemas"]["ProviderMonthlySpendRow"];
 
-/** One model discovery reported on a connection — a chip, or a pull-list line. */
-export type ModelOption = components["schemas"]["ModelOption"];
+/** One model discovery reported on a connection — a chip, or a pull-list line, with its size. */
+export type ProviderModel = components["schemas"]["ProviderModel"];
+
+/** A model a routing alias still names that the provider no longer lists — a broken route, flagged. */
+export type UnlistedModel = components["schemas"]["UnlistedModel"];
+
+/** One connection's discovered catalog, and the aliases it has stranded. */
+export type ProviderModels = components["schemas"]["ProviderModels"];
+
+/** What a discovery run answers: the catalog as it now stands, and what changed. */
+export type ProviderDiscovery = components["schemas"]["ProviderDiscovery"];
+
+/** What **Test connection** found — the pill, the note, and the facts they were composed from. */
+export type ProviderTest = components["schemas"]["ProviderTest"];
+
+/** The taxonomy's five words for why a provider call failed. */
+export type ProviderErrorClass = NonNullable<ProviderTest["errorClass"]>;
+
+/** One tracked pull — the server-side record a page polls. */
+export type ModelPull = components["schemas"]["ModelPull"];
+
+/** Every pull known for one connection. */
+export type ModelPulls = components["schemas"]["ModelPulls"];
 
 /** One page of them. */
 export type ProviderConnectionPage = components["schemas"]["ProviderConnectionPage"];
@@ -224,25 +245,103 @@ export const providers = {
   },
 
   /**
-   * The models discovery has reported on one connection — the card's chips, or its pull-list.
+   * The models discovery has reported on one connection, with the aliases it has stranded.
    *
-   * Read from the registry tag's `model-options`, which is where `provider_models` crosses
-   * the wire for mockup 21's inspector as well: one read, so a chip on this page and an
-   * option in that select cannot disagree about what a provider offers.
+   * Read from the providers collection since AE.4
+   * ([#230](https://github.com/NobuData/ouroboros/issues/230)): the same `provider_models`
+   * rows mockup 21's inspector reads, plus what only a card needs — the size a pull-list
+   * prints, and `unlisted`, the flag on a routing alias whose model the provider no longer
+   * lists.
    *
    * @param connectionId The connection.
    * @param client The client to call through.
-   * @returns The models, ordered by id. Empty when discovery has not run — an honest empty
-   *   region, not a failure.
+   * @returns The catalog. Empty models when discovery has not run — an honest empty region,
+   *   not a failure.
    * @throws {ApiError} What the service answered — `404 provider_connection_not_found` for a
    *   connection this workspace does not have.
    */
-  async models(connectionId: string, client: ApiClient = api()): Promise<readonly ModelOption[]> {
+  async models(connectionId: string, client: ApiClient = api()): Promise<ProviderModels> {
     return unwrap(
-      await client.GET("/api/v1/registry/aliases/model-options", {
-        params: { query: { connection: connectionId } },
+      await client.GET("/api/v1/providers/{id}/models", {
+        params: { path: { id: connectionId } },
       }),
-    ).models;
+    );
+  },
+
+  /**
+   * Ask the provider whether a connection works, and read what it said.
+   *
+   * A `POST` with no body: the answer is written to the connection's status and the health
+   * strip's snapshot before it comes back, which is what keeps the routing page agreeing with
+   * the card. **A provider that is down is a `200`** — the refusal is in the resource, as the
+   * pill and the note the foot draws, never as an `ApiError`.
+   *
+   * @param id The connection.
+   * @param client The client to call through.
+   * @returns What the provider said, composed for the card foot.
+   * @throws {ApiError} What the service answered about the *request* — `403 forbidden`, `404
+   *   provider_connection_not_found`, `501 provider_kind_unsupported`.
+   */
+  async test(id: string, client: ApiClient = api()): Promise<ProviderTest> {
+    return unwrap(await client.POST("/api/v1/providers/{id}/test", { params: { path: { id } } }));
+  },
+
+  /**
+   * Ask the provider what it serves, and store the answer.
+   *
+   * The catalog is replaced by what discovery reported; a model the provider no longer lists
+   * is dropped and, where a routing alias still names it, comes back flagged in `unlisted`.
+   *
+   * @param id The connection.
+   * @param client The client to call through.
+   * @returns The catalog as it now stands, and what changed.
+   * @throws {ApiError} `502 provider_discovery_failed` — the provider did not answer, and the
+   *   catalog is unchanged; `details.errorClass` and `details.detail` say what it said. Or
+   *   `403`, `404`, `501` about the request.
+   */
+  async discover(id: string, client: ApiClient = api()): Promise<ProviderDiscovery> {
+    return unwrap(
+      await client.POST("/api/v1/providers/{id}/discover", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * Ask the host to pull a model.
+   *
+   * Answers at once with the record as it stands — `running`, or `queued` behind a pull
+   * already in flight. The transfer is the service's; {@link providers.pulls} is how it is
+   * watched.
+   *
+   * @param id The connection.
+   * @param modelId The model, in the daemon's own spelling.
+   * @param client The client to call through.
+   * @returns The record.
+   * @throws {ApiError} `422 provider_kind_cannot_pull` — the adapter stores nothing to pull
+   *   into; or `403`, `404`, `501` about the request.
+   */
+  async pull(id: string, modelId: string, client: ApiClient = api()): Promise<ModelPull> {
+    return unwrap(
+      await client.POST("/api/v1/providers/{id}/pulls", {
+        params: { path: { id } },
+        body: { modelId },
+      }),
+    );
+  },
+
+  /**
+   * Every pull the service knows about on one connection.
+   *
+   * What the pull-list reads on render and polls while a bar is moving — the progress lives
+   * in the service, which is what makes a reload land at the transfer's real percentage.
+   *
+   * @param id The connection.
+   * @param client The client to call through.
+   * @returns The pulls, oldest request first. Empty for a connection nothing has pulled on.
+   * @throws {ApiError} `404 provider_connection_not_found` for a connection this workspace
+   *   does not have.
+   */
+  async pulls(id: string, client: ApiClient = api()): Promise<ModelPulls> {
+    return unwrap(await client.GET("/api/v1/providers/{id}/pulls", { params: { path: { id } } }));
   },
 
   /**

@@ -3,7 +3,7 @@ import "server-only";
 /**
  * Everything the provider cards read ([#228](https://github.com/NobuData/ouroboros/issues/228)).
  *
- * Five calls and then one per card, composed here for the reason `app/models/data.ts` exists:
+ * Five calls and then one or two per card, composed here for the reason `app/models/data.ts` exists:
  * the route stays three lines, the composition is a function that can be tested against a
  * stub, and the screen is handed one object rather than issuing calls of its own. The property
  * every reader in this module keeps — **one failed read is one degraded region, never a blank
@@ -15,10 +15,11 @@ import "server-only";
  *
  * The listing, the catalog, the health strip, the month and the registry's aliases are
  * independent and read at once. The models are per connection —
- * `GET /api/v1/registry/aliases/model-options` takes one — so they cannot start until the
- * listing has answered, and then they all start together. A grid of five cards costs ten
- * requests in two round trips rather than five sequential ones, and a workspace with no
- * connections costs five and asks for no models at all.
+ * `GET /api/v1/providers/{id}/models` takes one — so they cannot start until the listing has
+ * answered, and then they all start together, each pulling kind's pulls beside its models
+ * (AE.4, [#230](https://github.com/NobuData/ouroboros/issues/230)). A grid of five cards
+ * costs eleven requests in two round trips rather than five sequential ones, and a workspace
+ * with no connections costs five and asks for no models at all.
  *
  * The aliases are one read for the whole grid rather than one per card, because the listing
  * that names an alias's connection is the registry's and takes no filter; each card picks
@@ -42,9 +43,10 @@ import "server-only";
 import type { Workspace } from "@/app/api/access";
 import {
   type ModelAlias,
-  type ModelOption,
+  type ModelPull,
   type ProviderCatalogEntry,
   type ProviderConnection,
+  type ProviderModels,
   type ProviderMonthlySpend,
   providers,
 } from "@/app/api/providers";
@@ -67,7 +69,14 @@ export interface ProvidersReadings {
    * Each connection's models, by connection id. Absent for a connection when the listing
    * itself could not be read, because there was nothing to ask for.
    */
-  readonly models: ReadonlyMap<string, Reading<readonly ModelOption[]>>;
+  readonly models: ReadonlyMap<string, Reading<ProviderModels>>;
+  /**
+   * Each pulling connection's pulls, by connection id — what lets a reload land on a transfer
+   * at its real percentage rather than on an idle button. Read only for a kind whose catalog
+   * entry says it pulls, so the four cards that draw chips cost nothing here; absent when the
+   * catalog could not be read, since nothing then knows which kinds pull.
+   */
+  readonly pulls: ReadonlyMap<string, Reading<readonly ModelPull[]>>;
   /** The instant the page was read, ISO 8601 — what every relative time is measured from. */
   readonly now: string;
 }
@@ -97,18 +106,34 @@ export async function readProviders(
     attempt(async () => providers.aliases()),
   ]);
 
-  const models = new Map<string, Reading<readonly ModelOption[]>>();
+  const models = new Map<string, Reading<ProviderModels>>();
+  const pulls = new Map<string, Reading<readonly ModelPull[]>>();
 
   if (connections.ok) {
-    const read = await Promise.all(
-      connections.value.map(
-        async (connection) =>
-          [connection.id, await attempt(async () => providers.models(connection.id))] as const,
-      ),
+    const pulling = new Set(
+      (catalog.ok ? catalog.value : [])
+        .filter((entry) => entry.capabilities.pull)
+        .map((entry) => entry.kind),
     );
 
-    for (const [id, reading] of read) models.set(id, reading);
+    const read = await Promise.all(
+      connections.value.map(async (connection) => {
+        const [catalogReading, pullsReading] = await Promise.all([
+          attempt(async () => providers.models(connection.id)),
+          pulling.has(connection.kind)
+            ? attempt(async () => (await providers.pulls(connection.id)).pulls)
+            : Promise.resolve(null),
+        ]);
+
+        return [connection.id, catalogReading, pullsReading] as const;
+      }),
+    );
+
+    for (const [id, catalogReading, pullsReading] of read) {
+      models.set(id, catalogReading);
+      if (pullsReading !== null) pulls.set(id, pullsReading);
+    }
   }
 
-  return { connections, catalog, health, spend, aliases, models, now: now.toISOString() };
+  return { connections, catalog, health, spend, aliases, models, pulls, now: now.toISOString() };
 }

@@ -46,14 +46,24 @@
 
 import { randomUUID } from "node:crypto";
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 
 import type { AuthRequest } from "../auth/http";
 import type { Principal } from "../auth/principal";
 import { PROVIDER_UPDATED_EVENT, type AuditAction } from "../audit/audit.events";
 import type { ProviderConnectionKind } from "../db/schema";
+import { describeForLog } from "../errors/failure";
+import { ProviderHealthService } from "../provider-health/provider-health.service";
 import { ModelProviderRegistry } from "../providers/provider.registry";
-import type { ModelProviderAdapter, ProviderValidation } from "../providers/provider.adapter";
+import type {
+  ModelProviderAdapter,
+  ModelPullProgress,
+  ProviderConnectionContext,
+  ProviderValidation,
+  PullCapableAdapter,
+} from "../providers/provider.adapter";
+import { ProviderAdapterError } from "../providers/provider.errors";
+import { ModelPullTracker, type ModelPullRecord } from "../providers/provider.pulls";
 import { CAPABILITY_NOTE_FIELD, type ProviderConfigSchema } from "../providers/provider.config";
 import {
   partitionSubmission,
@@ -74,20 +84,36 @@ import {
   PROVIDER_DELETED_EVENT,
   PROVIDER_REVEALED_EVENT,
   PROVIDER_ROTATED_EVENT,
+  PROVIDER_TESTED_EVENT,
   type ProviderAuditAttempt,
   type ProviderAuditContext,
 } from "./connection.audit";
+import { testResource, type ProviderTestResource } from "./connection-test";
 import { maskCredential } from "./masking";
+import {
+  discoveryDiff,
+  providerModelsResource,
+  type ProviderDiscoveryResource,
+  type ProviderModelsResource,
+} from "./models";
 import {
   configInvalid,
   configNotStorable,
   connectionChanged,
   connectionNotFound,
   credentialAbsent,
+  providerDiscoveryFailed,
   providerValidationFailed,
   revealRateLimited,
   stepUpRequired,
 } from "./provider-connections.errors";
+import { ProviderModelsRepository } from "./provider-models.repository";
+import {
+  pullResource,
+  pullsResource,
+  type ModelPullResource,
+  type ModelPullsResource,
+} from "./pulls";
 import {
   ProviderConnectionsRepository,
   type ConnectionPatch,
@@ -97,6 +123,7 @@ import {
 import type {
   CreateConnectionDto,
   ListConnectionsQuery,
+  PullModelDto,
   RevealConnectionDto,
   RotateConnectionDto,
   UpdateConnectionDto,
@@ -154,6 +181,12 @@ export class ProviderConnectionsService {
    * @param stats - Z.5's aggregation over the ledger, for the cards' monthly meters
    *   ([#228](https://github.com/NobuData/ouroboros/issues/228)). Borrowed rather than
    *   re-implemented — see `spend.ts` on why one statement serves two windows.
+   * @param discovered - V017's `provider_models`, which this module is the one writer of
+   *   ([#230](https://github.com/NobuData/ouroboros/issues/230)).
+   * @param health - Z.3's writer of the strip's snapshot, so a test here and a sweep there
+   *   record one measurement rather than two opinions.
+   * @param tracker - AC.4's server-side pull tracking. The routes over it are here because a
+   *   pull needs a connection resolved for this workspace, which is what this module does.
    */
   constructor(
     private readonly connections: ProviderConnectionsRepository,
@@ -164,7 +197,23 @@ export class ProviderConnectionsService {
     private readonly limiter: RevealLimiter,
     private readonly audit: ProviderAudit,
     private readonly stats: RoutingStatsRepository,
+    private readonly discovered: ProviderModelsRepository,
+    private readonly health: ProviderHealthService,
+    private readonly tracker: ModelPullTracker,
   ) {}
+
+  /** Where a refresh that ran after a pull, with nobody's request to answer, reports a failure. */
+  private readonly logger = new Logger(ProviderConnectionsService.name);
+
+  /**
+   * The settle promises this service has already attached a refresh to.
+   *
+   * `ModelPullTracker.whenSettled` answers the same promise for the same record, and
+   * `request` answers the existing record for a model already queued or running — so a second
+   * click would otherwise attach a second refresh to one pull. Weak, so a record the tracker
+   * has pruned takes its entry with it.
+   */
+  private readonly refreshing = new WeakSet<Promise<ModelPullRecord>>();
 
   /**
    * The kinds this build can connect, each with the form its adapter declares.
@@ -746,6 +795,334 @@ export class ProviderConnectionsService {
       }
 
       await this.audit.deleted(contextFor(organizationId, row, actorId, at));
+    });
+  }
+
+  /**
+   * Ask the provider whether this connection works, and record what it said.
+   *
+   * Mockup 07's **Test connection** ([#230](https://github.com/NobuData/ouroboros/issues/230),
+   * decision **P9**). The adapter's `validate` is a models-list or a ping and never a
+   * completion, so the button costs nothing; its answer is returned *as a value* — a `503` is
+   * what the card foot exists to render, not a `422` — and it is written to Z.3's snapshot
+   * through Z.3's own writer, so the routing page's strip and this page's pill are one
+   * measurement. Audited as `provider.tested` with what was found, and as a refusal under the
+   * same name when the operation itself could not run.
+   *
+   * @param organizationId - The workspace.
+   * @param actorId - Whoever pressed the button, for the trail.
+   * @param connectionId - The connection.
+   * @param now - The instant the check is stamped with.
+   * @returns What the provider said, composed for the card.
+   * @throws {NotFoundError} `404 provider_connection_not_found`.
+   * @throws {NotImplementedError} `501 provider_kind_unsupported`.
+   */
+  async test(
+    organizationId: string,
+    actorId: string,
+    connectionId: string,
+    now: Date = new Date(),
+  ): Promise<ProviderTestResource> {
+    const attempt: AuditAttemptDraft = {
+      organizationId,
+      connectionId,
+      kind: null,
+      actorId,
+      at: now,
+    };
+
+    return this.recording(PROVIDER_TESTED_EVENT, attempt, async () => {
+      const row = await this.require(organizationId, connectionId);
+
+      attempt.kind = row.kind;
+
+      const adapter = this.registry.get(row.kind);
+      const opened = await this.opened(organizationId, row, adapter);
+      const validation = await adapter.validate(opened.config, opened.secret);
+
+      await this.health.recordValidation(
+        organizationId,
+        row.id,
+        row.kind,
+        opened.hasSecret,
+        validation,
+        now,
+      );
+      await this.audit.tested(contextFor(organizationId, row, actorId, now), validation);
+
+      return testResource(row.id, validation, now);
+    });
+  }
+
+  /**
+   * The models discovery has reported on one connection, with the aliases it has stranded.
+   *
+   * What the card's models region reads on every render. A read of what the last discovery
+   * wrote, never a discovery — see {@link discover} for the one that asks the provider.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @returns The catalog. Empty models for a connection nothing has discovered on.
+   * @throws {NotFoundError} `404 provider_connection_not_found`.
+   */
+  async models(organizationId: string, connectionId: string): Promise<ProviderModelsResource> {
+    const row = await this.require(organizationId, connectionId);
+
+    return this.catalogOf(organizationId, row.id);
+  }
+
+  /**
+   * Ask the provider what it serves, and make `provider_models` say so.
+   *
+   * The `insert … on conflict` V017 wrote out and left to this ticket ([#230](https://github.com/NobuData/ouroboros/issues/230)).
+   * The answer replaces the catalog: a model the provider no longer lists is removed, because
+   * three other surfaces read this table as *what exists* — and an alias that still names it
+   * comes back flagged in `unlisted`, which is how a broken route stays visible rather than
+   * being tidied away. `models.ts` argues both halves.
+   *
+   * Every kind with an adapter may be refreshed, including one whose `capabilities().discovery`
+   * is `false`: a fixed catalog is a real answer, and a connection added before anything
+   * discovered it has no rows until something does. The card hides the *button* on that flag;
+   * the route stays, because the test's after-discovery is what fills a new Copilot card.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @param now - The instant the rows are stamped with.
+   * @returns The catalog as it now stands, and what changed.
+   * @throws {NotFoundError} `404 provider_connection_not_found`.
+   * @throws {NotImplementedError} `501 provider_kind_unsupported`.
+   * @throws {UpstreamError} `502 provider_discovery_failed` — the provider did not answer;
+   *   the catalog is unchanged.
+   */
+  async discover(
+    organizationId: string,
+    connectionId: string,
+    now: Date = new Date(),
+  ): Promise<ProviderDiscoveryResource> {
+    const row = await this.require(organizationId, connectionId);
+    const adapter = this.registry.get(row.kind);
+    const context = await this.contextOf(organizationId, row, adapter);
+
+    let found;
+
+    try {
+      found = await adapter.discoverModels(context);
+    } catch (error) {
+      if (ProviderAdapterError.is(error)) {
+        throw providerDiscoveryFailed(error);
+      }
+
+      throw error;
+    }
+
+    const before = await this.discovered.replace(organizationId, row.id, found, now);
+
+    if (before === undefined) {
+      throw connectionNotFound(connectionId);
+    }
+
+    return {
+      ...(await this.catalogOf(organizationId, row.id)),
+      ...discoveryDiff(
+        before,
+        found.map((model) => model.id),
+      ),
+    };
+  }
+
+  /**
+   * Ask the host to pull a model, and answer at once with where the pull stands.
+   *
+   * The route over `ModelPullTracker.request` ([#230](https://github.com/NobuData/ouroboros/issues/230)
+   * over [#219](https://github.com/NobuData/ouroboros/issues/219)). The tracker does the
+   * waiting; this answers `running` for an idle connection and `queued` for one with a pull in
+   * flight, and the existing record for a model already asked for — a second click is not a
+   * second pull. The stream is opened **when the pull starts**, not now: a queued pull opens
+   * the connection's credential minutes later, when it is the connection's turn, so a rotation
+   * in between is honoured and nothing that lives for the length of a transfer holds a key.
+   *
+   * When a pull succeeds, the catalog is refreshed by this process whether or not anybody is
+   * still looking — *completion refreshes the list* is a promise the page makes, and the page
+   * cannot keep it after a reload.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @param body - Which model.
+   * @returns The record as it stands.
+   * @throws {NotFoundError} `404 provider_connection_not_found`.
+   * @throws {NotImplementedError} `501 provider_kind_unsupported`.
+   * @throws {InvalidRequestError} `422 provider_kind_cannot_pull`.
+   */
+  async pull(
+    organizationId: string,
+    connectionId: string,
+    body: PullModelDto,
+  ): Promise<ModelPullResource> {
+    const row = await this.require(organizationId, connectionId);
+    const adapter = this.registry.pullCapable(row.kind);
+
+    const record = this.tracker.request({
+      connectionId: row.id,
+      modelId: body.modelId,
+      open: () => this.streamOf(organizationId, row.id, adapter, body.modelId),
+    });
+
+    this.refreshOnSettle(organizationId, row.id, body.modelId);
+
+    return pullResource(record);
+  }
+
+  /**
+   * Every pull this process knows about on one connection.
+   *
+   * What the card reads on first render and polls while a bar is moving — the answer to
+   * *reload the page mid-pull and it is still at 61%*. The `404` for a connection this
+   * workspace does not have is the whole of the tenancy here: the tracker keys records by
+   * connection id alone, and this read is what keeps one workspace from watching another's
+   * transfers.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @returns The pulls, oldest request first.
+   * @throws {NotFoundError} `404 provider_connection_not_found`.
+   */
+  async pulls(organizationId: string, connectionId: string): Promise<ModelPullsResource> {
+    const row = await this.require(organizationId, connectionId);
+
+    return pullsResource(row.id, this.tracker.list(row.id));
+  }
+
+  /**
+   * The catalog resource for a connection the caller has already resolved.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @returns The catalog, with the aliases the catalog has stranded.
+   */
+  private async catalogOf(
+    organizationId: string,
+    connectionId: string,
+  ): Promise<ProviderModelsResource> {
+    const [rows, aliases] = await Promise.all([
+      this.discovered.forConnection(organizationId, connectionId),
+      this.aliases.aliasesOn(organizationId, connectionId),
+    ]);
+
+    return providerModelsResource(connectionId, rows, aliases);
+  }
+
+  /**
+   * A stored connection, opened for one call.
+   *
+   * The stored projection of the adapter's schema over the row — the credential is not a
+   * column of it — and the credential, decrypted for the length of the call that needs it.
+   * The one place this module builds the pair for anything other than an edit or a rotation,
+   * and the reason `editedConfig` and `rotating` do not call it: both check a *submitted*
+   * value beside the stored ones, and this opens exactly what is stored.
+   *
+   * @param organizationId - The workspace.
+   * @param row - The connection as stored.
+   * @param adapter - The adapter for its kind.
+   * @returns The settings, the credential or null, and whether the schema has a place for one.
+   */
+  private async opened(
+    organizationId: string,
+    row: ConnectionRow,
+    adapter: ModelProviderAdapter,
+  ): Promise<{
+    config: Readonly<Record<string, string>>;
+    secret: string | null;
+    hasSecret: boolean;
+  }> {
+    const schema = adapter.configSchema();
+    const config = Object.freeze(submissionOf(storedConfigSchema(schema), row));
+    const envelope = await this.connections.envelopeOf(organizationId, row.id);
+    const secret =
+      envelope === null || envelope === undefined
+        ? null
+        : await this.vault.decryptText(organizationId, row.id, envelope);
+
+    return { config, secret, hasSecret: secretFieldName(schema) !== null };
+  }
+
+  /**
+   * The context `discoverModels` and `pullModel` take, for a stored connection.
+   *
+   * @param organizationId - The workspace.
+   * @param row - The connection as stored.
+   * @param adapter - The adapter for its kind.
+   * @returns The context.
+   */
+  private async contextOf(
+    organizationId: string,
+    row: ConnectionRow,
+    adapter: ModelProviderAdapter,
+  ): Promise<ProviderConnectionContext> {
+    const opened = await this.opened(organizationId, row, adapter);
+
+    return { connectionId: row.id, config: opened.config, secret: opened.secret };
+  }
+
+  /**
+   * A pull's stream, opened when the tracker starts it rather than when it was asked for.
+   *
+   * An async generator, so calling it answers an iterable at once and the row is re-read and
+   * the credential opened on the first `next()` — which the tracker issues when the pull
+   * becomes the connection's active one. A connection deleted while its pull was queued
+   * throws here, which the tracker records as a failed pull with no error class: not the
+   * provider's fault, and said so.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @param adapter - The pull-capable adapter for its kind.
+   * @param modelId - The model.
+   * @returns The adapter's progress events.
+   */
+  private async *streamOf(
+    organizationId: string,
+    connectionId: string,
+    adapter: PullCapableAdapter,
+    modelId: string,
+  ): AsyncIterable<ModelPullProgress> {
+    const row = await this.require(organizationId, connectionId);
+    const context = await this.contextOf(organizationId, row, adapter);
+
+    yield* adapter.pullModel(context, modelId);
+  }
+
+  /**
+   * Refresh the catalog once this pull settles, if it settles well — attached once per pull.
+   *
+   * @param organizationId - The workspace.
+   * @param connectionId - The connection.
+   * @param modelId - The model.
+   */
+  private refreshOnSettle(organizationId: string, connectionId: string, modelId: string): void {
+    const settled = this.tracker.whenSettled(connectionId, modelId);
+
+    if (settled === undefined || this.refreshing.has(settled)) {
+      return;
+    }
+
+    this.refreshing.add(settled);
+
+    void settled.then(async (record) => {
+      if (record.state !== "succeeded") {
+        return;
+      }
+
+      try {
+        await this.discover(organizationId, connectionId);
+      } catch (error) {
+        // Nobody's request to answer: the pull is already on the host and the next discovery
+        // — a press of the button, or a test — finds it. Logged so an operator can see why a
+        // pull-list stayed stale, and deliberately not rethrown into nothing.
+        this.logger.warn(
+          `Catalog refresh after pulling ${modelId} on connection ${connectionId} failed; ` +
+            "the model is on the host and the next discovery will list it.",
+          describeForLog(error),
+        );
+      }
     });
   }
 

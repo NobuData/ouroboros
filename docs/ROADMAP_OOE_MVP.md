@@ -692,7 +692,7 @@ that roadmap's "Existing issues affected" section.
 | 133 | **AA.4** | ✅ [#203](https://github.com/NobuData/ouroboros/issues/203) | Route inspector & simulate panel | ouroboros-ui | M | Z.4, AA.2 |
 | 134 | **AA.6** | ✅ [#205](https://github.com/NobuData/ouroboros/issues/205) | Routing states & guards | ouroboros-ui | S | AA.2, AA.5 |
 | 135 | **AE.3** | [#229](https://github.com/NobuData/ouroboros/issues/229) | Key management flows | ouroboros-ui | M | AD.2, AE.2 |
-| 136 | **AE.4** | [#230](https://github.com/NobuData/ouroboros/issues/230) | Test, discovery & Ollama pulls UX | ouroboros-ui | M | AC.4, AE.2 |
+| 136 | **AE.4** | ✅ [#230](https://github.com/NobuData/ouroboros/issues/230) | Test, discovery & Ollama pulls UX | ouroboros-ui, ouroboros-rest | M | AC.4, AE.2 |
 | 137 | **AE.6** | [#232](https://github.com/NobuData/ouroboros/issues/232) | Caps, security strip & states | ouroboros-ui | M | AD.5, AE.2, AE.5 |
 | 138 | **CI.2** | [#592](https://github.com/NobuData/ouroboros/issues/592) | Allowed-models table | ouroboros-ui | L | CH.5, CI.1 |
 | 139 | **CI.4** | [#594](https://github.com/NobuData/ouroboros/issues/594) | New-alias & import flows | ouroboros-ui | M | CH.1, CH.4, CI.1 |

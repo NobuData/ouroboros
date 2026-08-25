@@ -1,6 +1,9 @@
 import type {
   ModelAlias,
-  ModelOption,
+  ModelPull,
+  ProviderModel,
+  ProviderModels,
+  UnlistedModel,
   ProviderCapabilities,
   ProviderCatalog,
   ProviderCatalogEntry,
@@ -138,7 +141,7 @@ export function copilotEntry(): ProviderCatalogEntry {
   return {
     kind: "copilot",
     title: "Connect GitHub Copilot",
-    capabilities: capabilities({ entitlements: true }),
+    capabilities: capabilities({ discovery: false, entitlements: true }),
     fields: [
       formField({
         name: "token",
@@ -500,25 +503,51 @@ export function seededSpend(): ProviderMonthlySpend {
 }
 
 /**
- * One discovered model.
+ * One discovered model, as `GET /api/v1/providers/{id}/models` answers it.
  *
  * @param over What this case is about.
- * @returns The option as the contract serves it, with no tier unless the case says so.
+ * @returns The model, defaulting to a cloud one with no size.
  */
-export function modelOption(over: Partial<ModelOption> = {}): ModelOption {
+export function providerModel(over: Partial<ProviderModel> = {}): ProviderModel {
   return {
     modelId: "claude-fable-5",
     display: "claude-fable-5",
-    discoveredAt: "2026-08-23T09:56:00.000Z",
-    meta: { context_tokens: 1_000_000 },
+    sizeBytes: null,
+    meta: {},
+    discoveredAt: READ_AT,
     ...over,
   };
 }
 
-/** The seed's four Anthropic models, each carrying the real `priority` signal. */
-export function anthropicModels(): ModelOption[] {
+/**
+ * One connection's catalog, as the service answers it.
+ *
+ * @param connectionId The connection.
+ * @param models Its models.
+ * @param unlisted The aliases the catalog stranded, if any.
+ * @returns The catalog.
+ */
+export function providerModels(
+  connectionId: string,
+  models: readonly ProviderModel[],
+  unlisted: readonly UnlistedModel[] = [],
+): ProviderModels {
+  return {
+    connectionId,
+    discoveredAt: models.length === 0 ? null : READ_AT,
+    models: [...models],
+    unlisted: [...unlisted],
+  };
+}
+
+/**
+ * The Anthropic card's four chips, each carrying the seed's `priority` tier.
+ *
+ * @returns The models.
+ */
+export function anthropicModels(): ProviderModel[] {
   return ["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"].map((id) =>
-    modelOption({
+    providerModel({
       modelId: id,
       display: id,
       meta: { context_tokens: id === "claude-haiku-4-5" ? 200_000 : 1_000_000, tier: "priority" },
@@ -526,43 +555,79 @@ export function anthropicModels(): ModelOption[] {
   );
 }
 
+/** The seeded Ollama card's three detected models, with the sizes `/api/tags` reports. */
+export function ollamaModels(): ProviderModel[] {
+  return [
+    providerModel({ modelId: "qwen3-coder:32b", display: "qwen3-coder:32b", sizeBytes: 18_997_469_184 }),
+    providerModel({ modelId: "llama4:scout", display: "llama4:scout", sizeBytes: 62_970_741_760 }),
+    providerModel({ modelId: "phi4:14b", display: "phi4:14b", sizeBytes: 9_053_116_800 }),
+  ];
+}
+
+/** The seeded Ollama connection's id. */
+export const SEEDED_OLLAMA_ID = "5eed000c-0000-4000-8000-000000000005";
+
+/** The seeded vLLM connection's id. */
+export const SEEDED_VLLM_ID = "5eed000c-0000-4000-8000-000000000004";
+
 /**
- * Every seeded card's models, by connection id — the eleven `provider_models` rows.
+ * Every seeded card's catalog, by connection id — the eleven `provider_models` rows.
  *
  * @returns The map the reader hands the screen.
  */
-export function seededModels(): Map<string, Reading<readonly ModelOption[]>> {
-  const ok = (models: readonly ModelOption[]): Reading<readonly ModelOption[]> => ({
-    ok: true,
-    value: models,
-  });
+export function seededModels(): Map<string, Reading<ProviderModels>> {
+  const ok = (id: string, models: readonly ProviderModel[]): [string, Reading<ProviderModels>] => [
+    id,
+    { ok: true, value: providerModels(id, models) },
+  ];
 
   return new Map([
-    ["5eed000c-0000-4000-8000-000000000001", ok(anthropicModels())],
-    [
-      "5eed000c-0000-4000-8000-000000000002",
-      ok([modelOption({ modelId: "composer-2", display: "cursor/composer-2" })]),
-    ],
-    [
-      "5eed000c-0000-4000-8000-000000000003",
-      ok([modelOption({ modelId: "gpt-5-codex", display: "copilot/gpt-5-codex" })]),
-    ],
-    [
-      "5eed000c-0000-4000-8000-000000000004",
-      ok([
-        modelOption({ modelId: "llama-4-maverick", display: "local/llama-4-maverick" }),
-        modelOption({ modelId: "deepseek-v3.2", display: "local/deepseek-v3.2" }),
-      ]),
-    ],
-    [
-      "5eed000c-0000-4000-8000-000000000005",
-      ok([
-        modelOption({ modelId: "qwen3-coder:32b", display: "qwen3-coder:32b" }),
-        modelOption({ modelId: "llama4:scout", display: "llama4:scout" }),
-        modelOption({ modelId: "phi4:14b", display: "phi4:14b" }),
-      ]),
-    ],
+    ok(SEEDED_ANTHROPIC_ID, anthropicModels()),
+    ok("5eed000c-0000-4000-8000-000000000002", [
+      providerModel({ modelId: "composer-2", display: "cursor/composer-2" }),
+    ]),
+    ok("5eed000c-0000-4000-8000-000000000003", [
+      providerModel({ modelId: "gpt-5-codex", display: "copilot/gpt-5-codex" }),
+    ]),
+    ok(SEEDED_VLLM_ID, [
+      providerModel({ modelId: "llama-4-maverick", display: "local/llama-4-maverick" }),
+      providerModel({ modelId: "deepseek-v3.2", display: "local/deepseek-v3.2" }),
+    ]),
+    ok(SEEDED_OLLAMA_ID, ollamaModels()),
   ]);
+}
+
+/**
+ * One tracked pull, as the service answers it.
+ *
+ * @param over What this case is about.
+ * @returns The record, defaulting to a transfer at 61%.
+ */
+export function pullRecord(over: Partial<ModelPull> = {}): ModelPull {
+  return {
+    connectionId: SEEDED_OLLAMA_ID,
+    modelId: "llama4:scout",
+    state: "running",
+    status: "downloading",
+    completedBytes: 38_412_152_474,
+    totalBytes: 62_970_741_760,
+    percent: 61,
+    queuedAt: "2026-08-23T09:58:00.000Z",
+    startedAt: "2026-08-23T09:58:00.200Z",
+    finishedAt: null,
+    errorClass: null,
+    detail: null,
+    ...over,
+  };
+}
+
+/**
+ * The pulls the reader hands the screen — none, which is the seeded workspace's state.
+ *
+ * @returns The map, one entry per pulling connection.
+ */
+export function seededPulls(): Map<string, Reading<readonly ModelPull[]>> {
+  return new Map([[SEEDED_OLLAMA_ID, { ok: true, value: [] }]]);
 }
 
 /**
@@ -579,6 +644,7 @@ export function readings(over: Partial<ProvidersReadings> = {}): ProvidersReadin
     spend: { ok: true, value: seededSpend() },
     aliases: { ok: true, value: seededAliases() },
     models: seededModels(),
+    pulls: seededPulls(),
     now: READ_AT,
     ...over,
   };

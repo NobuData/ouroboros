@@ -34,6 +34,7 @@ describe("the param schema service", () => {
       resolveAlias: jest.fn(),
       listAliases: jest.fn(),
       aliasesForConnection: jest.fn(),
+      aliasRowsOn: jest.fn(),
       findConnection: jest.fn().mockResolvedValue({ id: CONNECTION, kind: "custom" }),
       discoveredModelMeta: jest.fn().mockResolvedValue(undefined),
       catalogModelMeta: jest.fn().mockResolvedValue(undefined),

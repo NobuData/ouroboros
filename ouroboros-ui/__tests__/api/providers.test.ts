@@ -4,10 +4,12 @@ import { ApiError } from "@/app/api/errors";
 // Types only, so this import is erased and nothing loads before the mocks below.
 import type { ProviderConnectionCreate } from "@/app/api/providers";
 
-import { clientAnswering, stubClient } from "../helpers/api";
+import { STUB_BASE_URL, clientAnswering, stubClient } from "../helpers/api";
 import {
   anthropicModels,
   catalogPayload,
+  providerModels,
+  pullRecord,
   connection,
   connectionPage,
   modelAlias,
@@ -204,43 +206,6 @@ describe("providers.update", () => {
   });
 });
 
-describe("providers.models", () => {
-  it("asks the registry's model-options for the one connection, and returns the models", async () => {
-    const { client, requests } = clientAnswering({
-      connection: { id: connection().id, kind: "anthropic", displayName: "Anthropic Claude" },
-      models: anthropicModels(),
-    });
-
-    const models = await providers.models(connection().id, client);
-
-    expect(requests[0]?.url).toBe(
-      `http://rest.test:4000/api/v1/registry/aliases/model-options?connection=${connection().id}`,
-    );
-    expect(requests[0]?.method).toBe("GET");
-    expect(models).toEqual(anthropicModels());
-  });
-
-  it("hands back an empty list as an empty list — discovery not having run is a state", async () => {
-    const { client } = clientAnswering({
-      connection: { id: connection().id, kind: "anthropic", displayName: "Anthropic Claude" },
-      models: [],
-    });
-
-    await expect(providers.models(connection().id, client)).resolves.toEqual([]);
-  });
-
-  it("rejects with the service's envelope for a connection this workspace does not have", async () => {
-    const { client } = clientAnswering(
-      { code: "provider_connection_not_found", message: "no", details: {} },
-      404,
-    );
-
-    await expect(providers.models("5eed000c-0000-4000-8000-0000000000ff", client)).rejects.toMatchObject(
-      { status: 404, code: "provider_connection_not_found" },
-    );
-  });
-});
-
 describe("providers.reveal", () => {
   it("POSTs a password when given one, and returns the credential the service handed back", async () => {
     const revealed = {
@@ -379,5 +344,117 @@ describe("providers.aliases", () => {
     await expect(providers.aliases(client)).resolves.toEqual([]);
     // A sanity anchor on the fixture the delete guard leans on.
     expect(modelAlias().connection?.id).toBe("5eed000c-0000-4000-8000-000000000001");
+  });
+});
+
+describe("providers.models (#230)", () => {
+  it("reads the catalog from the providers collection, with its flags", async () => {
+    const catalog = providerModels("5eed000c-0000-4000-8000-000000000004", anthropicModels(), [
+      { modelId: "deepseek-v3.2", aliases: [{ id: "a", alias: "local-ds" }] },
+    ]);
+    const { client, requests } = clientAnswering(catalog);
+
+    await expect(providers.models("5eed000c-0000-4000-8000-000000000004", client)).resolves.toEqual(catalog);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(
+      `${STUB_BASE_URL}/api/v1/providers/5eed000c-0000-4000-8000-000000000004/models`,
+    );
+  });
+});
+
+describe("providers.test (#230)", () => {
+  it("POSTs with no body and hands the provider's answer back, down or not", async () => {
+    const degraded = {
+      connectionId: "5eed000c-0000-4000-8000-000000000003",
+      checkedAt: "2026-08-25T10:00:12.004Z",
+      status: "error",
+      pill: { tone: "warn", label: "degraded upstream" },
+      note: "503 upstream · retrying",
+      latencyMs: null,
+      errorClass: "upstream",
+      retryable: true,
+      detail: "503 upstream",
+    };
+    const { client, requests } = clientAnswering(degraded);
+
+    await expect(providers.test("5eed000c-0000-4000-8000-000000000003", client)).resolves.toEqual(degraded);
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url).toBe(
+      `${STUB_BASE_URL}/api/v1/providers/5eed000c-0000-4000-8000-000000000003/test`,
+    );
+  });
+
+  it("lets the service's refusal of the request through", async () => {
+    const { client } = clientAnswering({ code: "provider_kind_unsupported", message: "no", details: {} }, 501);
+
+    await expect(providers.test("5eed000c-0000-4000-8000-000000000003", client)).rejects.toMatchObject({
+      status: 501,
+      code: "provider_kind_unsupported",
+    });
+  });
+});
+
+describe("providers.discover (#230)", () => {
+  it("POSTs and hands the catalog back with what changed", async () => {
+    const discovery = {
+      ...providerModels("5eed000c-0000-4000-8000-000000000004", anthropicModels()),
+      added: ["claude-fable-5"],
+      removed: [],
+    };
+    const { client, requests } = clientAnswering(discovery);
+
+    await expect(providers.discover("5eed000c-0000-4000-8000-000000000004", client)).resolves.toEqual(
+      discovery,
+    );
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url).toBe(
+      `${STUB_BASE_URL}/api/v1/providers/5eed000c-0000-4000-8000-000000000004/discover`,
+    );
+  });
+
+  it("lets a provider that did not answer through with its class and phrase", async () => {
+    const { client } = clientAnswering(
+        {
+          code: "provider_discovery_failed",
+          message: "no",
+          details: { errorClass: "network", detail: "unreachable (ECONNREFUSED)" },
+        },
+        502,
+      );
+
+    await expect(providers.discover("5eed000c-0000-4000-8000-000000000004", client)).rejects.toMatchObject({
+      status: 502,
+      code: "provider_discovery_failed",
+      details: { errorClass: "network", detail: "unreachable (ECONNREFUSED)" },
+    });
+  });
+});
+
+describe("providers.pull and providers.pulls (#230)", () => {
+  it("POSTs the model and hands the record back", async () => {
+    const record = pullRecord({ state: "running", status: "starting", percent: null });
+    const { client, requests } = clientAnswering(record, 202);
+
+    await expect(providers.pull(record.connectionId, "llama4:scout", client)).resolves.toEqual(record);
+    expect(requests[0].method).toBe("POST");
+    expect(requests[0].url).toBe(`${STUB_BASE_URL}/api/v1/providers/${record.connectionId}/pulls`);
+    expect(await requests[0].json()).toEqual({ modelId: "llama4:scout" });
+  });
+
+  it("reads every pull on a connection", async () => {
+    const answer = { connectionId: pullRecord().connectionId, pulls: [pullRecord()] };
+    const { client, requests } = clientAnswering(answer);
+
+    await expect(providers.pulls(answer.connectionId, client)).resolves.toEqual(answer);
+    expect(requests[0].method).toBe("GET");
+    expect(requests[0].url).toBe(`${STUB_BASE_URL}/api/v1/providers/${answer.connectionId}/pulls`);
+  });
+
+  it("lets the cannot-pull refusal through", async () => {
+    const { client } = clientAnswering({ code: "provider_kind_cannot_pull", message: "no", details: {} }, 422);
+
+    await expect(providers.pull(pullRecord().connectionId, "x", client)).rejects.toMatchObject({
+      code: "provider_kind_cannot_pull",
+    });
   });
 });

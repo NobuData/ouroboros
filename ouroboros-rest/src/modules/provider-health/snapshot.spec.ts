@@ -25,7 +25,13 @@ const CONNECTION = "3f2a1b0c-9d8e-4f7a-8b6c-5d4e3f2a1b0c";
 
 describe("reading a health column", () => {
   it("reads nothing out of the empty object every unchecked row carries", () => {
-    expect(readHealth({})).toEqual({ check: null, latencyMs: null, models: null, detail: null });
+    expect(readHealth({})).toEqual({
+      check: null,
+      latencyMs: null,
+      models: null,
+      detail: null,
+      errorClass: null,
+    });
   });
 
   it("reads a performed reachability check", () => {
@@ -34,6 +40,7 @@ describe("reading a health column", () => {
       latencyMs: 12,
       models: 3,
       detail: null,
+      errorClass: null,
     });
   });
 
@@ -43,6 +50,7 @@ describe("reading a health column", () => {
       latencyMs: null,
       models: null,
       detail: "unreachable (ECONNREFUSED)",
+      errorClass: null,
     });
   });
 
@@ -55,6 +63,7 @@ describe("reading a health column", () => {
       latencyMs: null,
       models: null,
       detail: "degraded · elevated latency",
+      errorClass: null,
     });
   });
 
@@ -83,6 +92,7 @@ describe("reading a health column", () => {
         latencyMs: null,
         models: null,
         detail: null,
+        errorClass: null,
       });
     });
   });
@@ -163,7 +173,7 @@ describe("a row as a snapshot", () => {
       baseUrl: "http://workstation:11434",
       status: "active",
       checkedAt: new Date("2026-08-23T10:00:00.000Z"),
-      measured: { check: "reachability", latencyMs: 4, models: 3, detail: null },
+      measured: { check: "reachability", latencyMs: 4, models: 3, detail: null, errorClass: null },
     });
   });
 
@@ -180,5 +190,27 @@ describe("a row as a snapshot", () => {
     expect(snapshot.status).toBe("unknown");
     expect(snapshot.checkedAt).toBeNull();
     expect(snapshot.measured.latencyMs).toBeNull();
+  });
+});
+
+describe("the class a test writes beside a failure (#230)", () => {
+  it("reads one of the taxonomy's five", () => {
+    expect(readHealth({ check: "key_validation", error_class: "upstream" }).errorClass).toBe(
+      "upstream",
+    );
+  });
+
+  it("refuses a word this build does not know, rather than drawing a pill for it", () => {
+    expect(readHealth({ error_class: "gremlins" }).errorClass).toBeNull();
+    expect(readHealth({ error_class: 503 }).errorClass).toBeNull();
+  });
+
+  it("is cleared by the next check, because it is a probe key and not a fact about the row", () => {
+    expect(
+      mergeHealth(
+        { check: "key_validation", detail: "503 upstream", error_class: "upstream" },
+        { check: "key_validation", latency_ms: 42 },
+      ),
+    ).toEqual({ check: "key_validation", latency_ms: 42 });
   });
 });

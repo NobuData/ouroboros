@@ -88,6 +88,26 @@ export const REGISTRY_PATH = `${MODELS_PATH}/registry`;
 export const RETURN_TO_PARAM = "next";
 
 /**
+ * The query parameter that names one alias on the registry page.
+ *
+ * Written by the provider card's *not listed upstream* flag
+ * ([#230](https://github.com/NobuData/ouroboros/issues/230)), which links to the alias whose
+ * route a vanished model has broken. The registry's alias table (CI.2–CI.5) is what will
+ * honour it; until then the link lands on the registry page, which is where the alias lives.
+ */
+export const ALIAS_PARAM = "alias";
+
+/**
+ * The registry page, opened on one alias.
+ *
+ * @param alias The alias's name.
+ * @returns The path, with the name encoded.
+ */
+export function aliasPath(alias: string): string {
+  return `${REGISTRY_PATH}?${ALIAS_PARAM}=${encodeURIComponent(alias)}`;
+}
+
+/**
  * The login screen, optionally remembering where to come back to.
  *
  * @param returnTo Where the visitor was heading, as a path on this origin. Anything

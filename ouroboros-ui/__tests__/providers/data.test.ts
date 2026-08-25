@@ -5,10 +5,13 @@ import { ApiError } from "@/app/api/errors";
 import { stripPayload } from "../helpers/models";
 import {
   READ_AT,
+  SEEDED_OLLAMA_ID,
   anthropicModels,
   catalogPayload,
   connectionPage,
   seededAliases,
+  providerModels,
+  pullRecord,
   seededCards,
   seededSpend,
 } from "../helpers/providers";
@@ -27,6 +30,7 @@ const list = vi.fn();
 const catalog = vi.fn();
 const spend = vi.fn();
 const models = vi.fn();
+const pulls = vi.fn();
 const health = vi.fn();
 const aliases = vi.fn();
 
@@ -37,6 +41,7 @@ vi.mock("@/app/api/providers", () => ({
     catalog: () => catalog(),
     spend: () => spend(),
     models: (id: string) => models(id),
+    pulls: (id: string) => pulls(id),
     aliases: () => aliases(),
   },
 }));
@@ -46,6 +51,11 @@ const { readProviders } = await import("@/app/providers/data");
 
 /** What the gate hands the reader — held, not read. */
 const ACCESS = {} as Parameters<typeof readProviders>[0];
+
+/** The catalog the service answers for one connection — the seed's, by id. */
+function catalogFor(id: string) {
+  return providerModels(id, anthropicModels());
+}
 
 /** A refusal, as the service's envelope says it. */
 function refused(message: string): ApiError {
@@ -58,7 +68,8 @@ beforeEach(() => {
   spend.mockReset().mockResolvedValue(seededSpend());
   health.mockReset().mockResolvedValue(stripPayload());
   aliases.mockReset().mockResolvedValue(seededAliases());
-  models.mockReset().mockResolvedValue(anthropicModels());
+  models.mockReset().mockImplementation((id: string) => Promise.resolve(catalogFor(id)));
+  pulls.mockReset().mockResolvedValue({ connectionId: SEEDED_OLLAMA_ID, pulls: [] });
 });
 
 describe("a clean read", () => {
@@ -79,7 +90,7 @@ describe("a clean read", () => {
     expect(models).toHaveBeenCalledTimes(seededCards().length);
     for (const card of seededCards()) {
       expect(models).toHaveBeenCalledWith(card.id);
-      expect(readings.models.get(card.id)).toEqual({ ok: true, value: anthropicModels() });
+      expect(readings.models.get(card.id)).toEqual({ ok: true, value: catalogFor(card.id) });
     }
   });
 
@@ -131,12 +142,14 @@ describe("one failed read is one degraded region", () => {
   it("keeps every other card's models when one card's could not be read", async () => {
     const [first, second] = seededCards();
     models.mockImplementation((id: string) =>
-      id === second.id ? Promise.reject(refused("that one is away")) : Promise.resolve([]),
+      id === second.id
+        ? Promise.reject(refused("that one is away"))
+        : Promise.resolve(providerModels(id, [])),
     );
 
     const readings = await readProviders(ACCESS, new Date(READ_AT));
 
-    expect(readings.models.get(first.id)).toEqual({ ok: true, value: [] });
+    expect(readings.models.get(first.id)).toEqual({ ok: true, value: providerModels(first.id, []) });
     expect(readings.models.get(second.id)).toEqual({ ok: false, reason: "that one is away" });
   });
 
@@ -154,5 +167,37 @@ describe("one failed read is one degraded region", () => {
     list.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
 
     await expect(readProviders(ACCESS, new Date(READ_AT))).rejects.toThrow("NEXT_REDIRECT /login");
+  });
+});
+
+describe("the pulls a pulling card is handed (#230)", () => {
+  it("reads pulls for the one kind whose catalog entry pulls, and for no other", async () => {
+    pulls.mockResolvedValue({ connectionId: SEEDED_OLLAMA_ID, pulls: [pullRecord()] });
+
+    const readings = await readProviders(ACCESS, new Date(READ_AT));
+
+    expect(pulls).toHaveBeenCalledTimes(1);
+    expect(pulls).toHaveBeenCalledWith(SEEDED_OLLAMA_ID);
+    expect(readings.pulls.get(SEEDED_OLLAMA_ID)).toEqual({ ok: true, value: [pullRecord()] });
+    expect(readings.pulls.size).toBe(1);
+  });
+
+  it("keeps the card's models when its pulls could not be read — one degraded region", async () => {
+    pulls.mockRejectedValue(refused("the tracker is away"));
+
+    const readings = await readProviders(ACCESS, new Date(READ_AT));
+
+    expect(readings.pulls.get(SEEDED_OLLAMA_ID)).toEqual({ ok: false, reason: "the tracker is away" });
+    expect(readings.models.get(SEEDED_OLLAMA_ID)?.ok).toBe(true);
+  });
+
+  it("asks for no pulls when the catalog could not be read, since nothing then knows which kinds pull", async () => {
+    catalog.mockRejectedValue(refused("no catalog"));
+
+    const readings = await readProviders(ACCESS, new Date(READ_AT));
+
+    expect(pulls).not.toHaveBeenCalled();
+    expect(readings.pulls.size).toBe(0);
+    expect(readings.models.size).toBe(seededCards().length);
   });
 });

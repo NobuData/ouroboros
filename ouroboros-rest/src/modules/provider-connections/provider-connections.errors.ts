@@ -38,8 +38,10 @@ import {
   NotImplementedError,
   TooManyRequestsError,
   UnauthenticatedError,
+  UpstreamError,
 } from "../errors/error.envelope";
 import type { ProviderValidationFailure } from "../providers/provider.adapter";
+import type { ProviderAdapterError } from "../providers/provider.errors";
 
 /**
  * The codes, as one object.
@@ -64,6 +66,8 @@ export const PROVIDER_CONNECTION_ERRORS = {
   stepUpRequired: "step_up_required",
   /** `429` — too many reveal attempts, by this person or against this connection. */
   revealRateLimited: "provider_reveal_rate_limited",
+  /** `502` — the provider did not answer its models list, so the catalog is unchanged. */
+  discoveryFailed: "provider_discovery_failed",
 } as const;
 
 /** One of {@link PROVIDER_CONNECTION_ERRORS}' values. */
@@ -184,6 +188,32 @@ export function providerValidationFailed(failure: ProviderValidationFailure): In
   return new InvalidRequestError(
     PROVIDER_CONNECTION_ERRORS.validationFailed,
     "The provider refused this configuration, so nothing was saved.",
+    { errorClass: failure.errorClass, detail: failure.detail },
+  );
+}
+
+/**
+ * `502` — the provider did not answer its models list.
+ *
+ * A discovery is a request to somebody else's server, and this is what its failure is: not a
+ * fault in this service and not a malformed request, but an upstream that did not answer —
+ * which is what `502` says, and what makes retrying reasonable. `details` carries the
+ * taxonomy's class and the adapter's own phrase, exactly as `provider_validation_failed`
+ * does, so a card says the same thing about the same provider whether it was testing or
+ * refreshing. Neither ever echoes the provider's body: the conformance kit holds every
+ * adapter's `detail` to that.
+ *
+ * **The catalog is unchanged.** A discovery that failed reported nothing, and a failure that
+ * emptied a card's chips would be this service turning *could not read the list* into *the
+ * list is empty* — the two facts V017's `models` column comment insists are different.
+ *
+ * @param failure - What the adapter threw.
+ * @returns The error to throw.
+ */
+export function providerDiscoveryFailed(failure: ProviderAdapterError): UpstreamError {
+  return new UpstreamError(
+    PROVIDER_CONNECTION_ERRORS.discoveryFailed,
+    "The provider did not answer its models list, so the catalog is unchanged.",
     { errorClass: failure.errorClass, detail: failure.detail },
   );
 }

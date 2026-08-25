@@ -56,6 +56,16 @@ import { DatabaseService } from "../db/db.service";
 import { SCHEMA_NAME, type ProviderConnectionKind } from "../db/schema";
 import type { AliasResolutionRow } from "./resolution";
 
+/** One alias on a connection, as far as a card's flag needs to know it. */
+export interface AliasOnConnectionRow {
+  /** `model_aliases.id`. */
+  id: string;
+  /** The alias's name. */
+  alias: string;
+  /** The model it names, in the provider's own spelling. */
+  model_id: string;
+}
+
 @Injectable()
 export class RegistryRepository {
   /**
@@ -270,15 +280,32 @@ export class RegistryRepository {
    *   Empty means nothing depends on it, which is what makes a removal safe to offer.
    */
   async aliasesForConnection(organizationId: string, connectionId: string): Promise<string[]> {
-    const rows = await this.database.db
+    const rows = await this.aliasRowsOn(organizationId, connectionId);
+
+    return rows.map((row) => row.alias);
+  }
+
+  /**
+   * Which aliases resolve on one connection, and which model each names.
+   *
+   * The same index scan as {@link aliasesForConnection}, answering the second question mockup
+   * 07 asks of it ([#230](https://github.com/NobuData/ouroboros/issues/230)): after a discovery,
+   * *which of these names points at a model the provider no longer lists*. A route through such
+   * an alias is broken, and a card that quietly dropped the chip would hide that — so the card
+   * flags it, and this is the read the flag is computed from.
+   *
+   * @param organizationId - The workspace, for {@link aliasesForConnection}'s reason.
+   * @param connectionId - The connection.
+   * @returns The rows, ordered by alias. Empty when nothing resolves on it.
+   */
+  async aliasRowsOn(organizationId: string, connectionId: string): Promise<AliasOnConnectionRow[]> {
+    return this.database.db
       .selectFrom("model_aliases")
-      .select("alias")
+      .select(["id", "alias", "model_id"])
       .where("organization_id", "=", organizationId)
       .where("provider_connection_id", "=", connectionId)
       .orderBy("alias")
       .execute();
-
-    return rows.map((row) => row.alias);
   }
 
   /**

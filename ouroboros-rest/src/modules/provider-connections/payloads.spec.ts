@@ -7,7 +7,9 @@ import { namesResponseSecret } from "../internal/no-secret-responses";
 import { FakeModelProviderAdapter } from "../providers/adapters/fake.adapter.fixture";
 import { BASE_URL_FIELD } from "../providers/provider.config";
 import { ModelProviderRegistry } from "../providers/provider.registry";
+import { ModelPullTracker } from "../providers/provider.pulls";
 import type { RegistryService } from "../registry/registry.service";
+import type { ProviderHealthService } from "../provider-health/provider-health.service";
 import type { RoutingStatsRepository } from "../routing/stats.repository";
 import { inMemoryVault } from "../vault/vault.fixture";
 import { ProviderAudit } from "./connection.audit";
@@ -20,6 +22,7 @@ import {
 } from "./connection.fixture";
 import { SUFFIX_LENGTH } from "./masking";
 import type { ProviderConnectionsRepository } from "./provider-connections.repository";
+import type { ProviderModelsRepository } from "./provider-models.repository";
 import { ProviderConnectionsService } from "./provider-connections.service";
 import { RevealLimiter } from "./reveal.limiter";
 import type { StepUpService } from "./step-up";
@@ -114,6 +117,14 @@ async function subject() {
     new RevealLimiter(),
     new ProviderAudit(recordingAudit().service),
     { byProvider: jest.fn().mockResolvedValue([]) } as unknown as RoutingStatsRepository,
+    {
+      forConnection: jest.fn().mockResolvedValue([]),
+      replace: jest.fn().mockResolvedValue([]),
+    } as unknown as ProviderModelsRepository,
+    {
+      recordValidation: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ProviderHealthService,
+    new ModelPullTracker(),
   );
 
   return { service, connections };

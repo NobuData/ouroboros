@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.30.15",
+    "version": "0.30.16",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -4754,6 +4754,7 @@
                       "latencyMs": 42,
                       "models": null,
                       "detail": null,
+                      "errorClass": null,
                       "meta": "42ms"
                     },
                     {
@@ -4767,6 +4768,7 @@
                       "latencyMs": null,
                       "models": null,
                       "detail": null,
+                      "errorClass": null,
                       "meta": null
                     },
                     {
@@ -4780,6 +4782,7 @@
                       "latencyMs": null,
                       "models": null,
                       "detail": "degraded · elevated latency",
+                      "errorClass": null,
                       "meta": "degraded · elevated latency"
                     },
                     {
@@ -4793,6 +4796,7 @@
                       "latencyMs": null,
                       "models": 3,
                       "detail": null,
+                      "errorClass": null,
                       "meta": "workstation · 3 models"
                     },
                     {
@@ -4806,6 +4810,7 @@
                       "latencyMs": null,
                       "models": 2,
                       "detail": null,
+                      "errorClass": null,
                       "meta": "vllm-local · 2 models"
                     }
                   ]
@@ -6080,6 +6085,642 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/test": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Ask the provider whether this connection works",
+        "description": "Mockup 07's **Test connection** button ([#230](https://github.com/NobuData/ouroboros/issues/230),\nroadmap decision **P9**): user-initiated, and cheap. The adapter's own `validate` runs\n— a models-list call or a version ping, **never a completion** — and what it found is\nthe answer, whatever it was.\n\n**A provider that is down is a `200`.** A `503` upstream, a refused key and a closed\nsocket are the states the card foot exists to render — `△ 503 upstream · retrying`,\n`✗ key rejected (401)` — so they come back as the resource's `status`, `pill`, `note`\nand `errorClass` rather than as an error of this API's own. The only refusals this\noperation answers are about the *request*: no such connection, no adapter for its\nkind. The `· retrying` in a note is the taxonomy's word for a class worth trying\nagain; it says nothing about anything being retried.\n\n**The answer is written before it is returned.** `provider_connections.status` and\n`lastCheckedAt` move, and the snapshot `GET /api/v1/routing/providers` serves is\nmerged through the health service's own writer — so the routing page's strip and this\npage's pill describe one measurement, and the finer pill survives a reload through the\nsnapshot's `errorClass`. A latency is stored only where the strip would print one: the\n`· 4ms` on a local card is measured and returned, and deliberately not stored beside\nthe daemon's loopback round trip. A test enumerates nothing, so the strip's model\ncount is cleared until the next sweep counts again.\n\n`owner` or `admin`. Audited as `provider.tested`, with what was found — a `failure`\noutcome carrying the class when the provider refused.",
+        "operationId": "testProviderConnection",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ConnectionId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the provider said, composed for the card foot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderTest"
+                },
+                "examples": {
+                  "connected": {
+                    "summary": "The Anthropic card's `✓ 200 · 38ms`",
+                    "value": {
+                      "connectionId": "5eed000c-0000-4000-8000-000000000001",
+                      "checkedAt": "2026-08-25T10:00:12.004Z",
+                      "status": "active",
+                      "pill": {
+                        "tone": "ok",
+                        "label": "connected"
+                      },
+                      "note": "200",
+                      "latencyMs": 38,
+                      "errorClass": null,
+                      "retryable": false,
+                      "detail": "200"
+                    }
+                  },
+                  "degraded": {
+                    "summary": "The Copilot card's `△ 503 upstream · retrying`",
+                    "value": {
+                      "connectionId": "5eed000c-0000-4000-8000-000000000003",
+                      "checkedAt": "2026-08-25T10:00:12.004Z",
+                      "status": "error",
+                      "pill": {
+                        "tone": "warn",
+                        "label": "degraded upstream"
+                      },
+                      "note": "503 upstream · retrying",
+                      "latencyMs": null,
+                      "errorClass": "upstream",
+                      "retryable": true,
+                      "detail": "503 upstream"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Testing a connection issues a request signed with the workspace's credential,\nwhich is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`provider_connection_not_found`, or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`provider_kind_unsupported` — this build has no adapter for the connection's kind,\nand `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/models": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "The models discovery has reported on a connection",
+        "description": "The card's **Models available** chips and the Ollama card's **Detected models** rows\n([#230](https://github.com/NobuData/ouroboros/issues/230), roadmap decision **P6**):\n`provider_models` for one connection, as the last discovery left it, with the sizes a\npull-list prints in bytes.\n\n**`unlisted` is the flag on a route that is now broken.** An alias in this workspace's\nregistry names a model on this connection; if the catalog no longer lists that model\n— it was removed from a vLLM host, or the alias was typed ahead of a key — the model is\nnot in `models` and the alias is here, by name, so a card can flag it and link to it\nrather than quietly drop a chip somebody is routing through. Nothing is flagged on a\nconnection nothing has discovered on yet: that is a gap, not a mismatch.\n\nA read of what was stored, never a discovery. Any member.",
+        "operationId": "listProviderModels",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ConnectionId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalog, ordered by model id, and the aliases it has stranded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderModels"
+                },
+                "example": {
+                  "connectionId": "5eed000c-0000-4000-8000-000000000004",
+                  "discoveredAt": "2026-08-25T10:00:12.004Z",
+                  "models": [
+                    {
+                      "modelId": "llama-4-maverick",
+                      "display": "local/llama-4-maverick",
+                      "sizeBytes": null,
+                      "meta": {
+                        "context_tokens": 1000000
+                      },
+                      "discoveredAt": "2026-08-25T10:00:12.004Z"
+                    }
+                  ],
+                  "unlisted": [
+                    {
+                      "modelId": "deepseek-v3.2",
+                      "aliases": [
+                        {
+                          "id": "5eed000f-0000-4000-8000-000000000009",
+                          "alias": "local-ds"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`provider_connection_not_found`, or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/discover": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Ask the provider what it serves, and store it",
+        "description": "The card's chip refresh ([#230](https://github.com/NobuData/ouroboros/issues/230)) —\nthe `insert … on conflict (provider_connection_id, model_id)` V017 wrote out and left\nto this ticket. The adapter's `discoverModels` runs and its answer **replaces** the\ncatalog: every reported model is upserted, and every row the report did not name is\ndeleted, because `provider_models` is discovery's report of what exists and three\nother surfaces — the registry, alias validation, the import wizard — read it as\nexactly that. What the deletion would otherwise hide comes back in `unlisted`: an\nalias that still names a removed model, flagged rather than tidied away.\n\n**A failed discovery leaves the catalog unchanged**, and is `502 provider_discovery_failed`\nwith the taxonomy's class and the adapter's own phrase. *Could not read the list* and\n*the list is empty* are different facts, and a `503` that emptied a card's chips would\nhave turned one into the other.\n\nEvery kind with an adapter may be refreshed, including one whose catalog is fixed —\na connection added before anything discovered it has no rows until something does.\nA card hides the *button* where `capabilities.discovery` is false; the route stays.\n`owner` or `admin`.",
+        "operationId": "discoverProviderModels",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ConnectionId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The catalog as it now stands, and what this pass changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderDiscovery"
+                },
+                "example": {
+                  "connectionId": "5eed000c-0000-4000-8000-000000000004",
+                  "discoveredAt": "2026-08-25T10:00:12.004Z",
+                  "models": [
+                    {
+                      "modelId": "llama-4-maverick",
+                      "display": "local/llama-4-maverick",
+                      "sizeBytes": null,
+                      "meta": {
+                        "context_tokens": 1000000
+                      },
+                      "discoveredAt": "2026-08-25T10:00:12.004Z"
+                    }
+                  ],
+                  "unlisted": [
+                    {
+                      "modelId": "deepseek-v3.2",
+                      "aliases": [
+                        {
+                          "id": "5eed000f-0000-4000-8000-000000000009",
+                          "alias": "local-ds"
+                        }
+                      ]
+                    }
+                  ],
+                  "added": [],
+                  "removed": [
+                    "deepseek-v3.2"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Discovery is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`provider_connection_not_found`, or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`provider_kind_unsupported` — this build has no adapter for the connection's kind,\nand `details.registered` lists the ones it has.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`provider_discovery_failed` — the provider did not answer its models list, and the\ncatalog is unchanged. `details.errorClass` and `details.detail` say what the\nprovider said, in the taxonomy's five words and the adapter's own phrase; never\nthe provider's body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "provider_discovery_failed",
+                  "message": "The provider did not answer its models list, so the catalog is unchanged.",
+                  "details": {
+                    "errorClass": "network",
+                    "detail": "unreachable (ECONNREFUSED)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/providers/{id}/pulls": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Every pull this process knows about on a connection",
+        "description": "The pull-list's progress ([#230](https://github.com/NobuData/ouroboros/issues/230)\nover [#219](https://github.com/NobuData/ouroboros/issues/219)): what a card reads on\nfirst render and polls while a bar is moving. **Progress lives here, not in the\nbrowser** — a page reloaded mid-pull reads the same `61%` the transfer is actually at,\nbecause the process consuming the daemon's stream is this one and it answers where\nthe stream has got to.\n\nRecords are in memory and last fifteen minutes after they settle; a process restart\nloses them while the daemon carries on pulling, which the next discovery finds. The\n`404` for a connection this workspace does not have is the tenancy of this read: the\ntracker keys records by connection alone.\n\nAnswered with `Cache-Control: no-store`. Any member.",
+        "operationId": "listModelPulls",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ConnectionId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pulls, oldest request first. Empty for a connection nothing has pulled on.",
+            "headers": {
+              "Cache-Control": {
+                "description": "`no-store` — a cached copy of a progress report is a report that stopped moving.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPulls"
+                },
+                "example": {
+                  "connectionId": "5eed000c-0000-4000-8000-000000000005",
+                  "pulls": [
+                    {
+                      "connectionId": "5eed000c-0000-4000-8000-000000000005",
+                      "modelId": "llama4:scout",
+                      "state": "running",
+                      "status": "downloading",
+                      "completedBytes": 41263898296,
+                      "totalBytes": 67645734912,
+                      "percent": 61,
+                      "queuedAt": "2026-08-25T10:00:00.000Z",
+                      "startedAt": "2026-08-25T10:00:00.200Z",
+                      "finishedAt": null,
+                      "errorClass": null,
+                      "detail": null
+                    },
+                    {
+                      "connectionId": "5eed000c-0000-4000-8000-000000000005",
+                      "modelId": "phi4:14b",
+                      "state": "queued",
+                      "status": "queued",
+                      "completedBytes": null,
+                      "totalBytes": null,
+                      "percent": null,
+                      "queuedAt": "2026-08-25T10:01:30.000Z",
+                      "startedAt": null,
+                      "finishedAt": null,
+                      "errorClass": null,
+                      "detail": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`provider_connection_not_found`, or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Ask the host to pull a model",
+        "description": "The pull-list's **Pull latest** ([#230](https://github.com/NobuData/ouroboros/issues/230)).\nThe daemon's stream is consumed by this process, server-side, and this answers **at\nonce** with the record as it stands: `running` for a connection with nothing in\nflight, `queued` for one with a pull already running — one active pull per connection,\nand a queued one has not been asked of the daemon yet. Queue management proper —\nordering, cancellation, disk awareness — is AF.5's\n([#238](https://github.com/NobuData/ouroboros/issues/238)).\n\n**A second request for a model already in flight answers the existing record.** A\ndouble click is not a second pull, and a client that lost the first answer can ask\nagain for the record it was looking for. A model that finished earlier is pulled\nagain: *Pull latest* is an instruction, not a check.\n\nWhen the pull succeeds this process runs a discovery on the connection, so the catalog\nreflects the host whether or not a page was still watching. `owner` or `admin`.",
+        "operationId": "pullProviderModel",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ConnectionId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelPullRequest"
+              },
+              "example": {
+                "modelId": "llama4:scout"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The record as it stands — the transfer continues after this answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelPull"
+                },
+                "example": {
+                  "connectionId": "5eed000c-0000-4000-8000-000000000005",
+                  "modelId": "llama4:scout",
+                  "state": "running",
+                  "status": "starting",
+                  "completedBytes": null,
+                  "totalBytes": null,
+                  "percent": null,
+                  "queuedAt": "2026-08-25T10:00:00.000Z",
+                  "startedAt": "2026-08-25T10:00:00.000Z",
+                  "finishedAt": null,
+                  "errorClass": null,
+                  "detail": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit\nthis. Pulling a model is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`provider_connection_not_found`, or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `id` is not a uuid, or `modelId` is not a trimmed string of\n1–200 characters. Or `provider_kind_cannot_pull` — the connection's adapter\ndeclares no `pull` capability; only a host that stores models can be asked to\nfetch one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "`provider_kind_unsupported` — this build has no adapter for the connection's kind,\nand `details.registered` lists the ones it has.",
             "content": {
               "application/json": {
                 "schema": {
@@ -10282,6 +10923,7 @@
           "latencyMs",
           "models",
           "detail",
+          "errorClass",
           "meta"
         ],
         "properties": {
@@ -10394,6 +11036,24 @@
             "description": "Why the provider is in this state, in a phrase — `unreachable (ECONNREFUSED)`,\n`key rejected (401)`, `degraded · elevated latency`. Never a driver's own message,\nwhich would carry a host and a port.",
             "examples": [
               "key rejected (401)"
+            ]
+          },
+          "errorClass": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "auth",
+              "network",
+              "upstream",
+              "rate_limit",
+              "config",
+              null
+            ],
+            "description": "The adapter taxonomy's class behind an `error`, or `null`. Written by mockup 07's\n**Test connection** ([#230](https://github.com/NobuData/ouroboros/issues/230)),\nwhose answer comes through an adapter; the scheduled sweep speaks in phrases and\nwrites none. What lets a provider card draw `degraded upstream` rather than a bare\n`error` after a reload, and keeps that card and this strip one measurement.",
+            "examples": [
+              "upstream"
             ]
           },
           "meta": {
@@ -14085,6 +14745,482 @@
             "examples": [
               "2026-08-23T10:00:41.882Z"
             ]
+          }
+        }
+      },
+      "ProviderStatusPill": {
+        "type": "object",
+        "title": "ProviderStatusPill",
+        "description": "The pill a card's head draws for a connection's state — mockup 07's\n`<span class=\"pill ok\">connected</span>`. Five error classes, five distinct pills, and\n`connected` for a check that passed; the mapping is the adapter taxonomy's and is 1:1\nin both directions.",
+        "additionalProperties": false,
+        "required": [
+          "tone",
+          "label"
+        ],
+        "properties": {
+          "tone": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "err"
+            ],
+            "description": "Which of the three `.pill` modifiers to apply.",
+            "examples": [
+              "warn"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "What the pill says, lower-case, exactly as the mockup writes it.",
+            "examples": [
+              "degraded upstream"
+            ]
+          }
+        }
+      },
+      "ProviderTest": {
+        "type": "object",
+        "title": "ProviderTest",
+        "description": "What **Test connection** found ([#230](https://github.com/NobuData/ouroboros/issues/230)):\nthe state the column was set to, the pill and the note the card draws, and the facts\nthey were composed from — so a card can print the note whole *and* tell a `503` from a\n`401` without parsing it. A failure carries **no latency**: a timing on a request that\ndid not succeed measures the failure, not the provider.",
+        "additionalProperties": false,
+        "required": [
+          "connectionId",
+          "checkedAt",
+          "status",
+          "pill",
+          "note",
+          "latencyMs",
+          "errorClass",
+          "retryable",
+          "detail"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The connection that was tested."
+          },
+          "checkedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the check finished — the instant `lastCheckedAt` now carries."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "error",
+              "unknown"
+            ],
+            "description": "What `provider_connections.status` was set to — `active` for a pass, `error` for\nevery failure. The pill is the finer instrument; the column is the routing signal.",
+            "examples": [
+              "active"
+            ]
+          },
+          "pill": {
+            "$ref": "#/components/schemas/ProviderStatusPill"
+          },
+          "note": {
+            "type": "string",
+            "description": "The foot's note, after the glyph — `200`, `200 · 4 seats`, `503 upstream · retrying`,\n`key rejected (401)`. The glyph and the `· 38ms` are the card's, from `pill.tone`\nand `latencyMs`.",
+            "examples": [
+              "503 upstream · retrying"
+            ]
+          },
+          "latencyMs": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Milliseconds the check took — measured, never cached — or `null` on a failure.",
+            "examples": [
+              38
+            ]
+          },
+          "errorClass": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "auth",
+              "network",
+              "upstream",
+              "rate_limit",
+              "config",
+              null
+            ],
+            "description": "Which of the taxonomy's five a failure was, or `null` on a pass.",
+            "examples": [
+              "upstream"
+            ]
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Whether trying again could plausibly succeed without anybody changing anything."
+          },
+          "detail": {
+            "type": "string",
+            "description": "The adapter's own phrase, unchanged — what `note` was composed from.",
+            "examples": [
+              "503 upstream"
+            ]
+          }
+        }
+      },
+      "ProviderModel": {
+        "type": "object",
+        "title": "ProviderModel",
+        "description": "One model a connection has, as discovery reported it — a chip, or a pull-list row.",
+        "additionalProperties": false,
+        "required": [
+          "modelId",
+          "display",
+          "sizeBytes",
+          "meta",
+          "discoveredAt"
+        ],
+        "properties": {
+          "modelId": {
+            "type": "string",
+            "description": "The provider's own identifier — `claude-fable-5`, `qwen3-coder:32b`."
+          },
+          "display": {
+            "type": "string",
+            "description": "What the chip prints."
+          },
+          "sizeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "On-disk size in **bytes** for a locally-hosted model — the pull-list's `19 GB`,\nformatted by the card — or `null` for a model that has no such thing. Null is not\nzero: a zero would be a tag claiming a model that takes no space.",
+            "examples": [
+              19327352832
+            ]
+          },
+          "meta": {
+            "type": "object",
+            "description": "What else discovery reported — `context_tokens`, `tier`.",
+            "additionalProperties": true
+          },
+          "discoveredAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When discovery last reported it."
+          }
+        }
+      },
+      "AliasReference": {
+        "type": "object",
+        "title": "AliasReference",
+        "description": "One registry alias, as far as a flag needs to name it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "alias"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The alias's id."
+          },
+          "alias": {
+            "type": "string",
+            "description": "The alias's name — `local-ds`."
+          }
+        }
+      },
+      "UnlistedModel": {
+        "type": "object",
+        "title": "UnlistedModel",
+        "description": "A model a routing alias names that the provider no longer lists — a route that is now\nbroken, flagged rather than dropped. There is no display and no size, because there is\nno row: the id is the alias's own spelling.",
+        "additionalProperties": false,
+        "required": [
+          "modelId",
+          "aliases"
+        ],
+        "properties": {
+          "modelId": {
+            "type": "string",
+            "description": "The model's id, as the alias spells it."
+          },
+          "aliases": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The aliases that still point at it, ordered by name.",
+            "items": {
+              "$ref": "#/components/schemas/AliasReference"
+            }
+          }
+        }
+      },
+      "ProviderModels": {
+        "type": "object",
+        "title": "ProviderModels",
+        "description": "One connection's discovered catalog, and the aliases it has stranded.",
+        "additionalProperties": false,
+        "required": [
+          "connectionId",
+          "discoveredAt",
+          "models",
+          "unlisted"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The connection this catalog belongs to."
+          },
+          "discoveredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When discovery last reported anything on it, or `null` when it never has."
+          },
+          "models": {
+            "type": "array",
+            "description": "The models, ordered by id. Empty when discovery has not run, or the provider has none.",
+            "items": {
+              "$ref": "#/components/schemas/ProviderModel"
+            }
+          },
+          "unlisted": {
+            "type": "array",
+            "description": "Aliased models the catalog does not list. Always empty on a connection nothing has\ndiscovered on yet — a gap is not a mismatch.",
+            "items": {
+              "$ref": "#/components/schemas/UnlistedModel"
+            }
+          }
+        }
+      },
+      "ProviderDiscovery": {
+        "type": "object",
+        "title": "ProviderDiscovery",
+        "description": "What a discovery run answers — the catalog as it now stands, and what changed.",
+        "additionalProperties": false,
+        "required": [
+          "connectionId",
+          "discoveredAt",
+          "models",
+          "unlisted",
+          "added",
+          "removed"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The connection this catalog belongs to."
+          },
+          "discoveredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When discovery last reported anything on it, or `null` when it never has."
+          },
+          "models": {
+            "type": "array",
+            "description": "The models, ordered by id.",
+            "items": {
+              "$ref": "#/components/schemas/ProviderModel"
+            }
+          },
+          "unlisted": {
+            "type": "array",
+            "description": "Aliased models the catalog does not list.",
+            "items": {
+              "$ref": "#/components/schemas/UnlistedModel"
+            }
+          },
+          "added": {
+            "type": "array",
+            "description": "Model ids this pass reported that the catalog did not hold, ordered.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "removed": {
+            "type": "array",
+            "description": "Model ids the catalog held that this pass no longer reported, ordered.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ModelPullRequest": {
+        "type": "object",
+        "title": "ModelPullRequest",
+        "description": "The body of `POST /api/v1/providers/{id}/pulls`.",
+        "additionalProperties": false,
+        "required": [
+          "modelId"
+        ],
+        "properties": {
+          "modelId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The model to pull, in the daemon's own spelling. Trimmed.",
+            "examples": [
+              "llama4:scout"
+            ]
+          }
+        }
+      },
+      "ModelPull": {
+        "type": "object",
+        "title": "ModelPull",
+        "description": "One tracked pull ([#230](https://github.com/NobuData/ouroboros/issues/230) over\n[#219](https://github.com/NobuData/ouroboros/issues/219)) — the server-side record a\npage polls, so a reload lands at the transfer's real percentage. Every absence is\n`null`: a manifest is fetched before a size is, and `0%` would be a claim about a\ntransfer that has not been measured.",
+        "additionalProperties": false,
+        "required": [
+          "connectionId",
+          "modelId",
+          "state",
+          "status",
+          "completedBytes",
+          "totalBytes",
+          "percent",
+          "queuedAt",
+          "startedAt",
+          "finishedAt",
+          "errorClass",
+          "detail"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The connection the pull is on."
+          },
+          "modelId": {
+            "type": "string",
+            "description": "The model, in the daemon's own spelling."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "description": "Where it has got to. `queued` means nothing has been asked of the daemon yet — one\nactive pull per connection. There is no `cancelled`; cancelling is AF.5's.",
+            "examples": [
+              "running"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "What is happening, in the daemon's own words — `pulling manifest`, `downloading`,\n`verifying sha256 digest`. `queued` and `starting` before the daemon has said anything.",
+            "examples": [
+              "downloading"
+            ]
+          },
+          "completedBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Bytes transferred so far, or `null` while the daemon has not said."
+          },
+          "totalBytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Bytes in total, or `null` while the daemon has not said."
+          },
+          "percent": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Whole percent complete, or `null` while it is not known — an indeterminate bar.",
+            "examples": [
+              61
+            ]
+          },
+          "queuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it was asked for."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it became the connection's active pull, or `null` while queued."
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it reached a terminal state, or `null` until it has."
+          },
+          "errorClass": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "auth",
+              "network",
+              "upstream",
+              "rate_limit",
+              "config",
+              null
+            ],
+            "description": "The taxonomy's class behind a failure, or `null` — on a success, and on a failure\nthis service caused, which is not a statement about what the provider did."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The sentence a failure renders as, or `null`. Never a daemon's own error body."
+          }
+        }
+      },
+      "ModelPulls": {
+        "type": "object",
+        "title": "ModelPulls",
+        "description": "Every pull known for one connection.",
+        "additionalProperties": false,
+        "required": [
+          "connectionId",
+          "pulls"
+        ],
+        "properties": {
+          "connectionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The connection."
+          },
+          "pulls": {
+            "type": "array",
+            "description": "The pulls, oldest request first.",
+            "items": {
+              "$ref": "#/components/schemas/ModelPull"
+            }
           }
         }
       },

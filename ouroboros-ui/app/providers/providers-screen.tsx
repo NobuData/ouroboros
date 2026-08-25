@@ -11,6 +11,9 @@ import {
   cardModel,
 } from "./cards";
 import { ADD_CARD_NOTE } from "./catalog";
+import type { ModelPull } from "@/app/api/providers";
+import type { Reading } from "@/app/api/reading";
+
 import type { ProvidersReadings } from "./data";
 import { ProviderCard } from "./provider-card";
 import { PROVIDERS_TITLE, providersSubline } from "./view";
@@ -159,6 +162,7 @@ function ProviderGrid({
             health: health.get(connection.id) ?? null,
             spend: spend.get(connection.kind) ?? null,
             models: readings.models.get(connection.id) ?? null,
+            pulls: pullsOf(readings.pulls.get(connection.id)),
             aliases: readings.aliases,
             now,
           })}
@@ -185,4 +189,16 @@ function AddCard() {
       <BrowseCatalogButton />
     </Card>
   );
+}
+
+/**
+ * A pulling card's records, as read — or none, which is what a failed read and an absent one
+ * both mean to a list whose rows are the catalog's and whose poll re-reads progress the moment
+ * a pull starts.
+ *
+ * @param reading What the reader produced for the connection, if it read pulls for it at all.
+ * @returns The records.
+ */
+function pullsOf(reading: Reading<readonly ModelPull[]> | undefined): readonly ModelPull[] {
+  return reading?.ok === true ? reading.value : [];
 }

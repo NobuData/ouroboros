@@ -936,9 +936,10 @@ export interface ProviderModelsTable {
    *
    * `context_tokens` is the key {@link ModelPricesTable.meta} already uses, so CH.2 merging a
    * discovered model with a catalog entry is not made to translate — which is the whole reason
-   * V017 chose the spelling. `Generated` for its `default '{}'::jsonb`; nothing in this service
-   * writes it today, and the discovery sweep that will is AE.4's
-   * ([#230](https://github.com/NobuData/ouroboros/issues/230)).
+   * V017 chose the spelling. `Generated` for its `default '{}'::jsonb`; discovery
+   * (`provider-connections/provider-models.repository.ts`, AE.4
+   * [#230](https://github.com/NobuData/ouroboros/issues/230)) writes it from the adapter's
+   * `NormalizedModel`.
    */
   meta: Generated<Record<string, unknown>>;
   /**
@@ -947,8 +948,11 @@ export interface ProviderModelsTable {
    * This table has no `updated_at` because that is what this column is — a cache of what a
    * provider said, stamped with when it said it. It is what mockup 21's *listed live from the
    * provider* is true of, and what tells a stale catalog from a fresh one.
+   *
+   * Not {@link Stamped}: that alias forbids an update, and V017's upsert sets this column from
+   * `excluded.discovered_at` on every conflict — moving it is the whole of what the column is.
    */
-  discovered_at: Stamped;
+  discovered_at: ColumnType<Date, Date | undefined, Date>;
 }
 
 /**
@@ -1816,9 +1820,9 @@ export const READ_ONLY_VIEWS = ["token_usage_daily", "workspace_settings_effecti
  * re-encryption sweep re-seals a value it already held.
  *
  * **`provider_models` (V017, [#221](https://github.com/NobuData/ouroboros/issues/221)) is the
- * seventeenth**, and the first table here that this service only ever *reads* and has no writer
- * for at all: discovery fills it, and the sweep that runs discovery is AE.4's
- * ([#230](https://github.com/NobuData/ouroboros/issues/230)). It is mirrored now because CH.2
+ * seventeenth**, and the first table here whose only writer is discovery —
+ * `provider-connections/provider-models.repository.ts`, AE.4's
+ * ([#230](https://github.com/NobuData/ouroboros/issues/230)) upsert. It is mirrored because CH.2
  * ([#585](https://github.com/NobuData/ouroboros/issues/585)) reads `meta` to bound a param
  * schema by the context length the provider actually published — a bound taken from a live
  * catalog rather than from a number written down here.
@@ -2232,12 +2236,19 @@ export type NewModelAlias = Insertable<ModelAliasesTable>;
 
 /**
  * A row of `ouroboros.provider_models`, as a `select` returns it — one model a connection has.
- *
- * There is deliberately no `NewProviderModel`. Discovery is the only writer and it does not run
- * here yet (AE.4, [#230](https://github.com/NobuData/ouroboros/issues/230)); declaring the
- * insert shape now would be this service claiming a write it does not perform.
  */
 export type ProviderModel = Selectable<ProviderModelsTable>;
+
+/**
+ * The columns an `insert` into `ouroboros.provider_models` may carry.
+ *
+ * Declared by AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)), the ticket that
+ * made discovery a writer here: `provider-connections/provider-models.repository.ts` is V017's
+ * `insert … on conflict`, and this is its shape. Until then the type was deliberately absent —
+ * declaring an insert shape for a write this service did not perform would have been claiming
+ * one.
+ */
+export type NewProviderModel = Insertable<ProviderModelsTable>;
 
 /**
  * A row of `ouroboros.task_kinds`, as a `select` returns it — one row of the routing matrix.

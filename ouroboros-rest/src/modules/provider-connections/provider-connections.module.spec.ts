@@ -5,6 +5,7 @@ import { testConfiguration } from "../config/configuration.fixture";
 import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { DatabaseService } from "../db/db.service";
+import { ProviderHealthModule } from "../provider-health/provider-health.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { RegistryModule } from "../registry/registry.module";
 import { RegistryService } from "../registry/registry.service";
@@ -88,14 +89,23 @@ describe("the provider connections module", () => {
     expect(app.get(RegistryService)).toBeInstanceOf(RegistryService);
   });
 
-  it("imports exactly the five modules whose capabilities it borrows", () => {
+  it("imports exactly the six modules whose capabilities it borrows", () => {
     // `AuditModule` joined the four with AD.4 (#225): the trail is another module's
     // capability, reached through its exported service, on the same terms as the vault's and
     // the registry's. It is not a provider declared here, which is what keeps *the address
     // comes from the request rather than from the caller* true of every event.
     const imports = Reflect.getMetadata("imports", ProviderConnectionsModule) as unknown[];
 
-    expect(imports).toEqual([DbModule, VaultModule, ProvidersModule, RegistryModule, AuditModule]);
+    // `ProviderHealthModule` joined with AE.4 (#230): the strip's snapshot is Z.3's to write,
+    // and a test that wrote it through a second writer would be two opinions about one column.
+    expect(imports).toEqual([
+      DbModule,
+      VaultModule,
+      ProvidersModule,
+      RegistryModule,
+      AuditModule,
+      ProviderHealthModule,
+    ]);
   });
 
   it("exports nothing", () => {

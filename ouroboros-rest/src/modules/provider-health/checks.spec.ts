@@ -3,8 +3,10 @@ import {
   ANTHROPIC_DEFAULT_BASE_URL,
   PROVIDER_CHECKS,
   checkFor,
+  checkKindFor,
   checkUrl,
   kindsOnCadence,
+  reportsLatencyFor,
 } from "./checks";
 
 /**
@@ -147,5 +149,26 @@ describe("where a check is sent", () => {
     // V015 requires one for these two, so this is a row that cannot exist — and the answer is
     // still `undefined` rather than a guess, because the guess would be `localhost`.
     expect(checkUrl(checkFor("ollama")!, null)).toBeUndefined();
+  });
+});
+
+describe("the two answers an on-demand test takes from the table (#230)", () => {
+  it("names the sweep's own check for a kind the table covers, whatever the schema says", () => {
+    expect(checkKindFor("ollama", true)).toBe("reachability");
+    expect(checkKindFor("anthropic", false)).toBe("key_validation");
+  });
+
+  it("derives the check from the credential field for a kind the table does not cover", () => {
+    expect(checkKindFor("copilot", true)).toBe("key_validation");
+    expect(checkKindFor("custom", false)).toBe("reachability");
+  });
+
+  it("keeps the table's judgement about whose latency is worth storing", () => {
+    expect(reportsLatencyFor("ollama")).toBe(false);
+    expect(reportsLatencyFor("anthropic")).toBe(true);
+  });
+
+  it("stores a latency for a kind the table does not cover — a cloud round trip means something", () => {
+    expect(reportsLatencyFor("copilot")).toBe(true);
   });
 });

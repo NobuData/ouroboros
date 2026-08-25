@@ -36,7 +36,7 @@ function snapshot(overrides: Partial<ProviderHealthSnapshot> = {}): ProviderHeal
     baseUrl: null,
     status: "unknown",
     checkedAt: null,
-    measured: { check: null, latencyMs: null, models: null, detail: null },
+    measured: { check: null, latencyMs: null, models: null, detail: null, errorClass: null },
     ...overrides,
   };
 }
@@ -66,7 +66,13 @@ describe("the mockup's five chips", () => {
     const chip = snapshot({
       displayName: "Anthropic",
       status: "active",
-      measured: { check: "key_validation", latencyMs: 42, models: null, detail: null },
+      measured: {
+        check: "key_validation",
+        latencyMs: 42,
+        models: null,
+        detail: null,
+        errorClass: null,
+      },
     });
 
     expect(chipMeta(chip)).toBe("42ms");
@@ -88,6 +94,7 @@ describe("the mockup's five chips", () => {
         latencyMs: null,
         models: null,
         detail: "degraded · elevated latency",
+        errorClass: null,
       },
     });
 
@@ -100,7 +107,13 @@ describe("the mockup's five chips", () => {
       displayName: "OpenAI-compatible",
       baseUrl: "http://vllm-local:8000",
       status: "active",
-      measured: { check: "reachability", latencyMs: null, models: null, detail: null },
+      measured: {
+        check: "reachability",
+        latencyMs: null,
+        models: null,
+        detail: null,
+        errorClass: null,
+      },
     });
 
     expect(chipMeta(chip)).toBe("vllm-local");
@@ -112,7 +125,13 @@ describe("the mockup's five chips", () => {
       displayName: "Ollama",
       baseUrl: "http://workstation:11434",
       status: "active",
-      measured: { check: "reachability", latencyMs: null, models: 3, detail: null },
+      measured: {
+        check: "reachability",
+        latencyMs: null,
+        models: 3,
+        detail: null,
+        errorClass: null,
+      },
     });
 
     expect(chipMeta(chip)).toBe("workstation · 3 models");
@@ -140,7 +159,13 @@ describe("what a chip never says", () => {
       snapshot({
         status: "active",
         checkedAt: new Date("2026-08-23T10:00:00.000Z"),
-        measured: { check: "reachability", latencyMs: 0, models: null, detail: null },
+        measured: {
+          check: "reachability",
+          latencyMs: 0,
+          models: null,
+          detail: null,
+          errorClass: null,
+        },
       }),
     );
 
@@ -161,12 +186,24 @@ describe("the chip as the contract publishes it", () => {
   it("publishes which question produced the state, because the two are different claims", () => {
     const reachable = providerHealthResource(
       snapshot({
-        measured: { check: "reachability", latencyMs: 1, models: null, detail: null },
+        measured: {
+          check: "reachability",
+          latencyMs: 1,
+          models: null,
+          detail: null,
+          errorClass: null,
+        },
       }),
     );
     const validated = providerHealthResource(
       snapshot({
-        measured: { check: "key_validation", latencyMs: 42, models: null, detail: null },
+        measured: {
+          check: "key_validation",
+          latencyMs: 42,
+          models: null,
+          detail: null,
+          errorClass: null,
+        },
       }),
     );
 
@@ -182,6 +219,7 @@ describe("the chip as the contract publishes it", () => {
       "checkedAt",
       "detail",
       "displayName",
+      "errorClass",
       "host",
       "id",
       "kind",
