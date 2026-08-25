@@ -725,7 +725,7 @@ scripts/run-tests.sh                      # every suite in the repository
 `ci/db` runs it on every pull request that touches this directory, after
 [`scripts/verify-dev-env.sh`](../scripts/verify-dev-env.sh).
 
-The two `.sql` suites are the other half, and they are separate because they need the one
+The three `.sql` suites are the other half, and they are separate because they need the one
 thing the suite above deliberately does without: a database with the migrations applied.
 They share their assertion helpers through [`tests/lib/assert.sql`](tests/lib/assert.sql),
 as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh).
@@ -737,6 +737,13 @@ wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite
 what the three `R__dev_seed*.sql` migrations actually put in a development database, one
 assertion per row — the workspaces, mockup 02's dashboard number for number, and mockup
 07's five provider cards with the meters their two seeds add up to.
+[`tests/registry-invariants.sql`](tests/registry-invariants.sql) is the third, and it is a
+second way into a file rather than a third body of assertions:
+[`tests/lib/registry-invariants.sql`](tests/lib/registry-invariants.sql) is CG.5's
+([#583](https://github.com/NobuData/ouroboros/issues/583)) list of the registry rules the
+services over mockup 21 are written against, `constraints.sql` includes it as its last
+section, and this runs the same file on its own — because the one database `constraints.sql`
+cannot be pointed at is the *seeded* one, and that is the database #583 asks these probes of.
 Run them against a migrated database:
 
 ```bash
@@ -744,21 +751,27 @@ PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/constraints.sql
 PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/seed.sql
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
+  -v ON_ERROR_STOP=1 -f ouroboros-db/tests/registry-invariants.sql
 ```
 
 `constraints.sql` creates its own fixtures inside a transaction and rolls back, so it
 leaves no rows behind — including the seed's, which it clears and restores so its counts
-mean what they say. `seed.sql` writes nothing at all. Both are safe to repeat against a
-database that is already in use. `seed.sql` wants a database migrated *with* the seed
-enabled and fails on the first assertion against one that is not, which is the answer it
-should give; running it after two `migrate` passes is how "migrate twice changes nothing"
-is checked, since every assertion in it says *exactly one*.
+mean what they say. `seed.sql` writes nothing at all. `registry-invariants.sql` writes and
+rolls back like the first but clears nothing, because every count in it is scoped to two
+workspaces it made itself — which is the property that lets it be pointed at a seeded
+database, where clearing the schema is the one thing it must not do. All three are safe to
+repeat against a database that is already in use. `seed.sql` wants a database migrated
+*with* the seed enabled and fails on the first assertion against one that is not, which is
+the answer it should give; running it after two `migrate` passes is how "migrate twice
+changes nothing" is checked, since every assertion in it says *exactly one*.
 
 A passing run prints one line; a failure names the rule and exits non-zero, which is what
-makes both a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires them
-into `ci/db`, below. A migration that adds a rule adds its assertion in the same change.
+makes each of them a CI step — [#24](https://github.com/NobuData/ouroboros/issues/24) wires
+the first two into `ci/db` and [#583](https://github.com/NobuData/ouroboros/issues/583) the
+third, below. A migration that adds a rule adds its assertion in the same change.
 
-`constraints.sql`'s last section belongs to no migration. Every assertion above it is
+`constraints.sql`'s last two sections belong to no migration. Every assertion above them is
 behavioural — a write the schema must refuse, attempted, and refused — and a behavioural
 probe has one failure mode nothing can see from the outside: it can go **vacuous**, because
 it depends on a fixture, and a fixture is a live thing that a later ticket can rename or
@@ -772,6 +785,15 @@ because a relaxation to `cascade` leaves the name exactly where it was. It delib
 not assert any rule's *body* — a CHECK's expression, a trigger function's source — because
 those are legitimately rewritten, and a test that pins the wording of a rule fails on the
 refactor rather than on the regression.
+
+[#583](https://github.com/NobuData/ouroboros/issues/583) is the same list for the registry —
+unbound ⇒ disabled, the params and restrictions vocabularies, alias uniqueness per
+workspace, price coherence, price provenance and uniqueness, the reference view's columns,
+and the two `restrict` foreign keys again — and it is the section kept in a file of its own,
+[`tests/lib/registry-invariants.sql`](tests/lib/registry-invariants.sql), because it runs in
+two places. Mostly behavioural rather than catalogue reads, unlike #193's: it can afford to
+be, because its fixtures are two workspaces it creates and deletes itself, and a probe whose
+fixture is its own cannot go vacuous when somebody else's moves.
 
 Both are **one session inside one transaction**, which is what
 [Proving the guard is a guard](#proving-the-guard-is-a-guard) exists for: a rule about what
@@ -787,27 +809,36 @@ right probe goes red for the right reason.
 
 [`tests/verify-constraint-probes.sh`](tests/verify-constraint-probes.sh) is that check for
 the dashboard read-model ([#69](https://github.com/NobuData/ouroboros/issues/69)), the
-provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)) and the routing
-invariants ([#193](https://github.com/NobuData/ouroboros/issues/193)). It drops one rule at
+provider cards ([#221](https://github.com/NobuData/ouroboros/issues/221)), the routing
+invariants ([#193](https://github.com/NobuData/ouroboros/issues/193)) and the registry rules
+([#583](https://github.com/NobuData/ouroboros/issues/583)). It drops one rule at
 a time — the `runs.status` and `queue_items.effort` vocabularies, the terminal-run rule, the
 queue's position and issue keys, the `workspace_settings` primary key; the monthly cap's
 floor, the discovered catalog's uniqueness, the `enabled` switch's `not null` and the health
 vocabulary beside it, the `added_by` reference; the hop position key, the
-one-route-per-task-kind key, the rule `then` grammar and the provider `kind` vocabulary —
+one-route-per-task-kind key, the rule `then` grammar and the provider `kind` vocabulary; the
+unbound-alias switch, the params and restrictions vocabularies, alias uniqueness, the three
+price-coherence rules, price provenance and the reference-kind vocabulary —
 and rewrites the expressions a rule lives in where no drop can falsify it: the two
 `token_usage_daily` computes its sums from, and the two tests inside `route_chain_intact()`
 that hold a chain dense from 1 and its floor inside it. For each, it requires the suite to
 fail **and** to name the assertion that caught it: a bare non-zero status would also be
 produced by a mutation that broke on its own statement.
 
-Two of the routing mutations are *relaxations* rather than drops, and they are the ones
-worth understanding. `route_hops_alias_fk` and `model_aliases_provider_fk` are re-added as
+Three mutations are *relaxations* rather than drops, and they are the ones worth
+understanding. `route_hops_alias_fk` and `model_aliases_provider_fk` are re-added as
 `on delete cascade`, because `restrict` → `cascade` is the refactor that really happens and
 it leaves the constraint's name exactly where it was. Both fail **open**: the delete succeeds
 and takes the dependent rows with it, so a provider removed on *Providers & keys* would empty
 chains drawn on *Model routing*, and an alias retired in the model registry would shorten
-every chain that named it — past the floor those chains were written against. That is the
-class of regression a green suite cannot see, which is why it is probed rather than trusted.
+every chain that named it — past the floor those chains were written against.
+`model_prices_match_key` is the third, re-added without its `nulls not distinct`: every
+bundled price row has a null `organization_id`, so under the ordinary spelling that key
+separates none of them and the next snapshot import doubles the catalog instead of updating
+it — while the override half goes on working, which is what would make the loss hard to
+notice. All three are the class of regression a green suite cannot see, which is why they
+are probed rather than trusted. Relaxing also probes harder than dropping would: a suite
+that catches the relaxation catches the drop, since the drop refuses less.
 
 ```bash
 PGPASSWORD=ouroboros ouroboros-db/tests/verify-constraint-probes.sh
@@ -922,12 +953,13 @@ before a database is waited on.
 | `scripts/migrate` | Every migration applies, in order, to a database that has never seen them | yes |
 | `scripts/validate` | Checksums and the naming rule, read back from the history that pass wrote | yes |
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
-| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing included ([#193](https://github.com/NobuData/ouroboros/issues/193)) | yes (copies of its own) |
+| `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)) and the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)) included | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
 | `tests/seed.sql` | The demo tenant is there, exactly once, with the ids the documentation publishes | yes (that one) |
+| `tests/registry-invariants.sql` | The registry rules again, against the *seeded* database — and `tests/seed.sql` a second time to say it survived them ([#583](https://github.com/NobuData/ouroboros/issues/583)) | yes (that one) |
 
 The drift check is the one step that needs a Node toolchain, which is why the job installs
 the workspace and builds `ouroboros-rest`: the configuration deciding the expected schema

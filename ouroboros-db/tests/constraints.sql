@@ -40,10 +40,13 @@
 -- resolution decided, kept (V024, #582), and `alias_revisions`, the record every
 -- registry write leaves (V025, #584).
 --
--- The last section belongs to no migration. Y.5 (#193) names the routing invariants Z.1's
--- resolution is written against and asks the catalogue for each of them **by name** — a
+-- The last two sections belong to no migration. Y.5 (#193) names the routing invariants
+-- Z.1's resolution is written against and asks the catalogue for each of them **by name** — a
 -- backstop for the one failure mode a behavioural probe cannot report about itself, which is
 -- that it depends on a fixture and can therefore go quietly vacuous. See its own header.
+-- CG.5 (#583) is the registry's list, and it is kept in lib/registry-invariants.sql because
+-- it runs twice: included here, and on its own against the seeded database this file cannot
+-- be pointed at. See its header too.
 --
 -- A migration that adds a rule adds its assertion here in the same change. What
 -- R__dev_seed.sql (#23) *puts* in a development database is seed.sql beside this file;
@@ -7675,6 +7678,28 @@ select pg_temp.must_hold(
       and conname in ('provider_connections_kind', 'provider_connections_status')
       and contype = 'c'),
   'provider_connections_kind and _status: both provider vocabularies are still closed');
+
+
+-- ===========================================================================
+-- CG.5 — the registry invariants every service above the schema trusts (#583)
+-- ===========================================================================
+--
+-- The registry's own list, and the one section of this file that is kept somewhere else:
+-- lib/registry-invariants.sql, because it has to run twice. Here it is CG.5's section of
+-- constraints.sql, reached by every runner this file already has. Through its sibling
+-- tests/registry-invariants.sql it is a suite of its own, which is how `ci/db` asks it of
+-- the **seeded** database #582 built — the one database this file cannot be pointed at,
+-- because the plan assertions above are chosen from statistics a seeded database does not
+-- have.
+--
+-- That is also why it is the last thing included rather than a section beside the migration
+-- it belongs to: it depends on nothing outside itself. Its fixtures are two workspaces
+-- nothing else names, every assertion is scoped to them, and it deletes them on the way out
+-- — so it can be dropped into a transaction that is already carrying rows, which is what a
+-- run against the seed is.
+--
+-- What it asserts, and what it deliberately does not repeat, is in its own header.
+\ir lib/registry-invariants.sql
 
 -- ---------------------------------------------------------------------------
 -- Nothing is kept. The database is exactly as it was found.

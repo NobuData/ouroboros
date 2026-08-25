@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
 #
 # verify-constraint-probes.sh — issue #69's second acceptance criterion, as a script, with
-# issue #221's *"CI probes verified red when a constraint is dropped"* and issue #193's
-# *"dropping any single routing invariant turns it red"* beside it.
+# issue #221's *"CI probes verified red when a constraint is dropped"*, issue #193's
+# *"dropping any single routing invariant turns it red"* and issue #583's
+# *"removing any one of the registry constraints turns it red"* beside it.
 #
 # tests/constraints.sql asserts what the schema refuses. A green run of it does not prove
 # those assertions are load-bearing: a file that asserted nothing at all would be exactly
@@ -12,8 +13,9 @@
 # right reason.
 #
 # So for each row of the tables below this breaks one rule — of the dashboard read-model, of
-# the provider tables mockup 07's cards are drawn from, or of the routing invariants mockup
-# 06's resolution is written against — runs the whole of
+# the provider tables mockup 07's cards are drawn from, of the routing invariants mockup
+# 06's resolution is written against, or of the registry rules mockup 21's table and price
+# column stand on — runs the whole of
 # constraints.sql against the mutated schema, requires it to **fail**, and
 # requires the failure to name the assertion that was supposed to catch it — not merely to
 # carry a non-zero status. A probe that goes red for the wrong reason is a probe that is
@@ -90,6 +92,39 @@
 #
 # `provider_connections_status` is not repeated here: #221's row above already drops it, and
 # the assertion that catches it is the same one Y.5's scope names.
+#
+# #583 (CG.5) adds the registry half, and its argument is #193's one page further up: the
+# services over mockup 21 — the lifecycle API (#584), the param service (#585), the pricing
+# service (#586) and the read model (#588) — are all written *against* these rules rather
+# than re-checking them, so a rule that quietly stopped existing would not fail anything. It
+# would make a page start being wrong about money.
+#
+#   CG.5 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   unbound ⇒ disabled                           drop model_aliases_unbound_disabled
+#   params shape                                 drop model_aliases_params_known
+#   restrictions shape                           drop model_aliases_restrictions_known
+#   alias uniqueness per organization            drop model_aliases_organization_alias_key
+#   price coherence: token needs both amounts    drop model_prices_token_requires_amounts
+#   price coherence: free carries no amount      drop model_prices_free_amounts_zero
+#   price coherence: seat/usage carry no rate    drop model_prices_metered_amounts_absent
+#   price provenance: owner matches source       drop model_prices_source_matches_owner
+#   price uniqueness over the four columns       re-add model_prices_match_key nulls distinct
+#   the reference-kind vocabulary                drop alias_reference_kind_known
+#
+# The price key is **relaxed** rather than dropped, for the reason the two routing foreign
+# keys above are. Its `nulls not distinct` is the whole of the rule for bundled rows — every
+# one of them has a null `organization_id`, so under PostgreSQL's default spelling the key
+# would separate none of them and a re-import would double the catalog instead of updating
+# it — while the override half went on working, which is what would make the loss hard to
+# notice. Dropping the modifier is the edit that really happens and it leaves the
+# constraint's name exactly where it was. Relaxing rather than dropping is also the stronger
+# probe: a suite that catches the relaxation catches the drop, since the drop refuses less.
+#
+# `alias_reference_kind_known` is a **domain** constraint, so it is dropped with
+# `alter domain` rather than `alter table`. It is the vocabulary the whole `Used by` column
+# is shaped by: two of its four kinds have no storage yet, and the reason a fifth is a
+# migration rather than a typo is that this refuses one.
 #
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
@@ -247,7 +282,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -545,6 +580,73 @@ expect_red 'a rule may name any action at all' \
 expect_red 'provider_connections.kind accepts anything' \
   'a provider kind outside the six is refused .*provider_connections_kind did not fire' \
   'alter table ouroboros.provider_connections drop constraint provider_connections_kind;'
+
+# ---------------------------------------------------------------------------
+# The registry rules (#583: the alias state and binding invariants, the params and
+# restrictions vocabularies, alias uniqueness, price coherence, price provenance and
+# uniqueness, the reference-kind vocabulary).
+#
+# The same argument as the routing block above, one page further up the stack. CH.1 (#584)
+# assumes an unbound alias can never be enabled, CH.2 (#585) that `params` holds no key it
+# does not understand, CH.3 (#586) that a `free` row cannot carry a price and a `token` row
+# cannot omit one, CH.5 (#588) that `Used by` is derivable from one view. None of them
+# re-checks any of it, so none of them fails when a rule goes: mockup 21's table simply
+# starts rendering a switch that should not be on, a chip nothing derives, or — the one that
+# reaches a customer — a price that is not the price.
+#
+# Every marker below is the whole of the assertion's failure line, constraint name included,
+# for the reason the routing markers are: it is what proves each probe is watching the object
+# its label names rather than a rule that happens to read the same way.
+# ---------------------------------------------------------------------------
+expect_red 'an orphan alias may be switched on' \
+  'an unbound alias can never be switched on .*model_aliases_unbound_disabled did not fire' \
+  'alter table ouroboros.model_aliases drop constraint model_aliases_unbound_disabled;'
+
+expect_red 'model_aliases.params accepts any key at all' \
+  'an unknown params key is refused.*model_aliases_params_known did not fire' \
+  'alter table ouroboros.model_aliases drop constraint model_aliases_params_known;'
+
+expect_red 'model_aliases.restrictions accepts any flag at all' \
+  'an unknown restriction flag is refused .*model_aliases_restrictions_known did not fire' \
+  'alter table ouroboros.model_aliases drop constraint model_aliases_restrictions_known;'
+
+expect_red 'a workspace may hold one alias name twice' \
+  'an alias is unique within a workspace .*model_aliases_organization_alias_key did not fire' \
+  'alter table ouroboros.model_aliases drop constraint model_aliases_organization_alias_key;'
+
+expect_red 'a per-token price may carry half a rate' \
+  'a token row with only one of its two amounts is refused .*model_prices_token_requires_amounts did not fire' \
+  'alter table ouroboros.model_prices drop constraint model_prices_token_requires_amounts;'
+
+expect_red 'a free row may carry a rate' \
+  'a free row carrying a non-zero amount is refused .*model_prices_free_amounts_zero did not fire' \
+  'alter table ouroboros.model_prices drop constraint model_prices_free_amounts_zero;'
+
+expect_red 'a seat or usage row may carry a per-token rate' \
+  'a seat row carrying per-token amounts is refused.*model_prices_metered_amounts_absent did not fire' \
+  'alter table ouroboros.model_prices drop constraint model_prices_metered_amounts_absent;'
+
+# The bundled row this probe writes names a workspace that does not exist at that point in
+# the file, so with the coherence rule gone the row is refused by the workspace foreign key
+# instead. That is still this probe noticing — it names both the guarantee and the rule that
+# was supposed to enforce it, which is what the marker matches on — and it is the shape
+# must_reject reports when the *wrong* rule fires rather than when a row is accepted.
+expect_red 'a bundled price row may belong to a workspace' \
+  'a bundled row naming a workspace is refused .*rather than model_prices_source_matches_owner' \
+  'alter table ouroboros.model_prices drop constraint model_prices_source_matches_owner;'
+
+# Relaxed rather than dropped — see the header. Under the ordinary spelling two nulls are
+# distinct, so every bundled row is unique against every other one automatically and the
+# catalog would double on the next snapshot bump.
+expect_red 'two bundled rows may price one model' \
+  'a second bundled row for the same model is refused, null workspace and all .*model_prices_match_key did not fire' \
+  'alter table ouroboros.model_prices drop constraint model_prices_match_key;
+   alter table ouroboros.model_prices add constraint model_prices_match_key
+     unique (organization_id, match_provider_kind, match_model, source);'
+
+expect_red 'the reference-kind vocabulary accepts anything' \
+  'a fifth reference kind is a migration rather than a string somebody typed into the union .*alias_reference_kind_known did not fire' \
+  'alter domain ouroboros.alias_reference_kind drop constraint alias_reference_kind_known;'
 
 printf '\n'
 if check_summary; then

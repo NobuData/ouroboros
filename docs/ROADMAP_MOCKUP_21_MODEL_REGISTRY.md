@@ -257,7 +257,7 @@ chips: **XS · S · M · L**.
 | CG.2 | #580 | 🟢 Done | ouroboros-db: [CG.2] Model pricing catalog — schema & bundled snapshot | `model_prices` (catalog + overrides + billing modes), snapshot import job | mvp, registry, db | N (after #19) | Y | M | ouroboros-db |
 | CG.3 | #581 | 🟢 Done | ouroboros-db: [CG.3] Alias reference index | One view/query for used-by counts + delete/rename guards across four kinds | mvp, registry, db | N (after Y.2, Y.3) | Y | M | ouroboros-db |
 | CG.4 | #582 | 🟢 Done | ouroboros-db: [CG.4] Registry dev seeds — mockup-21 parity | 8 aliases (adds unbound gpt5-experiments; second-opinion arrives with Y.4), params, prices, run #482 snapshot | mvp, registry, db | N (after CG.1–CG.3, Y.4) | Y | M | ouroboros-db |
-| CG.5 | #583 | 🟡 Open | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
+| CG.5 | #583 | 🟢 Done | ouroboros-db: [CG.5] Registry constraints in ci/db | State/binding invariants, price provenance, params shapes, reference probes | mvp, registry, db, ci | N (after CG.4, #24) | Y | XS | ouroboros-db, .github |
 
 ### Issue CG.1 — ouroboros-db: [CG.1] Alias lifecycle, binding & params extensions
 
@@ -640,7 +640,72 @@ seeds: 8 aliases (7 from Y.4, incl. second-opinion + unbound gpt5-experiments)
 
 ### Issue CG.5 — ouroboros-db: [CG.5] Registry constraints in ci/db
 
-> **GitHub issue:** #583 · **Status:** 🟡 Open · **Parent epic:** #575
+> **GitHub issue:** #583 · **Status:** 🟢 Done · **Parent epic:** #575
+
+> **Shipped 2026-08-24.**
+> [`ouroboros-db/tests/lib/registry-invariants.sql`](../ouroboros-db/tests/lib/registry-invariants.sql)
+> and [`ouroboros-db/tests/registry-invariants.sql`](../ouroboros-db/tests/registry-invariants.sql),
+> wired into [`tests/constraints.sql`](../ouroboros-db/tests/constraints.sql),
+> [`tests/verify-constraint-probes.sh`](../ouroboros-db/tests/verify-constraint-probes.sh) and
+> [`.github/workflows/db.yml`](../.github/workflows/db.yml). No migration: this ticket adds
+> no rule, it makes the rules that exist impossible to remove quietly.
+>
+> **Most of the scope was already asserted, and that is the finding rather than a shortcut** —
+> the same one Y.5 (#193) recorded one epic over. `constraints.sql` carries the rule *a
+> migration that adds a rule adds its assertion here in the same change*, and CG.1 (#579),
+> CG.2 (#580) and CG.3 (#581) each kept it: unbound ⇒ disabled in all three of its verbs, the
+> params and restrictions vocabularies, alias uniqueness per workspace, the amount rules
+> behind the four billing modes, provenance in both directions, and both `restrict` foreign
+> keys are probed by the section belonging to the migration that introduced them. Restating
+> them in a section of this ticket's own would have produced two statements of each rule that
+> can disagree. So the work went to the three places the ticket asks for something those
+> sections do not give.
+>
+> **The gaps, which were real and small.** `usage` was never probed — V012's metered-amount
+> rule covers `seat` and `usage` in one CHECK and only `seat` was attempted, so half of it was
+> unwatched. The price key was probed only on its bundled half, where `organization_id` is
+> null; a workspace holding two overrides for one model was not. And the reference view's
+> **columns** were asserted nowhere: #588 selects them by name, which makes the list an
+> interface, and a `select *` notices nothing when one changes type. All three are now writes
+> the schema must refuse or a shape it must publish.
+>
+> **A file rather than a section, because it runs twice.** The assertions are
+> `tests/lib/registry-invariants.sql`; `constraints.sql` includes it as its CG.5 section, and
+> `tests/registry-invariants.sql` runs the same file on its own. The second way in is the
+> ticket's third acceptance criterion — *"probes run against the seeded database from #582
+> without mutating it"* — and it needs a second way in because `constraints.sql` **cannot** be
+> pointed at that database: it carries plan assertions, a plan is chosen from catalogue
+> statistics rather than from the schema, and a database with the demo workspace in it plans
+> differently from the empty one those assertions were written against. Verified: pointed at
+> the seeded database `constraints.sql` goes red on `model_aliases_organization_alias_key`'s
+> index assertion, and the registry file goes green.
+>
+> That is also the one rule this file keeps that its neighbours do not: **it depends on nothing
+> outside itself.** Every other section can clear the schema first, because it is going to roll
+> back; this one must not, because the seed is the fixture the step before it just asserted. So
+> it creates two workspaces nothing else names, scopes every assertion to them, counts no
+> table, and deletes them on the way out. `ci/db` then runs `seed.sql` a **second** time
+> against the same database, which is the "without mutating it" half stated rather than
+> assumed.
+>
+> **Ten mutations, one per rule, and one of them is a relaxation.**
+> `verify-constraint-probes.sh` already existed for the dashboard read-model (#69), the
+> provider cards (#221) and routing (#193); it now drops the unbound-alias CHECK, both
+> vocabularies, the alias key, three price-coherence rules, the provenance rule and the
+> reference-kind domain constraint — and **re-adds** `model_prices_match_key` without its
+> `nulls not distinct`. That last one is the `restrict` → `cascade` argument in a different
+> shape: every bundled row has a null `organization_id`, so under the ordinary spelling the key
+> separates none of them and the next snapshot import doubles the catalog instead of updating
+> it, while the override half goes on working — which is what would make the loss hard to
+> notice. Relaxing also probes harder than dropping: a suite that catches the relaxation
+> catches the drop, since the drop refuses less. Each probe is required to go red *naming the
+> assertion that caught it*, constraint name included.
+>
+> **The runtime criterion, measured** against the pinned `postgres:17-alpine`. `constraints.sql`
+> 0.28 s → 0.31 s; the new seeded step 0.13 s for both of its runs; the probe step 11.4 s →
+> 13.5 s (medians of three) for ten more copies of a template database and ten more runs of a
+> suite that takes a third of a second. **≈ 2.3 s added to `ci/db`**, against the ticket's
+> ceiling of five.
 
 - **Problem Statement:** The unbound/enabled invariant, params shapes, price
   provenance, and reference integrity are what every service above trusts.
