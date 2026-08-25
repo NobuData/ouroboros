@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/providers/providers.css` that are agreements with something outside
- * it (#225).
+ * it (#225, and the add-provider flow's rules since #231).
  *
  * The generic rule — no colour literal anywhere but the token sheet — is
  * `__tests__/styles.test.ts`'s, and it covers this sheet as it covers every other. What is
@@ -20,8 +20,18 @@ import { describe, expect, it } from "vitest";
  */
 
 const UI = join(import.meta.dirname, "..", "..");
-const SHEET = readFileSync(join(UI, "app", "providers", "providers.css"), "utf8");
-const COMPONENT = readFileSync(join(UI, "app", "providers", "audit-trail.tsx"), "utf8");
+const PROVIDERS = join(UI, "app", "providers");
+const SHEET = readFileSync(join(PROVIDERS, "providers.css"), "utf8");
+
+/**
+ * Every component in the directory, as one source — the sheet dresses the sheet's listing
+ * (`audit-trail.tsx`), the dialog (`add-provider.tsx`) and the dashed card
+ * (`providers-screen.tsx`), and a class any of them renders is a class the sheet owes a rule.
+ */
+const COMPONENT = readdirSync(PROVIDERS)
+  .filter((name) => name.endsWith(".tsx"))
+  .map((name) => readFileSync(join(PROVIDERS, name), "utf8"))
+  .join("\n");
 
 /** The sheet without its prose, so a rule cannot be found inside a comment. */
 const CODE = SHEET.replace(/\/\*[\s\S]*?\*\//g, " ");
@@ -37,9 +47,7 @@ function rule(selector: string): string {
 }
 
 /** Every class the sheet declares a rule for. */
-const DECLARED = [...CODE.matchAll(/\.(providers-audit[a-z0-9_-]*)/g)].map(
-  (match) => match[1],
-);
+const DECLARED = [...CODE.matchAll(/\.(providers-[a-z0-9_-]+)/g)].map((match) => match[1]);
 
 describe("the sheet and the component", () => {
   it("declares a rule for every class the sheet names, and renders every one", () => {
@@ -104,6 +112,40 @@ describe("the refusal marker", () => {
 
     expect(marker).toContain("border-radius: var(--r-pill)");
     expect(COMPONENT).toContain("refused");
+  });
+});
+
+describe("the add-provider flow", () => {
+  it("draws the promised tile as visibly not a control, in words and in treatment", () => {
+    // The `coming soon` tile: a dashed hairline on no ground, muted ink, an arrow cursor —
+    // and the word beside the label, so the state is not the treatment alone.
+    const soon = rule("\\.providers-catalog__tile--soon");
+
+    expect(soon).toContain("1px dashed var(--line-strong)");
+    expect(soon).toContain("background: transparent");
+    expect(soon).toContain("cursor: default");
+    expect(COMPONENT).toContain("coming soon");
+  });
+
+  it("draws the dashed card as the mockup does, on the design system's card", () => {
+    const card = rule("\\.providers-add-card");
+
+    expect(card).toContain("1px dashed var(--line-strong)");
+    expect(card).toContain("background: transparent");
+    expect(rule("\\.providers-add-card__note")).toContain("max-width: 34ch");
+  });
+
+  it("draws the duplicate warning in the warn hue and the refusal in the error hue", () => {
+    // A duplicate is *probably a mistake*; a refusal is *refused*. Two facts, two hues, and
+    // the words carry each besides.
+    expect(rule("\\.providers-add__warning")).toContain("background: var(--warn-tint)");
+    expect(rule("\\.providers-add__warning")).toContain("border: 1px solid var(--warn-line)");
+    expect(rule("\\.providers-add__failure")).toContain("color: var(--err)");
+  });
+
+  it("sizes the monogram and the tile grid in rem, so the font-size preference moves them", () => {
+    expect(rule("\\.providers-catalog__monogram")).toMatch(/width:\s*[\d.]+rem/);
+    expect(rule("\\.providers-catalog")).toMatch(/minmax\([\d.]+rem/);
   });
 });
 

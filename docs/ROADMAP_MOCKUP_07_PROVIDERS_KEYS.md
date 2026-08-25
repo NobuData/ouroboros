@@ -1328,7 +1328,7 @@ treatments — via the #16 tokens (both themes; the mockup is dark-only).
 | AE.2 | #228 | 🟡 Open | ouroboros-ui: [AE.2] Provider cards | Card grid: monograms, pills, switches, meta, chips, meters, feet | mvp, providers, ui, design | N (after AE.1, AC.6) | Y | L | ouroboros-ui |
 | AE.3 | #229 | 🟡 Open | ouroboros-ui: [AE.3] Key management flows | Masked row, Reveal step-up, Rotate verify-then-retire, delete guard | mvp, providers, ui | N (after AE.2, AD.2) | Y | M | ouroboros-ui |
 | AE.4 | #230 | 🟡 Open | ouroboros-ui: [AE.4] Test, discovery & Ollama pulls UX | Live test notes, chip refresh, pull-list with streamed progress | mvp, providers, ui | N (after AE.2, AC.4) | Y | M | ouroboros-ui |
-| AE.5 | #231 | 🟡 Open | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui |
+| AE.5 | #231 | 🟢 Done | ouroboros-ui: [AE.5] Add-provider flow & catalog | Dashed card → kind catalog → schema-driven form → validated add | mvp, providers, ui, design | N (after AE.1, AC.1, AD.2) | Y | M | ouroboros-ui, ouroboros-rest |
 | AE.6 | #232 | 🟡 Open | ouroboros-ui: [AE.6] Caps, security strip & states | Cap fields + warn meters, truthful strip, empty/read-only/error states | mvp, providers, ui, design | N (after AE.2–AE.5, AD.5) | Y | M | ouroboros-ui |
 | AE.7 | #233 | 🟡 Open | ouroboros-ui: [AE.7] Providers e2e leg | Parity, add→test→rotate→audit flow, pull progress, themes | mvp, providers, ui, ci | N (after AE.1–AE.6) | Y | S | ouroboros-ui, .github |
 
@@ -1515,7 +1515,7 @@ This month $412.80 of $600 ▓▓▓▓▓▓▓░░░   [Test connection] �
 
 ### Issue AE.5 — ouroboros-ui: [AE.5] Add-provider flow & catalog
 
-> **GitHub issue:** #231 · **Status:** 🟡 Open · **Parent epic:** #214
+> **GitHub issue:** #231 · **Status:** 🟢 Done · **Parent epic:** #214
 
 
 - **Problem Statement:** The dashed card promises a catalog ("OpenAI, Google,
@@ -1907,6 +1907,26 @@ and AE.7. One question is left for AD.5's owner rather than answered here: § 7.
 `{workspace}'s` is applied as written, so the seeded workspace reads *Acme Robotics's* — if an
 apostrophe rule is wanted for names ending in *s*, it is a one-line change to the document and
 the test that holds the page to it will say so.
+
+**#231** ([AE.5] the add-provider flow and catalog) has landed, ahead of AE.2 in the planned
+order because it depended on nothing AE.2 builds. Two things are worth knowing. First, the
+catalog needed one **additive REST operation** — `GET /api/v1/providers/catalog`, `0.30.12` —
+because the UI talks to the service and to nothing else, and *tiles derived from the adapter
+registry* means the registry has to cross the wire; it crosses as forms, one entry per
+registered kind carrying `toFormFields(configSchema())`, so the derivations AC.1 argued should
+be made once are made once. Decision **P1**'s proof is committed on both sides: the
+conformance kit's fake, registered under `custom`, comes out of the endpoint with a working
+form (`catalog.spec.ts`), and the dialog draws it — `select` widget included, the shape
+AF.3's Bedrock region will take — with no kind named in any UI file
+(`add-provider.test.tsx`). Second, the schema-form renderer is a **primitive**
+(`app/ui/schema-form.tsx`), not the dialog's own component, so WF-S.4 (#150) inherits it. The
+three `coming soon` tiles are the page's copy (`app/providers/catalog.ts`'s `COMING_SOON`),
+keyed by the kinds AF.3 (#236) is expected to register — `openai`, `google`, `bedrock` — and
+each retires itself the moment the registry answers its kind; if AF.3 registers a different
+spelling, the announcement stays up beside the live tile until that one line is corrected,
+visibly rather than silently. What this leaves for **AE.2** (#228): the done step tells a
+reader their card *arrives with #228*, and **Done** refreshes the route, so the grid re-reads
+the day it exists; the monthly cap is AE.6's (#232) and is not on the form.
 
 Two things are recorded here for whoever picks them up. The first is a limitation rather than
 a gap: `audit_events.ip` holds the address `ouroboros-rest` was reached on, which behind the

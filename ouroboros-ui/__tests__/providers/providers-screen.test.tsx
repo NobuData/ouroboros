@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MODELS_PATH, PROVIDERS_PATH, REGISTRY_PATH } from "@/app/paths";
 import {
+  ADD_CARD_NOTE,
+  ADD_DIALOG_TITLE,
+  ADD_PROVIDER_READ_ONLY,
+  BROWSE_CATALOG_LABEL,
+  CATALOG_LIST_LABEL,
+} from "@/app/providers/catalog";
+import {
   ADD_PROVIDER_LABEL,
   AUDIT_LOADING,
   AUDIT_LOG_LABEL,
@@ -15,6 +22,7 @@ import {
 import { seededTrail } from "../helpers/audit";
 import { membership } from "../helpers/login";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
+import { seededCatalog } from "../helpers/providers";
 
 /**
  * The `/models/providers` frame (#227) — mockup 07's page head and tab set, composed.
@@ -26,29 +34,43 @@ import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/pale
  * reason — the tab set has this page current with the routing page a link away, and the page
  * admits what it is not rather than mocking it up.
  *
- * The Server Action behind the sheet is mocked, not the API: what is under test is that the
- * head's action opens AD.4's trail, and `audit-actions.test.ts` is that module's own suite.
+ * The Server Actions behind the sheet and the add dialog are mocked, not the API: what is
+ * under test is that the head's actions open AD.4's trail and AE.5's catalog, and
+ * `audit-actions.test.ts` and `add-actions.test.ts` are those modules' own suites — as
+ * `add-provider.test.tsx` is the dialog's.
  */
 
 const readAuditTrail = vi.fn<() => Promise<AuditReading>>();
+const readCatalog = vi.fn();
 
 vi.mock("@/app/providers/audit-actions", () => ({
   readAuditTrail: () => readAuditTrail(),
 }));
+vi.mock("@/app/providers/add-actions", () => ({
+  readCatalog: () => readCatalog(),
+  addProvider: vi.fn(),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const { ProvidersScreen } = await import("@/app/providers/providers-screen");
 
 /** The seeded workspace's display name — what the gate hands the page. */
 const WORKSPACE = membership().name;
 
-/** Render the page for the seeded workspace. */
-function seeded() {
-  return render(<ProvidersScreen workspaceName={WORKSPACE} />);
+/**
+ * Render the page for the seeded workspace.
+ *
+ * @param mayAdminister Whether the reader may connect a provider. Defaults to an owner's.
+ */
+function seeded(mayAdminister = true) {
+  return render(<ProvidersScreen mayAdminister={mayAdminister} workspaceName={WORKSPACE} />);
 }
 
 beforeEach(() => {
   readAuditTrail.mockReset();
   readAuditTrail.mockResolvedValue({ ok: true, events: seededTrail(), total: 7 });
+  readCatalog.mockReset();
+  readCatalog.mockResolvedValue({ ok: true, entries: seededCatalog(), existing: [] });
 });
 
 describe("the page head", () => {
@@ -126,24 +148,46 @@ describe("Audit log", () => {
 });
 
 describe("+ Add provider", () => {
-  it("is the head's primary action", () => {
-    seeded();
-
-    expect(screen.getByRole("button", { name: ADD_PROVIDER_LABEL })).toHaveClass(
-      "ou-btn--primary",
-    );
-  });
-
-  it("is inert and names the issue that builds the catalog", () => {
-    // `aria-disabled` rather than `disabled`, deliberately: a disabled button leaves the tab
-    // order and takes its own explanation with it, so the keyboard reader who most needs the
-    // tooltip could never reach it. AE.5 (#231) is the flow it waits for.
+  it("is the head's primary action, and it acts", () => {
     seeded();
 
     const add = screen.getByRole("button", { name: ADD_PROVIDER_LABEL });
 
+    expect(add).toHaveClass("ou-btn--primary");
+    expect(add).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("opens AE.5's catalog, drawn from the registry", async () => {
+    // The head's action is one of the dialog's two openers; what the dialog does from here
+    // is `add-provider.test.tsx`'s.
+    seeded();
+
+    fireEvent.click(screen.getByRole("button", { name: ADD_PROVIDER_LABEL }));
+
+    const dialog = await screen.findByRole("dialog", { name: ADD_DIALOG_TITLE });
+
+    expect(readCatalog).toHaveBeenCalledOnce();
+    expect(
+      await within(dialog).findByRole("list", { name: CATALOG_LIST_LABEL }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /^Anthropic/ })).toBeInTheDocument();
+  });
+
+  it("is inert for a member, with the reason, and the flow never opens", () => {
+    // `aria-disabled` rather than `disabled`, deliberately: a disabled button leaves the tab
+    // order and takes its own explanation with it, so the keyboard reader who most needs the
+    // tooltip could never reach it. The gate that enforces is the service's.
+    seeded(false);
+
+    const add = screen.getByRole("button", { name: ADD_PROVIDER_LABEL });
+
     expect(add).toHaveAttribute("aria-disabled", "true");
-    expect(add.getAttribute("title")).toMatch(/#231/);
+    expect(add).toHaveAttribute("title", ADD_PROVIDER_READ_ONLY);
+
+    fireEvent.click(add);
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(readCatalog).not.toHaveBeenCalled();
   });
 
   it("sits beside the ghost action, in the mockup's order", () => {
@@ -156,6 +200,38 @@ describe("+ Add provider", () => {
       AUDIT_LOG_LABEL,
       ADD_PROVIDER_LABEL,
     ]);
+  });
+});
+
+describe("the dashed card", () => {
+  it("is mockup 07's add-provider card, honest about what is live, with Browse catalog on it", () => {
+    seeded();
+
+    const card = document.querySelector(".providers-add-card") as HTMLElement;
+
+    expect(card).toHaveClass("ou-card");
+    expect(within(card).getByText(ADD_CARD_NOTE)).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: BROWSE_CATALOG_LABEL })).toHaveClass(
+      "ou-btn--ghost",
+    );
+  });
+
+  it("opens the same dialog the head's action opens", async () => {
+    seeded();
+
+    fireEvent.click(screen.getByRole("button", { name: BROWSE_CATALOG_LABEL }));
+
+    expect(await screen.findByRole("dialog", { name: ADD_DIALOG_TITLE })).toBeInTheDocument();
+    expect(readCatalog).toHaveBeenCalledOnce();
+  });
+
+  it("is inert for a member, with the same reason", () => {
+    seeded(false);
+
+    const browse = screen.getByRole("button", { name: BROWSE_CATALOG_LABEL });
+
+    expect(browse).toHaveAttribute("aria-disabled", "true");
+    expect(browse).toHaveAttribute("title", ADD_PROVIDER_READ_ONLY);
   });
 });
 
@@ -234,10 +310,11 @@ describe("what the page does not pretend", () => {
 
   it("draws no provider card, no meter and no figure it could not compute", () => {
     // Five invented cards would be indistinguishable, in a screenshot, from the real ones
-    // AE.2 ships — and would be a mock-up of a page somebody else is building.
+    // AE.2 ships — and would be a mock-up of a page somebody else is building. The two cards
+    // it does draw are the labelled empty state and the dashed add card, which is real.
     const { container } = seeded();
 
-    expect(container.querySelectorAll(".ou-card")).toHaveLength(1);
+    expect(container.querySelectorAll(".ou-card")).toHaveLength(2);
     expect(container.querySelector(".ou-meter")).toBeNull();
     expect(container.querySelector(".ou-switch")).toBeNull();
     expect(container.textContent).not.toMatch(/\$\d/);
@@ -257,14 +334,16 @@ describe("what the page does not pretend", () => {
 
 describe("both palettes", () => {
   it.each(PALETTES)("renders the screen in the %s palette", (palette) => {
-    renderInPalette(palette, <ProvidersScreen workspaceName={WORKSPACE} />);
+    renderInPalette(palette, <ProvidersScreen mayAdminister workspaceName={WORKSPACE} />);
 
     expect(document.documentElement).toHaveAttribute("data-theme", palette);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(PROVIDERS_TITLE);
   });
 
   it("draws the same markup in both, because the palette is CSS's business", () => {
-    const [light, dark] = renderInBothPalettes(<ProvidersScreen workspaceName={WORKSPACE} />);
+    const [light, dark] = renderInBothPalettes(
+      <ProvidersScreen mayAdminister workspaceName={WORKSPACE} />,
+    );
 
     expect(light).toBe(dark);
   });

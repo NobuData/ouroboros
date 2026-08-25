@@ -60,6 +60,7 @@ import {
   UpdateConnectionDto,
 } from "./provider-connections.dto";
 import { ProviderConnectionsService } from "./provider-connections.service";
+import type { ProviderCatalogResource } from "./catalog";
 import type { ProviderConnectionResource, RevealResource } from "./resources";
 
 @Controller("providers")
@@ -79,6 +80,27 @@ export class ProviderConnectionsController {
     @Query() query: ListConnectionsQuery,
   ): Promise<Page<ProviderConnectionResource>> {
     return this.connections.list(tenant.id, query);
+  }
+
+  /**
+   * `GET /api/v1/providers/catalog` — the kinds this build can connect, each with its form.
+   *
+   * **Declared before `:id`, and that is not a stylistic choice.** Express matches routes in
+   * the order they were registered, and `ConnectionParams` refuses anything that is not a
+   * uuid — so a `catalog` declared after the read below would be answered `422` by the read,
+   * as *not a connection id*. `audit.controller.ts` sits in a module Nest registers earlier,
+   * which is how `/providers/audit` escapes the same fate; this one lives here, so it goes
+   * first. `provider-connections.controller.spec.ts` holds the order.
+   *
+   * No `@Roles()`: any member. The catalog names no credential and no workspace fact — it is
+   * *what could be connected*, which is the same kind of question as *what is connected* and
+   * is open to the same readers. The flow it starts is gated where it writes, at `add`.
+   *
+   * @returns The catalog — see `catalog.ts`.
+   */
+  @Get("catalog")
+  catalog(): ProviderCatalogResource {
+    return this.connections.catalog();
   }
 
   /**

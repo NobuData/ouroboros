@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PROVIDERS_TITLE, providersSubline } from "@/app/providers/view";
+import { ADD_PROVIDER_READ_ONLY } from "@/app/providers/catalog";
+import { ADD_PROVIDER_LABEL, PROVIDERS_TITLE, providersSubline } from "@/app/providers/view";
 
 import { membership, sessionUser } from "../helpers/login";
 
@@ -15,8 +16,13 @@ import { membership, sessionUser } from "../helpers/login";
  * rather than a second copy of either.
  *
  * The gate is replaced: it has its own suite (`__tests__/api/access.test.ts`), and driving it
- * through this route would test it a second time while testing the wiring not at all. So is
- * the Server Action behind the sheet, for the reason `providers-screen.test.tsx` gives.
+ * through this route would test it a second time while testing the wiring not at all. So are
+ * the Server Actions behind the sheet and the add dialog, for the reason
+ * `providers-screen.test.tsx` gives.
+ *
+ * Since AE.5 (#231) the route answers a second question from the same membership — whether
+ * this reader may connect a provider — and the two cases below hold it to
+ * `app/api/membership.ts`'s answer rather than to a role of its own.
  */
 
 /** What the gate answers this case with, or the signal it throws instead. */
@@ -26,6 +32,11 @@ vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() 
 vi.mock("@/app/providers/audit-actions", () => ({
   readAuditTrail: () => Promise.resolve({ ok: true, events: [], total: 0 }),
 }));
+vi.mock("@/app/providers/add-actions", () => ({
+  readCatalog: () => Promise.resolve({ ok: true, entries: [], existing: [] }),
+  addProvider: () => Promise.resolve({ ok: false, refusal: { code: "x", message: "", details: {} } }),
+}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const Page = (await import("@/app/(app)/models/providers/page")).default;
 
@@ -69,6 +80,32 @@ describe("the providers route", () => {
 
     expect(screen.getByText(providersSubline("Acme Labs"))).toBeInTheDocument();
     expect(screen.queryByText(/Acme Robotics/)).toBeNull();
+  });
+
+  it("lets an owner reach the add flow", async () => {
+    // `mayAdminister` decided once, from the membership the gate resolved: an owner's
+    // **+ Add provider** acts.
+    render(await Page());
+
+    expect(screen.getByRole("button", { name: ADD_PROVIDER_LABEL })).not.toHaveAttribute(
+      "aria-disabled",
+    );
+  });
+
+  it("keeps a member from reaching it, with the reason on the control", async () => {
+    // The ticket's last criterion, at the route: a member session cannot reach the flow. The
+    // control stays — labelled, in the tab order — and the gate that enforces is the service's.
+    requireWorkspace.mockResolvedValue({
+      ...ACCESS,
+      membership: membership({ roles: ["member"] }),
+    });
+
+    render(await Page());
+
+    const add = screen.getByRole("button", { name: ADD_PROVIDER_LABEL });
+
+    expect(add).toHaveAttribute("aria-disabled", "true");
+    expect(add).toHaveAttribute("title", ADD_PROVIDER_READ_ONLY);
   });
 
   it("draws nothing at all when the gate redirects instead of returning", async () => {

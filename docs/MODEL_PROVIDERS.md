@@ -840,9 +840,15 @@ really fails.
 |---|---|
 | Credential add / reveal / rotate | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)) |
 | The HTTP surface a page polls for pull progress — `ModelPullTracker` is the service behind it | AD.2 ([#223](https://github.com/NobuData/ouroboros/issues/223)), AE.4 ([#230](https://github.com/NobuData/ouroboros/issues/230)) |
-| The add-form and catalog | AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)) |
 | Invocation through an adapter | AF.1 ([#234](https://github.com/NobuData/ouroboros/issues/234)), AF.2 ([#235](https://github.com/NobuData/ouroboros/issues/235)) |
 | Cloud adapters — OpenAI, Google, Bedrock | AF.3 ([#236](https://github.com/NobuData/ouroboros/issues/236)) |
+
+The add-form and catalog landed with AE.5 ([#231](https://github.com/NobuData/ouroboros/issues/231)):
+`GET /api/v1/providers/catalog` answers the registry as forms — one entry per registered kind,
+each carrying `toFormFields(configSchema())` — and `ouroboros-ui`'s dialog draws a tile and a
+form per entry with no kind named on either side. An adapter you register is in the catalog
+the day it is registered; its `configSchema().title` is the form's heading, and the tile
+under it says what the form will ask for.
 
 `REGISTERED_ADAPTERS` holds all five adapters mockup 07 draws — `AnthropicAdapter` (AC.2),
 `OpenAiCompatibleAdapter` (AC.3), `OllamaAdapter` (AC.4), `CopilotAdapter` and `CursorAdapter`

@@ -21,6 +21,8 @@ import "./ui.css";
  * 2. **The hint is wired, not merely printed.** A field's hint is rendered with an id and
  *    named in the control's `aria-describedby`, so it is read with the control rather than
  *    found by luck. A caller's own `aria-describedby` is kept and this is added to it.
+ *    An `error` is wired the same way, and sets `aria-invalid` besides: a refused value is
+ *    a fact about the control, not a sentence that happens to be near it.
  * 3. **The focus ring is the product's, not the mockups'.** The mockups set `outline: none`
  *    on a focused input and draw their own halo; `app/globals.css` already gives every
  *    control in the product one ring, on the element the keyboard actually reached. So the
@@ -35,6 +37,12 @@ interface FieldFrameProps {
   readonly label: ReactNode;
   /** One line under the control: an example, a constraint, or why it cannot be used. */
   readonly hint?: ReactNode;
+  /**
+   * What is wrong with the value, when something is. Rendered under the hint as an alert,
+   * wired into the control's description, and what sets `aria-invalid` on it — so a field
+   * that is refused is refused to a screen reader too, not only in red.
+   */
+  readonly error?: ReactNode;
   /** Classes from the page — placement only, never colour or type. */
   readonly className?: string;
   /** The control itself. */
@@ -47,7 +55,7 @@ interface FieldFrameProps {
  * @param props See {@link FieldFrameProps}.
  * @returns The field.
  */
-function FieldFrame({ id, label, hint, className, children }: FieldFrameProps) {
+function FieldFrame({ id, label, hint, error, className, children }: FieldFrameProps) {
   return (
     <div className={cx("ou-field", className)}>
       <label className="ou-field__label" htmlFor={id}>
@@ -57,6 +65,13 @@ function FieldFrame({ id, label, hint, className, children }: FieldFrameProps) {
       {hint !== undefined && (
         <p className="ou-field__hint" id={hintId(id)}>
           {hint}
+        </p>
+      )}
+      {error !== undefined && (
+        // An alert rather than a status: a refused value is an interruption to what the
+        // reader was doing, and the one they most need to hear about.
+        <p className="ou-field__error" id={errorId(id)} role="alert">
+          {error}
         </p>
       )}
     </div>
@@ -75,20 +90,32 @@ function hintId(id: string): string {
 }
 
 /**
- * Everything the control should be described by: its own hint, plus whatever the caller
- * already pointed at.
+ * The id a field's error is given, derived from the control's for the reason the hint's is.
+ *
+ * @param id The control's id.
+ * @returns The error's id.
+ */
+function errorId(id: string): string {
+  return `${id}-error`;
+}
+
+/**
+ * Everything the control should be described by: its own hint, its own error, plus whatever
+ * the caller already pointed at.
  *
  * @param id The control's id.
  * @param hint Whether this field has a hint at all.
+ * @param error Whether this field has an error at all.
  * @param callerDescribedBy The caller's own `aria-describedby`, if any.
  * @returns The space-separated id list, or `undefined` when there is nothing to describe it.
  */
 function describedBy(
   id: string,
   hint: boolean,
+  error: boolean,
   callerDescribedBy: string | undefined,
 ): string | undefined {
-  return cx(hint && hintId(id), callerDescribedBy) || undefined;
+  return cx(hint && hintId(id), error && errorId(id), callerDescribedBy) || undefined;
 }
 
 /** What a text field takes, beyond the attributes an `<input>` takes. */
@@ -113,18 +140,24 @@ export function TextField({
   id,
   label,
   hint,
+  error,
   className,
   mono,
   "aria-describedby": callerDescribedBy,
+  "aria-invalid": callerInvalid,
   ...rest
 }: TextFieldProps) {
   return (
-    <FieldFrame id={id} label={label} hint={hint} className={className}>
+    <FieldFrame id={id} label={label} hint={hint} error={error} className={className}>
       <input
         {...rest}
         id={id}
         className={cx("ou-input", mono && "ou-input--mono")}
-        aria-describedby={describedBy(id, hint !== undefined, callerDescribedBy)}
+        aria-describedby={describedBy(id, hint !== undefined, error !== undefined, callerDescribedBy)}
+        // The field's own error marks the control invalid; a caller with a refusal of its own
+        // to report — the login screen's domain form — keeps saying so through the attribute
+        // it passed, which the spread above must not be allowed to lose.
+        aria-invalid={error !== undefined ? true : callerInvalid}
       />
     </FieldFrame>
   );
@@ -152,18 +185,21 @@ export function SelectField({
   id,
   label,
   hint,
+  error,
   className,
   children,
   "aria-describedby": callerDescribedBy,
+  "aria-invalid": callerInvalid,
   ...rest
 }: SelectFieldProps) {
   return (
-    <FieldFrame id={id} label={label} hint={hint} className={className}>
+    <FieldFrame id={id} label={label} hint={hint} error={error} className={className}>
       <select
         {...rest}
         id={id}
         className="ou-input"
-        aria-describedby={describedBy(id, hint !== undefined, callerDescribedBy)}
+        aria-describedby={describedBy(id, hint !== undefined, error !== undefined, callerDescribedBy)}
+        aria-invalid={error !== undefined ? true : callerInvalid}
       >
         {children}
       </select>

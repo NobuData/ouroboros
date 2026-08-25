@@ -18,6 +18,8 @@
 > ([#46](https://github.com/NobuData/ouroboros/issues/46)) and, beside it,
 > [model routing](#model-routing) ([#200](https://github.com/NobuData/ouroboros/issues/200)),
 > [providers & keys](#providers--keys) ([#227](https://github.com/NobuData/ouroboros/issues/227))
+> with its [add-provider flow](#the-add-provider-flow)
+> ([#231](https://github.com/NobuData/ouroboros/issues/231))
 > and the [credential audit trail](#the-credential-audit-trail)
 > ([#225](https://github.com/NobuData/ouroboros/issues/225)) —
 > `yarn dev` runs, `ci/ui` is live, and it [ships as a container](#container)
@@ -1292,13 +1294,15 @@ is that the section *has* pages: the head and the tab row are
 ```
 MODELS
 Providers & keys                                        [ Audit log ] [ + Add provider ]
-Credentials live in Acme Robotics's encrypted vault,      ↑ AD.4's sheet   ↑ #231 not built
+Credentials live in Acme Robotics's encrypted vault,      ↑ AD.4's sheet   ↑ AE.5's catalog
 scoped to this workspace. Keys never leave the control
 plane — workers never receive them at all.
 ────────────────────────────────────────────────────────────────────────────────────────────
  Routing → /models   Model registry → /models/registry   Providers & keys   Spend soon
                                                             ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ (the accent)
-┌ The provider cards arrive next — #228 … #232 ┐
+┌ The provider cards arrive next — #228 … #232 ┐   ┌ + Connect Anthropic, Ollama, …  ┐
+                                                   │         [ Browse catalog ]        │
+                                                   └ (dashed — the same dialog) ───────┘
 ```
 
 ### The subline is not this module's to write
@@ -1333,12 +1337,53 @@ special case.
 The registry tab went live with CI.1 ([#591](https://github.com/NobuData/ouroboros/issues/591))
 and this file did not change for it — one list, so all three pages learned it at once. The
 spend report ([#210](https://github.com/NobuData/ouroboros/issues/210)) is the last honest
-`soon` tab; **+ Add provider** is inert through `Button`'s `reason` until AE.5
-([#231](https://github.com/NobuData/ouroboros/issues/231)) builds the catalog it opens; and
-the space below the tab set names the cards
-([#228](https://github.com/NobuData/ouroboros/issues/228)) rather than mocking them up.
-**Audit log** is the one thing on the page that acts — it is
-[the trail](#the-credential-audit-trail), mounted where it was built to be.
+`soon` tab; the space below the tab set names the cards
+([#228](https://github.com/NobuData/ouroboros/issues/228)) rather than mocking them up. Two
+things on the page act: **Audit log** is [the trail](#the-credential-audit-trail), mounted
+where it was built to be, and **+ Add provider** — with the dashed card's **Browse catalog**
+beside it — is [the add-provider flow](#the-add-provider-flow).
+
+### The add-provider flow
+
+**+ Add provider** and **Browse catalog** open one dialog
+([#231](https://github.com/NobuData/ouroboros/issues/231)): a catalog of provider kinds, a
+form behind each tile, and a done step. Three properties are what the ticket is about, and
+each is a test rather than a promise.
+
+**The tiles derive from the adapter registry.** `ouroboros-rest` answers
+`GET /api/v1/providers/catalog` from its registry — one entry per registered kind, each
+carrying the form its adapter's `configSchema()` derives to — and
+[`app/providers/catalog.ts`](app/providers/catalog.ts)'s `catalogTiles` draws one tile per
+entry with nothing added. There is no list of kinds anywhere in this module to be absent
+from, which is what makes decision **P1** true at the surface: the conformance kit's fake
+adapter, registered under `custom`, comes out of the catalog with a working form, and
+`__tests__/providers/add-provider.test.tsx` drives the dialog with it as the proof. The three
+kinds mockup 07's dashed card promises — OpenAI, Google, Bedrock — are honest `coming soon`
+tiles: plain list items, not buttons, naming AF.3
+([#236](https://github.com/NobuData/ouroboros/issues/236)) as where they come from, and each
+retires itself the moment the registry answers its kind.
+
+**The form is the adapter's, with no per-kind UI code.**
+[`app/ui/schema-form.tsx`](app/ui/schema-form.tsx)'s `SchemaFields` draws a column of fields
+from the entry's list — `text`, `url`, `secret` and `select`, the four widgets the service's
+form dialect derives — onto the field primitives with the constraints the browser enforces.
+It is a primitive rather than the dialog's own component because WF-S.4
+([#150](https://github.com/NobuData/ouroboros/issues/150)) needs the same thing for workflow
+node types; the one field the dialog adds is **Name**, the card's heading, which is a fact
+about the connection rather than a provider setting.
+
+**A bad key never creates a card.** The service asks the provider before it writes
+(`POST /api/v1/providers`), so a refusal means nothing was stored — and the dialog says so,
+keeps the form open with every value where the reader left it (the inputs are uncontrolled),
+and puts the adapter's designed error where it belongs: *key rejected (401)* under the key
+row, a schema violation under the field it names. Before the provider is asked, a submission
+of the same kind at the same endpoint as an existing connection is stopped once with a
+warning and **Connect anyway**; it is legal, and usually a mistake. Success is a step rather
+than a closed dialog, because the card grid is AE.2's and is not on the page yet.
+
+For a `member` or a `viewer` both openers are inert with the reason, and the dialog never
+opens; the gate that enforces is the service's `403`, which
+[`app/providers/add-actions.ts`](app/providers/add-actions.ts) hands back as a sentence.
 
 ## The credential audit trail
 
@@ -1795,6 +1840,7 @@ import { Button, Card, CardHead, Chip, EmptyState } from "@/app/ui";
 | `Meter` | A proportion drawn as a bar — a stage, a rate, a budget | `.meter` |
 | `TextField` / `SelectField` / `Toggle` | A labelled field, a native select, and a switch | `.field` / `.input` / `.switch` |
 | `EmptyState` | A surface that is not ready, labelled rather than blank | — |
+| `SchemaFields` / `SchemaField` | A column of fields drawn from a list the renderer did not write — the schema-driven form (#231, shared with #150) | — |
 | `Eyebrow` | The caption above a title | `.eyebrow` |
 
 Six decisions in the set are worth knowing before adding to it.

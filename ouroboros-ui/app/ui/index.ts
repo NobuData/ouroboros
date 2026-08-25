@@ -24,6 +24,12 @@
  * a primitive names no domain concept. There is no `<WorkspaceCard>` in this directory and
  * there should not be.
  *
+ * The schema-driven form joined it with AE.5
+ * ([#231](https://github.com/NobuData/ouroboros/issues/231)): `SchemaFields` draws a column of
+ * fields from a list it did not write, which is what lets a provider adapter — or, with
+ * WF-S.4 ([#150](https://github.com/NobuData/ouroboros/issues/150)), a workflow node type —
+ * arrive with a working form and no UI written for it.
+ *
  * The shell's chrome primitives joined this set with CP.4
  * ([#646](https://github.com/NobuData/ouroboros/issues/646)): `StickyBar` and `PageSubnav`
  * live here, the shell's own frame (ShellHeader, SidebarNav, the pane) stays in
@@ -61,6 +67,14 @@ export {
   type TextFieldProps,
   type ToggleProps,
 } from "./field";
+export {
+  SchemaField,
+  SchemaFields,
+  type SchemaFieldErrors,
+  type SchemaFieldSpec,
+  type SchemaFieldsProps,
+  type SchemaWidget,
+} from "./schema-form";
 export { StickyBar, type StickyBarProps, type StickyBarTone } from "./sticky-bar";
 export {
   Table,

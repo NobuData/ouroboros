@@ -310,6 +310,27 @@ describe("adding a provider", () => {
   });
 });
 
+describe("the catalog", () => {
+  it("is the registry the service was built with, as `catalog.ts` renders it", () => {
+    // One line in the service and one assertion here: the entries are the registered kinds
+    // with their forms, and `catalog.spec.ts` is where the rendering itself is held.
+    const subject = harness();
+
+    expect(subject.service.catalog()).toEqual({
+      kinds: [
+        {
+          kind: "anthropic",
+          title: FAKE_CONFIG_SCHEMA.title,
+          fields: [
+            expect.objectContaining({ name: BASE_URL_FIELD, widget: "url", required: true }),
+            expect.objectContaining({ name: "apiKey", widget: "secret", required: false }),
+          ],
+        },
+      ],
+    });
+  });
+});
+
 describe("reading", () => {
   let subject: Harness;
 
