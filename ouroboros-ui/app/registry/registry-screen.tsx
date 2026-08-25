@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 import { ModelsFrame } from "@/app/models/models-frame";
-import { Button, Card, CardHead, EmptyState, Tag } from "@/app/ui";
+import { Card, CardHead, EmptyState, Tag } from "@/app/ui";
 
 import { ImportMenu } from "./import-menu";
+import { NewAlias } from "./new-alias";
 import { InspectorSeat, RegistryTable } from "./registry-table";
 import {
   TABLE_EMPTY_NOTE,
@@ -17,13 +18,13 @@ import {
 import {
   CONNECT_PROVIDER_HREF,
   CONNECT_PROVIDER_LABEL,
-  NEW_ALIAS_LABEL,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
   type RegistryReadings,
   type TableState,
+  aliasNames,
+  aliasSources,
   importState,
-  newAliasReason,
   tableState,
 } from "./view";
 
@@ -66,14 +67,21 @@ import "./registry.css";
  * rendered **only** for the blocked state a reader can act on: a member offered *"connect a
  * provider →"* would be pointed at a page that would also refuse them.
  *
- * **+ New alias** is the primary action and leads to CI.4's create dialog
- * ([#594](https://github.com/NobuData/ouroboros/issues/594)), which does not exist yet — so it
- * is inert through `Button`'s `reason` and says which issue brings it, rather than sitting
- * dead or being left off a head whose whole arrangement is one action beside the other.
+ * **+ New alias** is the primary action and opens CI.4's create dialog
+ * ([#594](https://github.com/NobuData/ouroboros/issues/594), `app/registry/new-alias.tsx`) —
+ * the one place in the product where an alias can be made **before** its key exists, which is
+ * the state the mockup's own `gpt5-experiments` row is in.
  *
- * Both are also inert for a member or a viewer. The full gating pass is CI.6
+ * Both actions take the same two facts from this screen: the workspace's connections
+ * (`aliasSources`, which flattens the import control's three blocked reasons into the one thing
+ * a create dialog needs — a list, possibly empty) and every alias name it already has
+ * (`aliasNames`, for the live uniqueness check, off the same read the table draws so the two
+ * cannot disagree).
+ *
+ * Both are inert for a member or a viewer. The full gating pass is CI.6
  * ([#596](https://github.com/NobuData/ouroboros/issues/596)); what this ticket owes is that the
- * two controls it builds are already honest about who may press them.
+ * two controls it builds are already honest about who may press them, and that the writes
+ * behind them are the service's to refuse.
  *
  * ### The table, and the two states in which there is not one
  *
@@ -117,6 +125,7 @@ export interface RegistryScreenProps {
 export function RegistryScreen({ readings, mayAdminister, alias = null }: RegistryScreenProps) {
   const importing = importState(readings.providers, mayAdminister);
   const table = tableState(readings.aliases);
+  const names = aliasNames(readings.aliases);
 
   return (
     <ModelsFrame
@@ -128,10 +137,12 @@ export function RegistryScreen({ readings, mayAdminister, alias = null }: Regist
       subline={REGISTRY_SUBLINE}
       actions={
         <>
-          <ImportMenu state={importing} />
-          <Button reason={newAliasReason(mayAdminister)} tone="primary">
-            {NEW_ALIAS_LABEL}
-          </Button>
+          <ImportMenu aliasNames={names} state={importing} />
+          <NewAlias
+            aliasNames={names}
+            mayAdminister={mayAdminister}
+            sources={aliasSources(readings.providers)}
+          />
 
           {/*
             The one blocked state with something to do about it. Rendered inside the action

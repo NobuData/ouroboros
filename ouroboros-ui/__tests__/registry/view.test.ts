@@ -8,15 +8,15 @@ import { PROVIDERS_PATH } from "@/app/paths";
 import {
   CONNECT_PROVIDER_HREF,
   CONNECT_PROVIDER_LABEL,
-  IMPORT_ITEM_REASON,
   IMPORT_LABEL,
   MEMBER_REASON,
   NEW_ALIAS_LABEL,
-  NEW_ALIAS_REASON,
   NO_PROVIDERS_REASON,
   PROVIDERS_UNREADABLE_REASON,
   REGISTRY_SUBLINE,
   REGISTRY_TITLE,
+  aliasNames,
+  aliasSources,
   importSources,
   importState,
   newAliasReason,
@@ -105,19 +105,46 @@ describe("the table's seat (#592)", () => {
 });
 
 describe("why + New alias cannot act", () => {
-  it("names the issue that builds the dialog, for somebody who may use it", () => {
-    expect(newAliasReason(true)).toBe(NEW_ALIAS_REASON);
-    expect(newAliasReason(true)).toMatch(/#594/);
+  it("does not stand in the way of somebody who may use it", () => {
+    // CI.4 (#594) built the dialog, so the *not built yet* blocker is gone rather than
+    // reworded — the shape a frame's placeholder is supposed to take when the thing it named
+    // arrives.
+    expect(newAliasReason(true)).toBeUndefined();
   });
 
   it("gives a member the reason that is actually true of them", () => {
-    // Two blockers, and only one of them is CI.4's to remove. A member told *"the dialog
-    // arrives with #594"* would come back when it did and still be refused.
+    // The role check is the one blocker CI.4 did not remove, and it is the honest one: a
+    // member who came back when the dialog shipped would still be refused.
     expect(newAliasReason(false)).toBe(MEMBER_REASON);
   });
 
   it("says who may, rather than only that this reader may not", () => {
     expect(MEMBER_REASON).toMatch(/owners and admins/);
+  });
+});
+
+describe("what the create dialog is handed", () => {
+  it("offers every connected provider, in the service's order", () => {
+    expect(aliasSources(read(seededProviders()))).toEqual(importSources(seededProviders()));
+  });
+
+  it("answers a failed provider read with no providers rather than a state of its own", () => {
+    // The import control keeps *none connected* and *could not be read* apart because it has
+    // something different to say for each. The create dialog does not: either way there is
+    // nothing to bind to, and *bind later* still works.
+    expect(aliasSources({ ok: false, reason: "providers away" })).toEqual([]);
+  });
+
+  it("hands over every alias name, off the same read the table draws", () => {
+    expect(aliasNames({ ok: true, value: seededRegistry() })).toEqual(
+      seededRegistry().map((alias) => alias.alias),
+    );
+  });
+
+  it("answers a failed registry read with no names, so nothing is refused on a guess", () => {
+    // The browser then proposes nothing and CH.1's `model_alias_name_taken` decides, which it
+    // does anyway.
+    expect(aliasNames({ ok: false, reason: "registry away" })).toEqual([]);
   });
 });
 
@@ -196,9 +223,6 @@ describe("what the import action may do", () => {
     expect(CONNECT_PROVIDER_LABEL).toMatch(/Connect a provider/);
   });
 
-  it("names the issue that wires a chosen provider to something", () => {
-    expect(IMPORT_ITEM_REASON).toMatch(/#594/);
-  });
 });
 
 describe("which providers the menu offers", () => {
@@ -209,7 +233,7 @@ describe("which providers the menu offers", () => {
     );
   });
 
-  it("carries the connection id, which is what CI.4 will scope its wizard by", () => {
+  it("carries the connection id, which is what the import wizard is scoped by", () => {
     expect(importSources(seededProviders())[0].id).toBe(seededProviders()[0].id);
   });
 

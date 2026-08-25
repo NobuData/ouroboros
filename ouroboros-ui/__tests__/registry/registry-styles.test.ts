@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/registry/registry.css` that are agreements with something outside it
- * (#591, and the allowed-models table's rules since #592).
+ * (#591, the allowed-models table's rules since #592, and the two flows behind the head's
+ * actions since #594).
  *
  * The generic rules — no colour literal anywhere but the token sheet, no absolute type size —
  * are `__tests__/styles.test.ts`'s, and they cover this sheet as they cover every other. What
@@ -23,6 +24,7 @@ const UI = join(import.meta.dirname, "..", "..");
 const REGISTRY = join(UI, "app", "registry");
 const SHEET = readFileSync(join(REGISTRY, "registry.css"), "utf8");
 const SECTION = readFileSync(join(UI, "app", "models", "models.css"), "utf8");
+const SHELL = readFileSync(join(UI, "app", "shell", "shell.css"), "utf8");
 const PRIMITIVES = readFileSync(join(UI, "app", "ui", "ui.css"), "utf8");
 
 /**
@@ -142,17 +144,20 @@ describe("the import dropdown", () => {
     expect(rule("\\.registry-import__panel")).toMatch(/min-width:\s*[\d.]+rem/);
   });
 
-  it("marks an inert row through aria-disabled rather than through :disabled", () => {
-    // The house rule (`app/ui/button.tsx`): a `disabled` row leaves the tab order and takes its
-    // own tooltip with it. The selector is what proves the sheet expects the reachable form.
-    expect(CODE).toContain('.registry-import__item[aria-disabled="true"]');
+  it("keeps no inert treatment for a row, because since #594 every row acts", () => {
+    // A rule for a state nothing renders is a rule nobody keeps correct — and health is not a
+    // filter on this menu, so there is no second inert case waiting for one either.
+    expect(CODE).not.toContain("aria-disabled");
     expect(CODE).not.toContain(".registry-import__item:disabled");
   });
 
-  it("does not offer a hover treatment to a row that cannot act", () => {
-    // A row that lit up under the pointer and then did nothing would be the one dishonest
-    // thing on a control built to be honest.
-    expect(CODE).toContain(':hover:not([aria-disabled="true"])');
+  it("gives a focused row the treatment a hovered one gets", () => {
+    // The menu's roving focus is how a keyboard reader moves through these rows, and a row they
+    // have landed on should look like the row a pointer is over.
+    expect(CODE).toContain(".registry-import__item:focus-visible");
+    expect(rule("\\.registry-import__item:hover,\\s*\\.registry-import__item:focus-visible")).toContain(
+      "var(--accent-wash)",
+    );
   });
 
   it("resets the browser's own button styling, since the row is a menu item", () => {
@@ -255,5 +260,82 @@ describe("what the sheet may write down", () => {
     for (const [, value] of colours) {
       expect(value.trim(), value).toMatch(/var\(--|transparent|currentColor|inherit/);
     }
+  });
+});
+
+describe("the create dialog, the parameter form and the import wizard (#594)", () => {
+  it("restyles none of the #46 primitives it is built from", () => {
+    // Three dialogs' worth of controls, all of them the design system's. A page writing rules
+    // for `.ou-field`, `.ou-input` or `.ou-btn` is the fork those primitives exist to prevent —
+    // and the table's own rule (above) has held since #592.
+    for (const primitive of [".ou-field", ".ou-input", ".ou-btn", ".ou-table"]) {
+      expect(CODE, primitive).not.toContain(primitive);
+    }
+  });
+
+  it("adds no dialog frame of its own, because the shell's overlay owns one", () => {
+    // The backdrop, the panel, the title and the note are `app/shell/shell.css`'s; a second
+    // frame here would be a second dialog a reader has to learn.
+    for (const owned of [".shell-overlay", ".shell-overlay__panel", ".shell-overlay__title"]) {
+      expect(SHELL, owned).toContain(owned);
+      expect(CODE, owned).not.toContain(owned);
+    }
+  });
+
+  it("puts the mode radio's label beside it rather than under it, in a grid", () => {
+    // The hint under each choice is what makes the two labels line up with each other; a hint
+    // on the same line would push them apart.
+    expect(rule("\\.registry-create__mode")).toMatch(/display:\s*grid/);
+    expect(rule("\\.registry-create__radio")).toContain("var(--accent)");
+  });
+
+  it("draws the bind-later notice on the accent wash, as the one thing that describes an outcome", () => {
+    expect(rule("\\.registry-create__unbound")).toContain("var(--accent-wash)");
+    expect(rule("\\.registry-create__unbound-link")).toContain("var(--accent)");
+  });
+
+  it("draws every refusal in the error hue, in all three surfaces", () => {
+    for (const failure of [
+      "\\.registry-create__failure",
+      "\\.registry-params__switch-error",
+      "\\.registry-wizard__failure",
+    ]) {
+      expect(rule(failure), failure).toContain("var(--err)");
+    }
+  });
+
+  it("names no parameter, because the form is drawn from a schema it did not write", () => {
+    // The whole claim of `GET /registry/param-schema` is that a new adapter arrives with a
+    // working form and no UI written for it. A rule for `thinking` would be that claim broken
+    // in the one place nobody looks.
+    for (const parameter of ["thinking", "token_budget", "temperature", "context_clamp"]) {
+      expect(CODE, parameter).not.toContain(parameter);
+    }
+  });
+
+  it("gives every wizard step a treatment of its own, so none falls back to another's", () => {
+    for (const state of ["done", "current", "todo"]) {
+      expect(rule(`\\.registry-wizard__step--${state}`), state).toMatch(/var\(--/);
+    }
+  });
+
+  it("puts the current step in the accent, which is what answers *where am I*", () => {
+    expect(rule("\\.registry-wizard__step--current")).toContain("var(--accent)");
+  });
+
+  it("recedes an already-named candidate the way the table recedes its unbound row", () => {
+    // Two surfaces, one product: the same opacity, cell by cell.
+    expect(rule("\\.registry-wizard__row--aliased td")).toMatch(/opacity:\s*0\.55/);
+    expect(rule("\\.registry-table__row--dim td")).toMatch(/opacity:\s*0\.55/);
+  });
+
+  it("sizes every candidate column in rem, so the font-size preference moves them", () => {
+    for (const column of ["tick", "model", "name", "price", "caps"]) {
+      expect(rule(`\\.registry-wizard__${column}`), column).toMatch(/(?:min-)?width:\s*[\d.]+rem/);
+    }
+  });
+
+  it("lets a row's error wrap inside a cell whose column would hold it on one line", () => {
+    expect(rule("\\.registry-wizard__name-field")).toMatch(/white-space:\s*normal/);
   });
 });

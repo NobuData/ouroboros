@@ -5,11 +5,12 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { menuFocusTarget, menuItems, menuKeyAction, menuConsumesKey } from "@/app/shell/menu";
 import { Button } from "@/app/ui";
 
+import { ImportWizard } from "./import-wizard";
 import {
   IMPORT_CARET,
-  IMPORT_ITEM_REASON,
   IMPORT_LABEL,
   IMPORT_MENU_LABEL,
+  type ImportSource,
   type ImportState,
 } from "./view";
 
@@ -24,25 +25,26 @@ import "./registry.css";
  * providers**, and a state the mockup never shows but a fresh workspace hits immediately —
  * nothing connected at all.
  *
- * ### The menu is this ticket's; the wizard behind it is not
+ * ### The menu chooses; the wizard behind it does the work
  *
- * CI.4 ([#594](https://github.com/NobuData/ouroboros/issues/594)) owns the import wizard, and
- * this ticket blocks it. So the list is **real** — these are the connections the workspace
- * actually has, in the order the service serves them — and each row is inert with a sentence
- * naming the issue that will wire it (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.5). That is the
- * honest shape of a frame: the page already answers *which providers could I import from*,
- * and says plainly that the import itself is not built. A row that silently did nothing when
- * pressed would be the one dishonest thing on a page built to be honest.
+ * The list is **real** — these are the connections the workspace actually has, in the order the
+ * service serves them — and since CI.4
+ * ([#594](https://github.com/NobuData/ouroboros/issues/594)) a row opens
+ * `app/registry/import-wizard.tsx` scoped to that connection. Choosing here *is* the wizard's
+ * first step, which is why the wizard has no connection screen of its own: the answer arrived
+ * with the press, and a step that only ever echoed a choice already made would be a step
+ * nobody could act on.
  *
- * When CI.4 lands, the change here is an `onClick` per row and one deleted constant.
+ * Pressing a row closes the menu, for the reason every menu closes on a choice: the panel would
+ * otherwise sit over the dialog it just opened.
  *
- * ### `aria-disabled`, never `disabled` — including inside the menu
+ * ### `aria-disabled`, never `disabled`
  *
  * The house rule (`app/ui/button.tsx`): a `disabled` control leaves the tab order and takes
  * its own explanation with it, so the keyboard reader who most needs the tooltip is the one
- * who could never reach it. The rows are therefore in the menu's roving focus and carry their
- * reason as a `title`, exactly as the shell's own menu does for a stepper at the end of its
- * range.
+ * who could never reach it. It is the **trigger** that this applies to now — inert with its
+ * reason for a member, for a workspace with nothing connected, and for a failed read — since
+ * the rows themselves can act.
  *
  * ### The keyboard is `app/shell/menu.ts`'s, not this file's
  *
@@ -52,8 +54,8 @@ import "./registry.css";
  * correct. What is left here is the wiring: open state, the outside-press dismissal, and
  * putting focus on the first row when the menu opens and back on the trigger when it closes.
  *
- * A Client Component, and the only one on this page: the head's other action and everything
- * below the tab set are static.
+ * A Client Component. So is the head's other action since CI.4, and so is the table's switch;
+ * what stays a Server Component is everything that only draws.
  */
 
 /** What the control needs to be told. */
@@ -66,6 +68,14 @@ export interface ImportMenuProps {
    * tooltip.
    */
   readonly state: ImportState;
+  /**
+   * Every alias name this workspace has, handed through to the wizard's row-level uniqueness
+   * check.
+   *
+   * It passes through rather than being read again: the table on the page behind has the list
+   * already, and a second read would be a second answer to *what is taken*.
+   */
+  readonly aliasNames: readonly string[];
 }
 
 /**
@@ -75,8 +85,9 @@ export interface ImportMenuProps {
  * @returns The ghost button on its own when the action is blocked, and the button with its
  *   menu when it is not.
  */
-export function ImportMenu({ state }: ImportMenuProps) {
+export function ImportMenu({ state, aliasNames }: ImportMenuProps) {
   const [open, setOpen] = useState(false);
+  const [importing, setImporting] = useState<ImportSource | null>(null);
 
   const wrapper = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -196,11 +207,16 @@ export function ImportMenu({ state }: ImportMenuProps) {
         >
           {state.sources.map((source) => (
             <button
-              aria-disabled
               className="registry-import__item"
               key={source.id}
+              onClick={() => {
+                // Focus goes back to the trigger and the wizard takes it from there: the
+                // overlay reads the focused element when it opens, so the way out of the dialog
+                // lands on the control the whole flow started from.
+                close(true);
+                setImporting(source);
+              }}
               role="menuitem"
-              title={IMPORT_ITEM_REASON}
               type="button"
             >
               {source.name}
@@ -208,6 +224,20 @@ export function ImportMenu({ state }: ImportMenuProps) {
           ))}
         </div>
       ) : null}
+
+      {/*
+        Rendered only while a connection is chosen, and keyed by it: mounting the wizard is
+        opening it, so the read it makes and the state it holds start clean for every open
+        without a reset path anybody has to keep correct.
+      */}
+      {importing !== null && (
+        <ImportWizard
+          aliasNames={aliasNames}
+          key={importing.id}
+          onClose={() => { setImporting(null); }}
+          source={importing}
+        />
+      )}
     </div>
   );
 }

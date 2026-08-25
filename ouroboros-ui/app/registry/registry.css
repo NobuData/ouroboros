@@ -1,6 +1,6 @@
 /*
- * The model registry page (#591) — mockup 21's head actions — and its allowed-models table
- * (#592).
+ * The model registry page (#591) — mockup 21's head actions — its allowed-models table (#592),
+ * and the two flows behind the head's actions (#594).
  *
  * The mockup is docs/mockups/21-model-registry.html over docs/mockups/assets/ouroboros.css.
  * Almost nothing of its page frame is this sheet's: the anatomy — gutter rhythm, page head,
@@ -8,9 +8,15 @@
  * through app/models/models-frame.tsx, because /models, /models/providers and this page share
  * it. What is left here is what only this page has: the dropdown behind **Import from
  * provider ▾**, the one line of hint under the actions when there is nothing to import from,
- * and — since CI.2 (#592) — the inside of the allowed-models table's cells, its dimmed row,
- * the switch-off confirmation and the seat row beneath the card (the second half of this
- * sheet).
+ * the inside of the allowed-models table's cells with its dimmed row, the switch-off
+ * confirmation and the seat row beneath the card (CI.2, #592), and — since CI.4 (#594) — the
+ * columns inside the create dialog, the parameter form and the import wizard.
+ *
+ * The three dialogs are drawn inside the shell's overlay (app/shell/overlay.tsx,
+ * app/shell/shell.css), which owns the backdrop, the panel, the title and the note; this sheet
+ * only ever lays out what is inside one. And every control in them is a #46 primitive: nothing
+ * here writes a rule for .ou-field, .ou-input, .ou-btn or .ou-table, because a page restyling
+ * the design system is the fork those primitives exist to prevent.
  *
  * The mockup draws neither. It shows a ghost button with a caret and stops there, so the
  * panel below is drawn to the shell's own menu (app/shell/shell.css .shell-menu__panel) —
@@ -93,18 +99,18 @@
 }
 
 /*
- * The rows are inert until CI.4 (#594) wires them, and they say so through `title` — so the
- * treatment has to be legible as *not yet* rather than as *broken*: quieter ink, and a cursor
- * that says the press will not land. `aria-disabled` rather than `disabled` is the house rule
- * (app/ui/button.tsx), which is why this is an attribute selector rather than `:disabled` —
- * the row stays in the tab order so the reader who needs the tooltip can reach it.
+ * Every row can act since CI.4 (#594) — pressing one opens the import wizard scoped to that
+ * connection — so there is no inert treatment here any more and no rule for one. Health is
+ * deliberately not a filter on this menu (app/registry/view.ts), and it is not a treatment
+ * either: whether a paused connection has anything to import is a question the wizard answers
+ * by asking, with the honest empty state when the answer is nothing.
+ *
+ * The focus treatment is the hover treatment, because the menu's roving focus is how a keyboard
+ * reader moves through these rows and a row they have landed on should look like the row a
+ * pointer is over.
  */
-.registry-import__item[aria-disabled="true"] {
-  color: var(--ink-faint);
-  cursor: not-allowed;
-}
-
-.registry-import__item:hover:not([aria-disabled="true"]) {
+.registry-import__item:hover,
+.registry-import__item:focus-visible {
   background: var(--accent-wash);
   color: var(--ink);
 }
@@ -386,4 +392,380 @@
   .registry-aside {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* ---------- the create dialog (#594) ---------- */
+
+/*
+ * Mockup 21 draws **+ New alias** and stops there, so the dialog behind it is drawn to the
+ * product's own dialog vocabulary rather than to a picture: the frame — backdrop, panel, title
+ * and note — is the shell's (app/shell/overlay.tsx, app/shell/shell.css) and what is here is
+ * the column inside the panel, the same three or four rules mockup 07's dialogs keep in their
+ * own sheet.
+ *
+ * The fields themselves are the #46 primitives (app/ui/field.tsx) and nothing here restyles
+ * them: a page reaching into .ou-field or .ou-input from its own sheet is the fork of the
+ * design system those primitives exist to prevent.
+ */
+
+.registry-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/*
+ * The mode toggle. A fieldset, because the two radios are one setting — and reset, because a
+ * browser's own fieldset border is a box around a group that already reads as one.
+ */
+.registry-create__modes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.registry-create__legend {
+  padding: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/*
+ * One choice: the radio, its label, and the line that says what the choice means. The grid is
+ * what puts the hint under the label rather than after it — a hint on the same line would push
+ * the two labels out of alignment with each other.
+ */
+.registry-create__mode {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 var(--sp-5);
+  align-items: center;
+}
+
+.registry-create__radio {
+  grid-row: span 2;
+  accent-color: var(--accent);
+}
+
+.registry-create__mode-label {
+  font-size: var(--t-md);
+}
+
+.registry-create__mode-hint {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The parameter section, headed and set apart from the fields above it by a hairline. */
+.registry-create__params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.registry-create__subtitle {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+
+/* A line the dialog says about itself: a read in flight, a schema that could not be drawn. */
+.registry-create__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The refusal, in the error hue, above the actions it explains. */
+.registry-create__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The *bind later* notice — the sentence that makes the orphan row read as a state somebody
+ * chose. Drawn on the accent wash rather than as more grey prose, because it is the one thing
+ * on this form that describes what the reader is about to get.
+ */
+.registry-create__unbound {
+  margin: 0;
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--accent-wash);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.registry-create__unbound-link {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.registry-create__unbound-link:hover,
+.registry-create__unbound-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* The action row — the primary control leading, the way out beside it. */
+.registry-create__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the parameter form (#594, shared with #593) ---------- */
+
+/*
+ * One control per tunable the bound model has, drawn from CH.2's schema. There is no rule here
+ * for any particular parameter, and there must not be: the whole claim of the endpoint is that
+ * a new adapter arrives with a working form and no UI written for it.
+ */
+.registry-params {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+/*
+ * A boolean parameter. The #46 Toggle carries its own accessible name as visually hidden text,
+ * so the visible label beside it is aria-hidden in the markup — which is why this is a grid
+ * rather than a `label`: there is nothing here for a `for` to point at that the switch does not
+ * already name.
+ */
+.registry-params__switch {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-5);
+  align-items: center;
+}
+
+.registry-params__switch-label {
+  font-size: var(--t-md);
+}
+
+.registry-params__switch-hint {
+  grid-column: 2;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.registry-params__switch-error {
+  grid-column: 2;
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the import wizard (#594) ---------- */
+
+/*
+ * The wizard lives in the same shell overlay the create dialog and the switch-off confirmation
+ * do, so the panel's width is the shell's — and the candidate table is wider than that. It
+ * therefore scrolls inside its own wrapper, which is the #46 Table's own .ou-table-scroll and
+ * not a box this sheet adds: the pane refuses horizontal scroll (design system § 1.3) and a
+ * table that took it anyway would take the whole page with it.
+ */
+
+/*
+ * The steps. An ordered list, reset — the numbering is the reader's position rather than a
+ * count, and it is carried by the treatment and by aria-current.
+ */
+.registry-wizard__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.registry-wizard__step {
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-pill);
+  font-size: var(--t-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Behind the reader: settled, quiet, and still legible. */
+.registry-wizard__step--done {
+  background: var(--accent-wash);
+  color: var(--ink-mut);
+}
+
+/* Where the reader is. The one step in the accent, so *where am I* is answered at a glance. */
+.registry-wizard__step--current {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
+/* Ahead of the reader. */
+.registry-wizard__step--todo {
+  color: var(--ink-faint);
+}
+
+/* A line the wizard says about itself: a read in flight, a read that was refused. */
+.registry-wizard__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The batch's own refusal, above the table whose rows carry the rest of it. */
+.registry-wizard__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The table sits flush in the panel's column; the primitive's wrapper is what scrolls. */
+.registry-wizard__table {
+  margin: 0;
+}
+
+/* ---------- the candidate table's columns ---------- */
+
+.registry-wizard__tick {
+  width: 4rem;
+}
+
+.registry-wizard__checkbox {
+  accent-color: var(--accent);
+}
+
+/* The heading's word and its select-all box on one line. */
+.registry-wizard__all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.registry-wizard__model {
+  min-width: 10rem;
+}
+
+/* The mark on a model something already names, under the id it is about. */
+.registry-wizard__aliased {
+  display: block;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+.registry-wizard__name {
+  min-width: 11rem;
+}
+
+/*
+ * The editable name. The control is the #46 TextField and is not restyled; what this does is
+ * let its error line wrap inside a cell whose column would otherwise hold it on one line.
+ */
+.registry-wizard__name-field {
+  gap: var(--sp-2);
+  white-space: normal;
+}
+
+.registry-wizard__price {
+  width: 7rem;
+  white-space: nowrap;
+}
+
+.registry-wizard__caps {
+  min-width: 9rem;
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * A row nothing can be done to: the model already has an alias, so the row recedes the way the
+ * table's own unbound row does — cell by cell, at the same opacity, so the two surfaces read as
+ * one product.
+ */
+.registry-wizard__row--aliased td {
+  opacity: 0.55;
+}
+
+/* ---------- the review and the report ---------- */
+
+/* What will be created, by name — a list, reset, one row per alias. */
+.registry-wizard__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.registry-wizard__preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-5);
+}
+
+.registry-wizard__preview-model {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.registry-wizard__preview-price {
+  margin-left: auto;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* What was passed over for already being named — tags, wrapping, a list. */
+.registry-wizard__skipped {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.registry-wizard__subtitle {
+  margin: 0;
+  font-size: var(--t-lg);
+}
+
+/* The link out of the empty state, to the page where a connection is tested. */
+.registry-wizard__link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.registry-wizard__link:hover,
+.registry-wizard__link:focus-visible {
+  text-decoration: underline;
+}
+
+/* The action row — the primary control leading, the way out beside it. */
+.registry-wizard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
 }

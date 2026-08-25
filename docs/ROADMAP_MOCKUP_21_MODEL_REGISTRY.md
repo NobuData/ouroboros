@@ -1288,7 +1288,7 @@ dark-only).
 | CI.1 | #591 | 🟢 Done | ouroboros-ui: [CI.1] Registry route, subnav & page frame | `/models/registry`, head + actions, subnav tab live (AA.1/AE.1 amendment) | mvp, registry, ui, design | N (after #41, AA.1, BA-D.5) | Y | S | ouroboros-ui |
 | CI.2 | #592 | 🟢 Done | ouroboros-ui: [CI.2] Allowed-models table | 8-column table: alias pills, monograms, chips, health states, prices, switches | mvp, registry, ui, design | N (after CI.1, CH.5) | Y | L | ouroboros-ui |
 | CI.3 | #593 | 🟡 Open | ouroboros-ui: [CI.3] Alias inspector | Schema-driven edit, rebind selects, used-by chips, save/duplicate/blocked remove | mvp, registry, ui, design | N (after CI.2, CH.1, CH.2) | Y | L | ouroboros-ui |
-| CI.4 | #594 | 🟡 Open | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
+| CI.4 | #594 | 🟢 Done | ouroboros-ui: [CI.4] New-alias & import flows | Create dialog (bound/unbound) + import wizard with preview | mvp, registry, ui | N (after CI.1, CH.1, CH.4) | Y | M | ouroboros-ui |
 | CI.5 | #595 | 🟡 Open | ouroboros-ui: [CI.5] Why-aliases & resolution-chain cards | BYOK explainer; chain card from snapshots, simulated-mode labeling | mvp, registry, ui, design | N (after CI.1, CH.6) | Y | M | ouroboros-ui |
 | CI.6 | #596 | 🟡 Open | ouroboros-ui: [CI.6] Registry states & guards | Empty org, member read-only, load/error, unbound guidance | mvp, registry, ui, design | N (after CI.2–CI.5) | Y | S | ouroboros-ui |
 | CI.7 | #597 | 🟡 Open | ouroboros-ui: [CI.7] Registry e2e leg | Parity, lifecycle, rebind BYOK, import, guards, governance, themes | mvp, registry, ui, ci | N (after CI.1–CI.6) | Y | S | ouroboros-ui, .github |
@@ -1564,7 +1564,84 @@ USED BY (implement-primary)(plan-primary)(review-primary)(escalation:effort≥L)
 
 ### Issue CI.4 — ouroboros-ui: [CI.4] New-alias & import flows
 
-> **GitHub issue:** #594 · **Status:** 🟡 Open · **Parent epic:** #577
+> **GitHub issue:** #594 · **Status:** 🟢 Done · **Parent epic:** #577
+
+> **Shipped 2026-08-25.** [`ouroboros-ui/app/registry/`](../ouroboros-ui/app/registry) —
+> `new-alias.tsx` and `import-wizard.tsx` over the pure `create.ts`, `wizard.ts` and
+> `params.ts`, with `create-actions.ts` and `import-actions.ts` as their server hops and five
+> new calls in `app/api/registry.ts` (`POST /registry/aliases`,
+> `GET /registry/aliases/model-options`, `GET /registry/param-schema`,
+> `GET /registry/import/{id}/candidates`, `POST /registry/import`); `ouroboros-ui` 0.50.0.
+> Proven by 476 tests across the nineteen suites that touch this page (4,063 across the module)
+> — eight new (`create.test.ts`, `wizard.test.ts`, `params.test.ts`,
+> `create-actions.test.ts`, `import-actions.test.ts`, `new-alias.test.tsx`,
+> `import-wizard.test.tsx`, `param-fields.test.tsx`) over fixtures
+> ([`__tests__/helpers/registry.ts`](../ouroboros-ui/__tests__/helpers/registry.ts)) that
+> transcribe `openapi.yaml`'s own published examples for the seeded Anthropic connection rather
+> than inventing plausible ones.
+>
+> **The dialog exists to make one state reachable.** Mockup 21's table draws a
+> `gpt5-experiments` row with **no provider**, decision **R2** has always allowed it, and until
+> this ticket there was no way to create one through the product — the particular kind of bug
+> nobody files, because the feature is there and no one can get to it. So the create dialog has
+> a **mode**, and the mode is not a fork in the client: CH.1's `POST /registry/aliases` takes
+> both shapes in one body with the connection absent for the second (`createBody`), `enabled` is
+> never sent because the contract's own default is exactly what the two modes promise, and the
+> *bind later* notice says what the row will look like **before** it is made — which is what
+> makes the orphan row read as a state somebody chose rather than as something that went wrong.
+>
+> **The name is checked as it is typed, and the service still decides.** There is no
+> *is-this-free* endpoint and there should not be — an answer to that question is stale the
+> moment it is given. `nameProblem` compares against the aliases the table already read, so the
+> ordinary collision costs no round trip; `model_alias_name_taken` is what decides, and
+> `createFailure` puts it under the same box. A reader never learns about a taken name from
+> anywhere but the name field.
+>
+> **A form for a model nobody wrote UI for.** `param-fields.tsx` renders CH.2's five widgets
+> (#585) and contains no list of parameters — no `thinking`, no `token_budget`, no
+> `temperature` — and the suite that proves it feeds the component a tunable no adapter in this
+> build has. It is the registry's own form rather than an extension of `app/ui/schema-form.tsx`,
+> because the two dialects are deliberately closed and a primitive names no domain concept; it
+> is **controlled**, unlike every other form in the module, because the field set is replaced
+> whenever the model is and a `Toggle` has no value to submit. `defaultValue` is drawn in the
+> hint and never typed into the box, exactly as the contract asks: a dialog clicked through
+> without touching the parameters creates an alias with `params: {}` — the provider's own
+> defaults — rather than one pinned to this build's suggestions. CI.3 (#593) renders the same
+> component.
+>
+> **Bulk import is review, not automation** (decision **R7**). The wizard puts discovery's
+> truth and the operator's vocabulary side by side: every cell on a candidate row is the
+> service's — CH.3's price string, CH.2's capability headline, the mark on an already-named
+> model — and only the name is the operator's, editable per row. Already-aliased rows arrive
+> marked and unticked, `select all` skips them, and the tick a row starts on is CH.4's `selected`
+> rather than a second opinion computed here. Re-entry is idempotent because the **read** is:
+> the candidates are re-read on every open, so two models just imported come back marked.
+>
+> **Nothing is created until every row is acceptable.** The batch is one transaction, so a `422`
+> means nothing landed and names every offending item; `importItemErrors` maps those back onto
+> rows through the order the body was built in, and `rowProblems` anticipates the ordinary
+> collisions before a round trip is spent on them. Both end as a line under the row's own name
+> box. The empty state is the honest one the contract guarantees — `empty` is non-null exactly
+> when `candidates` is — naming the connection and linking to Providers & keys.
+>
+> **Two placeholders were deleted rather than reworded.** `NEW_ALIAS_REASON` and
+> `IMPORT_ITEM_REASON` named this issue from CI.1's frame; they are gone, `newAliasReason` now
+> answers `undefined` for an admin, and the menu rows act. The inspector seat's note stopped
+> naming #594 too. What stayed is the role gate, which is the honest half — and the writes
+> behind both flows are the service's to refuse, which `create-actions.ts` and
+> `import-actions.ts` state and their suites hold.
+>
+> **The table adopts a selection it did not make.** A create navigates to `?alias=<the new
+> name>`, so the row that was just made is selected and the inspector's seat is already open on
+> it; `RegistryTable` holds the requested value beside the chosen one and compares during render
+> — React's own *adjusting state when a prop changes* — so reflection into the URL and being
+> driven by it coexist.
+>
+> Deliberately **not** here: the inspector (CI.3, #593), the why-aliases and chain cards (CI.5,
+> #595), and the page's own retry and empty-workspace guidance (CI.6, #596). No screenshot
+> harness exists in this module yet — "both themes" is held as it is everywhere here: identical
+> markup in both palettes, every hue a published token, and the sheet's agreements asserted;
+> CI.7 (#597) is where the e2e leg lands.
 
 - **Problem Statement:** Two creation paths: a single curated alias (+ New
   alias — including the create-ahead-of-a-key unbound path the orphan row

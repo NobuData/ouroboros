@@ -330,11 +330,22 @@ describe("the inspector's seat", () => {
     expect(inspectorTitle(null)).toBe(INSPECTOR_TITLE);
   });
 
-  it("names the issues that fill the rest of the page, and not this one", () => {
-    for (const issue of ["#593", "#594", "#595", "#596"]) {
+  it("names the issues that still fill the rest of the page, and no delivered one", () => {
+    // A placeholder that keeps naming a ticket after it has shipped is a placeholder telling a
+    // reader to wait for something they already have — so #592 left this note when the table
+    // landed, and #594 left it when the two flows did.
+    for (const issue of ["#593", "#595", "#596"]) {
       expect(INSPECTOR_NEXT_NOTE, issue).toContain(issue);
     }
-    expect(INSPECTOR_NEXT_NOTE).not.toContain("#592");
+    for (const shipped of ["#592", "#594"]) {
+      expect(INSPECTOR_NEXT_NOTE, shipped).not.toContain(shipped);
+    }
+  });
+
+  it("says the two flows work now, rather than saying nothing about them", () => {
+    // The seat is where a reader looks for *what else is there*; leaving the create and import
+    // flows out of it entirely would hide two actions that are one press away above.
+    expect(INSPECTOR_NEXT_NOTE).toMatch(/[Cc]reating and importing/);
   });
 });
 
