@@ -47,9 +47,11 @@ export interface ModelsFrameProps {
   /**
    * The sentence under the title: the promise the page makes. Held by the page as a named
    * constant rather than typed into JSX, because copy that lives in one place is copy a
-   * designer — or, for the providers page, a security document — can be pointed at.
+   * designer — or, for the providers page, a security document — can be pointed at. A node
+   * rather than a string only so a skeleton can draw the sentence around a bar where the
+   * one word it cannot know would go (`app/providers/providers-skeleton.tsx`).
    */
-  readonly subline: string;
+  readonly subline: ReactNode;
   /** The head's actions, drawn to the right of the headings and under them when narrow. */
   readonly actions: ReactNode;
   /** The page's own content, below the tab set. */

@@ -307,3 +307,80 @@ export function providersSubline(workspace: string): string {
  */
 export const ADD_PROVIDER_LABEL = "+ Add provider";
 
+/* ------------------------------------------------------------------- the security strip */
+
+/**
+ * The strip's accessible name — what the `aside` at the foot of the page is announced as.
+ */
+export const SECURITY_STRIP_LABEL = "Security model";
+
+/** The shield glyph, unchanged from the mockup — § 7.1 says so in as many words. */
+export const SECURITY_SHIELD = "◈";
+
+/**
+ * The strip's copy, **verbatim from `docs/SECURITY_MODEL.md` § 7.1**.
+ *
+ * The mockup's sentence made four claims, and AD.5
+ * ([#226](https://github.com/NobuData/ouroboros/issues/226)) traced each: *envelope
+ * encryption (AES-256-GCM)* was true; *KMS-backed* was true only of deployments that pay
+ * for one; *scoped, 15-minute tokens* was wrong in the safe direction, because P3 does
+ * something stronger; and the two compliance badges were certifications the product has not
+ * undergone. § 7.1 is the corrected wording, and this constant is that block with its line
+ * breaks joined and nothing else — no paraphrase, and no word of this module's own.
+ *
+ * `__tests__/providers/view.test.ts` reads the document and compares, as it does for the
+ * subline, so a change to either that is not a change to both fails the suite.
+ */
+export const SECURITY_STRIP_COPY =
+  "Keys are sealed per-tenant with envelope encryption (AES-256-GCM). Workers never see " +
+  "your keys — every provider call is made by the control plane, and your keys never " +
+  "leave your deployment.";
+
+/** The only emphasised span in the copy, as § 7.1 names it and as the mockup drew it. */
+export const SECURITY_STRIP_EMPHASIS = "envelope encryption";
+
+/**
+ * The strip's tag row: **exactly one tag**, verbatim from § 7.1.
+ *
+ * The mockup drew `SOC 2 Type II` and `ISO 27001` here, and § 7.3 is the rule that removed
+ * them: a certification badge renders only when the certification exists, carries its date,
+ * comes down when it lapses, is never rendered from a configuration flag, and until then
+ * **the slot renders nothing** — not a *certification in progress* placeholder. What the
+ * product has earned is the one word here. A list rather than a string so the slot's shape
+ * is visible; `view.test.ts` holds its length to one and its contents to the document.
+ */
+export const SECURITY_STRIP_TAGS: readonly string[] = ["self-hosted"];
+
+/**
+ * The link's label, verbatim from § 7.1. It keeps its trailing `↗` because the destination
+ * leaves the application.
+ */
+export const SECURITY_MODEL_LINK = "Read the security model ↗";
+
+/**
+ * Where the link goes — the document itself, at the path § 7.1 names.
+ *
+ * A deployment that serves its own copy may point this elsewhere (§ 7.1 allows it); today
+ * there is one copy and one path, and the test holds the constant to the file that exists.
+ */
+export const SECURITY_MODEL_URL =
+  "https://github.com/NobuData/ouroboros/blob/main/docs/SECURITY_MODEL.md";
+
+/**
+ * The copy, split around its one emphasised span so the strip can render `<strong>` on
+ * exactly that and nothing else.
+ *
+ * @param copy The sentence.
+ * @param span The span to emphasise — the first occurrence, which is the only one § 7.1 has.
+ * @returns What comes before the span, the span, and what follows it; or `null` when the
+ *   span is not in the copy, so a document edit that dropped the phrase renders the
+ *   sentence plain rather than emphasising a fragment of something else.
+ */
+export function emphasised(
+  copy: string,
+  span: string,
+): readonly [before: string, span: string, after: string] | null {
+  const at = copy.indexOf(span);
+
+  return at === -1 ? null : [copy.slice(0, at), span, copy.slice(at + span.length)];
+}

@@ -9,9 +9,15 @@ import {
   NOBODY,
   PROVIDERS_SUBLINE_TEMPLATE,
   PROVIDERS_TITLE,
+  SECURITY_MODEL_LINK,
+  SECURITY_MODEL_URL,
+  SECURITY_STRIP_COPY,
+  SECURITY_STRIP_EMPHASIS,
+  SECURITY_STRIP_TAGS,
   SENTENCES,
   WORKSPACE_SLOT,
   actorOf,
+  emphasised,
   kindOf,
   outcomeOf,
   providersSubline,
@@ -247,6 +253,73 @@ describe("the subline", () => {
     expect(providersSubline("A$&B")).toContain("A$&B's encrypted vault");
     expect(providersSubline("A$'B")).toContain("A$'B's encrypted vault");
     expect(providersSubline("A$$B")).toContain("A$$B's encrypted vault");
+  });
+});
+
+/**
+ * § 7.1's blocks, in order: the copy, then the tag row — each with its line breaks joined.
+ *
+ * @returns The fenced blocks under that heading and before the next.
+ */
+function approvedStrip(): readonly string[] {
+  const section = (SECURITY_MODEL.split("### 7.1 The security strip")[1] ?? "").split("### 7.2")[0];
+
+  return [...section.matchAll(/```text\n([\s\S]*?)```/g)].map((match) =>
+    match[1].replace(/\s*\n\s*/g, " ").trim(),
+  );
+}
+
+describe("the security strip (#232)", () => {
+  it("is docs/SECURITY_MODEL.md § 7.1, verbatim — the copy and the tag row", () => {
+    // *Verbatim* is a claim about two texts. The first block is the sentence, the second is
+    // the tag row, and each is compared to what the page renders.
+    const [copy, tags] = approvedStrip();
+
+    expect(copy).not.toBe("");
+    expect(SECURITY_STRIP_COPY).toBe(copy);
+    expect([...SECURITY_STRIP_TAGS]).toEqual([tags]);
+  });
+
+  it("emphasises the one span § 7.1 names, and it is in the copy", () => {
+    const section = SECURITY_MODEL.split("### 7.1 The security strip")[1] ?? "";
+
+    expect(section).toContain(`\`${SECURITY_STRIP_EMPHASIS}\` is the only emphasised span`);
+    expect(emphasised(SECURITY_STRIP_COPY, SECURITY_STRIP_EMPHASIS)).toEqual([
+      "Keys are sealed per-tenant with ",
+      "envelope encryption",
+      " (AES-256-GCM). Workers never see your keys — every provider call is made by the " +
+        "control plane, and your keys never leave your deployment.",
+    ]);
+    expect(emphasised("no such phrase here", SECURITY_STRIP_EMPHASIS)).toBeNull();
+  });
+
+  it("labels and targets the link as § 7.1 writes them", () => {
+    const section = SECURITY_MODEL.split("### 7.1 The security strip")[1] ?? "";
+
+    expect(section).toContain(`**Link, verbatim:** \`${SECURITY_MODEL_LINK}\``);
+    expect(section).toContain(`\`${SECURITY_MODEL_URL}\``);
+    expect(SECURITY_MODEL_URL).toMatch(/\/docs\/SECURITY_MODEL\.md$/);
+    expect(SECURITY_MODEL_LINK).toMatch(/↗$/);
+  });
+
+  it("carries exactly one tag, and no certification — the badge policy (§ 7.3)", () => {
+    // A certification badge renders only when the certification exists, carries its date,
+    // and comes down when it lapses; until then the slot renders nothing. What the product
+    // has earned is one word.
+    expect(SECURITY_STRIP_TAGS).toHaveLength(1);
+    for (const tag of SECURITY_STRIP_TAGS) {
+      expect(tag).not.toMatch(/SOC|ISO|HIPAA|PCI|GDPR|certif/i);
+    }
+  });
+
+  it("makes none of the mockup's four withdrawn claims", () => {
+    // *KMS-backed* was true only of deployments that pay for one; *scoped, 15-minute tokens*
+    // was wrong in the safe direction; the two badges were unearned. The corrected sentence
+    // keeps what was true and says what P3 actually does.
+    expect(SECURITY_STRIP_COPY).not.toMatch(/KMS|15-minute|token|SOC|ISO/i);
+    expect(SECURITY_STRIP_COPY).toMatch(/envelope encryption \(AES-256-GCM\)/);
+    expect(SECURITY_STRIP_COPY).toMatch(/Workers never see your keys/);
+    expect(SECURITY_STRIP_COPY).toMatch(/never leave your deployment/);
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  article,
   compactNumber,
   durationOfMinutes,
   elapsedOfSeconds,
@@ -241,5 +242,20 @@ describe("latencyOfMs", () => {
     expect(latencyOfMs(-5)).toBe("0.0s");
     expect(latencyOfMs(Number.NaN)).toBe("0.0s");
     expect(latencyOfMs(Number.POSITIVE_INFINITY)).toBe("0.0s");
+  });
+});
+
+describe("article", () => {
+  it("takes `an` before a vowel and `a` otherwise — the contract's four roles, named", () => {
+    // Written for the read-only notes: *an owner*, *an admin*, *a member*, *a viewer*.
+    expect(article("owner")).toBe("an");
+    expect(article("admin")).toBe("an");
+    expect(article("member")).toBe("a");
+    expect(article("viewer")).toBe("a");
+  });
+
+  it("reads the first letter whatever its case", () => {
+    expect(article("Owner")).toBe("an");
+    expect(article("Member")).toBe("a");
   });
 });

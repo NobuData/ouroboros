@@ -37,6 +37,7 @@
  */
 
 import type { Role } from "@/app/api/membership";
+import { article } from "@/app/format";
 
 import type { ModelsReadings } from "./view";
 
@@ -111,16 +112,6 @@ export const READ_ONLY_BODY =
  */
 export function readOnlyNote(role: Role): ReadOnlyNote {
   return { head: `Viewing routing as ${article(role)} ${role}.`, body: READ_ONLY_BODY };
-}
-
-/**
- * The indefinite article a role's name takes — *an owner*, *a member*.
- *
- * @param word The word.
- * @returns `an` before a vowel sound, `a` otherwise.
- */
-function article(word: string): "a" | "an" {
-  return /^[aeiou]/i.test(word) ? "an" : "a";
 }
 
 /* ------------------------------------------------------------------ the failed read */

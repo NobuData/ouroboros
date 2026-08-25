@@ -3,9 +3,9 @@ import { join } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { CAP_READ_ONLY, CAP_WARNING_ONLY, NO_CAP } from "@/app/providers/caps";
 import {
   CAP_LABEL,
-  CAP_SOON,
   DETECTED_LABEL,
   MODELS_LABEL,
   NO_MODELS,
@@ -16,7 +16,7 @@ import {
   cardModel,
   switchLabel,
 } from "@/app/providers/cards";
-import { menuLabel } from "@/app/providers/keys";
+import { ADDRESS_READ_ONLY, menuLabel } from "@/app/providers/keys";
 
 import { provider, seededProviders } from "../helpers/models";
 import { PALETTES, renderInBothPalettes, renderInPalette } from "../helpers/palettes";
@@ -57,7 +57,10 @@ import {
  * whom, and drawn from which primitives.
  */
 
-vi.mock("@/app/providers/card-actions", () => ({ setProviderEnabled: vi.fn() }));
+vi.mock("@/app/providers/card-actions", () => ({
+  setProviderEnabled: vi.fn(),
+  setProviderCap: vi.fn(),
+}));
 vi.mock("@/app/providers/key-actions", () => ({
   revealCredential: vi.fn(),
   rotateCredential: vi.fn(),
@@ -184,7 +187,7 @@ describe("the seeded Anthropic card", () => {
     expect(meter.querySelector(".ou-meter__fill")?.getAttribute("style")).toContain("68.8%");
   });
 
-  it("draws the foot: a live Test connection, the empty note slot, and the cap read-only", () => {
+  it("draws the foot: a live Test connection, the empty note slot, and the cap, editable (#232)", () => {
     const card = seeded("anthropic");
     const test = within(card).getByRole("button", { name: TEST_CONNECTION });
 
@@ -192,10 +195,13 @@ describe("the seeded Anthropic card", () => {
     expect(test).not.toHaveAttribute("aria-disabled");
     expect(card.querySelector(".providers-card__test-note")).toBeEmptyDOMElement();
 
+    // Live since AE.6: the stored figure, no `readonly`, and decision P7's sentence as the
+    // field's tooltip and description — the cap warns, and says so where it is set.
     const cap = within(card).getByLabelText(CAP_LABEL);
     expect(cap).toHaveValue("$600");
-    expect(cap).toHaveAttribute("readonly");
-    expect(cap).toHaveAttribute("title", CAP_SOON);
+    expect(cap).not.toHaveAttribute("readonly");
+    expect(cap).toHaveAttribute("title", CAP_WARNING_ONLY);
+    expect(cap).toHaveAccessibleDescription(CAP_WARNING_ONLY);
   });
 });
 
@@ -239,7 +245,8 @@ describe("the other four seeded cards", () => {
     expect(meterReads(card)).toBe("no metered spend 2.6M tokens on-box");
     expect(meterReads(card)).not.toMatch(/\$/);
     expect(card.querySelector(".ou-meter")).toHaveClass("ou-meter--ok");
-    expect(within(card).getByLabelText(CAP_LABEL)).toHaveValue("—");
+    expect(within(card).getByLabelText(CAP_LABEL)).toHaveValue("");
+    expect(within(card).getByLabelText(CAP_LABEL)).toHaveAttribute("placeholder", NO_CAP);
   });
 
   it("draws Ollama with a Host field, no key row, the pull-list with its sizes, and the on-box tokens", () => {
@@ -310,7 +317,8 @@ describe("the sixth card — the schema-driven proof", () => {
     expect(within(card).queryByText(/tier/)).toBeNull();
     expect(meterReads(card)).toBe("no spend recorded");
     expect(card.querySelector(".ou-meter")).toBeNull();
-    expect(within(card).getByLabelText(CAP_LABEL)).toHaveValue("—");
+    expect(within(card).getByLabelText(CAP_LABEL)).toHaveValue("");
+    expect(within(card).getByLabelText(CAP_LABEL)).toHaveAttribute("placeholder", NO_CAP);
   });
 
   it("draws its region select nowhere — a card is not a form, and only the address and the key are rows", () => {
@@ -432,13 +440,54 @@ describe("a member's card", () => {
     expect(within(card).queryByRole("button", { name: menuLabel("Anthropic Claude") })).toBeNull();
   });
 
-  it("draws an editable provider's address read-only, with no Save", () => {
+  it("draws an editable provider's address read-only, with no Save, and says why (#232)", () => {
     const card = seeded("openai_compatible", false);
 
     const address = within(card).getByLabelText("Base URL");
     expect(address).toHaveValue("http://10.0.4.20:8000/v1");
     expect(address).toHaveAttribute("readonly");
+    expect(address).toHaveAttribute("title", ADDRESS_READ_ONLY);
+    expect(address).toHaveAccessibleDescription(ADDRESS_READ_ONLY);
     expect(within(card).queryByRole("button", { name: "Save Base URL" })).toBeNull();
+  });
+
+  it("draws the cap read-only, with the reason, and the stored figure or the em-dash (#232)", () => {
+    // The ticket's criterion: read-only across every card, with the reason shown — not a
+    // control that is silently inert. The em-dash is drawn as the value here, because a
+    // member is reading a fact rather than editing a box.
+    const anthropic = within(seeded("anthropic", false)).getByLabelText(CAP_LABEL);
+    expect(anthropic).toHaveValue("$600");
+    expect(anthropic).toHaveAttribute("readonly");
+    expect(anthropic).toHaveAttribute("title", CAP_READ_ONLY);
+    expect(anthropic).toHaveAccessibleDescription(CAP_READ_ONLY);
+
+    const ollama = within(seeded("ollama", false)).getByLabelText(CAP_LABEL);
+    expect(ollama).toHaveValue("—");
+    expect(ollama).toHaveAttribute("readonly");
+  });
+});
+
+describe("the cap's warning — decision P7 (#232)", () => {
+  it("puts the warning-only tooltip on every capped meter, the Copilot warn meter among them", () => {
+    // The ticket's criterion, on the card it names: the ≥ 80% warn meter, with the tooltip.
+    const card = seeded("copilot");
+    const warning = card.querySelector(".providers-card__meter-warning") as HTMLElement;
+
+    expect(card.querySelector(".ou-meter")).toHaveClass("ou-meter--warn");
+    expect(warning).toHaveAttribute("title", CAP_WARNING_ONLY);
+    expect(warning).toHaveTextContent(CAP_WARNING_ONLY);
+    // The sentence is beside the figure, never inside it, so the line still reads as the
+    // mockup writes it.
+    expect(meterReads(card)).toBe("$76.00 of $95 cap");
+  });
+
+  it("puts nothing on an uncapped meter — there is no cap to warn about", () => {
+    // The field's own description still says what setting a cap would do; the meter line,
+    // which has no cap to qualify, carries no glyph.
+    const card = seeded("ollama");
+
+    expect(card.querySelector(".providers-card__meter-warning")).toBeNull();
+    expect(card.querySelector(".providers-card__meter")?.textContent).not.toContain(CAP_WARNING_ONLY);
   });
 });
 

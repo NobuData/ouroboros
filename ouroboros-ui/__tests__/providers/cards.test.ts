@@ -28,6 +28,7 @@ import {
   tierLabel,
   tiersOf,
   utcDate,
+  meterFor,
 } from "@/app/providers/cards";
 import { NOBODY } from "@/app/providers/view";
 
@@ -492,8 +493,7 @@ describe("the whole card", () => {
         unlisted: [],
         refreshable: true,
       },
-      meter: { figure: "$412.80", note: "of $600 cap", fraction: 41_280 / 60_000, tone: "accent" },
-      cap: "$600",
+      spend: { capCents: 60_000, row: seededSpend().providers[0], seats: null },
       dependents: { ok: true, value: [] },
     });
   });
@@ -524,8 +524,14 @@ describe("the whole card", () => {
     expect(model.pill).toEqual({ label: "unknown", tone: "warn", dot: "ring" });
     expect(model.meta.lastUsed).toBe(NEVER_USED);
     expect(model.models).toMatchObject({ kind: "chips", tiers: [] });
-    expect(model.meter).toEqual({ figure: NO_SPEND, note: null, fraction: null, tone: "accent" });
-    expect(model.cap).toBe("—");
+    expect(model.spend).toEqual({ capCents: null, row: null, seats: null });
+    expect(meterFor(model.spend.capCents, model.spend.row, model.spend.seats)).toEqual({
+      figure: NO_SPEND,
+      note: null,
+      fraction: null,
+      tone: "accent",
+    });
+    expect(capValue(model.spend.capCents)).toBe("—");
   });
 
   it("is total over every null: no entry, no health, no spend, no models", () => {
@@ -542,8 +548,8 @@ describe("the whole card", () => {
     expect(model.address).toEqual({ label: ADDRESS_LABEL, value: "http://x" });
     expect(model.secret).toBeNull();
     expect(model.models.kind).toBe("unavailable");
-    expect(model.meter.figure).toBe(NO_SPEND);
-    expect(model.cap).toBe("—");
+    expect(model.spend).toEqual({ capCents: null, row: null, seats: null });
+    expect(meterFor(null, null, null).figure).toBe(NO_SPEND);
   });
 
   it("reads the seat count off the strip's detail and into the meter line", () => {
@@ -557,8 +563,32 @@ describe("the whole card", () => {
       now: NOW,
     });
 
-    expect(model.meter.note).toBe("of $95 cap · 4 seats");
+    expect(model.spend.seats).toBe(4);
+    expect(meterFor(model.spend.capCents, model.spend.row, model.spend.seats).note).toBe(
+      "of $95 cap · 4 seats",
+    );
     expect(model.pillDetail).toBe("200 · 4 seats");
+  });
+
+  it("carries the meter's inputs rather than a decided line, so a typed cap can redraw it (#232)", () => {
+    // The cap field moves the meter before the route has re-read, and it can only do that if
+    // the model carries what the meter is computed *from*. `meterLine` at the stored cap and
+    // `meterFor` at a new one are one function, so the two paints cannot disagree.
+    const copilot = connection({ kind: "copilot", monthlyCapCents: 9_500 });
+    const row = spendRow({ kind: "copilot", spendCents: 7_600 });
+
+    expect(meterLine(copilot, row, 4)).toEqual(meterFor(9_500, row, 4));
+    expect(meterFor(12_000, row, 4)).toEqual({
+      figure: "$76.00",
+      note: "of $120 cap · 4 seats",
+      fraction: 7_600 / 12_000,
+      tone: "accent",
+    });
+    expect(meterFor(null, row, 4)).toEqual({ figure: "$76.00", note: null, fraction: null, tone: "accent" });
+    // Clearing the cap on a local row keeps the sliver — the treatment is the row's, not the cap's.
+    expect(meterFor(null, spendRow({ kind: "ollama", local: true, spendCents: null, tokens: 5 }), null).fraction).toBe(
+      0.03,
+    );
   });
 });
 

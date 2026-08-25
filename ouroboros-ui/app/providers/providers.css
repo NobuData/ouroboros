@@ -321,26 +321,34 @@
   }
 }
 
-/* The line drawn where the grid would be when the listing could not be read. */
-.providers-grid__state {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: var(--ink-mut);
-  font-size: var(--t-sm);
-  line-height: var(--lh-body);
-}
-
-.providers-grid__state--failed {
-  color: var(--err);
-}
-
-.providers-grid__state-head {
-  font-weight: 600;
-}
-
-/* The empty state takes a card's seat, so the dashed card keeps its place beside it. */
-.providers-grid__empty {
+/*
+ * The seat under the failed-read banner (#232): a card's seat, at a card's height, so the
+ * dashed card keeps its place beside it — connecting a provider still works when the listing
+ * could not be read. The reason is the banner's; the seat's well is the empty-state
+ * primitive's, and says only what is missing.
+ */
+.providers-grid__seat {
   min-height: 18rem;
+}
+
+/*
+ * The guidance for a workspace that has connected nothing (#232): one card across the whole
+ * grid, because the guidance *is* the add affordance and a dashed card beside it would be a
+ * second door to the same dialog. The well and the centring are the empty-state primitive's;
+ * what this adds is the width and the floor.
+ */
+.providers-grid__guidance {
+  grid-column: 1 / -1;
+  min-height: 18rem;
+}
+
+/* The member's sentence in place of the button — the primitive's note, in the muted ink. */
+.providers-grid__guidance-note {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
 }
 
 /*
@@ -357,7 +365,17 @@
  * change, because what it says is *this whole card is not in play* and every region of it —
  * the chips, the meter, the mask — should read as one thing set aside. The head keeps its
  * full ink: the name, the pill and the switch are what a reader needs to see to bring it back.
+ *
+ * The frame goes dashed too (#232), the sheet's treatment for *not in play* — the dashed add
+ * card, the promised catalog tile — so a switched-off card is tellable from a degraded one
+ * at a glance: a degraded card is solid, at full ink, and wears a warn or error pill, because
+ * it is in play and struggling. The switch's note carries the word, so the treatment is never
+ * the only signal (§ 3.4).
  */
+.providers-card--off {
+  border: 1px dashed var(--line-strong);
+}
+
 .providers-card--off > :not(.providers-card__head) {
   opacity: 0.55;
 }
@@ -737,6 +755,13 @@
   color: var(--ink-mut);
 }
 
+/* The figure and, on a capped line, decision P7's glyph after it (#232). */
+.providers-card__meter-trail {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
 /* The figure is mono, the note after it faint — the mockup's `.mono` and `.faint`. */
 .providers-card__meter-figure {
   color: var(--ink);
@@ -747,6 +772,18 @@
 
 .providers-card__meter-note {
   color: var(--ink-faint);
+}
+
+/*
+ * The `ⓘ` after a capped line: *warning only — enforcement arrives with invocation*, as its
+ * tooltip. Faint, because it qualifies the figure rather than competing with it, and a help
+ * cursor so a pointer learns there is something to read. AF.4 (#237) removes it with the
+ * sentence.
+ */
+.providers-card__meter-warning {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  cursor: help;
 }
 
 /* ---------- the foot ---------- */
@@ -804,13 +841,27 @@
   color: var(--ink-mut);
 }
 
-/* The cap field, at the trailing edge, the mockup's 92px input in rem. */
+/*
+ * The cap field, at the trailing edge, the mockup's 92px input in rem. The field's column is
+ * allowed to grow past the input — up to a sentence's width — so a refusal or a saved note
+ * under it reads as a line rather than as a word per row in a 92px column; the input itself
+ * keeps the mockup's width, right-aligned like every figure on the card.
+ */
 .providers-card__cap {
+  display: flex;
   flex: none;
-  width: 6.75rem;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 18rem;
 }
 
 .providers-card__cap .ou-input {
+  width: 6.75rem;
+  text-align: right;
+}
+
+.providers-card__cap .ou-field__hint,
+.providers-card__cap .ou-field__error {
   text-align: right;
 }
 
@@ -1022,5 +1073,306 @@
     to {
       transform: rotate(360deg);
     }
+  }
+}
+
+/* ---------- the page's states (#232) ---------- */
+
+/*
+ * The read-only note — one line under the tab set naming the reader's role, the routing
+ * page's `.models-readonly` on this page: the same measure and the same bottom rhythm, so a
+ * member's grid and an owner's start on the same line.
+ */
+.providers-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.providers-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/*
+ * The failed-read banner's placement: above the grid, with the grid's own row gap below it.
+ * The box itself is the design system's `.ou-retry`.
+ */
+.providers-banner {
+  margin: 0 0 var(--sp-8);
+}
+
+/* ---------- the security strip (#232) ---------- */
+
+/*
+ * Mockup 07's `.card.c-12.row.security`: the shield, the sentence, the tag slot and the link
+ * on one line, wrapping when the pane is narrow — and under the grid with the grid's own
+ * gap above it. The plane is .ou-card's; the tag and the link are the primitives'.
+ */
+.providers-security {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-8);
+  margin-top: var(--sp-8);
+}
+
+/*
+ * The shield: the mockup's 42px square in rem, in the accent on the accent's own tint — the
+ * token sheet's published triple, so it is legible on the card in both palettes and no hue
+ * is mixed here.
+ */
+.providers-security__shield {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.625rem;
+  height: 2.625rem;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--t-xl);
+}
+
+/* The sentence: the mockup's 78ch measure, in the dim ink, with its one emphasis at full ink. */
+.providers-security__copy {
+  flex: 1;
+  min-width: 18rem;
+  max-width: 78ch;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.providers-security__copy strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The tag slot — what is earned, and nothing else (SECURITY_MODEL.md § 7.3). */
+.providers-security__tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the skeleton (#232) ---------- */
+
+/*
+ * The loading state's bars, at the page's own geometry: every height below is the box of the
+ * control it stands in for — `.ou-input`'s, `.ou-btn--sm`'s, `.ou-chip`'s, `.ou-meter`'s, the
+ * switch's — in rem, so the reservation holds at every step of the font-size preference. The
+ * card shapes are built from the card's own region classes, so the rhythm between regions is
+ * the card's by construction.
+ *
+ * It pulses only for a reader who has not asked for less motion, and it is hidden from the
+ * accessibility tree by the `aria-hidden` on the grid — a screen reader is told the page is
+ * busy once, by the frame's own label, rather than read fifty empty bars.
+ */
+.providers-skeleton {
+  display: grid;
+}
+
+/* The slot in the subline where the workspace's name will go — a name's width, inline. */
+.providers-skeleton__slot {
+  display: inline-block;
+  width: 7rem;
+  height: 0.85em;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  vertical-align: baseline;
+}
+
+/* The two head actions, at a default button's box. */
+.providers-skeleton__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+.providers-skeleton__action {
+  display: inline-block;
+  width: 8rem;
+  height: 2.375rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* A card shape keeps the card's gap and its dashed-frame-free plane. */
+.providers-skeleton__card {
+  gap: var(--sp-6);
+}
+
+/* The monogram's square. */
+.providers-skeleton__monogram {
+  display: block;
+  flex: none;
+  width: 2.625rem;
+  height: 2.625rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The name and the capability line, stacked, taking what the head's row leaves. */
+.providers-skeleton__identity {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* The plain bar, at a line of `--t-xs`. */
+.providers-skeleton__bar {
+  display: block;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.providers-skeleton__bar--name {
+  width: 40%;
+  height: var(--sp-7);
+}
+
+.providers-skeleton__bar--note {
+  width: 65%;
+  height: var(--sp-5);
+}
+
+.providers-skeleton__bar--meta {
+  width: 70%;
+  height: var(--sp-5);
+}
+
+.providers-skeleton__bar--label {
+  width: 6rem;
+  height: var(--sp-5);
+}
+
+.providers-skeleton__bar--figure {
+  width: 8rem;
+}
+
+/* A chip, at `.ou-chip`'s box. */
+.providers-skeleton__pill {
+  display: block;
+  flex: none;
+  width: 6rem;
+  height: var(--sp-8);
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* The switch, at `.ou-switch`'s box. */
+.providers-skeleton__switch {
+  display: block;
+  flex: none;
+  width: 2.375rem;
+  height: 1.3125rem;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* The key row: the field's box taking what is left, two small buttons at the trailing edge. */
+.providers-skeleton__key-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-4);
+}
+
+/* A mono input's box — `.ou-input--mono`'s padding around a line of `--t-xs`. */
+.providers-skeleton__input {
+  display: block;
+  flex: 1;
+  height: 2.25rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.providers-skeleton__input--cap {
+  flex: none;
+  width: 6.75rem;
+}
+
+/* A small button's box — `.ou-btn--sm`'s padding around a line of `--t-xs`. */
+.providers-skeleton__button {
+  display: block;
+  flex: none;
+  width: 4rem;
+  height: 1.75rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.providers-skeleton__button--test {
+  width: 7.5rem;
+}
+
+/* The chips row, at `.providers-card__chips`'s gap. */
+.providers-skeleton__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* The meter line: the label leading, the figure trailing, then the track under both. */
+.providers-skeleton__meter-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+/* A meter, at `.ou-meter`'s height. */
+.providers-skeleton__meter {
+  display: block;
+  height: var(--sp-3);
+  border-radius: var(--r-xs);
+  background: var(--raised);
+}
+
+/* The cap field's label over its input, at the foot's trailing edge. */
+.providers-skeleton__cap {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  margin-inline-start: auto;
+}
+
+/* The dashed card's plus, at the glyph's size. */
+.providers-skeleton__plus {
+  display: block;
+  width: var(--sp-10);
+  height: var(--sp-10);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .providers-skeleton__slot,
+  .providers-skeleton__action,
+  .providers-skeleton__monogram,
+  .providers-skeleton__bar,
+  .providers-skeleton__pill,
+  .providers-skeleton__switch,
+  .providers-skeleton__input,
+  .providers-skeleton__button,
+  .providers-skeleton__meter,
+  .providers-skeleton__plus {
+    animation: providers-skeleton-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes providers-skeleton-pulse {
+  50% {
+    opacity: 0.55;
   }
 }

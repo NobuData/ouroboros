@@ -9,6 +9,7 @@ import type { AddressRow as AddressRowModel } from "./cards";
 import { saveProviderAddress } from "./key-actions";
 import {
   ADDRESS_KEPT,
+  ADDRESS_READ_ONLY,
   ADDRESS_REQUIRED,
   ADDRESS_SAVED,
   ADDRESS_SAVING,
@@ -66,10 +67,20 @@ export function AddressRow({ connectionId, address, mayAdminister }: AddressRowP
   const noteId = useId();
   const fieldId = `provider-${connectionId}-address`;
 
-  // A member's field is exactly the read-only one the card drew before this ticket.
+  // A member's field is the read-only one the card drew before this ticket — and, since
+  // AE.6 (#232), it says why: the reason is its description and its tooltip, the way every
+  // other control a member cannot press explains itself (design system § 3.5).
   if (!mayAdminister) {
     return (
-      <TextField id={fieldId} label={address.label} mono readOnly value={address.value} />
+      <TextField
+        hint={<span className="sr-only">{ADDRESS_READ_ONLY}</span>}
+        id={fieldId}
+        label={address.label}
+        mono
+        readOnly
+        title={ADDRESS_READ_ONLY}
+        value={address.value}
+      />
     );
   }
 

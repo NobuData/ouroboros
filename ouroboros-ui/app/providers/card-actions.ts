@@ -2,8 +2,9 @@
 
 /**
  * The server hop for the provider card's switch
- * ([#228](https://github.com/NobuData/ouroboros/issues/228)) — the one write a card makes
- * today.
+ * ([#228](https://github.com/NobuData/ouroboros/issues/228)) and, since AE.6
+ * ([#232](https://github.com/NobuData/ouroboros/issues/232)), its monthly cap — the two
+ * writes a card makes to its own row.
  *
  * `app/api/server.ts` states the rule this exists under, and `app/providers/add-actions.ts` is
  * the same seam for the dialog beside it: the browser cannot reach REST, so a Client Component
@@ -20,7 +21,8 @@
  *   this anyway gets the service's `403` and changes nothing, handed back here as the same
  *   sentence the read-only switch already shows.
  * - **What is sent is the position asked for**, and only that: a `PATCH` of `{ enabled }`, so
- *   the switch never resends an address or a cap it does not own.
+ *   the switch never resends an address or a cap it does not own — and the cap's hop sends
+ *   `{ monthlyCapCents }` and nothing else, for the same reason.
  *
  * ### Failure posture: a value, not a throw
  *
@@ -32,6 +34,7 @@
 import { isApiError } from "@/app/api/errors";
 import { providers } from "@/app/api/providers";
 
+import { type CapOutcome, capRefusal } from "./caps";
 import { SWITCH_FAILED, SWITCH_GONE, SWITCH_READ_ONLY } from "./cards";
 
 /** What one press produced. */
@@ -68,5 +71,31 @@ export async function setProviderEnabled(id: string, enabled: boolean): Promise<
     if (error.code === NOT_FOUND_CODE) return { ok: false, reason: SWITCH_GONE };
 
     return { ok: false, reason: SWITCH_FAILED };
+  }
+}
+
+/**
+ * Set or clear a connection's monthly cap.
+ *
+ * @param id The connection.
+ * @param monthlyCapCents The cap in whole cents, or `null` to clear it — *no cap*, which the
+ *   contract distinguishes from `0`, a real cap meaning *spend nothing*. Already parsed:
+ *   `app/providers/caps.ts`'s `parseCap` is what turns typed text into this, and it runs in
+ *   the browser so a refusal there costs no round trip.
+ * @returns The cap as stored, or the reason the save did not take.
+ * @throws Whatever is not an `ApiError` — Next.js's redirect signal above all.
+ */
+export async function setProviderCap(
+  id: string,
+  monthlyCapCents: number | null,
+): Promise<CapOutcome> {
+  try {
+    const connection = await providers.update(id, { monthlyCapCents });
+
+    return { ok: true, cents: connection.monthlyCapCents };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return capRefusal(error);
   }
 }

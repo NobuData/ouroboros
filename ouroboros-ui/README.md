@@ -1707,6 +1707,93 @@ For a `member` or a `viewer` both openers are inert with the reason, and the dia
 opens; the gate that enforces is the service's `403`, which
 [`app/providers/add-actions.ts`](app/providers/add-actions.ts) hands back as a sentence.
 
+### Caps, the strip, and the states
+
+AE.6 ([#232](https://github.com/NobuData/ouroboros/issues/232)) is the last of the page's
+surfaces: the foot's **Monthly cap** goes live, mockup 07's security strip is drawn under the
+grid with the copy the security model approved, and every state the page can be in that is
+not *five cards* is designed rather than blank.
+
+```
+ This month            $76.00 of $95 cap · 4 seats ⓘ ← "Warning only — enforcement arrives with invocation."
+ ▓▓▓▓▓▓▓▓░░ (warn, 80%)                              ↑ CAP_WARNING_ONLY, removed by AF.4 (#237)
+ ─────────────────────────────────────────────────────────────
+ [Test connection]                       Monthly cap [   $95]  ← blur or Enter saves; empty → null (—)
+                                                                  $0 → zero, a real cap
+
+ ◈  Keys are sealed per-tenant with envelope encryption (AES-256-GCM). Workers never see
+    your keys — every provider call is made by the control plane, and your keys never
+    leave your deployment.                 [self-hosted]        [ Read the security model ↗ ]
+```
+
+**The cap is parsed in the browser, stored in integer cents, and null is not zero.**
+[`app/providers/caps.ts`](app/providers/caps.ts)'s `parseCap` reads `$95`, `95` and
+`1,250.50`, computes cents in integers rather than through a float, refuses a word, a negative
+or a third decimal with a sentence under the field and no round trip, and mirrors the
+contract's `int32` ceiling. An emptied field stores `null` — *no cap*, the em-dash, which the
+editable box shows as its placeholder — and `$0` stores zero, a real cap meaning *spend
+nothing*; a lone `$` is refused rather than read as *clear*. The field
+([`app/providers/cap-field.tsx`](app/providers/cap-field.tsx)) commits on blur and on Enter
+and puts the stored value back on Escape, because a Save button beside a 92-pixel input would
+double its width. The write is `card-actions.ts`'s second hop, a `PATCH { monthlyCapCents }`
+and nothing else.
+
+**The meter moves before the server answers.** The meter and the field share the cap through
+a context — `CapScope` holds it, `CapMeter` reads it, `CapField` writes it — so the card, a
+Server Component, still places each where the mockup does and stays a description of a card.
+The card model carries the meter's *inputs* rather than a decided line, and `cards.ts`'s
+`meterFor` is one pure function the server calls for the first paint and the island calls
+again with the cap just typed. The optimistic cap lives exactly as long as the transition that
+set it: a refused save goes back on its own with the reason under the field, and
+`router.refresh()` brings the stored figure with the re-read.
+
+**Decision P7, in two places, and one deletion removes both.** Caps are stored, they meter,
+and they warn — and nothing stops spend until the invocation gateway (AF.2,
+[#235](https://github.com/NobuData/ouroboros/issues/235)) and the spend gate (AF.4,
+[#237](https://github.com/NobuData/ouroboros/issues/237)) exist. A cap field that silently
+does nothing is a trap for exactly the person who cared enough to set one, so
+`CAP_WARNING_ONLY` is the `ⓘ` after every capped meter's note and the editable field's
+description and tooltip. AF.4 deletes the constant; everything that names it then fails the
+typecheck.
+
+**The strip is `docs/SECURITY_MODEL.md` § 7.1, verbatim, with no unearned badge.**
+[`app/providers/security-strip.tsx`](app/providers/security-strip.tsx) draws the shield, the
+sentence with its one emphasis, a tag row of exactly one word, and the ghost link to the
+document — from constants in [`app/providers/view.ts`](app/providers/view.ts) that
+`__tests__/providers/view.test.ts` holds to the document by reading it, as it already did for
+the subline. The mockup's `SOC 2 Type II` and `ISO 27001` are absent because § 7.3 withdrew
+them: a certification badge renders only when the certification exists, carries its date, and
+comes down when it lapses — until then the slot renders nothing, not a hedge.
+`security-strip.test.tsx` is the review at the surface: it greps the rendered strip for `SOC`,
+`ISO`, `KMS`, `15-minute` and `token` and finds none.
+
+**The states are decided in [`app/providers/states.ts`](app/providers/states.ts) and
+explained once.** `providersState` is `failed`, `empty` or `populated` from the listing alone,
+because it is the one read the grid cannot survive; `degradedReads` names whichever of the
+four grid-wide reads failed — the catalog, the health strip, the month, the aliases — and the
+page draws the DASH-I.7 banner ([`app/providers/providers-banner.tsx`](app/providers/providers-banner.tsx))
+for either, with the service's sentence once and the page's one retry. *Could not be read*
+wears the banner and a seat that points up; *empty* wears the guidance — **Connect your first
+provider**, across the whole grid, with **+ Add provider** on it for an owner or admin and a
+sentence naming who can act for a member. The dashed card is not drawn beside the guidance
+(two doors to one dialog in one view) and returns with the first card. A member's page names
+the role once under the tab set, the routing page's note on this page; every control that
+would write is drawn switched off with its reason as the tooltip, the address field a member
+cannot edit now says why too, and the key actions and the card menu are not drawn at all. A
+switched-off card's frame goes dashed as well as dim — the sheet's *not in play* treatment —
+so it is tellable from a degraded one, which stays solid at full ink with its warn or error
+pill.
+
+**The skeleton is the card's own anatomy.**
+[`app/providers/providers-skeleton.tsx`](app/providers/providers-skeleton.tsx), behind
+[`loading.tsx`](<app/(app)/models/providers/loading.tsx>), draws five card shapes from the
+card's region classes with bars at the box of each control in rem, the dashed card's shape
+after them, and the strip as itself. The head is the real head with one slot: the workspace's
+name is the one word the skeleton cannot know, so § 7.2's sentence is drawn around a bar the
+width of a name and wraps on the same line before and after the data lands — the reason
+`ModelsFrame.subline` is a `ReactNode`. The file sits beside the page rather than in a route
+group because `providers/` is a leaf segment.
+
 ## The credential audit trail
 
 Mockup 07 puts an **Audit log** ghost action in its page head beside **+ Add provider**, and
@@ -2486,6 +2573,7 @@ model routing [#200](https://github.com/NobuData/ouroboros/issues/200) ·
 providers & keys [#227](https://github.com/NobuData/ouroboros/issues/227) ·
 provider cards [#228](https://github.com/NobuData/ouroboros/issues/228) ·
 the add-provider flow [#231](https://github.com/NobuData/ouroboros/issues/231) ·
+caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issues/232) ·
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 

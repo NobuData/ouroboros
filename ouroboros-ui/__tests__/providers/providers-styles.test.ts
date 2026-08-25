@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/providers/providers.css` that are agreements with something outside
- * it (#225, the add-provider flow's rules since #231, and the cards' since #228).
+ * it (#225, the add-provider flow's rules since #231, the cards' since #228, and the page's
+ * states, the strip and the skeleton since #232).
  *
  * The generic rule — no colour literal anywhere but the token sheet — is
  * `__tests__/styles.test.ts`'s, and it covers this sheet as it covers every other. What is
@@ -197,6 +198,115 @@ describe("the provider cards", () => {
     expect(rule("\\.providers-card__test-note")).toContain("color: var(--ok)");
     expect(rule("\\.providers-card__meta")).toContain("font-family: var(--f-mono)");
     expect(rule("\\.providers-card__meta")).toContain("color: var(--ink-faint)");
+  });
+});
+
+describe("the page's states (#232)", () => {
+  it("draws the read-only note at the routing page's measure and rhythm", () => {
+    expect(rule("\\.providers-readonly")).toContain("max-width: 72ch");
+    expect(rule("\\.providers-readonly")).toContain("margin: 0 0 var(--sp-9)");
+    expect(rule("\\.providers-readonly__head")).toContain("font-weight: 600");
+  });
+
+  it("gives the banner the grid's own gap below it, and adds nothing to the primitive's box", () => {
+    expect(rule("\\.providers-banner")).toContain("margin: 0 0 var(--sp-8)");
+    expect(rule("\\.providers-banner")).not.toContain("background");
+  });
+
+  it("spans the guidance across the grid and keeps the failed seat to a card's seat", () => {
+    // Empty and failed are visually distinct: one card across the whole grid with the action
+    // on it, against a seat beside the dashed card under a banner.
+    expect(rule("\\.providers-grid__guidance")).toContain("grid-column: 1 / -1");
+    expect(rule("\\.providers-grid__seat")).not.toContain("grid-column");
+    expect(rule("\\.providers-grid__seat")).toMatch(/min-height:\s*[\d.]+rem/);
+  });
+
+  it("dashes a switched-off card's frame as well as dimming it, so it is not a degraded one", () => {
+    // *Not in play* is the dashed treatment across this sheet — the add card, the promised
+    // tile — and a degraded card keeps the solid frame because it is in play and struggling.
+    expect(rule("\\.providers-card--off")).toContain("border: 1px dashed var(--line-strong)");
+    expect(rule("\\.providers-add-card")).toContain("1px dashed var(--line-strong)");
+  });
+});
+
+describe("the cap and its warning (#232)", () => {
+  it("keeps the input at the mockup's width, right-aligned, and lets the notes under it take a sentence", () => {
+    expect(rule("\\.providers-card__cap \\.ou-input")).toMatch(/width:\s*[\d.]+rem/);
+    expect(rule("\\.providers-card__cap \\.ou-input")).toContain("text-align: right");
+    expect(rule("\\.providers-card__cap")).toContain("max-width: 18rem");
+    expect(rule("\\.providers-card__cap")).toContain("align-items: flex-end");
+  });
+
+  it("draws P7's glyph faint, with a help cursor, beside the figure rather than inside it", () => {
+    expect(rule("\\.providers-card__meter-warning")).toContain("color: var(--ink-faint)");
+    expect(rule("\\.providers-card__meter-warning")).toContain("cursor: help");
+    expect(rule("\\.providers-card__meter-trail")).toContain("display: inline-flex");
+  });
+});
+
+describe("the security strip (#232)", () => {
+  it("tints the shield from the accent's published triple, and never a mixed colour", () => {
+    const shield = rule("\\.providers-security__shield");
+
+    expect(shield).toContain("border: 1px solid var(--accent-line)");
+    expect(shield).toContain("background: var(--accent-tint)");
+    expect(shield).toContain("color: var(--accent)");
+    expect(shield).toMatch(/width:\s*[\d.]+rem/);
+  });
+
+  it("gives the sentence the mockup's measure and its emphasis the full ink", () => {
+    expect(rule("\\.providers-security__copy")).toContain("max-width: 78ch");
+    expect(rule("\\.providers-security__copy")).toContain("color: var(--ink-dim)");
+    expect(rule("\\.providers-security__copy strong")).toContain("color: var(--ink)");
+  });
+
+  it("wraps as one row, under the grid, with the grid's gap above it", () => {
+    expect(rule("\\.providers-security")).toContain("flex-wrap: wrap");
+    expect(rule("\\.providers-security")).toContain("margin-top: var(--sp-8)");
+  });
+});
+
+describe("the skeleton (#232)", () => {
+  /** Every bar the skeleton draws. */
+  const BARS = [
+    "slot",
+    "action",
+    "monogram",
+    "bar",
+    "pill",
+    "switch",
+    "input",
+    "button",
+    "meter",
+    "plus",
+  ];
+
+  it("draws every bar on the raised plane, so it is legible on the card in both palettes", () => {
+    for (const bar of BARS) {
+      expect(rule(`\\.providers-skeleton__${bar}`), bar).toContain("background: var(--raised)");
+    }
+  });
+
+  it("reserves each control's box in rem or in tokens, so the reservation holds at 125%", () => {
+    // The monogram's square, the switch's track, an input's box and a small button's — the
+    // sizes the card's own primitives take, none of them in px.
+    expect(rule("\\.providers-skeleton__monogram")).toContain("width: 2.625rem");
+    expect(rule("\\.providers-skeleton__switch")).toContain("width: 2.375rem");
+    expect(rule("\\.providers-skeleton__input")).toMatch(/height:\s*[\d.]+rem/);
+    expect(rule("\\.providers-skeleton__button")).toMatch(/height:\s*[\d.]+rem/);
+    expect(rule("\\.providers-skeleton__meter")).toContain("height: var(--sp-3)");
+    expect(rule("\\.providers-skeleton__pill")).toContain("height: var(--sp-8)");
+    expect(rule("\\.providers-skeleton__input--cap")).toContain("width: 6.75rem");
+  });
+
+  it("pulses only for a reader who has not asked for less motion", () => {
+    const motion = /@media \(prefers-reduced-motion: no-preference\)\s*\{[\s\S]*?providers-skeleton-pulse/.exec(CODE);
+
+    expect(motion).not.toBeNull();
+    expect(CODE).toMatch(/@keyframes providers-skeleton-pulse/);
+    // No bar animates outside the media query.
+    const outside = CODE.replace(/@media \(prefers-reduced-motion: no-preference\)\s*\{[\s\S]*?\n\}\n/g, "");
+    expect(outside).not.toMatch(/providers-skeleton__[a-z-]+\s*\{[^}]*animation/);
   });
 });
 

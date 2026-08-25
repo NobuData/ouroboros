@@ -39,6 +39,15 @@
  *   count read here.
  * - **A connection never used shows an em-dash for last-used**, not a stamp borrowed from
  *   somewhere else.
+ *
+ * ### The meter is decided twice, from one function
+ *
+ * Since AE.6 ([#232](https://github.com/NobuData/ouroboros/issues/232)) the cap is editable,
+ * and the meter has to move the moment it is — before the route has re-read. So the model
+ * carries the meter's **inputs** ({@link SpendInputs}) rather than a decided line, and
+ * {@link meterFor} is called wherever the line is drawn: on the server for the first paint,
+ * and again in `app/providers/cap-field.tsx` with the cap the reader just typed. One pure
+ * function, so the two cannot disagree.
  */
 
 import type {
@@ -576,17 +585,33 @@ export function meterTone(fraction: number): MeterTone {
  * @param row The month's row for the connection's kind, or null when the kind has no usage
  *   this month or the spend could not be read.
  * @param seats A seat count a check reported, or null — {@link seatsIn}.
- * @returns The line. The rules, per this file's header: money for priced spend, *unpriced*
- *   for a cloud kind nobody priced, *no metered spend* for a local kind that cost nothing or
- *   was never priced, and on-box tokens beside a local figure; a bar only against a cap, save
- *   the local sliver.
+ * @returns {@link meterFor}'s line, at the connection's stored cap.
  */
 export function meterLine(
   connection: ProviderConnection,
   row: ProviderMonthlySpendRow | null,
   seats: number | null,
 ): MeterLine {
-  const cap = connection.monthlyCapCents;
+  return meterFor(connection.monthlyCapCents, row, seats);
+}
+
+/**
+ * The meter for a cap.
+ *
+ * The rules, per this file's header: money for priced spend, *unpriced* for a cloud kind
+ * nobody priced, *no metered spend* for a local kind that cost nothing or was never priced,
+ * and on-box tokens beside a local figure; a bar only against a cap, save the local sliver.
+ *
+ * @param cap The cap in cents, or null for none — the stored one, or the one just typed.
+ * @param row The month's row for the connection's kind, or null.
+ * @param seats A seat count a check reported, or null.
+ * @returns The line.
+ */
+export function meterFor(
+  cap: number | null,
+  row: ProviderMonthlySpendRow | null,
+  seats: number | null,
+): MeterLine {
   const capNote =
     cap === null ? null : `of ${capFigure(cap)} cap${seats === null ? "" : ` · ${seats} seat${seats === 1 ? "" : "s"}`}`;
 
@@ -645,9 +670,6 @@ export const TEST_CONNECTION = "Test connection";
 /** The cap field's label. */
 export const CAP_LABEL = "Monthly cap";
 
-/** Why the cap cannot be edited yet. */
-export const CAP_SOON = "Editing the cap arrives with #232.";
-
 /* --------------------------------------------------------------------------- the switch */
 
 /**
@@ -690,14 +712,26 @@ export interface CardModel {
   readonly secret: SecretRow | null;
   readonly meta: MetaRow;
   readonly models: ModelsRegion;
-  readonly meter: MeterLine;
-  /** What the foot's cap field reads. */
-  readonly cap: string;
+  /** What the meter and the cap field are drawn from — see {@link SpendInputs}. */
+  readonly spend: SpendInputs;
   /**
    * The aliases that resolve through this connection, or why they could not be read — what
    * the switch asks about before it goes off, and what a refused delete names.
    */
   readonly dependents: Reading<readonly string[]>;
+}
+
+/**
+ * The meter's three inputs, carried rather than decided so the cap field can redraw the
+ * meter with a cap the reader has typed and the route has not yet re-read.
+ */
+export interface SpendInputs {
+  /** The stored cap in cents, or null for none. */
+  readonly capCents: number | null;
+  /** The month's row for the connection's kind, or null. */
+  readonly row: ProviderMonthlySpendRow | null;
+  /** A seat count a check reported, or null. */
+  readonly seats: number | null;
 }
 
 /** What one card is composed from. */
@@ -754,24 +788,18 @@ export function cardModel({
     secret: secretRow(entry, connection),
     meta: metaRow(connection, now),
     models: modelsRegion(entry, models, pulls),
-    meter: meterLine(connection, spend, seatsIn(pillDetail(health))),
-    cap: capValue(connection.monthlyCapCents),
+    spend: { capCents: connection.monthlyCapCents, row: spend, seats: seatsIn(pillDetail(health)) },
     dependents: dependentsOf(aliases, connection.id),
   };
 }
 
 /* ------------------------------------------------------------------------------ the grid */
 
-/** The grid's accessible name. */
+/**
+ * The grid's accessible name.
+ *
+ * What the grid draws when it has no cards — the guidance for an empty workspace, the seat
+ * under the failed-read banner — is `app/providers/states.ts`'s, beside the page's other
+ * states, since AE.6 ([#232](https://github.com/NobuData/ouroboros/issues/232)).
+ */
 export const GRID_LABEL = "Provider connections";
-
-/** What the page says over the dashed card when the workspace has connected nothing. */
-export const NO_PROVIDERS_TITLE = "No providers connected yet";
-
-/** …and the note under it. */
-export const NO_PROVIDERS_NOTE =
-  "Routes resolve to aliases, and an alias needs a provider behind it. Connect one from the " +
-  "catalog to draw the first card here.";
-
-/** What the page says where the grid would be when the listing could not be read. */
-export const PROVIDERS_UNAVAILABLE = "The provider connections could not be read.";
