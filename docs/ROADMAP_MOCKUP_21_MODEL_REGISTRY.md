@@ -85,7 +85,7 @@ the Spend tab.
 | Routing Y.2 (`route_hops` FK → `model_aliases`, alias deletion blocked by FK), Y.3 (escalation rules `use_alias`/`add_vote` targets) | **Consumed** — they are two of the four reference kinds behind `Used by` counts and delete guards (CG.3). |
 | Routing Z.1 resolution (pure `resolve()` + explanations), Z.4 simulate, M1 alias-only rule | **Consumed + amended** — CH.6 adds disabled/unbound-alias semantics to resolution (dropped hops with explanations) and defines the persisted resolution snapshot the chain card and run console share. |
 | Routing Z.2 ("alias list endpoint for swap menus — registry read, foundation scope") | **Superseded** — CH.1's full lifecycle API replaces the minimal read (amendment posted at filing). |
-| Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended, and the subnav half is 🟢 delivered** — alias health derives from provider health + binding state (CH.5, no alias-level probes); the Registry tab went live with CI.1 (#591), mirroring AE.1's change. |
+| Routing Z.3 provider health, AA.1 subnav ("Model registry · soon") | **Consumed / amended, and both halves are 🟢 delivered** — alias health derives from provider health + binding state and is composed rather than probed (CH.5, #588: zero adapter calls, counted in test); the Registry tab went live with CI.1 (#591), mirroring AE.1's change. |
 | Providers AC.1 adapter SPI, AC.6 `provider_models` discovered catalog + P6 ("discovery feeds the registry") + soft alias-validation hook | **Consumed + extended, and CH.2 (#585) is 🟢 delivered** — the inspector's live model list and the import wizard read `provider_models`; the SPI now carries `paramSchema(modelId)`, merged with `provider_models.meta` and the catalog's; the AC.6 unknown-model warning gets its UI surface (CI.2/CI.3). |
 | Providers AD.2 (provider delete blocked while aliases depend, 409 naming aliases) | **Mirrored** — the registry enforces the same discipline in the other direction (alias delete blocked while routes/workflows/rules/commands reference it). |
 | Dashboard DASH-F.3 `token_usage`, DASH-J.4 (v2 "priced token accounting — provider price tables") | **Foundation landed here, and CG.2 (#580) is 🟢 delivered** — the `$ per 1M in·out` column needs a pricing catalog *now*, so `model_prices` is the shared price-table layer J.4 and Z.5/AB.4 consume rather than re-invent: bundled snapshot plus org overrides, four billing modes, provenance on every row. CH.3 (#586) is the service over it, and is 🟢 delivered. |
@@ -304,7 +304,7 @@ chips: **XS · S · M · L**.
 > perfectly well-formed document, and refusing it needs the adapter schema and
 > `provider_models` that no CHECK may look at.
 >
-> **One index, and a refusal to add a second.** The single-query table read CI.1 (#588) is
+> **One index, and a refusal to add a second.** The single-query table read CH.5 (#588) is
 > built on is already two index lookups and no sort — `model_aliases_organization_alias_key`
 > is both the range scan and the ordering — so a third index for it would be a duplicate
 > every write then maintains, and the plan is asserted instead. What *is* added is the read
@@ -734,7 +734,7 @@ ci/db: migrate ─▶ constraints (+CG probes) ─▶ ✓/✗
 | CH.2 | #585 | 🟢 Done | ouroboros-rest: [CH.2] Param & capability service | Adapter `paramSchema` SPI extension + metadata merge → inspector form schema, chip derivation | mvp, registry, rest, providers | N (after AC.1, AC.6) | Y | M | ouroboros-rest |
 | CH.3 | #586 | 🟢 Done | ouroboros-rest: [CH.3] Pricing service | Catalog + override resolution, billing modes, provenance; feeds DASH-J.4/Z.5 | mvp, registry, rest | N (after CG.2) | Y | M | ouroboros-rest |
 | CH.4 | #587 | 🟢 Done | ouroboros-rest: [CH.4] Import from provider | Wizard API over discovery: candidates, naming, collisions, preview, batch create | mvp, registry, rest, providers | N (after CH.1, AC.6) | Y | M | ouroboros-rest |
-| CH.5 | #588 | 🟡 Open | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
+| CH.5 | #588 | 🟢 Done | ouroboros-rest: [CH.5] Registry read model & alias health | One table payload: bindings, chips, health derivation, prices, used-by | mvp, registry, rest, routing | N (after CH.1–CH.3, Z.3) | Y | M | ouroboros-rest |
 | CH.6 | #589 | 🟡 Open | ouroboros-rest: [CH.6] Governance & resolution-snapshot contract | Raw-model rejection at publish (P.2 amendment), Z.1 disabled/unbound semantics, persisted snapshots | mvp, registry, rest, routing, engine | N (after Z.1, WF P.2) | Y | M | ouroboros-rest, ouroboros-engine |
 | CH.7 | #590 | 🟡 Open | ouroboros-rest: [CH.7] Registry integration tests | Lifecycle+guards, params, pricing, import, governance, isolation | mvp, registry, rest, ci | N (after CH.1–CH.6) | Y | M | ouroboros-rest |
 
@@ -1098,7 +1098,78 @@ import {items: [opus-5, haiku-tiny]} ─▶ tx: validate all ─▶ create all �
 
 ### Issue CH.5 — ouroboros-rest: [CH.5] Registry read model & alias health
 
-> **GitHub issue:** #588 · **Status:** 🟡 Open · **Parent epic:** #576
+> **GitHub issue:** #588 · **Status:** 🟢 Done · **Parent epic:** #576
+
+> **Shipped 2026-08-25.**
+> [`ouroboros-rest/src/modules/registry-read/`](../ouroboros-rest/src/modules/registry-read)
+> — `GET /api/v1/registry`, member-readable, org-scoped, documented in `openapi.yaml` (0.30.15)
+> and mirrored into the UI's generated types. Proven by unit specs per file and by
+> [`registry-read.integration-spec.ts`](../ouroboros-rest/src/modules/registry-read/registry-read.integration-spec.ts)
+> — all seven acceptance criteria over a socket against a migrated PostgreSQL 17.
+>
+> **The health cell is a pure function, and that is decision R8 made structural.**
+> `alias.health.ts` is a total function from four facts — the binding, the connection's switch,
+> Z.3's last conclusion and AC.6's catalog membership — to six states: `ok`, `degraded`,
+> `model_missing`, `unknown`, `provider_disabled`, `no_key`. Where two things are wrong at once
+> the nearer cause wins, so an alias on a failing provider reads `degraded` whether or not its
+> model is still listed; a catalog read from a provider that is not answering is not evidence
+> that a model went away. A connection discovery has **never** visited never reads
+> `model_missing`, because V017's *gap* and *mismatch* are different claims and flagging the
+> first would be a warning about this deployment's sweep dressed up as one about somebody's
+> registry.
+>
+> **Zero adapter calls, counted rather than promised.** `RegistryReadModule` does not import
+> `ProvidersModule`, so `ModelProviderRegistry` is not injectable in it and there is no path to
+> an adapter to take by mistake — asserted on the module's metadata, on the source of every
+> file in it, and behaviourally in the integration suite, which spies on the registry across a
+> real eight-row request and expects nothing. The chips are why that is worth saying twice:
+> CH.2's `ParamSchemaService` *does* reach an adapter, and this read deliberately uses
+> `paramChips` — the pure derivation over the two stored documents — instead.
+>
+> **Six statements, whatever the registry holds.** `AliasesService.list` (2), this module's
+> connections / discovery / envelope reads (3) and `PricingService.resolveMany` (≤1), the first
+> four issued together. The integration suite measures it at the driver by reading an
+> eight-alias workspace, deleting six aliases and reading again: the same number both times.
+> The masks are the one cost that scales, and with *connections* rather than aliases —
+> `provider_connections.credentials_encrypted` has no stored suffix beside it, so the inspector's
+> `sk-ant-…Xq4A` line costs one vault open per connection, the trade AD.2 already documents and
+> accepts for mockup 07's five cards.
+>
+> **It is its own module, and could not have been a fourth controller in `RegistryModule`.**
+> That module states at length that `VaultModule` is *deliberately not imported* — and the mask
+> means the composed read needs a plaintext for the length of one `maskCredential`. It could not
+> have been done in place in any case: `VaultModule` imports `RegistryModule` (it is where
+> `ProviderCredentialStore` is bound into `VAULT_SECRET_STORES`), so importing it back would be
+> a cycle, and `.dependency-cruiser.cjs`'s `no-circular` rule is an error rather than a warning.
+> The seam it draws is real: **writes and the alias's own resource stay in `RegistryModule`; the
+> page's composed payload lives here.** `RegistryModule` gained one export, `AliasesService`,
+> because the composed rows are CH.1's list with four derived cells on top rather than a second
+> query against `model_aliases` — two readings of *what is an alias* are two answers, and the
+> `Used by` column disagreeing with the inspector's chips is exactly what decision **R5** exists
+> to prevent. The integration suite asserts the two endpoints answer the same rows.
+>
+> **Two things the issue said that landed differently.** The issue's sketch reads
+> `provider.status err? error : z3.degraded? degraded(note)`, and what shipped folds those into
+> one mapping — because the two states V015 actually has are `error` (*the last check failed,
+> and `health` says how*) and `paused`, and mockup 21 draws the seeded Copilot connection, which
+> is `error` with `elevated latency`, as **⚠ degraded**. CG.4's seed section says the same thing
+> from the other side: *nothing here stores the word*. So `error` → `degraded` with the check's
+> own note, and the hard red states are the two nobody measured — `no_key` for an unbound alias
+> and `provider_disabled` for a connection switched off or paused, both carrying the
+> *Fix in Providers →* pointer the mockup draws on the orphan row. The second is that `usedBy`
+> is served **beside** `references` rather than instead of it: the ticket asks for the count and
+> the chip list, and it is safe here where CH.1 refused it because both come out of one array in
+> one expression.
+>
+> **What the payload does not carry.** No colour, no severity and no tone — six state words, and
+> mapping them to a dot is CI.2's (#592) work in the surface that owns the classes; a severity
+> invented here would be a second vocabulary for one fact, which is the argument
+> `provider-health/resources.ts` already makes. No timestamps or `updatedBy` either: this is the
+> *page's* payload, and an alias's provenance is `GET /api/v1/registry/aliases`.
+>
+> **Deferred, and to whom.** The table (#592), the inspector (#593) and Z.2's swap menus (#195)
+> are the three consumers; the alias-level `model_missing` fixture this publishes is what CJ.4
+> (#601) will build its deprecation watch on.
 
 - **Problem Statement:** The table renders eight columns spanning five
   subsystems (bindings, params, provider health, pricing, references) — one
@@ -1124,10 +1195,14 @@ import {items: [opus-5, haiku-tiny]} ─▶ tx: validate all ─▶ create all �
 - **Epic:** CH
 
 ```
-health(alias) := unbound? no_key("connect a provider")
-              : provider.status err? error : z3.degraded? degraded(note)
-              : model ∉ discovery? model_missing : ok
+health(alias) := unbound?            no_key("no key — connect a provider")  [+ Fix in Providers →]
+              : connection off/paused? provider_disabled(note)              [+ Fix in Providers →]
+              : last check failed?   degraded(the check's own note)
+              : never checked?       unknown
+              : model ∉ discovery?   model_missing
+              : ok
 row(coder-fallback) ─▶ {GH copilot · gpt-5-codex · ⚠ degraded · seat-based · 2 routes · on}
+adapter calls made by GET /api/v1/registry: 0
 ```
 
 ### Issue CH.6 — ouroboros-rest: [CH.6] Governance & resolution-snapshot contract

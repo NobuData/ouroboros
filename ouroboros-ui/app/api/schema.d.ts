@@ -875,6 +875,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/registry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The allowed-models table, composed
+         * @description Mockup 21's *ALLOWED MODELS* table in **one payload**
+         *     ([#588](https://github.com/NobuData/ouroboros/issues/588)) — every cell of every row,
+         *     already composed: the binding and its monogram, the raw model id, CH.2's derived param
+         *     chips, the **health** cell, CH.3's price with its provenance, the `Used by` count and
+         *     the referrer chips behind it, and the switch.
+         *
+         *     **Eight columns come from five subsystems, and this is where they are joined.** A client
+         *     assembling that itself would be slow, and — the reason that matters more — assembly
+         *     order is where inconsistencies appear: a page that reads aliases, then health, then
+         *     prices renders a row nobody's database was ever in. The same payload feeds the table,
+         *     the alias inspector's prefill and routing's alias swap menus, so those three surfaces
+         *     cannot disagree.
+         *
+         *     **Alias health is derived, never probed** (decision **R8**). No provider is called to
+         *     answer this request — not once, and not per alias. Everything the `health` cell says is
+         *     something the system already knows: whether the alias is bound at all (a fact, not a
+         *     network question), what Z.3's passive sweep last concluded about the provider
+         *     ([#196](https://github.com/NobuData/ouroboros/issues/196)), and whether the bound model
+         *     is still in the connection's discovered catalog
+         *     ([#221](https://github.com/NobuData/ouroboros/issues/221)). The orphan row is the proof:
+         *     `no key — connect a provider` is a binding fact, and a probe could not have told you
+         *     that, because there is nothing to probe.
+         *
+         *     **This does not replace `GET /api/v1/registry/aliases`.** That list is the *alias's* own
+         *     resource — as stored, with its provenance — and is what every write answers with. This
+         *     is the *page's* payload, built on that list rather than beside it.
+         *
+         *     **Unpaged**, for the same reason: a workspace's registry is a handful of names.
+         *
+         *     **Any member may read it.**
+         */
+        get: operations["readRegistry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/registry/param-schema": {
         parameters: {
             query?: never;
@@ -4833,6 +4882,170 @@ export interface components {
         ModelAliasList: {
             /** @description Every alias in the workspace, ordered by name, unbound ones included. */
             aliases: components["schemas"]["ModelAlias"][];
+        };
+        /**
+         * RegistryBinding
+         * @description Where an alias resolves, as mockup 21's provider cell and its inspector's provider line
+         *     draw it ([#588](https://github.com/NobuData/ouroboros/issues/588)) — the connection, its
+         *     monogram square, and the masked key.
+         */
+        RegistryBinding: {
+            /**
+             * Format: uuid
+             * @description `provider_connections.id` — what a rebind addresses and what a swap menu keys on.
+             */
+            id: string;
+            /**
+             * @description Which adapter reaches it.
+             * @example anthropic
+             * @example copilot
+             * @example cursor
+             * @example ollama
+             * @example openai_compatible
+             */
+            kind: string;
+            /**
+             * @description What mockup 07's card calls it — the cell's text beside the square.
+             * @example Anthropic Claude
+             */
+            displayName: string;
+            /**
+             * @description The square's letters — `AN`, `GH`, `CU`, `OL`, `VL` — computed server-side so this
+             *     page and mockup 07's cards cannot pick different letters for one connection. A kind
+             *     the mockups do not draw takes its letters from `displayName`.
+             * @example AN
+             */
+            monogram: string;
+            /**
+             * @description `••••Xq4A` — the inspector's *key sk-ant-…Xq4A* — or **null**, which means either
+             *     that the provider stores no credential (an Ollama daemon, an unauthenticated
+             *     OpenAI-compatible endpoint) or that this deployment could not open the one it has.
+             *     A client renders both the same way.
+             *
+             *     The same string `GET /api/v1/providers` publishes, computed from the plaintext
+             *     server-side; the characters it hides never cross the wire.
+             * @example ••••Xq4A
+             */
+            mask: string | null;
+        };
+        /**
+         * AliasHealth
+         * @description Mockup 21's `Health` cell — **derived, never probed**
+         *     ([#588](https://github.com/NobuData/ouroboros/issues/588), decision **R8**).
+         *
+         *     Composed from what the system already holds, in this order: unbound → `no_key`; the
+         *     connection switched off or paused → `provider_disabled`; Z.3's last check failed →
+         *     `degraded`; nothing has checked it → `unknown`; the bound model is no longer in the
+         *     connection's discovered catalog → `model_missing`; otherwise `ok`. Where two things are
+         *     wrong at once the nearer cause wins, so an alias on a failing provider reads `degraded`
+         *     whether or not its model is still listed.
+         *
+         *     **No colour and no severity is published**, deliberately: mapping six states to a dot is
+         *     the surface that owns the CSS classes' work, and a severity invented here would become a
+         *     second vocabulary for the same fact.
+         */
+        AliasHealth: {
+            /**
+             * @description `ok` — bound, enabled, checked, and its model is still listed. `degraded` — the
+             *     provider's last check failed; `note` is that check's own reason, which is how the
+             *     seeded Copilot row comes out amber. `model_missing` — discovery no longer lists the
+             *     bound model on the connection. `unknown` — nothing has checked the provider, and it
+             *     is **never** drawn as healthy (decision **M8**). `provider_disabled` — the connection
+             *     is switched off or paused, which is intent rather than a measurement. `no_key` — the
+             *     alias has no connection at all.
+             * @enum {string}
+             */
+            state: "ok" | "degraded" | "model_missing" | "unknown" | "provider_disabled" | "no_key";
+            /**
+             * @description The line under the dot — `elevated latency`, `no key — connect a provider` — or null
+             *     for `ok`, where there is nothing to explain.
+             * @example elevated latency
+             */
+            note: string | null;
+            /**
+             * @description Mockup 21's *Fix in Providers →* target, present exactly where somebody can act
+             *     there — an unbound alias, or a connection switched off or paused — and null
+             *     otherwise. A provider failing upstream is not something that page can fix.
+             * @example /models/providers
+             */
+            fix: string | null;
+            /**
+             * Format: date-time
+             * @description When Z.3 last checked the provider, or null when nothing has — and null for an unbound alias.
+             */
+            checkedAt: string | null;
+        };
+        /**
+         * RegistryAlias
+         * @description One row of mockup 21's allowed-models table, every cell composed
+         *     ([#588](https://github.com/NobuData/ouroboros/issues/588)).
+         *
+         *     The derived cells — `chips`, `health`, `price.display`, `binding.monogram` — are served
+         *     rather than left to a client, so three surfaces reading this payload cannot render the
+         *     same row differently. The structured fields are beside each of them for a client that
+         *     wants to render its own; what it must not have to invent is the value for *there is
+         *     nothing here*.
+         */
+        RegistryAlias: {
+            /**
+             * Format: uuid
+             * @description `model_aliases.id` — what every write on `/api/v1/registry/aliases` addresses.
+             */
+            id: string;
+            /**
+             * @description The name routes use — the row's pill.
+             * @example coder-max
+             */
+            alias: string;
+            /** @description The **On** switch. Always false for an unbound alias. */
+            enabled: boolean;
+            /** @description Where it resolves, or null for mockup 21's *no provider* cell. */
+            binding: components["schemas"]["RegistryBinding"] | null;
+            /**
+             * @description The raw model id — the only place in this payload one appears (decision **M1**).
+             * @example claude-fable-5
+             */
+            modelId: string;
+            /** @description `model_aliases.params` as stored — what the inspector's fields prefill from. */
+            params: {
+                [key: string]: unknown;
+            };
+            /** @description `model_aliases.restrictions` as stored — `review_vote_only`, `batch_ok`. */
+            restrictions: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description The `Params` cell, derived from the two documents above (CH.2,
+             *     [#585](https://github.com/NobuData/ouroboros/issues/585)). **Empty is the mockup's
+             *     `—`**, and it is an empty list rather than a one-element list holding a dash: that
+             *     cell has its own markup, and no client should have to recognise a sentinel string.
+             * @example [
+             *       "max thinking",
+             *       "400k budget"
+             *     ]
+             */
+            chips: string[];
+            /** @description An operator's note, or null. Part of the inspector's state rather than the table's. */
+            notes: string | null;
+            health: components["schemas"]["AliasHealth"];
+            price: components["schemas"]["ModelPrice"];
+            /**
+             * @description The `Used by` cell. Always `references.length` — the count and the chips are one
+             *     array composed in one place, so the column and the inspector cannot disagree
+             *     (decision **R5**).
+             * @example 4
+             */
+            usedBy: number;
+            /** @description Everything that references the alias, in chip order — what the inspector draws and what a `409` on delete names. */
+            references: components["schemas"]["ModelAliasReference"][];
+        };
+        /**
+         * RegistryReadModel
+         * @description The registry page, in one payload. Unpaged — a workspace's registry is a handful of names.
+         */
+        RegistryReadModel: {
+            /** @description Every alias in the workspace, ordered by name, unbound ones included. */
+            aliases: components["schemas"]["RegistryAlias"][];
         };
         /**
          * ModelAliasWarning
@@ -8847,6 +9060,186 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readRegistry: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description Every alias, ordered by name, unbound ones included. Empty for a workspace with
+             *     none — the registry's empty state, not a failure.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "aliases": [
+                     *         {
+                     *           "id": "5eed000f-0000-4000-8000-000000000004",
+                     *           "alias": "coder-fallback",
+                     *           "enabled": true,
+                     *           "binding": {
+                     *             "id": "5eed000c-0000-4000-8000-000000000003",
+                     *             "kind": "copilot",
+                     *             "displayName": "GitHub Copilot",
+                     *             "monogram": "GH",
+                     *             "mask": "••••Xq4A"
+                     *           },
+                     *           "modelId": "gpt-5-codex",
+                     *           "params": {},
+                     *           "restrictions": {},
+                     *           "chips": [],
+                     *           "notes": null,
+                     *           "health": {
+                     *             "state": "degraded",
+                     *             "note": "elevated latency",
+                     *             "fix": null,
+                     *             "checkedAt": "2026-08-25T09:58:12.104Z"
+                     *           },
+                     *           "price": {
+                     *             "connectionKind": "copilot",
+                     *             "modelId": "gpt-5-codex",
+                     *             "price": {
+                     *               "billingMode": "seat",
+                     *               "inputCentsPer1m": null,
+                     *               "outputCentsPer1m": null,
+                     *               "provenance": {
+                     *                 "source": "bundled",
+                     *                 "catalogVersion": "2026-08-15+litellm.70d51a1",
+                     *                 "effectiveAt": "2026-08-15T00:00:00.000Z"
+                     *               }
+                     *             },
+                     *             "display": "seat-based"
+                     *           },
+                     *           "usedBy": 2,
+                     *           "references": [
+                     *             {
+                     *               "kind": "route",
+                     *               "refId": "5eed0012-0000-4000-8000-000000000007",
+                     *               "label": "implement-primary",
+                     *               "blocking": true
+                     *             },
+                     *             {
+                     *               "kind": "route",
+                     *               "refId": "5eed0012-0000-4000-8000-000000000015",
+                     *               "label": "commit-msg-primary",
+                     *               "blocking": true
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "id": "5eed000f-0000-4000-8000-000000000008",
+                     *           "alias": "gpt5-experiments",
+                     *           "enabled": false,
+                     *           "binding": null,
+                     *           "modelId": "gpt-5.2-preview",
+                     *           "params": {},
+                     *           "restrictions": {},
+                     *           "chips": [],
+                     *           "notes": null,
+                     *           "health": {
+                     *             "state": "no_key",
+                     *             "note": "no key — connect a provider",
+                     *             "fix": "/models/providers",
+                     *             "checkedAt": null
+                     *           },
+                     *           "price": {
+                     *             "connectionKind": null,
+                     *             "modelId": "gpt-5.2-preview",
+                     *             "price": null,
+                     *             "display": "—"
+                     *           },
+                     *           "usedBy": 0,
+                     *           "references": []
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RegistryReadModel"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

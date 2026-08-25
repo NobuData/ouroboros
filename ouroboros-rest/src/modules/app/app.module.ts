@@ -17,6 +17,7 @@ import { PricingModule } from "../pricing/pricing.module";
 import { ProviderHealthModule } from "../provider-health/provider-health.module";
 import { ProviderConnectionsModule } from "../provider-connections/provider-connections.module";
 import { ProvidersModule } from "../providers/providers.module";
+import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
@@ -86,8 +87,19 @@ import { AppService } from "./app.service";
  * it is constructed, which is at boot. A deployment with a malformed key therefore fails
  * while it is starting rather than on the first credential anybody stores.
  *
+ * `RegistryReadModule` ([#588](https://github.com/NobuData/ouroboros/issues/588)) follows
+ * `VaultModule`, and it is listed after it rather than beside `RegistryModule` because it
+ * *imports* the vault: mockup 21's inspector draws a masked key on its provider line, and there
+ * is no stored suffix to read. Its one route — `GET /api/v1/registry`, the composed
+ * allowed-models payload — is tenant-required and readable by every role, which says nothing
+ * new about middleware. Why it is a module of its own rather than a fourth controller in
+ * `RegistryModule` is `registry-read.module.ts`'s header, and the short version is that
+ * `VaultModule` imports `RegistryModule`, so the alternative was a cycle. Its position in this
+ * list is otherwise free: `@Get()` on a `registry` controller matches that path exactly, so it
+ * cannot shadow the `registry/…` routes `PricingModule` and `RegistryModule` mount.
+ *
  * `ProviderHealthModule` ([#196](https://github.com/NobuData/ouroboros/issues/196)) follows
- * `VaultModule`, and it is the first module in this list that could not have been placed
+ * it, and it is the first module in this list that could not have been placed
  * before another one for a reason that is not about guards: it *imports* the vault, because
  * validating a provider key means presenting it. Its one route is tenant-required and
  * readable by every role, which says nothing new; what is new is that it is also the first
@@ -195,6 +207,7 @@ export class AppModule {
         PricingModule,
         RegistryModule,
         VaultModule,
+        RegistryReadModule,
         ProviderHealthModule,
         ProvidersModule,
         // Before `ProviderConnectionsModule`, and the order is a rule rather than a

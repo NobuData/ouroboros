@@ -82,20 +82,31 @@ describe("the registry module", () => {
     await moduleRef.close();
   });
 
-  it("exports the two services and the credential store, and nothing else", () => {
-    // The repository stays private: a consumer that reached past the service would be one
-    // that had skipped the refusal `resolve` raises for an unknown alias, which is the
-    // decision the service exists to make once.
+  it("exports the three services and the credential store, and nothing else", () => {
+    // The repositories stay private: a consumer that reached past a service would be one that
+    // had skipped the refusal `resolve` raises for an unknown alias, which is the decision the
+    // service exists to make once. `AliasesService` is CH.5's (#588) — its composed read builds
+    // mockup 21's table on this list rather than querying `model_aliases` a second time — and
+    // it is the service rather than `AliasesRepository` for exactly the reason above.
     const exports = Reflect.getMetadata("exports", RegistryModule) as unknown[] | undefined;
 
-    expect(exports).toEqual([RegistryService, ProviderCredentialStore, ParamSchemaService]);
+    expect(exports).toEqual([
+      RegistryService,
+      ProviderCredentialStore,
+      ParamSchemaService,
+      AliasesService,
+    ]);
   });
 
   it("does not import the vault", () => {
     // Nothing here decrypts anything — a resolution carries an address and a model, never a
     // credential — and the sweep hands this module an already-sealed envelope rather than
     // asking it to produce one. The absent import is what keeps that true as the module
-    // grows: the day something here needs a plaintext, adding it is a visible change.
+    // grows: the day something here needs a plaintext, adding it is a visible change. CH.5
+    // (#588) is that day for the *registry page* and did not change this line — its composed
+    // read needs a mask, so it lives in `RegistryReadModule`, which imports this module and the
+    // vault. The seam is deliberate; `registry-read.module.ts` argues it, and a cycle is what
+    // the alternative would have been.
     const imports = (Reflect.getMetadata("imports", RegistryModule) as { name?: string }[]) ?? [];
 
     // `ProvidersModule` is the one CH.2 added: a param schema is whatever the bound adapter
