@@ -37,6 +37,9 @@ describe("the param schema service", () => {
       findConnection: jest.fn().mockResolvedValue({ id: CONNECTION, kind: "custom" }),
       discoveredModelMeta: jest.fn().mockResolvedValue(undefined),
       catalogModelMeta: jest.fn().mockResolvedValue(undefined),
+      // CH.4's (#587) batched twins, which `forModels` reads instead of the two above.
+      discoveredModelMetaMany: jest.fn().mockResolvedValue(new Map()),
+      catalogModelMetaMany: jest.fn().mockResolvedValue(new Map()),
     };
 
     // The fake registers under `custom`, which is V015's kind for *an endpoint this product has
@@ -226,6 +229,77 @@ describe("the param schema service", () => {
 
     it("accepts a write that tunes nothing", async () => {
       await expect(service.assertWriteValid(ORG, CONNECTION, MODEL, {})).resolves.toBeUndefined();
+    });
+  });
+  describe("forModels", () => {
+    /**
+     * CH.4's batched question ([#587](https://github.com/NobuData/ouroboros/issues/587)). The
+     * merge is the same one `schemaFor` uses — that is the whole design — so what is asserted
+     * here is the batching: one statement per source rather than two per model, and every id
+     * asked about present in the answer.
+     */
+    const MODELS = ["fake/small", "fake/large", "fake/small"];
+
+    it("answers one entry per distinct model, whatever the caller repeated", async () => {
+      const answers = await service.forModels(ORG, CONNECTION, MODELS);
+
+      expect([...answers.keys()]).toEqual(["fake/small", "fake/large"]);
+    });
+
+    it("reads each source once for the whole list", async () => {
+      // The N+1 this method exists to remove. A loop over `schemaFor` would be six reads here
+      // and eighty for a forty-model connection.
+      await service.forModels(ORG, CONNECTION, MODELS);
+
+      expect(repository.discoveredModelMetaMany).toHaveBeenCalledTimes(1);
+      expect(repository.discoveredModelMetaMany).toHaveBeenCalledWith(ORG, CONNECTION, [
+        "fake/small",
+        "fake/large",
+      ]);
+      expect(repository.catalogModelMetaMany).toHaveBeenCalledTimes(1);
+      expect(repository.discoveredModelMeta).not.toHaveBeenCalled();
+      expect(repository.catalogModelMeta).not.toHaveBeenCalled();
+    });
+
+    it("resolves the connection once, not once per model", async () => {
+      await service.forModels(ORG, CONNECTION, MODELS);
+
+      expect(repository.findConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it("answers the same schema the single read would have", async () => {
+      const [answers, single] = await Promise.all([
+        service.forModels(ORG, CONNECTION, [MODEL]),
+        service.schemaFor(ORG, CONNECTION, MODEL),
+      ]);
+
+      expect(answers.get(MODEL)?.schema).toEqual(single);
+    });
+
+    it("narrows each model by the metadata discovery reported about it", async () => {
+      repository.discoveredModelMetaMany.mockResolvedValue(
+        new Map([["fake/small", { context_tokens: 32_768 }]]),
+      );
+
+      const answers = await service.forModels(ORG, CONNECTION, ["fake/small", "fake/large"]);
+
+      expect(answers.get("fake/small")?.capabilities.contextTokens).toBe(32_768);
+      // And the model discovery said nothing about is not given the other one's numbers.
+      expect(answers.get("fake/large")?.capabilities.contextTokens).toBeNull();
+    });
+
+    it("refuses a connection this workspace does not have", async () => {
+      repository.findConnection.mockResolvedValue(undefined);
+
+      await expect(service.forModels(ORG, CONNECTION, MODELS)).rejects.toMatchObject({
+        code: "provider_connection_not_found",
+      });
+    });
+
+    it("issues nothing at all for an empty list", async () => {
+      // Except the connection lookup, which is the `404` a caller is owed either way.
+      expect(await service.forModels(ORG, CONNECTION, [])).toEqual(new Map());
+      expect(repository.discoveredModelMetaMany).toHaveBeenCalledWith(ORG, CONNECTION, []);
     });
   });
 });

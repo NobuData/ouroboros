@@ -6,7 +6,7 @@ import { RegistryRepository } from "./registry.repository";
 import type { AliasResolutionRow } from "./resolution";
 
 /**
- * The six statements, and the two properties a resolution rests on.
+ * The eight statements, and the two properties a resolution rests on.
  *
  * This layer holds no rules — it holds statements — which is why mocking a *method* would
  * prove nothing here. `expect(repository.resolveAlias).toHaveBeenCalled()` says nothing about
@@ -70,6 +70,14 @@ describe("the registry repository", () => {
         "catalogModelMeta",
         (repository) => repository.catalogModelMeta(WORKSPACE, "anthropic", MODEL),
       ],
+      [
+        "discoveredModelMetaMany",
+        (repository) => repository.discoveredModelMetaMany(WORKSPACE, CONNECTION, [MODEL]),
+      ],
+      [
+        "catalogModelMetaMany",
+        (repository) => repository.catalogModelMetaMany(WORKSPACE, "anthropic", [MODEL]),
+      ],
     ];
 
   describe("scoping", () => {
@@ -99,7 +107,7 @@ describe("the registry repository", () => {
         // precedence rule — so the scoping is in the call rather than in a `where`, and the
         // parameter assertion above is what covers it. Re-deriving that predicate here would be
         // the second implementation V012 exists to prevent.
-        if (name === "catalogModelMeta") {
+        if (name === "catalogModelMeta" || name === "catalogModelMetaMany") {
           expect(statement.sql).toContain("model_price(");
 
           return;
@@ -154,6 +162,65 @@ describe("the registry repository", () => {
       expect(code("registry.service.ts")).not.toContain("credentials_encrypted");
       expect(code("resolution.ts")).not.toContain("credentials_encrypted");
       expect(code("registry.secrets.ts")).toContain("credentials_encrypted");
+    });
+  });
+
+  describe("the batched metadata reads", () => {
+    // CH.4 (#587). Two statements that exist so a wizard over a forty-model connection is not
+    // eighty round trips; what they must not become is the same N+1 with a different name, so
+    // each of these asserts *one* statement for a list of three.
+    const MODELS = ["claude-fable-5", "claude-opus-5", "claude-haiku-4-5"];
+
+    it("asks discovery about every model in one statement", async () => {
+      database.answers({ rows: MODELS.map((model_id) => ({ model_id, meta: {} })) });
+
+      await registry.discoveredModelMetaMany(WORKSPACE, CONNECTION, MODELS);
+
+      expect(database.statements).toHaveLength(1);
+      const [statement] = database.statements;
+      expect(statement.sql).toContain('inner join "ouroboros"."provider_connections"');
+      expect(statement.sql).toContain('"m"."model_id" in');
+      expect(statement.parameters).toEqual([WORKSPACE, CONNECTION, ...MODELS]);
+    });
+
+    it("asks the catalog about every model in one statement, through model_price()", async () => {
+      database.answers({ rows: MODELS.map((model_id) => ({ model_id, meta: {} })) });
+
+      await registry.catalogModelMetaMany(WORKSPACE, "anthropic", MODELS);
+
+      expect(database.statements).toHaveLength(1);
+      const [statement] = database.statements;
+      // The lateral is what keeps the precedence in V012's function rather than in this file:
+      // the function is called once per model, and nothing here re-sorts what it returned.
+      expect(statement.sql).toContain("cross join lateral");
+      expect(statement.sql).toContain("model_price(");
+      expect(statement.parameters).toEqual([MODELS, WORKSPACE, "anthropic"]);
+    });
+
+    it("keys both answers by model id, and omits what was not found", async () => {
+      database.answers({ rows: [{ model_id: "claude-opus-5", meta: { context_tokens: 200000 } }] });
+
+      const discovered = await registry.discoveredModelMetaMany(WORKSPACE, CONNECTION, MODELS);
+
+      // Absent rather than present-and-empty: *nothing was reported about this model* is a
+      // different fact from *an empty document was*, and the merge treats them differently.
+      expect(discovered.get("claude-opus-5")).toEqual({ context_tokens: 200000 });
+      expect(discovered.has("claude-fable-5")).toBe(false);
+    });
+
+    it.each([
+      [
+        "discoveredModelMetaMany",
+        (r: RegistryRepository) => r.discoveredModelMetaMany(WORKSPACE, CONNECTION, []),
+      ],
+      [
+        "catalogModelMetaMany",
+        (r: RegistryRepository) => r.catalogModelMetaMany(WORKSPACE, "anthropic", []),
+      ],
+    ])("issues no statement at all from %s for an empty list", async (_name, issue) => {
+      // An `in ()` is not valid SQL and an `unnest('{}')` is a round trip for a known answer.
+      expect(await issue(registry)).toEqual(new Map());
+      expect(database.statements).toHaveLength(0);
     });
   });
 

@@ -3,13 +3,18 @@
  * ([#584](https://github.com/NobuData/ouroboros/issues/584)): what a write changes, what to
  * call it, and what to name a copy.
  *
- * Three questions the service asks before it opens a transaction, answered here without one:
+ * Four questions the service asks before it opens a transaction, answered here without one:
  *
  *   * **What moved?** {@link aliasDiff} compares the row before and after as
  *     {@link AliasState}s and answers V025's diff — one `{from, to}` per column that changed,
  *     or `null` when nothing did. Null is what makes a no-op `PATCH` write nothing and record
  *     nothing: V025 refuses an empty diff, and a revision saying *somebody pressed Save and
  *     nothing moved* is one nobody reads to the end (V021's argument).
+ *   * **What moved, when it must have?** {@link requiredDiff} is the same comparison for a
+ *     create or a delete, where `null` is impossible and is therefore an error rather than an
+ *     answer. Every path that writes a `created` revision goes through it — CH.1's create and
+ *     duplicate, and CH.4's import ([#587](https://github.com/NobuData/ouroboros/issues/587)) —
+ *     so an imported alias's revision is shaped by the same function a typed one's is.
  *   * **What was it?** {@link revisionAction} ranks the things one write can be. A `PATCH` may
  *     rename, rebind and edit in one request and still leaves one revision; the action names
  *     the most consequential change, in the order a reader of the History tab wants to be told.
@@ -133,6 +138,32 @@ export function aliasDiff(
   }
 
   return Object.keys(diff).length === 0 ? null : diff;
+}
+
+/**
+ * A diff that cannot be empty — a create's or a delete's, where one side is the whole row.
+ *
+ * {@link aliasDiff} answers `null` for *nothing moved*, which is a real answer for an edit and
+ * an impossible one here: a create moves every column from null and a delete moves every column
+ * to it. This is that impossibility, asserted rather than assumed, so a caller writing a
+ * revision record does not have to carry a null V025 would refuse anyway.
+ *
+ * @param before - The state before, or null for a create.
+ * @param after - The state after, or null for a delete.
+ * @returns The diff.
+ * @throws {Error} When {@link aliasDiff} answered null, which for a one-sided diff it cannot.
+ */
+export function requiredDiff(
+  before: AliasState | null,
+  after: AliasState | null,
+): AliasRevisionDiff {
+  const diff = aliasDiff(before, after);
+
+  if (diff === null) {
+    throw new Error("a create or a delete always moves every column");
+  }
+
+  return diff;
 }
 
 /**

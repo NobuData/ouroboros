@@ -10,6 +10,7 @@
  * registry.secrets.ts    the vault's re-encryption store for the credential column
  * params.*.ts            CH.2 — the param schema, its merge, its validation, the chips
  * aliases.*.ts           CH.1 — the alias lifecycle: create, edit, rebind, duplicate, delete
+ * import.*.ts            CH.4 — bulk creation from discovery: candidates, naming, one batch
  * ```
  *
  * **It declared no controller until mockup 21 was written, and that was the whole of decision
@@ -23,8 +24,18 @@
  * ([#585](https://github.com/NobuData/ouroboros/issues/585)) added the first controller
  * here, a read; CH.1 ([#584](https://github.com/NobuData/ouroboros/issues/584)) is mockup
  * 21 writing its own API, which is what M2 was waiting for — `/api/v1/registry/aliases`,
- * with the guards that make the page's caption true. `registry.module.spec.ts` asserts the
- * controller list, so a third entry has to be stated out loud rather than noticed in review.
+ * with the guards that make the page's caption true. CH.4
+ * ([#587](https://github.com/NobuData/ouroboros/issues/587)) is the head's other button,
+ * `/api/v1/registry/import`. `registry.module.spec.ts` asserts the controller list, so a
+ * fourth entry has to be stated out loud rather than noticed in review.
+ *
+ * **It imports `PricingModule`, and only for `PricingService`.** CH.4's candidate rows carry a
+ * price preview, and CH.3 ([#586](https://github.com/NobuData/ouroboros/issues/586)) is
+ * emphatic that there is exactly one resolution of *what does this model cost* because the
+ * thing four surfaces would disagree about is money. So the wizard consumes that service
+ * rather than reaching `model_prices` through the repository beside it — which this module
+ * does do, for `meta`, and `registry.repository.ts` argues why a column that is not a price is
+ * a different question.
  *
  * **It imports `ProvidersModule`, and only for `ModelProviderRegistry`.** A param schema is
  * whatever the bound adapter says it is, and decision **P1** is that core code reaches an
@@ -59,10 +70,14 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { PricingModule } from "../pricing/pricing.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { AliasesController } from "./aliases.controller";
 import { AliasesRepository } from "./aliases.repository";
 import { AliasesService } from "./aliases.service";
+import { ImportController } from "./import.controller";
+import { ImportRepository } from "./import.repository";
+import { ImportService } from "./import.service";
 import { ParamSchemaController } from "./params.controller";
 import { ParamSchemaService } from "./params.service";
 import { RegistryRepository } from "./registry.repository";
@@ -70,8 +85,8 @@ import { RegistryService } from "./registry.service";
 import { ProviderCredentialStore } from "./registry.secrets";
 
 @Module({
-  imports: [DbModule, ProvidersModule],
-  controllers: [ParamSchemaController, AliasesController],
+  imports: [DbModule, PricingModule, ProvidersModule],
+  controllers: [ParamSchemaController, AliasesController, ImportController],
   providers: [
     RegistryRepository,
     RegistryService,
@@ -79,6 +94,8 @@ import { ProviderCredentialStore } from "./registry.secrets";
     ParamSchemaService,
     AliasesRepository,
     AliasesService,
+    ImportRepository,
+    ImportService,
   ],
   exports: [RegistryService, ProviderCredentialStore, ParamSchemaService],
 })

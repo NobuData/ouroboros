@@ -488,3 +488,69 @@ function positiveInteger(value: unknown): number | null {
 export function offeredParams(schema: ModelParamSchema): string[] {
   return Object.keys(schema.properties);
 }
+
+/**
+ * The headline a list renders instead of a form — *what is this model, in one line*.
+ *
+ * CH.4's import wizard ([#587](https://github.com/NobuData/ouroboros/issues/587)) draws one of
+ * these per candidate row: an operator naming forty models needs to know which of them think
+ * and how much context they hold, and cannot be shown forty inspectors to find out. It is a
+ * projection of the merge above and adds no knowledge of its own, which is the point — a
+ * summary derived from a second reading of the same four sources would be a second precedence
+ * rule waiting to disagree with this one.
+ *
+ * **The two token counts come from the metadata, not from the merged bounds.** A field's
+ * `maximum` has been through {@link clampToStorable}, so `context_clamp.maximum` is *what this
+ * product will store*, which for a model with a ten-million-token window is a smaller number
+ * than the window. A headline saying what the model has must read what the sources said it
+ * has.
+ *
+ * @param merged - The merged schema, whose param names and reason this reports.
+ * @param discovered - What discovery reported about the model.
+ * @param catalogued - What the bundled catalog knows. Consulted only where discovery said
+ *   nothing, which is {@link fillAbsent}'s rule stated for a scalar.
+ * @returns The headline.
+ */
+export function summariseCapabilities(
+  merged: MergedParamSchema,
+  discovered: ModelMetadata,
+  catalogued: ModelMetadata,
+): ModelCapabilitySummary {
+  const params = offeredParams(merged.params);
+
+  return {
+    params,
+    thinking: params.includes(THINKING_PARAM),
+    contextTokens: discovered.contextTokens ?? catalogued.contextTokens,
+    maxOutputTokens: discovered.maxOutputTokens ?? catalogued.maxOutputTokens,
+    reason: merged.reason,
+  };
+}
+
+/**
+ * What a model can be tuned with and how much it holds, in the five facts a row has space for.
+ *
+ * Deliberately not a `MergedParamSchema` with fewer fields: a client handed a schema will
+ * render a form from it, and a candidate row is not a form. See {@link summariseCapabilities}.
+ */
+export interface ModelCapabilitySummary {
+  /** The params this model offers, in the adapter's order. Empty when {@link reason} says why. */
+  readonly params: readonly string[];
+  /** Whether `thinking` is one of them — the fact the row prints as a word rather than a count. */
+  readonly thinking: boolean;
+  /** The context window in tokens, or null when no source published one. */
+  readonly contextTokens: number | null;
+  /** The largest single answer in tokens, or null when no source published one. */
+  readonly maxOutputTokens: number | null;
+  /** Why there are no params, or null when there are some. */
+  readonly reason: NoParamsReason | null;
+}
+
+/**
+ * The param whose presence {@link ModelCapabilitySummary.thinking} reports.
+ *
+ * Named rather than inlined so the summary and V019's vocabulary cannot drift — `params.dto.ts`
+ * and the adapters spell it the same way, and a headline reporting a key nothing offers would
+ * quietly read `false` for every model.
+ */
+const THINKING_PARAM: ModelAliasParamKey = "thinking";
